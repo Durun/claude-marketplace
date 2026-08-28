@@ -1,0 +1,22 @@
+{
+  "name": "durun-toolbox",
+  "description": "Claude Code のスキルを配布する公開マーケットプレイス",
+  "owner": {
+    "name": "Durun",
+    "url": "https://github.com/Durun"
+  },
+  "plugins": [
+    {
+      "name": "tech-writing",
+      "source": "./plugins/tech-writing"
+    },
+    {
+      "name": "gh-stack",
+      "description": "スタックしたブランチとプルリクエストを扱う gh CLI 拡張のスキル。GitHub 公式リポジトリ github/gh-stack をそのまま参照する。",
+      "source": {
+        "source": "github",
+        "repo": "github/gh-stack"
+      }
+    }
+  ]
+}
