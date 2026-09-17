@@ -1,0 +1,4 @@
+{
+  "description": "/dino で面を開き、Claude が走る 3D のゲームを描く。押すと跳ぶ。",
+  "modules": ["./register.ts"]
+}
