@@ -1,0 +1,8 @@
+{
+  "name": "claude-cchi",
+  "description": "Claudeっちを育てる。入力トークンが餌、出力トークンがウンチ。/claude-cchi で面を開き、/claude-cchi hiroba でこれまでの子を見る。",
+  "author": {
+    "name": "Durun",
+    "url": "https://github.com/Durun"
+  }
+}

@@ -19,6 +19,10 @@
       "source": "./plugins/claude-run"
     },
     {
+      "name": "claude-cchi",
+      "source": "./plugins/claude-cchi"
+    },
+    {
       "name": "gh-stack",
       "description": "スタックしたブランチとプルリクエストを扱う gh CLI 拡張のスキル。GitHub 公式リポジトリ github/gh-stack をそのまま参照する。",
       "source": {
