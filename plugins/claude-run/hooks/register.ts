@@ -33,11 +33,10 @@ const start = (engine: EngineInterface) => {
     const wasOver = game.over
     game = step(game, jumpRequested)
     jumpRequested = false
+    // 当たっても時計は止めない。場面はそのままで、カメラだけ回り続ける。
     if (game.over && !wasOver) {
       game = { ...game, best: Math.max(game.best, game.score) }
-      stop()
       await engine.ui.invalidate('ui.render')
-      return
     }
     if (requestId !== '' && columns > 0) {
       // 面は据え置きで中身だけ差し替える。木を組み直すより軽い。

@@ -148,10 +148,9 @@ const timer = setInterval(() => {
     // 柱の手前で必ず跳ぶ自動操作。当たり判定と画角の変化を通しで見る。
     jumpRequested = game.obstacles.some((o) => o.x / game.speed > 7 && o.x / game.speed < 15) && game.runnerY === 0
   }
-  if (!game.over) {
-    game = step(game, jumpRequested)
-    if (game.over) game = { ...game, best: Math.max(game.best, game.score) }
-  }
+  const wasOver = game.over
+  game = step(game, jumpRequested)
+  if (game.over && !wasOver) game = { ...game, best: Math.max(game.best, game.score) }
   jumpRequested = false
   draw()
   ticks += 1

@@ -115,8 +115,8 @@ const LEGS = [
 
 /** 目の位置。胴の横に前後 2 つ並べるので、真横から見ても 2 つに見える。 */
 const EYES = [
-  { x: 0.55, y: 0.62 },
-  { x: -0.55, y: 0.62 },
+  { x: 0.55, y: 0.76 },
+  { x: -0.55, y: 0.76 },
 ] as const
 
 /** 目は胴の横面へ少しだけ出す。胴の半奥行きは BODY_HZ と丸めの和。 */
@@ -127,7 +127,7 @@ const EYE_RY = 0.11
 const EYE_RZ = 0.075
 
 /** 胴。角ばった箱で、横幅に対して背が低い。 */
-const BODY_Y = 0.54
+const BODY_Y = 0.68
 const BODY_HX = 0.78
 const BODY_HY = 0.23
 const BODY_HZ = 0.42
@@ -135,7 +135,7 @@ const BODY_ROUND = 0.15
 
 /** 手。胴の前後の端から横へ張り出す。 */
 const HAND_X = 0.97
-const HAND_Y = 0.44
+const HAND_Y = 0.58
 
 const RUNNER_SCALE = 1.5
 
@@ -148,7 +148,7 @@ const runner = (px0: number, py0: number, pz0: number, f: Frame) => {
   const py = (py0 - f.runnerY) / RUNNER_SCALE
   const pz = pz0 / RUNNER_SCALE
   const ly = py
-  const bound = Math.sqrt(px * px + (ly - BODY_Y) * (ly - BODY_Y) + pz * pz) - 1.2
+  const bound = Math.sqrt(px * px + (ly - BODY_Y) * (ly - BODY_Y) + pz * pz) - 1.25
   if (bound > 0.15) return bound
 
   let d = roundBox(px, ly - BODY_Y, pz, BODY_HX, BODY_HY, BODY_HZ, BODY_ROUND)
@@ -161,7 +161,7 @@ const runner = (px0: number, py0: number, pz0: number, f: Frame) => {
     const swing = Math.sin(phase) * 0.08 * (1 - airborne)
     // 前へ振り出した足だけ地面から浮かせる。跳んでいる間は 4 本とも畳む。
     const lift = Math.max(Math.cos(phase), 0) * 0.05 * (1 - airborne) + airborne * 0.1
-    d = smin(d, capsule(px - leg.x, ly - 0.28, pz - leg.z, swing, -0.28 + lift, 0, 0.09), 0.05)
+    d = smin(d, capsule(px - leg.x, ly - 0.42, pz - leg.z, swing, -0.42 + lift, 0, 0.09), 0.05)
   }
   return d * RUNNER_SCALE
 }

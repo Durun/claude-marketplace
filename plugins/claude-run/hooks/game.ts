@@ -51,8 +51,19 @@ const cleared = (runnerY: number, o: Obstacle) => runnerY > CACTUS_TOP * o.scale
 
 const hits = (runnerY: number, o: Obstacle) => Math.abs(o.x) < 0.62 * o.scale && !cleared(runnerY, o)
 
+/** カメラの動き。当たった後も続けるので、走りの計算とは分けて持つ。 */
+const camera = (ticks: number, orbit: number) => {
+  // 奥行きは端で速さが 0 になるように寄せる。切り替わりが唐突にならない。
+  const t = Math.max(0, Math.min((ticks - DEPTH_START) / DEPTH_LENGTH, 1))
+  return {
+    depth: t * t * (3 - 2 * t),
+    orbit: ticks > ORBIT_START ? orbit + ORBIT_RATE * Math.min((ticks - ORBIT_START) / 90, 1) : 0,
+  }
+}
+
 export const step = (game: Game, jump: boolean): Game => {
-  if (game.over) return game
+  // 当たった後は場面を止めたまま、カメラだけ回り続ける。
+  if (game.over) return { ...game, ticks: game.ticks + 1, ...camera(game.ticks + 1, game.orbit) }
 
   let velocity = game.velocity
   let runnerY = game.runnerY
@@ -77,10 +88,6 @@ export const step = (game: Game, jump: boolean): Game => {
   }
 
   const ticks = game.ticks + 1
-  // 奥行きは端で速さが 0 になるように寄せる。切り替わりが唐突にならない。
-  const t = Math.max(0, Math.min((ticks - DEPTH_START) / DEPTH_LENGTH, 1))
-  const depth = t * t * (3 - 2 * t)
-  const orbit = ticks > ORBIT_START ? game.orbit + ORBIT_RATE * Math.min((ticks - ORBIT_START) / 90, 1) : 0
 
   return {
     ...game,
@@ -89,8 +96,7 @@ export const step = (game: Game, jump: boolean): Game => {
     speed,
     obstacles,
     ticks,
-    orbit,
-    depth,
+    ...camera(ticks, game.orbit),
     // 足は進んだ距離で振れる。地面の縞も同じ速さで流す。
     stride: game.stride + speed * 6.5,
     ground: game.ground + speed * 0.8,
