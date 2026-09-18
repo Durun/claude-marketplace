@@ -27,8 +27,16 @@ const NEAR_RADIUS = 7.2
 const FAR_HEIGHT = 1.15
 const NEAR_HEIGHT = 1.9
 
-/** 画面に入れる縦の世界の高さ。これを保ったまま距離を変えるので、走者の大きさが動かない。 */
-const VIEW_HEIGHT = 5.6
+/**
+ * 画面に入れる縦の世界の高さ。これを保ったまま距離を変えるので、走者の大きさが動かない。
+ * 行数の少ない端末では詰める。そうしないと走者が数画素になって、目も足も潰れる。
+ * 横に見える範囲は縦から比で決まるが、細長い面では十分に広いので、柱を見る余裕は残る。
+ */
+const VIEW_HEIGHT_FULL = 5.6
+const VIEW_HEIGHT_MIN = 3
+
+const viewHeight = (height: number) =>
+  Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_FULL, (VIEW_HEIGHT_FULL * height) / 52))
 const TARGET_Y = 0.85
 
 /**
@@ -97,49 +105,63 @@ const ellipsoid = (px: number, py: number, pz: number, rx: number, ry: number, r
   return (k0 * (k0 - 1)) / k1
 }
 
-/** 足の付け根。前後 2 対で、対角の 2 本が同じ位相で動く。 */
+/** 足の付け根。前後 2 対で、対角の 2 本が同じ位相で動く。振れ幅が大きいので真横からは 4 つに見える。 */
 const LEGS = [
-  { x: 0.27, z: 0.17, phase: 0 },
-  { x: 0.27, z: -0.17, phase: Math.PI },
-  { x: -0.27, z: 0.17, phase: Math.PI },
-  { x: -0.27, z: -0.17, phase: 0 },
+  { x: 0.54, z: 0.24, phase: 0 },
+  { x: 0.28, z: -0.24, phase: Math.PI },
+  { x: -0.28, z: 0.24, phase: Math.PI },
+  { x: -0.54, z: -0.24, phase: 0 },
 ] as const
 
-const RUNNER_HEIGHT = 1.25
+/** 目の位置。胴の横に前後 2 つ並べるので、真横から見ても 2 つに見える。 */
+const EYES = [
+  { x: 0.55, y: 0.62 },
+  { x: -0.55, y: 0.62 },
+] as const
+
+/** 目は胴の横面へ少しだけ出す。胴の半奥行きは BODY_HZ と丸めの和。 */
+const EYE_Z = 0.56
+/** 目は縦に長い。 */
+const EYE_RX = 0.075
+const EYE_RY = 0.11
+const EYE_RZ = 0.075
+
+/** 胴。角ばった箱で、横幅に対して背が低い。 */
+const BODY_Y = 0.54
+const BODY_HX = 0.78
+const BODY_HY = 0.23
+const BODY_HZ = 0.42
+const BODY_ROUND = 0.15
+
+/** 手。胴の前後の端から横へ張り出す。 */
+const HAND_X = 0.97
+const HAND_Y = 0.44
+
+const RUNNER_SCALE = 1.5
 
 /**
  * 走者。境界球の外では球までの距離を返すので、遠い光線は体を数えずに進む。
  * 足は走りの位相で前後に振れ、跳んでいる間は畳む。
  */
-const RUNNER_SCALE = 1.3
-
 const runner = (px0: number, py0: number, pz0: number, f: Frame) => {
   const px = px0 / RUNNER_SCALE
   const py = (py0 - f.runnerY) / RUNNER_SCALE
   const pz = pz0 / RUNNER_SCALE
   const ly = py
-  const bound = Math.sqrt(px * px + (ly - 0.75) * (ly - 0.75) + pz * pz) - 1.2
+  const bound = Math.sqrt(px * px + (ly - BODY_Y) * (ly - BODY_Y) + pz * pz) - 1.2
   if (bound > 0.15) return bound
 
-  let d = ellipsoid(px, ly - 0.78, pz, 0.44, 0.3, 0.3)
-  d = smin(d, sphere(px - 0.38, ly - 0.98, pz, 0.26), 0.2)
-  d = smin(d, sphere(px - 0.58, ly - 0.9, pz, 0.16), 0.16)
-  // 耳。頭の上から左右へ開いて立てる。
-  d = smin(d, capsule(px - 0.34, ly - 1.16, pz - 0.1, -0.06, 0.24, 0.12, 0.055), 0.05)
-  d = smin(d, capsule(px - 0.34, ly - 1.16, pz + 0.1, -0.06, 0.24, -0.12, 0.055), 0.05)
-  // 尾。
-  d = smin(d, capsule(px + 0.42, ly - 0.82, pz, -0.24, 0.2, 0, 0.06), 0.07)
+  let d = roundBox(px, ly - BODY_Y, pz, BODY_HX, BODY_HY, BODY_HZ, BODY_ROUND)
+  d = Math.min(d, roundBox(px - HAND_X, ly - HAND_Y, pz, 0.11, 0.05, 0.22, 0.04))
+  d = Math.min(d, roundBox(px + HAND_X, ly - HAND_Y, pz, 0.11, 0.05, 0.22, 0.04))
 
   const airborne = Math.min(f.runnerY, 0.6) / 0.6
   for (const leg of LEGS) {
     const phase = f.stride + leg.phase
-    const swing = Math.sin(phase) * 0.24 * (1 - airborne)
+    const swing = Math.sin(phase) * 0.08 * (1 - airborne)
     // 前へ振り出した足だけ地面から浮かせる。跳んでいる間は 4 本とも畳む。
-    const lift = Math.max(Math.cos(phase), 0) * 0.16 * (1 - airborne) + airborne * 0.3
-    const rootX = px - leg.x
-    const rootY = ly - 0.62
-    const rootZ = pz - leg.z
-    d = smin(d, capsule(rootX, rootY, rootZ, swing, -0.62 + lift, 0, 0.07), 0.04)
+    const lift = Math.max(Math.cos(phase), 0) * 0.05 * (1 - airborne) + airborne * 0.1
+    d = smin(d, capsule(px - leg.x, ly - 0.28, pz - leg.z, swing, -0.28 + lift, 0, 0.09), 0.05)
   }
   return d * RUNNER_SCALE
 }
@@ -149,9 +171,14 @@ const eyes = (px0: number, py0: number, pz0: number, f: Frame) => {
   const px = px0 / RUNNER_SCALE
   const ly = (py0 - f.runnerY) / RUNNER_SCALE
   const pz = pz0 / RUNNER_SCALE
-  const a = sphere(px - 0.57, ly - 1.03, pz - 0.14, 0.1)
-  const b = sphere(px - 0.57, ly - 1.03, pz + 0.14, 0.1)
-  return Math.min(a, b) * RUNNER_SCALE
+  let d = Number.POSITIVE_INFINITY
+  for (const eye of EYES) {
+    const a = ellipsoid(px - eye.x, ly - eye.y, pz - EYE_Z, EYE_RX, EYE_RY, EYE_RZ)
+    if (a < d) d = a
+    const b = ellipsoid(px - eye.x, ly - eye.y, pz + EYE_Z, EYE_RX, EYE_RY, EYE_RZ)
+    if (b < d) d = b
+  }
+  return d * RUNNER_SCALE
 }
 
 /** 障害物。サボテンの胴と両腕。 */
@@ -230,7 +257,7 @@ const GROUND_COLOR: readonly [number, number, number] = [0.78, 0.63, 0.42]
 const RUNNER_COLOR: readonly [number, number, number] = [0.85, 0.47, 0.34]
 const CACTUS_COLOR: readonly [number, number, number] = [0.25, 0.49, 0.38]
 
-const EYE_COLOR: readonly [number, number, number] = [0.12, 0.09, 0.08]
+const EYE_COLOR: readonly [number, number, number] = [0.06, 0.05, 0.05]
 
 const colorOf = (material: number) =>
   material === MAT_RUNNER
@@ -441,8 +468,9 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
   const angle = f.orbit
   const depth = Math.max(0, Math.min(f.depth, 1))
   const radius = FAR_RADIUS + (NEAR_RADIUS - FAR_RADIUS) * depth
+  const view = viewHeight(height)
   const aspect = width / height
-  const shift = (VIEW_HEIGHT / 2) * aspect * TARGET_SHIFT_RATIO * Math.cos(angle)
+  const shift = (view / 2) * aspect * TARGET_SHIFT_RATIO * Math.cos(angle)
   // カメラの右方向は周回角だけで決まるので、注視点より先に求まる。
   const shiftX = Math.cos(angle) * shift
   const shiftZ = -Math.sin(angle) * shift
@@ -470,13 +498,13 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
   const uy = rz * fx - rx * fz
   const uz = rx * fy - ry * fx
   // 縦に見える高さを保つ画角。距離と一緒に動かすと、寄っても走者の背丈は変わらない。
-  const scale = VIEW_HEIGHT / 2 / radius
+  const scale = view / 2 / radius
   // 霧は走者のところから数え始める。手前は素の色で出る。
   const fogStart = radius
   // 場面は原点の周りにしかないので、望遠のときは手前の空間を飛ばして光線を始める。
   const tStart = Math.max(radius - 36, 0.05)
   // 1 画素が張る角度。当たりの判定に使う。
-  const pixelAngle = VIEW_HEIGHT / radius / height
+  const pixelAngle = view / radius / height
   const pixels = new Uint32Array(width * height)
   const step = 1 / superSample
   for (let y = 0; y < height; y += 1) {

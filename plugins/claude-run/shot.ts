@@ -1,12 +1,12 @@
 // 開発用。指定のコマを PNG に落として見た目を確かめる。
-// 実行: npx tsx shot.ts <コマ番号> <出力パス> [拡大率] [標本数]
+// 実行: npx tsx shot.ts <コマ番号> <出力パス> [拡大率] [標本数] [行数]
 import { writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { renderPixels, SUPER_SAMPLE } from './hooks/scene.ts'
 import { initial, step, type Game } from './hooks/game.ts'
 
 const COLUMNS = 120
-const ROWS = 26
+const ROWS = Number(process.argv[6] ?? 26)
 
 const at = Number(process.argv[2] ?? 0)
 const path = process.argv[3] ?? 'shot.png'
