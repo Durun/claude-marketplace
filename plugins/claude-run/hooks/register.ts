@@ -56,20 +56,20 @@ const start = (engine: EngineInterface) => {
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'dino',
-      description: 'Claude が走る。押すと跳ぶ。柱に当たるまで。',
+      name: 'claude-run',
+      description: 'Claude が走って柱を跳び越えるゲームを入力欄の上に開く。1 で跳ぶ、2 でもう一度、3 でやめる。',
     })
     return next(e)
   })
 
-  on('command.run', { command: 'dino' }, async ($, e, next) => {
+  on('command.run', { command: 'claude-run' }, async ($, e, next) => {
     game = initial(game.best)
     jumpRequested = false
     running = true
     cells = ''
     start($)
     await $.ui.invalidate('ui.render')
-    return { text: 'Claude Run を始めた。[ 跳ぶ ] を押して柱を越える。[ やめる ] で閉じる。' }
+    return { text: 'Claude Run を始めた。1 か [ 跳ぶ ] で柱を越える。3 か [ やめる ] で閉じる。' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

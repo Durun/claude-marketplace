@@ -76,7 +76,11 @@ const SYSTEM = `あなたは日本の頑固オヤジだ。AI アシスタント�
 - 2 行目でも、語とその言い換えは **「面」** の形で囲む
 曖昧な語が無ければ OK の 2 文字だけを出力する。`
 
+/** /gankooyaji で ON にしたときに出す一言。どんな回答にオヤジが来るかを伝える。 */
+const HELP = '頑固オヤジ ON。回答に主語の無い文、指す先の分からない語、造語、濁した断定があると、入力欄の上にオヤジが来る。'
+
 export const register: Register = (on) => {
+  let enabled = true
   let tsukkomi: string | null = null
   let tashiname: string | null = null
   let intense = false
@@ -88,9 +92,28 @@ export const register: Register = (on) => {
     ticker = null
   }
 
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'gankooyaji',
+      description: '頑固オヤジの ON/OFF を切り替える。ON のとき、曖昧な言葉遣いの回答にツッコミが出る。',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'gankooyaji' }, async ($, e, next) => {
+    enabled = !enabled
+    if (!enabled && tsukkomi) {
+      tsukkomi = null
+      tashiname = null
+      stopTicker()
+      $.ui.invalidate('ui.render')
+    }
+    return { text: enabled ? HELP : '頑固オヤジ OFF。もう一度 /gankooyaji で戻る。' }
+  })
+
   on('turn.complete', async ($, e, next) => {
     // サブエージェントの回答は画面に出ないので対象にしない。
-    if (e.agentId || e.reason !== 'answer' || e.answer.length < MIN_CHARS) return next(e)
+    if (!enabled || e.agentId || e.reason !== 'answer' || e.answer.length < MIN_CHARS) return next(e)
 
     const said = await $.model.complete({
       model: 'haiku',

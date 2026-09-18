@@ -1,6 +1,6 @@
 {
   "name": "gankooyaji",
-  "description": "Claude の舐めた返答に頑固オヤジがツッコミを入れる。",
+  "description": "Claude の舐めた返答に頑固オヤジがツッコミを入れる。入れると ON。/gankooyaji で ON/OFF を切り替える。",
   "author": {
     "name": "Durun",
     "url": "https://github.com/Durun"

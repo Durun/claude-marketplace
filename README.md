@@ -13,9 +13,9 @@ Claude Code のクラウドセッションは利用者のマシンの `~/.claude
 - `keyword-explainer`：ライブラリやプロトコルなどのキーワードを公式リファレンスから調査し、Notion に解説ページを作成する。Notion の MCP サーバーを前提とする。
 
 **gankooyaji**：Claude の舐めた返答に頑固オヤジがツッコミを入れる関数フック。
-回答を読んで曖昧な言葉遣いを見つけると、次の入力欄の直上にツッコミを出します。
+回答を読んで曖昧な言葉遣いを見つけると、次の入力欄の直上にツッコミを出します。`/gankooyaji` で ON/OFF を切り替えます。
 
-**claude-run**：`/dino` で Claude が走って柱を跳び越えるゲームを入力欄の上に出す関数フック。
+**claude-run**：`/claude-run` で Claude が走って柱を跳び越えるゲームを入力欄の上に出す関数フック。
 
 **gh-stack**：スタックしたブランチとプルリクエストを扱う `gh` CLI 拡張のスキル。
 GitHub 公式リポジトリ [github/gh-stack](https://github.com/github/gh-stack) をそのまま参照します。

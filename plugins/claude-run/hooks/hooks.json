@@ -1,4 +1,6 @@
 {
-  "description": "/dino で面を開き、Claude が走って柱を跳び越えるゲームを描く。押すと跳ぶ。",
-  "modules": ["./register.ts"]
+  "description": "/claude-run で入力欄の上に面を開き、Claude が走って柱を跳び越えるゲームを描く。1 で跳ぶ、2 でもう一度、3 でやめる。",
+  "modules": [
+    "./register.ts"
+  ]
 }

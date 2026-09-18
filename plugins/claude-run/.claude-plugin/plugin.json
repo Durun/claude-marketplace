@@ -1,6 +1,6 @@
 {
   "name": "claude-run",
-  "description": "Claude が走って柱を跳び越える。",
+  "description": "Claude が走って柱を跳び越える。/claude-run で始める。1 で跳ぶ、2 でもう一度、3 でやめる。",
   "author": {
     "name": "Durun",
     "url": "https://github.com/Durun"

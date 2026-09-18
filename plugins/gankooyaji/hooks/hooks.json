@@ -1,4 +1,6 @@
 {
-  "description": "turn.complete で Claude の回答を haiku に読ませ、曖昧な言葉遣いがあればプロンプト直上に頑固オヤジのツッコミを出す。次のターンが始まると消える。",
-  "modules": ["./register.ts"]
+  "description": "turn.complete で Claude の回答を haiku に読ませ、曖昧な言葉遣いがあればプロンプト直上に頑固オヤジのツッコミを出す。/gankooyaji で ON/OFF を切り替える。次のターンが始まると消える。",
+  "modules": [
+    "./register.ts"
+  ]
 }
