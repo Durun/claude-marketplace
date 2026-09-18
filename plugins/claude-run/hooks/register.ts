@@ -5,12 +5,12 @@ import { render } from './scene.ts'
 const SCREEN = 'screen'
 
 /** 面の大きさ。端末が広くても、1 コマの描画時間が伸びすぎないところで止める。 */
-const MAX_COLUMNS = 140
-const MAX_ROWS = 26
+const MAX_COLUMNS = 120
+const MAX_ROWS = 20
 const MIN_ROWS = 6
 
 /** 得点の行を描き直す間隔。面そのものは毎コマ blit するので、木の組み直しは間引く。 */
-const STATUS_EVERY = 6
+const STATUS_EVERY = 10
 
 let game: Game = initial()
 let running = false
@@ -19,6 +19,8 @@ let jumpRequested = false
 let requestId = ''
 let columns = 0
 let rows = 0
+/** 最後に描いた面。木を組み直すときに使い回し、1 コマを二度描かない。 */
+let cells = ''
 
 const stop = () => {
   ticker?.cancel()
@@ -39,8 +41,9 @@ const start = (engine: EngineInterface) => {
       await engine.ui.invalidate('ui.render')
     }
     if (requestId !== '' && columns > 0) {
+      cells = render(columns, rows, game)
       // 面は据え置きで中身だけ差し替える。木を組み直すより軽い。
-      await engine.ui.blit({ requestId, key: SCREEN, cells: render(columns, rows, game) })
+      await engine.ui.blit({ requestId, key: SCREEN, cells })
     }
     sinceStatus += 1
     if (sinceStatus >= STATUS_EVERY) {
@@ -63,9 +66,10 @@ export const register: Register = (on) => {
     game = initial(game.best)
     jumpRequested = false
     running = true
+    cells = ''
     start($)
     await $.ui.invalidate('ui.render')
-    return { text: 'Claude Run を始めた。1 で跳ぶ。3 でやめる。' }
+    return { text: 'Claude Run を始めた。[ 跳ぶ ] を押して柱を越える。[ やめる ] で閉じる。' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -75,9 +79,14 @@ export const register: Register = (on) => {
     if (e.surface !== 'terminal') return next(e)
 
     requestId = e.requestId
-    columns = Math.min(e.props.bodyColumns, MAX_COLUMNS)
-    rows = Math.min(e.props.maxRows - 2, MAX_ROWS)
-    if (columns < 24 || rows < MIN_ROWS) return next(e)
+    const nextColumns = Math.min(e.props.bodyColumns, MAX_COLUMNS)
+    const nextRows = Math.min(e.props.maxRows - 2, MAX_ROWS)
+    if (nextColumns < 24 || nextRows < MIN_ROWS) return next(e)
+    if (nextColumns !== columns || nextRows !== rows || cells === '') {
+      columns = nextColumns
+      rows = nextRows
+      cells = render(columns, rows, game)
+    }
 
     const { Box, Text, Button, Raster } = await $.ui.resolve(e)
     const below = await next(e)
@@ -95,7 +104,7 @@ export const register: Register = (on) => {
           paddingTop: 1,
           width: columns,
           children: [
-            Raster({ key: SCREEN, columns, rows, cells: render(columns, rows, game) }),
+            Raster({ key: SCREEN, columns, rows, cells }),
             Box({
               flexDirection: 'row',
               gap: 2,

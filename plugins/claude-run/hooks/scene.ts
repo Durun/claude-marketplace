@@ -49,7 +49,7 @@ const TARGET_Y = 0.85
  */
 const TARGET_SHIFT_RATIO = 0.6
 
-const MAX_STEPS = 56
+const MAX_STEPS = 44
 const MAX_DIST = 90
 /**
  * 当たりとみなす距離を、その光線が受け持つ画素の太さから決める。
@@ -507,36 +507,77 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
   const pixelAngle = view / radius / height
   const pixels = new Uint32Array(width * height)
   const step = 1 / superSample
+
+  // 光線 1 本ぶんの色を返す。画素の中の位置は 0..1 で受ける。
+  const sample = (x: number, y: number, ox: number, oy: number) => {
+    const px = ((x + ox) / width) * 2 - 1
+    const py = 1 - ((y + oy) / height) * 2
+    const cx = px * scale * aspect
+    const cy = py * scale
+    let dx = fx + rx * cx + ux * cy
+    let dy = fy + ry * cx + uy * cy
+    let dz = fz + rz * cx + uz * cy
+    const dl = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    dx /= dl
+    dy /= dl
+    dz /= dl
+    trace(ex, ey, ez, dx, dy, dz, f, fogStart, tStart, pixelAngle)
+  }
+
+  // まず 1 画素 1 本で描く。色は後で使うので丸める前の値を取っておく。
+  const rawR = new Float32Array(width * height)
+  const rawG = new Float32Array(width * height)
+  const rawB = new Float32Array(width * height)
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      let ar = 0
-      let ag = 0
-      let ab = 0
-      for (let sy = 0; sy < superSample; sy += 1) {
-        for (let sx = 0; sx < superSample; sx += 1) {
-          const px = ((x + (sx + 0.5) * step) / width) * 2 - 1
-          const py = 1 - ((y + (sy + 0.5) * step) / height) * 2
-          const cx = px * scale * aspect
-          const cy = py * scale
-          let dx = fx + rx * cx + ux * cy
-          let dy = fy + ry * cx + uy * cy
-          let dz = fz + rz * cx + uz * cy
-          const dl = Math.sqrt(dx * dx + dy * dy + dz * dz)
-          dx /= dl
-          dy /= dl
-          dz /= dl
-          trace(ex, ey, ez, dx, dy, dz, f, fogStart, tStart, pixelAngle)
-          ar += outR
-          ag += outG
-          ab += outB
-        }
-      }
-      const k = 1 / (superSample * superSample)
-      // 色を丸めると、なだらかな陰影に段の輪が出る。画素ごとに決まった量だけ
-      // ずらしてから丸めると、段が画素の粗さに散って輪が消える。
+      sample(x, y, 0.5, 0.5)
+      const at = y * width + x
+      rawR[at] = outR
+      rawG[at] = outG
+      rawB[at] = outB
       const bias = (DITHER[(y & 3) * 4 + (x & 3)] ?? 0) * DITHER_DEPTH
-      pixels[y * width + x] = quantize(ar * k + bias, ag * k + bias, ab * k + bias)
+      pixels[at] = quantize(outR + bias, outG + bias, outB + bias)
     }
+  }
+  if (superSample <= 1) return pixels
+
+  // 隣と色が大きく違う画素だけ標本を足す。輪郭はここにしか無いので、全面に飛ばすより安い。
+  // 比べるのは丸める前の色。丸めた色で見ると、なだらかな陰影の段まで輪郭に数えてしまう。
+  const edges: number[] = []
+  const gap = (a: number, b: number) =>
+    Math.abs((rawR[a] as number) - (rawR[b] as number)) +
+    Math.abs((rawG[a] as number) - (rawG[b] as number)) +
+    Math.abs((rawB[a] as number) - (rawB[b] as number))
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const at = y * width + x
+      const steep =
+        (x + 1 < width && gap(at, at + 1) > EDGE_GAP) ||
+        (x > 0 && gap(at, at - 1) > EDGE_GAP) ||
+        (y + 1 < height && gap(at, at + width) > EDGE_GAP) ||
+        (y > 0 && gap(at, at - width) > EDGE_GAP)
+      if (steep) edges.push(at)
+    }
+  }
+  for (const at of edges) {
+    const x = at % width
+    const y = (at - x) / width
+    let ar = rawR[at] as number
+    let ag = rawG[at] as number
+    let ab = rawB[at] as number
+    let taken = 1
+    for (let sy = 0; sy < superSample; sy += 1) {
+      for (let sx = 0; sx < superSample; sx += 1) {
+        sample(x, y, (sx + 0.5) * step, (sy + 0.5) * step)
+        ar += outR
+        ag += outG
+        ab += outB
+        taken += 1
+      }
+    }
+    const k = 1 / taken
+    const bias = (DITHER[(y & 3) * 4 + (x & 3)] ?? 0) * DITHER_DEPTH
+    pixels[at] = quantize(ar * k + bias, ag * k + bias, ab * k + bias)
   }
   return pixels
 }
@@ -562,6 +603,9 @@ export const encodeCells = (columns: number, rows: number, pixels: Uint32Array) 
  * 1 コマの時間がその 2 乗で伸びる。2 で約 9 ms、3 で約 20 ms（120x26 セル）。
  */
 export const SUPER_SAMPLE = 2
+
+/** 輪郭とみなす色の開き。小さくすると標本を足す画素が増え、1 コマの時間が伸びる。 */
+const EDGE_GAP = 0.2
 
 export const render = (columns: number, rows: number, f: Frame, superSample = SUPER_SAMPLE) =>
   encodeCells(columns, rows, renderPixels(columns, rows, f, superSample))
