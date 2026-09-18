@@ -1,11 +1,59 @@
 // Claudeっちの姿を画素で描き、Raster の cells にする。
-// 1 セルに半ブロック `▀` を置き、前景を上の画素、背景を下の画素として縦を 2 倍に使う。
+// 1 セルに四分ブロックを置き、縦横それぞれ 2 倍の画素を持つ。基準の姿を
+// そのまま画素に書き起こしてあるので、拡大率と飾りだけで見た目を派生させる。
 
 import { poopCount, stageOf, STAGE_LABEL, traitsOf, type Pet, type Stage } from './pet.ts'
 
 /** 端末の既定色。bit 24 だけを立てた値。 */
 const DEFAULT = 0x01000000
-const HALF_BLOCK = 0x2580
+
+/** 四分ブロック。添字は 左上 8 / 右上 4 / 左下 2 / 右下 1 の和。 */
+const QUADRANT = [
+  0x0020, 0x2597, 0x2596, 0x2584, 0x259d, 0x2590, 0x259e, 0x259f, 0x2598, 0x259a, 0x258c, 0x2599,
+  0x2580, 0x259c, 0x259b, 0x2588,
+]
+
+/**
+ * ノーマルタイプの大人。1 文字が 2x2 の画素にあたる元の絵をそのまま展開したもの。
+ *
+ *   ▐▛███▛█
+ *  ▝▜██████▀
+ *    ▝▝ ▝▝
+ */
+export const ART = [
+  '...#############......',
+  '...##.#######.##......',
+  '.#################....',
+  '...#############......',
+  '.....#.#...#.#........',
+] as const
+
+const ART_WIDTH = ART[0].length
+const ART_HEIGHT = ART.length
+
+/** 目は元の絵の上の切れ込みに重ねる。 */
+const EYE_COL = [5, 13] as const
+const EYE_ROW = 1
+const MOUTH_COL = 9
+const MOUTH_ROW = 3
+
+/** 基準の姿を四分ブロックの文字に戻す。元の絵と突き合わせるために使う。 */
+export const artLines = () => {
+  const lines: string[] = []
+  for (let row = 0; row < ART_HEIGHT; row += 2) {
+    let line = ''
+    for (let col = 0; col < ART_WIDTH; col += 2) {
+      const bits =
+        (ART[row]?.[col] === '#' ? 8 : 0) |
+        (ART[row]?.[col + 1] === '#' ? 4 : 0) |
+        (ART[row + 1]?.[col] === '#' ? 2 : 0) |
+        (ART[row + 1]?.[col + 1] === '#' ? 1 : 0)
+      line += String.fromCodePoint(QUADRANT[bits] ?? 0x20)
+    }
+    lines.push(line.trimEnd())
+  }
+  return lines
+}
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -36,6 +84,10 @@ const put = (c: Canvas, x: number, y: number, color: number) => {
   c.px[yi * c.width + xi] = color
 }
 
+const rect = (c: Canvas, x: number, y: number, w: number, h: number, color: number) => {
+  for (let dy = 0; dy < h; dy += 1) for (let dx = 0; dx < w; dx += 1) put(c, x + dx, y + dy, color)
+}
+
 const ellipse = (c: Canvas, cx: number, cy: number, rx: number, ry: number, color: number) => {
   for (let y = Math.ceil(cy - ry); y <= cy + ry; y += 1) {
     for (let x = Math.ceil(cx - rx); x <= cx + rx; x += 1) {
@@ -46,28 +98,37 @@ const ellipse = (c: Canvas, cx: number, cy: number, rx: number, ry: number, colo
   }
 }
 
-const encode = (c: Canvas, columns: number, rows: number) => {
+/**
+ * 1 セルの 4 画素を四分ブロック 1 文字にたたむ。
+ * 1 セルに置ける色は前景と背景の 2 つなので、多数を占める色を前景に取る。
+ */
+export const encode = (c: Canvas, columns: number, rows: number) => {
   const words = new Uint32Array(columns * rows * 3)
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < columns; col += 1) {
+      const quad = [
+        c.px[row * 2 * c.width + col * 2] ?? DEFAULT,
+        c.px[row * 2 * c.width + col * 2 + 1] ?? DEFAULT,
+        c.px[(row * 2 + 1) * c.width + col * 2] ?? DEFAULT,
+        c.px[(row * 2 + 1) * c.width + col * 2 + 1] ?? DEFAULT,
+      ]
+      const count = (v: number) => quad.filter((q) => q === v).length
+      const ink = quad.filter((q) => q !== DEFAULT)
+      const fg = ink.length === 0 ? DEFAULT : ink.reduce((a, b) => (count(a) >= count(b) ? a : b))
+      const rest = quad.filter((q) => q !== fg)
+      const bg = rest.length === 0 ? DEFAULT : rest.reduce((a, b) => (count(a) >= count(b) ? a : b))
+      const bits = quad.reduce((acc, q, i) => acc | (q === fg && fg !== DEFAULT ? 8 >> i : 0), 0)
       const at = (row * columns + col) * 3
-      words[at] = HALF_BLOCK
-      words[at + 1] = c.px[row * 2 * c.width + col] ?? DEFAULT
-      words[at + 2] = c.px[(row * 2 + 1) * c.width + col] ?? DEFAULT
+      words[at] = QUADRANT[bits] ?? 0x0020
+      words[at + 1] = fg
+      words[at + 2] = bg
     }
   }
   return base64(new Uint8Array(words.buffer))
 }
 
-/** 段階ごとの体の大きさ。おじさんから先は太らず、色と飾りだけが変わる。 */
-const SIZE: Record<Stage, { rx: number; ry: number }> = {
-  egg: { rx: 5, ry: 6 },
-  baby: { rx: 5, ry: 4 },
-  child: { rx: 7, ry: 6 },
-  adult: { rx: 9, ry: 8 },
-  ojisan: { rx: 9, ry: 8 },
-  ojiisan: { rx: 9, ry: 8 },
-}
+/** 拡大率。おじさんから先は大きくならず、飾りだけが変わる。 */
+const SCALE: Record<Stage, number> = { egg: 2, baby: 1, child: 2, adult: 3, ojisan: 3, ojiisan: 3 }
 
 const EYE_WHITE = 0xf8f8f8
 const INK = 0x101010
@@ -75,76 +136,93 @@ const POOP = 0x6b4423
 const POOP_LIGHT = 0x8a5c30
 const SHELL = 0xf2e6cf
 const GROUND = 0x3a3f4b
-
-/** 白ひげ。おじいさんだけ。 */
 const HAIR = 0xe8e8e8
 
-const drawEyes = (c: Canvas, cx: number, cy: number, rx: number, eye: number, blink: boolean) => {
-  const gap = Math.max(2, Math.round(rx * 0.45))
-  for (const side of [-1, 1]) {
-    const ex = cx + side * gap
-    if (blink || eye === 3) {
-      for (let d = -1; d <= 1; d += 1) put(c, ex + d, cy, INK)
-      continue
-    }
-    ellipse(c, ex, cy, 1.6, 1.6, EYE_WHITE)
-    // 瞳の位置で表情を変える。0 まる 1 たれ 2 つり。
-    const pupilY = eye === 1 ? cy + 0.6 : eye === 2 ? cy - 0.6 : cy
-    put(c, ex, pupilY, INK)
-    put(c, ex + side * 0.4, pupilY, INK)
+/** 体の伸ばし方。基準からの差なので、赤ちゃんのうちは 3 つとも同じ形になる。 */
+const stretch = (scale: number, body: number) =>
+  body === 1
+    ? { sx: Math.max(1, scale - 1), sy: scale }
+    : body === 2
+      ? { sx: scale, sy: Math.max(1, scale - 1) }
+      : { sx: scale, sy: scale }
+
+const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: number, blink: boolean) => {
+  // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
+  if (blink || eye === 3 || sx < 2 || sy < 2) {
+    rect(c, x, y + sy, sx * 2, Math.max(1, Math.floor(sy / 2)), INK)
+    return
   }
+  const h = sy + Math.floor(sy / 2)
+  rect(c, x, y, sx * 2, h, EYE_WHITE)
+  // 瞳の位置で表情を変える。0 まる 1 たれ 2 つり。
+  const py = eye === 1 ? y + h - sy : eye === 2 ? y : y + Math.floor((h - sy) / 2)
+  rect(c, x + Math.floor(sx / 2), py, Math.max(1, sx), Math.max(1, sy), INK)
 }
 
 export const render = (columns: number, rows: number, pet: Pet, frame: number) => {
-  const c = canvas(columns, rows * 2)
+  const c = canvas(columns * 2, rows * 2)
   const stage = stageOf(pet)
   const traits = traitsOf(pet)
-  const size = SIZE[stage]
-  const rx = stage === 'egg' ? size.rx : size.rx * (traits.body === 2 ? 1.25 : 1)
-  const ry = stage === 'egg' ? size.ry : size.ry * (traits.body === 1 ? 1.25 : 1)
+  // 狭い面では基準の絵が横にはみ出すので、入る大きさまで落とす。
+  const fit = Math.max(1, Math.floor((columns - 2) / Math.ceil(ART_WIDTH / 2)))
+  const { sx, sy } = stretch(Math.min(SCALE[stage], fit), traits.body)
 
-  const groundY = c.height - 2
+  const groundY = c.height - 3
   for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
 
-  const cx = Math.round(c.width * 0.33)
   // 呼吸で 1 画素だけ上下させる。止まって見えないための最小の動き。
-  const bob = stage === 'egg' ? Math.round(Math.sin(frame / 8)) : Math.round(Math.sin(frame / 6))
-  const cy = groundY - ry - 1 + bob
+  const bob = Math.round(Math.sin(frame / (stage === 'egg' ? 8 : 6)))
+  const left = Math.max(1, Math.round(c.width * 0.4 - (ART_WIDTH * sx) / 2))
+  const top = groundY - ART_HEIGHT * sy - 1 + bob
 
+  // 卵はまだ体つきが出ていないので、伸ばし方を当てずに丸く描く。
   if (stage === 'egg') {
-    ellipse(c, cx, cy, rx, ry, SHELL)
+    const s = Math.min(SCALE.egg, fit)
+    const cx = Math.round(c.width * 0.4)
+    const cy = groundY - 1 - 5 * s + bob
+    ellipse(c, cx, cy, 4 * s, 5 * s, SHELL)
     for (let i = 0; i < 5; i += 1) {
       const a = (i / 5) * Math.PI * 2
-      put(c, cx + Math.cos(a) * rx * 0.5, cy + Math.sin(a) * ry * 0.5, traits.accent)
+      rect(c, cx + Math.cos(a) * 2 * s, cy + Math.sin(a) * 2.5 * s, s, s, traits.accent)
     }
-  } else {
-    ellipse(c, cx, cy, rx, ry, traits.color)
-    // 頬。体の色が薄いうちは見分けが付かないが、食べるほど出てくる。
-    put(c, cx - rx * 0.75, cy + ry * 0.2, traits.accent)
-    put(c, cx + rx * 0.75, cy + ry * 0.2, traits.accent)
-    drawEyes(c, cx, cy - ry * 0.15, rx, traits.eye, frame % 90 >= 87)
-    // 口。
-    for (let d = -1; d <= 1; d += 1) put(c, cx + d, cy + ry * 0.5, INK)
-    if (stage === 'ojisan' || stage === 'ojiisan') {
-      const hair = stage === 'ojiisan' ? HAIR : INK
-      for (let d = -2; d <= 2; d += 1) put(c, cx + d, cy + ry * 0.75, hair)
-      for (let d = -1; d <= 1; d += 1) put(c, cx + d, cy + ry * 0.9, hair)
-    }
-    if (stage === 'ojiisan') {
-      for (const side of [-1, 1]) {
-        for (let d = -1; d <= 1; d += 1) put(c, cx + side * rx * 0.45 + d, cy - ry * 0.6, HAIR)
-      }
+    return encode(c, columns, rows)
+  }
+
+  for (let row = 0; row < ART_HEIGHT; row += 1) {
+    for (let col = 0; col < ART_WIDTH; col += 1) {
+      if (ART[row]?.[col] !== '#') continue
+      rect(c, left + col * sx, top + row * sy, sx, sy, traits.color)
     }
   }
 
-  // ウンチは右下に積む。溜まるほど横に並ぶ。
+  // 頬。体の色が薄いうちは見分けが付かないが、食べるほど出てくる。
+  rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
+  rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
+
+  for (const col of EYE_COL) {
+    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, frame % 90 >= 87)
+  }
+  const thin = Math.max(1, Math.floor(sy / 2))
+  const mouthY = top + MOUTH_ROW * sy
+  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, thin, INK)
+
+  // 口ひげは口の真上。おじいさんは白くなり、眉も生える。
+  if (stage === 'ojisan' || stage === 'ojiisan') {
+    rect(c, left + 8 * sx, mouthY - thin, sx * 4, thin, stage === 'ojiisan' ? HAIR : INK)
+  }
+  if (stage === 'ojiisan') {
+    for (const col of EYE_COL) {
+      rect(c, left + col * sx, top + EYE_ROW * sy - thin, sx * 2, thin, HAIR)
+    }
+  }
+
+  // ウンチは右下に積む。溜まるほど左へ並ぶ。
   const poops = Math.min(poopCount(pet), 8)
   for (let i = 0; i < poops; i += 1) {
-    const px = c.width - 4 - i * 4
-    if (px < cx + rx + 2) break
-    ellipse(c, px, groundY - 1, 1.8, 1.2, POOP)
-    ellipse(c, px, groundY - 3, 1.2, 1, POOP_LIGHT)
-    put(c, px, groundY - 4, POOP_LIGHT)
+    const px = c.width - 5 - i * 6
+    if (px < left + ART_WIDTH * sx + 3) break
+    ellipse(c, px, groundY - 2, 3, 2, POOP)
+    ellipse(c, px, groundY - 4, 2, 1.4, POOP_LIGHT)
   }
 
   return encode(c, columns, rows)

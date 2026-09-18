@@ -1,7 +1,7 @@
 // 成長・餌・排泄の計算と、面の符号化の長さを確かめる。`npx tsx check.ts` で走る。
 
 import assert from 'node:assert/strict'
-import { render } from './hooks/draw.ts'
+import { artLines, render } from './hooks/draw.ts'
 import { feed, flush, newPet, OUTPUT_PER_POOP, poopCount, stageOf, traitsOf } from './hooks/pet.ts'
 
 const born = new Date('2026-09-18T00:00:00Z')
@@ -38,6 +38,9 @@ assert.equal(young.eye, grown.eye)
 assert.equal(young.body, grown.body)
 assert.notEqual(young.color, grown.color)
 assert.notEqual(traitsOf({ ...pet, id: 'session-2' }).color, young.color, '別の子は別の色')
+
+// 基準の姿は、元の四分ブロックの絵にそのまま戻る。
+assert.deepEqual(artLines(), [' \u2590\u259b\u2588\u2588\u2588\u259b\u2588', '\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u2588\u2580', '  \u259d\u259d \u259d\u259d'])
 
 // cells は columns * rows * 3 語を base64 にしたもの。
 const columns = 40
