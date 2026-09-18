@@ -35,7 +35,7 @@ export const WALL_WIDTH = 3
 const RESTING_OFFSET = 1
 
 /** 着地したときの顔の位置。ピクセルで数える。飛び出した直後はこれより上にいる。 */
-const RESTING_PIXEL = 2
+export const RESTING_PIXEL = 2
 
 /** 面の行数。跳び上がったぶんの 1 行を顔の上に取る。 */
 export const FACE_AREA_HEIGHT = FACE_HEIGHT + 1

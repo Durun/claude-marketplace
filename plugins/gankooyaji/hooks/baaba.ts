@@ -1,8 +1,8 @@
 // オヤジが怒鳴り終えたあと、下からゆっくり昇ってきてたしなめるババア。
 // 1 文字セルに上下 2 ピクセルを詰めるので、ドットは偶数行で持つ。
 // G=白髪 S=肌 K=眼鏡の縁 E=レンズ P=瞳 N=鼻 R=開いた口 .=透明
-import { FACE_HEIGHT, type Sprite } from './face.ts'
-import { SETTLED_FRAME, lastFrame } from './entrance.ts'
+import type { Sprite } from './face.ts'
+import { FACE_AREA_HEIGHT, RESTING_PIXEL, SETTLED_FRAME, lastFrame } from './entrance.ts'
 
 const PIXELS = [
   '..............',
@@ -45,12 +45,15 @@ export const BAABA: Sprite = {
 /** オヤジが喋り終えてから昇り始めるまでの間。 */
 const PAUSE_FRAMES = 6
 
-/** 顔が下から出切るまでのコマ数。16 ピクセルを 2 コマに 1 ピクセルずつ昇る。 */
-const RISE_FRAMES = FACE_HEIGHT * 2 * 2
+/** 面の下端に全部隠れている縦位置。 */
+const HIDDEN_PIXEL = FACE_AREA_HEIGHT * 2
 
-/** そのコマの縦位置。ピクセルで数え、面の高さぶん下がっていれば全部隠れている。 */
+/** 顔が下から出切るまでのコマ数。オヤジと同じ高さまで 2 コマに 1 ピクセルずつ昇る。 */
+const RISE_FRAMES = (HIDDEN_PIXEL - RESTING_PIXEL) * 2
+
+/** そのコマの縦位置。ピクセルで数え、オヤジの着地位置で止まる。 */
 export const baabaPixelRow = (baabaAt: number) =>
-  Math.max(0, Math.ceil((RISE_FRAMES + PAUSE_FRAMES - baabaAt) / 2))
+  Math.max(RESTING_PIXEL, RESTING_PIXEL + Math.ceil((RISE_FRAMES + PAUSE_FRAMES - baabaAt) / 2))
 
 /**
  * セリフの送りと口パクはオヤジと同じ関数で数える。

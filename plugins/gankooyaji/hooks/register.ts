@@ -3,7 +3,7 @@ import { type Cell, faceRows, runs } from './face.ts'
 import { FACE_AREA_HEIGHT, FACE_AREA_WIDTH, FRAME_MS, WALL_WIDTH, applyDebris, faceOffset, facePixelRow, lastFrame, mouthOpen, speechLength, speechParts, spokenRuns, wallRow } from './entrance.ts'
 import { CUTIN_FRAMES, cutinRows } from './cutin.ts'
 import { BAABA, BAABA_PALETTE, baabaLastFrame, baabaPixelRow, baabaSpeechFrame } from './baaba.ts'
-import { FACE_HEIGHT, FACE_WIDTH } from './face.ts'
+import { FACE_WIDTH } from './face.ts'
 
 const PANEL_COLUMNS = WALL_WIDTH + FACE_AREA_WIDTH
 
@@ -99,7 +99,8 @@ export const register: Register = (on) => {
     const marked = line.startsWith('!!')
     const body = marked ? line.slice(2).trim() : line
     tsukkomi = body === '' || body.startsWith('OK') ? null : body
-    tashiname = tsukkomi ? (lines[1]?.trim() || null) : null
+    // 一言目で区切って、解説を次の行に落とす。
+    tashiname = tsukkomi ? (lines[1]?.trim().replace(/^(まあ落ち着いて。)/, '$1\n') || null) : null
     // 挙げた語が 2 つ以上あるかは、鉤括弧で囲まれた強調の数で数えられる。
     intense = marked || keywordCount(body) >= 2
     if (tsukkomi) {
@@ -140,42 +141,36 @@ export const register: Register = (on) => {
     const paint = (cells: Cell[]) =>
       runs(cells).map((run) => Text({ color: run.color, backgroundColor: run.backgroundColor, children: run.char }))
 
-    // ババアはオヤジのセリフが地の色に落ち着いてから昇り始める。セリフは右寄せで顔の左に置く。
+    // ババアはオヤジのセリフが地の色に落ち着いてから昇り始め、オヤジと同じ高さに並ぶ。
     const baabaParts = tashiname ? speechParts(tashiname) : null
     const baabaAt = at - lastFrame(speechLength(parts))
     const baabaSpeech = baabaSpeechFrame(baabaAt)
-    const baaba =
+    const baabaFace =
       baabaParts &&
       Box({
-        flexDirection: 'row',
-        gap: 1,
+        flexDirection: 'column',
+        width: FACE_WIDTH,
+        flexShrink: 0,
+        children: faceRows(
+          0,
+          baabaPixelRow(baabaAt),
+          FACE_WIDTH,
+          FACE_AREA_HEIGHT,
+          mouthOpen(baabaSpeech, speechLength(baabaParts)),
+          BAABA,
+        ).map((cells) => Text({ wrap: 'truncate-end', children: paint(cells) })),
+      })
+    // セリフはオヤジの下に右寄せで置く。
+    const baabaText =
+      baabaParts &&
+      Box({
+        alignSelf: 'flex-end',
         children: [
-          Box({
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'flex-end',
-            flexGrow: 1,
-            children: [
-              Text({
-                wrap: 'wrap',
-                children: spokenRuns(baabaSpeech, baabaParts, BAABA_PALETTE).map((run) =>
-                  Text({ color: run.color, children: run.text }),
-                ),
-              }),
-            ],
-          }),
-          Box({
-            flexDirection: 'column',
-            width: FACE_WIDTH,
-            flexShrink: 0,
-            children: faceRows(
-              0,
-              baabaPixelRow(baabaAt),
-              FACE_WIDTH,
-              FACE_HEIGHT,
-              mouthOpen(baabaSpeech, speechLength(baabaParts)),
-              BAABA,
-            ).map((cells) => Text({ wrap: 'truncate-end', children: paint(cells) })),
+          Text({
+            wrap: 'wrap',
+            children: spokenRuns(baabaSpeech, baabaParts, BAABA_PALETTE).map((run) =>
+              Text({ color: run.color, children: run.text }),
+            ),
           }),
         ],
       })
@@ -222,8 +217,10 @@ export const register: Register = (on) => {
                   wrap: 'wrap',
                   children: spokenRuns(at, parts).map((run) => Text({ color: run.color, children: run.text })),
                 }),
+                ...(baabaText ? [baabaText] : []),
               ],
             }),
+            ...(baabaFace ? [baabaFace] : []),
           ],
         })
 
@@ -231,7 +228,7 @@ export const register: Register = (on) => {
       flexDirection: 'column',
       children: [
         below,
-        Box({ flexDirection: 'column', paddingTop: 1, width: e.props.bodyColumns, children: baaba && !cutin ? [body, baaba] : [body] }),
+        Box({ flexDirection: 'column', paddingTop: 1, width: e.props.bodyColumns, children: [body] }),
       ],
     })
   })

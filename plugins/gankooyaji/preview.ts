@@ -4,9 +4,10 @@
 //   node --experimental-strip-types preview.ts --play "セリフ"  セリフを変えて再生する
 //   node --experimental-strip-types preview.ts --play "セリフ" "ババアのセリフ"  ババアのセリフも変えて再生する
 //   node --experimental-strip-types preview.ts --play --intense  カットイン付きの激しい登場で再生する
-import { FACE_HEIGHT, FACE_WIDTH, faceRows, runs } from './hooks/face.ts'
+import { FACE_WIDTH, faceRows, runs } from './hooks/face.ts'
 import { BAABA, BAABA_PALETTE, baabaLastFrame, baabaPixelRow, baabaSpeechFrame } from './hooks/baaba.ts'
 import {
+  WALL_WIDTH,
   FACE_AREA_HEIGHT,
   FACE_AREA_WIDTH,
   FRAME_MS,
@@ -32,7 +33,7 @@ const hex = (h, bg) => {
 const args = process.argv.slice(2)
 const positional = args.filter((a) => !a.startsWith('--'))
 const SPEECH = positional[0] ?? '**「面」**って一体何のことダァ**〜〜！？**'
-const BAABA_SPEECH = positional[1] ?? 'まあ落ち着いて。**「面」**は**「画面の描画領域」**のことだと思うわよ。'
+const BAABA_SPEECH = positional[1] ?? 'まあ落ち着いて。\n**「面」**は**「画面の描画領域」**のことだと思うわよ。'
 const INTENSE = args.includes('--intense')
 const PARTS = speechParts(SPEECH)
 const BAABA_PARTS = speechParts(BAABA_SPEECH)
@@ -45,22 +46,29 @@ const FRAMES = LEAD + OYAJI_END + baabaLastFrame(speechLength(BAABA_PARTS)) + 1
 // 端末の桁数。全角は 2 桁で数える。右寄せの位置合わせに使う。
 const columnsOf = (text) => [...text].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0)
 
-/** ババアの行。セリフを右寄せにして顔の左に置く。 */
-const drawBaaba = (at) => {
-  const baabaAt = at - OYAJI_END
-  const speechFrame = baabaSpeechFrame(baabaAt)
-  const said = spokenRuns(speechFrame, BAABA_PARTS, BAABA_PALETTE)
-  const face = faceRows(0, baabaPixelRow(baabaAt), FACE_WIDTH, FACE_HEIGHT, mouthOpen(speechFrame, speechLength(BAABA_PARTS)), BAABA)
-  return face.map((row, i) => {
-    let out = ''
-    for (const r of runs(row)) {
-      out += (r.color ? hex(r.color, false) : '') + (r.backgroundColor ? hex(r.backgroundColor, true) : '') + r.char + RESET
+const paintRuns = (row) => {
+  let out = ''
+  for (const r of runs(row)) {
+    out += (r.color ? hex(r.color, false) : '') + (r.backgroundColor ? hex(r.backgroundColor, true) : '') + r.char + RESET
+  }
+  return out
+}
+
+/** ババアのセリフを行ごとに右寄せした文字列にする。改行で切り、幅 width に収める。 */
+const baabaLines = (at, width) => {
+  const said = spokenRuns(baabaSpeechFrame(at - OYAJI_END), BAABA_PARTS, BAABA_PALETTE)
+  const lines = [{ plain: '', colored: '' }]
+  for (const run of said) {
+    for (const ch of run.text) {
+      if (ch === '\n') lines.push({ plain: '', colored: '' })
+      else {
+        const line = lines[lines.length - 1]
+        line.plain += ch
+        line.colored += hex(run.color, false) + ch
+      }
     }
-    if (i !== Math.floor(FACE_HEIGHT / 2) || said.length === 0) return ' '.repeat(BODY_COLUMNS - FACE_WIDTH) + out
-    const plain = said.map((run) => run.text).join('')
-    const spoken = said.map((run) => hex(run.color, false) + run.text).join('')
-    return ' '.repeat(Math.max(0, BODY_COLUMNS - FACE_WIDTH - 1 - columnsOf(plain))) + spoken + RESET + ' ' + out
-  })
+  }
+  return lines.filter((l) => l.plain !== '').map((l) => ' '.repeat(Math.max(0, width - columnsOf(l.plain))) + l.colored + RESET)
 }
 
 // セリフは顔の縦の中ほどに置く。
@@ -83,20 +91,25 @@ const draw = (frame) => {
         at,
         INTENSE,
       )
-  const rows = cells.map((row, i) => {
-    let out = ESC + '[90m' + (cutin ? '' : wallRow(at, i, INTENSE)) + RESET
-    for (const r of runs(row)) {
-      out += (r.color ? hex(r.color, false) : '') + (r.backgroundColor ? hex(r.backgroundColor, true) : '') + r.char + RESET
-    }
-    if (i !== SPEECH_ROW || said.length === 0) return out
-    const spoken = said.map((run) => hex(run.color, false) + run.text).join('')
-    return out + ' ' + spoken + RESET
+  if (cutin) return cells.map((row) => paintRuns(row))
+  const baabaAt = at - OYAJI_END
+  const face = faceRows(0, baabaPixelRow(baabaAt), FACE_WIDTH, FACE_AREA_HEIGHT, mouthOpen(baabaSpeechFrame(baabaAt), speechLength(BAABA_PARTS)), BAABA)
+  // 中央の列はオヤジのセリフの行の下にババアのセリフを右寄せで積む。
+  const middleWidth = BODY_COLUMNS - WALL_WIDTH - FACE_AREA_WIDTH - FACE_WIDTH - 2
+  const middle = []
+  for (let i = 0; i < FACE_AREA_HEIGHT; i++) middle.push('')
+  const spoken = said.map((run) => hex(run.color, false) + run.text).join('')
+  if (said.length > 0) middle[SPEECH_ROW] = spoken + RESET + ' '.repeat(Math.max(0, middleWidth - columnsOf(said.map((r) => r.text).join(''))))
+  baabaLines(at, middleWidth).forEach((line, j) => { middle[SPEECH_ROW + 1 + j] = line })
+  return cells.map((row, i) => {
+    const wall = ESC + '[90m' + wallRow(at, i, INTENSE) + RESET
+    const mid = middle[i] || ' '.repeat(middleWidth)
+    return wall + paintRuns(row) + ' ' + mid + ' ' + paintRuns(face[i])
   })
-  return cutin ? rows : [...rows, ...drawBaaba(at)]
 }
 
 if (args.includes('--play')) {
-  const height = FACE_AREA_HEIGHT + FACE_HEIGHT + 1
+  const height = FACE_AREA_HEIGHT + 1
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   process.stdout.write(ESC + '[?25l')
   console.log('\n'.repeat(height - 1))
