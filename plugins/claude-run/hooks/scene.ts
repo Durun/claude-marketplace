@@ -599,10 +599,11 @@ export const encodeCells = (columns: number, rows: number, pixels: Uint32Array) 
 }
 
 /**
- * 1 画素あたりに飛ばす光線の数の平方根。上げるほど輪郭がなめらかになり、
- * 1 コマの時間がその 2 乗で伸びる。2 で約 9 ms、3 で約 20 ms（120x26 セル）。
+ * 1 画素あたりに飛ばす光線の数の平方根。1 なら 1 画素 1 本で、輪郭に中間色が入らない。
+ * 2 以上にすると輪郭の画素だけ標本を足してなめらかにする。
+ * 120x20 セルで 1 なら約 6 ms、2 なら約 10 ms。
  */
-export const SUPER_SAMPLE = 2
+export const SUPER_SAMPLE = 1
 
 /** 輪郭とみなす色の開き。小さくすると標本を足す画素が増え、1 コマの時間が伸びる。 */
 const EDGE_GAP = 0.2
