@@ -6,38 +6,57 @@ export type Obstacle = { x: number; scale: number }
 export type Frame = {
   /** 走者の腰の高さ。跳ぶと上がる。 */
   runnerY: number
-  /** 走者の回転。走っている間ずっと回る。 */
-  spin: number
+  /** 走りの位相。足はこの位相で前後に振れる。 */
+  stride: number
   /** 地面の縞の位相。進んだぶんだけ流れる。 */
   ground: number
   /** カメラの周回角。0 で真横から見る。 */
   orbit: number
+  /** 奥行きの強さ。0 で望遠の真横、1 で寄った画角。走者の大きさは変わらない。 */
+  depth: number
   obstacles: readonly Obstacle[]
 }
 
-const RUNNER_CENTER = 1.15
-const CAMERA_RADIUS = 6.4
-const CAMERA_HEIGHT = 2.1
-const TARGET_Y = 1.1
-const FOV = 0.92
+/**
+ * カメラの距離。遠いほど遠近が消え、平らな絵に見える。
+ * 近づけると同時に画角を広げるので、走者の大きさは変わらないまま奥行きだけが出る。
+ */
+const FAR_RADIUS = 46
+const NEAR_RADIUS = 7.2
+
+const FAR_HEIGHT = 1.15
+const NEAR_HEIGHT = 1.9
+
+/** 画面に入れる縦の世界の高さ。これを保ったまま距離を変えるので、走者の大きさが動かない。 */
+const VIEW_HEIGHT = 5.6
+const TARGET_Y = 0.85
+
+/**
+ * 注視点を走者の横へずらす量。画面の横幅に対する割合で持つので、端末の幅が変わっても
+ * 走者は同じ位置に立つ。
+ *
+ * ずらす向きは柱が来る側の逆に取る。真横から見ている間は走者が左に立ち、
+ * 周回して柱が正面から来るころには中央へ寄り、反対側まで回ると右に立つ。
+ * こうすると、どの画角でも柱を見てから跳ぶまでの間合いが残る。
+ */
+const TARGET_SHIFT_RATIO = 0.6
 
 const MAX_STEPS = 56
-const MAX_DIST = 46
-const SURFACE = 0.004
-
-// 走者は放射状の棘の集まり。棘は 10 本で、長short を交互にして z へ振り分ける。
-const LIMBS = Array.from({ length: 10 }, (_, i) => {
-  const a = (i * Math.PI * 2) / 10
-  const long = i % 2 === 0
-  const tilt = (i % 4 < 2 ? 1 : -1) * 0.34
-  const len = long ? 1.1 : 0.72
-  const s = 1 / Math.sqrt(1 + tilt * tilt)
-  return { x: Math.cos(a) * len * s, y: Math.sin(a) * len * s, z: tilt * len * s }
-})
+const MAX_DIST = 90
+/**
+ * 当たりとみなす距離を、その光線が受け持つ画素の太さから決める。
+ * 一定の割合にすると、望遠で遠くから見たときに輪郭が膨らむ。
+ *
+ * 上限も置く。行数の少ない端末では 1 画素が受け持つ幅が広くなり、
+ * 甘いままだと物を囲む球の手前で当たったことになって、輪郭の外に輪が出る。
+ */
+const SURFACE_RATIO = 0.3
+const SURFACE_MAX = 0.05
 
 const MAT_GROUND = 0
 const MAT_RUNNER = 1
 const MAT_CACTUS = 2
+const MAT_EYE = 3
 
 let hitMaterial = MAT_GROUND
 
@@ -63,23 +82,76 @@ const roundBox = (px: number, py: number, pz: number, hx: number, hy: number, hz
   return outside + inside - r
 }
 
-/** 走者。境界球の外では球までの距離を返すので、遠い光線は棘を数えずに進む。 */
-const runner = (px: number, py: number, pz: number, f: Frame) => {
-  const cy = py - RUNNER_CENTER - f.runnerY
-  const bound = Math.sqrt(px * px + cy * cy + pz * pz) - 1.25
+/** なめらかな和。胴と頭のつなぎ目を丸める。 */
+const smin = (a: number, b: number, k: number) => {
+  const h = Math.max(k - Math.abs(a - b), 0) / k
+  return Math.min(a, b) - h * h * k * 0.25
+}
+
+const sphere = (px: number, py: number, pz: number, r: number) => Math.sqrt(px * px + py * py + pz * pz) - r
+
+const ellipsoid = (px: number, py: number, pz: number, rx: number, ry: number, rz: number) => {
+  const k0 = Math.sqrt((px / rx) ** 2 + (py / ry) ** 2 + (pz / rz) ** 2)
+  if (k0 === 0) return -Math.min(rx, Math.min(ry, rz))
+  const k1 = Math.sqrt((px / (rx * rx)) ** 2 + (py / (ry * ry)) ** 2 + (pz / (rz * rz)) ** 2)
+  return (k0 * (k0 - 1)) / k1
+}
+
+/** 足の付け根。前後 2 対で、対角の 2 本が同じ位相で動く。 */
+const LEGS = [
+  { x: 0.27, z: 0.17, phase: 0 },
+  { x: 0.27, z: -0.17, phase: Math.PI },
+  { x: -0.27, z: 0.17, phase: Math.PI },
+  { x: -0.27, z: -0.17, phase: 0 },
+] as const
+
+const RUNNER_HEIGHT = 1.25
+
+/**
+ * 走者。境界球の外では球までの距離を返すので、遠い光線は体を数えずに進む。
+ * 足は走りの位相で前後に振れ、跳んでいる間は畳む。
+ */
+const RUNNER_SCALE = 1.3
+
+const runner = (px0: number, py0: number, pz0: number, f: Frame) => {
+  const px = px0 / RUNNER_SCALE
+  const py = (py0 - f.runnerY) / RUNNER_SCALE
+  const pz = pz0 / RUNNER_SCALE
+  const ly = py
+  const bound = Math.sqrt(px * px + (ly - 0.75) * (ly - 0.75) + pz * pz) - 1.2
   if (bound > 0.15) return bound
-  // 走者を回すかわりに、光線の側を逆へ回す。
-  const c = Math.cos(-f.spin)
-  const s = Math.sin(-f.spin)
-  const lx = px * c - cy * s
-  const ly = px * s + cy * c
-  let d = 1e9
-  for (const limb of LIMBS) {
-    const t = capsule(lx, ly, pz, limb.x, limb.y, limb.z, 0.17)
-    if (t < d) d = t
+
+  let d = ellipsoid(px, ly - 0.78, pz, 0.44, 0.3, 0.3)
+  d = smin(d, sphere(px - 0.38, ly - 0.98, pz, 0.26), 0.2)
+  d = smin(d, sphere(px - 0.58, ly - 0.9, pz, 0.16), 0.16)
+  // 耳。頭の上から左右へ開いて立てる。
+  d = smin(d, capsule(px - 0.34, ly - 1.16, pz - 0.1, -0.06, 0.24, 0.12, 0.055), 0.05)
+  d = smin(d, capsule(px - 0.34, ly - 1.16, pz + 0.1, -0.06, 0.24, -0.12, 0.055), 0.05)
+  // 尾。
+  d = smin(d, capsule(px + 0.42, ly - 0.82, pz, -0.24, 0.2, 0, 0.06), 0.07)
+
+  const airborne = Math.min(f.runnerY, 0.6) / 0.6
+  for (const leg of LEGS) {
+    const phase = f.stride + leg.phase
+    const swing = Math.sin(phase) * 0.24 * (1 - airborne)
+    // 前へ振り出した足だけ地面から浮かせる。跳んでいる間は 4 本とも畳む。
+    const lift = Math.max(Math.cos(phase), 0) * 0.16 * (1 - airborne) + airborne * 0.3
+    const rootX = px - leg.x
+    const rootY = ly - 0.62
+    const rootZ = pz - leg.z
+    d = smin(d, capsule(rootX, rootY, rootZ, swing, -0.62 + lift, 0, 0.07), 0.04)
   }
-  const core = Math.sqrt(lx * lx + ly * ly + pz * pz) - 0.34
-  return Math.min(d, core)
+  return d * RUNNER_SCALE
+}
+
+/** 目。体より手前に置くので、体の距離関数とは別に持つ。 */
+const eyes = (px0: number, py0: number, pz0: number, f: Frame) => {
+  const px = px0 / RUNNER_SCALE
+  const ly = (py0 - f.runnerY) / RUNNER_SCALE
+  const pz = pz0 / RUNNER_SCALE
+  const a = sphere(px - 0.57, ly - 1.03, pz - 0.14, 0.1)
+  const b = sphere(px - 0.57, ly - 1.03, pz + 0.14, 0.1)
+  return Math.min(a, b) * RUNNER_SCALE
 }
 
 /** 障害物。サボテンの胴と両腕。 */
@@ -99,13 +171,19 @@ const cactus = (px: number, py: number, pz: number, o: Obstacle) => {
   return d * k
 }
 
+/** 地面を除いた場面。地面は平面なので、光線との交点を直接解く。 */
 const scene = (px: number, py: number, pz: number, f: Frame) => {
-  let d = py
-  let m = MAT_GROUND
+  let d = Number.POSITIVE_INFINITY
+  let m = MAT_RUNNER
   const r = runner(px, py, pz, f)
   if (r < d) {
     d = r
     m = MAT_RUNNER
+  }
+  const e = eyes(px, py, pz, f)
+  if (e < d) {
+    d = e
+    m = MAT_EYE
   }
   for (const o of f.obstacles) {
     // 画面から外れた柱は距離関数から外す。
@@ -152,13 +230,50 @@ const GROUND_COLOR: readonly [number, number, number] = [0.78, 0.63, 0.42]
 const RUNNER_COLOR: readonly [number, number, number] = [0.85, 0.47, 0.34]
 const CACTUS_COLOR: readonly [number, number, number] = [0.25, 0.49, 0.38]
 
+const EYE_COLOR: readonly [number, number, number] = [0.12, 0.09, 0.08]
+
 const colorOf = (material: number) =>
-  material === MAT_RUNNER ? RUNNER_COLOR : material === MAT_CACTUS ? CACTUS_COLOR : GROUND_COLOR
+  material === MAT_RUNNER
+    ? RUNNER_COLOR
+    : material === MAT_CACTUS
+      ? CACTUS_COLOR
+      : material === MAT_EYE
+        ? EYE_COLOR
+        : GROUND_COLOR
 
 const SKY_TOP: readonly [number, number, number] = [0.11, 0.14, 0.22]
 const SKY_LOW: readonly [number, number, number] = [0.29, 0.31, 0.41]
 
-/** 1 本の光線の色。当たらなければ空。 */
+/** 影を探す距離。光は斜めなので、物からこれだけ離れた地面までは影が伸びうる。 */
+const SHADOW_RANGE = 6
+
+/**
+ * 地面の一点が影に入っているか。光へ向かって距離関数を進め、遮られたら影とする。
+ * 丸い暗がりを描く代わりに実際の遮りを見るので、カメラが回っても形が破綻しない。
+ *
+ * 半影は作らない。1 画素が世界の数センチを受け持つ粗さなので、濃淡を付けると
+ * 縁が斑に散る。影の内と外だけを返し、縁の均しは画素ごとの多数決に任せる。
+ */
+const shadow = (px: number, pz: number, f: Frame) => {
+  let near = Math.sqrt(px * px + pz * pz)
+  for (const o of f.obstacles) {
+    const dx = px - o.x
+    const d = Math.sqrt(dx * dx + pz * pz)
+    if (d < near) near = d
+  }
+  if (near > SHADOW_RANGE) return 1
+
+  let t = 0.05
+  for (let i = 0; i < 32; i += 1) {
+    const d = scene(px + LIGHT.x * t, LIGHT.y * t, pz + LIGHT.z * t, f)
+    if (d < 0.01) return 0.62
+    t += d
+    if (t > SHADOW_RANGE) break
+  }
+  return 1
+}
+
+/** 1 本の光線の色。地面にも物にも当たらなければ空。 */
 const trace = (
   ox: number,
   oy: number,
@@ -167,19 +282,30 @@ const trace = (
   dy: number,
   dz: number,
   f: Frame,
+  fogStart: number,
+  tStart: number,
+  pixelAngle: number,
 ) => {
-  let t = 0.05
+  // 地面は平面なので、行進させずに交点を解く。地平線まで途切れない。
+  const tGround = dy < -1e-6 ? -oy / dy : Number.POSITIVE_INFINITY
+  const limit = Math.min(tGround, MAX_DIST)
+  let t = tStart
   let hit = false
   let material = MAT_GROUND
   for (let i = 0; i < MAX_STEPS; i += 1) {
     const d = scene(ox + dx * t, oy + dy * t, oz + dz * t, f)
-    if (d < SURFACE * t + 0.0015) {
+    if (d < Math.min(Math.max(t * pixelAngle * SURFACE_RATIO, 0.0015), SURFACE_MAX)) {
       hit = true
       material = hitMaterial
       break
     }
     t += d
-    if (t > MAX_DIST) break
+    if (t > limit) break
+  }
+  if (!hit && tGround < MAX_DIST) {
+    hit = true
+    t = tGround
+    material = MAT_GROUND
   }
   const skyMix = dy * 0.5 + 0.5
   const skyR = SKY_TOP[0] * skyMix + SKY_LOW[0] * (1 - skyMix)
@@ -194,37 +320,30 @@ const trace = (
   const px = ox + dx * t
   const py = oy + dy * t
   const pz = oz + dz * t
-  normal(px, py, pz, f)
   const base = colorOf(material)
   let r = base[0]
   let g = base[1]
   let b = base[2]
   if (material === MAT_GROUND) {
-    // 進行方向に沿った縞。位相を送るだけで地面が流れて見える。
-    const stripe = Math.sin(px * 1.6 + f.ground) > 0 ? 1 : 0.86
+    // 平面なので法線は真上で決まる。
+    nx = 0
+    ny = 1
+    nz = 0
+    // 遠くの縞は 1 画素に何本も入るので、距離とともに薄くして目のちらつきを抑える。
+    const sharp = Math.exp(-Math.max(t - fogStart, 0) * 0.06)
+    const stripe = 1 - (Math.sin(px * 1.6 + f.ground) > 0 ? 0 : 0.14) * sharp
     // 走路。カメラが回っても、どこを走っているのかが分かるように帯を敷く。
     const onTrack = Math.abs(pz) < 2.4
-    const edge = Math.abs(Math.abs(pz) - 2.4) < 0.12
     const lane = onTrack ? 0.82 : 1
     r *= stripe * lane
     g *= stripe * lane
     b *= stripe * lane
-    if (edge) {
-      r = 0.95
-      g = 0.85
-      b = 0.62
-    }
-    // 走者と柱の真下を落とす。影の光線を飛ばさずに接地だけ見せる。
-    const under = Math.exp(-(px * px + pz * pz) * 0.35) * Math.exp(-(f.runnerY * f.runnerY) * 1.2)
-    let shade = under
-    for (const o of f.obstacles) {
-      const ddx = px - o.x
-      shade += Math.exp(-(ddx * ddx + pz * pz) * 0.5) * 0.8
-    }
-    const k = 1 - Math.min(shade, 0.85) * 0.6
+    const k = shadow(px, pz, f)
     r *= k
     g *= k
     b *= k
+  } else {
+    normal(px, py, pz, f)
   }
   const lambert = Math.max(nx * LIGHT.x + ny * LIGHT.y + nz * LIGHT.z, 0)
   // カメラ側からの補助光。主光が当たらない手前の面が黒く潰れるのを防ぐ。
@@ -235,7 +354,8 @@ const trace = (
   g = g * lit + rim * 0.55
   b = b * lit + rim * 0.7
   // 遠景は空へ溶かす。柱が遠くから現れる感じが出る。
-  const fog = 1 - Math.exp(-t * 0.028)
+  // 望遠のときはカメラが遠いので、走者より奥へ入った距離だけを数える。
+  const fog = 1 - Math.exp(-Math.max(t - fogStart, 0) * 0.013)
   outR = r * (1 - fog) + skyR * fog
   outG = g * (1 - fog) + skyG * fog
   outB = b * (1 - fog) + skyB * fog
@@ -249,13 +369,18 @@ const PALETTE: number[] = (() => {
     out.push((to(r) << 16) | (to(g) << 8) | to(b))
   }
   const ramp = (c: readonly [number, number, number]) => {
-    for (const k of [0.22, 0.38, 0.55, 0.72, 0.88, 1.05, 1.22]) push(c[0] * k, c[1] * k, c[2] * k)
+    // 段の幅を細かく取る。粗いと、なだらかな陰影に段の輪が出る。
+    for (let i = 0; i < 16; i += 1) {
+      const k = 0.2 + (i * (1.28 - 0.2)) / 15
+      push(c[0] * k, c[1] * k, c[2] * k)
+    }
   }
   ramp(GROUND_COLOR)
   ramp(RUNNER_COLOR)
   ramp(CACTUS_COLOR)
-  for (let i = 0; i <= 5; i += 1) {
-    const k = i / 5
+  ramp(EYE_COLOR)
+  for (let i = 0; i <= 12; i += 1) {
+    const k = i / 12
     push(SKY_LOW[0] * (1 - k) + SKY_TOP[0] * k, SKY_LOW[1] * (1 - k) + SKY_TOP[1] * k, SKY_LOW[2] * (1 - k) + SKY_TOP[2] * k)
   }
   push(1, 1, 1)
@@ -281,6 +406,15 @@ const quantize = (r: number, g: number, b: number) => {
   return best
 }
 
+// 並べ替えディザの升目。-0.5 から 0.5 の範囲で画素ごとの偏りを持つ。
+const DITHER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => v / 16 - 0.47)
+
+/**
+ * ディザの強さ。色の段が見えるときに上げる。色の段を細かく取ってあるので既定は 0。
+ * 0.02 あたりから効き始め、0.05 を超えると平らな面に網目が見える。
+ */
+const DITHER_DEPTH = 0
+
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 const base64 = (bytes: Uint8Array) => {
@@ -305,12 +439,21 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
   const width = columns
   const height = rows * 2
   const angle = f.orbit
-  const ex = Math.sin(angle) * CAMERA_RADIUS
-  const ez = Math.cos(angle) * CAMERA_RADIUS
-  const ey = CAMERA_HEIGHT
-  let fx = -ex
+  const depth = Math.max(0, Math.min(f.depth, 1))
+  const radius = FAR_RADIUS + (NEAR_RADIUS - FAR_RADIUS) * depth
+  const aspect = width / height
+  const shift = (VIEW_HEIGHT / 2) * aspect * TARGET_SHIFT_RATIO * Math.cos(angle)
+  // カメラの右方向は周回角だけで決まるので、注視点より先に求まる。
+  const shiftX = Math.cos(angle) * shift
+  const shiftZ = -Math.sin(angle) * shift
+  const tx = shiftX
+  const tz = shiftZ
+  const ex = Math.sin(angle) * radius + tx
+  const ez = Math.cos(angle) * radius + tz
+  const ey = FAR_HEIGHT + (NEAR_HEIGHT - FAR_HEIGHT) * depth
+  let fx = tx - ex
   let fy = TARGET_Y - ey
-  let fz = -ez
+  let fz = tz - ez
   const fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
   fx /= fl
   fy /= fl
@@ -326,8 +469,14 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
   const ux = ry * fz - rz * fy
   const uy = rz * fx - rx * fz
   const uz = rx * fy - ry * fx
-  const aspect = width / (height * 1.0)
-  const scale = Math.tan(FOV / 2)
+  // 縦に見える高さを保つ画角。距離と一緒に動かすと、寄っても走者の背丈は変わらない。
+  const scale = VIEW_HEIGHT / 2 / radius
+  // 霧は走者のところから数え始める。手前は素の色で出る。
+  const fogStart = radius
+  // 場面は原点の周りにしかないので、望遠のときは手前の空間を飛ばして光線を始める。
+  const tStart = Math.max(radius - 36, 0.05)
+  // 1 画素が張る角度。当たりの判定に使う。
+  const pixelAngle = VIEW_HEIGHT / radius / height
   const pixels = new Uint32Array(width * height)
   const step = 1 / superSample
   for (let y = 0; y < height; y += 1) {
@@ -348,14 +497,17 @@ export const renderPixels = (columns: number, rows: number, f: Frame, superSampl
           dx /= dl
           dy /= dl
           dz /= dl
-          trace(ex, ey, ez, dx, dy, dz, f)
+          trace(ex, ey, ez, dx, dy, dz, f, fogStart, tStart, pixelAngle)
           ar += outR
           ag += outG
           ab += outB
         }
       }
       const k = 1 / (superSample * superSample)
-      pixels[y * width + x] = quantize(ar * k, ag * k, ab * k)
+      // 色を丸めると、なだらかな陰影に段の輪が出る。画素ごとに決まった量だけ
+      // ずらしてから丸めると、段が画素の粗さに散って輪が消える。
+      const bias = (DITHER[(y & 3) * 4 + (x & 3)] ?? 0) * DITHER_DEPTH
+      pixels[y * width + x] = quantize(ar * k + bias, ag * k + bias, ab * k + bias)
     }
   }
   return pixels
@@ -377,5 +529,11 @@ export const encodeCells = (columns: number, rows: number, pixels: Uint32Array) 
   return base64(new Uint8Array(words.buffer))
 }
 
-export const render = (columns: number, rows: number, f: Frame, superSample = 2) =>
+/**
+ * 1 画素あたりに飛ばす光線の数の平方根。上げるほど輪郭がなめらかになり、
+ * 1 コマの時間がその 2 乗で伸びる。2 で約 9 ms、3 で約 20 ms（120x26 セル）。
+ */
+export const SUPER_SAMPLE = 2
+
+export const render = (columns: number, rows: number, f: Frame, superSample = SUPER_SAMPLE) =>
   encodeCells(columns, rows, renderPixels(columns, rows, f, superSample))

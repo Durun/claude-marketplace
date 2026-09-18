@@ -1,12 +1,12 @@
 // 開発用。指定のコマを PNG に落として見た目を確かめる。
-// 実行: npx tsx shot.ts <コマ番号> <出力パス> [拡大率]
+// 実行: npx tsx shot.ts <コマ番号> <出力パス> [拡大率] [標本数]
 import { writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
-import { renderPixels } from './hooks/scene.ts'
+import { renderPixels, SUPER_SAMPLE } from './hooks/scene.ts'
 import { initial, step, type Game } from './hooks/game.ts'
 
-const COLUMNS = 84
-const ROWS = 22
+const COLUMNS = 120
+const ROWS = 26
 
 const at = Number(process.argv[2] ?? 0)
 const path = process.argv[3] ?? 'shot.png'
@@ -14,12 +14,13 @@ const zoom = Number(process.argv[4] ?? 6)
 
 let game: Game = initial()
 for (let i = 0; i <= at; i += 1) {
-  const near = game.obstacles.find((o) => o.x > 1.6 && o.x < 3.4)
+  // 柱の手前で必ず跳ぶ自動操作。跳ぶ間合いは速さから決める。
+  const near = game.obstacles.find((o) => o.x / game.speed > 7 && o.x / game.speed < 15)
   game = step(game, near !== undefined && game.runnerY === 0)
 }
 const width = COLUMNS
 const height = ROWS * 2
-const pixels = renderPixels(width, ROWS, game, 3)
+const pixels = renderPixels(width, ROWS, game, Number(process.argv[5] ?? SUPER_SAMPLE))
 
 const crc = (buf: Uint8Array) => {
   let c = 0xffffffff
