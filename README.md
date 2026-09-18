@@ -15,6 +15,8 @@ Claude Code のクラウドセッションは利用者のマシンの `~/.claude
 **gankooyaji**：Claude の舐めた返答に頑固オヤジがツッコミを入れる関数フック。
 回答を読んで曖昧な言葉遣いを見つけると、次の入力欄の直上にツッコミを出します。
 
+**claude-run**：`/dino` で Claude が走って柱を跳び越えるゲームを入力欄の上に出す関数フック。
+
 **gh-stack**：スタックしたブランチとプルリクエストを扱う `gh` CLI 拡張のスキル。
 GitHub 公式リポジトリ [github/gh-stack](https://github.com/github/gh-stack) をそのまま参照します。
 
@@ -24,7 +26,15 @@ GitHub 公式リポジトリ [github/gh-stack](https://github.com/github/gh-stac
 claude plugin marketplace add Durun/claude-marketplace
 claude plugin install tech-writing@durun-toolbox
 claude plugin install gankooyaji@durun-toolbox
+claude plugin install claude-run@durun-toolbox
 claude plugin install gh-stack@durun-toolbox
+```
+
+gankooyaji と claude-run は Function Hooks で動きます。早期アクセスの機能なので、環境変数で有効にします。
+
+```json
+// ~/.claude/settings.json
+{ "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" } }
 ```
 
 ## クラウドセッションで使う
@@ -35,7 +45,10 @@ claude plugin install gh-stack@durun-toolbox
 claude plugin marketplace add Durun/claude-marketplace
 claude plugin install tech-writing@durun-toolbox -y --scope user
 claude plugin install gankooyaji@durun-toolbox -y --scope user
+claude plugin install claude-run@durun-toolbox -y --scope user
 claude plugin install gh-stack@durun-toolbox -y --scope user
 ```
+
+Function Hooks を使うプラグインは、環境変数の欄に `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` も設定します。
 
 設定先は `~/.claude/settings.json` なので、対象のリポジトリに変更を加えずに済みます。
