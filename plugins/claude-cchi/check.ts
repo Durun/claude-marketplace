@@ -1,8 +1,9 @@
 // 成長・餌・排泄の計算と、面の符号化の長さを確かめる。`npx tsx check.ts` で走る。
 
 import assert from 'node:assert/strict'
-import { artLines, render } from './hooks/draw.ts'
+import { artLines, petWidth, render } from './hooks/draw.ts'
 import { feed, flush, newPet, OUTPUT_PER_POOP, poopCount, stageOf, traitsOf } from './hooks/pet.ts'
+import { advance, newScene, sprinkle, startFlush, TOKENS_PER_GRAIN } from './hooks/scene.ts'
 
 const born = new Date('2026-09-18T00:00:00Z')
 let pet = newPet('session-1', '/tmp/work', born)
@@ -43,8 +44,31 @@ assert.deepEqual(artLines(), [' \u2590\u259b\u2588\u2588\u2588\u259b\u2588', '\u
 // cells は columns * rows * 3 語を base64 にしたもの。
 const columns = 40
 const rows = 12
-const cells = render(columns, rows, pet, 0)
+const cells = render(columns, rows, pet, newScene(), { width: columns * 2, ground: rows * 2 - 3 })
 assert.equal(cells.length, Math.ceil((columns * rows * 12) / 3) * 4)
 assert.ok(/^[A-Za-z0-9+/]+=*$/.test(cells))
+
+// 餌は降って器に溜まり、Claudeっちは器まで歩いて食べる。
+const world = { width: columns * 2, ground: rows * 2 - 3 }
+const width = petWidth(columns, rows, pet)
+const scene = newScene()
+scene.x = world.width - width - 10
+sprinkle(scene, world, TOKENS_PER_GRAIN * 8)
+assert.equal(scene.falling.length, 8, '入力トークンが粒になって降る')
+for (let i = 0; i < 200 && scene.mode !== 'eat'; i += 1) advance(scene, world, width)
+assert.equal(scene.mode, 'eat', '器まで歩いて食べ始める')
+assert.ok(scene.x < world.width / 2, '器のある左側に立っている')
+const beforeChew = scene.food
+for (let i = 0; i < 10; i += 1) advance(scene, world, width)
+assert.ok(scene.food < beforeChew, '食べると器の粒が減る')
+
+// 流すと、ウンチはトイレへ運ばれてから消える。
+scene.poops = [30, 45]
+startFlush(scene)
+let done = false
+for (let i = 0; i < 200 && !done; i += 1) done = advance(scene, world, width)
+assert.ok(done, '流し終えたことを呼び手に返す')
+assert.equal(scene.poops.length, 0)
+assert.equal(scene.flushing, false)
 
 console.log('ok')

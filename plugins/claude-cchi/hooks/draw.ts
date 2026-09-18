@@ -3,6 +3,7 @@
 // そのまま画素に書き起こしてあるので、拡大率と飾りだけで見た目を派生させる。
 
 import { poopCount, stageOf, STAGE_LABEL, traitsOf, type Pet, type Stage } from './pet.ts'
+import { BOWL_X, toiletX, type Scene, type World } from './scene.ts'
 
 /** 端末の既定色。bit 24 だけを立てた値。 */
 const DEFAULT = 0x01000000
@@ -137,13 +138,19 @@ const POOP_LIGHT = 0x8a5c30
 const GROUND = 0x3a3f4b
 const HAIR = 0xe8e8e8
 
-/** 体の伸ばし方。基準からの差なので、赤ちゃんのうちは 3 つとも同じ形になる。 */
-const stretch = (scale: number, body: number) =>
-  body === 1
-    ? { sx: Math.max(1, scale - 1), sy: scale }
-    : body === 2
-      ? { sx: scale, sy: Math.max(1, scale - 1) }
-      : { sx: scale, sy: scale }
+/**
+ * 拡大率を縦横に分ける。ほそながいは縦、ずんぐりは横へ 1 段伸ばす。
+ * 伸ばした先が面に入らないときは、面に入るところまで戻す。
+ */
+const stretch = (columns: number, rows: number, stage: Stage, body: number) => {
+  const base = SCALE[stage]
+  const roomX = Math.max(1, Math.floor(columns / ART_WIDTH))
+  const roomY = Math.max(1, Math.floor((rows * 2 - 4) / ART_HEIGHT))
+  return {
+    sx: Math.min(base + (body === 2 ? 1 : 0), roomX),
+    sy: Math.min(base + (body === 1 ? 1 : 0), roomY),
+  }
+}
 
 const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: number, blink: boolean) => {
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
@@ -158,17 +165,29 @@ const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: n
   rect(c, x + Math.floor(sx / 2), py, Math.max(1, sx), Math.max(1, sy), INK)
 }
 
+
 /** 考えている間の印の色。 */
 const SPARK = 0xd97757
 
+const TOKEN = 0xd9b45a
+const BOWL = 0x8a8f9a
+const PORCELAIN = 0xe8eaee
+const WATER = 0x6fb7e0
+
 /** 腕を伸ばす向き。上下左右と斜め。 */
 const SPARK_ARMS = [
-  [0, -1], [0, 1], [-1, 0], [1, 0],
-  [-1, -1], [1, -1], [-1, 1], [1, 1],
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
 ] as const
 
 /**
- * 卵は、Claude が考えている間に出る印と同じ。中心から 8 方向に腕が伸び縮みする。
+ * 卵は、Claude が考えている間に出る印と同じ。中心から 8 方向へ腕が伸び縮みする。
  * 斜めの腕を 1 つ短く取ると、伸びきったところで星の形に見える。
  */
 const drawSpark = (c: Canvas, cx: number, cy: number, scale: number, frame: number) => {
@@ -183,45 +202,84 @@ const drawSpark = (c: Canvas, cx: number, cy: number, scale: number, frame: numb
   }
 }
 
-export const render = (columns: number, rows: number, pet: Pet, frame: number) => {
+/** 餌の器。縁だけを描き、溜まった粒を中に積む。 */
+const drawBowl = (c: Canvas, x: number, ground: number, food: number) => {
+  const left = x - 5
+  for (let i = 0; i < 11; i += 1) put(c, left + i, ground - 1, BOWL)
+  for (let i = 1; i <= 3; i += 1) {
+    put(c, left, ground - 1 - i, BOWL)
+    put(c, left + 10, ground - 1 - i, BOWL)
+  }
+  for (let i = 0; i < Math.min(food, 27); i += 1) {
+    put(c, left + 1 + (i % 9), ground - 2 - Math.floor(i / 9), TOKEN)
+  }
+}
+
+/** トイレ。流している間だけ水面が回る。 */
+const drawToilet = (c: Canvas, x: number, ground: number, swirl: number | null) => {
+  const left = x - 5
+  rect(c, left + 7, ground - 12, 4, 6, PORCELAIN)
+  ellipse(c, left + 4, ground - 6, 5, 3.4, PORCELAIN)
+  ellipse(c, left + 4, ground - 6, 3.4, 2, swirl === null ? WATER : DEFAULT)
+  if (swirl !== null) {
+    // 水が渦を巻いて見えるよう、水面の点を回す。
+    for (let i = 0; i < 3; i += 1) {
+      const a = (swirl / 3 + (i * Math.PI * 2) / 3) % (Math.PI * 2)
+      put(c, left + 4 + Math.cos(a) * 2.6, ground - 6 + Math.sin(a) * 1.4, WATER)
+    }
+  }
+  rect(c, left + 2, ground - 2, 6, 1, PORCELAIN)
+}
+
+const drawPoop = (c: Canvas, x: number, ground: number) => {
+  ellipse(c, x, ground - 2, 3, 2, POOP)
+  ellipse(c, x, ground - 4, 2, 1.4, POOP_LIGHT)
+}
+
+export const render = (columns: number, rows: number, pet: Pet, scene: Scene, world: World) => {
   const c = canvas(columns * 2, rows * 2)
   const stage = stageOf(pet)
   const traits = traitsOf(pet)
-  // 狭い面では基準の絵が横にはみ出すので、入る大きさまで落とす。
-  const fit = Math.max(1, Math.floor((columns - 2) / Math.ceil(ART_WIDTH / 2)))
-  const { sx, sy } = stretch(Math.min(SCALE[stage], fit), traits.body)
+  const { sx, sy } = stretch(columns, rows, stage, traits.body)
+  const groundY = world.ground
 
-  const groundY = c.height - 3
   for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
-
-  // 呼吸で 1 画素だけ上下させる。止まって見えないための最小の動き。
-  const bob = Math.round(Math.sin(frame / (stage === 'egg' ? 8 : 6)))
-  const left = Math.max(1, Math.round(c.width * 0.4 - (ART_WIDTH * sx) / 2))
-  const top = groundY - ART_HEIGHT * sy - 1 + bob
+  drawBowl(c, BOWL_X, groundY, scene.food)
+  drawToilet(c, toiletX(world), groundY, scene.flushing ? scene.step : null)
+  for (const grain of scene.falling) put(c, grain.x, grain.y, TOKEN)
+  for (const x of scene.poops) drawPoop(c, x, groundY)
 
   if (stage === 'egg') {
     // 卵は地面に立たず、面の真ん中に浮かぶ。
-    drawSpark(c, Math.round(c.width * 0.4), Math.round(c.height / 2) + bob, Math.min(SCALE.egg, fit), frame)
+    drawSpark(c, Math.round(c.width * 0.4), Math.round(c.height / 2), Math.min(sx, sy), scene.step)
     return encode(c, columns, rows)
   }
+
+  // 歩いている間は足を交互に出し、ウンチの間はしゃがむ。
+  const thin = Math.max(1, Math.floor(sy / 2))
+  const swing = scene.mode === 'walk' && Math.floor(scene.step / 3) % 2 === 0 ? sx : 0
+  const left = Math.round(scene.x)
+  const top = groundY - ART_HEIGHT * sy - 1 + (scene.mode === 'poop' ? thin : 0)
 
   for (let row = 0; row < ART_HEIGHT; row += 1) {
     for (let col = 0; col < ART_WIDTH; col += 1) {
       if (ART[row]?.[col] !== '#') continue
-      rect(c, left + col * sx, top + row * sy, sx, sy, traits.color)
+      const shift = row === ART_HEIGHT - 1 ? (col < ART_WIDTH / 2 ? swing : -swing) : 0
+      rect(c, left + col * sx + shift, top + row * sy, sx, sy, traits.color)
     }
   }
 
-  // 頬。体の色が薄いうちは見分けが付かないが、食べるほど出てくる。
   rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
   rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
 
   for (const col of EYE_COL) {
-    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, frame % 90 >= 87)
+    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, scene.step % 90 >= 87)
   }
-  const thin = Math.max(1, Math.floor(sy / 2))
+
+  // 食べている間は口を開け閉めする。
+  const chewing = scene.mode === 'eat' && Math.floor(scene.step / 2) % 2 === 0
   const mouthY = top + MOUTH_ROW * sy
-  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, thin, INK)
+  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, chewing ? sy : thin, INK)
 
   // 口ひげは口の真上。おじいさんは白くなり、眉も生える。
   if (stage === 'ojisan' || stage === 'ojiisan') {
@@ -233,17 +291,12 @@ export const render = (columns: number, rows: number, pet: Pet, frame: number) =
     }
   }
 
-  // ウンチは右下に積む。溜まるほど左へ並ぶ。
-  const poops = Math.min(poopCount(pet), 8)
-  for (let i = 0; i < poops; i += 1) {
-    const px = c.width - 5 - i * 6
-    if (px < left + ART_WIDTH * sx + 3) break
-    ellipse(c, px, groundY - 2, 3, 2, POOP)
-    ellipse(c, px, groundY - 4, 2, 1.4, POOP_LIGHT)
-  }
-
   return encode(c, columns, rows)
 }
+
+/** Claudeっちの横幅。歩ける範囲と、頭上の札の位置を決めるのに使う。 */
+export const petWidth = (columns: number, rows: number, pet: Pet) =>
+  ART_WIDTH * stretch(columns, rows, stageOf(pet), traitsOf(pet).body).sx
 
 export const statusLine = (pet: Pet) => {
   const stage = STAGE_LABEL[stageOf(pet)]

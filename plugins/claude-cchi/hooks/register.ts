@@ -1,25 +1,27 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
-import { render, statusLine } from './draw.ts'
+import { petWidth, render, statusLine } from './draw.ts'
+import { feed, flush, newPet, poopCount, stageOf, STAGE_LABEL, type Pet, type Stage } from './pet.ts'
 import {
-  feed,
-  flush,
-  newPet,
-  poopCount,
-  stageOf,
-  STAGE_LABEL,
-  type Pet,
-  type Stage,
-} from './pet.ts'
+  advance,
+  BOWL_X,
+  excrete,
+  newScene,
+  sprinkle,
+  startFlush,
+  type Scene,
+  type World,
+} from './scene.ts'
 
 const PANE = 'claude-cchi'
 const PLAZA_PANE = 'claude-cchi-hiroba'
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
 
-/** 呼吸とまばたきだけの動き。木は組み直さず面だけ差し替える。 */
-const FRAME_MS = 250
+/** 歩きと咀嚼が滑らかに見える速さ。 */
+const FRAME_MS = 120
 
-const PANE_ROWS = 12
+/** 面の高さ。Claudeっちの頭が上端に近いほど、頭上の名前が近くに出る。 */
+const PANE_ROWS = 11
 const MAX_COLUMNS = 72
 const MIN_COLUMNS = 24
 
@@ -29,16 +31,25 @@ const PLAZA_LIMIT = 40
 /** ひとことを言う間隔。毎ターン喋ると会話の邪魔になる。 */
 const TALK_EVERY = 3
 
+/** 吹き出しを出しておくコマ数。 */
+const SAY_FRAMES = 60
+
+/** ウンチが 1 つ出るまでのコマ数。溜まった分を少しずつ出す。 */
+const POOP_INTERVAL = 12
+
 let pet: Pet | null = null
+let scene: Scene = newScene()
 let ticker: Timer | null = null
-let frame = 0
 let requestId = ''
 let columns = 0
 let cells = ''
 let turns = 0
+let sayUntil = 0
 let plaza: Pet[] = []
 
 const key = (id: string) => `pet:${id}`
+
+const worldOf = (): World => ({ width: columns * 2, ground: PANE_ROWS * 2 - 3 })
 
 const save = async ($: EngineInterface) => {
   if (!pet) return
@@ -49,15 +60,37 @@ const save = async ($: EngineInterface) => {
 
 const redraw = async ($: EngineInterface) => {
   if (!pet || requestId === '' || columns <= 0) return
-  cells = render(columns, PANE_ROWS, pet, frame)
+  cells = render(columns, PANE_ROWS, pet, scene, worldOf())
   await $.ui.blit({ requestId, key: SCREEN, cells })
 }
 
 const start = ($: EngineInterface) => {
   ticker?.cancel()
   ticker = $.clock.every(FRAME_MS, async () => {
-    frame += 1
+    if (!pet || columns <= 0) return
+    const width = petWidth(columns, PANE_ROWS, pet)
+    const flushed = advance(scene, worldOf(), width)
+    // 溜まった分は一度に出さず、1 つずつしゃがんで出す。
+    if (!scene.flushing && scene.poops.length < poopCount(pet) && scene.step % POOP_INTERVAL === 0) {
+      excrete(scene)
+      // 足元の後ろへ、少しずつずらして落とす。器の上には置かない。
+      const behind = scene.facing === 1 ? -5 : width + 5
+      const spread = (scene.poops.length % 3) * 8
+      scene.poops.push(Math.max(BOWL_X + 12, scene.x + behind - scene.facing * spread))
+    }
+    if (flushed) {
+      pet = flush(pet)
+      await save($)
+      await $.ui.invalidate('ui.render')
+    }
+    if (sayUntil > 0 && scene.step >= sayUntil) {
+      sayUntil = 0
+      pet = { ...pet, word: null }
+      await $.ui.invalidate('ui.render')
+    }
     await redraw($)
+    // 頭上の札は Raster の外の行なので、歩いた分だけ木を組み直す。
+    if (scene.mode === 'walk' && scene.step % 2 === 0) await $.ui.invalidate('ui.render')
   })
 }
 
@@ -83,9 +116,7 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
 
 /** 段階に応じたひとこと。子供は単語、大人から先は文。 */
 const talk = async ($: EngineInterface, p: Pet, stage: Stage, answer: string) => {
-  if (stage !== 'child' && stage !== 'adult' && stage !== 'ojisan' && stage !== 'ojiisan') {
-    return null
-  }
+  if (stage === 'egg' || stage === 'baby') return null
   const asWord = stage === 'child'
   const persona =
     stage === 'ojisan'
@@ -105,7 +136,40 @@ const talk = async ($: EngineInterface, p: Pet, stage: Stage, answer: string) =>
     maxTokens: 40,
   })
   const word = text.trim().split('\n')[0]?.replace(/^[「"']|[」"']$/g, '') ?? ''
-  return word === '' ? null : word.slice(0, asWord ? 8 : 30)
+  return word === '' ? null : word.slice(0, asWord ? 8 : 24)
+}
+
+/** 端末で 2 桁を使う文字の範囲。罫線や図形はどちらとも取れるので 1 桁に数える。 */
+const WIDE_RANGES: readonly (readonly [number, number])[] = [
+  [0x1100, 0x115f],
+  [0x2e80, 0xa4cf],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xfe30, 0xfe6f],
+  [0xff00, 0xff60],
+  [0xffe0, 0xffe6],
+]
+
+/** 端末での見た目の幅。吹き出しの枠を中身に合わせるのに使う。 */
+export const displayWidth = (text: string) =>
+  [...text].reduce((w, ch) => {
+    const code = ch.codePointAt(0) ?? 0
+    return w + (WIDE_RANGES.some(([lo, hi]) => code >= lo && code <= hi) ? 2 : 1)
+  }, 0)
+
+/** 札や吹き出しを Claudeっちの真上に置くための左余白。 */
+const labelPad = (text: string, width: number) =>
+  Math.max(0, Math.round((scene.x + width / 2) / 2) - Math.round(displayWidth(text) / 2))
+
+/** 吹き出しの 3 行。下辺の三角が Claudeっちを指す。 */
+export const bubble = (word: string) => {
+  const inner = displayWidth(word) + 2
+  const tail = Math.floor(inner / 2)
+  return [
+    `╭${'─'.repeat(inner)}╮`,
+    `│ ${word} │`,
+    `╰${'─'.repeat(tail)}▽${'─'.repeat(inner - tail - 1)}╯`,
+  ]
 }
 
 export const register: Register = (on) => {
@@ -118,6 +182,7 @@ export const register: Register = (on) => {
     const id = await $.session.id()
     const stored = (await $.store.get(key(id))) as Pet | undefined
     pet = stored ?? newPet(id, e.cwd, new Date())
+    scene = newScene()
     plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []
     if (e.isInteractive) {
       await save($)
@@ -148,16 +213,21 @@ export const register: Register = (on) => {
     const after = stageOf(pet)
     turns += 1
 
+    // 食べた分を器に降らせる。ウンチは時計が 1 つずつ出す。
+    if (columns > 0) sprinkle(scene, worldOf(), e.usage.input_tokens)
+
     if (pet.name === null && after !== 'egg' && after !== 'baby') {
       pet = { ...pet, name: await nameIt($, pet) }
     }
     if (turns % TALK_EVERY === 0) {
-      pet = { ...pet, word: await talk($, pet, after, e.answer) }
+      const word = await talk($, pet, after, e.answer)
+      pet = { ...pet, word }
+      sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
     }
 
     await save($)
     await redraw($)
-    if (before !== after) await $.ui.invalidate('ui.render')
+    await $.ui.invalidate('ui.render')
     return result
   })
 
@@ -182,7 +252,6 @@ export const register: Register = (on) => {
     }
 
     if (pet === null) return next(e)
-    // Raster を持つのは端末だけ。他の面へは文字で出す。
     if (e.surface !== 'terminal') {
       const { Box, Text } = await $.ui.resolve(e)
       return Box({ flexDirection: 'column', children: [Text({ children: statusLine(pet) })] })
@@ -193,16 +262,29 @@ export const register: Register = (on) => {
     const nextColumns = Math.max(MIN_COLUMNS, Math.min(e.props.bodyColumns, MAX_COLUMNS))
     if (nextColumns !== columns || cells === '') {
       columns = nextColumns
-      cells = render(columns, PANE_ROWS, pet, frame)
+      cells = render(columns, PANE_ROWS, pet, scene, worldOf())
+    }
+
+    const width = petWidth(columns, PANE_ROWS, pet)
+    const above =
+      pet.word !== null && sayUntil > 0
+        ? bubble(pet.word).map((line) =>
+            Box({ paddingLeft: labelPad(line, width), children: [Text({ children: line })] }),
+          )
+        : []
+    if (pet.name !== null) {
+      above.push(
+        Box({ paddingLeft: labelPad(pet.name, width), children: [Text({ children: pet.name })] }),
+      )
     }
 
     const dirty = poopCount(pet)
     return Box({
       flexDirection: 'column',
       children: [
+        ...above,
         Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells }),
         Text({ children: statusLine(pet) }),
-        pet.word === null ? Text({ children: '' }) : Text({ children: `「${pet.word}」` }),
         Box({
           flexDirection: 'row',
           gap: 2,
@@ -211,12 +293,8 @@ export const register: Register = (on) => {
               key: 'flush',
               label: dirty > 0 ? `流す (${dirty})` : '流す',
               plain: true,
-              onPress: async () => {
-                if (pet === null) return
-                pet = flush(pet)
-                await save($)
-                await redraw($)
-                await $.ui.invalidate('ui.render')
+              onPress: () => {
+                startFlush(scene)
               },
             }),
             Button({
