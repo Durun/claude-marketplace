@@ -38,6 +38,16 @@ export const FACE_HEIGHT = PIXELS.length / 2
 
 export type Cell = { char: string; color?: string; backgroundColor?: string }
 
+/** ドット絵 1 体ぶん。口を閉じた行だけ差し替えて喋らせる。 */
+export type Sprite = {
+  pixels: readonly string[]
+  ink: Record<string, string | null>
+  mouthShut: readonly string[]
+  mouthRow: number
+}
+
+export const OYAJI: Sprite = { pixels: PIXELS, ink: INK, mouthShut: MOUTH_SHUT, mouthRow: MOUTH_ROW }
+
 /** 上下のドットを 1 セルに畳む。片側だけ色があるときは塗る側に寄せた半ブロックを使う。 */
 const cell = (top: string | null, bottom: string | null): Cell => {
   if (top && bottom) return { char: '▀', color: top, backgroundColor: bottom }
@@ -46,14 +56,15 @@ const cell = (top: string | null, bottom: string | null): Cell => {
   return { char: ' ' }
 }
 
-const pixelLine = (line: number, mouthOpen: boolean): string => {
-  if (!mouthOpen && line >= MOUTH_ROW && line < MOUTH_ROW + MOUTH_SHUT.length) return MOUTH_SHUT[line - MOUTH_ROW] ?? ''
-  return PIXELS[line] ?? ''
+const pixelLine = (sprite: Sprite, line: number, mouthOpen: boolean): string => {
+  const { pixels, mouthShut, mouthRow } = sprite
+  if (!mouthOpen && line >= mouthRow && line < mouthRow + mouthShut.length) return mouthShut[line - mouthRow] ?? ''
+  return pixels[line] ?? ''
 }
 
-const dot = (line: number, pixel: number, mouthOpen: boolean): string | null => {
-  if (line < 0 || line >= PIXELS.length || pixel < 0 || pixel >= FACE_WIDTH) return null
-  return INK[pixelLine(line, mouthOpen)[pixel] ?? '.'] ?? null
+const dot = (sprite: Sprite, line: number, pixel: number, mouthOpen: boolean): string | null => {
+  if (line < 0 || line >= sprite.pixels.length || pixel < 0 || pixel >= (sprite.pixels[0]?.length ?? 0)) return null
+  return sprite.ink[pixelLine(sprite, line, mouthOpen)[pixel] ?? '.'] ?? null
 }
 
 /**
@@ -67,11 +78,15 @@ export const faceRows = (
   width: number,
   height: number,
   mouthOpen = true,
+  sprite: Sprite = OYAJI,
 ): Cell[][] =>
   Array.from({ length: height }, (_, row) =>
     Array.from({ length: width }, (_, column) => {
       const pixel = column - offsetX
-      return cell(dot(row * 2 - offsetY, pixel, mouthOpen), dot(row * 2 + 1 - offsetY, pixel, mouthOpen))
+      return cell(
+        dot(sprite, row * 2 - offsetY, pixel, mouthOpen),
+        dot(sprite, row * 2 + 1 - offsetY, pixel, mouthOpen),
+      )
     }),
   )
 

@@ -215,6 +215,9 @@ export const speechLength = (parts: SpeechPart[]) => parts.reduce((sum, part) =>
 const SPEECH_COLORS = ['#ffffff', '#ffd9d9', '#ffa8a8', '#ff6b6b'] as const
 const EMPHASIS_COLORS = ['#ffffff', '#fff0c8', '#ffe29a', '#ffd166'] as const
 
+export type Palette = { speech: readonly string[]; emphasis: readonly string[] }
+const OYAJI_PALETTE: Palette = { speech: SPEECH_COLORS, emphasis: EMPHASIS_COLORS }
+
 /** 出た文字が地の色に落ち着くまでのコマ数。 */
 const FADE_FRAMES = SPEECH_COLORS.length - 1
 
@@ -224,7 +227,7 @@ export type SpeechRun = { text: string; color: string }
  * そのコマで見えているセリフを、色が同じところでまとめて返す。
  * 文字は出てから 4 コマかけて地の色に落ち着く。
  */
-export const spokenRuns = (frame: number, parts: SpeechPart[]): SpeechRun[] => {
+export const spokenRuns = (frame: number, parts: SpeechPart[], palette: Palette = OYAJI_PALETTE): SpeechRun[] => {
   const shown = spokenLength(frame)
   const runs: SpeechRun[] = []
   let index = 0
@@ -232,8 +235,8 @@ export const spokenRuns = (frame: number, parts: SpeechPart[]): SpeechRun[] => {
     for (const char of part.text) {
       if (index >= shown) return runs
       const age = Math.floor((shown - 1 - index) / CHARS_PER_FRAME)
-      const ramp = part.emphasis ? EMPHASIS_COLORS : SPEECH_COLORS
-      const color = ramp[Math.min(age, ramp.length - 1)] ?? ramp[ramp.length - 1] ?? SPEECH_COLORS[3]
+      const ramp = part.emphasis ? palette.emphasis : palette.speech
+      const color = ramp[Math.min(age, ramp.length - 1)] ?? SPEECH_COLORS[3]
       const last = runs.at(-1)
       if (last && last.color === color) last.text += char
       else runs.push({ text: char, color })

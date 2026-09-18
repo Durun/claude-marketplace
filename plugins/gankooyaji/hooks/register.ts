@@ -2,6 +2,8 @@ import type { Register, Timer } from 'claude-code'
 import { type Cell, faceRows, runs } from './face.ts'
 import { FACE_AREA_HEIGHT, FACE_AREA_WIDTH, FRAME_MS, WALL_WIDTH, applyDebris, faceOffset, facePixelRow, lastFrame, mouthOpen, speechLength, speechParts, spokenRuns, wallRow } from './entrance.ts'
 import { CUTIN_FRAMES, cutinRows } from './cutin.ts'
+import { BAABA, BAABA_PALETTE, baabaLastFrame, baabaPixelRow, baabaSpeechFrame } from './baaba.ts'
+import { FACE_HEIGHT, FACE_WIDTH } from './face.ts'
 
 const PANEL_COLUMNS = WALL_WIDTH + FACE_AREA_WIDTH
 
@@ -51,7 +53,12 @@ const SYSTEM = `あなたは日本の頑固オヤジだ。AI アシスタント�
 **「面」**とか**「印」**とか、もうわけわからん**！！！！！**
 **「効く」**に**「落ちる」**に**「塗り」**、一体いくつ持ち出せば気が済むん**だぁ〜〜！！**
 
-出力は 1 行だけ。問題にした語を必ず含めて、上の例の口調で叫ぶ。
+1 行目に、問題にした語を必ず含めて、上の例の口調で叫ぶ。
+
+2 行目は、隣にいるババアがオヤジをたしなめつつ、問題にした語を回答の文脈から読み解いて言い直す。
+「まあ落ち着いて。」で始め、続けて **「面」** は **「画面の描画領域」** のことだと思うわよ。のように、語ごとに言い換えを添える。
+指摘が語ではなく文の書き方のときは、書き手が言いたかったことを補って言う。
+穏やかな口調で 1 〜 2 文。叫ばない。
 
 見る点のうち 2 つ以上に引っかかっているときは、行の先頭に !! と書いてから叫ぶ。
 主語も無く語も転用されている、のように種類の違う指摘が重なったときに付ける。
@@ -61,10 +68,12 @@ const SYSTEM = `あなたは日本の頑固オヤジだ。AI アシスタント�
 - 叫んでいる末尾も **ァ〜〜！？** のように囲む
 - 気になった語が 2 つ以上あるときは、その全てを 1 行の中に挙げる。1 つだけ選ばない
 - 囲むのは語それぞれで 1 か所ずつと、末尾の叫びで 1 か所
+- 2 行目でも、語とその言い換えは **「面」** の形で囲む
 曖昧な語が無ければ OK の 2 文字だけを出力する。`
 
 export const register: Register = (on) => {
   let tsukkomi: string | null = null
+  let tashiname: string | null = null
   let intense = false
   let frame = 0
   let ticker: Timer | null = null
@@ -82,19 +91,22 @@ export const register: Register = (on) => {
       model: 'haiku',
       system: SYSTEM,
       prompt: e.answer.slice(0, 4000),
-      maxTokens: 120,
+      maxTokens: 240,
     })
-    const line = said.trim().split('\n')[0]?.trim() ?? ''
+    const lines = said.trim().split('\n')
+    const line = lines[0]?.trim() ?? ''
     // 指摘が複数の点にまたがったときは haiku が行頭に印を出す。印は落として描く。
     const marked = line.startsWith('!!')
     const body = marked ? line.slice(2).trim() : line
     tsukkomi = body === '' || body.startsWith('OK') ? null : body
+    tashiname = tsukkomi ? (lines[1]?.trim() || null) : null
     // 挙げた語が 2 つ以上あるかは、鉤括弧で囲まれた強調の数で数えられる。
     intense = marked || keywordCount(body) >= 2
     if (tsukkomi) {
       stopTicker()
       frame = 0
-      const ends = firstEntranceFrame(intense) + lastFrame(speechLength(speechParts(tsukkomi)))
+      const oyajiEnd = firstEntranceFrame(intense) + lastFrame(speechLength(speechParts(tsukkomi)))
+      const ends = tashiname ? oyajiEnd + baabaLastFrame(speechLength(speechParts(tashiname))) : oyajiEnd
       ticker = $.clock.every(FRAME_MS, () => {
         frame += 1
         if (frame >= ends) stopTicker()
@@ -108,6 +120,7 @@ export const register: Register = (on) => {
   on('turn.start', ($, _e, next) => {
     if (tsukkomi) {
       tsukkomi = null
+      tashiname = null
       stopTicker()
       $.ui.invalidate('ui.render')
     }
@@ -126,6 +139,46 @@ export const register: Register = (on) => {
     const at = frame - firstEntranceFrame(intense)
     const paint = (cells: Cell[]) =>
       runs(cells).map((run) => Text({ color: run.color, backgroundColor: run.backgroundColor, children: run.char }))
+
+    // ババアはオヤジのセリフが地の色に落ち着いてから昇り始める。セリフは右寄せで顔の左に置く。
+    const baabaParts = tashiname ? speechParts(tashiname) : null
+    const baabaAt = at - lastFrame(speechLength(parts))
+    const baabaSpeech = baabaSpeechFrame(baabaAt)
+    const baaba =
+      baabaParts &&
+      Box({
+        flexDirection: 'row',
+        gap: 1,
+        children: [
+          Box({
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'flex-end',
+            flexGrow: 1,
+            children: [
+              Text({
+                wrap: 'wrap',
+                children: spokenRuns(baabaSpeech, baabaParts, BAABA_PALETTE).map((run) =>
+                  Text({ color: run.color, children: run.text }),
+                ),
+              }),
+            ],
+          }),
+          Box({
+            flexDirection: 'column',
+            width: FACE_WIDTH,
+            flexShrink: 0,
+            children: faceRows(
+              0,
+              baabaPixelRow(baabaAt),
+              FACE_WIDTH,
+              FACE_HEIGHT,
+              mouthOpen(baabaSpeech, speechLength(baabaParts)),
+              BAABA,
+            ).map((cells) => Text({ wrap: 'truncate-end', children: paint(cells) })),
+          }),
+        ],
+      })
 
     // カットインは帯いっぱいに描く。壁もセリフも出さず、目元だけを見せる。
     const body = cutin
@@ -178,7 +231,7 @@ export const register: Register = (on) => {
       flexDirection: 'column',
       children: [
         below,
-        Box({ flexDirection: 'column', paddingTop: 1, width: e.props.bodyColumns, children: [body] }),
+        Box({ flexDirection: 'column', paddingTop: 1, width: e.props.bodyColumns, children: baaba && !cutin ? [body, baaba] : [body] }),
       ],
     })
   })
