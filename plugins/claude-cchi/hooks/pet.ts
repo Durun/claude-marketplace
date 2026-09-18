@@ -29,9 +29,6 @@ export const OUTPUT_PER_POOP = 1200
 /** これを超えて溜めると健康が減る。 */
 export const POOP_LIMIT = 3
 
-/** 個性が出そろう入力トークン。ここまで食べると色が最も濃くなる。 */
-const FULL_FLAVOR_INPUT = 300_000
-
 export const newPet = (id: string, cwd: string, now: Date): Pet => ({
   id,
   born: now.toISOString(),
@@ -125,18 +122,21 @@ const hsvToRgb = (h: number, s: number, v: number) => {
   return (to(r) << 16) | (to(g) << 8) | to(b)
 }
 
-/**
- * 形は生まれた時点で決まり、色の濃さだけが食べた量で育つ。
- * 生まれたては白に近く、食べるほどその子の色が出る。
- */
+/** その子の色の濃さ。かえった時点でこの濃さで出る。 */
+const SATURATION = 0.72
+
+/** おじいさんの褪せ方。 */
+const FADED = 0.55
+
+/** 形も色もかえった時点で決まる。歳を取ったときだけ色が少し褪せる。 */
 export const traitsOf = (pet: Pet): Traits => {
   const seed = hash(`${pet.id}:${pet.born}`)
   const hue = seed % 360
-  const flavor = Math.min(1, pet.input / FULL_FLAVOR_INPUT)
+  const fade = stageOf(pet) === 'ojiisan' ? FADED : 1
   return {
     eye: (seed >>> 9) % 4,
     body: (seed >>> 11) % 3,
-    color: hsvToRgb(hue, 0.15 + 0.6 * flavor, 0.96),
-    accent: hsvToRgb((hue + 40) % 360, 0.35 + 0.5 * flavor, 0.99),
+    color: hsvToRgb(hue, SATURATION * fade, 0.96),
+    accent: hsvToRgb((hue + 40) % 360, 0.85 * fade, 0.99),
   }
 }

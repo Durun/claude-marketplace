@@ -31,12 +31,10 @@ assert.ok(dirty.health < pet.health, '溜めすぎると健康が減る')
 assert.equal(poopCount(flush(dirty)), 0, '流すと溜まりが消える')
 assert.ok(flush(dirty).health > dirty.health, '流すと健康が戻る')
 
-// 形は変わらず、色だけが食べた量で濃くなる。
+// 形も色もかえった時点で決まる。食べても変わらず、おじいさんだけ褪せる。
 const young = traitsOf(pet)
-const grown = traitsOf({ ...pet, input: 300_000 })
-assert.equal(young.eye, grown.eye)
-assert.equal(young.body, grown.body)
-assert.notEqual(young.color, grown.color)
+assert.deepEqual(traitsOf({ ...pet, input: 300_000 }), young, '食べても見た目は変わらない')
+assert.notEqual(traitsOf({ ...pet, percent: 42 }).color, young.color, 'おじいさんは色が褪せる')
 assert.notEqual(traitsOf({ ...pet, id: 'session-2' }).color, young.color, '別の子は別の色')
 
 // 基準の姿は、元の四分ブロックの絵にそのまま戻る。

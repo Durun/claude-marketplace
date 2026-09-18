@@ -134,7 +134,6 @@ const EYE_WHITE = 0xf8f8f8
 const INK = 0x101010
 const POOP = 0x6b4423
 const POOP_LIGHT = 0x8a5c30
-const SHELL = 0xf2e6cf
 const GROUND = 0x3a3f4b
 const HAIR = 0xe8e8e8
 
@@ -159,6 +158,31 @@ const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: n
   rect(c, x + Math.floor(sx / 2), py, Math.max(1, sx), Math.max(1, sy), INK)
 }
 
+/** 考えている間の印の色。 */
+const SPARK = 0xd97757
+
+/** 腕を伸ばす向き。上下左右と斜め。 */
+const SPARK_ARMS = [
+  [0, -1], [0, 1], [-1, 0], [1, 0],
+  [-1, -1], [1, -1], [-1, 1], [1, 1],
+] as const
+
+/**
+ * 卵は、Claude が考えている間に出る印と同じ。中心から 8 方向に腕が伸び縮みする。
+ * 斜めの腕を 1 つ短く取ると、伸びきったところで星の形に見える。
+ */
+const drawSpark = (c: Canvas, cx: number, cy: number, scale: number, frame: number) => {
+  const beat = Math.floor(frame / 4) % 4
+  const reach = 2 + (beat < 2 ? beat : 3 - beat)
+  rect(c, cx - scale, cy - scale, scale * 2, scale * 2, SPARK)
+  for (const [dx, dy] of SPARK_ARMS) {
+    const len = dx !== 0 && dy !== 0 ? reach - 1 : reach
+    for (let step = 1; step <= len; step += 1) {
+      rect(c, cx - scale / 2 + dx * step * scale, cy - scale / 2 + dy * step * scale, scale, scale, SPARK)
+    }
+  }
+}
+
 export const render = (columns: number, rows: number, pet: Pet, frame: number) => {
   const c = canvas(columns * 2, rows * 2)
   const stage = stageOf(pet)
@@ -175,16 +199,9 @@ export const render = (columns: number, rows: number, pet: Pet, frame: number) =
   const left = Math.max(1, Math.round(c.width * 0.4 - (ART_WIDTH * sx) / 2))
   const top = groundY - ART_HEIGHT * sy - 1 + bob
 
-  // 卵はまだ体つきが出ていないので、伸ばし方を当てずに丸く描く。
   if (stage === 'egg') {
-    const s = Math.min(SCALE.egg, fit)
-    const cx = Math.round(c.width * 0.4)
-    const cy = groundY - 1 - 5 * s + bob
-    ellipse(c, cx, cy, 4 * s, 5 * s, SHELL)
-    for (let i = 0; i < 5; i += 1) {
-      const a = (i / 5) * Math.PI * 2
-      rect(c, cx + Math.cos(a) * 2 * s, cy + Math.sin(a) * 2.5 * s, s, s, traits.accent)
-    }
+    // 卵は地面に立たず、面の真ん中に浮かぶ。
+    drawSpark(c, Math.round(c.width * 0.4), Math.round(c.height / 2) + bob, Math.min(SCALE.egg, fit), frame)
     return encode(c, columns, rows)
   }
 
