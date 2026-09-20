@@ -24,7 +24,14 @@ import {
   type Pet,
   type Stage,
 } from './pet.ts'
-import { FRAME_MS as RUN_FRAME_MS, initial, lookOf, step, type Game } from './run.ts'
+import {
+  FRAME_MS as RUN_FRAME_MS,
+  initial,
+  lookOf,
+  step,
+  withMood,
+  type Game,
+} from './run.ts'
 import { render as renderCourse } from './course.ts'
 import {
   advance,
@@ -366,7 +373,8 @@ const startRun = ($: EngineInterface) => {
     if (game === null || pet === null) return
     const wasOver = game.over
     const healed = game.healed
-    game = step(game, jumpRequested)
+    // 健康が戻れば口の形も直る。走りを進めてから、いまの具合を姿に移す。
+    game = withMood(step(game, jumpRequested), pet)
     jumpRequested = false
     // 走ったぶんだけ健康が戻る。器の餌と違って、遊んでいるその場で効く。
     if (game.healed > healed) {

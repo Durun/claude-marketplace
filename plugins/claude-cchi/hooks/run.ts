@@ -2,6 +2,7 @@
 // 姿は Claudeっち本人から取るので、目も体つきも色も家に居るときと同じ子が走る。
 
 import { stageOf, traitsOf, type Pet, type Stage } from './pet.ts'
+import { GLOOM_BELOW } from './draw.ts'
 import type { Frame, Look, Obstacle } from './course.ts'
 
 /** 1 コマの長さ。物理も間隔もこの刻みで数える。 */
@@ -38,6 +39,13 @@ const ORBIT_START = DEPTH_START + DEPTH_LENGTH
 /** カメラが 1 コマで回る角。周回に約 1 分かかる。 */
 const ORBIT_RATE = 0.005
 
+/** まばたきの間隔と、目を閉じているコマ数。家の面と同じ速さで瞬く。 */
+const BLINK_EVERY = 300
+const BLINK_FRAMES = 9
+
+/** 具合が悪いか。家の面と同じしきい値で、口がへの字になる。 */
+export const gloomyOf = (pet: Pet) => pet.health < GLOOM_BELOW
+
 /** 走者の大きさ。育つほど大きく、赤ちゃんのうちは小さいまま走る。 */
 const STAGE_SIZE: Record<Stage, number> = {
   egg: 1,
@@ -60,8 +68,19 @@ export const lookOf = (pet: Pet): Look => {
     size: STAGE_SIZE[stage],
     mustache: stage === 'ojisan' || stage === 'ojiisan',
     white: stage === 'ojiisan',
+    gloomy: gloomyOf(pet),
+    blink: false,
   }
 }
+
+/**
+ * 走っている間に健康が戻ると、口がへの字から直る。
+ * 変わったときだけ作り直すので、毎コマ姿を組み直さない。
+ */
+export const withMood = (game: Game, pet: Pet): Game =>
+  game.look.gloomy === gloomyOf(pet)
+    ? game
+    : { ...game, look: { ...game.look, gloomy: gloomyOf(pet) } }
 
 export const initial = (look: Look, best = 0): Game => ({
   runnerY: 0,
@@ -138,6 +157,11 @@ export const step = (game: Game, jump: boolean): Game => {
     ticks,
     ...camera(ticks, game.orbit),
     // 足は進んだ距離で振れる。地面の縞も同じ速さで流す。
+    // まばたきは走りとは関わりなく、一定の間隔で来る。
+    look:
+      game.look.blink === (ticks % BLINK_EVERY >= BLINK_EVERY - BLINK_FRAMES)
+        ? game.look
+        : { ...game.look, blink: !game.look.blink },
     stride: game.stride + speed * 6.5,
     ground: game.ground + speed * 0.8,
     score: game.score + 1,

@@ -143,7 +143,8 @@ const SOIL = 0x4a3b2a
 const HAIR = 0xe8e8e8
 
 /** 顔に縦の影が差す健康。 */
-const GLOOM_BELOW = 50
+/** これを下回ると具合が悪い。顔に影が差し、口がへの字になる。 */
+export const GLOOM_BELOW = 50
 
 /** 具合の悪いときに差す影の色み。体の色に掛けて、やや青みの灰色へ寄せる。 */
 const GLOOM_TINT = 0x7e8aa0

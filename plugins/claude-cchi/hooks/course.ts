@@ -17,8 +17,12 @@ export type Look = {
   size: number
   /** 口ひげが生えているか。 */
   mustache: boolean
-  /** ひげが白いか。 */
+  /** ひげが白いか。おじいさんは眉も白い。 */
   white: boolean
+  /** 具合が悪いか。口がへの字になる。 */
+  gloomy: boolean
+  /** いま目を閉じているか。 */
+  blink: boolean
 }
 
 export type Frame = {
@@ -82,6 +86,7 @@ const MAT_CACTUS = 2
 const MAT_EYE = 3
 const MAT_ACCENT = 4
 const MAT_HAIR = 5
+const MAT_WHITE = 6
 
 let hitMaterial = MAT_GROUND
 
@@ -144,14 +149,24 @@ const LEGS = [
   { x: -0.54, z: -0.24, phase: 0 },
 ] as const
 
-/** 目の位置。胴の横に 2 つ並べ、前後どちらの面にも出すので、回り込んでも顔が見える。 */
-const EYES = [
-  { x: 0.55, y: 0.76 },
-  { x: -0.55, y: 0.76 },
-] as const
+/**
+ * 顔の造作の置き場。家の絵は 22x5 の升目に描いてあるので、その列と行をこちらの寸法へ写す。
+ * 目は 5・13 列の 1 行目、頬は 2・18 列の 2 行目、口は 9 列の 3 行目、口ひげはその真上。
+ * x は胴の中心から、y は BODY_Y からの隔たりで持つ。体つきで胴が伸びると造作も一緒に伸びる。
+ */
+const EYE_X = 0.38
+const EYE_DY = 0.155
+const CHEEK_X = 0.68
+const CHEEK_DY = 0.005
+const MOUTH_DY = -0.145
+const MUSTACHE_DY = -0.08
+const BROW_DY = 0.29
 
 /** 顔の飾りを出す面の奥行き。胴の半奥行き BODY_HZ と丸めの和より、わずかに内へ入れる。 */
 const FACE_Z = 0.56
+
+/** 瞳は白目より前に出す。同じ面に置くと、白目に埋もれて見えない。 */
+const PUPIL_Z = 0.015
 
 /** 胴。角ばった箱で、横幅に対して背が低い。 */
 const BODY_Y = 0.68
@@ -171,15 +186,19 @@ const BODY_SHAPE = [
   { hx: 1.14, hy: 0.84 },
 ] as const
 
-/** 目の形ごとの大きさ。てん目は小さい丸、まる目は真ん丸、たれ目とつり目は縦に長い。 */
-const EYE_SHAPE = [
-  { rx: 0.095, ry: 0.095 },
-  { rx: 0.075, ry: 0.11 },
-  { rx: 0.075, ry: 0.11 },
-  { rx: 0.06, ry: 0.06 },
-] as const
+/** 白目の大きさ。家の絵の切れ込み 2 列 1.5 行ぶんにあたる。 */
+const WHITE_RX = 0.085
+const WHITE_RY = 0.115
 
-const EYE_RZ = 0.075
+/** 瞳。白目の中に収まる大きさで、白目より前に置く。 */
+const PUPIL_RX = 0.045
+const PUPIL_RY = 0.075
+
+/** てん目の点。白目を持たず、この点だけが出る。 */
+const DOT_RX = 0.05
+const DOT_RY = 0.075
+
+const EYE_RZ = 0.06
 
 /**
  * 走者。境界球の外では球までの距離を返すので、遠い光線は体を数えずに進む。
@@ -209,11 +228,12 @@ const runner = (px0: number, py0: number, pz0: number, f: Frame) => {
   return d * scale
 }
 
-/** 顔のどの飾りに当たったか。face が返す距離と対で使う。 */
+/** 顔のどの造作に当たったか。face が返す距離と対で使う。 */
 let faceMaterial = MAT_EYE
 
 /**
- * 顔。目・まぶた・頬・口ひげを、胴の前後の面から少しだけ出す。
+ * 顔。白目と瞳・まぶた・頬・口・口ひげ・眉を、胴の前後の面から少しだけ出す。
+ * 家の絵と同じ造作を同じ並びで置くので、走っていても同じ子の顔に見える。
  * 体とは色が違うので、体の距離関数とは分けて持つ。
  */
 const face = (px0: number, py0: number, pz0: number, f: Frame) => {
@@ -222,11 +242,15 @@ const face = (px0: number, py0: number, pz0: number, f: Frame) => {
   const py = (py0 - f.runnerY) / scale
   const pz = pz0 / scale
   faceMaterial = MAT_EYE
-  // 飾りは胴の上半分にしかない。そこから離れた光線は目も頬も数えない。
-  const bound = Math.sqrt(px * px + (py - 0.7) * (py - 0.7) + pz * pz) - 1.05
+  // 造作は胴の面にしかない。そこから離れた光線は目も口も数えない。
+  const bound = Math.sqrt(px * px + (py - BODY_Y) * (py - BODY_Y) + pz * pz) - 1.05
   if (bound > 0.12) return bound * scale
 
-  const shape = EYE_SHAPE[f.look.eye] ?? EYE_SHAPE[0]
+  const shape = BODY_SHAPE[f.look.body] ?? BODY_SHAPE[0]
+  // 造作は胴と一緒に伸び縮みする。伸ばさないと、ほそながい体では顔から外れる。
+  const fx = (x: number) => x * shape.hx
+  const fy = (dy: number) => BODY_Y + dy * shape.hy
+  const dot = f.look.eye === 3
   let d = Number.POSITIVE_INFINITY
   let m = MAT_EYE
   const nearer = (v: number, material: number) => {
@@ -236,25 +260,53 @@ const face = (px0: number, py0: number, pz0: number, f: Frame) => {
     }
   }
   for (const z of [FACE_Z, -FACE_Z]) {
-    for (const at of EYES) {
-      // 外を向く向き。まぶたは目尻の側へ引く。
-      const outward = at.x > 0 ? 1 : -1
-      nearer(ellipsoid(px - at.x, py - at.y, pz - z, shape.rx, shape.ry, EYE_RZ), MAT_EYE)
-      // たれ目は目尻の下、つり目は目尻の上へまぶたを引く。まる目とてん目には引かない。
-      if (f.look.eye === 1 || f.look.eye === 2) {
-        const lidY = f.look.eye === 1 ? at.y - shape.ry - 0.03 : at.y + shape.ry + 0.03
-        const tilt = f.look.eye === 1 ? -0.05 : 0.05
+    const front = z > 0 ? 1 : -1
+    for (const side of [1, -1]) {
+      const ex = fx(EYE_X * side)
+      const ey = fy(EYE_DY)
+      if (f.look.blink) {
+        // まばたき。家の絵と同じく、閉じた目は下線 1 本だけになる。
+        nearer(capsule(px - ex + WHITE_RX, py - ey + WHITE_RY, pz - z, WHITE_RX * 2, 0, 0, 0.028), MAT_EYE)
+      } else if (dot) {
+        // てん目は白目を持たない。点だけが顔に乗る。
+        nearer(ellipsoid(px - ex, py - ey, pz - z, DOT_RX, DOT_RY, EYE_RZ), MAT_EYE)
+      } else {
+        nearer(ellipsoid(px - ex, py - ey, pz - z, WHITE_RX, WHITE_RY, EYE_RZ), MAT_WHITE)
         nearer(
-          capsule(px - at.x - outward * 0.02, py - lidY, pz - z, outward * 0.13, tilt, 0, 0.032),
+          ellipsoid(px - ex, py - ey, pz - z - front * PUPIL_Z, PUPIL_RX, PUPIL_RY, EYE_RZ),
           MAT_EYE,
         )
       }
-      // 頬。家の絵と同じく、顔の両端に色の違う点が付く。
-      nearer(ellipsoid(px - at.x * 1.33, py - 0.6, pz - z, 0.09, 0.055, 0.05), MAT_ACCENT)
+      // たれ目は目尻の下、つり目は目尻の上へまぶたを引く。まる目とてん目には引かない。
+      if ((f.look.eye === 1 || f.look.eye === 2) && !f.look.blink) {
+        const lidY = f.look.eye === 1 ? ey - WHITE_RY - 0.03 : ey + WHITE_RY + 0.03
+        const tilt = f.look.eye === 1 ? -0.05 : 0.05
+        nearer(capsule(px - ex - side * 0.02, py - lidY, pz - z, side * 0.13, tilt, 0, 0.03), MAT_EYE)
+      }
+      // 頬。家の絵と同じく、目の外側に色の違う点が付く。
+      nearer(
+        ellipsoid(px - fx(CHEEK_X * side), py - fy(CHEEK_DY), pz - z, 0.075, 0.05, 0.05),
+        MAT_ACCENT,
+      )
+      // 眉。おじいさんにだけ、白いものが目の上に生える。
+      if (f.look.white) {
+        nearer(
+          capsule(px - ex + WHITE_RX, py - fy(BROW_DY), pz - z, WHITE_RX * 2, 0, 0, 0.028),
+          MAT_HAIR,
+        )
+      }
     }
-    // 口ひげ。おじさんから生え、おじいさんになると白くなる。
+    // 口。具合が悪いとへの字になる。家の絵と同じで、両端だけが持ち上がる。
+    const my = fy(MOUTH_DY)
+    if (f.look.gloomy) {
+      nearer(capsule(px - 0.085, py - my, pz - z, 0.085, 0.045, 0, 0.026), MAT_EYE)
+      nearer(capsule(px, py - my, pz - z, 0.085, -0.045, 0, 0.026), MAT_EYE)
+    } else {
+      nearer(capsule(px + 0.085, py - my, pz - z, 0.17, 0, 0, 0.026), MAT_EYE)
+    }
+    // 口ひげは口の真上。おじさんから生え、おじいさんになると白くなる。
     if (f.look.mustache) {
-      nearer(capsule(px + 0.21, py - 0.56, pz - z, 0.42, 0, 0, 0.042), MAT_HAIR)
+      nearer(capsule(px + 0.17, py - fy(MUSTACHE_DY), pz - z, 0.34, 0, 0, 0.036), MAT_HAIR)
     }
   }
   faceMaterial = m
@@ -335,6 +387,9 @@ const CACTUS_COLOR: Rgb = [0.25, 0.49, 0.38]
 const EYE_COLOR: Rgb = [0.06, 0.05, 0.05]
 const HAIR_COLOR: Rgb = [0.95, 0.94, 0.92]
 
+/** 白目。家の絵と同じ、わずかに灰色がかった白。 */
+const WHITE_COLOR: Rgb = [0.97, 0.97, 0.97]
+
 /** 0x00RRGGBB を 0..1 の 3 つ組に開く。姿の色は Claudeっち本人から来る。 */
 const rgbOf = (color: number): Rgb => [
   ((color >> 16) & 255) / 255,
@@ -350,6 +405,7 @@ const colorsOf = (look: Look): Rgb[] => [
   EYE_COLOR,
   rgbOf(look.accent),
   look.white ? HAIR_COLOR : EYE_COLOR,
+  WHITE_COLOR,
 ]
 
 let colors: Rgb[] = []

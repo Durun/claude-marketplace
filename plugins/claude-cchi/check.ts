@@ -14,7 +14,7 @@ import {
   strip,
   type Utterance,
 } from './hooks/register.ts'
-import { initial, lookOf, step, TICKS_PER_HEALTH } from './hooks/run.ts'
+import { gloomyOf, initial, lookOf, step, TICKS_PER_HEALTH, withMood } from './hooks/run.ts'
 import { render as renderCourse } from './hooks/course.ts'
 import {
   feed,
@@ -312,6 +312,33 @@ const courseCells = renderCourse(columns, rows, run)
 assert.equal(Buffer.from(courseCells, 'base64').length, columns * rows * 3 * 4)
 const other = { ...run, look: { ...look, color: 0x3366ff, eye: (look.eye + 1) % 4 } }
 assert.notEqual(renderCourse(columns, rows, other), courseCells, '目と色が違えば別の子に見える')
+
+// 顔は家の面と同じものが出る。まばたきも、具合の悪いときのへの字の口も走りに付いてくる。
+// 望遠の真横では顔が数画素しかないので、カメラが寄り切ったところで見比べる。
+// 口は 1 画素ほどしかないので、顔が潰れない広さで見比べる。
+const CLOSE_COLUMNS = 120
+const CLOSE_ROWS = 24
+const close = { ...run, depth: 1 }
+const closeCells = renderCourse(CLOSE_COLUMNS, CLOSE_ROWS, close)
+assert.notEqual(
+  renderCourse(CLOSE_COLUMNS, CLOSE_ROWS, { ...close, look: { ...look, blink: true } }),
+  closeCells,
+  'まばたきすると目が閉じる',
+)
+assert.equal(look.gloomy, true, '健康 40 の子は具合が悪い')
+assert.notEqual(
+  renderCourse(CLOSE_COLUMNS, CLOSE_ROWS, { ...close, look: { ...look, gloomy: false } }),
+  closeCells,
+  '具合が悪いと口がへの字になる',
+)
+assert.equal(gloomyOf({ ...pet, health: 40 }), true)
+assert.equal(gloomyOf({ ...pet, health: 60 }), false)
+assert.equal(withMood(run, runner), run, '具合が変わらなければ姿は組み直さない')
+assert.equal(
+  withMood(run, { ...pet, health: 100 }).look.gloomy,
+  false,
+  '走って健康が戻ると口が直る',
+)
 
 // 面の端に立っていても、札と吹き出しは面からはみ出さない。はみ出すと折り返して下の区画がずれる。
 assert.equal(fitPad(60, 'なまえっち', 40), 30, '右端に寄せても中身のぶんは残す')
