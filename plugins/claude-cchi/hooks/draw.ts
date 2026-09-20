@@ -145,8 +145,19 @@ const HAIR = 0xe8e8e8
 /** 顔に縦の影が差す健康。 */
 const GLOOM_BELOW = 50
 
-/** 具合の悪いときに差す影。 */
-const GLOOM = 0x3a3a44
+/** 具合の悪いときに差す影の色み。体の色に掛けて、やや青みの灰色へ寄せる。 */
+const GLOOM_TINT = 0x7e8aa0
+
+/** 縦線を引く範囲。顔の上半分の、左寄りだけに入れる。 */
+const GLOOM_COLS = [3, 9] as const
+const GLOOM_ROWS = 2
+
+/** 2 色を掛け合わせる。 */
+const multiply = (a: number, b: number) => {
+  const ch = (shift: number) =>
+    Math.round((((a >> shift) & 255) * ((b >> shift) & 255)) / 255) << shift
+  return ch(16) | ch(8) | ch(0)
+}
 
 /**
  * 拡大率を縦横に分ける。ほそながいは縦、ずんぐりは横へ 1 段伸ばす。
@@ -191,8 +202,7 @@ const drawEye = (
   eye: number,
   blink: boolean,
   gaze: readonly [number, number],
-  skin: number,
-  /** 顔の外側へ向く向き。左目は -1、右目は 1。目尻を削る側を決める。 */
+  /** 顔の外側へ向く向き。左目は -1、右目は 1。 */
   outward: 1 | -1,
 ) => {
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
@@ -200,20 +210,24 @@ const drawEye = (
     rect(c, x, y + sy, sx * 2, Math.max(1, Math.floor(sy / 2)), INK)
     return
   }
+  // 白目は元の絵の切れ込みをちょうど埋める大きさに取る。ここを削ると顔に穴が空く。
+  const w = sx * 2
   const h = sy + Math.floor(sy / 2)
-  rect(c, x, y, sx * 2, h, EYE_WHITE)
-  // 目尻を斜めに削って表情を出す。たれ目は上を、つり目は下を落とす。
-  if (eye === 1 || eye === 2) {
-    const corner = outward === 1 ? x + sx : x
-    rect(c, corner, eye === 1 ? y : y + h - 1, sx, 1, skin)
-  }
-  // 瞳の高さも表情に合わせる。0 まる 1 たれ 2 つり。
-  const base = eye === 1 ? y + h - sy : eye === 2 ? y : y + Math.floor((h - sy) / 2)
-  const px = x + Math.floor(sx / 2) + gaze[0] * Math.max(1, Math.floor(sx / 2))
-  const py = Math.max(y, Math.min(y + h - sy, base + gaze[1]))
-  rect(c, Math.max(x, Math.min(x + sx * 2 - sx, px)), py, Math.max(1, sx), Math.max(1, sy), INK)
-}
+  rect(c, x, y, w, h, EYE_WHITE)
 
+  // 瞳は白目の真ん中。目線のぶんだけ左右に寄る。
+  const pw = Math.max(1, sx - 1)
+  const px = x + Math.round((w - pw) / 2) + gaze[0] * sx
+  const py = y + Math.floor((h - sy) / 2) + gaze[1]
+  rect(c, Math.max(x, Math.min(x + w - pw, px)), Math.max(y, Math.min(y + h - sy, py)), pw, sy, INK)
+
+  // たれ目は目尻の上、つり目は目尻の下にまぶたを引く。白目は削らない。
+  if (eye === 1 || eye === 2) {
+    const lid = Math.max(1, Math.floor(sy / 2))
+    const at = outward === 1 ? x + sx : x
+    rect(c, at, eye === 1 ? y : y + h - lid, sx, lid, INK)
+  }
+}
 
 /** 考えている間の印の色。 */
 const SPARK = 0xd97757
@@ -362,13 +376,15 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
 
   // 具合が悪いと顔に縦の影が差し、口がへの字になる。体の色そのものは変えない。
   const gloomy = pet.health < GLOOM_BELOW
+  const gloom = multiply(traits.color, GLOOM_TINT)
 
   for (let row = 0; row < ART_HEIGHT; row += 1) {
     for (let col = 0; col < ART_WIDTH; col += 1) {
       if (ART[row]?.[col] !== '#') continue
       const shift = row === ART_HEIGHT - 1 ? (col < ART_WIDTH / 2 ? swing : -swing) : 0
-      const shade = gloomy && row < ART_HEIGHT - 1 && col % 3 === 1 ? GLOOM : traits.color
-      rect(c, left + col * sx + shift, top + row * sy, sx, sy, shade)
+      const shaded =
+        gloomy && row < GLOOM_ROWS && col >= GLOOM_COLS[0] && col <= GLOOM_COLS[1] && col % 2 === 1
+      rect(c, left + col * sx + shift, top + row * sy, sx, sy, shaded ? gloom : traits.color)
     }
   }
 
@@ -380,7 +396,7 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
     const blink = frame % 90 >= 87
     const outward = i === 0 ? -1 : 1
     const at = top + EYE_ROW * sy
-    drawEye(c, left + col * sx, at, sx, sy, traits.eye, blink, gaze, traits.color, outward)
+    drawEye(c, left + col * sx, at, sx, sy, traits.eye, blink, gaze, outward)
   })
 
   // 食べている間は口を開け閉めする。
