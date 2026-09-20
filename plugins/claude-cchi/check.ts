@@ -2,7 +2,14 @@
 
 import assert from 'node:assert/strict'
 import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
-import { freshTalk, markBorrowed, migrate, type Utterance } from './hooks/register.ts'
+import {
+  freshTalk,
+  hasContent,
+  markBorrowed,
+  migrate,
+  strip,
+  type Utterance,
+} from './hooks/register.ts'
 import {
   feed,
   flush,
@@ -176,6 +183,18 @@ assert.deepEqual(markBorrowed('でーたが [おそかった]', '#7fc8a9'), [
   { text: 'おそかった', color: '#7fc8a9' },
 ])
 assert.deepEqual(markBorrowed('こわれた', '#7fc8a9'), [{ text: 'こわれた', color: null }])
+
+// モデルが付けてくる飾りは、記憶に残す前に落とす。
+assert.equal(strip('knowledge: 広場での会話は 4 段で成り立つ'), '広場での会話は 4 段で成り立つ')
+assert.equal(strip('**1つめ**'), '1つめ')
+assert.equal(strip('`hooks/draw.ts` の描画順を見る'), 'hooks/draw.ts の描画順を見る')
+assert.equal(strip('ClickHouse の識別子は case-sensitive'), 'ClickHouse の識別子は case-sensitive')
+
+// 書くことが無かったという返事は、記憶にも言えることにもしない。
+assert.equal(hasContent('-'), false)
+assert.equal(hasContent('\\-'), false, 'マークダウンで逃した印も捨てる')
+assert.equal(hasContent(''), false)
+assert.equal(hasContent('ひろば は にぎやか'), true)
 
 // ひろばの一言は、自分の声と、一度覚えたものを除いて耳に入る。
 {
