@@ -149,24 +149,8 @@ const LEGS = [
   { x: -0.54, z: -0.24, phase: 0 },
 ] as const
 
-/**
- * 顔の造作の置き場。家の絵は 22x5 の升目に描いてあるので、その列と行をこちらの寸法へ写す。
- * 目は 5・13 列の 1 行目、頬は 2・18 列の 2 行目、口は 9 列の 3 行目、口ひげはその真上。
- * x は胴の中心から、y は BODY_Y からの隔たりで持つ。体つきで胴が伸びると造作も一緒に伸びる。
- */
-const EYE_X = 0.38
-const EYE_DY = 0.155
-const CHEEK_X = 0.68
-const CHEEK_DY = 0.005
-const MOUTH_DY = -0.145
-const MUSTACHE_DY = -0.08
-const BROW_DY = 0.29
-
 /** 顔の飾りを出す面の奥行き。胴の半奥行き BODY_HZ と丸めの和より、わずかに内へ入れる。 */
 const FACE_Z = 0.56
-
-/** 瞳は白目より前に出す。同じ面に置くと、白目に埋もれて見えない。 */
-const PUPIL_Z = 0.015
 
 /** 胴。角ばった箱で、横幅に対して背が低い。 */
 const BODY_Y = 0.68
@@ -186,19 +170,52 @@ const BODY_SHAPE = [
   { hx: 1.14, hy: 0.84 },
 ] as const
 
-/** 白目の大きさ。家の絵の切れ込み 2 列 1.5 行ぶんにあたる。 */
-const WHITE_RX = 0.085
-const WHITE_RY = 0.115
+/**
+ * 家の絵の升目 1 つぶんの大きさ。正面から見た造作の寸法をここへ合わせる。
+ * 家の絵では胴が横 17 列・縦 4 行ぶんに描いてあるので、その割り当てでこちらの胴を割る。
+ */
+const CELL_X = ((BODY_HX + BODY_ROUND) * 2) / 17
+const CELL_Y = ((BODY_HY + BODY_ROUND) * 2) / 4
 
-/** 瞳。白目の中に収まる大きさで、白目より前に置く。 */
-const PUPIL_RX = 0.045
-const PUPIL_RY = 0.075
+/**
+ * 顔の造作の置き場。x は胴の中心から、y は BODY_Y からの隔たりで、どちらも升目で数える。
+ * 家の絵は目が 1 行目、頬が 2 行目、口が 3 行目、口ひげがその真上、眉が目の真上にある。
+ * 体つきで胴が伸びると、造作もその割合のまま一緒に伸びる。
+ */
+const EYE_X = 4 * CELL_X
+const EYE_DY = 0.25 * CELL_Y
+const CHEEK_X = 7.5 * CELL_X
+const CHEEK_DY = -0.5 * CELL_Y
+const MOUTH_DY = -1.25 * CELL_Y
+const MUSTACHE_DY = -0.75 * CELL_Y
+const BROW_DY = 1.25 * CELL_Y
 
-/** てん目の点。白目を持たず、この点だけが出る。 */
-const DOT_RX = 0.05
-const DOT_RY = 0.075
+/** 白目。家の絵の切れ込みと同じ、横 2 列・縦 1.5 行ぶん。 */
+const WHITE_RX = CELL_X
+const WHITE_RY = 0.75 * CELL_Y
 
+/**
+ * 瞳。家の絵では白目の 3 分の 1 の幅しかないが、そこまで細いと面が狭いときに
+ * 1 画素にも満たず、白目だけの顔になる。白目の半分ほどの幅を持たせる。
+ */
+const PUPIL_RX = 0.45 * CELL_X
+const PUPIL_RY = 0.5 * CELL_Y
+
+/** てん目の点。白目を持たず、この点だけが顔に乗る。 */
+const DOT_RX = 0.5 * CELL_X
+const DOT_RY = 0.5 * CELL_Y
+
+/** 白目の厚み。顔の面からこれだけ膨らむ。 */
 const EYE_RZ = 0.06
+
+/**
+ * 瞳の厚み。白目より厚くして、前へ突き出させる。
+ * 同じ厚みだと、カメラが回って斜めから見たときに白目の膨らみへ隠れ、白目だけの顔になる。
+ */
+const PUPIL_RZ = EYE_RZ + 0.05
+
+/** 線で描く造作の太さ。家の絵の細い帯 1 本ぶん。 */
+const LINE_R = 0.25 * CELL_Y
 
 /**
  * 走者。境界球の外では球までの距離を返すので、遠い光線は体を数えずに進む。
@@ -250,6 +267,8 @@ const face = (px0: number, py0: number, pz0: number, f: Frame) => {
   // 造作は胴と一緒に伸び縮みする。伸ばさないと、ほそながい体では顔から外れる。
   const fx = (x: number) => x * shape.hx
   const fy = (dy: number) => BODY_Y + dy * shape.hy
+  /** 縦の長さ。胴の伸びに合わせるが、置き場と違って BODY_Y からは測らない。 */
+  const gy = (h: number) => h * shape.hy
   const dot = f.look.eye === 3
   let d = Number.POSITIVE_INFINITY
   let m = MAT_EYE
@@ -259,54 +278,66 @@ const face = (px0: number, py0: number, pz0: number, f: Frame) => {
       m = material
     }
   }
+  // 口の幅の半分と、への字にしたときの端の持ち上がり。どちらも家の絵の升目から取る。
+  const mouthHalf = fx(CELL_X)
+  const mouthLift = gy(0.5 * CELL_Y)
   for (const z of [FACE_Z, -FACE_Z]) {
-    const front = z > 0 ? 1 : -1
     for (const side of [1, -1]) {
       const ex = fx(EYE_X * side)
       const ey = fy(EYE_DY)
+      const wx = fx(WHITE_RX)
+      const wy = gy(WHITE_RY)
       if (f.look.blink) {
-        // まばたき。家の絵と同じく、閉じた目は下線 1 本だけになる。
-        nearer(capsule(px - ex + WHITE_RX, py - ey + WHITE_RY, pz - z, WHITE_RX * 2, 0, 0, 0.028), MAT_EYE)
+        // まばたき。家の絵と同じく、閉じた目は白目の下辺に引いた線 1 本だけになる。
+        nearer(capsule(px - ex + wx, py - ey, pz - z, wx * 2, 0, 0, LINE_R), MAT_EYE)
       } else if (dot) {
         // てん目は白目を持たない。点だけが顔に乗る。
-        nearer(ellipsoid(px - ex, py - ey, pz - z, DOT_RX, DOT_RY, EYE_RZ), MAT_EYE)
+        nearer(ellipsoid(px - ex, py - ey, pz - z, fx(DOT_RX), gy(DOT_RY), EYE_RZ), MAT_EYE)
       } else {
-        nearer(ellipsoid(px - ex, py - ey, pz - z, WHITE_RX, WHITE_RY, EYE_RZ), MAT_WHITE)
+        nearer(ellipsoid(px - ex, py - ey, pz - z, wx, wy, EYE_RZ), MAT_WHITE)
+        // 瞳は白目より厚い。前へ突き出るので、斜めから見ても白目に隠れない。
         nearer(
-          ellipsoid(px - ex, py - ey, pz - z - front * PUPIL_Z, PUPIL_RX, PUPIL_RY, EYE_RZ),
+          ellipsoid(px - ex, py - ey, pz - z, fx(PUPIL_RX), gy(PUPIL_RY), PUPIL_RZ),
           MAT_EYE,
         )
       }
       // たれ目は目尻の下、つり目は目尻の上へまぶたを引く。まる目とてん目には引かない。
       if ((f.look.eye === 1 || f.look.eye === 2) && !f.look.blink) {
-        const lidY = f.look.eye === 1 ? ey - WHITE_RY - 0.03 : ey + WHITE_RY + 0.03
-        const tilt = f.look.eye === 1 ? -0.05 : 0.05
-        nearer(capsule(px - ex - side * 0.02, py - lidY, pz - z, side * 0.13, tilt, 0, 0.03), MAT_EYE)
+        const lidY = f.look.eye === 1 ? ey - wy - LINE_R : ey + wy + LINE_R
+        const tilt = (f.look.eye === 1 ? -0.5 : 0.5) * gy(CELL_Y)
+        nearer(capsule(px - ex, py - lidY, pz - z, side * wx, tilt, 0, LINE_R), MAT_EYE)
       }
-      // 頬。家の絵と同じく、目の外側に色の違う点が付く。
+      // 頬。家の絵と同じく、目の外側に色の違う 1 升ぶんの点が付く。
       nearer(
-        ellipsoid(px - fx(CHEEK_X * side), py - fy(CHEEK_DY), pz - z, 0.075, 0.05, 0.05),
+        ellipsoid(
+          px - fx(CHEEK_X * side),
+          py - fy(CHEEK_DY),
+          pz - z,
+          fx(0.5 * CELL_X),
+          gy(0.5 * CELL_Y),
+          0.05,
+        ),
         MAT_ACCENT,
       )
-      // 眉。おじいさんにだけ、白いものが目の上に生える。
+      // 眉。おじいさんにだけ、白いものが目の真上に生える。
       if (f.look.white) {
-        nearer(
-          capsule(px - ex + WHITE_RX, py - fy(BROW_DY), pz - z, WHITE_RX * 2, 0, 0, 0.028),
-          MAT_HAIR,
-        )
+        nearer(capsule(px - ex + wx, py - fy(BROW_DY), pz - z, wx * 2, 0, 0, LINE_R), MAT_HAIR)
       }
     }
     // 口。具合が悪いとへの字になる。家の絵と同じで、両端だけが持ち上がる。
     const my = fy(MOUTH_DY)
     if (f.look.gloomy) {
-      nearer(capsule(px - 0.085, py - my, pz - z, 0.085, 0.045, 0, 0.026), MAT_EYE)
-      nearer(capsule(px, py - my, pz - z, 0.085, -0.045, 0, 0.026), MAT_EYE)
+      nearer(capsule(px - mouthHalf, py - my, pz - z, mouthHalf, mouthLift, 0, LINE_R), MAT_EYE)
+      nearer(capsule(px, py - my, pz - z, mouthHalf, -mouthLift, 0, LINE_R), MAT_EYE)
     } else {
-      nearer(capsule(px + 0.085, py - my, pz - z, 0.17, 0, 0, 0.026), MAT_EYE)
+      nearer(capsule(px + mouthHalf, py - my, pz - z, mouthHalf * 2, 0, 0, LINE_R), MAT_EYE)
     }
     // 口ひげは口の真上。おじさんから生え、おじいさんになると白くなる。
     if (f.look.mustache) {
-      nearer(capsule(px + 0.17, py - fy(MUSTACHE_DY), pz - z, 0.34, 0, 0, 0.036), MAT_HAIR)
+      nearer(
+        capsule(px + fx(2 * CELL_X), py - fy(MUSTACHE_DY), pz - z, fx(4 * CELL_X), 0, 0, LINE_R),
+        MAT_HAIR,
+      )
     }
   }
   faceMaterial = m

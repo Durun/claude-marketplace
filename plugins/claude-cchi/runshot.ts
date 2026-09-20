@@ -1,13 +1,14 @@
 // 開発用。走る面の 1 コマを PNG に落として、走者の姿を確かめる。
-// 実行: npx tsx runshot.ts <コマ番号> <出力パス> [拡大率] [目] [体つき] [使用率]
+// 実行: npx tsx runshot.ts <コマ番号> <出力パス> [拡大率] [目] [体つき] [使用率] [桁] [行]
 import { writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { renderPixels } from './hooks/course.ts'
 import { initial, lookOf, step, type Game } from './hooks/run.ts'
 import { feed, newPet, traitsOf } from './hooks/pet.ts'
 
-const COLUMNS = 120
-const ROWS = 24
+// 面と同じ狭さでも顔が潰れないかを見るので、桁と行を指定できるようにしてある。
+const COLUMNS = Number(process.argv[8] ?? 120)
+const ROWS = Number(process.argv[9] ?? 24)
 
 const at = Number(process.argv[2] ?? 0)
 const path = process.argv[3] ?? 'runshot.png'
