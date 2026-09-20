@@ -160,7 +160,8 @@ const start = ($: EngineInterface) => {
     const width = petWidth(columns, PANE_ROWS, pet)
     const wasAway = scene.away
     const flushed = advance(scene, worldOf(), width)
-    travel(scene, worldOf(), width)
+    // 赤ちゃんのうちは家から出さない。ひろばへは育ってから行く。
+    if (stageOf(pet) !== 'baby') travel(scene, worldOf(), width)
     if (scene.away !== wasAway) {
       // 出入りのたびに、ひろばの顔ぶれを取り直して区画を出し入れする。
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
@@ -287,16 +288,20 @@ export const crowdNames = (columns: number, pets: readonly Pet[]) => {
   return line
 }
 
-/** ひろばの吹き出しの行。話している子の真上に、その子の一言だけを置く。 */
-const chatLine = (columns: number, crowd: readonly Pet[]) => {
-  if (chat === null || crowd.length === 0) return ''
+/**
+ * ひろばの吹き出し。話している子の真上に出す。
+ * 出ていない間も同じ行数を空けておく。高さが変わると下の区画ごと描き直しになる。
+ */
+const chatBubble = (columns: number, crowd: readonly Pet[]) => {
+  const blank = Array.from({ length: BUBBLE_ROWS }, () => '')
+  if (chat === null || crowd.length === 0) return blank
   const mine = scene.step - chat.startedAt < CHAT_LINE_FRAMES
   const index = mine ? crowd.findIndex((p) => p.id === pet?.id) : chat.withIndex
-  if (index < 0) return ''
-  const text = `「${mine ? chat.mine : chat.theirs}」`
+  if (index < 0) return blank
+  const lines = bubble(mine ? chat.mine : chat.theirs)
   const slot = Math.floor(columns / crowd.length)
-  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(text)) / 2))
-  return ' '.repeat(at) + text
+  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(lines[0] ?? '')) / 2))
+  return lines.map((line) => ' '.repeat(at) + line)
 }
 
 /** 遺影に添える一行。生まれてから死ぬまでと、どこまで育ったか。 */
@@ -530,7 +535,7 @@ export const register: Register = (on) => {
           ? []
           : [
               rule(),
-              Text({ children: chatLine(columns, crowd) }),
+              ...chatBubble(columns, crowd).map((line) => Text({ children: line })),
               Text({ children: crowdNames(columns, crowd) }),
               Raster({
                 key: CROWD,

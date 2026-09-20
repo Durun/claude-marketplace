@@ -206,8 +206,9 @@ const drawEye = (
   outward: 1 | -1,
 ) => {
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
+  // 元の絵は目の位置が切れ込みになっているので、そこを塗りつぶす。空けると顔に穴が空く。
   if (blink || eye === 3 || sx < 2 || sy < 2) {
-    rect(c, x, y + sy, sx * 2, Math.max(1, Math.floor(sy / 2)), INK)
+    rect(c, x, y, sx * 2, sy + Math.floor(sy / 2), INK)
     return
   }
   // 白目は元の絵の切れ込みをちょうど埋める大きさに取る。ここを削ると顔に穴が空く。
