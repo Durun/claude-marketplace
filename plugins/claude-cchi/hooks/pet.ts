@@ -4,12 +4,11 @@
 export type Stage = 'egg' | 'baby' | 'child' | 'adult' | 'ojisan' | 'ojiisan'
 
 /**
- * Claudeっちが覚えた 1 つのこと。5 歳児の語彙なので、主語と述語が 1 語ずつしかない。
- * ここが狭いおかげで、ひろばで伝わる情報も自然と削れていく。
+ * Claudeっちが覚えた 1 つのこと。飼い主の作業をそのまま要約した、専門語のままの 1 文。
+ * 覚えていることと言えることは別で、この文がそのまま口から出ることはない。
  */
-export type Fact = {
-  subject: string
-  predicate: string
+export type Memory = {
+  text: string
   /** ひろばで聞いた相手の名前。自分のセッションから覚えたものは null。 */
   heardFrom: string | null
 }
@@ -36,7 +35,9 @@ export type Pet = {
   /** 直近のひとこと。 */
   word: string | null
   /** 覚えていること。古いものから忘れる。 */
-  knowledge: Fact[]
+  knowledge: Memory[]
+  /** 言えること。覚えたことを 5 歳児の言葉に直したもの。古いものから忘れる。 */
+  words: string[]
   /** 飼い主のセッションが最後に動いていた時刻。止まった判定に使う。 */
   seenAt: number
   /** いまひろばへ遊びに行っているか。 */
@@ -64,6 +65,7 @@ export const newPet = (sessionId: string, cwd: string, now: Date, generation = 0
   name: null,
   word: null,
   knowledge: [],
+  words: [],
   seenAt: now.getTime(),
   away: false,
   cwd,
@@ -85,20 +87,29 @@ export const isStopped = (pet: Pet, now: number) => !isDead(pet) && now - pet.se
 /** 覚えていられる数。これを超えると古いものから忘れる。 */
 export const MAX_FACTS = 12
 
-/** 同じ主語のことは覚え直す。5 歳児なので、たくさんは覚えていられない。 */
-export const remember = (pet: Pet, fact: Fact): Pet => ({
+/** 言えることの上限。喋るたびにこの中から 1 つ選ぶので、多いほど同じ話を繰り返さない。 */
+export const MAX_WORDS = 100
+
+/** 同じことは覚え直す。 */
+export const remember = (pet: Pet, memory: Memory): Pet => ({
   ...pet,
-  knowledge: [...pet.knowledge.filter((f) => f.subject !== fact.subject), fact].slice(-MAX_FACTS),
+  knowledge: [...pet.knowledge.filter((m) => m.text !== memory.text), memory].slice(-MAX_FACTS),
+})
+
+/** 言えることを増やす。同じ言い回しは 1 つにまとめる。 */
+export const learnWords = (pet: Pet, words: readonly string[]): Pet => ({
+  ...pet,
+  words: [...new Set([...(pet.words ?? []), ...words.filter((w) => w !== '')])].slice(-MAX_WORDS),
 })
 
 /**
- * 段階ごとの話し方。子供は単語だけ、大人から先は「<主語> は <述語>」。
- * 赤ちゃんと卵はまだ話さない。
+ * 段階ごとの話し方。子供はまだ一語しか出せない。
+ * 赤ちゃんと卵は話さない。
  */
-export const wordFor = (stage: Stage, fact: Fact): string | null => {
+export const wordFor = (stage: Stage, word: string): string | null => {
   if (stage === 'egg' || stage === 'baby') return null
-  if (stage === 'child') return fact.subject
-  return `${fact.subject} は ${fact.predicate}`
+  if (stage === 'child') return word.split(/\s+/)[0] ?? word
+  return word
 }
 
 export const poopCount = (pet: Pet) =>

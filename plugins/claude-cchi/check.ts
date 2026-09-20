@@ -16,6 +16,8 @@ import {
   stageOf,
   STALE_MS,
   traitsOf,
+  learnWords,
+  MAX_WORDS,
   wordFor,
 } from './hooks/pet.ts'
 import {
@@ -113,23 +115,33 @@ assert.notEqual(next.id, dying.id, 'ひろばで前の代と別に並ぶ')
 assert.equal(next.health, 100)
 assert.equal(isDead(next), false)
 
-// 話し方は段階で変わる。子供は単語だけ、大人から先は「主語 は 述語」。
-const fact = { subject: 'くるま', predicate: 'はやい', heardFrom: null }
-assert.equal(wordFor('egg', fact), null)
-assert.equal(wordFor('baby', fact), null)
-assert.equal(wordFor('child', fact), 'くるま')
-assert.equal(wordFor('adult', fact), 'くるま は はやい')
-assert.equal(wordFor('ojiisan', fact), 'くるま は はやい')
+// 話し方は段階で変わる。子供はまだ一語しか出せない。
+assert.equal(wordFor('egg', 'おこられた'), null)
+assert.equal(wordFor('baby', 'おこられた'), null)
+assert.equal(wordFor('child', 'でーた こわれた'), 'でーた')
+assert.equal(wordFor('adult', 'でーた こわれた'), 'でーた こわれた')
 
-// 同じ主語は覚え直し、覚えられる数を超えたら古いものから忘れる。
-let learner = remember(newPet('s', '/w', born), fact)
-learner = remember(learner, { ...fact, predicate: 'おそい' })
-assert.deepEqual(learner.knowledge, [{ ...fact, predicate: 'おそい' }], '同じ主語は上書きする')
+// 覚えるのは要約した 1 文。同じ文は覚え直し、数を超えたら古いものから忘れる。
+const memory = { text: 'ClickHouse の JSONEachRow は孤立サロゲートを弾く', heardFrom: null }
+let learner = remember(newPet('s', '/w', born), memory)
+learner = remember(learner, memory)
+assert.deepEqual(learner.knowledge, [memory], '同じ文は重ねない')
 for (let i = 0; i < MAX_FACTS + 3; i += 1) {
-  learner = remember(learner, { subject: `もの${i}`, predicate: 'ある', heardFrom: null })
+  learner = remember(learner, { text: `できごと${i}`, heardFrom: null })
 }
 assert.equal(learner.knowledge.length, MAX_FACTS)
-assert.equal(learner.knowledge.some((f) => f.subject === 'くるま'), false, '古いものから忘れる')
+assert.equal(learner.knowledge.some((m) => m.text === memory.text), false, '古いものから忘れる')
+
+// 言えることは記憶とは別に溜まる。同じ言い回しは 1 つにまとめ、上限を超えたら古いものから忘れる。
+let talker = learnWords(newPet('s', '/w', born), ['こわれた', 'なおした', ''])
+talker = learnWords(talker, ['こわれた'])
+assert.deepEqual(talker.words, ['こわれた', 'なおした'], '同じ言い回しと空文字は増やさない')
+talker = learnWords(
+  talker,
+  Array.from({ length: MAX_WORDS + 5 }, (_, i) => `ことば${i}`),
+)
+assert.equal(talker.words.length, MAX_WORDS)
+assert.equal(talker.words.includes('なおした'), false, '古い言い回しから忘れる')
 
 // 家とひろばのどちらかにしか居ない。止まったセッションの子はずっとひろば。
 const now = Date.now()

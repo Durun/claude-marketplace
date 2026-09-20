@@ -13,8 +13,9 @@ import {
   remember,
   stageOf,
   STAGE_LABEL,
+  learnWords,
   wordFor,
-  type Fact,
+  type Memory,
   type Pet,
   type Stage,
 } from './pet.ts'
@@ -108,11 +109,14 @@ type Chat = {
   mine: string
   theirs: string
   /** 相手から聞いたこと。話し終えたら覚える。 */
-  heard: Fact
+  heard: Memory
   startedAt: number
 }
 
 const pick = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)]
+
+/** 前の版で保存された子には words が無い。読み出しはここを通す。 */
+const wordsOf = (p: Pet): readonly string[] => p.words ?? []
 
 /**
  * 居合わせた 1 匹と話し始める。互いに覚えていることを 1 つずつ出し合う。
@@ -120,19 +124,20 @@ const pick = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.
  */
 const startChat = (crowd: readonly Pet[]) => {
   if (pet === null || pet.name === null) return
-  const others = crowd.filter((p) => p.id !== pet?.id && p.name !== null && p.knowledge.length > 0)
+  const others = crowd.filter((p) => p.id !== pet?.id && p.name !== null && wordsOf(p).length > 0)
   const other = pick(others)
-  const mineFact = pick(pet.knowledge)
-  if (other === undefined || mineFact === undefined) return
-  const theirFact = pick(other.knowledge)
-  const mine = wordFor(stageOf(pet), mineFact)
-  const theirs = theirFact === undefined ? null : wordFor(stageOf(other), theirFact)
-  if (mine === null || theirs === null || theirFact === undefined) return
+  const mineWord = pick(wordsOf(pet))
+  if (other === undefined || mineWord === undefined) return
+  const theirWord = pick(wordsOf(other))
+  const mine = wordFor(stageOf(pet), mineWord)
+  const theirs = theirWord === undefined ? null : wordFor(stageOf(other), theirWord)
+  if (mine === null || theirs === null) return
   chat = {
     withIndex: crowd.indexOf(other),
     mine,
     theirs,
-    heard: { ...theirFact, heardFrom: other.name },
+    // 相手の頭の中までは分からない。聞こえた一言だけが残る。
+    heard: { text: theirs, heardFrom: other.name },
     startedAt: scene.step,
   }
 }
@@ -229,28 +234,39 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
   return `${name.replace(/っち$/, '').slice(0, 5)}っち`
 }
 
-/**
- * 話すことを 1 つ考える。自分のセッションで見聞きしたことと、ひろばで聞いたことを合わせる。
- * 主語と述語を 1 語ずつしか持てないので、渡した文脈のほとんどは落ちる。
- */
-const think = async ($: EngineInterface, p: Pet, answer: string): Promise<Fact | null> => {
-  const known = p.knowledge
-    .map((f) => `${f.subject} は ${f.predicate}${f.heardFrom === null ? '' : `（${f.heardFrom}から）`}`)
-    .join('\n')
+/** 飼い主の作業を 1 文にまとめて覚える。専門語はそのまま残す。 */
+const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memory | null> => {
+  const known = p.knowledge.map((m) => m.text).join('\n')
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      'あなたは 5 歳児の語彙しか持たない生き物。いま見聞きしたことと、覚えていることから、' +
-      '言いたいことを 1 つだけ選び「主語|述語」の形で答える。' +
-      '主語も述語も 5 文字以内のやさしい日本語にする。' +
-      '「トークン|おおい」「ひろば|たのしい」のように、縦棒 1 本で区切った 1 行だけを出力する。',
-    prompt: `いま見聞きしたこと:\n${answer.slice(0, 600)}\n\n覚えていること:\n${known || '（まだ何も知らない）'}`,
-    maxTokens: 32,
+      'あなたは技術作業の記録係。いま起きたことを、あとで読み返して分かる 1 文にまとめる。' +
+      '固有名詞・技術用語・数値はそのまま残す。60 文字以内。' +
+      '既に覚えていることと同じ内容なら、別の側面を書く。説明や記号を付けず、1 行だけ出力する。',
+    prompt: `いま起きたこと:\n${answer.slice(0, 1200)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
+    maxTokens: 96,
   })
-  const [subject, predicate] = (text.trim().split('\n')[0] ?? '').split('|').map((w) => w.trim())
-  if (subject === undefined || predicate === undefined) return null
-  if (subject === '' || predicate === '') return null
-  return { subject: subject.slice(0, 6), predicate: predicate.slice(0, 6), heardFrom: null }
+  const line = text.trim().split('\n')[0]?.trim() ?? ''
+  return line === '' ? null : { text: line.slice(0, 80), heardFrom: null }
+}
+
+/** 1 つの記憶を口に出せる形へ直す。覚えた中身は分かっていても、出てくる言葉は 5 歳児のもの。 */
+const babble = async ($: EngineInterface, memory: Memory): Promise<string[]> => {
+  const text = await $.model.complete({
+    model: 'haiku',
+    system:
+      'あなたは 5 歳児。渡された文の意味を、知っている言葉だけで言い直す。' +
+      '専門用語・英単語・数字は使わない。1 つ 10 文字以内のひらがな中心の短い文にする。' +
+      '「こわれた」「いっぱいでた」「なおった」のような言い方で、違う言い方を 3 つ、1 行に 1 つ出力する。',
+    prompt: `言い直す文:\n${memory.text}`,
+    maxTokens: 64,
+  })
+  return text
+    .trim()
+    .split('\n')
+    .map((line) => line.replace(/^[-・\d.、\s]+/, '').replace(/[「」"']/g, '').trim().slice(0, 12))
+    .filter((line) => line !== '')
+    .slice(0, 3)
 }
 
 /** 端末で 2 桁を使う文字の範囲。罫線や図形はどちらとも取れるので 1 桁に数える。 */
@@ -394,12 +410,12 @@ export const register: Register = (on) => {
       pet = { ...pet, name: await nameIt($, pet) }
     }
     if (turns % TALK_EVERY === 0) {
-      const fact = await think($, pet, e.answer)
-      if (fact !== null) {
-        pet = remember(pet, fact)
-        const word = wordFor(after, fact)
+      const memory = await recall($, pet, e.answer)
+      if (memory !== null) {
+        pet = learnWords(remember(pet, memory), await babble($, memory))
+        const word = wordFor(after, pick(wordsOf(pet)) ?? '')
         pet = { ...pet, word }
-        sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
+        sayUntil = word === null || word === '' ? 0 : scene.step + SAY_FRAMES
       }
     }
 
