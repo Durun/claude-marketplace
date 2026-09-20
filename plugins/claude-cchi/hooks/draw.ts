@@ -530,7 +530,11 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
     sx,
     sy,
     frame: scene.step,
-    walking: scene.mode === 'walk' || scene.mode === 'leave' || scene.mode === 'arrive',
+    walking:
+      scene.mode === 'walk' ||
+      scene.mode === 'leave' ||
+      scene.mode === 'arrive' ||
+      scene.mode === 'dash',
     chewing: scene.mode === 'eat',
     crouching: scene.mode === 'poop',
     sleeping: scene.mode === 'doze' || scene.mode === 'sleep',

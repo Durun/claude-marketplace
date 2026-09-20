@@ -20,6 +20,12 @@ const CHEW_FRAMES = 3
  */
 const WALK_SPEED = 2
 
+/**
+ * 遊びに出るときに走り出す速さ。歩きと同じ速さだと、面の外へ出るまで何秒も待つことになる。
+ * セルの境目に揃えるため、ここも偶数で取る。
+ */
+const DASH_SPEED = 6
+
 /** 家で過ごすコマ数。これを過ぎるとひろばへ遊びに行く。 */
 const HOME_FRAMES = 600
 
@@ -33,6 +39,8 @@ export type Mode =
   | 'poop'
   | 'leave'
   | 'arrive'
+  | 'dash'
+  | 'gone'
   | 'study'
   | 'doze'
   | 'sleep'
@@ -158,6 +166,22 @@ export const startFlush = (scene: Scene) => {
  * 家とひろばを行き来する頃合いなら、歩いて出入りを始める。
  * 出るときはトイレの側から画面の外へ抜け、帰りは同じ側から入ってくる。
  */
+/**
+ * 遊びに出かける。面の外まで走り、出切ったところで mode が gone になる。
+ * ひろばへ行くのとは別で、行き先は走る面なのでひろばの顔ぶれには入らない。
+ */
+export const runOff = (scene: Scene, world: World, petWidth: number) => {
+  scene.mode = 'dash'
+  scene.target = even(world.width + petWidth)
+}
+
+/** 遊びから帰る。面の外から歩いて入り、いつもの範囲へ戻る。 */
+export const comeHome = (scene: Scene, world: World, petWidth: number) => {
+  scene.x = even(world.width + petWidth)
+  scene.mode = 'arrive'
+  scene.target = range(world, petWidth).max
+}
+
 export const travel = (scene: Scene, world: World, petWidth: number) => {
   if (scene.step < scene.tripAt) return
   if (scene.away) {
@@ -196,8 +220,8 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
     return false
   }
 
-  // ひろばに居る間は家のことをしない。餌だけは器に降り続ける。
-  if (scene.away) return false
+  // ひろばと走る面に居る間は家のことをしない。餌だけは器に降り続ける。
+  if (scene.away || scene.mode === 'gone') return false
 
   const { min: minX, max: maxX } = range(world, petWidth)
   switch (scene.mode) {
@@ -223,16 +247,24 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
       break
     case 'leave':
     case 'arrive':
+    case 'dash':
     case 'walk': {
+      // 遊びに出るときだけは走る。歩きのままだと面の外へ出るのに何秒もかかる。
+      const speed = scene.mode === 'dash' ? DASH_SPEED : WALK_SPEED
       const gap = scene.target - scene.x
       scene.facing = gap >= 0 ? 1 : -1
-      const next = scene.x + Math.sign(gap) * WALK_SPEED
+      const next = scene.x + Math.sign(gap) * speed
       // 出入りの間は画面の外まで歩くので、家の範囲に閉じ込めない。
       scene.x = scene.mode === 'walk' ? Math.max(minX, Math.min(maxX, next)) : next
-      if (Math.abs(gap) <= WALK_SPEED) {
+      if (Math.abs(gap) <= speed) {
         if (scene.mode === 'leave') {
           scene.away = true
           scene.x = minX
+        }
+        // 走り出した先は走る面。帰ってくるまで家には居ない。
+        if (scene.mode === 'dash') {
+          scene.mode = 'gone'
+          break
         }
         scene.mode = scene.mode === 'walk' && scene.food > 0 && scene.x <= minX + WALK_SPEED
           ? 'eat'

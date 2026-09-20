@@ -28,8 +28,10 @@ import { FRAME_MS as RUN_FRAME_MS, initial, lookOf, step, type Game } from './ru
 import { render as renderCourse } from './course.ts'
 import {
   advance,
+  comeHome,
   excrete,
   newScene,
+  runOff,
   setActivity,
   sprinkle,
   startFlush,
@@ -108,6 +110,9 @@ let sayUntil = 0
 let plaza: Pet[] = []
 let talk: Utterance[] = []
 let sessionId = ''
+
+/** 遊びに出ようとして、面の外へ走っている最中か。出切ったところで遊びが始まる。 */
+let goingToRun = false
 
 /** 遊んでいる間の走り。遊んでいなければ null。 */
 let game: Game | null = null
@@ -277,8 +282,18 @@ const start = ($: EngineInterface) => {
     const width = petWidth(columns, PANE_ROWS, pet)
     const wasAway = scene.away
     const flushed = advance(scene, worldOf(), width)
+    // 面の外へ走り切ったら、そこで遊びが始まる。
+    if (goingToRun && scene.mode === 'gone') {
+      goingToRun = false
+      tab = 'run'
+      startRun($)
+      await $.ui.invalidate('ui.render')
+    }
     // 赤ちゃんのうちは家から出さない。ひろばへは育ってから行く。
-    if (stageOf(pet) !== 'baby') travel(scene, worldOf(), width)
+    // 遊びに出ている間もひろばへは行かない。居場所は家か、ひろばか、走る面のどれか 1 つ。
+    if (stageOf(pet) !== 'baby' && !goingToRun && scene.mode !== 'gone') {
+      travel(scene, worldOf(), width)
+    }
     if (scene.away !== wasAway) {
       // 出入りのたびに、ひろばの顔ぶれを取り直して区画を出し入れする。
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
@@ -372,12 +387,28 @@ const startRun = ($: EngineInterface) => {
   })
 }
 
-/** 遊びをやめる。戻した健康はそのまま残る。 */
+/**
+ * 遊びに出かける。面の外まで走ってから遊びが始まるので、ここでは走り出すだけ。
+ * 走っていく姿を見せる間は家の面のまま置く。
+ */
+const leaveForRun = async ($: EngineInterface) => {
+  if (pet === null || columns <= 0) return
+  goingToRun = true
+  tab = 'home'
+  runOff(scene, worldOf(), petWidth(columns, PANE_ROWS, pet))
+  await $.ui.invalidate('ui.render')
+}
+
+/** 遊びをやめる。戻した健康はそのまま残り、本人は面の外から歩いて帰ってくる。 */
 const stopRun = async ($: EngineInterface) => {
   runTicker?.cancel()
   runTicker = null
   game = null
   runCells = ''
+  goingToRun = false
+  if (pet !== null && columns > 0 && scene.mode === 'gone') {
+    comeHome(scene, worldOf(), petWidth(columns, PANE_ROWS, pet))
+  }
   await save($)
 }
 
@@ -508,9 +539,41 @@ export const displayWidth = (text: string) =>
     return w + (WIDE_RANGES.some(([lo, hi]) => code >= lo && code <= hi) ? 2 : 1)
   }, 0)
 
+/**
+ * 面に収まる左余白。右端から溢れた行は端末が折り返し、1 行ぶん増えた高さのぶんだけ
+ * 下の区画がずれる。札も吹き出しも、中身の幅を引いたところで止める。
+ */
+export const fitPad = (at: number, text: string, columns: number) =>
+  Math.max(0, Math.min(at, columns - displayWidth(text)))
+
 /** 札や吹き出しを Claudeっちの真上に置くための左余白。 */
 const labelPad = (text: string, width: number) =>
-  Math.max(0, Math.round((scene.x + width / 2) / 2) - Math.round(displayWidth(text) / 2))
+  fitPad(
+    Math.round((scene.x + width / 2) / 2) - Math.round(displayWidth(text) / 2),
+    text,
+    columns,
+  )
+
+/**
+ * 吹き出しの中身を、面に収まる幅まで切り詰める。
+ * 枠が面より広いと折り返して、下の区画ごと行がずれる。
+ */
+export const clipSay = (say: Say, max: number): Say => {
+  const out: Say = []
+  let left = max
+  for (const part of say) {
+    if (left <= 0) break
+    let text = part.text
+    while (displayWidth(text) > left) text = [...text].slice(0, -1).join('')
+    if (text === '') continue
+    out.push({ ...part, text })
+    left -= displayWidth(text)
+  }
+  return out
+}
+
+/** 吹き出しの中身に許す幅。枠の左右 2 文字と、その内側の余白 2 文字を引く。 */
+const sayRoom = (columns: number) => Math.max(1, columns - 4)
 
 /** ひろばの名前行。renderCrowd と同じ等分で、1 匹ずつの真上に名前を置く。 */
 export const crowdNames = (columns: number, pets: readonly Pet[]) => {
@@ -519,8 +582,10 @@ export const crowdNames = (columns: number, pets: readonly Pet[]) => {
   let line = ''
   pets.forEach((p, i) => {
     const name = p.name ?? 'なまえなし'
-    const at = i * slot + Math.max(0, Math.round((slot - displayWidth(name)) / 2))
-    line += ' '.repeat(Math.max(0, at - displayWidth(line))) + name
+    const at = fitPad(i * slot + Math.max(0, Math.round((slot - displayWidth(name)) / 2)), name, columns)
+    // 前の名前に重なる位置しか残っていなければ、その子の名前は出さない。詰めると真上から外れる。
+    if (at < displayWidth(line)) return
+    line += ' '.repeat(at - displayWidth(line)) + name
   })
   return line
 }
@@ -535,10 +600,10 @@ const chatBubble = (columns: number, crowd: readonly Pet[]): Say[] => {
   if (last === undefined || crowd.length === 0 || Date.now() - last.at > BUBBLE_MS) return blank
   const index = crowd.findIndex((p) => p.id === last.petId)
   if (index < 0) return blank
-  const lines = bubble(last.say)
+  const lines = bubble(clipSay(last.say, sayRoom(columns)))
   const slot = Math.floor(columns / crowd.length)
   const head = lines[0] === undefined ? '' : sayText(lines[0])
-  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(head)) / 2))
+  const at = fitPad(index * slot + Math.max(0, Math.round((slot - displayWidth(head)) / 2)), head, columns)
   return lines.map((line) => [{ text: ' '.repeat(at), color: null }, ...line])
 }
 
@@ -745,7 +810,9 @@ export const register: Register = (on) => {
     const speech =
       scene.away || pet.word === null || sayUntil === 0
         ? []
-        : bubble(pet.word).map((line) => sayRow(line, labelPad(sayText(line), width)))
+        : bubble(clipSay(pet.word, sayRoom(columns))).map((line) =>
+            sayRow(line, labelPad(sayText(line), width)),
+          )
     // 吹き出しの出入りで面の高さが変わると、下の区画ごと描き直しになる。空でも同じ行数を占める。
     const above = [Box({ height: BUBBLE_ROWS - speech.length }), ...speech]
     if (pet.name !== null) {
@@ -830,8 +897,18 @@ export const register: Register = (on) => {
         onPress: async () => {
           if (tab === id) return
           // 走りは見ている間だけ進める。別の面へ移ったらそこで止める。
-          if (id === 'run') startRun($)
-          else if (tab === 'run') await stopRun($)
+          if (tab === 'run') await stopRun($)
+          if (id === 'run') {
+            // 卵はまだ走れない。走り出さずに、その旨だけ出す。
+            if (pet !== null && !isDead(pet) && stageOf(pet) !== 'egg') {
+              await leaveForRun($)
+              return
+            }
+          } else if (goingToRun) {
+            // 走り出した先を見ないなら、出かけるのをやめて家に留まる。
+            goingToRun = false
+            scene.mode = 'idle'
+          }
           tab = id
           cells = ''
           await $.ui.invalidate('ui.render')

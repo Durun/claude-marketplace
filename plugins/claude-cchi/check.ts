@@ -3,6 +3,10 @@
 import assert from 'node:assert/strict'
 import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
 import {
+  clipSay,
+  crowdNames,
+  displayWidth,
+  fitPad,
   freshTalk,
   hasContent,
   markBorrowed,
@@ -35,7 +39,9 @@ import {
 } from './hooks/pet.ts'
 import {
   advance,
+  comeHome,
   newScene,
+  runOff,
   sprinkle,
   startFlush,
   TOKENS_PER_GRAIN,
@@ -306,5 +312,36 @@ const courseCells = renderCourse(columns, rows, run)
 assert.equal(Buffer.from(courseCells, 'base64').length, columns * rows * 3 * 4)
 const other = { ...run, look: { ...look, color: 0x3366ff, eye: (look.eye + 1) % 4 } }
 assert.notEqual(renderCourse(columns, rows, other), courseCells, '目と色が違えば別の子に見える')
+
+// 面の端に立っていても、札と吹き出しは面からはみ出さない。はみ出すと折り返して下の区画がずれる。
+assert.equal(fitPad(60, 'なまえっち', 40), 30, '右端に寄せても中身のぶんは残す')
+assert.equal(fitPad(-4, 'なまえっち', 40), 0, '左端より外には置かない')
+assert.equal(fitPad(3, 'x'.repeat(50), 40), 0, '面より広い中身は端から置く')
+assert.ok(
+  displayWidth(sayText(clipSay([{ text: 'ほんはべんきょう', color: null }], 6))) <= 6,
+  '吹き出しの中身は面の幅まで切り詰める',
+)
+const named = [
+  { ...pet, id: 'a', name: 'ながいなまえっち' },
+  { ...pet, id: 'b', name: 'ながいなまえっち' },
+]
+assert.ok(displayWidth(crowdNames(24, named)) <= 24, 'ひろばの名前行は面からはみ出さない')
+
+// [ あそぶ ] を押すと、面の外まで走ってから遊びが始まる。
+const player = newScene()
+runOff(player, field, 20)
+assert.equal(player.mode, 'dash', '押した直後は走り出す')
+for (let i = 0; i < 200 && player.mode === 'dash'; i += 1) advance(player, field, 20)
+assert.equal(player.mode, 'gone', '面の外まで走り切ると遊びが始まる')
+assert.ok(player.x > field.width, '遊んでいる間は家に居ない')
+assert.equal(player.away, false, '走る面はひろばではない')
+const before = { ...player }
+advance(player, field, 20)
+assert.equal(player.mode, 'gone', '遊んでいる間は家のことをしない')
+assert.equal(player.x, before.x)
+comeHome(player, field, 20)
+assert.equal(player.mode, 'arrive', '遊びをやめると歩いて帰ってくる')
+for (let i = 0; i < 200 && player.mode === 'arrive'; i += 1) advance(player, field, 20)
+assert.ok(player.x <= field.width, '家の中まで戻る')
 
 console.log('ok')
