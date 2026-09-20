@@ -94,7 +94,11 @@ const save = async ($: EngineInterface) => {
   if (!pet) return
   pet = { ...pet, seenAt: Date.now(), away: scene.away }
   await $.store.set(key(sessionId), pet)
-  plaza = [...plaza.filter((p) => p.id !== pet?.id), pet].slice(-PLAZA_LIMIT)
+  // 名前が付くまではひろばに出さない。名前のないまま死んだ子は、お墓のために残す。
+  const keep = (p: Pet) => p.name !== null || isDead(p)
+  plaza = [...plaza.filter((p) => p.id !== pet?.id && keep(p)), ...(keep(pet) ? [pet] : [])].slice(
+    -PLAZA_LIMIT,
+  )
   await $.store.set(PLAZA_KEY, plaza)
 }
 
@@ -118,11 +122,13 @@ const redraw = async ($: EngineInterface) => {
     cells = render(columns, PANE_ROWS, pet, scene, worldOf())
     await $.ui.blit({ requestId, key: SCREEN, cells })
   }
-  await $.ui.blit({
-    requestId,
-    key: CROWD,
-    cells: renderCrowd(columns, CROWD_ROWS, crowdNow(), scene.step),
-  })
+  if (tab === 'plaza' || scene.away) {
+    await $.ui.blit({
+      requestId,
+      key: CROWD,
+      cells: renderCrowd(columns, CROWD_ROWS, crowdNow(), scene.step),
+    })
+  }
 }
 
 const start = ($: EngineInterface) => {
@@ -525,7 +531,7 @@ export const register: Register = (on) => {
           flexDirection: 'row',
           gap: 1,
           children: [
-            tabButton('home', 'Claudeっち'),
+            tabButton('home', 'おうち'),
             Text({ children: '|' }),
             tabButton('plaza', 'ひろば'),
           ],
@@ -542,15 +548,20 @@ export const register: Register = (on) => {
         ...(tab === 'home'
           ? [rule(), ...above, Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells })]
           : []),
-        rule(),
-        Text({ children: crowdNames(columns, crowd) }),
-        Raster({
-          key: CROWD,
-          columns,
-          rows: CROWD_ROWS,
-          cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
-        }),
-        Text({ children: crowd.length === 0 ? 'ひろば  まだ誰もいない。' : 'ひろば' }),
+        // おうちを見ていて本人も家に居るなら、ひろばは出さない。遊びに行った先は見える。
+        ...(tab === 'home' && !scene.away
+          ? []
+          : [
+              rule(),
+              Text({ children: crowdNames(columns, crowd) }),
+              Raster({
+                key: CROWD,
+                columns,
+                rows: CROWD_ROWS,
+                cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
+              }),
+              Text({ children: crowd.length === 0 ? 'ひろば  まだ誰もいない。' : 'ひろば' }),
+            ]),
         rule(),
       ],
     })
