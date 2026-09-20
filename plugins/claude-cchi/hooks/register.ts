@@ -27,6 +27,7 @@ import {
   advance,
   excrete,
   newScene,
+  setActivity,
   sprinkle,
   startFlush,
   travel,
@@ -71,6 +72,12 @@ const SAY_FRAMES = 60
 
 /** ウンチが 1 つ出るまでのコマ数。溜まった分を少しずつ出す。 */
 const POOP_INTERVAL = 12
+
+/** 独り言の間隔。貯めたことばから選ぶだけなので、モデルは呼ばない。 */
+const MUTTER_EVERY = 240
+
+/** 走っている道具の数。1 つでも待っていれば、Claudeっちは手持ち無沙汰になる。 */
+let running = 0
 
 let pet: Pet | null = null
 let scene: Scene = newScene()
@@ -223,6 +230,22 @@ const start = ($: EngineInterface) => {
       await $.ui.invalidate('ui.render')
     } else if (chat !== null && scene.step - chat.startedAt === CHAT_LINE_FRAMES) {
       await $.ui.invalidate('ui.render')
+    }
+    // 貯めたことばから独り言を言う。寝ている間と、ひろばで立ち話をしている間は黙っている。
+    if (
+      sayUntil === 0 &&
+      !scene.away &&
+      scene.mode !== 'sleep' &&
+      scene.mode !== 'doze' &&
+      scene.step % MUTTER_EVERY === 0
+    ) {
+      const say = pick(wordsOf(pet))
+      const word = say === undefined ? null : wordFor(stageOf(pet), say)
+      if (word !== null) {
+        pet = { ...pet, word }
+        sayUntil = scene.step + SAY_FRAMES
+        await $.ui.invalidate('ui.render')
+      }
     }
     if (sayUntil > 0 && scene.step >= sayUntil) {
       sayUntil = 0
@@ -429,8 +452,26 @@ export const register: Register = (on) => {
     return { text: pet ? statusLine(pet) : 'まだ卵もない。' }
   })
 
+  // Claude が考えている間は勉強し、道具の返事を待つ間はウトウトして寝入る。
+  on('turn.start', async ($, e, next) => {
+    setActivity(scene, 'think')
+    return next(e)
+  })
+
+  on('tool.call', async ($, e, next) => {
+    running += 1
+    setActivity(scene, 'wait')
+    try {
+      return await next(e)
+    } finally {
+      running -= 1
+      if (running <= 0) setActivity(scene, 'think')
+    }
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    if (e.agentId === undefined) setActivity(scene, 'free')
     // サブエージェントのターンは飼い主との会話ではないので数えない。
     if (!pet || e.agentId !== undefined || e.usage === undefined) return result
 

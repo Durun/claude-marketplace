@@ -26,7 +26,32 @@ const HOME_FRAMES = 600
 /** ひろばで遊んでいるコマ数。 */
 const VISIT_FRAMES = 250
 
-export type Mode = 'idle' | 'walk' | 'eat' | 'poop' | 'leave' | 'arrive'
+export type Mode =
+  | 'idle'
+  | 'walk'
+  | 'eat'
+  | 'poop'
+  | 'leave'
+  | 'arrive'
+  | 'study'
+  | 'doze'
+  | 'sleep'
+  | 'wake'
+
+/**
+ * 飼い主の側で何が起きているか。Claudeっちの手持ち無沙汰の埋め方がこれで変わる。
+ * think は Claude が考えている間、wait は道具の返事を待っている間。
+ */
+export type Activity = 'free' | 'think' | 'wait'
+
+/** 待ち始めてからウトウトするまでのコマ数。短い道具では眠らない。 */
+const DOZE_AFTER = 45
+
+/** ウトウトから寝入るまでのコマ数。 */
+const SLEEP_AFTER = 120
+
+/** ハッと起きてから普段に戻るまでのコマ数。 */
+const WAKE_FRAMES = 14
 
 export type Grain = { x: number; y: number }
 
@@ -58,6 +83,10 @@ export type Scene = {
   away: boolean
   /** 次に出かける、または帰るコマ。 */
   tripAt: number
+  /** 飼い主の側の様子。 */
+  activity: Activity
+  /** その様子になったコマ。ウトウトと寝入りの頃合いをここから数える。 */
+  activitySince: number
 }
 
 export const newScene = (): Scene => ({
@@ -73,7 +102,25 @@ export const newScene = (): Scene => ({
   flushing: false,
   away: false,
   tripAt: HOME_FRAMES,
+  activity: 'free',
+  activitySince: 0,
 })
+
+/** 眠っているか。眠っている間は餌も独り言も止める。 */
+const asleep = (scene: Scene) => scene.mode === 'doze' || scene.mode === 'sleep'
+
+/**
+ * 飼い主の側の様子を伝える。寝ている最中に動きが戻ったら、ハッと目を覚ます。
+ */
+export const setActivity = (scene: Scene, activity: Activity) => {
+  if (scene.activity === activity) return
+  const wasAsleep = asleep(scene)
+  scene.activity = activity
+  scene.activitySince = scene.step
+  if (!wasAsleep) return
+  scene.mode = 'wake'
+  scene.until = scene.step + WAKE_FRAMES
+}
 
 /** Claudeっちが立てる左端。トイレは右端に据え置く。 */
 export const PET_MIN_X = 2
@@ -154,6 +201,19 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
 
   const { min: minX, max: maxX } = range(world, petWidth)
   switch (scene.mode) {
+    case 'wake':
+      if (scene.step >= scene.until) scene.mode = 'idle'
+      break
+    case 'study':
+    case 'doze':
+    case 'sleep':
+      // 餌が降ったか、飼い主の手が空いたら中断して普段に戻る。
+      if (scene.food > 0 || scene.activity === 'free') scene.mode = 'idle'
+      // 待ちが長引くほど深く眠る。
+      else if (scene.activity === 'wait' && scene.step - scene.activitySince > SLEEP_AFTER) {
+        scene.mode = 'sleep'
+      }
+      break
     case 'poop':
       if (scene.step >= scene.until) scene.mode = 'idle'
       break
@@ -186,6 +246,10 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
       if (scene.food > 0) {
         scene.mode = 'walk'
         scene.target = minX
+      } else if (scene.activity === 'wait' && scene.step - scene.activitySince > DOZE_AFTER) {
+        scene.mode = scene.step - scene.activitySince > SLEEP_AFTER ? 'sleep' : 'doze'
+      } else if (scene.activity === 'think') {
+        scene.mode = 'study'
       } else if (scene.step % 40 === 0) {
         scene.mode = 'walk'
         scene.target = even(minX + Math.random() * (maxX - minX))

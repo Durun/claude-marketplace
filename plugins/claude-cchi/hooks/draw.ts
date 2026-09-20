@@ -204,12 +204,23 @@ const drawEye = (
   gaze: readonly [number, number],
   /** 顔の外側へ向く向き。左目は -1、右目は 1。 */
   outward: 1 | -1,
+  /** 体の色。閉じた目は、元の絵の切れ込みをこの色で埋める。 */
+  body: number,
+  /** まぶたを半分下ろす。ウトウトしている間だけ。 */
+  lidded: boolean,
 ) => {
+  const thin = Math.max(1, Math.floor(sy / 2))
+  // 閉じた目は下線だけ。元の絵は目の位置が 1 列の切れ込みなので、そこは体の色で埋める。
+  if (blink) {
+    rect(c, x, y, sx, sy, body)
+    rect(c, x, y + sy, sx * 2, thin, INK)
+    return
+  }
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
-  if (blink || eye === 3 || sx < 2 || sy < 2) {
-    // 元の絵は目の位置が 1 列の切れ込みになっている。点だけ描くとそこが透ける。
+  if (eye === 3 || sx < 2 || sy < 2) {
+    // 点だけ描くと、元の絵の切れ込みが透ける。
     rect(c, x, y, sx, sy, INK)
-    rect(c, x, y + sy, sx * 2, Math.max(1, Math.floor(sy / 2)), INK)
+    rect(c, x, y + sy, sx * 2, thin, INK)
     return
   }
   // 白目は元の絵の切れ込みをちょうど埋める大きさに取る。ここを削ると顔に穴が空く。
@@ -225,10 +236,12 @@ const drawEye = (
 
   // まぶたは白目の外へ引く。白目の中に黒を足すと、目を怪我しているように見える。
   if (eye === 1 || eye === 2) {
-    const lid = Math.max(1, Math.floor(sy / 2))
     const at = outward === 1 ? x + sx : x
-    rect(c, at, eye === 1 ? y + h : y - lid, sx, lid, INK)
+    rect(c, at, eye === 1 ? y + h : y - thin, sx, thin, INK)
   }
+
+  // ウトウトしている間は、白目の上半分を描かない。まぶたを黒く塗ると細目ではなく怒り顔になる。
+  if (lidded) rect(c, x, y, w, Math.ceil(h / 2), body)
 }
 
 /** 考えている間の印の色。 */
@@ -294,6 +307,39 @@ const drawToilet = (c: Canvas, x: number, ground: number, swirl: number | null) 
     }
   }
   rect(c, left + 2, ground - 2, 6, 1, PORCELAIN)
+}
+
+/** 眠っている間に浮かぶ「z」。1 文字ぶんの画素で持つ。 */
+const Z_ART = ['###', '..#', '.#.', '#..', '###'] as const
+
+const SLEEP_MARK = 0x9aa4b8
+
+/**
+ * 顔の横へ z を斜めに流す。体が面の高さいっぱいなので、頭の上には置けない。
+ * 深く眠っているほど数が増える。
+ */
+const drawSleepMarks = (c: Canvas, x: number, top: number, frame: number, count: number) => {
+  for (let i = 0; i < count; i += 1) {
+    const phase = (Math.floor(frame / 8) + i) % 3
+    Z_ART.forEach((row, ry) => {
+      for (let rx = 0; rx < row.length; rx += 1) {
+        if (row[rx] !== '#') continue
+        put(c, x + phase * 4 + rx, top + 3 - phase * 2 + ry, SLEEP_MARK)
+      }
+    })
+  }
+}
+
+const BOOK = 0x4a6fa5
+const PAGE = 0xf0ece0
+
+/** 読んでいる本。体の正面に重ねて、抱えているように置く。 */
+const drawBook = (c: Canvas, x: number, y: number, scale: number) => {
+  const w = scale * 4
+  const h = scale * 3
+  rect(c, x, y, w * 2 + scale, h, BOOK)
+  rect(c, x, y, w, h - scale, PAGE)
+  rect(c, x + w + scale, y, w, h - scale, PAGE)
 }
 
 const drawPoop = (c: Canvas, x: number, ground: number) => {
@@ -365,6 +411,14 @@ type Pose = {
   walking: boolean
   chewing: boolean
   crouching: boolean
+  /** 目を閉じている。ウトウトと熟睡で共通。 */
+  sleeping?: boolean
+  /** 熟睡している。ウトウトより z が増える。 */
+  deep?: boolean
+  /** 本を読んでいる。目線が下を向く。 */
+  studying?: boolean
+  /** ハッと目が覚めた。頭の横に印が出る。 */
+  startled?: boolean
 }
 
 /** Claudeっち 1 匹。家でもひろばでもこれで描く。 */
@@ -393,12 +447,13 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
   rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
   rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
 
-  const gaze = gazeAt(frame)
+  // 熟睡している間は目を閉じ、本を読んでいる間は目線が下を向く。
+  const gaze = pose.deep ? ([0, 0] as const) : pose.studying ? ([0, 1] as const) : gazeAt(frame)
   EYE_COL.forEach((col, i) => {
-    const blink = frame % 90 >= 87
+    const blink = pose.deep === true || frame % 90 >= 87
     const outward = i === 0 ? -1 : 1
     const at = top + EYE_ROW * sy
-    drawEye(c, left + col * sx, at, sx, sy, traits.eye, blink, gaze, outward)
+    drawEye(c, left + col * sx, at, sx, sy, traits.eye, blink, gaze, outward, traits.color, pose.sleeping === true)
   })
 
   // 食べている間は口を開け閉めする。
@@ -421,6 +476,19 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
     for (const col of EYE_COL) {
       rect(c, left + col * sx, top + EYE_ROW * sy - thin, sx * 2, thin, HAIR)
     }
+  }
+
+  // 漫符は顔の際に出す。体が面の高さいっぱいなので、頭の上には置けない。
+  if (pose.sleeping === true) {
+    drawSleepMarks(c, left + ART_WIDTH * sx - sx * 2, top, frame, pose.deep === true ? 3 : 1)
+  }
+  if (pose.startled === true) {
+    drawSpark(c, left + ART_WIDTH * sx, top + 3, 1, frame)
+  }
+  // 本は手元。体に重ね、顔が隠れない高さに持つ。
+  if (pose.studying === true) {
+    const scale = Math.max(1, sx - 1)
+    drawBook(c, left + ART_WIDTH * sx - scale * 11, top + MOUTH_ROW * sy, scale)
   }
 }
 
@@ -465,6 +533,10 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
     walking: scene.mode === 'walk' || scene.mode === 'leave' || scene.mode === 'arrive',
     chewing: scene.mode === 'eat',
     crouching: scene.mode === 'poop',
+    sleeping: scene.mode === 'doze' || scene.mode === 'sleep',
+    deep: scene.mode === 'sleep',
+    studying: scene.mode === 'study',
+    startled: scene.mode === 'wake',
   })
 
   bowlOnTop()

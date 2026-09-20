@@ -2,15 +2,15 @@
 // cells は Raster へ渡すのと同じ文字列を、そのまま ANSI に戻して描く。
 
 import { render } from './hooks/draw.ts'
-import { newScene } from './hooks/scene.ts'
+import { newScene, type Mode } from './hooks/scene.ts'
 import { feed, newPet, stageOf, STAGE_LABEL, traitsOf, type Pet } from './hooks/pet.ts'
 
 const COLUMNS = 44
 const ROWS = 12
 const WORLD = { width: COLUMNS * 2, ground: ROWS * 2 - 3 }
 
-const show = (pet: Pet, label: string) => {
-  const cells = render(COLUMNS, ROWS, pet, newScene(), WORLD)
+const show = (pet: Pet, label: string, mode: Mode = 'idle') => {
+  const cells = render(COLUMNS, ROWS, pet, { ...newScene(), mode, step: 6 }, WORLD)
   const words = new Uint32Array(Buffer.from(cells, 'base64').buffer.slice(0))
   const color = (v: number, layer: 38 | 48) =>
     v === 0x01000000
@@ -46,3 +46,13 @@ for (const percent of [3, 12, 22, 32, 42]) {
   growing = feed(growing, 60_000, 0, percent, new Date())
   show(growing, `${STAGE_LABEL[stageOf(growing)]}  使用率 ${percent}%`)
 }
+
+// 手持ち無沙汰のときのふるまい。勉強・ウトウト・熟睡・ハッと起きる。
+const MODE_LABEL: Record<string, string> = {
+  study: '勉強する',
+  doze: 'ウトウトする',
+  sleep: '寝る',
+  wake: 'ハッと目が覚める',
+}
+const idler = feed(newPet('idle', '/w', new Date(2026, 0, 1)), 60_000, 0, 22, new Date())
+for (const [mode, label] of Object.entries(MODE_LABEL)) show(idler, label, mode as Mode)
