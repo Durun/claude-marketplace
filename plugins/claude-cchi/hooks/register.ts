@@ -3,6 +3,7 @@ import { CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.t
 import {
   feed,
   flush,
+  inPlaza,
   isDead,
   newPet,
   poopCount,
@@ -23,6 +24,7 @@ import {
   newScene,
   sprinkle,
   startFlush,
+  travel,
   type Scene,
   type World,
 } from './scene.ts'
@@ -55,6 +57,9 @@ const BOARD_LIMIT = 40
 /** 1 度に聞き取れる数。5 歳児なので、たくさんは覚えられない。 */
 const HEAR_AT_ONCE = 2
 
+/** 心拍を打つ間隔。これが途切れるとひろばで待つ扱いになる。 */
+const HEARTBEAT_FRAMES = 100
+
 /** ひとことを言う間隔。毎ターン喋ると会話の邪魔になる。 */
 const TALK_EVERY = 3
 
@@ -82,10 +87,14 @@ const worldOf = (): World => ({ width: columns * 2, ground: PANE_ROWS * 2 - 3 })
 
 const save = async ($: EngineInterface) => {
   if (!pet) return
+  pet = { ...pet, seenAt: Date.now(), away: scene.away }
   await $.store.set(key(sessionId), pet)
   plaza = [...plaza.filter((p) => p.id !== pet?.id), pet].slice(-PLAZA_LIMIT)
   await $.store.set(PLAZA_KEY, plaza)
 }
+
+/** ひろばに居る Claudeっち。止まったセッションの子と、遊びに来ている子。 */
+const crowdNow = () => plaza.filter((p) => inPlaza(p, Date.now())).slice(-CROWD_LIMIT)
 
 /** 掲示板を読み直す。他のセッションの Claudeっちが書き足しているので、都度取り直す。 */
 const loadBoard = async ($: EngineInterface) => {
@@ -102,6 +111,13 @@ const redraw = async ($: EngineInterface) => {
   if (!pet || requestId === '' || columns <= 0) return
   cells = render(columns, PANE_ROWS, pet, scene, worldOf())
   await $.ui.blit({ requestId, key: SCREEN, cells })
+  if (scene.away) {
+    await $.ui.blit({
+      requestId,
+      key: CROWD,
+      cells: renderCrowd(columns, CROWD_ROWS, crowdNow(), scene.step),
+    })
+  }
 }
 
 const start = ($: EngineInterface) => {
@@ -111,6 +127,13 @@ const start = ($: EngineInterface) => {
     if (!pet || columns <= 0 || isDead(pet)) return
     const width = petWidth(columns, PANE_ROWS, pet)
     const flushed = advance(scene, worldOf(), width)
+    if (travel(scene)) {
+      // 出入りのたびに、ひろばの顔ぶれを取り直して家の下の区画を出し入れする。
+      plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
+      await save($)
+      await $.ui.invalidate('ui.render')
+    }
+    if (scene.step % HEARTBEAT_FRAMES === 0) await save($)
     // 溜まった分は一度に出さず、1 つずつしゃがんで出す。
     if (!scene.flushing && scene.poops.length < poopCount(pet) && scene.step % POOP_INTERVAL === 0) {
       excrete(scene)
@@ -334,7 +357,7 @@ export const register: Register = (on) => {
     if (e.requestId === PLAZA_PANE || e.requestId === GRAVE_PANE) {
       const { Box, Text } = await $.ui.resolve(e)
       const grave = e.requestId === GRAVE_PANE
-      const here = plaza.filter((p) => isDead(p) === grave)
+      const here = grave ? plaza.filter(isDead) : crowdNow()
       if (here.length === 0) {
         return Box({ children: [Text({ children: grave ? 'まだ誰も眠っていない。' : 'まだ誰もいない。' })] })
       }
@@ -413,7 +436,11 @@ export const register: Register = (on) => {
     }
 
     const width = petWidth(columns, PANE_ROWS, pet)
+    // ひろばへ行っている間、頭上の札は家に居ないので出さない。
     const above =
+      scene.away
+        ? []
+        :
       pet.word !== null && sayUntil > 0
         ? bubble(pet.word).map((line) =>
             Box({ paddingLeft: labelPad(line, width), children: [Text({ children: line })] }),
@@ -425,12 +452,28 @@ export const register: Register = (on) => {
       )
     }
 
+    // 出かけている間だけ、家の下を区切ってひろばを出す。
+    const crowd = crowdNow()
+    const visiting = scene.away
+      ? [
+          Text({ children: `${'\u2500'.repeat(Math.max(4, columns - 2))}` }),
+          Raster({
+            key: CROWD,
+            columns,
+            rows: CROWD_ROWS,
+            cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
+          }),
+          Text({ children: `ひろば  ${crowd.map((p) => p.name ?? 'なまえなし').join('  ')}` }),
+        ]
+      : []
+
     const dirty = poopCount(pet)
     return Box({
       flexDirection: 'column',
       children: [
         ...above,
         Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells }),
+        ...visiting,
         Text({ children: statusLine(pet) }),
         Box({
           flexDirection: 'row',

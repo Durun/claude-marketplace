@@ -16,6 +16,12 @@ const CHEW_FRAMES = 3
 /** 歩く速さ。1 コマあたりの画素。 */
 const WALK_SPEED = 1
 
+/** 家で過ごすコマ数。これを過ぎるとひろばへ遊びに行く。 */
+const HOME_FRAMES = 600
+
+/** ひろばで遊んでいるコマ数。 */
+const VISIT_FRAMES = 250
+
 export type Mode = 'idle' | 'walk' | 'eat' | 'poop'
 
 export type Grain = { x: number; y: number }
@@ -44,6 +50,10 @@ export type Scene = {
   poops: number[]
   /** トイレへ流している最中か。 */
   flushing: boolean
+  /** ひろばへ遊びに行っているか。家とひろばのどちらかにしか居ない。 */
+  away: boolean
+  /** 次に出かける、または帰るコマ。 */
+  tripAt: number
 }
 
 export const newScene = (): Scene => ({
@@ -57,6 +67,8 @@ export const newScene = (): Scene => ({
   falling: [],
   poops: [],
   flushing: false,
+  away: false,
+  tripAt: HOME_FRAMES,
 })
 
 /** 器は左端、トイレは右端に据え置く。 */
@@ -88,6 +100,14 @@ export const startFlush = (scene: Scene) => {
   if (scene.poops.length > 0) scene.flushing = true
 }
 
+/** 家とひろばを行き来する頃合いなら入れ替える。入れ替えたら true を返す。 */
+export const travel = (scene: Scene) => {
+  if (scene.step < scene.tripAt) return false
+  scene.away = !scene.away
+  scene.tripAt = scene.step + (scene.away ? VISIT_FRAMES : HOME_FRAMES)
+  return true
+}
+
 /** 1 コマ進める。流し終えたら true を返し、呼び手が溜まりを 0 に戻す。 */
 export const advance = (scene: Scene, world: World, petWidth: number) => {
   scene.step += 1
@@ -110,6 +130,9 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
     }
     return false
   }
+
+  // ひろばに居る間は家のことをしない。餌だけは器に降り続ける。
+  if (scene.away) return false
 
   const { min: minX, max: maxX } = range(world, petWidth)
   switch (scene.mode) {

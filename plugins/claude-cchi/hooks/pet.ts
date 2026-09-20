@@ -48,6 +48,10 @@ export type Pet = {
   knowledge: Fact[]
   /** ひろばの掲示板をどこまで聞いたか。 */
   heardAt: number
+  /** 飼い主のセッションが最後に動いていた時刻。止まった判定に使う。 */
+  seenAt: number
+  /** いまひろばへ遊びに行っているか。 */
+  away: boolean
   cwd: string
 }
 
@@ -72,8 +76,20 @@ export const newPet = (sessionId: string, cwd: string, now: Date, generation = 0
   word: null,
   knowledge: [],
   heardAt: 0,
+  seenAt: now.getTime(),
+  away: false,
   cwd,
 })
+
+/** この間ぶん心拍が途切れたら、そのセッションは止まったとみなす。 */
+export const STALE_MS = 3 * 60 * 1000
+
+/**
+ * ひろばに居るか。Claudeっちは家かひろばのどちらかにしか居ない。
+ * 止まったセッションの子はずっとひろばで待っている。
+ */
+export const inPlaza = (pet: Pet, now: number) =>
+  !isDead(pet) && (pet.away || now - pet.seenAt > STALE_MS)
 
 /** 覚えていられる数。これを超えると古いものから忘れる。 */
 export const MAX_FACTS = 12

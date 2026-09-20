@@ -9,14 +9,23 @@ import {
   newPet,
   OUTPUT_PER_POOP,
   poopCount,
+  inPlaza,
   MAX_FACTS,
   rebirth,
   remember,
   stageOf,
+  STALE_MS,
   traitsOf,
   wordFor,
 } from './hooks/pet.ts'
-import { advance, newScene, sprinkle, startFlush, TOKENS_PER_GRAIN } from './hooks/scene.ts'
+import {
+  advance,
+  newScene,
+  sprinkle,
+  startFlush,
+  TOKENS_PER_GRAIN,
+  travel,
+} from './hooks/scene.ts'
 
 const born = new Date('2026-09-18T00:00:00Z')
 let pet = newPet('session-1', '/tmp/work', born)
@@ -116,5 +125,31 @@ for (let i = 0; i < MAX_FACTS + 3; i += 1) {
 }
 assert.equal(learner.knowledge.length, MAX_FACTS)
 assert.equal(learner.knowledge.some((f) => f.subject === 'くるま'), false, '古いものから忘れる')
+
+// 家とひろばのどちらかにしか居ない。止まったセッションの子はずっとひろば。
+const now = Date.now()
+const living = { ...newPet('s', '/w', born), health: 100, input: 1, seenAt: now }
+assert.equal(inPlaza(living, now), false, '動いているセッションの子は家に居る')
+assert.equal(inPlaza({ ...living, away: true }, now), true, '遊びに行っている間はひろば')
+assert.equal(inPlaza({ ...living, seenAt: now - STALE_MS - 1 }, now), true, '止まった子はひろば')
+assert.equal(inPlaza({ ...living, health: 0 }, now), false, '死んだ子はひろばに居ない')
+
+// 頃合いが来たら出かけ、また帰ってくる。
+const traveller = newScene()
+assert.equal(traveller.away, false)
+traveller.step = traveller.tripAt
+assert.equal(travel(traveller), true)
+assert.equal(traveller.away, true, '頃合いでひろばへ出かける')
+traveller.step = traveller.tripAt
+assert.equal(travel(traveller), true)
+assert.equal(traveller.away, false, 'また家へ帰る')
+
+// 出かけている間、家の絵に本人は居ない。
+const home = render(columns, rows, pet, newScene(), { width: columns * 2, ground: rows * 2 - 3 })
+const empty = render(columns, rows, pet, { ...newScene(), away: true }, {
+  width: columns * 2,
+  ground: rows * 2 - 3,
+})
+assert.notEqual(home, empty, '家から本人が消える')
 
 console.log('ok')

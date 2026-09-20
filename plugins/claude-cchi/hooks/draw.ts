@@ -343,6 +343,9 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
     return encode(c, columns, rows)
   }
 
+  // ひろばへ遊びに行っている間、家には本人が居ない。
+  if (scene.away) return encode(c, columns, rows)
+
   // 歩いている間は足を交互に出し、ウンチの間はしゃがむ。
   const thin = Math.max(1, Math.floor(sy / 2))
   const swing = scene.mode === 'walk' && Math.floor(scene.step / 3) % 2 === 0 ? sx : 0
@@ -405,7 +408,9 @@ export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[],
     const sy = scale
     const left = i * slot + Math.round((slot - ART_WIDTH * scale) / 2)
     // 1 匹ずつ違う調子で呼吸させる。並んでも同じ動きに見えない。
-    const top = groundY - ART_HEIGHT * sy + Math.round(Math.sin((frame + i * 7) / 6))
+    // 浮く向きだけに寄せると、足が地面へめり込まない。
+    const bob = Math.min(0, Math.round(Math.sin((frame + i * 7) / 6)))
+    const top = groundY - ART_HEIGHT * sy - 1 + bob
     for (let row = 0; row < ART_HEIGHT; row += 1) {
       for (let col = 0; col < ART_WIDTH; col += 1) {
         if (ART[row]?.[col] !== '#') continue
