@@ -34,8 +34,8 @@ const PANE = 'claude-cchi'
 const GRAVE_PANE = 'claude-cchi-ohaka'
 const CROWD = 'crowd'
 
-/** ひろばの絵の高さ。1 匹ずつは小さいので低くてよい。 */
-const CROWD_ROWS = 7
+/** ひろばの絵の高さ。 */
+const CROWD_ROWS = 11
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
 

@@ -142,13 +142,19 @@ const GRASS = 0x3f6b3a
 const SOIL = 0x4a3b2a
 const HAIR = 0xe8e8e8
 
+/** 顔に縦の影が差す健康。 */
+const GLOOM_BELOW = 50
+
+/** 具合の悪いときに差す影。 */
+const GLOOM = 0x3a3a44
+
 /**
  * 拡大率を縦横に分ける。ほそながいは縦、ずんぐりは横へ 1 段伸ばす。
  * 伸ばした先が面に入らないときは、面に入るところまで戻す。
  */
 const stretch = (columns: number, rows: number, stage: Stage, body: number) => {
   const base = SCALE[stage]
-  const roomX = Math.max(1, Math.floor(columns / ART_WIDTH))
+  const roomX = Math.max(1, Math.floor((columns * 2) / ART_WIDTH))
   const roomY = Math.max(1, Math.floor((rows * 2 - 4) / ART_HEIGHT))
   return {
     sx: Math.min(base + (body === 2 ? 1 : 0), roomX),
@@ -185,6 +191,9 @@ const drawEye = (
   eye: number,
   blink: boolean,
   gaze: readonly [number, number],
+  skin: number,
+  /** 顔の外側へ向く向き。左目は -1、右目は 1。目尻を削る側を決める。 */
+  outward: 1 | -1,
 ) => {
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
   if (blink || eye === 3 || sx < 2 || sy < 2) {
@@ -193,7 +202,12 @@ const drawEye = (
   }
   const h = sy + Math.floor(sy / 2)
   rect(c, x, y, sx * 2, h, EYE_WHITE)
-  // 瞳の位置で表情を変える。0 まる 1 たれ 2 つり。
+  // 目尻を斜めに削って表情を出す。たれ目は上を、つり目は下を落とす。
+  if (eye === 1 || eye === 2) {
+    const corner = outward === 1 ? x + sx : x
+    rect(c, corner, eye === 1 ? y : y + h - 1, sx, 1, skin)
+  }
+  // 瞳の高さも表情に合わせる。0 まる 1 たれ 2 つり。
   const base = eye === 1 ? y + h - sy : eye === 2 ? y : y + Math.floor((h - sy) / 2)
   const px = x + Math.floor(sx / 2) + gaze[0] * Math.max(1, Math.floor(sx / 2))
   const py = Math.max(y, Math.min(y + h - sy, base + gaze[1]))
@@ -346,11 +360,15 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
   const swing = pose.walking && Math.floor(frame / 3) % 2 === 0 ? sx : 0
   const top = pose.ground - ART_HEIGHT * sy - 1 + (pose.crouching ? thin : 0)
 
+  // 具合が悪いと顔に縦の影が差し、口がへの字になる。体の色そのものは変えない。
+  const gloomy = pet.health < GLOOM_BELOW
+
   for (let row = 0; row < ART_HEIGHT; row += 1) {
     for (let col = 0; col < ART_WIDTH; col += 1) {
       if (ART[row]?.[col] !== '#') continue
       const shift = row === ART_HEIGHT - 1 ? (col < ART_WIDTH / 2 ? swing : -swing) : 0
-      rect(c, left + col * sx + shift, top + row * sy, sx, sy, traits.color)
+      const shade = gloomy && row < ART_HEIGHT - 1 && col % 3 === 1 ? GLOOM : traits.color
+      rect(c, left + col * sx + shift, top + row * sy, sx, sy, shade)
     }
   }
 
@@ -358,14 +376,24 @@ const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
   rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
 
   const gaze = gazeAt(frame)
-  for (const col of EYE_COL) {
-    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, frame % 90 >= 87, gaze)
-  }
+  EYE_COL.forEach((col, i) => {
+    const blink = frame % 90 >= 87
+    const outward = i === 0 ? -1 : 1
+    const at = top + EYE_ROW * sy
+    drawEye(c, left + col * sx, at, sx, sy, traits.eye, blink, gaze, traits.color, outward)
+  })
 
   // 食べている間は口を開け閉めする。
   const chewing = pose.chewing && Math.floor(frame / 2) % 2 === 0
   const mouthY = top + MOUTH_ROW * sy
-  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, chewing ? sy : thin, INK)
+  if (gloomy && !chewing) {
+    // への字。両端を 1 段持ち上げる。
+    rect(c, left + MOUTH_COL * sx, mouthY - thin, sx, thin, INK)
+    rect(c, left + (MOUTH_COL + 1) * sx, mouthY, sx, thin, INK)
+    rect(c, left + (MOUTH_COL + 2) * sx, mouthY - thin, sx, thin, INK)
+  } else {
+    rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, chewing ? sy : thin, INK)
+  }
 
   // 口ひげは口の真上。おじいさんは白くなり、眉も生える。
   if (stage === 'ojisan' || stage === 'ojiisan') {
@@ -446,7 +474,11 @@ export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[],
   if (shown.length === 0) return encode(c, columns, rows)
 
   const slot = Math.floor(c.width / shown.length)
-  const scale = Math.max(1, Math.min(2, Math.floor((slot - 4) / ART_WIDTH)))
+  // 並ぶ幅と面の高さの、狭い方に合わせる。
+  const scale = Math.max(
+    1,
+    Math.min(Math.floor((slot - 4) / ART_WIDTH), Math.floor((rows * 2 - 4) / ART_HEIGHT)),
+  )
   shown.forEach((pet, i) => {
     // 1 匹ずつ違う調子で呼吸させる。並んでも同じ動きに見えない。
     // 浮く向きだけに寄せると、足が地面へめり込まない。

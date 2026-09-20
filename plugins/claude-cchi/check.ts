@@ -80,6 +80,8 @@ assert.equal(scene.falling.length, 8, '入力トークンが粒になって降�
 for (let i = 0; i < 200 && scene.mode !== 'eat'; i += 1) advance(scene, world, width)
 assert.equal(scene.mode, 'eat', '器まで歩いて食べ始める')
 assert.ok(scene.x < world.width / 2, '器のある左側に立っている')
+// 降りきってから数える。落ちてくる粒の方が多いと、食べていても器は増える。
+for (let i = 0; i < 100 && scene.falling.length > 0; i += 1) advance(scene, world, width)
 const beforeChew = scene.food
 for (let i = 0; i < 10; i += 1) advance(scene, world, width)
 assert.ok(scene.food < beforeChew, '食べると器の粒が減る')
@@ -162,6 +164,12 @@ for (let i = 0; i < 40; i += 1) {
   advance(walker, field, 20)
   assert.equal(walker.x % 2, 0, '歩く位置は偶数の画素に乗る')
 }
+
+// 健康が減ると顔に影が差す。体の色そのものは変わらない。
+const wellField = { width: columns * 2, ground: rows * 2 - 3 }
+const faceOf = (health: number) => render(columns, rows, { ...pet, health }, newScene(), wellField)
+assert.equal(faceOf(100), faceOf(60), '健康があるうちは見た目が変わらない')
+assert.notEqual(faceOf(60), faceOf(20), '健康が減ると顔に影が差して口がへの字になる')
 
 // 出かけている間、家の絵に本人は居ない。
 const home = render(columns, rows, pet, newScene(), { width: columns * 2, ground: rows * 2 - 3 })
