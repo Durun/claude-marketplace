@@ -134,15 +134,34 @@ assert.equal(inPlaza({ ...living, away: true }, now), true, '遊びに行って�
 assert.equal(inPlaza({ ...living, seenAt: now - STALE_MS - 1 }, now), true, '止まった子はひろば')
 assert.equal(inPlaza({ ...living, health: 0 }, now), false, '死んだ子はひろばに居ない')
 
-// 頃合いが来たら出かけ、また帰ってくる。
+// 頃合いが来たら歩いて画面の外へ出かけ、また画面の外から帰ってくる。
+const field = { width: columns * 2, ground: rows * 2 - 3 }
 const traveller = newScene()
+const walk = (scene: typeof traveller) => {
+  for (let i = 0; i < field.width * 2; i += 1) advance(scene, field, 20)
+}
+traveller.step = traveller.tripAt
+travel(traveller, field, 20)
+assert.equal(traveller.mode, 'leave', '頃合いで出口へ歩き出す')
+assert.equal(traveller.away, false, '歩いている間はまだ家に居る')
+walk(traveller)
+assert.equal(traveller.away, true, '画面の外へ抜けたらひろばに移る')
+traveller.step = traveller.tripAt
+travel(traveller, field, 20)
+assert.equal(traveller.mode, 'arrive', '帰りは画面の外から歩いて入る')
 assert.equal(traveller.away, false)
-traveller.step = traveller.tripAt
-assert.equal(travel(traveller), true)
-assert.equal(traveller.away, true, '頃合いでひろばへ出かける')
-traveller.step = traveller.tripAt
-assert.equal(travel(traveller), true)
-assert.equal(traveller.away, false, 'また家へ帰る')
+assert.ok(traveller.x > field.width, '入ってくる前は画面の外に居る')
+walk(traveller)
+assert.ok(traveller.x <= field.width, '歩いて家の中へ入る')
+
+// 歩く位置はセルの境目に揃う。ずれると細かい模様がセルをまたいで揺れる。
+const walker = newScene()
+walker.mode = 'walk'
+walker.target = field.width
+for (let i = 0; i < 40; i += 1) {
+  advance(walker, field, 20)
+  assert.equal(walker.x % 2, 0, '歩く位置は偶数の画素に乗る')
+}
 
 // 出かけている間、家の絵に本人は居ない。
 const home = render(columns, rows, pet, newScene(), { width: columns * 2, ground: rows * 2 - 3 })

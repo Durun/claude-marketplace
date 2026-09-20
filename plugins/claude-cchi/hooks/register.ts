@@ -17,7 +17,6 @@ import {
   type Fact,
   type Pet,
   type Stage,
-  type Utterance,
 } from './pet.ts'
 import {
   advance,
@@ -39,7 +38,6 @@ const CROWD = 'crowd'
 const CROWD_ROWS = 7
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
-const BOARD_KEY = 'board'
 
 /** 歩きと咀嚼が滑らかに見える速さ。 */
 const FRAME_MS = 120
@@ -52,11 +50,11 @@ const MIN_COLUMNS = 24
 /** ひろばに残す数。古い順に落とす。 */
 const PLAZA_LIMIT = 40
 
-/** 掲示板に残す言葉の数。 */
-const BOARD_LIMIT = 40
+/** ひろばで立ち話を始める間隔。 */
+const CHAT_EVERY = 150
 
-/** 1 度に聞き取れる数。5 歳児なので、たくさんは覚えられない。 */
-const HEAR_AT_ONCE = 2
+/** 立ち話の一言を出しておくコマ数。1 往復ぶんはこの 2 つ分。 */
+const CHAT_LINE_FRAMES = 45
 
 /** 心拍を打つ間隔。これが途切れるとひろばで待つ扱いになる。 */
 const HEARTBEAT_FRAMES = 100
@@ -79,7 +77,7 @@ let cells = ''
 let turns = 0
 let sayUntil = 0
 let plaza: Pet[] = []
-let board: Utterance[] = []
+let chat: Chat | null = null
 let sessionId = ''
 
 /** 面の中でどちらを見ているか。ひろばに切り替えている間、家は描かない。 */
@@ -104,15 +102,40 @@ const save = async ($: EngineInterface) => {
 /** ひろばに居る Claudeっち。止まったセッションの子と、遊びに来ている子。 */
 const crowdNow = () => plaza.filter((p) => inPlaza(p, Date.now())).slice(-CROWD_LIMIT)
 
-/** 掲示板を読み直す。他のセッションの Claudeっちが書き足しているので、都度取り直す。 */
-const loadBoard = async ($: EngineInterface) => {
-  board = ((await $.store.get(BOARD_KEY)) as Utterance[] | undefined) ?? []
-  return board
+/** ひろばでの立ち話。自分が一言、相手が一言で終わる。 */
+type Chat = {
+  /** 相手のひろばでの位置。吹き出しをその子の真上に出すために持つ。 */
+  withIndex: number
+  mine: string
+  theirs: string
+  /** 相手から聞いたこと。話し終えたら覚える。 */
+  heard: Fact
+  startedAt: number
 }
 
-const post = async ($: EngineInterface, said: Utterance) => {
-  board = [...(await loadBoard($)), said].slice(-BOARD_LIMIT)
-  await $.store.set(BOARD_KEY, board)
+const pick = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)]
+
+/**
+ * 居合わせた 1 匹と話し始める。互いに覚えていることを 1 つずつ出し合う。
+ * 話すことが無い相手とは黙って立っている。
+ */
+const startChat = (crowd: readonly Pet[]) => {
+  if (pet === null || pet.name === null) return
+  const others = crowd.filter((p) => p.id !== pet?.id && p.name !== null && p.knowledge.length > 0)
+  const other = pick(others)
+  const mineFact = pick(pet.knowledge)
+  if (other === undefined || mineFact === undefined) return
+  const theirFact = pick(other.knowledge)
+  const mine = wordFor(stageOf(pet), mineFact)
+  const theirs = theirFact === undefined ? null : wordFor(stageOf(other), theirFact)
+  if (mine === null || theirs === null || theirFact === undefined) return
+  chat = {
+    withIndex: crowd.indexOf(other),
+    mine,
+    theirs,
+    heard: { ...theirFact, heardFrom: other.name },
+    startedAt: scene.step,
+  }
 }
 
 const redraw = async ($: EngineInterface) => {
@@ -136,10 +159,13 @@ const start = ($: EngineInterface) => {
     // 死んだ子は動かない。遺影は 1 度描けば足りる。
     if (!pet || columns <= 0 || isDead(pet)) return
     const width = petWidth(columns, PANE_ROWS, pet)
+    const wasAway = scene.away
     const flushed = advance(scene, worldOf(), width)
-    if (travel(scene)) {
-      // 出入りのたびに、ひろばの顔ぶれを取り直して家の下の区画を出し入れする。
+    travel(scene, worldOf(), width)
+    if (scene.away !== wasAway) {
+      // 出入りのたびに、ひろばの顔ぶれを取り直して区画を出し入れする。
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
+      chat = null
       await save($)
       await $.ui.invalidate('ui.render')
     }
@@ -157,6 +183,19 @@ const start = ($: EngineInterface) => {
       await save($)
       await $.ui.invalidate('ui.render')
     }
+    // ひろばに居る間だけ立ち話をする。終わったら相手の言ったことを覚える。
+    if (scene.away && chat === null && scene.step % CHAT_EVERY === 0) {
+      startChat(crowdNow())
+      if (chat !== null) await $.ui.invalidate('ui.render')
+    }
+    if (chat !== null && scene.step - chat.startedAt >= CHAT_LINE_FRAMES * 2) {
+      pet = remember(pet, chat.heard)
+      chat = null
+      await save($)
+      await $.ui.invalidate('ui.render')
+    } else if (chat !== null && scene.step - chat.startedAt === CHAT_LINE_FRAMES) {
+      await $.ui.invalidate('ui.render')
+    }
     if (sayUntil > 0 && scene.step >= sayUntil) {
       sayUntil = 0
       pet = { ...pet, word: null }
@@ -164,7 +203,7 @@ const start = ($: EngineInterface) => {
     }
     await redraw($)
     // 頭上の札は Raster の外の行なので、歩いた分だけ木を組み直す。
-    if (scene.mode === 'walk' && scene.step % 2 === 0) await $.ui.invalidate('ui.render')
+    if (scene.mode !== 'idle' && scene.step % 2 === 0) await $.ui.invalidate('ui.render')
   })
 }
 
@@ -188,19 +227,6 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
   if (name === '') return null
   // 名前は必ず「っち」で終わる。haiku が付けてきたときは重ねない。
   return `${name.replace(/っち$/, '').slice(0, 5)}っち`
-}
-
-/** ひろばで他の子が言ったことを聞き取る。5 歳児なので 1 度に 2 つまで。 */
-const hear = async ($: EngineInterface, p: Pet): Promise<Pet> => {
-  const fresh = (await loadBoard($))
-    .filter((u) => u.petId !== p.id && u.at > p.heardAt)
-    .slice(-HEAR_AT_ONCE)
-  if (fresh.length === 0) return p
-  const heard = fresh.reduce(
-    (acc, u) => remember(acc, { subject: u.subject, predicate: u.predicate, heardFrom: u.name }),
-    p,
-  )
-  return { ...heard, heardAt: Math.max(...fresh.map((u) => u.at)) }
 }
 
 /**
@@ -262,6 +288,18 @@ export const crowdNames = (columns: number, pets: readonly Pet[]) => {
   return line
 }
 
+/** ひろばの吹き出しの行。話している子の真上に、その子の一言だけを置く。 */
+const chatLine = (columns: number, crowd: readonly Pet[]) => {
+  if (chat === null || crowd.length === 0) return ''
+  const mine = scene.step - chat.startedAt < CHAT_LINE_FRAMES
+  const index = mine ? crowd.findIndex((p) => p.id === pet?.id) : chat.withIndex
+  if (index < 0) return ''
+  const text = `「${mine ? chat.mine : chat.theirs}」`
+  const slot = Math.floor(columns / crowd.length)
+  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(text)) / 2))
+  return ' '.repeat(at) + text
+}
+
 /** 遺影に添える一行。生まれてから死ぬまでと、どこまで育ったか。 */
 const epitaph = (pet: Pet) => {
   const day = (iso: string) => iso.slice(0, 10).replace(/-/g, '/')
@@ -296,7 +334,6 @@ export const register: Register = (on) => {
     pet = stored ?? newPet(sessionId, e.cwd, new Date())
     scene = newScene()
     plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []
-    await loadBoard($)
     if (e.isInteractive) {
       await save($)
       await $.ui.open({ id: PANE, title: 'Claudeっち' })
@@ -309,8 +346,7 @@ export const register: Register = (on) => {
     const sub = e.args.trim()
     if (sub === 'hiroba' || sub === 'ohaka') {
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
-      await loadBoard($)
-      const grave = sub === 'ohaka'
+        const grave = sub === 'ohaka'
       const count = plaza.filter((p) => isDead(p) === grave).length
       if (grave) {
         await $.ui.open({ id: GRAVE_PANE, title: 'お墓' })
@@ -354,23 +390,12 @@ export const register: Register = (on) => {
       pet = { ...pet, name: await nameIt($, pet) }
     }
     if (turns % TALK_EVERY === 0) {
-      pet = await hear($, pet)
       const fact = await think($, pet, e.answer)
       if (fact !== null) {
         pet = remember(pet, fact)
         const word = wordFor(after, fact)
         pet = { ...pet, word }
         sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
-        // 言ったことはひろばに残り、他の Claudeっちが聞く。
-        if (word !== null && pet.name !== null) {
-          await post($, {
-            petId: pet.id,
-            name: pet.name,
-            subject: fact.subject,
-            predicate: fact.predicate,
-            at: Date.now(),
-          })
-        }
       }
     }
 
@@ -506,6 +531,7 @@ export const register: Register = (on) => {
           ? []
           : [
               rule(),
+              Text({ children: chatLine(columns, crowd) }),
               Text({ children: crowdNames(columns, crowd) }),
               Raster({
                 key: CROWD,
@@ -514,10 +540,6 @@ export const register: Register = (on) => {
                 cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
               }),
               Text({ children: crowd.length === 0 ? 'ひろば  まだ誰もいない。' : 'ひろば' }),
-              ...board
-                .slice(-3)
-                .reverse()
-                .map((u) => Text({ children: `${u.name}: 「${u.subject} は ${u.predicate}」` })),
               // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
               // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
               ...adoptable.map((p) =>

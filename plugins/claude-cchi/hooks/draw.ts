@@ -324,6 +324,60 @@ const drawMemorial = (c: Canvas, pet: Pet) => {
   for (let i = 0; i <= band; i += 1) rect(c, x0 + i, y0 + band - i, 2, 2, RIBBON)
 }
 
+type Pose = {
+  /** 左端の画素位置と、足を着ける地面の高さ。 */
+  left: number
+  ground: number
+  sx: number
+  sy: number
+  /** まばたきと目線と足の運びを決めるコマ。 */
+  frame: number
+  walking: boolean
+  chewing: boolean
+  crouching: boolean
+}
+
+/** Claudeっち 1 匹。家でもひろばでもこれで描く。 */
+const drawPet = (c: Canvas, pet: Pet, pose: Pose) => {
+  const { left, sx, sy, frame } = pose
+  const stage = stageOf(pet)
+  const traits = traitsOf(pet)
+  const thin = Math.max(1, Math.floor(sy / 2))
+  const swing = pose.walking && Math.floor(frame / 3) % 2 === 0 ? sx : 0
+  const top = pose.ground - ART_HEIGHT * sy - 1 + (pose.crouching ? thin : 0)
+
+  for (let row = 0; row < ART_HEIGHT; row += 1) {
+    for (let col = 0; col < ART_WIDTH; col += 1) {
+      if (ART[row]?.[col] !== '#') continue
+      const shift = row === ART_HEIGHT - 1 ? (col < ART_WIDTH / 2 ? swing : -swing) : 0
+      rect(c, left + col * sx + shift, top + row * sy, sx, sy, traits.color)
+    }
+  }
+
+  rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
+  rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
+
+  const gaze = gazeAt(frame)
+  for (const col of EYE_COL) {
+    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, frame % 90 >= 87, gaze)
+  }
+
+  // 食べている間は口を開け閉めする。
+  const chewing = pose.chewing && Math.floor(frame / 2) % 2 === 0
+  const mouthY = top + MOUTH_ROW * sy
+  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, chewing ? sy : thin, INK)
+
+  // 口ひげは口の真上。おじいさんは白くなり、眉も生える。
+  if (stage === 'ojisan' || stage === 'ojiisan') {
+    rect(c, left + 8 * sx, mouthY - thin, sx * 4, thin, stage === 'ojiisan' ? HAIR : INK)
+  }
+  if (stage === 'ojiisan') {
+    for (const col of EYE_COL) {
+      rect(c, left + col * sx, top + EYE_ROW * sy - thin, sx * 2, thin, HAIR)
+    }
+  }
+}
+
 export const render = (columns: number, rows: number, pet: Pet, scene: Scene, world: World) => {
   const c = canvas(columns * 2, rows * 2)
   if (isDead(pet)) {
@@ -356,42 +410,16 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
     return encode(c, columns, rows)
   }
 
-  // 歩いている間は足を交互に出し、ウンチの間はしゃがむ。
-  const thin = Math.max(1, Math.floor(sy / 2))
-  const swing = scene.mode === 'walk' && Math.floor(scene.step / 3) % 2 === 0 ? sx : 0
-  const left = Math.round(scene.x)
-  const top = groundY - ART_HEIGHT * sy - 1 + (scene.mode === 'poop' ? thin : 0)
-
-  for (let row = 0; row < ART_HEIGHT; row += 1) {
-    for (let col = 0; col < ART_WIDTH; col += 1) {
-      if (ART[row]?.[col] !== '#') continue
-      const shift = row === ART_HEIGHT - 1 ? (col < ART_WIDTH / 2 ? swing : -swing) : 0
-      rect(c, left + col * sx + shift, top + row * sy, sx, sy, traits.color)
-    }
-  }
-
-  rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
-  rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
-
-  const gaze = gazeAt(scene.step)
-  for (const col of EYE_COL) {
-    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, scene.step % 90 >= 87, gaze)
-  }
-
-  // 食べている間は口を開け閉めする。
-  const chewing = scene.mode === 'eat' && Math.floor(scene.step / 2) % 2 === 0
-  const mouthY = top + MOUTH_ROW * sy
-  rect(c, left + MOUTH_COL * sx, mouthY, sx * 2, chewing ? sy : thin, INK)
-
-  // 口ひげは口の真上。おじいさんは白くなり、眉も生える。
-  if (stage === 'ojisan' || stage === 'ojiisan') {
-    rect(c, left + 8 * sx, mouthY - thin, sx * 4, thin, stage === 'ojiisan' ? HAIR : INK)
-  }
-  if (stage === 'ojiisan') {
-    for (const col of EYE_COL) {
-      rect(c, left + col * sx, top + EYE_ROW * sy - thin, sx * 2, thin, HAIR)
-    }
-  }
+  drawPet(c, pet, {
+    left: Math.round(scene.x),
+    ground: groundY,
+    sx,
+    sy,
+    frame: scene.step,
+    walking: scene.mode === 'walk' || scene.mode === 'leave' || scene.mode === 'arrive',
+    chewing: scene.mode === 'eat',
+    crouching: scene.mode === 'poop',
+  })
 
   bowlOnTop()
   return encode(c, columns, rows)
@@ -420,22 +448,19 @@ export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[],
   const slot = Math.floor(c.width / shown.length)
   const scale = Math.max(1, Math.min(2, Math.floor((slot - 4) / ART_WIDTH)))
   shown.forEach((pet, i) => {
-    const traits = traitsOf(pet)
-    const sy = scale
-    const left = i * slot + Math.round((slot - ART_WIDTH * scale) / 2)
     // 1 匹ずつ違う調子で呼吸させる。並んでも同じ動きに見えない。
     // 浮く向きだけに寄せると、足が地面へめり込まない。
     const bob = Math.min(0, Math.round(Math.sin((frame + i * 7) / 6)))
-    const top = groundY - ART_HEIGHT * sy - 1 + bob
-    for (let row = 0; row < ART_HEIGHT; row += 1) {
-      for (let col = 0; col < ART_WIDTH; col += 1) {
-        if (ART[row]?.[col] !== '#') continue
-        rect(c, left + col * scale, top + row * sy, scale, sy, traits.color)
-      }
-    }
-    for (const col of EYE_COL) {
-      rect(c, left + col * scale, top + EYE_ROW * sy + sy, scale * 2, Math.max(1, sy), INK)
-    }
+    drawPet(c, pet, {
+      left: i * slot + Math.round((slot - ART_WIDTH * scale) / 2),
+      ground: groundY + bob,
+      sx: scale,
+      sy: scale,
+      frame: frame + i * 7,
+      walking: false,
+      chewing: false,
+      crouching: false,
+    })
   })
   return encode(c, columns, rows)
 }

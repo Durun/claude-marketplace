@@ -13,8 +13,12 @@ const BOWL_CAPACITY = 40
 /** 1 粒を food から減らすまでのコマ数。 */
 const CHEW_FRAMES = 3
 
-/** 歩く速さ。1 コマあたりの画素。 */
-const WALK_SPEED = 1
+/**
+ * 歩く速さ。1 コマあたりの画素。
+ * 1 セルは 2 画素なので、2 ずつ動かして位置をセルの境目に揃える。
+ * 奇数だと目のような細かい模様がセルをまたいで揺れて見える。
+ */
+const WALK_SPEED = 2
 
 /** 家で過ごすコマ数。これを過ぎるとひろばへ遊びに行く。 */
 const HOME_FRAMES = 600
@@ -22,7 +26,7 @@ const HOME_FRAMES = 600
 /** ひろばで遊んでいるコマ数。 */
 const VISIT_FRAMES = 250
 
-export type Mode = 'idle' | 'walk' | 'eat' | 'poop'
+export type Mode = 'idle' | 'walk' | 'eat' | 'poop' | 'leave' | 'arrive'
 
 export type Grain = { x: number; y: number }
 
@@ -75,10 +79,13 @@ export const newScene = (): Scene => ({
 export const BOWL_X = 7
 export const toiletX = (world: World) => world.width - 7
 
+/** 歩く位置をセルの境目に揃える。 */
+const even = (v: number) => Math.round(v / 2) * 2
+
 /** 器とトイレの間。ここを歩き、器に重なって食べる。 */
 const range = (world: World, petWidth: number) => {
-  const min = Math.max(0, BOWL_X - 5)
-  const max = toiletX(world) - 7 - petWidth
+  const min = even(Math.max(0, BOWL_X - 5))
+  const max = even(toiletX(world) - 7 - petWidth)
   return max <= min ? { min: Math.max(0, max), max: Math.max(0, max) } : { min, max }
 }
 
@@ -100,12 +107,23 @@ export const startFlush = (scene: Scene) => {
   if (scene.poops.length > 0) scene.flushing = true
 }
 
-/** 家とひろばを行き来する頃合いなら入れ替える。入れ替えたら true を返す。 */
-export const travel = (scene: Scene) => {
-  if (scene.step < scene.tripAt) return false
-  scene.away = !scene.away
-  scene.tripAt = scene.step + (scene.away ? VISIT_FRAMES : HOME_FRAMES)
-  return true
+/**
+ * 家とひろばを行き来する頃合いなら、歩いて出入りを始める。
+ * 出るときはトイレの側から画面の外へ抜け、帰りは同じ側から入ってくる。
+ */
+export const travel = (scene: Scene, world: World, petWidth: number) => {
+  if (scene.step < scene.tripAt) return
+  if (scene.away) {
+    scene.away = false
+    scene.x = even(world.width + petWidth)
+    scene.mode = 'arrive'
+    scene.target = range(world, petWidth).max
+    scene.tripAt = scene.step + HOME_FRAMES
+    return
+  }
+  scene.mode = 'leave'
+  scene.target = even(world.width + petWidth)
+  scene.tripAt = scene.step + VISIT_FRAMES
 }
 
 /** 1 コマ進める。流し終えたら true を返し、呼び手が溜まりを 0 に戻す。 */
@@ -143,12 +161,22 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
       if (scene.step % CHEW_FRAMES === 0) scene.food = Math.max(0, scene.food - 1)
       if (scene.food === 0 || scene.step >= scene.until) scene.mode = 'idle'
       break
+    case 'leave':
+    case 'arrive':
     case 'walk': {
       const gap = scene.target - scene.x
       scene.facing = gap >= 0 ? 1 : -1
-      scene.x = Math.max(minX, Math.min(maxX, scene.x + Math.sign(gap) * WALK_SPEED))
+      const next = scene.x + Math.sign(gap) * WALK_SPEED
+      // 出入りの間は画面の外まで歩くので、家の範囲に閉じ込めない。
+      scene.x = scene.mode === 'walk' ? Math.max(minX, Math.min(maxX, next)) : next
       if (Math.abs(gap) <= WALK_SPEED) {
-        scene.mode = scene.food > 0 && scene.x <= minX + WALK_SPEED ? 'eat' : 'idle'
+        if (scene.mode === 'leave') {
+          scene.away = true
+          scene.x = minX
+        }
+        scene.mode = scene.mode === 'walk' && scene.food > 0 && scene.x <= minX + WALK_SPEED
+          ? 'eat'
+          : 'idle'
         scene.until = scene.step + 40
       }
       break
@@ -160,7 +188,7 @@ export const advance = (scene: Scene, world: World, petWidth: number) => {
         scene.target = minX
       } else if (scene.step % 40 === 0) {
         scene.mode = 'walk'
-        scene.target = minX + Math.round(Math.random() * (maxX - minX))
+        scene.target = even(minX + Math.random() * (maxX - minX))
       }
   }
   return false

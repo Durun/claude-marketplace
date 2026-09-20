@@ -14,15 +14,6 @@ export type Fact = {
   heardFrom: string | null
 }
 
-/** ひろばの掲示板に残る 1 言。 */
-export type Utterance = {
-  petId: string
-  name: string
-  subject: string
-  predicate: string
-  at: number
-}
-
 export type Pet = {
   /** ひろばでの一意の鍵。セッション ID と何代目かを繋いだもの。 */
   id: string
@@ -46,8 +37,6 @@ export type Pet = {
   word: string | null
   /** 覚えていること。古いものから忘れる。 */
   knowledge: Fact[]
-  /** ひろばの掲示板をどこまで聞いたか。 */
-  heardAt: number
   /** 飼い主のセッションが最後に動いていた時刻。止まった判定に使う。 */
   seenAt: number
   /** いまひろばへ遊びに行っているか。 */
@@ -75,7 +64,6 @@ export const newPet = (sessionId: string, cwd: string, now: Date, generation = 0
   name: null,
   word: null,
   knowledge: [],
-  heardAt: 0,
   seenAt: now.getTime(),
   away: false,
   cwd,
