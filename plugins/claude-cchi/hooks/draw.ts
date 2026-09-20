@@ -2,7 +2,7 @@
 // 1 セルに四分ブロックを置き、縦横それぞれ 2 倍の画素を持つ。基準の姿を
 // そのまま画素に書き起こしてあるので、拡大率と飾りだけで見た目を派生させる。
 
-import { poopCount, stageOf, STAGE_LABEL, traitsOf, type Pet, type Stage } from './pet.ts'
+import { isDead, poopCount, stageOf, STAGE_LABEL, traitsOf, type Pet, type Stage } from './pet.ts'
 import { BOWL_X, toiletX, type Scene, type World } from './scene.ts'
 
 /** 端末の既定色。bit 24 だけを立てた値。 */
@@ -152,7 +152,36 @@ const stretch = (columns: number, rows: number, stage: Stage, body: number) => {
   }
 }
 
-const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: number, blink: boolean) => {
+/**
+ * 目線の巡り。1 つの向きをしばらく保ってから次へ移る。
+ * まっすぐを挟むので、きょろきょろし続けているようには見えない。
+ */
+const GAZES = [
+  [0, 0],
+  [1, 0],
+  [0, 0],
+  [-1, 0],
+  [0, 0],
+  [1, -1],
+  [0, 0],
+  [-1, 1],
+] as const
+
+/** 1 つの目線を保つコマ数。 */
+const GAZE_FRAMES = 45
+
+const gazeAt = (step: number) => GAZES[Math.floor(step / GAZE_FRAMES) % GAZES.length] ?? [0, 0]
+
+const drawEye = (
+  c: Canvas,
+  x: number,
+  y: number,
+  sx: number,
+  sy: number,
+  eye: number,
+  blink: boolean,
+  gaze: readonly [number, number],
+) => {
   // 赤ちゃんの体は白目と瞳を描き分けるには小さすぎるので、点の目にする。
   if (blink || eye === 3 || sx < 2 || sy < 2) {
     rect(c, x, y + sy, sx * 2, Math.max(1, Math.floor(sy / 2)), INK)
@@ -161,8 +190,10 @@ const drawEye = (c: Canvas, x: number, y: number, sx: number, sy: number, eye: n
   const h = sy + Math.floor(sy / 2)
   rect(c, x, y, sx * 2, h, EYE_WHITE)
   // 瞳の位置で表情を変える。0 まる 1 たれ 2 つり。
-  const py = eye === 1 ? y + h - sy : eye === 2 ? y : y + Math.floor((h - sy) / 2)
-  rect(c, x + Math.floor(sx / 2), py, Math.max(1, sx), Math.max(1, sy), INK)
+  const base = eye === 1 ? y + h - sy : eye === 2 ? y : y + Math.floor((h - sy) / 2)
+  const px = x + Math.floor(sx / 2) + gaze[0] * Math.max(1, Math.floor(sx / 2))
+  const py = Math.max(y, Math.min(y + h - sy, base + gaze[1]))
+  rect(c, Math.max(x, Math.min(x + sx * 2 - sx, px)), py, Math.max(1, sx), Math.max(1, sy), INK)
 }
 
 
@@ -236,8 +267,65 @@ const drawPoop = (c: Canvas, x: number, ground: number) => {
   ellipse(c, x, ground - 4, 2, 1.4, POOP_LIGHT)
 }
 
+const FRAME = 0x6b5a45
+const RIBBON = 0x1a1a1a
+
+/** 色みを抜く。遺影は白黒で飾る。 */
+const gray = (color: number) => {
+  const v = Math.round(
+    ((color >> 16) & 255) * 0.3 + ((color >> 8) & 255) * 0.59 + (color & 255) * 0.11,
+  )
+  return (v << 16) | (v << 8) | v
+}
+
+/** 遺影に納める顔。基準の絵の上 3 段。 */
+const FACE_ROWS = 3
+
+/** 遺影。顔を白黒で額に納め、左上の角に黒いリボンを掛ける。 */
+const drawMemorial = (c: Canvas, pet: Pet) => {
+  const body = gray(traitsOf(pet).color)
+  const scale = Math.max(
+    1,
+    Math.min(3, Math.floor((c.width - 16) / ART_WIDTH), Math.floor((c.height - 10) / FACE_ROWS)),
+  )
+  const w = ART_WIDTH * scale + 10
+  const h = FACE_ROWS * scale + 10
+  const x0 = Math.round((c.width - w) / 2)
+  const y0 = Math.round((c.height - h) / 2)
+
+  for (let i = 0; i < w; i += 1) {
+    rect(c, x0 + i, y0, 1, 2, FRAME)
+    rect(c, x0 + i, y0 + h - 2, 1, 2, FRAME)
+  }
+  for (let i = 0; i < h; i += 1) {
+    rect(c, x0, y0 + i, 2, 1, FRAME)
+    rect(c, x0 + w - 2, y0 + i, 2, 1, FRAME)
+  }
+
+  const left = x0 + 5
+  const top = y0 + 5
+  for (let row = 0; row < FACE_ROWS; row += 1) {
+    for (let col = 0; col < ART_WIDTH; col += 1) {
+      if (ART[row]?.[col] !== '#') continue
+      rect(c, left + col * scale, top + row * scale, scale, scale, body)
+    }
+  }
+  // 目は閉じている。
+  for (const col of EYE_COL) {
+    rect(c, left + col * scale, top + EYE_ROW * scale + scale, scale * 2, scale, INK)
+  }
+
+  // リボンは額の左上の角を斜めに横切る。
+  const band = Math.min(10, Math.floor(h / 2))
+  for (let i = 0; i <= band; i += 1) rect(c, x0 + i, y0 + band - i, 2, 2, RIBBON)
+}
+
 export const render = (columns: number, rows: number, pet: Pet, scene: Scene, world: World) => {
   const c = canvas(columns * 2, rows * 2)
+  if (isDead(pet)) {
+    drawMemorial(c, pet)
+    return encode(c, columns, rows)
+  }
   const stage = stageOf(pet)
   const traits = traitsOf(pet)
   const { sx, sy } = stretch(columns, rows, stage, traits.body)
@@ -272,8 +360,9 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
   rect(c, left + 2 * sx, top + 2 * sy, sx, sy, traits.accent)
   rect(c, left + 18 * sx, top + 2 * sy, sx, sy, traits.accent)
 
+  const gaze = gazeAt(scene.step)
   for (const col of EYE_COL) {
-    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, scene.step % 90 >= 87)
+    drawEye(c, left + col * sx, top + EYE_ROW * sy, sx, sy, traits.eye, scene.step % 90 >= 87, gaze)
   }
 
   // 食べている間は口を開け閉めする。

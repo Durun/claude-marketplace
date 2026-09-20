@@ -1,6 +1,17 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import { petWidth, render, statusLine } from './draw.ts'
-import { feed, flush, newPet, poopCount, stageOf, STAGE_LABEL, type Pet, type Stage } from './pet.ts'
+import {
+  feed,
+  flush,
+  isDead,
+  newPet,
+  poopCount,
+  rebirth,
+  stageOf,
+  STAGE_LABEL,
+  type Pet,
+  type Stage,
+} from './pet.ts'
 import {
   advance,
   BOWL_X,
@@ -46,6 +57,7 @@ let cells = ''
 let turns = 0
 let sayUntil = 0
 let plaza: Pet[] = []
+let sessionId = ''
 
 const key = (id: string) => `pet:${id}`
 
@@ -53,7 +65,7 @@ const worldOf = (): World => ({ width: columns * 2, ground: PANE_ROWS * 2 - 3 })
 
 const save = async ($: EngineInterface) => {
   if (!pet) return
-  await $.store.set(key(pet.id), pet)
+  await $.store.set(key(sessionId), pet)
   plaza = [...plaza.filter((p) => p.id !== pet?.id), pet].slice(-PLAZA_LIMIT)
   await $.store.set(PLAZA_KEY, plaza)
 }
@@ -67,7 +79,8 @@ const redraw = async ($: EngineInterface) => {
 const start = ($: EngineInterface) => {
   ticker?.cancel()
   ticker = $.clock.every(FRAME_MS, async () => {
-    if (!pet || columns <= 0) return
+    // 死んだ子は動かない。遺影は 1 度描けば足りる。
+    if (!pet || columns <= 0 || isDead(pet)) return
     const width = petWidth(columns, PANE_ROWS, pet)
     const flushed = advance(scene, worldOf(), width)
     // 溜まった分は一度に出さず、1 つずつしゃがんで出す。
@@ -106,12 +119,14 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
     model: 'haiku',
     system:
       'あなたは育成ゲームの命名係。会話の話題にちなんだ、かわいい日本語の名前を 1 つだけ答える。' +
-      '3〜6 文字。説明や記号を付けず、名前だけを出力する。',
+      '2〜4 文字。末尾に「っち」は付けない。説明や記号を付けず、名前だけを出力する。',
     prompt: `会話:\n${recent}\n\nこの子の名前:`,
     maxTokens: 24,
   })
   const name = text.trim().split(/\s|\n/)[0]?.replace(/[「」"'。、]/g, '') ?? ''
-  return name === '' ? null : name.slice(0, 8)
+  if (name === '') return null
+  // 名前は必ず「っち」で終わる。haiku が付けてきたときは重ねない。
+  return `${name.replace(/っち$/, '').slice(0, 5)}っち`
 }
 
 /** 段階に応じたひとこと。子供は単語、大人から先は文。 */
@@ -161,6 +176,14 @@ export const displayWidth = (text: string) =>
 const labelPad = (text: string, width: number) =>
   Math.max(0, Math.round((scene.x + width / 2) / 2) - Math.round(displayWidth(text) / 2))
 
+/** 遺影に添える一行。生まれてから死ぬまでと、どこまで育ったか。 */
+const epitaph = (pet: Pet) => {
+  const day = (iso: string) => iso.slice(0, 10).replace(/-/g, '/')
+  const who = pet.name ?? 'なまえなし'
+  const span = pet.diedAt === null ? day(pet.born) : `${day(pet.born)} - ${day(pet.diedAt)}`
+  return `${who}  ${STAGE_LABEL[stageOf(pet)]}まで育った  ${span}`
+}
+
 /** 吹き出しの 3 行。下辺の三角が Claudeっちを指す。 */
 export const bubble = (word: string) => {
   const inner = displayWidth(word) + 2
@@ -179,9 +202,9 @@ export const register: Register = (on) => {
       description:
         'Claudeっちを育てる。/claude-cchi で面を開き、/claude-cchi hiroba でこれまでの子を見る。',
     })
-    const id = await $.session.id()
-    const stored = (await $.store.get(key(id))) as Pet | undefined
-    pet = stored ?? newPet(id, e.cwd, new Date())
+    sessionId = await $.session.id()
+    const stored = (await $.store.get(key(sessionId))) as Pet | undefined
+    pet = stored ?? newPet(sessionId, e.cwd, new Date())
     scene = newScene()
     plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []
     if (e.isInteractive) {
@@ -209,12 +232,22 @@ export const register: Register = (on) => {
 
     const before = stageOf(pet)
     const usage = await $.session.usage()
-    pet = feed(pet, e.usage.input_tokens, e.usage.output_tokens, usage.context.percent ?? 0)
+    // input_tokens は未キャッシュ分だけなので、キャッシュの読み書きも餌に数える。
+    // 会話が続くほど大半はキャッシュ読みになり、これを外すと餌がほとんど降らない。
+    const eaten =
+      e.usage.input_tokens + e.usage.cache_read_input_tokens + e.usage.cache_creation_input_tokens
+    pet = feed(pet, eaten, e.usage.output_tokens, usage.context.percent ?? 0, new Date())
+    if (isDead(pet)) {
+      await save($)
+      await redraw($)
+      await $.ui.invalidate('ui.render')
+      return result
+    }
     const after = stageOf(pet)
     turns += 1
 
     // 食べた分を器に降らせる。ウンチは時計が 1 つずつ出す。
-    if (columns > 0) sprinkle(scene, worldOf(), e.usage.input_tokens)
+    if (columns > 0) sprinkle(scene, worldOf(), eaten)
 
     if (pet.name === null && after !== 'egg' && after !== 'baby') {
       pet = { ...pet, name: await nameIt($, pet) }
@@ -263,6 +296,31 @@ export const register: Register = (on) => {
     if (nextColumns !== columns || cells === '') {
       columns = nextColumns
       cells = render(columns, PANE_ROWS, pet, scene, worldOf())
+    }
+
+    if (isDead(pet)) {
+      return Box({
+        flexDirection: 'column',
+        children: [
+          Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells }),
+          Text({ children: epitaph(pet) }),
+          Button({
+            key: 'rebirth',
+            label: '生まれ変わる',
+            plain: true,
+            onPress: async () => {
+              if (pet === null) return
+              pet = rebirth(pet, sessionId, new Date())
+              scene = newScene()
+              turns = 0
+              sayUntil = 0
+              await save($)
+              start($)
+              await $.ui.invalidate('ui.render')
+            },
+          }),
+        ],
+      })
     }
 
     const width = petWidth(columns, PANE_ROWS, pet)

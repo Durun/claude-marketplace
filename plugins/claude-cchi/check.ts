@@ -2,7 +2,17 @@
 
 import assert from 'node:assert/strict'
 import { artLines, petWidth, render } from './hooks/draw.ts'
-import { feed, flush, newPet, OUTPUT_PER_POOP, poopCount, stageOf, traitsOf } from './hooks/pet.ts'
+import {
+  feed,
+  flush,
+  isDead,
+  newPet,
+  OUTPUT_PER_POOP,
+  poopCount,
+  rebirth,
+  stageOf,
+  traitsOf,
+} from './hooks/pet.ts'
 import { advance, newScene, sprinkle, startFlush, TOKENS_PER_GRAIN } from './hooks/scene.ts'
 
 const born = new Date('2026-09-18T00:00:00Z')
@@ -10,7 +20,7 @@ let pet = newPet('session-1', '/tmp/work', born)
 
 assert.equal(stageOf(pet), 'egg', '食べる前は卵')
 
-pet = feed(pet, 1000, 0, 3)
+pet = feed(pet, 1000, 0, 3, born)
 assert.equal(stageOf(pet), 'baby', '最初の食事でかえる')
 
 for (const [percent, stage] of [
@@ -20,14 +30,14 @@ for (const [percent, stage] of [
   [30, 'ojisan'],
   [40, 'ojiisan'],
 ] as const) {
-  assert.equal(stageOf(feed(pet, 0, 0, percent)), stage, `${percent}% は ${stage}`)
+  assert.equal(stageOf(feed(pet, 0, 0, percent, born)), stage, `${percent}% は ${stage}`)
 }
 
 // ウンチは出力トークンだけで増え、流すと 0 に戻る。
-pet = feed(pet, 0, OUTPUT_PER_POOP * 3, 15)
+pet = feed(pet, 0, OUTPUT_PER_POOP * 3, 15, born)
 assert.equal(poopCount(pet), 3)
-const dirty = feed(pet, 0, OUTPUT_PER_POOP * 3, 15)
-assert.equal(poopCount(dirty), 6)
+const dirty = feed(pet, 0, OUTPUT_PER_POOP * 6, 15, born)
+assert.equal(poopCount(dirty), 9)
 assert.ok(dirty.health < pet.health, '溜めすぎると健康が減る')
 assert.equal(poopCount(flush(dirty)), 0, '流すと溜まりが消える')
 assert.ok(flush(dirty).health > dirty.health, '流すと健康が戻る')
@@ -70,5 +80,20 @@ for (let i = 0; i < 200 && !done; i += 1) done = advance(scene, world, width)
 assert.ok(done, '流し終えたことを呼び手に返す')
 assert.equal(scene.poops.length, 0)
 assert.equal(scene.flushing, false)
+
+// 健康が尽きると死に、生まれ変わると次の代として作り直される。
+const died = new Date('2026-09-20T00:00:00Z')
+let dying = { ...pet, health: 4 }
+dying = feed(dying, 0, OUTPUT_PER_POOP * 20, 15, died)
+assert.ok(isDead(dying), '溜めすぎると死ぬ')
+assert.equal(dying.diedAt, died.toISOString())
+const frozen = feed(dying, 999, 999, 15, died)
+assert.deepEqual(frozen, dying, '死んだ子はもう食べない')
+
+const next = rebirth(dying, 'session-1', died)
+assert.equal(next.generation, dying.generation + 1)
+assert.notEqual(next.id, dying.id, 'ひろばで前の代と別に並ぶ')
+assert.equal(next.health, 100)
+assert.equal(isDead(next), false)
 
 console.log('ok')
