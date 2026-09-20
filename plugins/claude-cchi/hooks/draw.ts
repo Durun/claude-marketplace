@@ -221,11 +221,11 @@ const drawEye = (
   const py = y + Math.floor((h - sy) / 2) + gaze[1]
   rect(c, Math.max(x, Math.min(x + w - pw, px)), Math.max(y, Math.min(y + h - sy, py)), pw, sy, INK)
 
-  // たれ目は目尻の上、つり目は目尻の下にまぶたを引く。白目は削らない。
+  // まぶたは白目の外へ引く。白目の中に黒を足すと、目を怪我しているように見える。
   if (eye === 1 || eye === 2) {
     const lid = Math.max(1, Math.floor(sy / 2))
     const at = outward === 1 ? x + sx : x
-    rect(c, at, eye === 1 ? y : y + h - lid, sx, lid, INK)
+    rect(c, at, eye === 1 ? y + h : y - lid, sx, lid, INK)
   }
 }
 

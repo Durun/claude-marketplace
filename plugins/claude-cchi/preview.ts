@@ -1,18 +1,22 @@
-// 各段階の姿を端末に出す。`npx tsx preview.ts` で走る。
+// 目の 4 種と、成長段階ごとの姿を端末に出す。`npx tsx preview.ts` で走る。
 // cells は Raster へ渡すのと同じ文字列を、そのまま ANSI に戻して描く。
 
 import { render } from './hooks/draw.ts'
-import { feed, newPet, OUTPUT_PER_POOP, STAGE_LABEL, stageOf, type Pet } from './hooks/pet.ts'
+import { newScene } from './hooks/scene.ts'
+import { feed, newPet, stageOf, STAGE_LABEL, traitsOf, type Pet } from './hooks/pet.ts'
 
 const COLUMNS = 44
 const ROWS = 12
+const WORLD = { width: COLUMNS * 2, ground: ROWS * 2 - 3 }
 
 const show = (pet: Pet, label: string) => {
-  const cells = render(COLUMNS, ROWS, pet, 0)
+  const cells = render(COLUMNS, ROWS, pet, newScene(), WORLD)
   const words = new Uint32Array(Buffer.from(cells, 'base64').buffer.slice(0))
   const color = (v: number, layer: 38 | 48) =>
-    v === 0x01000000 ? `\x1b[${layer + 1}m` : `\x1b[${layer};2;${(v >> 16) & 255};${(v >> 8) & 255};${v & 255}m`
-  let out = `\n${label}  ${STAGE_LABEL[stageOf(pet)]}\n`
+    v === 0x01000000
+      ? `\x1b[${layer + 1}m`
+      : `\x1b[${layer};2;${(v >> 16) & 255};${(v >> 8) & 255};${v & 255}m`
+  let out = `\n${label}\n`
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLUMNS; col += 1) {
       const at = (row * COLUMNS + col) * 3
@@ -23,10 +27,22 @@ const show = (pet: Pet, label: string) => {
   console.log(out)
 }
 
-let pet = newPet('preview', '/tmp/work', new Date('2026-09-18T00:00:00Z'))
-show(pet, '生まれる前')
-for (const percent of [3, 12, 22, 32, 42]) {
-  pet = feed(pet, 60_000, OUTPUT_PER_POOP, percent)
-  show(pet, `${percent}%`)
+/** 目の形ごとに 1 匹ずつ探す。形は生まれた日から決まるので、日を送って見つける。 */
+const EYE_LABEL = ['まる目', 'たれ目', 'つり目', 'てん目']
+const samples = new Map<number, Pet>()
+for (let i = 0; i < 600 && samples.size < EYE_LABEL.length; i += 1) {
+  const pet = feed(newPet(`sample${i}`, '/w', new Date(2026, 0, 1 + i)), 60_000, 0, 22, new Date())
+  const { eye } = traitsOf(pet)
+  if (!samples.has(eye)) samples.set(eye, pet)
 }
-show(feed(pet, 0, OUTPUT_PER_POOP * 5, 42), 'ウンチを溜めた')
+for (const [eye, pet] of [...samples].sort((a, b) => a[0] - b[0])) {
+  show(pet, `${EYE_LABEL[eye]}  健康 ${pet.health}`)
+  if (eye === 0) show({ ...pet, health: 20 }, `${EYE_LABEL[eye]}  健康 20`)
+}
+
+// 成長段階は使用率で決まる。1 匹を育てながら並べる。
+let growing = newPet('growth', '/w', new Date(2026, 0, 1))
+for (const percent of [3, 12, 22, 32, 42]) {
+  growing = feed(growing, 60_000, 0, percent, new Date())
+  show(growing, `${STAGE_LABEL[stageOf(growing)]}  使用率 ${percent}%`)
+}
