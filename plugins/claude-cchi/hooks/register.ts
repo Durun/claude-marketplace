@@ -126,6 +126,22 @@ const wordsOf = (p: Pet): readonly Say[] =>
   ) as readonly Say[]
 
 /**
+ * 前の版の記憶は「主語 1 語 + 述語 1 語」しかない。今の記憶は作業をそのまま要約した文なので、
+ * 戻す元が無い。5 歳児の言い方としてはそのまま使えるので、言えることへ移して記憶は貯め直す。
+ */
+export const migrate = (p: Pet): Pet => {
+  const old = (p.knowledge ?? []) as readonly (Memory & { subject?: string; predicate?: string })[]
+  if (old.every((m) => typeof m.text === 'string')) return { ...p, words: [...wordsOf(p)] }
+  const said = old
+    .filter((m) => typeof m.text !== 'string' && m.subject !== undefined)
+    .map((m): Say => [{ text: `${m.subject} ${m.predicate ?? ''}`.trim(), color: null }])
+  return learnWords(
+    { ...p, knowledge: old.filter((m) => typeof m.text === 'string'), words: [...wordsOf(p)] },
+    said,
+  )
+}
+
+/**
  * 居合わせた 1 匹と話し始める。互いに覚えていることを 1 つずつ出し合う。
  * 話すことが無い相手とは黙って立っている。
  */
@@ -382,9 +398,9 @@ export const register: Register = (on) => {
     })
     sessionId = await $.session.id()
     const stored = (await $.store.get(key(sessionId))) as Pet | undefined
-    pet = stored ?? newPet(sessionId, e.cwd, new Date())
+    pet = stored === undefined ? newPet(sessionId, e.cwd, new Date()) : migrate(stored)
     scene = newScene()
-    plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []
+    plaza = (((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []).map(migrate)
     if (e.isInteractive) {
       await save($)
       await $.ui.open({ id: PANE, title: 'Claudeっち' })

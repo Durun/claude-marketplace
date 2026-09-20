@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
-import { markBorrowed } from './hooks/register.ts'
+import { markBorrowed, migrate } from './hooks/register.ts'
 import {
   feed,
   flush,
@@ -169,6 +169,18 @@ assert.deepEqual(markBorrowed('でーたが [おそかった]', '#7fc8a9'), [
   { text: 'おそかった', color: '#7fc8a9' },
 ])
 assert.deepEqual(markBorrowed('こわれた', '#7fc8a9'), [{ text: 'こわれた', color: null }])
+
+// 前の版の記憶は言えることへ移し、記憶は空から貯め直す。
+{
+  const old = {
+    ...newPet('s', '/w', born),
+    knowledge: [{ subject: 'push', predicate: 'まってる', heardFrom: null }],
+  } as unknown as Parameters<typeof migrate>[0]
+  const moved = migrate(old)
+  assert.deepEqual(moved.knowledge, [], '戻せない記憶は残さない')
+  assert.deepEqual(moved.words, [[{ text: 'push まってる', color: null }]], '言えることへ移す')
+  assert.deepEqual(migrate(moved), moved, '移した後は変わらない')
+}
 
 // 家とひろばのどちらかにしか居ない。止まったセッションの子はずっとひろば。
 const now = Date.now()
