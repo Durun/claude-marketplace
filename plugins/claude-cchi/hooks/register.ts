@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 import { CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
 import {
   adopt,
@@ -32,7 +32,6 @@ import {
 } from './scene.ts'
 
 const PANE = 'claude-cchi'
-const PLAZA_PANE = 'claude-cchi-hiroba'
 const GRAVE_PANE = 'claude-cchi-ohaka'
 const CROWD = 'crowd'
 
@@ -313,8 +312,14 @@ export const register: Register = (on) => {
       await loadBoard($)
       const grave = sub === 'ohaka'
       const count = plaza.filter((p) => isDead(p) === grave).length
-      await $.ui.open({ id: grave ? GRAVE_PANE : PLAZA_PANE, title: grave ? 'お墓' : 'ひろば' })
-      return { text: grave ? `お墓には ${count} 匹が眠っている。` : `ひろばには ${count} 匹いる。` }
+      if (grave) {
+        await $.ui.open({ id: GRAVE_PANE, title: 'お墓' })
+        return { text: `お墓には ${count} 匹が眠っている。` }
+      }
+      tab = 'plaza'
+      await $.ui.open({ id: PANE, title: 'Claudeっち' })
+      start($)
+      return { text: `ひろばには ${count} 匹いる。` }
     }
     await $.ui.open({ id: PANE, title: 'Claudeっち' })
     start($)
@@ -376,79 +381,20 @@ export const register: Register = (on) => {
   })
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== PANE && e.requestId !== PLAZA_PANE && e.requestId !== GRAVE_PANE) {
-      return next(e)
-    }
+    if (e.requestId !== PANE && e.requestId !== GRAVE_PANE) return next(e)
 
-    // ひろばは今を生きている子が集まる場。死んだ子はお墓へ。
-    if (e.requestId === PLAZA_PANE || e.requestId === GRAVE_PANE) {
+    // お墓は面の中に置かず、呼ばれたときだけ別に開く。
+    if (e.requestId === GRAVE_PANE) {
       const { Box, Text } = await $.ui.resolve(e)
-      const grave = e.requestId === GRAVE_PANE
-      const here = grave ? plaza.filter(isDead) : crowdNow()
-      if (grave && here.length === 0) {
+      const here = plaza.filter(isDead)
+      if (here.length === 0) {
         return Box({ children: [Text({ children: 'まだ誰も眠っていない。' })] })
-      }
-      if (grave) {
-        return Box({
-          flexDirection: 'column',
-          children: [
-            Text({ children: `お墓  ${here.length} 匹` }),
-            ...[...here].reverse().map((p) => Text({ children: epitaph(p) })),
-          ],
-        })
-      }
-      const shown = here.slice(-CROWD_LIMIT)
-      // ひろばの面は自分の幅で描く。家の面をまだ開いていなくても絵が出る。
-      const wide = Math.max(MIN_COLUMNS, Math.min(e.props.bodyColumns, MAX_COLUMNS))
-      const home = pet
-      const crowd: RenderChildren[] = []
-      if (e.surface === 'terminal') {
-        const { Raster, Button } = await $.ui.resolve(e)
-        crowd.push(
-          Text({ children: crowdNames(wide, shown) }),
-          Raster({
-            key: CROWD,
-            columns: wide,
-            rows: CROWD_ROWS,
-            cells: renderCrowd(wide, CROWD_ROWS, shown, scene.step),
-          }),
-        )
-        if (shown.length === 0) crowd.push(Text({ children: 'まだ誰もいない。' }))
-        // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
-        // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
-        if (home !== null && stageOf(home) === 'egg') {
-          const now = Date.now()
-          for (const p of shown.filter((q) => q.id !== home.id && isStopped(q, now))) {
-            crowd.push(
-              Button({
-                key: `adopt:${p.id}`,
-                label: `${p.name ?? 'なまえなし'} を引き継ぐ`,
-                plain: true,
-                onPress: async () => {
-                  pet = adopt(p, home.cwd, new Date())
-                  scene = newScene()
-                  turns = 0
-                  sayUntil = 0
-                  cells = ''
-                  await save($)
-                  start($)
-                  await $.ui.open({ id: PANE, title: 'Claudeっち' })
-                  await $.ui.invalidate('ui.render')
-                },
-              }),
-            )
-          }
-        }
       }
       return Box({
         flexDirection: 'column',
         children: [
-          Text({ children: `ひろば  ${here.length} 匹` }),
-          ...crowd,
-          ...board
-            .slice(-6)
-            .reverse()
-            .map((u) => Text({ children: `${u.name}: 「${u.subject} は ${u.predicate}」` })),
+          Text({ children: `お墓  ${here.length} 匹` }),
+          ...[...here].reverse().map((p) => Text({ children: epitaph(p) })),
         ],
       })
     }
@@ -510,6 +456,13 @@ export const register: Register = (on) => {
 
     const rule = () => Text({ children: '\u2500'.repeat(Math.max(4, columns - 2)) })
     const crowd = crowdNow()
+    // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
+    // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
+    const home = pet
+    const adoptable =
+      stageOf(home) === 'egg'
+        ? crowd.filter((p) => p.id !== home.id && isStopped(p, Date.now()))
+        : []
     const dirty = poopCount(pet)
     const tabButton = (id: 'home' | 'plaza', label: string) =>
       Button({
@@ -561,6 +514,30 @@ export const register: Register = (on) => {
                 cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
               }),
               Text({ children: crowd.length === 0 ? 'ひろば  まだ誰もいない。' : 'ひろば' }),
+              ...board
+                .slice(-3)
+                .reverse()
+                .map((u) => Text({ children: `${u.name}: 「${u.subject} は ${u.predicate}」` })),
+              // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
+              // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
+              ...adoptable.map((p) =>
+                Button({
+                  key: `adopt:${p.id}`,
+                  label: `${p.name ?? 'なまえなし'} を引き継ぐ`,
+                  plain: true,
+                  onPress: async () => {
+                    pet = adopt(p, home.cwd, new Date())
+                    scene = newScene()
+                    turns = 0
+                    sayUntil = 0
+                    cells = ''
+                    tab = 'home'
+                    await save($)
+                    start($)
+                    await $.ui.invalidate('ui.render')
+                  },
+                }),
+              ),
             ]),
         rule(),
       ],
