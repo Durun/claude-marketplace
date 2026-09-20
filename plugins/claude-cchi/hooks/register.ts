@@ -13,9 +13,13 @@ import {
   remember,
   stageOf,
   STAGE_LABEL,
+  hexColor,
   learnWords,
+  sayText,
+  traitsOf,
   wordFor,
   type Memory,
+  type Say,
   type Pet,
   type Stage,
 } from './pet.ts'
@@ -106,8 +110,8 @@ const crowdNow = () => plaza.filter((p) => inPlaza(p, Date.now())).slice(-CROWD_
 type Chat = {
   /** 相手のひろばでの位置。吹き出しをその子の真上に出すために持つ。 */
   withIndex: number
-  mine: string
-  theirs: string
+  mine: Say
+  theirs: Say
   /** 相手から聞いたこと。話し終えたら覚える。 */
   heard: Memory
   startedAt: number
@@ -115,8 +119,11 @@ type Chat = {
 
 const pick = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)]
 
-/** 前の版で保存された子には words が無い。読み出しはここを通す。 */
-const wordsOf = (p: Pet): readonly string[] => p.words ?? []
+/** 前の版で保存された子は words を持たないか、色の無い文字列で持っている。読み出しはここを通す。 */
+const wordsOf = (p: Pet): readonly Say[] =>
+  (p.words ?? []).map((say) =>
+    typeof say === 'string' ? [{ text: say, color: null }] : say,
+  ) as readonly Say[]
 
 /**
  * 居合わせた 1 匹と話し始める。互いに覚えていることを 1 つずつ出し合う。
@@ -136,8 +143,8 @@ const startChat = (crowd: readonly Pet[]) => {
     withIndex: crowd.indexOf(other),
     mine,
     theirs,
-    // 相手の頭の中までは分からない。聞こえた一言だけが残る。
-    heard: { text: theirs, heardFrom: other.name },
+    // 相手の頭の中までは分からない。聞こえた一言が、その子の色のまま残る。
+    heard: { text: sayText(theirs), heardFrom: other.name, color: hexColor(traitsOf(other).color) },
     startedAt: scene.step,
   }
 }
@@ -240,34 +247,57 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      'あなたは技術作業の記録係。いま起きたことを、あとで読み返して分かる 1 文にまとめる。' +
-      '固有名詞・技術用語・数値はそのまま残す。60 文字以内。' +
-      '既に覚えていることと同じ内容なら、別の側面を書く。説明や記号を付けず、1 行だけ出力する。',
-    prompt: `いま起きたこと:\n${answer.slice(0, 1200)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
-    maxTokens: 96,
+      'あなたは技術作業の記録係。いま起きたことを、あとで読み返して再現できるようにまとめる。' +
+      '固有名詞・技術用語・数値・因果関係はそのまま残す。400 文字以内で、必要なだけ文を重ねてよい。' +
+      '既に覚えていることと重なるなら、まだ書いていない側面を書く。前置きや箇条書きの記号を付けず、本文だけを出力する。',
+    prompt: `いま起きたこと:\n${answer.slice(0, 4000)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
+    maxTokens: 400,
   })
-  const line = text.trim().split('\n')[0]?.trim() ?? ''
-  return line === '' ? null : { text: line.slice(0, 80), heardFrom: null }
+  const line = text.trim().replace(/\n+/g, ' ')
+  return line === '' ? null : { text: line.slice(0, 400), heardFrom: null, color: null }
 }
 
-/** 1 つの記憶を口に出せる形へ直す。覚えた中身は分かっていても、出てくる言葉は 5 歳児のもの。 */
-const babble = async ($: EngineInterface, memory: Memory): Promise<string[]> => {
+/**
+ * 1 つの記憶を口に出せる形へ直す。覚えた中身は分かっていても、出てくる言葉は 5 歳児のもの。
+ * ひろばで誰かに教わった言葉があれば、それを混ぜた言い方も作る。
+ */
+const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promise<Say[]> => {
+  const borrowed = heard?.text ?? ''
   const text = await $.model.complete({
     model: 'haiku',
     system:
       'あなたは 5 歳児。渡された文の意味を、知っている言葉だけで言い直す。' +
-      '専門用語・英単語・数字は使わない。1 つ 10 文字以内のひらがな中心の短い文にする。' +
-      '「こわれた」「いっぱいでた」「なおった」のような言い方で、違う言い方を 3 つ、1 行に 1 つ出力する。',
+      '専門用語・英単語・数字は使わない。1 つ 12 文字以内のひらがな中心の短い文にする。' +
+      '「こわれた」「いっぱいでた」「なおった」のような言い方で、違う言い方を 3 つ、1 行に 1 つ出力する。' +
+      (borrowed === ''
+        ? ''
+        : `3 つのうち 1 つか 2 つは、友だちに教わった「${borrowed}」を混ぜて言う。` +
+          '教わった言葉を使った部分は [ ] で囲む。'),
     prompt: `言い直す文:\n${memory.text}`,
-    maxTokens: 64,
+    maxTokens: 96,
   })
+  const color = heard?.color ?? null
   return text
     .trim()
     .split('\n')
-    .map((line) => line.replace(/^[-・\d.、\s]+/, '').replace(/[「」"']/g, '').trim().slice(0, 12))
+    .map((line) => line.replace(/^[-・\d.、\s]+/, '').replace(/[「」"']/g, '').trim())
     .filter((line) => line !== '')
     .slice(0, 3)
+    .map((line) => markBorrowed(line, color))
+    .filter((say) => sayText(say) !== '')
 }
+
+/** [ ] で囲まれたところに、教わった子の色を付ける。 */
+export const markBorrowed = (line: string, color: string | null): Say =>
+  line
+    .split(/(\[[^\]]*\])/)
+    .filter((part) => part !== '')
+    .map((part) =>
+      part.startsWith('[') && part.endsWith(']')
+        ? { text: part.slice(1, -1), color }
+        : { text: part, color: null },
+    )
+    .filter((part) => part.text !== '')
 
 /** 端末で 2 桁を使う文字の範囲。罫線や図形はどちらとも取れるので 1 桁に数える。 */
 const WIDE_RANGES: readonly (readonly [number, number])[] = [
@@ -308,16 +338,17 @@ export const crowdNames = (columns: number, pets: readonly Pet[]) => {
  * ひろばの吹き出し。話している子の真上に出す。
  * 出ていない間も同じ行数を空けておく。高さが変わると下の区画ごと描き直しになる。
  */
-const chatBubble = (columns: number, crowd: readonly Pet[]) => {
-  const blank = Array.from({ length: BUBBLE_ROWS }, () => '')
+const chatBubble = (columns: number, crowd: readonly Pet[]): Say[] => {
+  const blank: Say[] = Array.from({ length: BUBBLE_ROWS }, () => [])
   if (chat === null || crowd.length === 0) return blank
   const mine = scene.step - chat.startedAt < CHAT_LINE_FRAMES
   const index = mine ? crowd.findIndex((p) => p.id === pet?.id) : chat.withIndex
   if (index < 0) return blank
   const lines = bubble(mine ? chat.mine : chat.theirs)
   const slot = Math.floor(columns / crowd.length)
-  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(lines[0] ?? '')) / 2))
-  return lines.map((line) => ' '.repeat(at) + line)
+  const head = lines[0] === undefined ? '' : sayText(lines[0])
+  const at = index * slot + Math.max(0, Math.round((slot - displayWidth(head)) / 2))
+  return lines.map((line) => [{ text: ' '.repeat(at), color: null }, ...line])
 }
 
 /** 遺影に添える一行。生まれてから死ぬまでと、どこまで育ったか。 */
@@ -331,14 +362,14 @@ const epitaph = (pet: Pet) => {
 /** 吹き出しの行数。出ていない間もこの高さを空けておく。 */
 export const BUBBLE_ROWS = 3
 
-/** 吹き出しの 3 行。下辺の三角が Claudeっちを指す。 */
-export const bubble = (word: string) => {
-  const inner = displayWidth(word) + 2
+/** 吹き出しの 3 行。中の行は色ごとに区切って返す。下辺の三角が Claudeっちを指す。 */
+export const bubble = (say: Say): Say[] => {
+  const inner = displayWidth(sayText(say)) + 2
   const tail = Math.floor(inner / 2)
   return [
-    `╭${'─'.repeat(inner)}╮`,
-    `│ ${word} │`,
-    `╰${'─'.repeat(tail)}▽${'─'.repeat(inner - tail - 1)}╯`,
+    [{ text: `╭${'─'.repeat(inner)}╮`, color: null }],
+    [{ text: '│ ', color: null }, ...say, { text: ' │', color: null }],
+    [{ text: `╰${'─'.repeat(tail)}▽${'─'.repeat(inner - tail - 1)}╯`, color: null }],
   ]
 }
 
@@ -412,10 +443,12 @@ export const register: Register = (on) => {
     if (turns % TALK_EVERY === 0) {
       const memory = await recall($, pet, e.answer)
       if (memory !== null) {
-        pet = learnWords(remember(pet, memory), await babble($, memory))
-        const word = wordFor(after, pick(wordsOf(pet)) ?? '')
+        const heard = pick(pet.knowledge.filter((m) => m.heardFrom !== null))
+        pet = learnWords(remember(pet, memory), await babble($, memory, heard))
+        const say = pick(wordsOf(pet))
+        const word = say === undefined ? null : wordFor(after, say)
         pet = { ...pet, word }
-        sayUntil = word === null || word === '' ? 0 : scene.step + SAY_FRAMES
+        sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
       }
     }
 
@@ -485,12 +518,17 @@ export const register: Register = (on) => {
 
     const width = petWidth(columns, PANE_ROWS, pet)
     // ひろばへ行っている間、頭上の札は家に居ないので出さない。
+    const sayRow = (line: Say, pad: number) =>
+      Box({
+        paddingLeft: pad,
+        children: line.map((part) =>
+          Text(part.color === null ? { children: part.text } : { children: part.text, color: part.color }),
+        ),
+      })
     const speech =
       scene.away || pet.word === null || sayUntil === 0
         ? []
-        : bubble(pet.word).map((line) =>
-            Box({ paddingLeft: labelPad(line, width), children: [Text({ children: line })] }),
-          )
+        : bubble(pet.word).map((line) => sayRow(line, labelPad(sayText(line), width)))
     // 吹き出しの出入りで面の高さが変わると、下の区画ごと描き直しになる。空でも同じ行数を占める。
     const above = [Box({ height: BUBBLE_ROWS - speech.length }), ...speech]
     if (pet.name !== null) {
@@ -551,7 +589,7 @@ export const register: Register = (on) => {
           ? []
           : [
               rule(),
-              ...chatBubble(columns, crowd).map((line) => Text({ children: line })),
+              ...chatBubble(columns, crowd).map((line) => sayRow(line, 0)),
               Text({ children: crowdNames(columns, crowd) }),
               Raster({
                 key: CROWD,

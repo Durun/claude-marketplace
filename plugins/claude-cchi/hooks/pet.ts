@@ -11,7 +11,15 @@ export type Memory = {
   text: string
   /** ひろばで聞いた相手の名前。自分のセッションから覚えたものは null。 */
   heardFrom: string | null
+  /** 聞かせてくれた子の色。自分で覚えたものは null。 */
+  color: string | null
 }
+
+/**
+ * 口に出せる 1 つの言い回しを、色ごとに区切ったもの。
+ * ひろばで聞いた言葉から来た区切りには、聞かせてくれた子の色が乗る。
+ */
+export type Say = { text: string; color: string | null }[]
 
 export type Pet = {
   /** ひろばでの一意の鍵。セッション ID と何代目かを繋いだもの。 */
@@ -33,11 +41,11 @@ export type Pet = {
   percent: number
   name: string | null
   /** 直近のひとこと。 */
-  word: string | null
+  word: Say | null
   /** 覚えていること。古いものから忘れる。 */
   knowledge: Memory[]
   /** 言えること。覚えたことを 5 歳児の言葉に直したもの。古いものから忘れる。 */
-  words: string[]
+  words: Say[]
   /** 飼い主のセッションが最後に動いていた時刻。止まった判定に使う。 */
   seenAt: number
   /** いまひろばへ遊びに行っているか。 */
@@ -96,20 +104,33 @@ export const remember = (pet: Pet, memory: Memory): Pet => ({
   knowledge: [...pet.knowledge.filter((m) => m.text !== memory.text), memory].slice(-MAX_FACTS),
 })
 
+/** 区切りを繋いだ文。同じことを言っているかを見るのに使う。 */
+export const sayText = (say: Say) => say.map((part) => part.text).join('')
+
 /** 言えることを増やす。同じ言い回しは 1 つにまとめる。 */
-export const learnWords = (pet: Pet, words: readonly string[]): Pet => ({
-  ...pet,
-  words: [...new Set([...(pet.words ?? []), ...words.filter((w) => w !== '')])].slice(-MAX_WORDS),
-})
+export const learnWords = (pet: Pet, words: readonly Say[]): Pet => {
+  const kept = [...(pet.words ?? []), ...words.filter((say) => sayText(say) !== '')]
+  const seen = new Set<string>()
+  const unique = kept.filter((say) => {
+    const text = sayText(say)
+    if (seen.has(text)) return false
+    seen.add(text)
+    return true
+  })
+  return { ...pet, words: unique.slice(-MAX_WORDS) }
+}
 
 /**
  * 段階ごとの話し方。子供はまだ一語しか出せない。
  * 赤ちゃんと卵は話さない。
  */
-export const wordFor = (stage: Stage, word: string): string | null => {
+export const wordFor = (stage: Stage, say: Say): Say | null => {
   if (stage === 'egg' || stage === 'baby') return null
-  if (stage === 'child') return word.split(/\s+/)[0] ?? word
-  return word
+  if (stage !== 'child') return say
+  const head = say[0]
+  if (head === undefined) return null
+  const word = head.text.split(/\s+/)[0] ?? head.text
+  return word === '' ? null : [{ ...head, text: word }]
 }
 
 export const poopCount = (pet: Pet) =>
@@ -182,6 +203,9 @@ export type Traits = {
   /** 頬の色。 */
   accent: number
 }
+
+/** 端末へ渡す色。Traits の色は 0x00RRGGBB で持っている。 */
+export const hexColor = (color: number) => `#${color.toString(16).padStart(6, '0')}`
 
 const hash = (s: string) => {
   let h = 2166136261

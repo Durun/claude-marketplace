@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
+import { markBorrowed } from './hooks/register.ts'
 import {
   feed,
   flush,
@@ -16,8 +17,10 @@ import {
   stageOf,
   STALE_MS,
   traitsOf,
+  hexColor,
   learnWords,
   MAX_WORDS,
+  sayText,
   wordFor,
 } from './hooks/pet.ts'
 import {
@@ -116,32 +119,56 @@ assert.equal(next.health, 100)
 assert.equal(isDead(next), false)
 
 // 話し方は段階で変わる。子供はまだ一語しか出せない。
-assert.equal(wordFor('egg', 'おこられた'), null)
-assert.equal(wordFor('baby', 'おこられた'), null)
-assert.equal(wordFor('child', 'でーた こわれた'), 'でーた')
-assert.equal(wordFor('adult', 'でーた こわれた'), 'でーた こわれた')
+const said = [{ text: 'でーた こわれた', color: null }]
+assert.equal(wordFor('egg', said), null)
+assert.equal(wordFor('baby', said), null)
+assert.deepEqual(wordFor('child', said), [{ text: 'でーた', color: null }])
+assert.deepEqual(wordFor('adult', said), said)
 
-// 覚えるのは要約した 1 文。同じ文は覚え直し、数を超えたら古いものから忘れる。
-const memory = { text: 'ClickHouse の JSONEachRow は孤立サロゲートを弾く', heardFrom: null }
+// 覚えるのは要約した文。同じ文は覚え直し、数を超えたら古いものから忘れる。
+const memory = {
+  text: 'ClickHouse の JSONEachRow は孤立サロゲートを列の位置で弾く。String 列は通り、最上位の値は Code 25 になる。',
+  heardFrom: null,
+  color: null,
+}
 let learner = remember(newPet('s', '/w', born), memory)
 learner = remember(learner, memory)
 assert.deepEqual(learner.knowledge, [memory], '同じ文は重ねない')
 for (let i = 0; i < MAX_FACTS + 3; i += 1) {
-  learner = remember(learner, { text: `できごと${i}`, heardFrom: null })
+  learner = remember(learner, { text: `できごと${i}`, heardFrom: null, color: null })
 }
 assert.equal(learner.knowledge.length, MAX_FACTS)
 assert.equal(learner.knowledge.some((m) => m.text === memory.text), false, '古いものから忘れる')
 
+// 聞いた言葉には、聞かせてくれた子の色が乗る。
+const heard = { text: 'おそかった', heardFrom: 'ひろばっち', color: '#7fc8a9' }
+assert.equal(remember(learner, heard).knowledge.at(-1)?.color, '#7fc8a9')
+assert.equal(hexColor(0x7fc8a9), '#7fc8a9')
+
 // 言えることは記憶とは別に溜まる。同じ言い回しは 1 つにまとめ、上限を超えたら古いものから忘れる。
-let talker = learnWords(newPet('s', '/w', born), ['こわれた', 'なおした', ''])
-talker = learnWords(talker, ['こわれた'])
-assert.deepEqual(talker.words, ['こわれた', 'なおした'], '同じ言い回しと空文字は増やさない')
+// 他の子から借りた言葉は、その子の色を付けたまま持つ。
+const borrowed = [
+  { text: 'でーたが ', color: null },
+  { text: 'おそかった', color: '#7fc8a9' },
+]
+let talker = learnWords(newPet('s', '/w', born), [borrowed, [{ text: 'なおした', color: null }], []])
+talker = learnWords(talker, [borrowed])
+assert.equal(talker.words.length, 2, '同じ言い回しと空の言い回しは増やさない')
+assert.equal(talker.words[0]?.[1]?.color, '#7fc8a9', '借りた言葉は相手の色のまま')
+assert.equal(sayText(borrowed), 'でーたが おそかった')
 talker = learnWords(
   talker,
-  Array.from({ length: MAX_WORDS + 5 }, (_, i) => `ことば${i}`),
+  Array.from({ length: MAX_WORDS + 5 }, (_, i) => [{ text: `ことば${i}`, color: null }]),
 )
 assert.equal(talker.words.length, MAX_WORDS)
-assert.equal(talker.words.includes('なおした'), false, '古い言い回しから忘れる')
+assert.equal(talker.words.some((say) => sayText(say) === 'なおした'), false, '古い言い回しから忘れる')
+
+// 教わった言葉は [ ] で囲んで返ってくる。囲みの中だけに相手の色を付ける。
+assert.deepEqual(markBorrowed('でーたが [おそかった]', '#7fc8a9'), [
+  { text: 'でーたが ', color: null },
+  { text: 'おそかった', color: '#7fc8a9' },
+])
+assert.deepEqual(markBorrowed('こわれた', '#7fc8a9'), [{ text: 'こわれた', color: null }])
 
 // 家とひろばのどちらかにしか居ない。止まったセッションの子はずっとひろば。
 const now = Date.now()
