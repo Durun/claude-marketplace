@@ -1,5 +1,5 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
-import { petWidth, render, statusLine } from './draw.ts'
+import { CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
 import {
   feed,
   flush,
@@ -7,10 +7,14 @@ import {
   newPet,
   poopCount,
   rebirth,
+  remember,
   stageOf,
   STAGE_LABEL,
+  wordFor,
+  type Fact,
   type Pet,
   type Stage,
+  type Utterance,
 } from './pet.ts'
 import {
   advance,
@@ -25,8 +29,14 @@ import {
 
 const PANE = 'claude-cchi'
 const PLAZA_PANE = 'claude-cchi-hiroba'
+const GRAVE_PANE = 'claude-cchi-ohaka'
+const CROWD = 'crowd'
+
+/** ひろばの絵の高さ。1 匹ずつは小さいので低くてよい。 */
+const CROWD_ROWS = 7
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
+const BOARD_KEY = 'board'
 
 /** 歩きと咀嚼が滑らかに見える速さ。 */
 const FRAME_MS = 120
@@ -38,6 +48,12 @@ const MIN_COLUMNS = 24
 
 /** ひろばに残す数。古い順に落とす。 */
 const PLAZA_LIMIT = 40
+
+/** 掲示板に残す言葉の数。 */
+const BOARD_LIMIT = 40
+
+/** 1 度に聞き取れる数。5 歳児なので、たくさんは覚えられない。 */
+const HEAR_AT_ONCE = 2
 
 /** ひとことを言う間隔。毎ターン喋ると会話の邪魔になる。 */
 const TALK_EVERY = 3
@@ -57,6 +73,7 @@ let cells = ''
 let turns = 0
 let sayUntil = 0
 let plaza: Pet[] = []
+let board: Utterance[] = []
 let sessionId = ''
 
 const key = (id: string) => `pet:${id}`
@@ -68,6 +85,17 @@ const save = async ($: EngineInterface) => {
   await $.store.set(key(sessionId), pet)
   plaza = [...plaza.filter((p) => p.id !== pet?.id), pet].slice(-PLAZA_LIMIT)
   await $.store.set(PLAZA_KEY, plaza)
+}
+
+/** 掲示板を読み直す。他のセッションの Claudeっちが書き足しているので、都度取り直す。 */
+const loadBoard = async ($: EngineInterface) => {
+  board = ((await $.store.get(BOARD_KEY)) as Utterance[] | undefined) ?? []
+  return board
+}
+
+const post = async ($: EngineInterface, said: Utterance) => {
+  board = [...(await loadBoard($)), said].slice(-BOARD_LIMIT)
+  await $.store.set(BOARD_KEY, board)
 }
 
 const redraw = async ($: EngineInterface) => {
@@ -129,29 +157,41 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
   return `${name.replace(/っち$/, '').slice(0, 5)}っち`
 }
 
-/** 段階に応じたひとこと。子供は単語、大人から先は文。 */
-const talk = async ($: EngineInterface, p: Pet, stage: Stage, answer: string) => {
-  if (stage === 'egg' || stage === 'baby') return null
-  const asWord = stage === 'child'
-  const persona =
-    stage === 'ojisan'
-      ? 'くだけた口調で、少しおせっかいに'
-      : stage === 'ojiisan'
-        ? 'ゆっくりとした口調で、昔話めかして'
-        : '素直に'
+/** ひろばで他の子が言ったことを聞き取る。5 歳児なので 1 度に 2 つまで。 */
+const hear = async ($: EngineInterface, p: Pet): Promise<Pet> => {
+  const fresh = (await loadBoard($))
+    .filter((u) => u.petId !== p.id && u.at > p.heardAt)
+    .slice(-HEAR_AT_ONCE)
+  if (fresh.length === 0) return p
+  const heard = fresh.reduce(
+    (acc, u) => remember(acc, { subject: u.subject, predicate: u.predicate, heardFrom: u.name }),
+    p,
+  )
+  return { ...heard, heardAt: Math.max(...fresh.map((u) => u.at)) }
+}
+
+/**
+ * 話すことを 1 つ考える。自分のセッションで見聞きしたことと、ひろばで聞いたことを合わせる。
+ * 主語と述語を 1 語ずつしか持てないので、渡した文脈のほとんどは落ちる。
+ */
+const think = async ($: EngineInterface, p: Pet, answer: string): Promise<Fact | null> => {
+  const known = p.knowledge
+    .map((f) => `${f.subject} は ${f.predicate}${f.heardFrom === null ? '' : `（${f.heardFrom}から）`}`)
+    .join('\n')
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      `あなたは ${p.name ?? '名無し'} という育成ゲームの生き物。${STAGE_LABEL[stage]}。` +
-      (asWord
-        ? '覚えたての単語を 1 つだけ、たどたどしく言う。2〜6 文字。'
-        : `${persona}、20 文字以内で一言だけ言う。`) +
-      '記号や引用符を付けず、セリフだけを出力する。',
-    prompt: `いま飼い主はこう言った:\n${answer.slice(0, 400)}`,
-    maxTokens: 40,
+      'あなたは 5 歳児の語彙しか持たない生き物。いま見聞きしたことと、覚えていることから、' +
+      '言いたいことを 1 つだけ選び「主語|述語」の形で答える。' +
+      '主語も述語も 5 文字以内のやさしい日本語にする。' +
+      '「トークン|おおい」「ひろば|たのしい」のように、縦棒 1 本で区切った 1 行だけを出力する。',
+    prompt: `いま見聞きしたこと:\n${answer.slice(0, 600)}\n\n覚えていること:\n${known || '（まだ何も知らない）'}`,
+    maxTokens: 32,
   })
-  const word = text.trim().split('\n')[0]?.replace(/^[「"']|[」"']$/g, '') ?? ''
-  return word === '' ? null : word.slice(0, asWord ? 8 : 24)
+  const [subject, predicate] = (text.trim().split('\n')[0] ?? '').split('|').map((w) => w.trim())
+  if (subject === undefined || predicate === undefined) return null
+  if (subject === '' || predicate === '') return null
+  return { subject: subject.slice(0, 6), predicate: predicate.slice(0, 6), heardFrom: null }
 }
 
 /** 端末で 2 桁を使う文字の範囲。罫線や図形はどちらとも取れるので 1 桁に数える。 */
@@ -200,13 +240,14 @@ export const register: Register = (on) => {
     await $.command.register({
       name: 'claude-cchi',
       description:
-        'Claudeっちを育てる。/claude-cchi で面を開き、/claude-cchi hiroba でこれまでの子を見る。',
+        'Claudeっちを育てる。/claude-cchi で面を開き、hiroba で生きている子、ohaka で眠った子を見る。',
     })
     sessionId = await $.session.id()
     const stored = (await $.store.get(key(sessionId))) as Pet | undefined
     pet = stored ?? newPet(sessionId, e.cwd, new Date())
     scene = newScene()
     plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []
+    await loadBoard($)
     if (e.isInteractive) {
       await save($)
       await $.ui.open({ id: PANE, title: 'Claudeっち' })
@@ -216,9 +257,14 @@ export const register: Register = (on) => {
   })
 
   on('command.run', { command: 'claude-cchi' }, async ($, e) => {
-    if (e.args.trim() === 'hiroba') {
-      await $.ui.open({ id: PLAZA_PANE, title: 'ひろば' })
-      return { text: `ひろばを開いた。これまでの Claudeっちは ${plaza.length} 匹。` }
+    const sub = e.args.trim()
+    if (sub === 'hiroba' || sub === 'ohaka') {
+      plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
+      await loadBoard($)
+      const grave = sub === 'ohaka'
+      const count = plaza.filter((p) => isDead(p) === grave).length
+      await $.ui.open({ id: grave ? GRAVE_PANE : PLAZA_PANE, title: grave ? 'お墓' : 'ひろば' })
+      return { text: grave ? `お墓には ${count} 匹が眠っている。` : `ひろばには ${count} 匹いる。` }
     }
     await $.ui.open({ id: PANE, title: 'Claudeっち' })
     start($)
@@ -253,9 +299,24 @@ export const register: Register = (on) => {
       pet = { ...pet, name: await nameIt($, pet) }
     }
     if (turns % TALK_EVERY === 0) {
-      const word = await talk($, pet, after, e.answer)
-      pet = { ...pet, word }
-      sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
+      pet = await hear($, pet)
+      const fact = await think($, pet, e.answer)
+      if (fact !== null) {
+        pet = remember(pet, fact)
+        const word = wordFor(after, fact)
+        pet = { ...pet, word }
+        sayUntil = word === null ? 0 : scene.step + SAY_FRAMES
+        // 言ったことはひろばに残り、他の Claudeっちが聞く。
+        if (word !== null && pet.name !== null) {
+          await post($, {
+            petId: pet.id,
+            name: pet.name,
+            subject: fact.subject,
+            predicate: fact.predicate,
+            at: Date.now(),
+          })
+        }
+      }
     }
 
     await save($)
@@ -265,21 +326,49 @@ export const register: Register = (on) => {
   })
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== PANE && e.requestId !== PLAZA_PANE) return next(e)
+    if (e.requestId !== PANE && e.requestId !== PLAZA_PANE && e.requestId !== GRAVE_PANE) {
+      return next(e)
+    }
 
-    // ひろばは絵を動かさず、これまでの子を一覧にする。
-    if (e.requestId === PLAZA_PANE) {
+    // ひろばは今を生きている子が集まる場。死んだ子はお墓へ。
+    if (e.requestId === PLAZA_PANE || e.requestId === GRAVE_PANE) {
       const { Box, Text } = await $.ui.resolve(e)
-      if (plaza.length === 0) return Box({ children: [Text({ children: 'まだ誰もいない。' })] })
+      const grave = e.requestId === GRAVE_PANE
+      const here = plaza.filter((p) => isDead(p) === grave)
+      if (here.length === 0) {
+        return Box({ children: [Text({ children: grave ? 'まだ誰も眠っていない。' : 'まだ誰もいない。' })] })
+      }
+      if (grave) {
+        return Box({
+          flexDirection: 'column',
+          children: [
+            Text({ children: `お墓  ${here.length} 匹` }),
+            ...[...here].reverse().map((p) => Text({ children: epitaph(p) })),
+          ],
+        })
+      }
+      const shown = here.slice(-CROWD_LIMIT)
+      const crowd =
+        e.surface === 'terminal'
+          ? [
+              (await $.ui.resolve(e)).Raster({
+                key: CROWD,
+                columns,
+                rows: CROWD_ROWS,
+                cells: renderCrowd(columns, CROWD_ROWS, shown, scene.step),
+              }),
+              Text({ children: shown.map((p) => p.name ?? 'なまえなし').join('  ') }),
+            ]
+          : []
       return Box({
         flexDirection: 'column',
         children: [
-          Text({ children: `ひろば  ${plaza.length} 匹` }),
-          ...[...plaza].reverse().map((p) =>
-            Text({
-              children: `${p.name ?? 'なまえなし'}  ${STAGE_LABEL[stageOf(p)]}  健康 ${p.health}  ${p.cwd.split('/').pop() ?? ''}`,
-            }),
-          ),
+          Text({ children: `ひろば  ${here.length} 匹` }),
+          ...crowd,
+          ...board
+            .slice(-6)
+            .reverse()
+            .map((u) => Text({ children: `${u.name}: 「${u.subject} は ${u.predicate}」` })),
         ],
       })
     }

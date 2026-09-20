@@ -383,6 +383,42 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
   return encode(c, columns, rows)
 }
 
+/** ひろばに並べる上限。これ以上は入らない。 */
+export const CROWD_LIMIT = 6
+
+/**
+ * ひろばの絵。生きている Claudeっちを地面に並べる。
+ * 1 匹ずつは小さいので、顔の作りではなく色と背丈で見分ける。
+ */
+export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[], frame: number) => {
+  const c = canvas(columns * 2, rows * 2)
+  const groundY = rows * 2 - 3
+  for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
+
+  const shown = pets.slice(0, CROWD_LIMIT)
+  if (shown.length === 0) return encode(c, columns, rows)
+
+  const slot = Math.floor(c.width / shown.length)
+  const scale = Math.max(1, Math.min(2, Math.floor((slot - 4) / ART_WIDTH)))
+  shown.forEach((pet, i) => {
+    const traits = traitsOf(pet)
+    const sy = scale
+    const left = i * slot + Math.round((slot - ART_WIDTH * scale) / 2)
+    // 1 匹ずつ違う調子で呼吸させる。並んでも同じ動きに見えない。
+    const top = groundY - ART_HEIGHT * sy + Math.round(Math.sin((frame + i * 7) / 6))
+    for (let row = 0; row < ART_HEIGHT; row += 1) {
+      for (let col = 0; col < ART_WIDTH; col += 1) {
+        if (ART[row]?.[col] !== '#') continue
+        rect(c, left + col * scale, top + row * sy, scale, sy, traits.color)
+      }
+    }
+    for (const col of EYE_COL) {
+      rect(c, left + col * scale, top + EYE_ROW * sy + sy, scale * 2, Math.max(1, sy), INK)
+    }
+  })
+  return encode(c, columns, rows)
+}
+
 /** Claudeっちの横幅。歩ける範囲と、頭上の札の位置を決めるのに使う。 */
 export const petWidth = (columns: number, rows: number, pet: Pet) =>
   ART_WIDTH * stretch(columns, rows, stageOf(pet), traitsOf(pet).body).sx

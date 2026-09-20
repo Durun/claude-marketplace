@@ -9,9 +9,12 @@ import {
   newPet,
   OUTPUT_PER_POOP,
   poopCount,
+  MAX_FACTS,
   rebirth,
+  remember,
   stageOf,
   traitsOf,
+  wordFor,
 } from './hooks/pet.ts'
 import { advance, newScene, sprinkle, startFlush, TOKENS_PER_GRAIN } from './hooks/scene.ts'
 
@@ -95,5 +98,23 @@ assert.equal(next.generation, dying.generation + 1)
 assert.notEqual(next.id, dying.id, 'ひろばで前の代と別に並ぶ')
 assert.equal(next.health, 100)
 assert.equal(isDead(next), false)
+
+// 話し方は段階で変わる。子供は単語だけ、大人から先は「主語 は 述語」。
+const fact = { subject: 'くるま', predicate: 'はやい', heardFrom: null }
+assert.equal(wordFor('egg', fact), null)
+assert.equal(wordFor('baby', fact), null)
+assert.equal(wordFor('child', fact), 'くるま')
+assert.equal(wordFor('adult', fact), 'くるま は はやい')
+assert.equal(wordFor('ojiisan', fact), 'くるま は はやい')
+
+// 同じ主語は覚え直し、覚えられる数を超えたら古いものから忘れる。
+let learner = remember(newPet('s', '/w', born), fact)
+learner = remember(learner, { ...fact, predicate: 'おそい' })
+assert.deepEqual(learner.knowledge, [{ ...fact, predicate: 'おそい' }], '同じ主語は上書きする')
+for (let i = 0; i < MAX_FACTS + 3; i += 1) {
+  learner = remember(learner, { subject: `もの${i}`, predicate: 'ある', heardFrom: null })
+}
+assert.equal(learner.knowledge.length, MAX_FACTS)
+assert.equal(learner.knowledge.some((f) => f.subject === 'くるま'), false, '古いものから忘れる')
 
 console.log('ok')

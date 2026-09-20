@@ -3,6 +3,26 @@
 
 export type Stage = 'egg' | 'baby' | 'child' | 'adult' | 'ojisan' | 'ojiisan'
 
+/**
+ * Claudeっちが覚えた 1 つのこと。5 歳児の語彙なので、主語と述語が 1 語ずつしかない。
+ * ここが狭いおかげで、ひろばで伝わる情報も自然と削れていく。
+ */
+export type Fact = {
+  subject: string
+  predicate: string
+  /** ひろばで聞いた相手の名前。自分のセッションから覚えたものは null。 */
+  heardFrom: string | null
+}
+
+/** ひろばの掲示板に残る 1 言。 */
+export type Utterance = {
+  petId: string
+  name: string
+  subject: string
+  predicate: string
+  at: number
+}
+
 export type Pet = {
   /** ひろばでの一意の鍵。セッション ID と何代目かを繋いだもの。 */
   id: string
@@ -24,6 +44,10 @@ export type Pet = {
   name: string | null
   /** 直近のひとこと。 */
   word: string | null
+  /** 覚えていること。古いものから忘れる。 */
+  knowledge: Fact[]
+  /** ひろばの掲示板をどこまで聞いたか。 */
+  heardAt: number
   cwd: string
 }
 
@@ -46,8 +70,29 @@ export const newPet = (sessionId: string, cwd: string, now: Date, generation = 0
   percent: 0,
   name: null,
   word: null,
+  knowledge: [],
+  heardAt: 0,
   cwd,
 })
+
+/** 覚えていられる数。これを超えると古いものから忘れる。 */
+export const MAX_FACTS = 12
+
+/** 同じ主語のことは覚え直す。5 歳児なので、たくさんは覚えていられない。 */
+export const remember = (pet: Pet, fact: Fact): Pet => ({
+  ...pet,
+  knowledge: [...pet.knowledge.filter((f) => f.subject !== fact.subject), fact].slice(-MAX_FACTS),
+})
+
+/**
+ * 段階ごとの話し方。子供は単語だけ、大人から先は「<主語> は <述語>」。
+ * 赤ちゃんと卵はまだ話さない。
+ */
+export const wordFor = (stage: Stage, fact: Fact): string | null => {
+  if (stage === 'egg' || stage === 'baby') return null
+  if (stage === 'child') return fact.subject
+  return `${fact.subject} は ${fact.predicate}`
+}
 
 export const poopCount = (pet: Pet) =>
   Math.floor((pet.output - pet.flushedOutput) / OUTPUT_PER_POOP)
