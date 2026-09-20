@@ -123,6 +123,13 @@ const said = [{ text: 'でーた こわれた', color: null }]
 assert.equal(wordFor('egg', said), null)
 assert.equal(wordFor('baby', said), null)
 assert.deepEqual(wordFor('child', said), [{ text: 'でーた', color: null }])
+// 子供の一語には助詞を付けない。
+assert.deepEqual(wordFor('child', [{ text: 'ほんを ひらいたら べんきょうする', color: null }]), [
+  { text: 'ほん', color: null },
+])
+assert.deepEqual(wordFor('child', [{ text: 'はが いたい', color: null }]), [
+  { text: 'はが', color: null },
+])
 assert.deepEqual(wordFor('adult', said), said)
 
 // 覚えるのは要約した文。同じ文は覚え直し、数を超えたら古いものから忘れる。

@@ -280,16 +280,24 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
   return `${name.replace(/っち$/, '').slice(0, 5)}っち`
 }
 
-/** 飼い主の作業を 1 文にまとめて覚える。専門語はそのまま残す。 */
+/**
+ * 飼い主の作業を 1 文にまとめて覚える。専門語はそのまま残す。
+ * 返答だけを読むと、提案や確認待ちを済んだことと取り違える。依頼と対にして渡す。
+ */
 const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memory | null> => {
   const known = p.knowledge.map((m) => m.text).join('\n')
+  const messages = await $.session.messages()
+  const ask =
+    [...messages].reverse().find((m) => m.role === 'user' && m.text !== '')?.text.slice(0, 1000) ??
+    ''
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      'あなたは技術作業の記録係。いま起きたことを、あとで読み返して再現できるようにまとめる。' +
+      'あなたは技術作業の記録係。飼い主の依頼と、それへの返答を読み、実際に済んだことだけをまとめる。' +
+      '提案・依頼・確認待ち・これからやることは、済んだこととして書かない。済んだことが無ければ何も出力しない。' +
       '固有名詞・技術用語・数値・因果関係はそのまま残す。400 文字以内で、必要なだけ文を重ねてよい。' +
       '既に覚えていることと重なるなら、まだ書いていない側面を書く。前置きや箇条書きの記号を付けず、本文だけを出力する。',
-    prompt: `いま起きたこと:\n${answer.slice(0, 4000)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
+    prompt: `飼い主の依頼:\n${ask}\n\n返答:\n${answer.slice(0, 4000)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
     maxTokens: 400,
   })
   const line = text.trim().replace(/\n+/g, ' ')
@@ -297,7 +305,8 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
 }
 
 /**
- * 1 つの記憶を口に出せる形へ直す。覚えた中身は分かっていても、出てくる言葉は 5 歳児のもの。
+ * 1 つの記憶から、いつでも当てはまる決まりごとを取り出して口に出せる形にする。
+ * できごとの報告にすると、ひろばで他の子に渡せるものが残らない。
  * ひろばで誰かに教わった言葉があれば、それを混ぜた言い方も作る。
  */
 const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promise<Say[]> => {
@@ -305,9 +314,13 @@ const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promi
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      'あなたは 5 歳児。渡された文の意味を、知っている言葉だけで言い直す。' +
-      '専門用語・英単語・数字は使わない。1 つ 12 文字以内のひらがな中心の短い文にする。' +
-      '「こわれた」「いっぱいでた」「なおった」のような言い方で、違う言い方を 3 つ、1 行に 1 つ出力する。' +
+      'あなたは 5 歳児。渡された文から、覚えておきたいことを「A は B」の形で言う。' +
+      'A には出てきた言葉をそのまま使ってよい。B にはふつうの名詞か形容詞を置く。' +
+      '「めずらしい」「むずかしい」「たいへん」のような感想でもよい。' +
+      'いま起きたことの報告は書かない。いつもそう言えることを現在形で書く。' +
+      '例:「ねる は ウトウト」「はいく は めずらしい」「ほん は べんきょう」' +
+      '数字は使わない。1 つ 16 文字以内の短い文にする。' +
+      '違う言い方を 3 つ、1 行に 1 つ出力する。' +
       (borrowed === ''
         ? ''
         : `3 つのうち 1 つか 2 つは、友だちに教わった「${borrowed}」を混ぜて言う。` +
@@ -319,8 +332,14 @@ const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promi
   return text
     .trim()
     .split('\n')
-    .map((line) => line.replace(/^[-・\d.、\s]+/, '').replace(/[「」"']/g, '').trim())
-    .filter((line) => line !== '')
+    // 剥がすのは箇条書きの印と連番だけ。裸の数字を落とすと「5 歳児」が「歳児」になって残る。
+    .map((line) => line.replace(/^[-・]\s*|^\d+[.、)]\s*/, '').replace(/[「」"']/g, '').trim())
+    // 前置きと、長すぎる言い回しは捨てる。5 歳児の口から出る長さではない。
+    // 「〜た」で終わる行も捨てる。できごとの報告は、他の子に渡しても使えない。
+    .filter(
+      (line) =>
+        line !== '' && !/[:：]$/.test(line) && !/た[。！]?$/.test(line) && displayWidth(line) <= 32,
+    )
     .slice(0, 3)
     .map((line) => markBorrowed(line, color))
     .filter((say) => sayText(say) !== '')

@@ -121,6 +121,12 @@ export const learnWords = (pet: Pet, words: readonly Say[]): Pet => {
 }
 
 /**
+ * 助詞だけで終わる語尾。子供の一語には付かないので落とす。
+ * に・と・も は「かに」「ひと」「くも」のように語の一部にもなるので、外してある。
+ */
+const TRAILING_PARTICLE = /[をはがへ]$/
+
+/**
  * 段階ごとの話し方。子供はまだ一語しか出せない。
  * 赤ちゃんと卵は話さない。
  */
@@ -129,7 +135,9 @@ export const wordFor = (stage: Stage, say: Say): Say | null => {
   if (stage !== 'child') return say
   const head = say[0]
   if (head === undefined) return null
-  const word = head.text.split(/\s+/)[0] ?? head.text
+  const first = head.text.split(/\s+/)[0] ?? head.text
+  // 1 文字まで削ると何を指しているか分からなくなるので、そこは助詞ごと残す。
+  const word = first.length > 2 ? first.replace(TRAILING_PARTICLE, '') : first
   return word === '' ? null : [{ ...head, text: word }]
 }
 
