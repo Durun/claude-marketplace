@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
-import { markBorrowed, migrate } from './hooks/register.ts'
+import { freshTalk, markBorrowed, migrate, type Utterance } from './hooks/register.ts'
 import {
   feed,
   flush,
@@ -176,6 +176,24 @@ assert.deepEqual(markBorrowed('でーたが [おそかった]', '#7fc8a9'), [
   { text: 'おそかった', color: '#7fc8a9' },
 ])
 assert.deepEqual(markBorrowed('こわれた', '#7fc8a9'), [{ text: 'こわれた', color: null }])
+
+// ひろばの一言は、自分の声と、一度覚えたものを除いて耳に入る。
+{
+  const listener = { ...newPet('s', '/w', born), heardAt: 100 }
+  const at = (petId: string, at: number): Utterance => ({
+    petId,
+    name: 'よそっち',
+    color: '#7fc8a9',
+    say: [{ text: `ことば${at}`, color: null }],
+    at,
+  })
+  const heardTalk = [at('other', 100), at(listener.id, 150), at('other', 200)]
+  assert.deepEqual(
+    freshTalk(heardTalk, listener).map((u) => u.at),
+    [200],
+    '覚えた一言と自分の声は聞き直さない',
+  )
+}
 
 // 前の版の記憶は言えることへ移し、記憶は空から貯め直す。
 {

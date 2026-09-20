@@ -4,7 +4,8 @@
 export type Stage = 'egg' | 'baby' | 'child' | 'adult' | 'ojisan' | 'ojiisan'
 
 /**
- * Claudeっちが覚えた 1 つのこと。飼い主の作業をそのまま要約した、専門語のままの 1 文。
+ * Claudeっちが覚えた 1 つのこと。セッションを通して分かった背景・規範・性質を、専門語のまま書いた 1 文。
+ * できごとの記録ではないので時制を持たず、いつ思い出しても同じだけ当てはまる。
  * 覚えていることと言えることは別で、この文がそのまま口から出ることはない。
  */
 export type Memory = {
@@ -48,6 +49,8 @@ export type Pet = {
   words: Say[]
   /** 飼い主のセッションが最後に動いていた時刻。止まった判定に使う。 */
   seenAt: number
+  /** 最後に聞き取ったひろばの一言の時刻。同じ一言を二度覚えないために持つ。 */
+  heardAt: number
   /** いまひろばへ遊びに行っているか。 */
   away: boolean
   cwd: string
@@ -75,6 +78,7 @@ export const newPet = (sessionId: string, cwd: string, now: Date, generation = 0
   knowledge: [],
   words: [],
   seenAt: now.getTime(),
+  heardAt: 0,
   away: false,
   cwd,
 })

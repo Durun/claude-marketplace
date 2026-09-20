@@ -44,6 +44,9 @@ const CROWD_ROWS = 11
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
 
+/** ひろばに流れた一言の置き場。どのセッションからも読み書きする。 */
+const TALK_KEY = 'plaza:talk'
+
 /** 歩きと咀嚼が滑らかに見える速さ。 */
 const FRAME_MS = 120
 
@@ -55,11 +58,17 @@ const MIN_COLUMNS = 24
 /** ひろばに残す数。古い順に落とす。 */
 const PLAZA_LIMIT = 40
 
-/** ひろばで立ち話を始める間隔。 */
-const CHAT_EVERY = 150
+/** ひろばに残す一言の数。古い順に落とす。 */
+const TALK_LIMIT = 20
 
-/** 立ち話の一言を出しておくコマ数。1 往復ぶんはこの 2 つ分。 */
-const CHAT_LINE_FRAMES = 45
+/** ひろばへ耳を澄ます間隔。他の子の一言はこの間隔で届く。 */
+const LISTEN_EVERY = 25
+
+/** ひろばで口を開く間隔。セッションごとにコマ数がずれるので、話す順は自然に散る。 */
+const TALK_IN_PLAZA_EVERY = 300
+
+/** 一言を吹き出しに出しておく時間。他のセッションとはコマ数を共有できないので実時間で測る。 */
+const BUBBLE_MS = 6000
 
 /** 心拍を打つ間隔。これが途切れるとひろばで待つ扱いになる。 */
 const HEARTBEAT_FRAMES = 100
@@ -88,7 +97,7 @@ let cells = ''
 let turns = 0
 let sayUntil = 0
 let plaza: Pet[] = []
-let chat: Chat | null = null
+let talk: Utterance[] = []
 let sessionId = ''
 
 /** 面の中でどちらを見ているか。ひろばに切り替えている間、家は描かない。 */
@@ -113,15 +122,17 @@ const save = async ($: EngineInterface) => {
 /** ひろばに居る Claudeっち。止まったセッションの子と、遊びに来ている子。 */
 const crowdNow = () => plaza.filter((p) => inPlaza(p, Date.now())).slice(-CROWD_LIMIT)
 
-/** ひろばでの立ち話。自分が一言、相手が一言で終わる。 */
-type Chat = {
-  /** 相手のひろばでの位置。吹き出しをその子の真上に出すために持つ。 */
-  withIndex: number
-  mine: Say
-  theirs: Say
-  /** 相手から聞いたこと。話し終えたら覚える。 */
-  heard: Memory
-  startedAt: number
+/**
+ * ひろばに流れた一言。その場に居合わせた全員が聞き、それぞれの記憶に残る。
+ * 聞いた側には言葉そのものと、誰の言葉かを示す名前と色だけが残る。
+ */
+export type Utterance = {
+  /** 話した子の id。自分の声を聞き直さないために持つ。 */
+  petId: string
+  name: string
+  color: string
+  say: Say
+  at: number
 }
 
 const pick = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)]
@@ -138,38 +149,80 @@ const wordsOf = (p: Pet): readonly Say[] =>
  */
 export const migrate = (p: Pet): Pet => {
   const old = (p.knowledge ?? []) as readonly (Memory & { subject?: string; predicate?: string })[]
-  if (old.every((m) => typeof m.text === 'string')) return { ...p, words: [...wordsOf(p)] }
+  if (old.every((m) => typeof m.text === 'string'))
+    return { ...p, heardAt: p.heardAt ?? 0, words: [...wordsOf(p)] }
   const said = old
     .filter((m) => typeof m.text !== 'string' && m.subject !== undefined)
     .map((m): Say => [{ text: `${m.subject} ${m.predicate ?? ''}`.trim(), color: null }])
   return learnWords(
-    { ...p, knowledge: old.filter((m) => typeof m.text === 'string'), words: [...wordsOf(p)] },
+    {
+      ...p,
+      heardAt: p.heardAt ?? 0,
+      knowledge: old.filter((m) => typeof m.text === 'string'),
+      words: [...wordsOf(p)],
+    },
     said,
   )
 }
 
+/** 聞こえた一言を記憶の形にする。相手の頭の中までは分からないので、聞こえた言葉がその子の色のまま残る。 */
+const heardOf = (u: Utterance): Memory => ({
+  text: sayText(u.say),
+  heardFrom: u.name,
+  color: u.color,
+})
+
+/** ひろばへ一言を流す。足す前に読み直すので、その間に流れた他の子の一言を消さない。 */
+const append = async ($: EngineInterface, u: Utterance) => {
+  const current = ((await $.store.get(TALK_KEY)) as Utterance[] | undefined) ?? []
+  talk = [...current, u].slice(-TALK_LIMIT)
+  await $.store.set(TALK_KEY, talk)
+}
+
+/** まだ聞いていない一言。自分の声と、一度覚えたものは除く。 */
+export const freshTalk = (talk: readonly Utterance[], me: Pet) =>
+  talk.filter((u) => u.at > me.heardAt && u.petId !== me.id)
+
+/** ひろばに流れた一言を聞き取って覚える。居合わせた子の声は全部その場で耳に入る。 */
+const listen = async ($: EngineInterface) => {
+  const me = pet
+  if (me === null) return
+  talk = ((await $.store.get(TALK_KEY)) as Utterance[] | undefined) ?? []
+  const last = talk.at(-1)
+  if (last === undefined) return
+  const fresh = freshTalk(talk, me)
+  if (fresh.length === 0) return
+  pet = { ...fresh.map(heardOf).reduce(remember, me), heardAt: last.at }
+  await save($)
+}
+
 /**
- * 居合わせた 1 匹と話し始める。互いに覚えていることを 1 つずつ出し合う。
- * 話すことが無い相手とは黙って立っている。
+ * ひろばで口を開く。直前に誰かの一言が流れていれば、自分の記憶とそれを繋ぎ直して新しい言い方を作る。
+ * まだ誰も話していなければ、すでに言えることから 1 つ出す。口火を切るのにモデルは呼ばない。
  */
-const startChat = (crowd: readonly Pet[]) => {
-  if (pet === null || pet.name === null) return
-  const others = crowd.filter((p) => p.id !== pet?.id && p.name !== null && wordsOf(p).length > 0)
-  const other = pick(others)
-  const mineWord = pick(wordsOf(pet))
-  if (other === undefined || mineWord === undefined) return
-  const theirWord = pick(wordsOf(other))
-  const mine = wordFor(stageOf(pet), mineWord)
-  const theirs = theirWord === undefined ? null : wordFor(stageOf(other), theirWord)
-  if (mine === null || theirs === null) return
-  chat = {
-    withIndex: crowd.indexOf(other),
-    mine,
-    theirs,
-    // 相手の頭の中までは分からない。聞こえた一言が、その子の色のまま残る。
-    heard: { text: sayText(theirs), heardFrom: other.name, color: hexColor(traitsOf(other).color) },
-    startedAt: scene.step,
-  }
+const speak = async ($: EngineInterface) => {
+  const me = pet
+  if (me === null || me.name === null || isDead(me)) return
+  const last = talk.at(-1)
+  // 自分の声が最後なら黙っている。返すのは聞いた側の番。
+  if (last?.petId === me.id) return
+  const mine = pick(me.knowledge)
+  const said =
+    last !== undefined && mine !== undefined
+      ? pick(await babble($, mine, heardOf(last)))
+      : pick(wordsOf(me))
+  if (said === undefined) return
+  const word = wordFor(stageOf(me), said)
+  if (word === null) return
+  pet = learnWords(me, [said])
+  await append($, {
+    petId: me.id,
+    name: me.name,
+    color: hexColor(traitsOf(me).color),
+    say: word,
+    at: Date.now(),
+  })
+  await save($)
 }
 
 const redraw = async ($: EngineInterface) => {
@@ -200,7 +253,6 @@ const start = ($: EngineInterface) => {
     if (scene.away !== wasAway) {
       // 出入りのたびに、ひろばの顔ぶれを取り直して区画を出し入れする。
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
-      chat = null
       await save($)
       await $.ui.invalidate('ui.render')
     }
@@ -218,17 +270,13 @@ const start = ($: EngineInterface) => {
       await save($)
       await $.ui.invalidate('ui.render')
     }
-    // ひろばに居る間だけ立ち話をする。終わったら相手の言ったことを覚える。
-    if (scene.away && chat === null && scene.step % CHAT_EVERY === 0) {
-      startChat(crowdNow())
-      if (chat !== null) await $.ui.invalidate('ui.render')
-    }
-    if (chat !== null && scene.step - chat.startedAt >= CHAT_LINE_FRAMES * 2) {
-      pet = remember(pet, chat.heard)
-      chat = null
-      await save($)
+    // ひろばに居る間だけ、耳を澄まして口を開く。吹き出しは実時間で消えるので毎回描き直す。
+    if (scene.away && scene.step % LISTEN_EVERY === 0) {
+      await listen($)
       await $.ui.invalidate('ui.render')
-    } else if (chat !== null && scene.step - chat.startedAt === CHAT_LINE_FRAMES) {
+    }
+    if (scene.away && scene.step % TALK_IN_PLAZA_EVERY === 0) {
+      await speak($)
       await $.ui.invalidate('ui.render')
     }
     // 貯めたことばから独り言を言う。寝ている間と、ひろばで立ち話をしている間は黙っている。
@@ -281,8 +329,8 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
 }
 
 /**
- * 飼い主の作業を 1 文にまとめて覚える。専門語はそのまま残す。
- * 返答だけを読むと、提案や確認待ちを済んだことと取り違える。依頼と対にして渡す。
+ * やりとりから、時制を持たない背景・規範・性質を取り出して覚える。専門語はそのまま残す。
+ * 返答だけを読むと、提案や確認待ちを確定した決まりごとと取り違える。依頼と対にして渡す。
  */
 const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memory | null> => {
   const known = p.knowledge.map((m) => m.text).join('\n')
@@ -293,8 +341,9 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
   const text = await $.model.complete({
     model: 'haiku',
     system:
-      'あなたは技術作業の記録係。飼い主の依頼と、それへの返答を読み、実際に済んだことだけをまとめる。' +
-      '提案・依頼・確認待ち・これからやることは、済んだこととして書かない。済んだことが無ければ何も出力しない。' +
+      'あなたは知識の記録係。飼い主の依頼と、それへの返答を読み、そこから分かる背景・規範・性質だけを書く。' +
+      'いつ読み返しても当てはまることを現在形で書く。できごと・経緯・これからやることは書かない。' +
+      '「〜した」「〜する予定」のように時制を持つ文にしない。取り出せることが無ければ何も出力しない。' +
       '固有名詞・技術用語・数値・因果関係はそのまま残す。400 文字以内で、必要なだけ文を重ねてよい。' +
       '既に覚えていることと重なるなら、まだ書いていない側面を書く。前置きや箇条書きの記号を付けず、本文だけを出力する。',
     prompt: `飼い主の依頼:\n${ask}\n\n返答:\n${answer.slice(0, 4000)}\n\n既に覚えていること:\n${known || '（まだ何も知らない）'}`,
@@ -324,7 +373,7 @@ const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promi
       (borrowed === ''
         ? ''
         : `3 つのうち 1 つか 2 つは、友だちに教わった「${borrowed}」を混ぜて言う。` +
-          '教わった言葉を使った部分は [ ] で囲む。'),
+          '借りるのは教わった言葉の中の 1 語だけ。その 1 語を [ ] で囲む。文の全体を囲まない。'),
     prompt: `言い直す文:\n${memory.text}`,
     maxTokens: 96,
   })
@@ -393,16 +442,16 @@ export const crowdNames = (columns: number, pets: readonly Pet[]) => {
 }
 
 /**
- * ひろばの吹き出し。話している子の真上に出す。
+ * ひろばの吹き出し。いま流れている一言を、話した子の真上に出す。
  * 出ていない間も同じ行数を空けておく。高さが変わると下の区画ごと描き直しになる。
  */
 const chatBubble = (columns: number, crowd: readonly Pet[]): Say[] => {
   const blank: Say[] = Array.from({ length: BUBBLE_ROWS }, () => [])
-  if (chat === null || crowd.length === 0) return blank
-  const mine = scene.step - chat.startedAt < CHAT_LINE_FRAMES
-  const index = mine ? crowd.findIndex((p) => p.id === pet?.id) : chat.withIndex
+  const last = talk.at(-1)
+  if (last === undefined || crowd.length === 0 || Date.now() - last.at > BUBBLE_MS) return blank
+  const index = crowd.findIndex((p) => p.id === last.petId)
   if (index < 0) return blank
-  const lines = bubble(mine ? chat.mine : chat.theirs)
+  const lines = bubble(last.say)
   const slot = Math.floor(columns / crowd.length)
   const head = lines[0] === undefined ? '' : sayText(lines[0])
   const at = index * slot + Math.max(0, Math.round((slot - displayWidth(head)) / 2))
@@ -443,6 +492,7 @@ export const register: Register = (on) => {
     pet = stored === undefined ? newPet(sessionId, e.cwd, new Date()) : migrate(stored)
     scene = newScene()
     plaza = (((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? []).map(migrate)
+    talk = ((await $.store.get(TALK_KEY)) as Utterance[] | undefined) ?? []
     if (e.isInteractive) {
       await save($)
       await $.ui.open({ id: PANE, title: 'Claudeっち' })
