@@ -1,10 +1,12 @@
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
 import { CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
 import {
+  adopt,
   feed,
   flush,
   inPlaza,
   isDead,
+  isStopped,
   newPet,
   poopCount,
   rebirth,
@@ -371,18 +373,47 @@ export const register: Register = (on) => {
         })
       }
       const shown = here.slice(-CROWD_LIMIT)
-      const crowd =
-        e.surface === 'terminal'
-          ? [
-              (await $.ui.resolve(e)).Raster({
-                key: CROWD,
-                columns,
-                rows: CROWD_ROWS,
-                cells: renderCrowd(columns, CROWD_ROWS, shown, scene.step),
+      // ひろばの面は自分の幅で描く。家の面をまだ開いていなくても絵が出る。
+      const wide = Math.max(MIN_COLUMNS, Math.min(e.props.bodyColumns, MAX_COLUMNS))
+      const home = pet
+      const crowd: RenderChildren[] = []
+      if (e.surface === 'terminal') {
+        const { Raster, Button } = await $.ui.resolve(e)
+        crowd.push(
+          Raster({
+            key: CROWD,
+            columns: wide,
+            rows: CROWD_ROWS,
+            cells: renderCrowd(wide, CROWD_ROWS, shown, scene.step),
+          }),
+          Text({ children: shown.map((p) => p.name ?? 'なまえなし').join('  ') }),
+        )
+        // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
+        // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
+        if (home !== null && stageOf(home) === 'egg') {
+          const now = Date.now()
+          for (const p of shown.filter((q) => q.id !== home.id && isStopped(q, now))) {
+            crowd.push(
+              Button({
+                key: `adopt:${p.id}`,
+                label: `${p.name ?? 'なまえなし'} を引き継ぐ`,
+                plain: true,
+                onPress: async () => {
+                  pet = adopt(p, home.cwd, new Date())
+                  scene = newScene()
+                  turns = 0
+                  sayUntil = 0
+                  cells = ''
+                  await save($)
+                  start($)
+                  await $.ui.open({ id: PANE, title: 'Claudeっち' })
+                  await $.ui.invalidate('ui.render')
+                },
               }),
-              Text({ children: shown.map((p) => p.name ?? 'なまえなし').join('  ') }),
-            ]
-          : []
+            )
+          }
+        }
+      }
       return Box({
         flexDirection: 'column',
         children: [

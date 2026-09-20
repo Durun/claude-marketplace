@@ -91,6 +91,9 @@ export const STALE_MS = 3 * 60 * 1000
 export const inPlaza = (pet: Pet, now: number) =>
   !isDead(pet) && (pet.away || now - pet.seenAt > STALE_MS)
 
+/** 飼い主のセッションが止まっているか。引き継げるのはこの子だけ。 */
+export const isStopped = (pet: Pet, now: number) => !isDead(pet) && now - pet.seenAt > STALE_MS
+
 /** 覚えていられる数。これを超えると古いものから忘れる。 */
 export const MAX_FACTS = 12
 
@@ -146,6 +149,18 @@ export const feed = (pet: Pet, input: number, output: number, percent: number, n
 
 /** 健康が尽きたら死ぬ。死んだ子は食べも歩きもしない。 */
 export const isDead = (pet: Pet) => pet.health <= 0
+
+/**
+ * ひろばに居る子を自分のセッションへ引き取る。卵の代わりにこの子が家に来る。
+ * id は変えない。ひろばの行は飼い主が移ったぶんだけ書き換わる。
+ */
+export const adopt = (pet: Pet, cwd: string, now: Date): Pet => ({
+  ...pet,
+  cwd,
+  away: false,
+  word: null,
+  seenAt: now.getTime(),
+})
 
 /** 同じセッションの次の代として生まれ直す。前の代はひろばに残る。 */
 export const rebirth = (pet: Pet, sessionId: string, now: Date): Pet =>
