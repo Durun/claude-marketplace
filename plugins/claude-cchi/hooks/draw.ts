@@ -3,7 +3,7 @@
 // そのまま画素に書き起こしてあるので、拡大率と飾りだけで見た目を派生させる。
 
 import { isDead, poopCount, stageOf, STAGE_LABEL, traitsOf, type Pet, type Stage } from './pet.ts'
-import { BOWL_X, toiletX, type Scene, type World } from './scene.ts'
+import { PET_MIN_X, toiletX, type Scene, type World } from './scene.ts'
 
 /** 端末の既定色。bit 24 だけを立てた値。 */
 const DEFAULT = 0x01000000
@@ -434,7 +434,7 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
   const groundY = world.ground
 
   // 器は最後に描く。食べている間、Claudeっちは器に重なって立ち、器が手前に来る。
-  const bowlOnTop = () => drawBowl(c, BOWL_X, groundY, scene.food)
+  const bowlOnTop = () => drawBowl(c, bowlX(ART_WIDTH * sx), groundY, scene.food)
 
   for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
   drawToilet(c, toiletX(world), groundY, scene.flushing ? scene.step : null)
@@ -512,6 +512,13 @@ export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[],
   })
   return encode(c, columns, rows)
 }
+
+/**
+ * 餌の器の中心。体が大きいほど口は右へ寄るので、器も口の真下まで右へずらす。
+ * 器を固定すると、大きな子は器の前に立っても口が餌に届かない。
+ */
+export const bowlX = (petWidth: number) =>
+  PET_MIN_X + Math.round(((MOUTH_COL + 1) * petWidth) / ART_WIDTH)
 
 /** Claudeっちの横幅。歩ける範囲と、頭上の札の位置を決めるのに使う。 */
 export const petWidth = (columns: number, rows: number, pet: Pet) =>

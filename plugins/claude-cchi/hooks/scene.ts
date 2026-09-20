@@ -75,8 +75,8 @@ export const newScene = (): Scene => ({
   tripAt: HOME_FRAMES,
 })
 
-/** 器は左端、トイレは右端に据え置く。 */
-export const BOWL_X = 7
+/** Claudeっちが立てる左端。トイレは右端に据え置く。 */
+export const PET_MIN_X = 2
 export const toiletX = (world: World) => world.width - 7
 
 /** 歩く位置をセルの境目に揃える。 */
@@ -84,16 +84,16 @@ const even = (v: number) => Math.round(v / 2) * 2
 
 /** 器とトイレの間。ここを歩き、器に重なって食べる。 */
 const range = (world: World, petWidth: number) => {
-  const min = even(Math.max(0, BOWL_X - 5))
+  const min = even(PET_MIN_X)
   const max = even(toiletX(world) - 7 - petWidth)
   return max <= min ? { min: Math.max(0, max), max: Math.max(0, max) } : { min, max }
 }
 
 /** 入力トークンを粒にして器の上へ降らせる。 */
-export const sprinkle = (scene: Scene, world: World, tokens: number) => {
+export const sprinkle = (scene: Scene, world: World, tokens: number, bowlX: number) => {
   const grains = Math.min(MAX_FALLING, Math.floor(tokens / TOKENS_PER_GRAIN))
   for (let i = 0; i < grains; i += 1) {
-    scene.falling.push({ x: BOWL_X + (i % 7) - 3, y: -((i * 3) % 18) })
+    scene.falling.push({ x: bowlX + (i % 7) - 3, y: -((i * 3) % 18) })
   }
 }
 

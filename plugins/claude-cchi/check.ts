@@ -1,7 +1,7 @@
 // 成長・餌・排泄の計算と、面の符号化の長さを確かめる。`npx tsx check.ts` で走る。
 
 import assert from 'node:assert/strict'
-import { artLines, petWidth, render } from './hooks/draw.ts'
+import { artLines, bowlX, petWidth, render } from './hooks/draw.ts'
 import {
   feed,
   flush,
@@ -75,7 +75,7 @@ const world = { width: columns * 2, ground: rows * 2 - 3 }
 const width = petWidth(columns, rows, pet)
 const scene = newScene()
 scene.x = world.width - width - 10
-sprinkle(scene, world, TOKENS_PER_GRAIN * 8)
+sprinkle(scene, world, TOKENS_PER_GRAIN * 8, bowlX(width))
 assert.equal(scene.falling.length, 8, '入力トークンが粒になって降る')
 for (let i = 0; i < 200 && scene.mode !== 'eat'; i += 1) advance(scene, world, width)
 assert.equal(scene.mode, 'eat', '器まで歩いて食べ始める')
@@ -85,6 +85,9 @@ for (let i = 0; i < 100 && scene.falling.length > 0; i += 1) advance(scene, worl
 const beforeChew = scene.food
 for (let i = 0; i < 10; i += 1) advance(scene, world, width)
 assert.ok(scene.food < beforeChew, '食べると器の粒が減る')
+
+// 器は口の真下に来る。体が大きくなっても、口が餌から外れない。
+assert.ok(Math.abs(bowlX(width) - (scene.x + (width * 10) / 22)) <= 2, '口の下に器がある')
 
 // 流すと、ウンチはトイレへ運ばれてから消える。
 scene.poops = [30, 45]

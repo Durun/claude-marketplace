@@ -1,5 +1,5 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
-import { CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
+import { bowlX, CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
 import {
   adopt,
   feed,
@@ -20,7 +20,6 @@ import {
 } from './pet.ts'
 import {
   advance,
-  BOWL_X,
   excrete,
   newScene,
   sprinkle,
@@ -176,7 +175,7 @@ const start = ($: EngineInterface) => {
       // 足元の後ろへ、少しずつずらして落とす。器の上には置かない。
       const behind = scene.facing === 1 ? -5 : width + 5
       const spread = (scene.poops.length % 3) * 8
-      scene.poops.push(Math.max(BOWL_X + 12, scene.x + behind - scene.facing * spread))
+      scene.poops.push(Math.max(bowlX(width) + 12, scene.x + behind - scene.facing * spread))
     }
     if (flushed) {
       pet = flush(pet)
@@ -384,7 +383,7 @@ export const register: Register = (on) => {
     turns += 1
 
     // 食べた分を器に降らせる。ウンチは時計が 1 つずつ出す。
-    if (columns > 0) sprinkle(scene, worldOf(), eaten)
+    if (columns > 0) sprinkle(scene, worldOf(), eaten, bowlX(petWidth(columns, PANE_ROWS, pet)))
 
     if (pet.name === null && after !== 'egg' && after !== 'baby') {
       pet = { ...pet, name: await nameIt($, pet) }
