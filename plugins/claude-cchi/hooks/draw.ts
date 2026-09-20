@@ -331,8 +331,10 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
   const { sx, sy } = stretch(columns, rows, stage, traits.body)
   const groundY = world.ground
 
+  // 器は最後に描く。食べている間、Claudeっちは器に重なって立ち、器が手前に来る。
+  const bowlOnTop = () => drawBowl(c, BOWL_X, groundY, scene.food)
+
   for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
-  drawBowl(c, BOWL_X, groundY, scene.food)
   drawToilet(c, toiletX(world), groundY, scene.flushing ? scene.step : null)
   for (const grain of scene.falling) put(c, grain.x, grain.y, TOKEN)
   for (const x of scene.poops) drawPoop(c, x, groundY)
@@ -340,11 +342,15 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
   if (stage === 'egg') {
     // 卵は地面に立たず、面の真ん中に浮かぶ。
     drawSpark(c, Math.round(c.width * 0.4), Math.round(c.height / 2), Math.min(sx, sy), scene.step)
+    bowlOnTop()
     return encode(c, columns, rows)
   }
 
   // ひろばへ遊びに行っている間、家には本人が居ない。
-  if (scene.away) return encode(c, columns, rows)
+  if (scene.away) {
+    bowlOnTop()
+    return encode(c, columns, rows)
+  }
 
   // 歩いている間は足を交互に出し、ウンチの間はしゃがむ。
   const thin = Math.max(1, Math.floor(sy / 2))
@@ -383,6 +389,7 @@ export const render = (columns: number, rows: number, pet: Pet, scene: Scene, wo
     }
   }
 
+  bowlOnTop()
   return encode(c, columns, rows)
 }
 

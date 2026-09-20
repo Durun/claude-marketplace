@@ -75,9 +75,9 @@ export const newScene = (): Scene => ({
 export const BOWL_X = 7
 export const toiletX = (world: World) => world.width - 7
 
-/** 器とトイレの間。ここを歩き、器の右隣で食べる。 */
+/** 器とトイレの間。ここを歩き、器に重なって食べる。 */
 const range = (world: World, petWidth: number) => {
-  const min = BOWL_X + 7
+  const min = Math.max(0, BOWL_X - 5)
   const max = toiletX(world) - 7 - petWidth
   return max <= min ? { min: Math.max(0, max), max: Math.max(0, max) } : { min, max }
 }
