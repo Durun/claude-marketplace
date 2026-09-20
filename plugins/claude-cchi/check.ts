@@ -10,9 +10,12 @@ import {
   strip,
   type Utterance,
 } from './hooks/register.ts'
+import { initial, lookOf, step, TICKS_PER_HEALTH } from './hooks/run.ts'
+import { render as renderCourse } from './hooks/course.ts'
 import {
   feed,
   flush,
+  heal,
   isDead,
   newPet,
   OUTPUT_PER_POOP,
@@ -276,5 +279,32 @@ const empty = render(columns, rows, pet, { ...newScene(), away: true }, {
   ground: rows * 2 - 3,
 })
 assert.notEqual(home, empty, '家から本人が消える')
+
+// 遊びは走ったぶんだけ健康を戻す。柱に当たるとそこで止まる。
+const runner = { ...pet, health: 40 }
+assert.equal(heal(runner, 5).health, 45, '走った分だけ健康が戻る')
+assert.equal(heal({ ...runner, health: 98 }, 5).health, 100, '健康は満杯を超えない')
+assert.equal(heal({ ...runner, health: 0 }, 5).health, 0, '死んだ子は走れない')
+
+const look = lookOf(runner)
+let run = initial(look)
+for (let i = 0; i < TICKS_PER_HEALTH; i += 1) run = step(run, false)
+assert.equal(run.healed, 1, `${TICKS_PER_HEALTH} コマ走ると健康が 1 戻る`)
+assert.ok(!run.over, '始めの柱はまだ遠い')
+
+// 跳ばずに走り続ければ、いつか柱に当たって止まる。
+let crashed = initial(look)
+for (let i = 0; i < 400 && !crashed.over; i += 1) crashed = step(crashed, false)
+assert.ok(crashed.over, '跳ばなければ柱に当たる')
+const stopped = step(crashed, true)
+assert.equal(stopped.score, crashed.score, '当たった後は進まない')
+assert.equal(stopped.healed, crashed.healed, '当たった後は健康も戻らない')
+assert.equal(stopped.ticks, crashed.ticks + 1, '当たった後もコマは進む。カメラだけが動き続ける')
+
+// 走る面の cells は Raster が読める長さで出る。姿が違えば絵も違う。
+const courseCells = renderCourse(columns, rows, run)
+assert.equal(Buffer.from(courseCells, 'base64').length, columns * rows * 3 * 4)
+const other = { ...run, look: { ...look, color: 0x3366ff, eye: (look.eye + 1) % 4 } }
+assert.notEqual(renderCourse(columns, rows, other), courseCells, '目と色が違えば別の子に見える')
 
 console.log('ok')

@@ -179,6 +179,12 @@ export const feed = (pet: Pet, input: number, output: number, percent: number, n
   return { ...fed, health, diedAt: health <= 0 ? now.toISOString() : null }
 }
 
+/**
+ * 走ったぶん健康を戻す。遊びで戻せるのは満杯までで、死んだ子は走れない。
+ */
+export const heal = (pet: Pet, amount: number): Pet =>
+  isDead(pet) || amount <= 0 ? pet : { ...pet, health: Math.min(100, pet.health + amount) }
+
 /** 健康が尽きたら死ぬ。死んだ子は食べも歩きもしない。 */
 export const isDead = (pet: Pet) => pet.health <= 0
 

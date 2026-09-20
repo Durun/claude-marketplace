@@ -4,6 +4,7 @@ import {
   adopt,
   feed,
   flush,
+  heal,
   inPlaza,
   isDead,
   isStopped,
@@ -23,6 +24,8 @@ import {
   type Pet,
   type Stage,
 } from './pet.ts'
+import { FRAME_MS as RUN_FRAME_MS, initial, lookOf, step, type Game } from './run.ts'
+import { render as renderCourse } from './course.ts'
 import {
   advance,
   excrete,
@@ -46,6 +49,12 @@ const PLAZA_KEY = 'plaza'
 
 /** ひろばに流れた一言の置き場。どのセッションからも読み書きする。 */
 const TALK_KEY = 'plaza:talk'
+
+/** 走る面の鍵。家の絵とは別に置き、遊んでいる間だけ面に出す。 */
+const RUN = 'run'
+
+/** 得点と健康の行を描き直す間隔。走る面は毎コマ blit するので、木の組み直しは間引く。 */
+const RUN_STATUS_EVERY = 10
 
 /** 歩きと咀嚼が滑らかに見える速さ。 */
 const FRAME_MS = 120
@@ -100,8 +109,14 @@ let plaza: Pet[] = []
 let talk: Utterance[] = []
 let sessionId = ''
 
-/** 面の中でどちらを見ているか。ひろばに切り替えている間、家は描かない。 */
-let tab: 'home' | 'plaza' = 'home'
+/** 遊んでいる間の走り。遊んでいなければ null。 */
+let game: Game | null = null
+let runTicker: Timer | null = null
+let jumpRequested = false
+let runCells = ''
+
+/** 面の中でどれを見ているか。ひろばと走る面に切り替えている間、家は描かない。 */
+let tab: 'home' | 'plaza' | 'run' = 'home'
 
 const key = (id: string) => `pet:${id}`
 
@@ -244,7 +259,8 @@ const redraw = async ($: EngineInterface) => {
     cells = render(columns, PANE_ROWS, pet, scene, worldOf())
     await $.ui.blit({ requestId, key: SCREEN, cells })
   }
-  if (tab === 'plaza' || scene.away) {
+  // 遊んでいる間はどちらの区画も面に出ていない。描いても捨てられる。
+  if (tab === 'plaza' || (tab === 'home' && scene.away)) {
     await $.ui.blit({
       requestId,
       key: CROWD,
@@ -317,6 +333,52 @@ const start = ($: EngineInterface) => {
     // 頭上の札は Raster の外の行なので、歩いた分だけ木を組み直す。
     if (scene.mode !== 'idle' && scene.step % 2 === 0) await $.ui.invalidate('ui.render')
   })
+}
+
+/**
+ * 遊びを始める。走る面はコマが細かいので、家の時計とは別の時計で進める。
+ * 姿は本人から取るので、家に居るときと同じ目・体つき・色の子が走る。
+ */
+const startRun = ($: EngineInterface) => {
+  runTicker?.cancel()
+  runTicker = null
+  if (pet === null || isDead(pet) || stageOf(pet) === 'egg') return
+  game = initial(lookOf(pet), game?.best ?? 0)
+  jumpRequested = false
+  runCells = ''
+  let sinceStatus = 0
+  runTicker = $.clock.every(RUN_FRAME_MS, async () => {
+    if (game === null || pet === null) return
+    const wasOver = game.over
+    const healed = game.healed
+    game = step(game, jumpRequested)
+    jumpRequested = false
+    // 走ったぶんだけ健康が戻る。器の餌と違って、遊んでいるその場で効く。
+    if (game.healed > healed) {
+      pet = heal(pet, game.healed - healed)
+      await save($)
+    }
+    if (game.over && !wasOver) await $.ui.invalidate('ui.render')
+    if (requestId !== '' && columns > 0) {
+      runCells = renderCourse(columns, PANE_ROWS, game)
+      // 面は据え置きで中身だけ差し替える。木を組み直すより軽い。
+      await $.ui.blit({ requestId, key: RUN, cells: runCells })
+    }
+    sinceStatus += 1
+    if (sinceStatus >= RUN_STATUS_EVERY) {
+      sinceStatus = 0
+      await $.ui.invalidate('ui.render')
+    }
+  })
+}
+
+/** 遊びをやめる。戻した健康はそのまま残る。 */
+const stopRun = async ($: EngineInterface) => {
+  runTicker?.cancel()
+  runTicker = null
+  game = null
+  runCells = ''
+  await save($)
 }
 
 /** 会話の中身から 1 語の名前を付ける。子供になった一度だけ呼ぶ。 */
@@ -546,6 +608,13 @@ export const register: Register = (on) => {
   // Claude が考えている間は勉強し、道具の返事を待つ間はウトウトして寝入る。
   on('turn.start', async ($, e, next) => {
     setActivity(scene, 'think')
+    // 会話が始まったら遊びをやめ、家へ戻す。走りの面は会話を隠してしまう。
+    if (tab === 'run') {
+      await stopRun($)
+      tab = 'home'
+      cells = ''
+      await $.ui.invalidate('ui.render')
+    }
     return next(e)
   })
 
@@ -695,12 +764,74 @@ export const register: Register = (on) => {
         ? crowd.filter((p) => p.id !== home.id && isStopped(p, Date.now()))
         : []
     const dirty = poopCount(pet)
-    const tabButton = (id: 'home' | 'plaza', label: string) =>
+    /**
+     * 走る面。遊んでいる間だけ出す。
+     * 卵はまだ走れないので、その旨だけ出して時計は起こさない。
+     */
+    const runPane = () => {
+      const playing = game
+      if (playing === null) {
+        return [rule(), Text({ children: '卵のうちは走れない。かえってから遊ぶ。' })]
+      }
+      // 面に出た最初の 1 コマは、時計が回る前にここで描く。
+      if (runCells === '') runCells = renderCourse(columns, PANE_ROWS, playing)
+      const status = playing.over
+        ? `当たった   score ${playing.score}   best ${playing.best}   健康 +${playing.healed}`
+        : `score ${playing.score}   best ${playing.best}   健康 +${playing.healed}`
+      return [
+        rule(),
+        Raster({ key: RUN, columns, rows: PANE_ROWS, cells: runCells }),
+        Text({ children: status }),
+        Box({
+          flexDirection: 'row',
+          gap: 2,
+          children: [
+            playing.over
+              ? Button({
+                  key: 'again',
+                  label: 'もう一度',
+                  hotkey: '2',
+                  plain: true,
+                  onPress: () => {
+                    startRun($)
+                  },
+                })
+              : Button({
+                  key: 'jump',
+                  label: '跳ぶ',
+                  hotkey: '1',
+                  plain: true,
+                  onPress: () => {
+                    jumpRequested = true
+                  },
+                }),
+            Button({
+              key: 'quit',
+              label: 'やめる',
+              hotkey: '3',
+              plain: true,
+              onPress: async () => {
+                await stopRun($)
+                tab = 'home'
+                cells = ''
+                await $.ui.invalidate('ui.render')
+              },
+            }),
+          ],
+        }),
+      ]
+    }
+
+    const tabButton = (id: 'home' | 'plaza' | 'run', label: string) =>
       Button({
         key: `tab:${id}`,
         label: tab === id ? `[${label}]` : ` ${label} `,
         plain: true,
         onPress: async () => {
+          if (tab === id) return
+          // 走りは見ている間だけ進める。別の面へ移ったらそこで止める。
+          if (id === 'run') startRun($)
+          else if (tab === 'run') await stopRun($)
           tab = id
           cells = ''
           await $.ui.invalidate('ui.render')
@@ -718,6 +849,8 @@ export const register: Register = (on) => {
             tabButton('home', 'おうち'),
             Text({ children: '|' }),
             tabButton('plaza', 'ひろば'),
+            Text({ children: '|' }),
+            tabButton('run', 'あそぶ'),
           ],
         }),
         Text({ children: statusLine(pet) }),
@@ -732,8 +865,10 @@ export const register: Register = (on) => {
         ...(tab === 'home'
           ? [rule(), ...above, Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells })]
           : []),
+        // 走る面。柱を跳び越えている間、走ったぶんだけ健康が戻る。
+        ...(tab === 'run' ? runPane() : []),
         // おうちを見ていて本人も家に居るなら、ひろばは出さない。遊びに行った先は見える。
-        ...(tab === 'home' && !scene.away
+        ...(tab === 'run' || (tab === 'home' && !scene.away)
           ? []
           : [
               rule(),
