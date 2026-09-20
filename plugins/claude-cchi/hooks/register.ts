@@ -83,6 +83,9 @@ let plaza: Pet[] = []
 let board: Utterance[] = []
 let sessionId = ''
 
+/** 面の中でどちらを見ているか。ひろばに切り替えている間、家は描かない。 */
+let tab: 'home' | 'plaza' = 'home'
+
 const key = (id: string) => `pet:${id}`
 
 const worldOf = (): World => ({ width: columns * 2, ground: PANE_ROWS * 2 - 3 })
@@ -111,15 +114,15 @@ const post = async ($: EngineInterface, said: Utterance) => {
 
 const redraw = async ($: EngineInterface) => {
   if (!pet || requestId === '' || columns <= 0) return
-  cells = render(columns, PANE_ROWS, pet, scene, worldOf())
-  await $.ui.blit({ requestId, key: SCREEN, cells })
-  if (scene.away) {
-    await $.ui.blit({
-      requestId,
-      key: CROWD,
-      cells: renderCrowd(columns, CROWD_ROWS, crowdNow(), scene.step),
-    })
+  if (tab === 'home') {
+    cells = render(columns, PANE_ROWS, pet, scene, worldOf())
+    await $.ui.blit({ requestId, key: SCREEN, cells })
   }
+  await $.ui.blit({
+    requestId,
+    key: CROWD,
+    cells: renderCrowd(columns, CROWD_ROWS, crowdNow(), scene.step),
+  })
 }
 
 const start = ($: EngineInterface) => {
@@ -241,6 +244,19 @@ export const displayWidth = (text: string) =>
 const labelPad = (text: string, width: number) =>
   Math.max(0, Math.round((scene.x + width / 2) / 2) - Math.round(displayWidth(text) / 2))
 
+/** ひろばの名前行。renderCrowd と同じ等分で、1 匹ずつの真上に名前を置く。 */
+export const crowdNames = (columns: number, pets: readonly Pet[]) => {
+  if (pets.length === 0) return ''
+  const slot = Math.floor(columns / pets.length)
+  let line = ''
+  pets.forEach((p, i) => {
+    const name = p.name ?? 'なまえなし'
+    const at = i * slot + Math.max(0, Math.round((slot - displayWidth(name)) / 2))
+    line += ' '.repeat(Math.max(0, at - displayWidth(line))) + name
+  })
+  return line
+}
+
 /** 遺影に添える一行。生まれてから死ぬまでと、どこまで育ったか。 */
 const epitaph = (pet: Pet) => {
   const day = (iso: string) => iso.slice(0, 10).replace(/-/g, '/')
@@ -248,6 +264,9 @@ const epitaph = (pet: Pet) => {
   const span = pet.diedAt === null ? day(pet.born) : `${day(pet.born)} - ${day(pet.diedAt)}`
   return `${who}  ${STAGE_LABEL[stageOf(pet)]}まで育った  ${span}`
 }
+
+/** 吹き出しの行数。出ていない間もこの高さを空けておく。 */
+export const BUBBLE_ROWS = 3
 
 /** 吹き出しの 3 行。下辺の三角が Claudeっちを指す。 */
 export const bubble = (word: string) => {
@@ -360,8 +379,8 @@ export const register: Register = (on) => {
       const { Box, Text } = await $.ui.resolve(e)
       const grave = e.requestId === GRAVE_PANE
       const here = grave ? plaza.filter(isDead) : crowdNow()
-      if (here.length === 0) {
-        return Box({ children: [Text({ children: grave ? 'まだ誰も眠っていない。' : 'まだ誰もいない。' })] })
+      if (grave && here.length === 0) {
+        return Box({ children: [Text({ children: 'まだ誰も眠っていない。' })] })
       }
       if (grave) {
         return Box({
@@ -380,14 +399,15 @@ export const register: Register = (on) => {
       if (e.surface === 'terminal') {
         const { Raster, Button } = await $.ui.resolve(e)
         crowd.push(
+          Text({ children: crowdNames(wide, shown) }),
           Raster({
             key: CROWD,
             columns: wide,
             rows: CROWD_ROWS,
             cells: renderCrowd(wide, CROWD_ROWS, shown, scene.step),
           }),
-          Text({ children: shown.map((p) => p.name ?? 'なまえなし').join('  ') }),
         )
+        if (shown.length === 0) crowd.push(Text({ children: 'まだ誰もいない。' }))
         // 卵のうちだけ、生まれるのをやめてひろばの子を引き取れる。
         // 相手は飼い主のセッションが止まった子に限る。遊びに来ているだけの子は元の家へ帰る。
         if (home !== null && stageOf(home) === 'egg') {
@@ -468,66 +488,70 @@ export const register: Register = (on) => {
 
     const width = petWidth(columns, PANE_ROWS, pet)
     // ひろばへ行っている間、頭上の札は家に居ないので出さない。
-    const above =
-      scene.away
+    const speech =
+      scene.away || pet.word === null || sayUntil === 0
         ? []
-        :
-      pet.word !== null && sayUntil > 0
-        ? bubble(pet.word).map((line) =>
+        : bubble(pet.word).map((line) =>
             Box({ paddingLeft: labelPad(line, width), children: [Text({ children: line })] }),
           )
-        : []
+    // 吹き出しの出入りで面の高さが変わると、下の区画ごと描き直しになる。空でも同じ行数を占める。
+    const above = [Box({ height: BUBBLE_ROWS - speech.length }), ...speech]
     if (pet.name !== null) {
       above.push(
         Box({ paddingLeft: labelPad(pet.name, width), children: [Text({ children: pet.name })] }),
       )
     }
 
-    // 出かけている間だけ、家の下を区切ってひろばを出す。
+    const rule = () => Text({ children: '\u2500'.repeat(Math.max(4, columns - 2)) })
     const crowd = crowdNow()
-    const visiting = scene.away
-      ? [
-          Text({ children: `${'\u2500'.repeat(Math.max(4, columns - 2))}` }),
-          Raster({
-            key: CROWD,
-            columns,
-            rows: CROWD_ROWS,
-            cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
-          }),
-          Text({ children: `ひろば  ${crowd.map((p) => p.name ?? 'なまえなし').join('  ')}` }),
-        ]
-      : []
-
     const dirty = poopCount(pet)
+    const tabButton = (id: 'home' | 'plaza', label: string) =>
+      Button({
+        key: `tab:${id}`,
+        label: tab === id ? `[${label}]` : ` ${label} `,
+        plain: true,
+        onPress: async () => {
+          tab = id
+          cells = ''
+          await $.ui.invalidate('ui.render')
+        },
+      })
+
+    // 上から順に、切り替え・ステータス・操作・家・ひろば。行数は切り替えでしか変わらない。
     return Box({
       flexDirection: 'column',
       children: [
-        ...above,
-        Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells }),
-        ...visiting,
-        Text({ children: statusLine(pet) }),
         Box({
           flexDirection: 'row',
-          gap: 2,
+          gap: 1,
           children: [
-            Button({
-              key: 'flush',
-              label: dirty > 0 ? `流す (${dirty})` : '流す',
-              plain: true,
-              onPress: () => {
-                startFlush(scene)
-              },
-            }),
-            Button({
-              key: 'hiroba',
-              label: 'ひろば',
-              plain: true,
-              onPress: async () => {
-                await $.ui.open({ id: PLAZA_PANE, title: 'ひろば' })
-              },
-            }),
+            tabButton('home', 'Claudeっち'),
+            Text({ children: '|' }),
+            tabButton('plaza', 'ひろば'),
           ],
         }),
+        Text({ children: statusLine(pet) }),
+        Button({
+          key: 'flush',
+          label: dirty > 0 ? `流す (${dirty})` : '流す',
+          plain: true,
+          onPress: () => {
+            startFlush(scene)
+          },
+        }),
+        ...(tab === 'home'
+          ? [rule(), ...above, Raster({ key: SCREEN, columns, rows: PANE_ROWS, cells })]
+          : []),
+        rule(),
+        Text({ children: crowdNames(columns, crowd) }),
+        Raster({
+          key: CROWD,
+          columns,
+          rows: CROWD_ROWS,
+          cells: renderCrowd(columns, CROWD_ROWS, crowd, scene.step),
+        }),
+        Text({ children: crowd.length === 0 ? 'ひろば  まだ誰もいない。' : 'ひろば' }),
+        rule(),
       ],
     })
   })

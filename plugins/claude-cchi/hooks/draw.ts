@@ -136,6 +136,10 @@ const INK = 0x101010
 const POOP = 0x6b4423
 const POOP_LIGHT = 0x8a5c30
 const GROUND = 0x3a3f4b
+
+/** ひろばの地面。家の床と見分けがつくよう、草の生えた土にする。 */
+const GRASS = 0x3f6b3a
+const SOIL = 0x4a3b2a
 const HAIR = 0xe8e8e8
 
 /**
@@ -403,7 +407,12 @@ export const CROWD_LIMIT = 6
 export const renderCrowd = (columns: number, rows: number, pets: readonly Pet[], frame: number) => {
   const c = canvas(columns * 2, rows * 2)
   const groundY = rows * 2 - 3
-  for (let x = 0; x < c.width; x += 1) put(c, x, groundY, GROUND)
+  for (let x = 0; x < c.width; x += 1) {
+    put(c, x, groundY, GRASS)
+    put(c, x, groundY + 1, SOIL)
+  }
+  // 草をまばらに立てる。位置は x から決めるので、コマが進んでも揺れない。
+  for (let x = 2; x < c.width; x += 5) put(c, x + (x % 3), groundY - 1, GRASS)
 
   const shown = pets.slice(0, CROWD_LIMIT)
   if (shown.length === 0) return encode(c, columns, rows)
