@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, ModelCompleteRequest, Register, Timer } from 'claude-code'
 import { bowlX, CROWD_LIMIT, petWidth, render, renderCrowd, statusLine } from './draw.ts'
 import {
   adopt,
@@ -420,6 +420,12 @@ const stopRun = async ($: EngineInterface) => {
   await save($)
 }
 
+/** 1 回の補完を文字列で受ける。答えが無いときは空文字にして、呼ぶ側の「無かった」扱いに乗せる。 */
+const completeText = async ($: EngineInterface, request: ModelCompleteRequest) => {
+  const reply = await $.model.complete(request)
+  return reply.isAnswered ? reply.text : ''
+}
+
 /** 会話の中身から 1 語の名前を付ける。子供になった一度だけ呼ぶ。 */
 const nameIt = async ($: EngineInterface, p: Pet) => {
   const messages = await $.session.messages()
@@ -428,7 +434,7 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
     .slice(-6)
     .map((m) => m.text.slice(0, 200))
     .join('\n')
-  const text = await $.model.complete({
+  const text = await completeText($, {
     model: 'haiku',
     system:
       'あなたは育成ゲームの命名係。会話の話題にちなんだ、かわいい日本語の名前を 1 つだけ答える。' +
@@ -453,7 +459,7 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
   const ask =
     [...messages].reverse().find((m) => m.role === 'user' && m.text !== '')?.text.slice(0, 1000) ??
     ''
-  const text = await $.model.complete({
+  const text = await completeText($, {
     model: 'haiku',
     system:
       'あなたは技術ノートの整理係。渡された資料から、あとで読み返すための知識だけを書き写す。' +
@@ -483,7 +489,7 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
  */
 const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promise<Say[]> => {
   const borrowed = heard?.text ?? ''
-  const text = await $.model.complete({
+  const text = await completeText($, {
     model: 'haiku',
     system:
       'あなたは 5 歳児。渡された文から、覚えておきたいことを「A は B」の形で言う。' +
