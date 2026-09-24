@@ -21,6 +21,7 @@ import {
   flush,
   heal,
   isDead,
+  isSilent,
   newPet,
   OUTPUT_PER_POOP,
   poopCount,
@@ -372,3 +373,8 @@ for (let i = 0; i < 200 && player.mode === 'arrive'; i += 1) advance(player, fie
 assert.ok(player.x <= field.width, '家の中まで戻る')
 
 console.log('ok')
+
+// 喋らない子はアーカイブの対象。ことばを 1 つでも持つか、死んでいれば対象外。
+assert.ok(isSilent({ ...pet, health: 50, words: [] }))
+assert.ok(!isSilent(learnWords({ ...pet, health: 50, words: [] }, [[{ text: 'ほん は べんきょう', color: null }]])))
+assert.ok(!isSilent({ ...pet, health: 0, words: [] }), '死んだ子はお墓の側')

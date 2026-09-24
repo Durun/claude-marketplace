@@ -7,6 +7,7 @@ import {
   heal,
   inPlaza,
   isDead,
+  isSilent,
   isStopped,
   newPet,
   poopCount,
@@ -55,6 +56,9 @@ const CROWD = 'crowd'
 const CROWD_ROWS = 11
 const SCREEN = 'screen'
 const PLAZA_KEY = 'plaza'
+
+/** ひろばから下げた子の置き場。面には出さず、見返せるようにだけ残す。 */
+const ARCHIVE_KEY = 'plaza:archive'
 
 /** ひろばに流れた一言の置き場。どのセッションからも読み書きする。 */
 const TALK_KEY = 'plaza:talk'
@@ -138,8 +142,14 @@ const save = async ($: EngineInterface) => {
   if (!pet) return
   pet = { ...pet, seenAt: Date.now(), away: scene.away }
   await $.store.set(key(sessionId), pet)
+  // 他のセッションが下げたり足したりした分を取り込んでから書く。手元の顔ぶれで上書きすると、下げた子が戻ってくる。
+  plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
+  // 下げた子は、古い版のセッションが手元の顔ぶれで書き戻しても、次の保存でまた下がる。
+  const archived = new Set(
+    (((await $.store.get(ARCHIVE_KEY)) as Pet[] | undefined) ?? []).map((p) => p.id),
+  )
   // 名前が付くまではひろばに出さない。名前のないまま死んだ子は、お墓のために残す。
-  const keep = (p: Pet) => p.name !== null || isDead(p)
+  const keep = (p: Pet) => (p.name !== null || isDead(p)) && !archived.has(p.id)
   plaza = [...plaza.filter((p) => p.id !== pet?.id && keep(p)), ...(keep(pet) ? [pet] : [])].slice(
     -PLAZA_LIMIT,
   )
@@ -648,7 +658,7 @@ export const register: Register = (on) => {
     await $.command.register({
       name: 'claude-cchi',
       description:
-        'Claudeっちを育てる。/claude-cchi で面を開き、hiroba で生きている子、ohaka で眠った子を見る。',
+        'Claudeっちを育てる。/claude-cchi で面を開き、hiroba で生きている子、ohaka で眠った子を見る。archive で喋らない子をひろばから下げる。',
     })
     sessionId = await $.session.id()
     const stored = (await $.store.get(key(sessionId))) as Pet | undefined
@@ -666,6 +676,18 @@ export const register: Register = (on) => {
 
   on('command.run', { command: 'claude-cchi' }, async ($, e) => {
     const sub = e.args.trim()
+    if (sub === 'archive') {
+      plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
+      // 動いているセッションの子は、まだ育っている途中で黙っているだけ。飼い主が居なくなった子だけ下げる。
+      const now = Date.now()
+      const silent = plaza.filter((p) => isStopped(p, now) && isSilent(p))
+      const archive = ((await $.store.get(ARCHIVE_KEY)) as Pet[] | undefined) ?? []
+      const ids = new Set(silent.map((p) => p.id))
+      await $.store.set(ARCHIVE_KEY, [...archive.filter((p) => !ids.has(p.id)), ...silent])
+      plaza = plaza.filter((p) => !silent.includes(p))
+      await $.store.set(PLAZA_KEY, plaza)
+      return { text: `喋らない ${silent.length} 匹をアーカイブした。ひろばには ${plaza.length} 匹いる。` }
+    }
     if (sub === 'hiroba' || sub === 'ohaka') {
       plaza = ((await $.store.get(PLAZA_KEY)) as Pet[] | undefined) ?? plaza
         const grave = sub === 'ohaka'

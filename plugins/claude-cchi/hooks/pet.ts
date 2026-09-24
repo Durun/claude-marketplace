@@ -188,6 +188,9 @@ export const heal = (pet: Pet, amount: number): Pet =>
 /** 健康が尽きたら死ぬ。死んだ子は食べも歩きもしない。 */
 export const isDead = (pet: Pet) => pet.health <= 0
 
+/** 生きているのに言えることが 1 つも無い子。ひろばに居ても黙っているだけなので、アーカイブへ移す対象。 */
+export const isSilent = (pet: Pet) => !isDead(pet) && (pet.words ?? []).length === 0
+
 /**
  * ひろばに居る子を自分のセッションへ引き取る。卵の代わりにこの子が家に来る。
  * id は変えない。ひろばの行は飼い主が移ったぶんだけ書き換わる。

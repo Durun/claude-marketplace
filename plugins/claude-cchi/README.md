@@ -152,6 +152,7 @@ Claudeっちは家かひろばのどちらかに居る。
 /claude-cchi          面を開く
 /claude-cchi hiroba   生きている Claudeっちを見る
 /claude-cchi ohaka    眠った Claudeっちを見る
+/claude-cchi archive  ことばを持たない子をひろばから下げる。下げた子は plaza:archive に残る
 ```
 
 面はセッション開始時にも開く。端末が 110 カラム以上の全画面表示ならトランスクリプトの横に、それ以外では入力欄の上に置かれる。位置は端末側が決める。
