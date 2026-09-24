@@ -428,7 +428,7 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
     .slice(-6)
     .map((m) => m.text.slice(0, 200))
     .join('\n')
-  const text = await $.model.complete({
+  const reply = await $.model.complete({
     model: 'haiku',
     system:
       'あなたは育成ゲームの命名係。会話の話題にちなんだ、かわいい日本語の名前を 1 つだけ答える。' +
@@ -436,6 +436,7 @@ const nameIt = async ($: EngineInterface, p: Pet) => {
     prompt: `会話:\n${recent}\n\nこの子の名前:`,
     maxTokens: 24,
   })
+  const text = reply.isAnswered ? reply.text : ''
   const name = text.trim().split(/\s|\n/)[0]?.replace(/[「」"'。、]/g, '') ?? ''
   if (name === '') return null
   // 名前は必ず「っち」で終わる。haiku が付けてきたときは重ねない。
@@ -453,7 +454,7 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
   const ask =
     [...messages].reverse().find((m) => m.role === 'user' && m.text !== '')?.text.slice(0, 1000) ??
     ''
-  const text = await $.model.complete({
+  const reply = await $.model.complete({
     model: 'haiku',
     system:
       'あなたは技術ノートの整理係。渡された資料から、あとで読み返すための知識だけを書き写す。' +
@@ -472,6 +473,7 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
       '上の資料から分かる、時制を持たない背景・規範・性質をノートに書き写せ。地の文だけを出力する。',
     maxTokens: 400,
   })
+  const text = reply.isAnswered ? reply.text : ''
   const line = strip(text.replace(/\n+/g, ' '))
   return hasContent(line) ? { text: line.slice(0, 400), heardFrom: null, color: null } : null
 }
@@ -483,7 +485,7 @@ const recall = async ($: EngineInterface, p: Pet, answer: string): Promise<Memor
  */
 const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promise<Say[]> => {
   const borrowed = heard?.text ?? ''
-  const text = await $.model.complete({
+  const reply = await $.model.complete({
     model: 'haiku',
     system:
       'あなたは 5 歳児。渡された文から、覚えておきたいことを「A は B」の形で言う。' +
@@ -500,6 +502,7 @@ const babble = async ($: EngineInterface, memory: Memory, heard?: Memory): Promi
     prompt: `言い直す文:\n${memory.text}`,
     maxTokens: 96,
   })
+  const text = reply.isAnswered ? reply.text : ''
   const color = heard?.color ?? null
   return text
     .trim()

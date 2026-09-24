@@ -115,12 +115,13 @@ export const register: Register = (on) => {
     // サブエージェントの回答は画面に出ないので対象にしない。
     if (!enabled || e.agentId || e.reason !== 'answer' || e.answer.length < MIN_CHARS) return next(e)
 
-    const said = await $.model.complete({
+    const reply = await $.model.complete({
       model: 'haiku',
       system: SYSTEM,
       prompt: e.answer.slice(0, 4000),
       maxTokens: 240,
     })
+    const said = reply.isAnswered ? reply.text : ''
     // 空行や話者名を挟んでくることがあるので、両方を落としてから読む。
     const lines = said
       .split('\n')
