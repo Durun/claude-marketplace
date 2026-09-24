@@ -52,3 +52,29 @@ claude plugin install gh-stack@durun-toolbox -y --scope user
 Function Hooks を使うプラグインは、環境変数の欄に `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` も設定します。
 
 設定先は `~/.claude/settings.json` なので、対象のリポジトリに変更を加えずに済みます。
+
+## 開発
+
+関数フックのプラグインは `scripts/typecheck.sh` で型検査します。
+Claude Code の版が変わると型定義（`/plugin-types` の出力）を `.claude/types/` に生成し直してから、`plugins/*/tsconfig.json` を持つプラグインを全部 tsc にかけます。
+
+版が変わったときだけ自動で走らせるには、`~/.claude/settings.json` の SessionStart フックに足します。
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/an/_scratches/claude-marketplace-public/scripts/typecheck.sh --if-stale",
+            "async": true,
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
+```
