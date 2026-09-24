@@ -121,8 +121,8 @@ export const register: Register = (on) => {
       prompt: e.answer.slice(0, 4000),
       maxTokens: 240,
     })
-    // 空行や話者名を挟んでくることがあるので、両方を落としてから読む。
-    const lines = said
+    // 空行や話者名を挟んでくることがあるので、両方を落としてから読む。答えが無ければ黙る。
+    const lines = (said.isAnswered ? said.text : '')
       .split('\n')
       .map((raw) => raw.trim().replace(/^(オヤジ|ババア)[:：]\s*/, ''))
       .filter((raw) => raw !== '')
