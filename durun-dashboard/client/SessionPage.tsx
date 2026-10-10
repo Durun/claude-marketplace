@@ -155,6 +155,8 @@ type SessionData = {
   asks: Attention[];
   jump?: Jump;
   onJump: (index: number) => void;
+  /** Notion のトークンを設定してあるか。 */
+  notion: boolean;
 };
 
 const WIDGETS: Record<string, Widget<SessionData>> = {
@@ -205,6 +207,7 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
     asks: asksOf(snapshot.attention, s.id),
     jump,
     onJump: (index: number) => setJump({ index }),
+    notion: !!snapshot.notion,
   };
 };
 

@@ -1,6 +1,6 @@
 // 人間と Claude の発言に出たリンクを、セッションの資料として拾う。
 import { Marked, type MarkedExtension, Tokenizer } from 'marked';
-import type { ChatEntry } from '../shared/types.ts';
+import { type ChatEntry, notionPageId } from '../shared/types.ts';
 import { safeDecode } from './router.ts';
 
 // 日本語の文では、URL の後ろに空白を置かずに文を続けることが多い。GFM は空白の手前までを URL とみなすので、閉じていない ) と、日本語の句読点や括弧から先を外す。
@@ -24,6 +24,8 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const DOC_EXTENSION = /\.(html?|pdf|md)$/i;
 const GITHUB_ITEM = /^\/([^/]+\/[^/]+)\/(pull|issues|actions\/runs)\/(\d+)/;
 const GITHUB_COMMENT = /^#(discussion_r|issuecomment-|pullrequestreview-)/;
+// Notion のページの URL は、題名の語を - でつないだ後ろにページの ID を付ける。
+const NOTION_SLUG = /^(.+)-[0-9a-f]{32}$/i;
 
 export type ChatLink = { url: string; title: string; host: string; at: number };
 
@@ -52,6 +54,7 @@ const listed = (u: URL, ownPort: string): boolean =>
 
 /**
  * GitHub の PR と issue は、GitHub の書き方（owner/repo#番号）を題名にし、そのコメントへのリンクと Actions の実行は、それと分かる題名にする。
+ * Notion のページは、URL に題名が入っていれば、ID を外して題名にする。
  * ほかの URL は、パスの最後の区切りを題名にする。index のページは、その上の区切りにする。
  */
 export const titleOf = (u: URL): string => {
@@ -60,6 +63,8 @@ export const titleOf = (u: URL): string => {
   if (kind) return `${repo}#${num}${GITHUB_COMMENT.test(u.hash) ? ' のコメント' : ''}`;
   const parts = u.pathname.split('/').filter(Boolean).map((p) => safeDecode(p).replace(DOC_EXTENSION, '').replaceAll('+', ' '));
   const last = parts.at(-1);
+  const slug = notionPageId(u) && !u.searchParams.has('p') ? NOTION_SLUG.exec(last ?? '')?.[1] : undefined;
+  if (slug) return slug.replaceAll('-', ' ');
   return (last === 'index' ? parts.at(-2) : last) || u.host;
 };
 
@@ -82,6 +87,16 @@ export const chatLinks = (entries: ChatEntry[], ownPort: string): ChatLink[] => 
   }
   return [...links.values()].sort((a, b) => b.at - a.at);
 };
+
+/**
+ * titles に題名があるリンクのうち、題名を URL から付けていたものを、その題名にする。titles は URL ごとの題名。
+ * [題名](URL) の書き方や人間が付けた題名は、そのまま残す。
+ */
+export const withTitles = (links: ChatLink[], titles: Map<string, string>): ChatLink[] =>
+  links.map((l) => {
+    const title = titles.get(l.url);
+    return title && l.title === titleOf(new URL(l.url)) ? { ...l, title } : l;
+  });
 
 /** まとめたリンク。url は最後に出たもので、urls にはまとめたものをすべて持つ。 */
 export type MergedLink = ChatLink & { urls: string[] };

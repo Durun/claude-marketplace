@@ -18,7 +18,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
-import { notionPage } from './notion.ts';
+import { notionPage, notionTitle } from './notion.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -663,6 +663,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/github\/inbox$/, () => viaGh('GitHub の PR を探せません', githubInbox)],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = '']) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key)))],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = '']) => viaGh('ページを読めません', () => notionPage(id))],
+  [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) }))],
   [/^\/api\/pr$/, (_, __, url) => {
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr));

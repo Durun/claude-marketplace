@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatLinks, chatMarkdownFiles, mergeLinks } from '../client/chatLinks.ts';
+import { chatLinks, chatMarkdownFiles, mergeLinks, withTitles } from '../client/chatLinks.ts';
 
 test('人間と Claude の発言に出たリンクを、題名を付けて新しい順に 1 件ずつ拾い、ダッシュボード自身とコードの中の URL は除く', () => {
   const links = chatLinks(
@@ -66,4 +66,15 @@ test('発言のインラインのコードに出た Markdown ファイルを、�
     { kind: 'prompt', at: 3, text: '`docs/a.md:10` を直して' },
   ]);
   assert.deepEqual(files, [{ ref: 'docs/a.md', at: 3 }, { ref: '~/b.md', at: 1 }]);
+});
+
+test('Notion のページへのリンクは、URL の題名から ID を外して題名にし、ページの題名が分かれば、URL から付けた題名だけを差し替える', () => {
+  const id = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';
+  const slugged = `https://www.notion.so/team/Weekly-Report-${id}`;
+  const bare = `https://www.notion.so/${id}`;
+  const links = chatLinks([{ kind: 'message', at: 1, text: `${slugged} と ${bare} と [手で付けた題名](https://www.notion.so/x-${'f'.repeat(32)})` }], '7337');
+  assert.deepEqual(links.map((l) => l.title), ['Weekly Report', id, '手で付けた題名']);
+  const titles = new Map(links.map((l) => [l.url, 'ページの題名']));
+  assert.deepEqual(withTitles(links, titles).map((l) => l.title), ['ページの題名', 'ページの題名', '手で付けた題名']);
+  assert.deepEqual(withTitles(links, new Map()), links);
 });

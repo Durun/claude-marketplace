@@ -59,6 +59,7 @@ export const api = {
   skills: (id: string) => getJson<SkillInfo[]>(`${session(id)}/skills`),
   jiraIssue: (key: string) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}`),
   notionPage: (id: string) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}`),
+  notionTitle: (id: string) => getJson<{ title: string }>(`/api/notion/pages/${seg(id)}/title`),
   prDetail: (url: string) => getJson<PrDetail>(`/api/pr?${query({ url })}`),
   prThreads: (id: string) => getJson<PrThread[]>(`${session(id)}/pr-threads`),
   prViewed: (id: string) => getJson<string[]>(`${session(id)}/pr-viewed`),

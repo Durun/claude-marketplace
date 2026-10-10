@@ -171,15 +171,29 @@ type PageBody = {
   properties?: Record<string, { type?: string; title?: RichText[] }>;
 };
 
+const titleOf = (page: PageBody): string => plain(Object.values(page.properties ?? {}).find((p) => p.type === 'title')?.title) || '無題';
+
+// ponytail: 題名はサーバーが動いている間覚えておく。Notion で題名を変えても、サーバーを起動し直すまで前の題名を出す。
+const titles = new Map<string, Promise<string>>();
+
+/** ページの題名だけを読む。資料の一覧が同じページを何度も尋ねるので、読めた題名は覚えておく。読めなかったページは、次に尋ねられたら読み直す。 */
+export const notionTitle = (id: string): Promise<string> => {
+  const cached = titles.get(id);
+  if (cached) return cached;
+  const title = notionFetch<PageBody>(`pages/${id}`).then(titleOf);
+  titles.set(id, title);
+  title.catch(() => titles.delete(id));
+  return title;
+};
+
 /** ページの題名と本文。id は、ハイフンの無い 32 桁のページの ID。 */
 export const notionPage = async (id: string): Promise<NotionPage> => {
   const budget: Budget = { left: MAX_REQUESTS, truncated: false };
   const [page, blocks] = await Promise.all([notionFetch<PageBody>(`pages/${id}`), childrenOf(id, budget)]);
-  const title = Object.values(page.properties ?? {}).find((p) => p.type === 'title')?.title;
   return {
     id,
     url: page.url ?? pageUrl(id),
-    title: plain(title) || '無題',
+    title: titleOf(page),
     icon: page.icon?.emoji,
     updatedAt: page.last_edited_time ? Date.parse(page.last_edited_time) : undefined,
     markdown: blocksToMarkdown(blocks),

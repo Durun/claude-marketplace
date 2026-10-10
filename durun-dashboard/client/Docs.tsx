@@ -1,8 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ChatEntry, Doc, DocFormat, DocMeta, FileTarget, FileWhere, Session, Snapshot } from '../shared/types.ts';
+import { type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
-import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf } from './chatLinks.ts';
+import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { mediaTypeOf } from './fileRef.ts';
@@ -140,7 +140,7 @@ const AddLink = ({ s, onClose }: { s: Session; onClose: () => void }) => {
   return (
     <form class="card panel stack add-link" onSubmit={save}>
       <input class="input" type="url" required autoFocus aria-label="URL" placeholder="https://…" value={url} onInput={(e) => setUrl(e.currentTarget.value)} />
-      <input class="input" aria-label="題名" placeholder="題名（空なら URL から付けます）" value={title} onInput={(e) => setTitle(e.currentTarget.value)} />
+      <input class="input" aria-label="題名" placeholder="題名（空なら URL や Notion のページから付けます）" value={title} onInput={(e) => setTitle(e.currentTarget.value)} />
       <div class="actions">
         <span class="spacer" />
         <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>
@@ -239,6 +239,37 @@ const useOpenableFiles = (id: string, files: ChatFile[]): OpenableFile[] => {
   return files.flatMap((f) => (openable.has(f.ref) ? [{ ...f, heading: openable.get(f.ref)?.heading }] : []));
 };
 
+// ponytail: ページの題名はページを開いている間覚えておく。読めなかったページは、読み込み直すまで尋ね直さない。
+const notionTitles = new Map<string, Promise<string | undefined>>();
+
+const notionTitleOf = (pageId: string): Promise<string | undefined> => {
+  const cached = notionTitles.get(pageId);
+  if (cached) return cached;
+  const p = api.notionTitle(pageId).then((r) => r.title, () => undefined);
+  notionTitles.set(pageId, p);
+  return p;
+};
+
+/** Notion のページへのリンクの、URL ごとの題名。enabled は Notion のトークンを設定してあるかで、無ければ尋ねない。読めないページは入れない。 */
+const useNotionTitles = (urls: string[], enabled: boolean): Map<string, string> => {
+  const [titles, setTitles] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const pages = urls.flatMap((url): [string, string][] => {
+      const id = notionPageId(new URL(url));
+      return id ? [[url, id]] : [];
+    });
+    void Promise.all(pages.map(([, id]) => notionTitleOf(id))).then((found) => {
+      if (alive) setTitles(new Map(pages.flatMap(([url], i): [string, string][] => (found[i] ? [[url, found[i]]] : []))));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [urls.join('\n'), enabled]);
+  return titles;
+};
+
 /** 修飾キー付きのクリックは、ブラウザの既定の動きに任せる。 */
 export const plainClick = (e: MouseEvent): boolean => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
@@ -263,8 +294,9 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * セッション概要の資料のウィジェット。present で出したものと、人間と Claude の発言に出たリンクと Markdown ファイルと、人間が「追加」で足したリンクを並べる。
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
  * 人間が付け直した題名は、まとめたリンクのどれかに付いていればその行に出す。
+ * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。
  */
-export const SessionDocs = ({ s, docs, entries }: { s: Session; docs: DocMeta[]; entries: ChatEntry[] }) => {
+export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries: ChatEntry[]; notion: boolean }) => {
   const [adding, setAdding] = useState(false);
   const links = useMemo(() => chatLinks(entries, location.port), [entries]);
   const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries), [entries]));
@@ -275,11 +307,13 @@ export const SessionDocs = ({ s, docs, entries }: { s: Session; docs: DocMeta[];
     const title = d.keys.map((k) => s.docTitles[k]).find(Boolean);
     return title ? { ...d, title } : d;
   };
+  const shown = [...links.filter((l) => !saved.has(l.url)), ...added].filter((l) => !hidden.has(l.url));
+  const notionTitles = useNotionTitles(shown.map((l) => l.url), notion);
   const { items, dragging, dragOf, list } = useDocOrder(s, [
     ...docs
       .filter((d) => !hidden.has(d.id))
       .map((d) => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d) })),
-    ...mergeLinks([...links.filter((l) => !saved.has(l.url)), ...added].filter((l) => !hidden.has(l.url))).map(linkDoc),
+    ...mergeLinks(withTitles(shown, notionTitles)).map(linkDoc),
     ...files.filter((f) => !hidden.has(f.ref)).map((f) => fileDoc(s.id, f)),
   ].map(renamed));
   return (

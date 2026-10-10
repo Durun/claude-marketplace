@@ -4,7 +4,7 @@ import { notionPageId } from '../shared/types.ts';
 
 // notion.ts は読み込んだ時点の環境変数でトークンを決めるので、先に設定してから読み込む。
 process.env.NOTION_TOKEN = 'secret';
-const { blocksToMarkdown, notionPage } = await import('../server/notion.ts');
+const { blocksToMarkdown, notionPage, notionTitle } = await import('../server/notion.ts');
 
 const ID = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';
 const text = (plain_text: string, annotations = {}, href?: string) => ({ plain_text, annotations, href });
@@ -73,4 +73,20 @@ test('notionPage は、題名と更新日時に、続きのページと子のブ
 test('notionPage は、読めないページを Notion が返した理由で投げる', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({ message: 'Could not find page' }, { status: 404 }));
   await assert.rejects(notionPage(ID), /Could not find page/);
+});
+
+test('notionTitle は、ページの題名だけを読んで覚え、読めなかったページは次に読み直す', async (t) => {
+  const id = 'b'.repeat(32);
+  let calls = 0;
+  let ok = false;
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls++;
+    assert.equal(url, `https://api.notion.com/v1/pages/${id}`);
+    return ok ? Response.json({ properties: { 名前: { type: 'title', title: [text('週報')] } } }) : Response.json({ message: 'Could not find page' }, { status: 404 });
+  });
+  await assert.rejects(notionTitle(id), /Could not find page/);
+  ok = true;
+  assert.equal(await notionTitle(id), '週報');
+  assert.equal(await notionTitle(id), '週報');
+  assert.equal(calls, 2);
 });
