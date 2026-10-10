@@ -520,6 +520,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .widget .selection-bar { bottom: 8px; }
 .new-session { padding: 12px; overflow: auto; }
 .new-session .help { margin: 0; }
+/* 壁紙のウィンドウ。今の壁紙を、画面に近い横長の比で見せる。 */
+.wallpaper { padding: 12px; overflow: auto; }
+.wallpaper .help { margin: 0; }
+.wallpaper-preview { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); object-fit: cover; }
+p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-align: center; }
 /* JIRA の一覧。1 行目に課題キー、状態、担当と更新日時を、2 行目に題名を出す。GitHub Inbox の一覧も同じ形で出す。 */
 .jira-settings { margin-bottom: 12px; }
 .jira-jql { display: grid; gap: 4px; color: var(--text-2); font-size: 12.5px; }
@@ -937,11 +942,11 @@ table.data { width: 100%; border-collapse: collapse; }
   --toast-fg: #000;
 }
 [data-skin="xp"] ::selection { background: #316ac5; color: #fff; }
-/* デスクトップの壁紙。data/wallpaper.jpg を置けばその画像を敷き、無ければ青空と緑の丘をグラデーションで描く。 */
+/* デスクトップの壁紙。メニューの「壁紙」で渡した画像を敷き、無ければ青空と緑の丘をグラデーションで描く。渡し直したら、Wallpaper.tsx が --wallpaper を差し替えて読み直させる。 */
 [data-skin="xp"] body {
   font-size: 13px;
   background:
-    url("/wallpaper") center / cover no-repeat,
+    var(--wallpaper, url("/wallpaper")) center / cover no-repeat,
     radial-gradient(ellipse 75% 34% at 18% 100%, #6aae3c 0 97%, transparent 100%),
     radial-gradient(ellipse 95% 26% at 82% 100%, #519d2f 0 97%, transparent 100%),
     linear-gradient(#1f63d8, #4a8fe8 35%, #93c3f1 68%, #d3e8fb);

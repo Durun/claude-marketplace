@@ -68,10 +68,11 @@ export const floatOut = (key: string, scope: string, tab: Tab, from: DOMRect): v
   setFloats([...floats, { key, scope, tab, x, y, w, h }]);
 };
 
-/** 同じものを浮かべていれば手前に出し、無ければ画面の中ほどに浮かべる。 */
-export const floatUp = (key: string, scope: string, tab: Tab): void => {
+/** 同じものを浮かべていれば手前に出し、無ければ画面の中ほどに浮かべる。size を渡すと、その大きさ（px）で上寄りの中ほどに出す。 */
+export const floatUp = (key: string, scope: string, tab: Tab, size?: { w: number; h: number }): void => {
   const cur = floats.find((f) => same(f, key, scope, tab.id));
   if (cur) raise(cur);
+  else if (size) floatOut(key, scope, tab, new DOMRect((innerWidth - size.w) / 2, innerHeight / 8, size.w, size.h));
   else floatOut(key, scope, tab, new DOMRect(innerWidth / 4, innerHeight / 8, innerWidth / 2, (innerHeight * 3) / 4));
 };
 

@@ -24,10 +24,13 @@ import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize } from './suggest.ts';
+import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
 const ROOT = path.join(import.meta.dirname, '..');
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
+// 壁紙の画像は、画面いっぱいの写真でも受けられる大きさまで。
+const MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
 // ファイル変更は連続して届くので、画面への配信はこの間隔にまとめる。
 const BROADCAST_INTERVAL_MS = 400;
 const PR_CACHE_FILE = 'gh-pr-status-cache.json';
@@ -54,15 +57,19 @@ const json = (res: ServerResponse, body: unknown, status = 200): void => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body));
 };
 
-const readBody = async (req: IncomingMessage): Promise<unknown> => {
+const readBytes = async (req: IncomingMessage, max: number): Promise<Buffer> => {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'body too large');
+    if (size > max) throw new HttpError(413, 'body too large');
     chunks.push(chunk as Buffer);
   }
-  const text = Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
+};
+
+const readBody = async (req: IncomingMessage): Promise<unknown> => {
+  const text = (await readBytes(req, MAX_BODY_BYTES)).toString('utf8');
   if (!text) return {};
   try {
     return JSON.parse(text);
@@ -587,6 +594,8 @@ const improveSettings = (body: unknown): Partial<ImproveSettings> => {
 };
 
 const POST_ROUTES: [RegExp, Handler][] = [
+  [/^\/api\/wallpaper\/url$/, (_, b) => setWallpaperUrl(b)],
+  [/^\/api\/wallpaper\/reset$/, () => clearWallpaper(DATA_DIR)],
   [/^\/api\/sessions$/, (_, b) => newSession(b)],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
@@ -658,12 +667,32 @@ const serveStatic = (res: ServerResponse, pathname: string): boolean => {
   return true;
 };
 
-// XP スキンの壁紙。画像の権利の都合でリポジトリに含めず、手元でデータディレクトリに置いた画像だけを配信する。置いていなければ 404 になり、CSS のグラデーションで描く。
+/**
+ * XP スキンの壁紙。画像の権利の都合でリポジトリに含めず、メニューの「壁紙」で渡した画像だけを配信する。渡していなければ 404 になり、CSS のグラデーションで描く。
+ * URL で渡した画像は、サーバーからは取りに行かず、画面をその URL へ送って読ませる。
+ */
 const sendWallpaper = (res: ServerResponse): void => {
-  const file = ['wallpaper.jpg', 'wallpaper.png'].map((name) => path.join(DATA_DIR, name)).find((f) => fs.existsSync(f));
-  if (!file) throw new HttpError(404, 'データディレクトリに wallpaper.jpg がありません');
-  res.writeHead(200, { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg', 'cache-control': 'no-cache' });
-  fs.createReadStream(file).pipe(res);
+  const wallpaper = readWallpaper(DATA_DIR);
+  if (!wallpaper) throw new HttpError(404, '壁紙がありません');
+  if ('url' in wallpaper) return void res.writeHead(302, { location: wallpaper.url, 'cache-control': 'no-cache' }).end();
+  res.writeHead(200, { 'content-type': wallpaper.type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+  fs.createReadStream(wallpaper.file).pipe(res);
+};
+
+/** 本文の画像をそのまま壁紙にする。種類は content-type で受ける。 */
+const uploadWallpaper = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const type = (req.headers['content-type'] ?? '').split(';')[0]?.trim() ?? '';
+  if (!WALLPAPER_TYPES[type]) throw new HttpError(400, 'JPEG、PNG、WebP、GIF の画像を渡してください');
+  const bytes = await readBytes(req, MAX_WALLPAPER_BYTES);
+  if (!bytes.length) throw new HttpError(400, '画像が空です');
+  saveWallpaper(DATA_DIR, { type, bytes });
+  res.writeHead(204).end();
+};
+
+const setWallpaperUrl = (body: unknown): void => {
+  const url = URL.parse(field<string>(body, 'url', 'string').trim());
+  if (url?.protocol !== 'http:' && url?.protocol !== 'https:') throw new HttpError(400, 'url must be an http(s) URL');
+  saveWallpaper(DATA_DIR, { url: url.href });
 };
 
 const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -676,6 +705,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   }
   if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res);
   if (req.method === 'GET' && url.pathname === '/wallpaper') return sendWallpaper(res);
+  // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
+  if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   const media = req.method === 'GET' && /^\/api\/sessions\/([^/]+)\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
