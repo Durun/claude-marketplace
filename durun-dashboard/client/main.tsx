@@ -11,6 +11,7 @@ import { Header } from './Header.tsx';
 import { HOME_KEY } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
 import { NowContext, useNow, useSnapshot } from './hooks.ts';
+import { useDeliveryFailureEffects } from './deliveryEffects.ts';
 import { useAttentionEffects } from './notify.ts';
 import { QuickSearch } from './QuickSearch.tsx';
 import { JIRA_KEY, JIRA_WIDGET, JiraFloat, pickJira } from './JiraView.tsx';
@@ -116,6 +117,7 @@ const App = () => {
     return () => removeEventListener('keydown', onKey);
   }, [hasDashboard]);
   useAttentionEffects(fresh);
+  useDeliveryFailureEffects(fresh);
   useLinks(route, snapshot);
   return (
     <NowContext.Provider value={now}>
