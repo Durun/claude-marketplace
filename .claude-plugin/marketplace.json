@@ -23,6 +23,10 @@
       "source": "./plugins/claude-cchi"
     },
     {
+      "name": "durun-dashboard",
+      "source": "./plugins/durun-dashboard"
+    },
+    {
       "name": "gh-stack",
       "description": "スタックしたブランチとプルリクエストを扱う gh CLI 拡張のスキル。GitHub 公式リポジトリ github/gh-stack をそのまま参照する。",
       "source": {

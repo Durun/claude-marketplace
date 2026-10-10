@@ -1,0 +1,169 @@
+// ダッシュボード自身が持つ状態。セッションのテーマ付けと、人間と Claude の間でやり取りした内容を保存する。
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, SavedLink } from '../shared/types.ts';
+
+// 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
+export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const SAVE_DELAY_MS = 200;
+const KEEP_DELIVERED = 200;
+
+export type SessionMeta = {
+  id: string;
+  cwd: string;
+  transcriptPath?: string;
+  theme?: string;
+  title?: string;
+  jira: string[];
+  archived: boolean;
+  /** 人間がピン留めした */
+  pinned?: boolean;
+  /** 人間が資料に足したリンク */
+  links?: SavedLink[];
+  /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL で持つ */
+  docOrder?: string[];
+  hiddenDocs?: string[];
+  /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ */
+  docTitles?: Record<string, string>;
+  firstSeen: number;
+  /** この時刻までの Claude の発言は人間が確認済み */
+  replySeenAt: number;
+  /** Claude が show_branches で並べた、コードの表示の選択肢 */
+  branchViews?: BranchView[];
+  // 以下は生きていたときの情報。終了後も一覧に名前やリンクを出すために残す。
+  name?: string;
+  kind?: string;
+  entrypoint?: string;
+  remoteUrl?: string;
+  jobId?: string;
+  startedAt?: number;
+  /** 改善要望を実装するためにダッシュボードが起動したセッション */
+  improver?: boolean;
+};
+
+export type StoredAttention = {
+  id: string;
+  kind: 'ask' | 'review' | 'permission' | 'question';
+  sessionId: string;
+  title: string;
+  body?: string;
+  options?: string[];
+  /** レビュー依頼で、Claude が見てほしいコミットの範囲 */
+  range?: DiffRange;
+  createdAt: number;
+};
+
+export type StoredDoc = {
+  id: string;
+  sessionId: string;
+  title: string;
+  format: DocFormat;
+  path?: string;
+  content?: string;
+  createdAt: number;
+  seen: boolean;
+};
+
+export type ImproveRun = {
+  sessionId: string;
+  pid: number;
+  /** このウェーブで計画を頼んだ要望のファイル名 */
+  items?: string[];
+  /** 画面に出す、対応中のウェーブの説明 */
+  summary?: string;
+  startedAt: number;
+};
+
+/** ダッシュボード自身で起きた想定外のエラー。同じエラーは 1 件にまとめて数える。item は起票した改善要望のファイル名。 */
+export type ErrorRecord = {
+  source: 'server' | 'client';
+  message: string;
+  stack?: string;
+  /** サーバーなら API の経路、画面なら URL */
+  where?: string;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  /** 起票した回数 */
+  filed: number;
+  item?: string;
+};
+
+type State = {
+  sessions: Record<string, SessionMeta>;
+  attention: StoredAttention[];
+  // ponytail: 資料は削除しないので溜まり続ける。重くなったら古いものを消す。
+  docs: StoredDoc[];
+  outbox: OutboxMessage[];
+  /** 既読にした派生の要対応（PR の状態など）の id */
+  dismissed: string[];
+  /** 改善要望の自動実装。model と effort は空なら Claude Code の設定に従う。error があれば待機する。 */
+  improve: ImproveSettings & { run?: ImproveRun; error?: string };
+  /** エラーをまとめる鍵ごとの記録 */
+  errors: Record<string, ErrorRecord>;
+  /** PR のレビュースレッドに添えた分析。古いものから消す。 */
+  prNotes: Record<string, PrThreadNote>;
+  /** 人間がホームで並べ替えたセッションの順 */
+  sessionOrder: string[];
+};
+
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] });
+
+// 壊れたファイルを空の状態で上書きしないよう、読めないときは起動を止める。
+const load = (): State => {
+  if (!fs.existsSync(STATE_FILE)) return empty();
+  return { ...empty(), ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) };
+};
+
+export const state = load();
+
+const listeners = new Set<() => void>();
+let saveTimer: NodeJS.Timeout | undefined;
+
+export const save = (): void => {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const delivered = state.outbox.filter((m) => m.deliveredAt);
+  if (delivered.length > KEEP_DELIVERED) {
+    const drop = new Set(delivered.slice(0, delivered.length - KEEP_DELIVERED));
+    state.outbox = state.outbox.filter((m) => !drop.has(m));
+  }
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = `${STATE_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+  fs.renameSync(tmp, STATE_FILE);
+};
+
+/** 表示に関わる情報が変わったことを知らせる。 */
+export const changed = (): void => {
+  for (const fn of listeners) fn();
+};
+
+/** 画面の更新を伴わない変更を保存する。 */
+export const persist = (): void => {
+  saveTimer ??= setTimeout(save, SAVE_DELAY_MS);
+};
+
+/** 状態を変えたら呼ぶ。保存を予約し、画面の更新を促す。 */
+export const touch = (): void => {
+  persist();
+  changed();
+};
+
+export const onChange = (fn: () => void): void => {
+  listeners.add(fn);
+};
+
+export const newId = (): string => randomUUID().slice(0, 8);
+
+export const ensureSession = (id: string, cwd: string): SessionMeta => {
+  const existing = state.sessions[id];
+  if (existing) return existing;
+  const meta: SessionMeta = { id, cwd, jira: [], archived: false, firstSeen: Date.now(), replySeenAt: 0 };
+  state.sessions[id] = meta;
+  persist();
+  return meta;
+};

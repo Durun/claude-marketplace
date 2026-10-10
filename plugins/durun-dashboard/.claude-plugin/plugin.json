@@ -1,0 +1,8 @@
+{
+  "name": "durun-dashboard",
+  "description": "ローカルで動く durun-dashboard に、フックでセッションの様子を送り、MCP で人間とのやり取りのツールを足す。ダッシュボードの本体は durun-dashboard/ を手元で起動する。",
+  "author": {
+    "name": "Durun",
+    "url": "https://github.com/Durun"
+  }
+}

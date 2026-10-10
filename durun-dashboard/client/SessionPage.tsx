@@ -1,0 +1,249 @@
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import type { Attention, ChatEntry, DocMeta, OutboxMessage, Session, Snapshot } from '../shared/types.ts';
+import { api, attempt } from './api.ts';
+import { CodeView } from './CodeView.tsx';
+import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel } from './Dashboard.tsx';
+import { SessionDocs } from './Docs.tsx';
+import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
+import { useFetch } from './hooks.ts';
+import { COLS, ROWS, type Layout } from './layout.ts';
+import { OutboxList, asksOf } from './Messaging.tsx';
+import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, Summary, TaskList } from './Overview.tsx';
+import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
+import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
+import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
+import { type SessionTab, href } from './router.ts';
+import { CopyButton, Empty, Ext, JiraChips, PrChips, StatusBadge } from './ui.tsx';
+import { UsageView } from './Usage.tsx';
+
+const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
+  const [value, setValue] = useState(s.theme);
+  useEffect(() => setValue(s.theme), [s.theme]);
+  // change は入力を確定したとき（フォーカス移動か Enter）にだけ発火する。
+  // 候補の選択や自動入力では input と同時に来るため、state ではなく入力欄の値を読む。
+  const commit = (input: HTMLInputElement) => {
+    const theme = input.value.trim();
+    if (theme !== s.theme) attempt('テーマの変更', () => api.theme(s.id, theme));
+  };
+  return (
+    <label class="inline-field">
+      テーマ
+      <input
+        class="input input-sm"
+        list="theme-options"
+        value={value}
+        placeholder="未分類"
+        onInput={(e) => setValue(e.currentTarget.value)}
+        onChange={(e) => commit(e.currentTarget)}
+      />
+      <datalist id="theme-options">
+        {themes.map((t) => <option key={t} value={t} />)}
+      </datalist>
+    </label>
+  );
+};
+
+/** 名前は Enter かフォーカスを外したときに確定する。空のまま Enter を押すと、提案された名前を入力欄に入れる。 */
+const NameEditor = ({ s }: { s: Session }) => {
+  const [value, setValue] = useState(s.name);
+  const [thinking, setThinking] = useState(false);
+  useEffect(() => setValue(s.name), [s.name]);
+  const commit = (input: HTMLInputElement) => {
+    const title = input.value.trim();
+    if (!title) setValue(s.name);
+    else if (title !== s.name) attempt('名前の変更', () => api.title(s.id, title));
+  };
+  const propose = async (input: HTMLInputElement) => {
+    setThinking(true);
+    const res = await attempt('名前の提案', () => api.suggestTitle(s.id));
+    setThinking(false);
+    // 待つ間に入力欄を離れていたら、確定されない名前が表示に残るので入れない。
+    if (res && document.activeElement === input) setValue(res.title);
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    const input = e.currentTarget as HTMLInputElement;
+    if (e.isComposing) return;
+    if (e.key === 'Escape') {
+      // フォーカスを外すと確定するので、先に入力欄の値を戻しておく。
+      input.value = s.name;
+      setValue(s.name);
+      input.blur();
+    } else if (e.key === 'Enter' && input.value.trim()) {
+      input.blur();
+    } else if (e.key === 'Enter' && !thinking) {
+      void propose(input);
+    }
+  };
+  return (
+    <h1 class="session-name">
+      <input
+        class="name-input"
+        value={value}
+        readOnly={thinking}
+        aria-label="セッション名"
+        title="名前を変えられます。空にして Enter を押すと、名前を提案します。"
+        placeholder={thinking ? '名前を考えています…' : '空のまま Enter で名前を提案します'}
+        onInput={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={onKeyDown}
+        onBlur={(e) => commit(e.currentTarget)}
+      />
+    </h1>
+  );
+};
+
+/** アーカイブの切り替えは、タイトルバー右端のボタンの枠に並べる。 */
+const archiveControl = ({ s }: { s: Session }): Control[] => [
+  {
+    kind: 'archive',
+    label: s.archived ? 'アーカイブを解除' : 'アーカイブする',
+    pressed: s.archived,
+    onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !s.archived)),
+  },
+];
+
+/** 名前の行をウィジェットの見出しにする。 */
+const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
+  <>
+    <div class="head-row session-title">
+      <NameEditor key={s.id} s={s} />
+      <StatusBadge status={s.status} />
+    </div>
+    <div class="widget-body session-head">
+      <div class="head-row">
+        <ThemeEditor s={s} themes={themes} />
+        <span class="mono muted">{s.repo}{s.branch && ` · ${s.branch}`}</span>
+      </div>
+      <div class="head-row">
+        {s.pr && <PrChips pr={s.pr} session={s.id} />}
+        <JiraChips issues={s.jira} session={s.id} />
+        {s.remoteUrl && <Ext class="btn btn-sm" href={s.remoteUrl}>claude.ai/code で開く</Ext>}
+        {s.attachCommand && (
+          <span class="attach">
+            <code title="ターミナルで開くコマンド">{s.attachCommand}</code>
+            <CopyButton text={s.attachCommand} label="コピー" title="ターミナルで開くコマンドをコピー" />
+          </span>
+        )}
+      </div>
+    </div>
+  </>
+);
+
+/** file は、コードの画面へのリンクで開いたファイル。 */
+const CodeWidget = ({ s, file }: { s: Session; file?: string }) => (
+  <WidgetPanel title="コード">
+    <CodeView s={s} focus={file} />
+  </WidgetPanel>
+);
+
+const UsageWidget = ({ s }: { s: Session }) => (
+  <WidgetPanel title="使用量">
+    <UsageView s={s} />
+  </WidgetPanel>
+);
+
+/** ウィジェットに渡す、このセッションのデータ。docs は present で出した資料、entries はチャットの発言で、jump はそこへ移る先。 */
+type SessionData = {
+  s: Session;
+  themes: string[];
+  file?: string;
+  outbox: OutboxMessage[];
+  docs: DocMeta[];
+  entries: ChatEntry[];
+  asks: Attention[];
+  jump?: Jump;
+  onJump: (index: number) => void;
+};
+
+const WIDGETS: Record<string, Widget<SessionData>> = {
+  head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
+  summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
+  diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', bare: true },
+  chat: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
+  outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
+  tasks: { title: 'タスク', icon: '✅', Body: TaskList, size: { w: 6, h: 8 }, sketch: 'list' },
+  // 保存した配置が id で参照するので、shell と Monitor を並べるようにしても id は subagents のまま残す。
+  subagents: { title: 'エージェント', icon: '🤖', Body: AgentList, size: { w: 6, h: 6 }, sketch: 'list' },
+  docs: { title: '資料', icon: '📄', Body: SessionDocs, size: { w: 6, h: 10 }, sketch: 'list' },
+  code: { title: 'コード', icon: '💻', Body: CodeWidget, size: { w: COLS, h: ROWS }, sketch: 'code' },
+  [PR_WIDGET]: { title: PR_TITLE, icon: GITHUB_ICON, Body: PrWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
+  [JIRA_WIDGET]: { title: JIRA_VIEW_TITLE, icon: JIRA_ICON, Body: JiraWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
+  pr: { title: PR_REVIEW_TITLE, icon: '🔍', Body: PrReview, size: { w: 12, h: ROWS - 6 }, sketch: 'chat' },
+  usage: { title: '使用量', icon: '📊', Body: UsageWidget, size: { w: COLS, h: ROWS }, sketch: 'chart' },
+};
+
+// 初期配置は 1 画面に収め、スクロールしなくても使えるようにする。チャット、コード、PR、PR コメント、JIRA、使用量と、右の一覧は、それぞれ 1 つの枠に重ねてタブで切り替える。
+const DEFAULT_LAYOUT: Layout = [
+  { id: 'head', x: 0, y: 0, w: 10, h: 6, tabs: [{ id: 'head' }] },
+  { id: 'summary', x: 10, y: 0, w: 6, h: 6, tabs: [{ id: 'summary' }] },
+  { id: 'diagram', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }] },
+  { id: 'main', x: 0, y: 6, w: 18, h: ROWS - 6, tabs: [{ id: 'chat' }, { id: 'code' }, { id: PR_WIDGET }, { id: 'pr' }, { id: JIRA_WIDGET }, { id: 'usage' }] },
+  { id: 'side', x: 18, y: 0, w: 6, h: ROWS, tabs: [{ id: 'outbox' }, { id: 'tasks' }, { id: 'subagents' }, { id: 'docs' }], active: 'tasks' },
+];
+
+type DashboardProps = EditProps & { s: Session; tab: SessionTab; file?: string; snapshot: Snapshot };
+
+export const SESSION_KEY = 'session-dashboard';
+
+const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionData => {
+  // ツールの呼び出しだけでも発言が増えるので、会話ログが動くたびに取り直す。
+  const { data: entries = [] } = useFetch(() => api.chat(s.id), [s.id, s.updatedAt]);
+  const [jump, setJump] = useState<Jump>();
+  return {
+    s,
+    themes: snapshot.themes,
+    file,
+    outbox: snapshot.outbox,
+    docs: snapshot.docs.filter((d) => d.sessionId === s.id),
+    entries,
+    asks: asksOf(snapshot.attention, s.id),
+    jump,
+    onJump: (index: number) => setJump({ index }),
+  };
+};
+
+/**
+ * 配置はすべてのセッションで共通にし、ホームとは別に保存する。
+ * コードや使用量の画面へのリンクで開いたときは、そのウィジェットを重ねた枠でそのタブを選び、枠までスクロールする。ファイルを開くときは、コードのウィジェットがそのファイルまで送る。
+ */
+const SessionDashboard = ({ s, tab, file, snapshot, editing, onEditDone }: DashboardProps) => {
+  const data = useSessionData(s, snapshot, file);
+  const focus = useMemo<WidgetFocus | undefined>(() => (tab === 'overview' ? undefined : { kind: tab }), [tab, file]);
+  useEffect(() => {
+    if (focus && !file) document.querySelector(`.widget[data-tabs~="${tab}"]`)?.scrollIntoView({ block: 'start' });
+  }, [focus]);
+  return (
+    <Dashboard
+      widgets={WIDGETS}
+      defaults={DEFAULT_LAYOUT}
+      storageKey={SESSION_KEY}
+      scope={s.id}
+      focus={focus}
+      data={data}
+      editing={editing}
+      onEditDone={onEditDone}
+    />
+  );
+};
+
+export const SessionPage = ({ id, ...props }: Omit<DashboardProps, 's'> & { id: string }) => {
+  const s = props.snapshot.sessions.find((x) => x.id === id);
+  if (!s) {
+    return (
+      <div class="card panel">
+        <Empty>セッションが見つかりません。</Empty>
+        <a href={href.home()}>ホームへ戻る</a>
+      </div>
+    );
+  }
+  return <SessionDashboard s={s} {...props} />;
+};
+
+const SessionWindow = ({ f, s, snapshot }: { f: Float; s: Session; snapshot: Snapshot }) => (
+  <FloatWindow f={f} widgets={WIDGETS} data={useSessionData(s, snapshot)} titleOf={(t) => `${t} - ${s.name}`} />
+);
+
+/** セッションが一覧から消えたウィンドウは出さない。保存は残すので、セッションが戻れば、また出す。 */
+export const SessionFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
+  const s = snapshot.sessions.find((x) => x.id === f.scope);
+  return s ? <SessionWindow f={f} s={s} snapshot={snapshot} /> : null;
+};

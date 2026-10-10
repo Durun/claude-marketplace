@@ -1,0 +1,317 @@
+import type { RefObject } from 'preact';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import type { Attention, ChatEntry, OutboxMessage, Session, SessionStatus, SkillInfo } from '../shared/types.ts';
+import { DELIVERY_TOAST, api, attempt } from './api.ts';
+import { insertAt, useAttachMode } from './attach.ts';
+import { WidgetPanel } from './Dashboard.tsx';
+import { dateTime } from './format.ts';
+import { useFetch } from './hooks.ts';
+import { AttentionCard } from './Inbox.tsx';
+import { toast } from './toast.tsx';
+import { ContextPie, Empty, Time, copyText, onSubmitKey } from './ui.tsx';
+
+const STATUS_HELP: Record<SessionStatus, string> = {
+  busy: '作業中です。ツール実行の合間に Claude が読みます。',
+  idle: '入力待ちです。送信すると、Claude がすぐに読み始めます。',
+  done: '完了しています。送信するとバックグラウンドで再開します。',
+  interrupted: '中断しています。送信するとバックグラウンドで再開します。',
+  ended: '終了しています。送信するとバックグラウンドで再開します。',
+};
+
+const VIA_LABEL: Record<NonNullable<OutboxMessage['via']>, string> = {
+  socket: 'ソケット経由',
+  hook: 'フック経由',
+  resume: 'セッション再開',
+  mcp: 'MCP 経由',
+  manual: '手動',
+};
+
+const DELIVERED_LIMIT = 20;
+
+/** 作業中は発言が次々に変わるので、Claude が止まってから作る。 */
+const ReplySuggestions = ({ s, onPick }: { s: Session; onPick: (reply: string, replies: string[]) => void }) => {
+  const ready = s.status !== 'busy' && !!s.lastMessage;
+  const { data: replies = [], loading, error } = useFetch(() => (ready ? api.suggestions(s.id) : Promise.resolve([])), [s.id, s.lastMessageAt, ready]);
+  if (!ready) return null;
+  if (loading) return <p class="help">返答の候補を作っています…</p>;
+  if (error) return <p class="help">返答の候補を作れませんでした（{error}）</p>;
+  return (
+    <div class="actions reply-options">
+      {replies.map((r) => (
+        <button key={r} class="btn reply-option" title="クリックすると入力欄に入ります" onClick={() => onPick(r, replies)}>{r}</button>
+      ))}
+    </div>
+  );
+};
+
+// 行の頭か空白の後の / から、カーソルまでの語。パスの途中の / では補完しない。
+const SLASH_WORD = /(?:^|\s)\/(\S*)$/;
+const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
+
+type SkillMenuState = { items: SkillInfo[]; active: number };
+
+/** 名前の頭か、プラグイン名の後ろの頭に合うものを先に並べる。 */
+const matchSkills = (skills: SkillInfo[], word: string): SkillInfo[] => {
+  const q = word.toLowerCase();
+  const hits = skills.filter((sk) => sk.name.toLowerCase().includes(q));
+  const head = (sk: SkillInfo): boolean => sk.name.toLowerCase().startsWith(q) || sk.name.toLowerCase().includes(`:${q}`);
+  return [...hits.filter(head), ...hits.filter((sk) => !head(sk))];
+};
+
+/** / から始まる語を打つと、Claude Code がこのセッションに見せた skills を候補に出す。まだセッションが無ければ候補は出さない。 */
+const useSkillMenu = (sessionId: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+  const { data: skills = [] } = useFetch(() => (sessionId ? api.skills(sessionId) : Promise.resolve([])), [sessionId]);
+  const [menu, setMenu] = useState<SkillMenuState>();
+  const update = () => {
+    const el = input.current;
+    const word = el ? SLASH_WORD.exec(el.value.slice(0, el.selectionStart))?.[1] : undefined;
+    const items = word === undefined ? [] : matchSkills(skills, word);
+    setMenu(items.length ? { items, active: 0 } : undefined);
+  };
+  // 打ちかけの語を選んだ名前に置き換え、続けて書けるよう空白を足す。
+  const accept = (skill: SkillInfo) => {
+    const el = input.current;
+    if (!el) return;
+    const head = el.value.slice(0, el.selectionStart).replace(/\/\S*$/, `/${skill.name} `);
+    const next = head + el.value.slice(el.selectionEnd);
+    el.value = next;
+    el.setSelectionRange(head.length, head.length);
+    setText(next);
+    setMenu(undefined);
+  };
+  /** 候補を出している間は、上下で選び、Enter か Tab で入れ、Esc で閉じる。扱ったキーなら true を返す。 */
+  const onKeyDown = (e: KeyboardEvent): boolean => {
+    if (!menu || e.isComposing || e.metaKey || e.ctrlKey) return false;
+    const n = menu.items.length;
+    const picked = menu.items[menu.active];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') setMenu({ ...menu, active: (menu.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n });
+    else if ((e.key === 'Enter' || e.key === 'Tab') && picked) accept(picked);
+    else if (e.key === 'Escape') setMenu(undefined);
+    else return false;
+    e.preventDefault();
+    return true;
+  };
+  const onKeyUp = (e: KeyboardEvent) => CARET_KEYS.has(e.key) && update();
+  return { menu, update, accept, onKeyDown, onKeyUp, close: () => setMenu(undefined) };
+};
+
+const SkillMenu = ({ menu, onPick }: { menu: SkillMenuState; onPick: (skill: SkillInfo) => void }) => {
+  const list = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }), [menu.active]);
+  return (
+    <ul id="skill-menu" class="skill-menu" role="listbox" aria-label="skills の候補" ref={list}>
+      {menu.items.map((sk, i) => (
+        // 押下でフォーカスが入力欄から外れると候補が閉じるので、押下の時点で入れる。
+        <li
+          key={sk.name}
+          id={`skill-${i}`}
+          class="skill-option"
+          role="option"
+          aria-selected={i === menu.active}
+          title={sk.description}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPick(sk);
+          }}
+        >
+          <span class="skill-name">/{sk.name}</span>
+          <span class="skill-desc">{sk.description}</span>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+type MessageInputProps = {
+  sessionId?: string;
+  value: string;
+  setValue: (value: string) => void;
+  placeholder: string;
+  onSubmit: () => void;
+  inputRef?: RefObject<HTMLTextAreaElement>;
+};
+
+/** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills の補完と「なんでも添付」を持つ。 */
+export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
+  const own = useRef<HTMLTextAreaElement>(null);
+  const input = inputRef ?? own;
+  const skills = useSkillMenu(sessionId, input, setValue);
+  // 入力欄の外をクリックしてもカーソル位置は残るので、そこへ入れる。
+  const attach = useAttachMode((piece) => {
+    const el = input.current;
+    if (!el) return;
+    const next = insertAt(el.value, el.selectionEnd, piece);
+    el.value = next.value;
+    el.setSelectionRange(next.caret, next.caret);
+    setValue(next.value);
+  });
+  return (
+    <div class="composer-field">
+      <textarea
+        ref={input}
+        class="input"
+        rows={3}
+        placeholder={placeholder}
+        aria-autocomplete="list"
+        aria-controls={skills.menu ? 'skill-menu' : undefined}
+        aria-activedescendant={skills.menu ? `skill-${skills.menu.active}` : undefined}
+        value={value}
+        onInput={(e) => {
+          setValue(e.currentTarget.value);
+          skills.update();
+        }}
+        onKeyDown={(e) => skills.onKeyDown(e) || onSubmitKey(e, onSubmit)}
+        onKeyUp={skills.onKeyUp}
+        onClick={skills.update}
+        onBlur={skills.close}
+      />
+      <button
+        type="button"
+        class="attach-toggle"
+        aria-pressed={attach.on}
+        title={attach.on ? '添付モードを終える（Esc）' : 'なんでも添付: 画面上の URL・ファイルパス・資料・バッジをクリックすると、メッセージに入れます'}
+        aria-label="なんでも添付"
+        onClick={attach.toggle}
+      >
+        +
+      </button>
+      {skills.menu && <SkillMenu menu={skills.menu} onPick={skills.accept} />}
+    </div>
+  );
+};
+
+/** 返答の候補と入力欄。 */
+const MessageForm = ({ s }: { s: Session }) => {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const send = async () => {
+    if (busy || !text.trim()) return;
+    setBusy(true);
+    const res = await attempt('メッセージの送信', () => api.message(s.id, text));
+    setBusy(false);
+    if (!res) return;
+    setText('');
+    toast(DELIVERY_TOAST[res.delivery]);
+  };
+  // compact した会話は戻せないので、押し間違いでないかを確かめる。
+  const compact = async () => {
+    if (!confirm('このセッションの会話を compact しますか?')) return;
+    setBusy(true);
+    const done = await attempt('compact', () => api.compact(s.id).then(() => true));
+    setBusy(false);
+    if (done) toast('compact を始めました');
+  };
+  // 書きかけの文を消さないよう、置き換えるのは空か候補のままのときに限り、それ以外は後ろに足す。
+  const pick = (reply: string, replies: string[]) => {
+    setText((t) => (!t.trim() || replies.includes(t) ? reply : `${t}\n${reply}`));
+    input.current?.focus();
+  };
+  return (
+    <>
+      <ReplySuggestions s={s} onPick={pick} />
+      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
+      <div class="actions">
+        <button class="btn btn-primary" disabled={busy || !text.trim()} onClick={send}>送信</button>
+        <ContextPie usage={s.usage} />
+        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={compact}>compact</button>
+      </div>
+    </>
+  );
+};
+
+/** Claude が答えを待っている、そのセッションの質問。 */
+export const asksOf = (attention: Attention[], sessionId: string): Attention[] => attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question'));
+
+/**
+ * 送信欄。Claude が質問の答えを待っている間は、質問のカードの回答欄から答えてもらい、通常の送信欄は出さない。
+ * 両方を出すと、どちらで答えればよいか迷う。チャットのウィジェットと、ヘッダーの件数から開く一覧で使う。
+ */
+export const ReplyArea = ({ s, asks, help }: { s: Session; asks: Attention[]; help?: boolean }) =>
+  asks.length > 0 ? <>{asks.map((a) => <AttentionCard key={a.id} a={a} session={s} />)}</> : (
+    <>
+      {help && <p class="help">{STATUS_HELP[s.status]}</p>}
+      <MessageForm s={s} />
+    </>
+  );
+
+/** チャットのウィジェットの下端に置く送信欄。 */
+export const Composer = ({ s, asks }: { s: Session; asks: Attention[] }) => (
+  <div class="composer">
+    <ReplyArea s={s} asks={asks} help />
+  </div>
+);
+
+const PendingItem = ({ m, remoteUrl }: { m: OutboxMessage; remoteUrl?: string }) => {
+  const [busy, setBusy] = useState(false);
+  // コピーと新しいタブは、クリックの操作中に始めないとブラウザに止められることがある。
+  const deliverByHand = async () => {
+    setBusy(true);
+    const copied = copyText(m.text);
+    if (remoteUrl) window.open(remoteUrl, '_blank', 'noopener');
+    if (await copied) {
+      toast('コピーしました。claude.ai/code に貼り付けて送ってください');
+      await attempt('手動配信の記録', () => api.manual(m.id));
+    } else {
+      toast('クリップボードにコピーできませんでした', 'error');
+    }
+    setBusy(false);
+  };
+  const cancel = async () => {
+    setBusy(true);
+    await attempt('取り消し', () => api.cancel(m.id));
+    setBusy(false);
+  };
+  return (
+    <li class="outbox-item is-pending">
+      <p class="plain">{m.text}</p>
+      {m.error && <p class="help error-text">届けられませんでした: {m.error}</p>}
+      <div class="outbox-meta">
+        <span class="muted">未配信 · <Time at={m.createdAt} /></span>
+        <span class="spacer" />
+        <button class="btn btn-sm btn-primary" disabled={busy} onClick={deliverByHand}>
+          {remoteUrl ? 'コピーして claude.ai/code を開く' : 'コピーして手動で届ける'}
+        </button>
+        <button class="btn btn-sm" disabled={busy} onClick={cancel}>取り消し</button>
+      </div>
+    </li>
+  );
+};
+
+/** 送ったメッセージが会話に現れた位置。送った後の依頼のうち、文面を含む最初のもの。 */
+const chatIndexOf = (chat: ChatEntry[], m: OutboxMessage): number =>
+  chat.findIndex((e) => e.kind === 'prompt' && (e.at ?? m.createdAt) >= m.createdAt && e.text.includes(m.text.trim()));
+
+/** 会話に現れたメッセージは、どこを押してもチャットのその発言へ移れる。 */
+const DeliveredItem = ({ m, onJump }: { m: OutboxMessage; onJump?: () => void }) => (
+  <li class="outbox-item">
+    <p class="plain">{m.text}</p>
+    <div class="outbox-meta muted">
+      配信済み{m.via && ` · ${VIA_LABEL[m.via]}`}
+      {m.deliveredAt && ` · ${dateTime(m.deliveredAt)}`}
+      {onJump && <button class="outbox-jump stretched" onClick={onJump}>チャットで見る</button>}
+    </div>
+  </li>
+);
+
+/** entries はチャットの発言。 */
+type OutboxListProps = { s: Session; outbox: OutboxMessage[]; entries: ChatEntry[]; onJump: (index: number) => void };
+
+export const OutboxList = ({ s, outbox, entries, onJump }: OutboxListProps) => {
+  const mine = outbox.filter((m) => m.sessionId === s.id).sort((a, b) => b.createdAt - a.createdAt);
+  const pending = mine.filter((m) => !m.deliveredAt);
+  const delivered = mine.filter((m) => m.deliveredAt);
+  return (
+    <WidgetPanel title="送信したメッセージ" count={mine.length}>
+      {mine.length === 0 && <Empty>このセッションへ送ったメッセージはありません。</Empty>}
+      <ul class="outbox">
+        {pending.map((m) => <PendingItem key={m.id} m={m} remoteUrl={s.remoteUrl} />)}
+        {delivered.slice(0, DELIVERED_LIMIT).map((m) => {
+          const index = chatIndexOf(entries, m);
+          return <DeliveredItem key={m.id} m={m} onJump={index < 0 ? undefined : () => onJump(index)} />;
+        })}
+      </ul>
+      {delivered.length > DELIVERED_LIMIT && <p class="help">古い {delivered.length - DELIVERED_LIMIT} 件は省略しています。</p>}
+    </WidgetPanel>
+  );
+};

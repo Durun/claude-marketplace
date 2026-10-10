@@ -20,6 +20,11 @@ Claude Code のクラウドセッションは利用者のマシンの `~/.claude
 **gh-stack**：スタックしたブランチとプルリクエストを扱う `gh` CLI 拡張のスキル。
 GitHub 公式リポジトリ [github/gh-stack](https://github.com/github/gh-stack) をそのまま参照します。
 
+## ツール
+
+**durun-dashboard**：手元で並行して動く Claude Code のセッションを一覧し、人間と Claude のやり取りを 1 か所にまとめるローカル Web アプリ。
+本体はプラグインではないので、`durun-dashboard/` を手元で起動します。Claude Code とつなぐフックと MCP は、プラグイン durun-dashboard で入れます。手順は [durun-dashboard/README.md](durun-dashboard/README.md) にあります。
+
 ## 導入
 
 ```bash
