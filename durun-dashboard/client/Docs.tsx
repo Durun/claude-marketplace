@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ChatEntry, Doc, DocFormat, DocMeta, FileWhere, Session, Snapshot } from '../shared/types.ts';
+import type { ChatEntry, Doc, DocFormat, DocMeta, FileTarget, FileWhere, Session, Snapshot } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
@@ -217,28 +217,36 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
   return { items, dragging, dragOf, list };
 };
 
+/** heading は、ファイルの最初の見出し。 */
+type OpenableFile = ChatFile & { heading?: string };
+
 /** 発言に出た Markdown ファイルのうち、ウィンドウで開けるもの。 */
-const useOpenableFiles = (id: string, files: ChatFile[]): ChatFile[] => {
-  const [openable, setOpenable] = useState<Set<string>>(new Set());
+const useOpenableFiles = (id: string, files: ChatFile[]): OpenableFile[] => {
+  const [openable, setOpenable] = useState<Map<string, FileTarget>>(new Map());
   useEffect(() => {
     let alive = true;
-    void Promise.all(files.map((f) => whereOf(id, f.ref))).then((wheres) => {
-      if (alive) setOpenable(new Set(files.filter((_, i) => wheres[i] === 'local').map((f) => f.ref)));
+    void Promise.all(files.map((f) => targetOf(id, f.ref))).then((targets) => {
+      if (!alive) return;
+      setOpenable(new Map(files.flatMap((f, i): [string, FileTarget][] => {
+        const t = targets[i];
+        return t?.where === 'local' ? [[f.ref, t]] : [];
+      })));
     });
     return () => {
       alive = false;
     };
   }, [id, files]);
-  return files.filter((f) => openable.has(f.ref));
+  return files.flatMap((f) => (openable.has(f.ref) ? [{ ...f, heading: openable.get(f.ref)?.heading }] : []));
 };
 
 /** 修飾キー付きのクリックは、ブラウザの既定の動きに任せる。 */
 export const plainClick = (e: MouseEvent): boolean => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
-const fileDoc = (id: string, f: ChatFile): SideDoc => ({
+/** 題名は、ファイル名の後に最初の見出しを付ける。同じ名前のファイルが並んでも、中身で見分けられるようにするため。 */
+const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
   key: f.ref,
   keys: [f.ref],
-  title: f.ref.split('/').at(-1) ?? f.ref,
+  title: [f.ref.split('/').at(-1) ?? f.ref, f.heading].filter(Boolean).join(' — '),
   href: href.file(id, f.ref),
   sub: FORMAT_LABEL.markdown,
   icon: OWN_ICON,
@@ -443,17 +451,20 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
 export const FILE_KEY = 'file';
 
 // ponytail: 開き先はページを開いている間覚えておく。後から作られたファイルは、読み込み直すまで開けるものとみなさない。
-const resolved = new Map<string, Promise<FileWhere | undefined>>();
+const resolved = new Map<string, Promise<FileTarget | undefined>>();
 
-/** チャットのファイルパスの開き先。開けないものは undefined にする。 */
-export const whereOf = (id: string, ref: string): Promise<FileWhere | undefined> => {
+/** チャットのファイルパスの開き先と、Markdown の最初の見出し。開けないものは undefined にする。 */
+const targetOf = (id: string, ref: string): Promise<FileTarget | undefined> => {
   const key = `${id}\n${ref}`;
   const cached = resolved.get(key);
   if (cached) return cached;
-  const p = api.resolveFile(id, ref).then((r) => r.where, () => undefined);
+  const p = api.resolveFile(id, ref).then((r) => r, () => undefined);
   resolved.set(key, p);
   return p;
 };
+
+/** チャットのファイルパスの開き先。開けないものは undefined にする。 */
+export const whereOf = (id: string, ref: string): Promise<FileWhere | undefined> => targetOf(id, ref).then((t) => t?.where);
 
 /** ファイルをウィンドウに浮かべる。行の指定は外し、同じファイルは 1 つのウィンドウにまとめる。 */
 export const openFileFloat = (sessionId: string, ref: string): void => floatUp(FILE_KEY, sessionId, { id: ref.replace(/:[\d-]+$/, '') });

@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileWhere, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { firstHeading } from '../shared/markdown.ts';
 import { askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -228,11 +229,12 @@ const watchLocalFile = (req: IncomingMessage, res: ServerResponse, id: string, u
 
 /**
  * チャットのファイルパスの開き先。画像と動画はコードの画面で見られず、Markdown は整えた見た目で読みたいので、リポジトリにあってもウィンドウに浮かべる。
- * どこでも開けなければ 404 にする。
+ * Markdown には、資料の題名に添える最初の見出しを付けて返す。どこでも開けなければ 404 にする。
  */
-const resolveFile = async (id: string, url: URL): Promise<{ where: FileWhere }> => {
+const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
   const { ref, full, stat } = localPath(id, url);
-  if (stat && (mediaType(full) || (/\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES))) return { where: 'local' };
+  if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', heading: firstHeading(fs.readFileSync(full, 'utf8')) };
+  if (stat && mediaType(full)) return { where: 'local' };
   if (await inRepo(sessionMeta(id).cwd, ref)) return { where: 'repo' };
   if (stat && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local' };
   throw new HttpError(404, `「${ref}」を開けません`);

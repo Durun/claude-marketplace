@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, FeedbackContext, FeedbackTarget, FileWhere, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -50,7 +50,7 @@ export const api = {
     getJson<DiffResult>(`${session(id)}/diff?${query({ full: full ? '1' : undefined, ...range, branch: view?.branch, base: view?.base })}`),
   file: (id: string, path: string, branch?: string) => getJson<DiffFile>(`${session(id)}/file?${query({ path, branch })}`),
   localFile: (id: string, path: string) => getJson<{ path: string; content: string }>(`${session(id)}/local-file?${query({ path })}`),
-  resolveFile: (id: string, path: string) => getJson<{ where: FileWhere }>(`${session(id)}/resolve-file?${query({ path })}`),
+  resolveFile: (id: string, path: string) => getJson<FileTarget>(`${session(id)}/resolve-file?${query({ path })}`),
   mediaUrl: (id: string, path: string) => `${session(id)}/media?${query({ path })}`,
   localFileEventsUrl: (id: string, path: string) => `${session(id)}/local-file/events?${query({ path })}`,
   chat: (id: string) => getJson<ChatEntry[]>(`${session(id)}/chat`),
