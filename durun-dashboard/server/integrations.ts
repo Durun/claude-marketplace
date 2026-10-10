@@ -1,0 +1,702 @@
+// 外部の情報源: GitHub の PR（gh）、JIRA、git の差分。
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, type PrDetail, type PrInfo, type PrPost, type PrThread, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { readJson } from './claude.ts';
+import { changed } from './store.ts';
+
+const run = promisify(execFile);
+const MAX_BUFFER = 64 * 1024 * 1024;
+const MAX_DIFF_CHARS = 4 * 1024 * 1024;
+const MAX_UNTRACKED_FILES = 50;
+const MAX_UNTRACKED_BYTES = 256 * 1024;
+const FULL_CONTEXT_LINES = 1_000_000;
+const COMMIT_LIMIT = 30;
+const COMMIT_FORMAT = '--format=%H%x1f%s';
+// 何も無いツリー。最初のコミットから範囲に含めるときの比較元にする。
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+// ベースブランチ上のセッションと、git 管理外やデタッチ状態（HEAD）のセッションは PR を持たないので探さない。
+const BASE_BRANCH = /^(HEAD|main|master|develop|release\/.*)$/;
+const PR_FIELDS = 'url,number,title,state,isDraft,reviewDecision,statusCheckRollup,baseRefName';
+const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
+
+type GhCheck = { status?: string; conclusion?: string; state?: string };
+type GhPr = {
+  url: string;
+  number: number;
+  title: string;
+  state: PrInfo['state'];
+  isDraft: boolean;
+  reviewDecision?: string;
+  statusCheckRollup?: GhCheck[];
+  baseRefName?: string;
+};
+
+/** CheckRun は status と conclusion、StatusContext は state で結果を表す。 */
+export const countChecks = (rollup: GhCheck[]): PrInfo['checks'] => {
+  const checks = { passed: 0, failed: 0, pending: 0 };
+  for (const c of rollup) {
+    const v = c.conclusion || c.state || '';
+    if (c.status && c.status !== 'COMPLETED') checks.pending++;
+    else if (FAILED.has(v)) checks.failed++;
+    else if (v === 'PENDING' || v === 'EXPECTED') checks.pending++;
+    else checks.passed++;
+  }
+  return checks;
+};
+
+const toPrInfo = (pr: GhPr): PrInfo => ({
+  url: pr.url,
+  number: pr.number,
+  title: pr.title,
+  state: pr.state,
+  isDraft: pr.isDraft,
+  review: pr.reviewDecision ?? '',
+  checks: countChecks(pr.statusCheckRollup ?? []),
+  baseRef: pr.baseRefName,
+});
+
+/** null は「PR が無い」ことを確認済みの印。 */
+const prCache = new Map<string, { cwd: string; branch: string; pr: PrInfo | null }>();
+const inflight = new Set<string>();
+
+export const refreshPr = async (cwd: string, branch: string): Promise<void> => {
+  const key = `${cwd}\0${branch}`;
+  if (inflight.has(key)) return;
+  inflight.add(key);
+  try {
+    const { stdout } = await run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', PR_FIELDS], { cwd });
+    const [pr] = JSON.parse(stdout) as GhPr[];
+    prCache.set(key, { cwd, branch, pr: pr ? toPrInfo(pr) : null });
+  } catch (e) {
+    // gh 未認証や GitHub 以外のリポジトリでは PR を出さない。
+    prCache.set(key, { cwd, branch, pr: null });
+    console.error(`gh pr list failed in ${cwd}: ${(e as Error).message.split('\n')[0]}`);
+  } finally {
+    inflight.delete(key);
+    changed();
+  }
+};
+
+/** キャッシュ済みの PR を返す。初めてのブランチは裏で取りに行き、取れたら changed() で知らせる。 */
+export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
+  if (!branch || BASE_BRANCH.test(branch)) return undefined;
+  const hit = prCache.get(`${cwd}\0${branch}`);
+  if (!hit) void refreshPr(cwd, branch);
+  return hit?.pr ?? undefined;
+};
+
+// 解決済みかどうかは REST の API では分からないので、GraphQL で読む。
+// ponytail: スレッドは先頭の 100 件、コメントはスレッドごとに 50 件まで。超える PR が出たら、ページを送って読む。
+const THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes {
+          id isResolved isOutdated path line diffSide
+          comments(first: 50) { nodes { id author { login } body url createdAt diffHunk } }
+        }
+      }
+    }
+  }
+}`;
+
+type GhComment = { id: string; author: { login: string } | null; body: string; url: string; createdAt: string; diffHunk: string };
+type GhThread = { id: string; isResolved: boolean; isOutdated: boolean; path: string; line: number | null; diffSide?: 'LEFT' | 'RIGHT'; comments: { nodes: GhComment[] } };
+
+/** 解決済みのスレッドは対応を終えているので外す。退会したユーザーのコメントは author が null になり、GitHub と同じく ghost と出す。 */
+export const toThreads = (nodes: GhThread[]): PrThread[] =>
+  nodes
+    .filter((t) => !t.isResolved && t.comments.nodes.length > 0)
+    .map((t) => ({
+      id: t.id,
+      path: t.path,
+      line: t.line ?? undefined,
+      side: t.diffSide === 'LEFT' ? 'old' : 'new',
+      outdated: t.isOutdated,
+      diffHunk: t.comments.nodes[0]?.diffHunk ?? '',
+      comments: t.comments.nodes.map((c) => ({ id: c.id, author: c.author?.login ?? 'ghost', body: c.body, url: c.url, at: Date.parse(c.createdAt) })),
+    }));
+
+const repoOf = (pr: PrInfo): { host: string; owner: string; name: string; number: string } => {
+  const [, host, owner, name, number] = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(pr.url) ?? [];
+  if (!host || !owner || !name || !number) throw new Error(`PR の URL を読めません: ${pr.url}`);
+  return { host, owner, name, number };
+};
+
+/** gh を呼び、標準出力を返す。input は標準入力に渡す本文。gh が失敗したときは、gh が標準エラーに書いた理由で投げる。 */
+const gh = async (args: string[], input?: string): Promise<string> => {
+  const call = run('gh', args, { maxBuffer: MAX_BUFFER });
+  call.child.stdin?.end(input);
+  const { stdout } = await call.catch((e: { stderr?: string; message: string }) => {
+    throw new Error(e.stderr?.trim() || e.message);
+  });
+  return stdout;
+};
+
+const ghApi = async <T,>(args: string[], input?: string): Promise<T> => JSON.parse(await gh(['api', ...args], input)) as T;
+
+const DETAIL_FIELDS = `${PR_FIELDS},author,body,headRefName,additions,deletions,files,comments,reviews,updatedAt`;
+
+type GhAuthor = { login: string } | null;
+type GhPrDetail = GhPr & {
+  author: GhAuthor;
+  body: string;
+  headRefName: string;
+  additions: number;
+  deletions: number;
+  files?: { path: string; additions: number; deletions: number }[];
+  comments?: { author: GhAuthor; body: string; createdAt: string }[];
+  reviews?: { author: GhAuthor; body: string; state: string; submittedAt: string }[];
+  updatedAt: string;
+};
+
+/** 行へのコメントだけを付けたレビューは、総評が空の COMMENTED になる。行へのコメントは「PR コメント」で読むので、会話には出さない。 */
+export const toPrDetail = (pr: GhPrDetail): PrDetail => {
+  const posts: PrPost[] = [
+    ...(pr.comments ?? []).map((c) => ({ author: c.author?.login ?? 'ghost', body: c.body, at: Date.parse(c.createdAt) })),
+    ...(pr.reviews ?? [])
+      .filter((r) => r.body.trim() || r.state !== 'COMMENTED')
+      .map((r) => ({ author: r.author?.login ?? 'ghost', body: r.body, at: Date.parse(r.submittedAt), state: r.state })),
+  ];
+  return {
+    ...toPrInfo(pr),
+    author: pr.author?.login ?? 'ghost',
+    body: pr.body,
+    headRef: pr.headRefName,
+    additions: pr.additions,
+    deletions: pr.deletions,
+    files: (pr.files ?? []).map(({ path, additions, deletions }) => ({ path, additions, deletions })),
+    posts: posts.sort((a, b) => a.at - b.at),
+    updatedAt: Date.parse(pr.updatedAt),
+  };
+};
+
+// 1 区分に出す上限。GitHub の検索は 1 回で 100 件まで返す。
+const INBOX_MAX = 50;
+const INBOX_PR = `... on PullRequest { url number title isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }`;
+const inboxSearch = (q: string): string => `search(type: ISSUE, first: ${INBOX_MAX}, query: "is:pr is:open archived:false sort:updated-desc ${q}") { nodes { ${INBOX_PR} } }`;
+// 直接の依頼は user-review-requested、チームへの依頼は review-requested から直接の依頼を除いたもの。
+const INBOX_QUERY = `{
+  direct: ${inboxSearch('user-review-requested:@me')}
+  team: ${inboxSearch('review-requested:@me -user-review-requested:@me')}
+  mine: ${inboxSearch('author:@me')}
+}`;
+
+type GhInboxPr = {
+  url: string;
+  number: number;
+  title: string;
+  isDraft: boolean;
+  reviewDecision: string | null;
+  mergeable: string;
+  updatedAt: string;
+  repository: { nameWithOwner: string };
+  author: GhAuthor;
+  commits: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] };
+};
+export type GhInbox = { direct: { nodes: GhInboxPr[] }; team: { nodes: GhInboxPr[] }; mine: { nodes: GhInboxPr[] } };
+
+const MINE_SECTIONS = ['Your drafts', 'Waiting for review or checks', 'Needs action', 'Ready to merge'] as const;
+
+/**
+ * 自分の PR を Inbox の区分に分ける。GitHub は区分の条件を公開していないので、レビューの判定、チェック、競合から決める。
+ * reviewDecision が null なのは、レビューを必須にしていないリポジトリで、承認と同じに扱う。
+ */
+export const mineSection = (pr: GhInboxPr): (typeof MINE_SECTIONS)[number] => {
+  const checks = pr.commits.nodes[0]?.commit.statusCheckRollup?.state;
+  if (pr.isDraft) return 'Your drafts';
+  if (pr.reviewDecision === 'CHANGES_REQUESTED' || checks === 'FAILURE' || checks === 'ERROR' || pr.mergeable === 'CONFLICTING') return 'Needs action';
+  if ((pr.reviewDecision ?? 'APPROVED') === 'APPROVED' && (checks ?? 'SUCCESS') === 'SUCCESS') return 'Ready to merge';
+  return 'Waiting for review or checks';
+};
+
+const toInboxPr = (pr: GhInboxPr): InboxPr => ({
+  url: pr.url,
+  repo: pr.repository.nameWithOwner,
+  number: pr.number,
+  title: pr.title,
+  author: pr.author?.login ?? 'ghost',
+  updatedAt: Date.parse(pr.updatedAt),
+});
+
+/** 検索の結果を Inbox の区分に並べる。PR の無い区分は出さない。 */
+export const toInbox = (data: GhInbox): InboxSection[] =>
+  [
+    { title: 'Needs your review', prs: data.direct.nodes },
+    { title: "Needs your teams' review", prs: data.team.nodes },
+    ...MINE_SECTIONS.map((title) => ({ title, prs: data.mine.nodes.filter((pr) => mineSection(pr) === title) })),
+  ]
+    .filter((s) => s.prs.length > 0)
+    .map((s) => ({ title: s.title, prs: s.prs.map(toInboxPr) }));
+
+/** GitHub の PR のダッシュボードの Inbox と同じ区分で、自分に関わる開いた PR を集める。 */
+export const githubInbox = async (): Promise<InboxSection[]> => toInbox((await ghApi<{ data: GhInbox }>(['graphql', '-f', `query=${INBOX_QUERY}`])).data);
+
+/** PR の本文、変更したファイル、会話を GitHub から読む。 */
+export const prDetail = async (url: string): Promise<PrDetail> => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail);
+
+/** PR の会話にコメントを投稿し、投稿したコメントの URL を返す。 */
+export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => ({ url: (await gh(['pr', 'comment', url, '--body-file', '-'], body)).trim() });
+
+type GhPullRequest = { id: string; reviewThreads?: { nodes?: GhThread[] }; files?: { nodes?: { path: string; viewerViewedState: string }[] } };
+
+/** PR を指す GraphQL を投げ、pullRequest を返す。query は $owner、$name、$number を受ける。 */
+const prQuery = async (pr: PrInfo, query: string): Promise<GhPullRequest | undefined> => {
+  const { host, owner, name, number } = repoOf(pr);
+  // -F は値が @ で始まるとファイルを読むので、文字列は -f で渡す。
+  const args = ['graphql', '--hostname', host, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${number}`, '-f', `query=${query}`];
+  const body = await ghApi<{ data?: { repository?: { pullRequest?: GhPullRequest } } }>(args);
+  return body.data?.repository?.pullRequest;
+};
+
+/** PR の未解決のレビュースレッド。 */
+export const prThreads = async (pr: PrInfo): Promise<PrThread[]> => toThreads((await prQuery(pr, THREADS_QUERY))?.reviewThreads?.nodes ?? []);
+
+// ponytail: ファイルは先頭の 100 件まで。超える PR が出たら、ページを送って読む。
+const FILES_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { id files(first: 100) { nodes { path viewerViewedState } } } }
+}`;
+
+/** GitHub で、自分が「Viewed」にした PR のファイル。 */
+export const prViewed = async (pr: PrInfo): Promise<string[]> =>
+  ((await prQuery(pr, FILES_QUERY))?.files?.nodes ?? []).filter((f) => f.viewerViewedState === 'VIEWED').map((f) => f.path);
+
+/** GitHub の「Viewed」を切り替える。mutation は PR の node id を受けるので、先に読む。 */
+export const setPrViewed = async (pr: PrInfo, file: string, viewed: boolean): Promise<void> => {
+  const id = (await prQuery(pr, FILES_QUERY))?.id;
+  if (!id) throw new Error(`PR が見つかりません: ${pr.url}`);
+  const op = viewed ? 'markFileAsViewed' : 'unmarkFileAsViewed';
+  const mutation = `mutation($id: ID!, $path: String!) { ${op}(input: { pullRequestId: $id, path: $path }) { clientMutationId } }`;
+  await ghApi(['graphql', '--hostname', repoOf(pr).host, '-f', `id=${id}`, '-f', `path=${file}`, '-f', `query=${mutation}`]);
+};
+
+/** 行へのコメントと全体コメントを、1 つのレビュー（COMMENT）として PR に投稿する。commit は、行番号を数えた PR の先端。 */
+export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewComment[], body: string): Promise<{ url: string }> => {
+  const { host, owner, name, number } = repoOf(pr);
+  const review = {
+    commit_id: commit,
+    event: 'COMMENT',
+    body,
+    comments: comments.map((c) => ({ path: c.path, line: c.line, side: c.side === 'old' ? 'LEFT' : 'RIGHT', body: c.body })),
+  };
+  const res = await ghApi<{ html_url: string }>(['--hostname', host, '--method', 'POST', `repos/${owner}/${name}/pulls/${number}/reviews`, '--input', '-'], JSON.stringify(review));
+  return { url: res.html_url };
+};
+
+type ClaudePrStatus = { title: string; state: PrInfo['state']; checks: PrInfo['checks']; review: string };
+
+/** Claude Code が実行中セッションの PR 状態を定期更新しているキャッシュを取り込む。自前で GitHub を見に行かずに済む。 */
+export const mergeClaudePrCache = (file: string): void => {
+  const statuses = readJson<Record<string, ClaudePrStatus>>(file);
+  if (!statuses) return;
+  for (const { pr } of prCache.values()) {
+    const s = pr && statuses[pr.url];
+    if (pr && s) Object.assign(pr, { title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review });
+  }
+  changed();
+};
+
+const JIRA_BASE = process.env.JIRA_BASE_URL?.replace(/\/$/, '');
+const JIRA_PROJECTS = (process.env.JIRA_PROJECT_KEYS ?? '').split(',').map((k) => k.trim()).filter(Boolean);
+// ブランチ名は小文字で書かれることが多い（proj-1102）ため、登録したプロジェクトキーに限って大文字小文字を区別せずに拾う。
+const JIRA_KEY = JIRA_PROJECTS.length ? new RegExp(`\\b(${JIRA_PROJECTS.join('|')})-(\\d+)`, 'gi') : undefined;
+const JIRA_AUTH =
+  process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN
+    ? `Basic ${Buffer.from(`${process.env.JIRA_EMAIL}:${process.env.JIRA_API_TOKEN}`).toString('base64')}`
+    : undefined;
+
+export const findJiraKeys = (texts: (string | undefined)[]): string[] => {
+  if (!JIRA_KEY || !JIRA_BASE) return [];
+  const keys = new Set<string>();
+  for (const t of texts) for (const m of t?.matchAll(JIRA_KEY) ?? []) keys.add(`${m[1]?.toUpperCase()}-${m[2]}`);
+  return [...keys];
+};
+
+const browseUrl = (key: string): string => `${JIRA_BASE ?? ''}/browse/${key}`;
+
+const jiraCache = new Map<string, { summary?: string; status?: string }>();
+
+const fetchJira = async (key: string): Promise<void> => {
+  jiraCache.set(key, {});
+  try {
+    const res = await fetch(`${JIRA_BASE}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,status`, {
+      headers: { authorization: JIRA_AUTH ?? '', accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = (await res.json()) as { fields?: { summary?: string; status?: { name?: string } } };
+    jiraCache.set(key, { summary: body.fields?.summary, status: body.fields?.status?.name });
+    changed();
+  } catch (e) {
+    console.error(`JIRA ${key}: ${(e as Error).message}`);
+  }
+};
+
+/** API トークンが無いときはリンクだけ返す。 */
+export const jiraIssue = (key: string): JiraIssue => {
+  if (JIRA_AUTH && !jiraCache.has(key)) void fetchJira(key);
+  return { key, url: browseUrl(key), ...jiraCache.get(key) };
+};
+
+let refreshedAt = 0;
+
+export const refreshJira = (): void => {
+  jiraCache.clear();
+  refreshedAt = Date.now();
+  changed();
+};
+
+/** 人間が「更新」で JIRA の情報を取り直させた時刻。 */
+export const jiraRefreshedAt = (): number => refreshedAt;
+
+type JiraSearchBody = {
+  issues?: {
+    key: string;
+    fields?: {
+      summary?: string;
+      status?: { name?: string; statusCategory?: { key?: string } };
+      assignee?: { displayName?: string } | null;
+      updated?: string;
+      priority?: { name?: string } | null;
+      parent?: { key: string; fields?: { summary?: string } };
+      labels?: string[];
+      reporter?: { displayName?: string } | null;
+      duedate?: string | null;
+    };
+  }[];
+  errorMessages?: string[];
+};
+
+/** JQL で課題を探す。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。 */
+export const searchJira = async (jql: string, max: number): Promise<JiraIssue[]> => {
+  if (!JIRA_BASE || !JIRA_AUTH) throw new Error('~/.durun-dashboard/.env.local に JIRA_BASE_URL、JIRA_EMAIL、JIRA_API_TOKEN を設定してください');
+  const query = new URLSearchParams({ jql, maxResults: String(max), fields: 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate' });
+  const res = await fetch(`${JIRA_BASE}/rest/api/3/search/jql?${query}`, { headers: { authorization: JIRA_AUTH, accept: 'application/json' } });
+  const body = (await res.json().catch(() => ({}))) as JiraSearchBody;
+  if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
+  return (body.issues ?? []).map(({ key, fields: f }) => ({
+    key,
+    url: browseUrl(key),
+    summary: f?.summary,
+    status: f?.status?.name,
+    statusCategory: f?.status?.statusCategory?.key,
+    assignee: f?.assignee?.displayName,
+    updatedAt: f?.updated ? Date.parse(f.updated) : undefined,
+    priority: f?.priority?.name,
+    parent: f?.parent && { key: f.parent.key, summary: f.parent.fields?.summary },
+    labels: f?.labels?.length ? f.labels : undefined,
+    reporter: f?.reporter?.displayName,
+    dueDate: f?.duedate ?? undefined,
+  }));
+};
+
+/** 課題の画面の URL の前に付く部分。設定が無ければ undefined。 */
+export const jiraBase = (): string | undefined => JIRA_BASE && JIRA_AUTH && JIRA_BASE;
+
+type Adf = { type?: string; text?: string; attrs?: { text?: string; url?: string; shortName?: string }; content?: Adf[] };
+
+// 段落や見出し、リストは空行で区切り、Markdown として読める程度の文字にする。リストの直後の段落が項目の続きと読まれないよう、リストの後にも空行を置く。表や装飾は文字だけ残す。
+const BLOCKS = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'rule', 'mediaSingle', 'tableRow']);
+
+/** JIRA の本文やコメントの形式（Atlassian Document Format）を、画面に出す文字にする。 */
+export const adfText = (node: Adf | null | undefined): string => {
+  if (!node) return '';
+  if (node.type === 'text') return node.text ?? '';
+  if (node.type === 'hardBreak') return '\n';
+  if (node.type === 'mention' || node.type === 'emoji') return node.attrs?.text ?? node.attrs?.shortName ?? '';
+  if (node.type === 'inlineCard') return node.attrs?.url ?? '';
+  const inner = (node.content ?? []).map(adfText).join('');
+  if (node.type === 'listItem') return `- ${inner.trim()}\n`;
+  if (node.type === 'codeBlock') return `\`\`\`\n${inner}\n\`\`\`\n\n`;
+  return BLOCKS.has(node.type ?? '') ? `${inner}\n\n` : inner;
+};
+
+type JiraIssueBody = {
+  fields?: {
+    summary?: string;
+    status?: { name?: string; statusCategory?: { key?: string } };
+    assignee?: { displayName?: string } | null;
+    reporter?: { displayName?: string } | null;
+    priority?: { name?: string } | null;
+    parent?: { key: string; fields?: { summary?: string } };
+    labels?: string[];
+    duedate?: string | null;
+    updated?: string;
+    description?: Adf | null;
+    comment?: { comments?: { author?: { displayName?: string }; body?: Adf; created?: string }[] };
+  };
+  errorMessages?: string[];
+};
+
+const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> => {
+  if (!JIRA_BASE || !JIRA_AUTH) throw new Error('~/.durun-dashboard/.env.local に JIRA_BASE_URL、JIRA_EMAIL、JIRA_API_TOKEN を設定してください');
+  const res = await fetch(`${JIRA_BASE}/rest/api/3/${apiPath}`, {
+    ...init,
+    headers: { authorization: JIRA_AUTH, accept: 'application/json', 'content-type': 'application/json' },
+  });
+  const body = (await res.json().catch(() => ({}))) as T & { errorMessages?: string[] };
+  if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
+  return body;
+};
+
+/** 課題の画面に出す中身。コメントは古い順に並べる。 */
+export const jiraDetail = async (key: string): Promise<JiraDetail> => {
+  const fields = 'summary,status,assignee,reporter,priority,parent,labels,duedate,updated,description,comment';
+  const { fields: f } = await jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}`);
+  return {
+    key,
+    url: browseUrl(key),
+    summary: f?.summary,
+    status: f?.status?.name,
+    statusCategory: f?.status?.statusCategory?.key,
+    assignee: f?.assignee?.displayName,
+    updatedAt: f?.updated ? Date.parse(f.updated) : undefined,
+    priority: f?.priority?.name,
+    parent: f?.parent && { key: f.parent.key, summary: f.parent.fields?.summary },
+    labels: f?.labels?.length ? f.labels : undefined,
+    reporter: f?.reporter?.displayName,
+    dueDate: f?.duedate ?? undefined,
+    description: adfText(f?.description).trim(),
+    comments: (f?.comment?.comments ?? []).map((c) => ({ author: c.author?.displayName ?? '', body: adfText(c.body).trim(), at: Date.parse(c.created ?? '') })),
+  };
+};
+
+/** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */
+export const postJiraComment = async (key: string, text: string): Promise<void> => {
+  const content = text.split('\n').map((line) => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] }));
+  await jiraFetch(`issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body: { type: 'doc', version: 1, content } }) });
+};
+
+const newFile = (header: string): DiffFile => {
+  // パスは後続の ---/+++ 行で上書きする。バイナリなどそれらが無いときだけ diff --git 行の値を使う。
+  const m = /^diff --git a\/(.*) b\/(.*)$/.exec(header);
+  return { path: m?.[2] ?? '', status: 'modified', binary: false, additions: 0, deletions: 0, editedBySession: false, hunks: [] };
+};
+
+const applyFileHeader = (file: DiffFile, line: string): void => {
+  if (line.startsWith('new file mode')) file.status = 'added';
+  else if (line.startsWith('deleted file mode')) file.status = 'deleted';
+  else if (line.startsWith('rename from ')) {
+    file.status = 'renamed';
+    file.oldPath = line.slice('rename from '.length);
+  } else if (line.startsWith('rename to ')) file.path = line.slice('rename to '.length);
+  else if (line.startsWith('Binary files ')) file.binary = true;
+  else if (line.startsWith('+++ b/')) file.path = line.slice('+++ b/'.length);
+  else if (line.startsWith('--- a/') && file.status === 'deleted') file.path = line.slice('--- a/'.length);
+};
+
+/** git diff の unified 形式を、行番号つきの構造に変換する。 */
+export const parseDiff = (text: string): DiffFile[] => {
+  const files: DiffFile[] = [];
+  let file: DiffFile | undefined;
+  let lines: DiffFile['hunks'][number]['lines'] | undefined;
+  let oldNo = 0;
+  let newNo = 0;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      file = newFile(line);
+      files.push(file);
+      lines = undefined;
+    } else if (file && line.startsWith('@@')) {
+      const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+      oldNo = Number(m?.[1] ?? 0);
+      newNo = Number(m?.[2] ?? 0);
+      lines = [];
+      file.hunks.push({ header: line, lines });
+    } else if (file && !lines) applyFileHeader(file, line);
+    else if (file && lines && line[0] === '+') {
+      lines.push({ kind: 'add', newNo: newNo++, text: line.slice(1) });
+      file.additions++;
+    } else if (file && lines && line[0] === '-') {
+      lines.push({ kind: 'del', oldNo: oldNo++, text: line.slice(1) });
+      file.deletions++;
+    } else if (lines && line[0] === ' ') lines.push({ kind: 'ctx', oldNo: oldNo++, newNo: newNo++, text: line.slice(1) });
+  }
+  return files;
+};
+
+const git = async (cwd: string, args: string[]): Promise<string> =>
+  (await run('git', ['-c', 'core.quotePath=false', ...args], { cwd, maxBuffer: MAX_BUFFER })).stdout;
+
+/** cwd を含むリポジトリの直下。 */
+const repoRoot = async (cwd: string): Promise<string> => (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
+
+/** 作業ツリーの直下。onBranch が false なら、求めたブランチを開いた worktree が無く、dir は別のコードを開いている。 */
+export type Tree = { dir: string; onBranch: boolean };
+
+/**
+ * branch を開いている worktree の直下。セッションが作業ディレクトリとは別の worktree で作業していても、ブランチのコードを読めるようにする。
+ * どこにも開いていなければ、cwd を含む worktree の直下を返す。消えた worktree（prunable）は使わない。
+ */
+export const treeOf = async (cwd: string, branch: string): Promise<Tree> => {
+  const blocks = (await git(cwd, ['worktree', 'list', '--porcelain'])).split('\n\n').map((b) => b.split('\n'));
+  const open = blocks.find((lines) => lines.includes(`branch refs/heads/${branch}`) && !lines.some((l) => l.startsWith('prunable')));
+  const dir = open?.[0]?.replace(/^worktree /, '');
+  return dir ? { dir, onBranch: true } : { dir: await repoRoot(cwd), onBranch: false };
+};
+
+/** bases の順に、head との分岐点を探す。 */
+const findBranchPoint = async (root: string, head: string, bases: string[]): Promise<string | undefined> => {
+  for (const ref of bases) {
+    try {
+      return (await git(root, ['merge-base', head, ref])).trim();
+    } catch {
+      // 次の候補を試す。
+    }
+  }
+  return undefined;
+};
+
+/** HEAD~2 や短い sha を、40 桁の sha にする。git のオプションと取り違えないよう、- で始まるものは受けない。 */
+export const resolveCommit = async (cwd: string, ref: string): Promise<string> => {
+  const sha = ref.startsWith('-') ? '' : await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).then((out) => out.trim(), () => '');
+  if (!sha) throw new Error(`コミットが見つかりません: ${ref}`);
+  return sha;
+};
+
+/** Claude がレビューを頼む範囲。後のコミットで HEAD が動いてもずれないよう、sha にして持つ。 */
+export const resolveRange = async (cwd: string, from: string, to: string): Promise<DiffRange> => {
+  const range = { from: await resolveCommit(cwd, from), to: await resolveCommit(cwd, to) };
+  try {
+    await git(cwd, ['merge-base', '--is-ancestor', range.from, range.to]);
+  } catch {
+    throw new Error(`from（${from}）には、to（${to}）と同じか、それより古いコミットを渡してください`);
+  }
+  return range;
+};
+
+/** 範囲の比較元。from の親で、from が最初のコミットなら何も無いツリー。 */
+const parentOf = async (root: string, sha: string): Promise<string> => {
+  try {
+    return (await git(root, ['rev-parse', '--verify', '--quiet', `${sha}^`])).trim();
+  } catch {
+    return EMPTY_TREE;
+  }
+};
+
+const parseCommits = (out: string): CommitInfo[] =>
+  out.split('\n').filter(Boolean).map((line) => {
+    const [sha = '', subject = ''] = line.split('\x1f');
+    return { sha, subject };
+  });
+
+/** 先端を git に渡せる参照にする。未コミットの変更は HEAD の上に載っているので、HEAD から数える。 */
+const headOf = (tip: string): string => (tip === WORKTREE ? 'HEAD' : tip);
+
+/** 範囲を選ぶ候補。先端から first-parent でさかのぼった最近のコミットに、入っていない範囲の端を古い側に足す。 */
+const listCommits = async (root: string, tip: string, range: DiffRange): Promise<CommitInfo[]> => {
+  const commits = parseCommits(await git(root, ['log', '--first-parent', `-n${COMMIT_LIMIT}`, COMMIT_FORMAT, headOf(tip)]));
+  for (const end of [range.to, range.from]) {
+    if (end !== WORKTREE && !commits.some((c) => c.sha === end)) commits.push(...parseCommits(await git(root, ['log', '-1', COMMIT_FORMAT, end])));
+  }
+  return commits;
+};
+
+/** 分岐点を探す相手を、試す順に返す。Claude がブランチの比べる相手を渡していれば、それだけにする。 */
+const branchBases = async (root: string, baseRef: string | undefined, view: BranchView | undefined): Promise<string[]> => {
+  if (view?.base) return [await resolveCommit(root, view.base)];
+  return [view ? undefined : baseRef, 'HEAD', 'main', 'master'].filter((r): r is string => !!r).map((r) => `origin/${r}`);
+};
+
+/** 範囲を渡されないときの差分の比較元と、範囲の始まり。分岐点が無ければ、作業ツリーは未コミットの変更だけに、ブランチは先端のコミットだけにする。 */
+const defaultStart = async (root: string, tip: string, bases: string[]): Promise<{ base: string; from: string }> => {
+  const point = await findBranchPoint(root, headOf(tip), bases);
+  if (!point) return tip === WORKTREE ? { base: 'HEAD', from: WORKTREE } : { base: await parentOf(root, tip), from: tip };
+  const branch = (await git(root, ['rev-list', '--first-parent', `${point}..${headOf(tip)}`])).trim().split('\n');
+  return { base: point, from: branch.at(-1) || tip };
+};
+
+/** ファイルの中身を、まるごと 1 つの hunk にする。新規ファイルは追加の行に、差分に無いファイルは文脈の行にする。中身を渡されない大きなファイルとバイナリは、中身を出さない。 */
+const oneHunk = (name: string, content: string | undefined, kind: 'add' | 'ctx'): DiffFile => {
+  const file: DiffFile = { path: name, status: kind === 'add' ? 'added' : 'unchanged', binary: false, additions: 0, deletions: 0, editedBySession: false, hunks: [] };
+  if (content === undefined || content.includes('\0')) return { ...file, binary: true };
+  const body = content.endsWith('\n') ? content.slice(0, -1) : content;
+  const lines = body.split('\n').map((text, i) => ({ kind, oldNo: kind === 'ctx' ? i + 1 : undefined, newNo: i + 1, text }));
+  const n = lines.length;
+  const header = kind === 'add' ? `@@ -0,0 +1,${n} @@ 新規ファイル` : `@@ -1,${n} +1,${n} @@ ファイル全体`;
+  return { ...file, additions: kind === 'add' ? n : 0, hunks: [{ header, lines }] };
+};
+
+const readWhole = (root: string, name: string, kind: 'add' | 'ctx'): DiffFile | undefined => {
+  const full = path.join(root, name);
+  try {
+    const stat = fs.statSync(full);
+    if (!stat.isFile()) return undefined;
+    return oneHunk(name, stat.size > MAX_UNTRACKED_BYTES ? undefined : fs.readFileSync(full, 'utf8'), kind);
+  } catch {
+    // 壊れたシンボリックリンクなど、読めないものは出さない。
+    return undefined;
+  }
+};
+
+const untrackedFiles = async (root: string): Promise<DiffFile[]> => {
+  const names = (await git(root, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
+  return names.slice(0, MAX_UNTRACKED_FILES).flatMap((name) => readWhole(root, name, 'add') ?? []);
+};
+
+/**
+ * セッションの作業ディレクトリについて、コミットの範囲の差分を返す。範囲の端の WORKTREE は、未コミットの変更を指す。
+ * 範囲を渡されなければ、分岐点から作業ツリーまでを出す。view を渡されたら、作業ツリーの代わりに、そのブランチの先端までを出す。
+ */
+export const gitDiff = async (cwd: string, baseRef: string | undefined, full: boolean, edited: Set<string>, want: Partial<DiffRange> = {}, view?: BranchView): Promise<DiffResult> => {
+  const root = await repoRoot(cwd);
+  const tip = view ? await resolveCommit(root, view.branch) : WORKTREE;
+  const end = async (ref: string): Promise<string> => (ref === WORKTREE ? tip : resolveCommit(root, ref));
+  const to = await end(want.to || WORKTREE);
+  const from = want.from && (await end(want.from));
+  const start = from ? { from, base: from === WORKTREE ? 'HEAD' : await parentOf(root, from) } : await defaultStart(root, tip, await branchBases(root, baseRef, view));
+  const ends = to === WORKTREE ? [start.base] : [start.base, to];
+  let text = await git(root, ['diff', '--no-color', '--no-ext-diff', '--find-renames', `-U${full ? FULL_CONTEXT_LINES : 3}`, ...ends]);
+  const truncated = text.length > MAX_DIFF_CHARS;
+  if (truncated) {
+    const cut = text.lastIndexOf('\ndiff --git ', MAX_DIFF_CHARS);
+    text = text.slice(0, cut > 0 ? cut : MAX_DIFF_CHARS);
+  }
+  const files = [...parseDiff(text), ...(to === WORKTREE ? await untrackedFiles(root) : [])];
+  for (const f of files) f.editedBySession = edited.has(path.join(root, f.path));
+  const range = { from: start.from, to };
+  return { range, commits: await listCommits(root, tip, range), files, truncated };
+};
+
+/** ブランチのファイルを読む。作業ツリーに無いファイルも指せるよう、パスは実在を確かめずに、リポジトリの直下からの位置にする。 */
+const branchFile = async (root: string, cwd: string, name: string, branch: string): Promise<DiffFile | undefined> => {
+  const sha = await resolveCommit(root, branch);
+  const candidates = [path.resolve(fs.realpathSync(cwd), name), path.resolve(root, name)]
+    .map((full) => path.relative(root, full))
+    .filter((p) => p && !p.startsWith('..') && !path.isAbsolute(p));
+  for (const p of candidates) {
+    const content = await git(root, ['cat-file', 'blob', `${sha}:${p}`]).catch(() => undefined);
+    if (content !== undefined) return oneHunk(p, content.length > MAX_UNTRACKED_BYTES ? undefined : content, 'ctx');
+  }
+  return undefined;
+};
+
+/**
+ * 差分に無いファイルを、まるごと読む。ref は作業ディレクトリかリポジトリの直下からのパスか、絶対パス。
+ * branch を渡されたら、そのブランチから読む。作業ツリーからは、git が無視するファイル（.env など）と、リポジトリの外のファイルは読まない。
+ */
+export const repoFile = async (cwd: string, ref: string, branch?: string): Promise<DiffFile | undefined> => {
+  const root = await repoRoot(cwd);
+  const name = ref.replace(/:[\d-]+$/, '');
+  if (branch) return branchFile(root, cwd, name, branch);
+  const found = await repoPath(root, cwd, name);
+  return found ? readWhole(root, found, 'ctx') : undefined;
+};
+
+/** 作業ツリーにあり、git が無視していないファイルの、リポジトリの直下からのパス。 */
+const repoPath = async (root: string, cwd: string, name: string): Promise<string | undefined> => {
+  // git が返すリポジトリの場所はシンボリックリンクを解いたものなので、ファイルの場所も解いてから比べる。
+  const candidates = [path.resolve(cwd, name), path.resolve(root, name)]
+    .flatMap((full) => (fs.existsSync(full) ? [path.relative(root, fs.realpathSync(full))] : []))
+    .filter((p) => p && !p.startsWith('..') && !path.isAbsolute(p));
+  if (!candidates.length) return undefined;
+  const known = (await git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', ...candidates])).split('\0');
+  return candidates.find((p) => known.includes(p));
+};
+
+/** コードの画面で開けるファイルか。中身は読まずに確かめる。 */
+export const inRepo = (cwd: string, ref: string): Promise<boolean> =>
+  repoRoot(cwd).then((root) => repoPath(root, cwd, ref.replace(/:[\d-]+$/, ''))).then(Boolean, () => false);

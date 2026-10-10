@@ -1,0 +1,1231 @@
+/* 色は変数で定義し、ダークは prefers-color-scheme で切り替える。影は使わず、境界は border と角丸で表す。 */
+:root {
+  color-scheme: light dark;
+  --sans: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
+  --radius: 6px;
+  /* 画面の下に固定したタスクバーの高さ。XP のスキンだけが使い、下に浮かせるものはその上に出す。 */
+  --taskbar: 0px;
+
+  --bg: #f4f4f1;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+  --border: #dedcd5;
+  --border-strong: #c3c2b7;
+  --text: #1c1c1a;
+  --text-2: #52514e;
+  --muted: #6c6b66;
+  --link: #1c5cab;
+  --accent: #2a78d6;
+  --primary: #2467b8;
+
+  /* 状態の色。作業中は青、入力待ち（人の番）は琥珀、完了は緑、中断は橙、終了は灰。 */
+  --busy: #2a78d6;
+  --idle: #e0a000;
+  --done: var(--good);
+  --interrupted: var(--serious);
+  --ended: #8a8984;
+
+  /* 状態の固定色（良い / 注意 / 警戒 / 危険）。 */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --merged: #8250df;
+
+  /* グラフ。系列 1 は検証済みのカテゴリ色の 1 番目。 */
+  --series-1: #2a78d6;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+
+  --add-bg: rgba(26, 127, 55, 0.1);
+  --add-num: rgba(26, 127, 55, 0.2);
+  --del-bg: rgba(207, 34, 46, 0.09);
+  --del-num: rgba(207, 34, 46, 0.18);
+  --add-ink: #1a7f37;
+  --del-ink: #cf222e;
+  --hunk-bg: #eaeef5;
+
+  --toast-bg: #1c1c1a;
+  --toast-fg: #fcfcfb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111110;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --border: #33332f;
+    --border-strong: #4a4a45;
+    --text: #ededea;
+    --text-2: #c3c2b7;
+    --muted: #9a9a92;
+    --link: #6da7ec;
+    --accent: #3987e5;
+    --merged: #a371f7;
+    --primary: #2b6cb8;
+
+    --busy: #3987e5;
+    --idle: #e0a000;
+    --ended: #7a7973;
+
+    --series-1: #3987e5;
+    --grid: #2c2c2a;
+    --axis: #383835;
+
+    --add-bg: rgba(63, 185, 80, 0.12);
+    --add-num: rgba(63, 185, 80, 0.22);
+    --del-bg: rgba(248, 81, 73, 0.12);
+    --del-num: rgba(248, 81, 73, 0.22);
+    --add-ink: #56d364;
+    --del-ink: #ff7b72;
+    --hunk-bg: #1f2530;
+
+    --toast-bg: #ededea;
+    --toast-fg: #1a1a19;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 var(--sans);
+}
+
+a { color: var(--link); }
+h1, h2, h3 { margin: 0; line-height: 1.4; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.muted { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+.spacer { flex: 1; }
+.help { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
+.empty { margin: 0; padding: 10px 0; color: var(--muted); font-size: 13px; }
+.plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.scroll-y { max-height: 320px; overflow: auto; }
+/* Claude の発言の Markdown。パネルに収まるよう、見出しは本文と同じ大きさにして余白を詰める。 */
+.md { overflow-wrap: anywhere; line-height: 1.65; }
+.md :is(p, ul, ol, pre, table, blockquote) { margin: 0 0 0.6em; }
+.md :is(h1, h2, h3, h4, h5, h6) { margin: 0.9em 0 0.3em; font-size: 1em; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md-preview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.md-preview > .btn { justify-self: start; }
+.md :is(ul, ol) { padding-left: 1.4em; }
+.md li > :is(ul, ol) { margin-bottom: 0; }
+.md code { padding: 0.1em 0.35em; border-radius: 4px; background: var(--surface-2); font: 0.9em var(--mono); }
+.md pre { padding: 8px 10px; border-radius: var(--radius); background: var(--surface-2); overflow: auto; line-height: 1.5; }
+.md pre code { padding: 0; background: none; }
+/* コピーボタンはコードの右上に重なるので、マウスを載せたときとボタンにフォーカスがあるときだけ出す。 */
+.md .code-block { position: relative; margin: 0 0 0.6em; }
+.md .code-block pre { margin: 0; }
+.code-block .btn { position: absolute; top: 5px; right: 5px; opacity: 0; }
+.code-block:hover .btn, .code-block .btn:focus-visible { opacity: 1; }
+.md table { display: block; overflow: auto; border-collapse: collapse; }
+.md :is(th, td) { padding: 4px 10px; border: 1px solid var(--border); }
+.md th { background: var(--surface-2); text-align: left; }
+.md blockquote { padding-left: 0.8em; border-left: 3px solid var(--border-strong); color: var(--text-2); }
+.md hr { border: 0; border-top: 1px solid var(--border); }
+.stack { display: grid; gap: 10px; }
+.stack, .att, .session-card, .session-head, .code-view, .diff-files, .doc-page, .doc-head, .usage, .outbox, .tasks, .doc-list, .side-docs, .file-list, .barlist, .fb-panel, .fb-targets, .search-list, .search-item, .count-flyout, .count-list, .quick-session { grid-template-columns: minmax(0, 1fr); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* ---- ボタンと入力 ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font-size: 13px; line-height: 1; text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-sm { height: 26px; padding: 0 9px; font-size: 12.5px; }
+/* ゴミ箱ボタンは XP の閉じるボタンに倣い、赤地に白いアイコンで描く。アーカイブ済みは灰色にする。XP スキンの .btn より強くするため、スキンの指定も並べる。 */
+.btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary); filter: brightness(1.1); }
+
+.input {
+  width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); line-height: 1.5;
+}
+textarea.input { resize: vertical; min-height: 36px; }
+.input::placeholder { color: var(--muted); }
+.input-sm { width: 200px; padding: 2px 8px; }
+.input-auto { width: auto; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.inline-field { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12.5px; }
+
+/* ---- チップ・バッジ ---- */
+.chip {
+  --tone: var(--muted);
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  color: var(--text-2); font-size: 12px; white-space: nowrap; text-decoration: none;
+}
+.chip-ok { --tone: var(--good); }
+.chip-bad { --tone: var(--critical); }
+.chip-warn { --tone: var(--warning); }
+.chip-info { --tone: var(--accent); }
+.chip-link { --tone: var(--accent); position: relative; z-index: 1; color: var(--link); }
+.chip-link:hover { text-decoration: underline; }
+/* PR の状態は GitHub と同じ色分けにする。 */
+.chip-link.pr-draft { --tone: var(--muted); }
+.chip-link.pr-open { --tone: var(--good); }
+.chip-link.pr-merged { --tone: var(--merged); }
+.chip-link.pr-closed { --tone: var(--critical); }
+.pr-icon { flex: none; color: var(--tone); }
+.chip-sub { padding-left: 5px; border-left: 1px solid var(--border-strong); color: var(--text-2); }
+.chip-sub-ok { --sub: var(--good); }
+.chip-sub-bad { --sub: var(--critical); }
+.chip-sub-warn { --sub: var(--warning); }
+:is(.chip-sub-ok, .chip-sub-bad, .chip-sub-warn) { color: var(--sub); }
+
+.badge {
+  --tone: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.badge-busy { --tone: var(--busy); }
+.badge-idle { --tone: var(--idle); }
+.badge-done { --tone: var(--done); }
+.badge-interrupted { --tone: var(--interrupted); }
+.badge-ended { --tone: var(--ended); }
+.dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tone, var(--muted)); }
+.dot-busy { background: var(--busy); }
+.dot-idle { background: var(--idle); }
+.badge-busy .dot, .is-running .dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .badge-busy .dot, .is-running .dot { animation: none; } }
+
+.count-pill {
+  display: inline-block; min-width: 20px; margin-left: 6px; padding: 0 6px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2);
+  font-size: 11.5px; font-weight: 600; line-height: 18px; text-align: center;
+}
+.count-pill.is-unread { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+.tag {
+  flex: none; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border-strong);
+  color: var(--text-2); font-size: 11px; line-height: 16px; white-space: nowrap;
+}
+.tag-info { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tag-warn { border-color: color-mix(in srgb, var(--warning) 70%, transparent); background: color-mix(in srgb, var(--warning) 16%, transparent); }
+
+/* ---- メーター ---- */
+.meter { flex: 1; min-width: 40px; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--c) 18%, var(--surface)); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 4px; background: var(--c); }
+.ctx { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+.ctx-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ctx-value { min-width: 2.6em; font-size: 12.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.ctx-est { padding: 0 5px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--muted); font-size: 10.5px; line-height: 15px; }
+.ctx-row { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+
+/* ---- 共通レイアウト ---- */
+/* ヘッダーは 1 段に収める。幅が足りないときは、ツールチップでも読めるリセットの時刻を末尾から省く。狭い画面では折り返す。 */
+.topbar {
+  display: flex; align-items: center; gap: 8px 16px; padding: 8px 16px; white-space: nowrap;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { color: var(--text); font-size: 15px; font-weight: 700; text-decoration: none; }
+.counts { display: flex; gap: 2px; font-size: 13px; }
+/* 作業中と入力待ちの件数。押すと、その状態のセッションの一覧を件数の下に開き、その場で回答や返信を送れる。 */
+.count-wrap { anchor-scope: --count; }
+.count {
+  anchor-name: --count; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px;
+  border: 1px solid transparent; border-radius: var(--radius); background: none; cursor: pointer;
+}
+.count:hover { border-color: var(--border); background: var(--surface-2); }
+.count-flyout {
+  position-anchor: --count; position-area: bottom span-right; width: min(520px, calc(100vw - 32px)); max-height: min(75vh, 760px); margin: 4px 0 0; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); white-space: normal;
+}
+.count-flyout:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; overflow: hidden; }
+/* 見出しを残して一覧だけをスクロールさせる。 */
+.count-list { display: grid; align-content: start; gap: 10px; overflow: auto; }
+.quick-session { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.quick-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.quick-name { flex: 1; min-width: 0; overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.rate { display: flex; align-items: center; gap: 8px; }
+.rate .meter { flex: none; width: 72px; }
+.rate-label { min-width: 3.5em; color: var(--text-2); }
+.rate-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.rate-reset { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; }
+.topbar-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.taskbar-clock { display: none; }
+/* 通知領域に常駐する使用制限。外周のリングが 5 時間、内側の円グラフが 7 日の使用率で、マウスを載せるとボタンの下に内訳を開く。 */
+.rate-tray {
+  anchor-name: --rate-tray; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius); background: none;
+}
+.rate-tray:hover { border-color: var(--border); background: var(--surface-2); }
+.rate-tray svg { width: 20px; height: 20px; fill: none; stroke-width: 2.5; }
+.rate-ring-track { stroke: var(--border-strong); }
+.rate-flyout {
+  position-anchor: --rate-tray; position-area: bottom span-left; margin: 4px 0 0; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12.5px;
+}
+.rate-flyout:popover-open { display: grid; gap: 8px; }
+/* 通知領域に常駐するメモリプレッシャー。縦の目盛りの高さで割合を、色で段階を示し、押すとボタンの下に内訳を開く。 */
+.memory-tray {
+  anchor-name: --memory-tray; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius); background: none; cursor: pointer;
+}
+.memory-tray:hover { border-color: var(--border); background: var(--surface-2); }
+.memory-tray::before { content: ""; width: 8px; height: 16px; border: 1px solid var(--text-2); border-radius: 2px; background: linear-gradient(to top, var(--c) var(--p), transparent 0); }
+.memory-flyout {
+  position-anchor: --memory-tray; position-area: bottom span-left; margin: 4px 0 0; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12.5px;
+}
+.memory-flyout:popover-open { display: grid; gap: 8px; }
+.memory-level { display: flex; align-items: center; gap: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.memory-list { display: grid; gap: 2px; margin: 0; }
+.memory-list > div { display: flex; justify-content: space-between; gap: 24px; }
+.memory-list dd { margin: 0; font-variant-numeric: tabular-nums; }
+.memory-list .is-sub { padding-left: 12px; color: var(--text-2); }
+/* popover で開く一覧（ヘッダーのメニューと、ダッシュボードの「追加」）。 */
+.app-menu { padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.app-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 5px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 13px; text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.app-menu-item:hover { background: var(--surface-2); }
+/* 名前の左のメニュー。ボタンのすぐ下に、左端をそろえて出す。 */
+.menu-button {
+  anchor-name: --app-menu; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: -8px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text); font-size: 17px; line-height: 1; cursor: pointer;
+}
+.menu-button:hover { border-color: var(--border); background: var(--surface-2); }
+.app-menu { position-anchor: --app-menu; position-area: bottom span-right; min-width: 220px; margin: 4px 0 0; }
+.app-menu-item kbd { margin-left: auto; color: var(--muted); font: 12px var(--sans); }
+.app-menu-item[aria-pressed="true"]::after { content: "✓"; margin-left: auto; }
+/* popover は既定で overflow: auto なので、右に出す選択肢が切れないよう visible にする。 */
+.app-menu { overflow: visible; }
+.app-menu-sub { position: relative; }
+.app-menu-arrow { margin-left: auto; font-size: 9px; }
+.app-menu-submenu { display: none; position: absolute; top: -5px; left: 100%; min-width: 160px; padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.app-menu-sub:is(:hover, :focus-within) > .app-menu-submenu { display: block; }
+.app-menu-sub:is(:hover, :focus-within) > .app-menu-item { background: var(--surface-2); }
+.app-menu-sep { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+
+.app { max-width: 1480px; margin: 0 auto; padding: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.panel { padding: 12px 14px; }
+.panel-title { display: flex; align-items: center; margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.panel-title .count-pill { font-weight: 500; }
+.error-note { border-color: var(--critical); }
+.error-text { color: var(--critical); }
+.warn-note { border-color: var(--warning); }
+
+/* 右下の改善要望ボタンに重ならないよう、その上に出す。 */
+.toasts { position: fixed; right: 16px; bottom: calc(56px + var(--taskbar)); z-index: 100; display: grid; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
+.toast { padding: 10px 14px; border-radius: var(--radius); background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; }
+.toast-error { background: var(--critical); color: #fff; }
+
+/* ---- 改善要望 ---- */
+.fb-trigger {
+  position: fixed; right: 16px; bottom: calc(16px + var(--taskbar)); z-index: 90; height: 28px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--muted);
+  font-size: 12px; cursor: pointer; opacity: 0.7;
+}
+/* 止まっている間は、文字の代わりに電球のアイコンだけを丸いボタンに置く。 */
+.fb-trigger:not(.is-running) { display: grid; place-items: center; width: 28px; padding: 0; }
+.fb-trigger:hover, .fb-trigger:focus-visible { border-color: var(--border-strong); color: var(--text); opacity: 1; }
+/* 改善中は、枠の上を小さな光が回る。背景を二重にして、外側の円錐グラデーションを 1px の枠としてだけ見せる。 */
+.fb-trigger.is-running {
+  border-color: transparent; color: var(--text); opacity: 1;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box, conic-gradient(from var(--fb-angle), var(--border-strong) 0 60%, var(--accent) 80%, var(--border-strong)) border-box;
+  animation: fb-spin 2.4s linear infinite;
+}
+@property --fb-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes fb-spin { to { --fb-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .fb-trigger.is-running, .fb-tray.is-running::after { animation: none; } }
+/* XP のスキンで、右下のボタンの代わりにタスクバーの通知領域に置くボタン。 */
+.fb-tray { display: none; }
+/* フォームを開いている間は、通知がフォームの上に重ならないよう左へずらす。 */
+body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
+.fb-panel { position: fixed; right: 16px; bottom: calc(16px + var(--taskbar)); z-index: 90; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); padding: 10px 12px 12px; border-color: var(--border-strong); }
+.fb-head { display: flex; align-items: center; gap: 2px; }
+.fb-title { flex: 1; font-size: 13px; }
+.fb-help { margin: 0; }
+.fb-icon, .dolphin-close { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.fb-icon:hover, .dolphin-close:hover { background: var(--surface-2); color: var(--text); }
+.fb-targets { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.fb-target { display: flex; align-items: center; gap: 6px; padding: 1px 2px 1px 8px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.fb-target-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.fb-options .fb-help { flex-basis: 100%; }
+.fb-improve { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.fb-link { font-size: 12.5px; }
+.fb-highlight { position: fixed; z-index: 1000; border: 2px solid var(--accent); border-radius: 3px; background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
+/* 要素を選ぶ間は、ボタンやリンクの指カーソルも十字にそろえる。資料の iframe はクリックを親に渡さないので、外枠ごと選ばせる。 */
+.fb-picking body :not(.fb, .fb *) { cursor: crosshair !important; }
+.fb-picking iframe { pointer-events: none; }
+
+/* ---- ホーム ---- */
+/*
+ * ウィジェットは、升目の位置と大きさ（--col、--row）でグリッドに置く。ドラッグの升目の大きさも、この列数、行の高さ、間隔から測る。
+ * 行は、グリッドの上端（--top。Dashboard.tsx で測る）から画面の下端までを --rows 等分する。下には .app と同じ 16px の余白を残す。
+ */
+.dashboard {
+  --gap: 20px;
+  position: relative; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--gap);
+  grid-auto-rows: calc((100vh - var(--top) - 16px - var(--taskbar) - (var(--rows) - 1) * var(--gap)) / var(--rows));
+}
+/* ウィジェットの幅もブラウザの幅に合わせるため、ダッシュボードの画面では .app の幅の上限を外す。 */
+.app:has(> .dashboard) { max-width: none; }
+.dashboard-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+.dashboard-bar .help { margin: 0; }
+/* 「追加」で開くウィジェットの一覧。略図は、置いたときの縦横の比で描く。 */
+.widget-picker { width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 96px); margin: 10vh auto auto; padding: 16px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.widget-picker::backdrop { background: rgb(0 0 0 / 40%); }
+.widget-picker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.widget-picker-head .section-title { margin: 0; }
+.widget-picker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.widget-picker-item { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: none; color: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.widget-picker-item:hover { border-color: var(--accent); background: var(--surface-2); }
+.widget-picker-thumb { display: flex; align-items: center; justify-content: center; height: 100px; padding: 6px; border-radius: 4px; background: var(--surface-2); }
+.widget-sketch { display: flex; flex-direction: column; gap: 5px; height: 100%; max-width: 100%; aspect-ratio: var(--ratio); padding: 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface); overflow: hidden; }
+.widget-sketch > span { flex-shrink: 0; border-radius: 2px; background: var(--border-strong); }
+.sketch-row, .sketch-line { width: var(--w); height: 5px; }
+.sketch-row { position: relative; margin-left: 9px; }
+.sketch-row::before { content: ''; position: absolute; left: -9px; top: 0; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.sketch-text > .sketch-line:first-child { height: 7px; background: var(--text-2); }
+.widget-sketch > .sketch-card { flex: 1; border: 1px solid var(--border-strong); background: none; }
+.sketch-bubble { width: var(--w); height: 12px; }
+.sketch-bubble:nth-child(odd) { align-self: flex-end; background: var(--accent); opacity: 0.6; }
+.sketch-code { flex-direction: row; }
+.widget-sketch > .sketch-tree { width: 25%; background: var(--surface-2); }
+.widget-sketch > .sketch-lines { display: flex; flex: 1; flex-direction: column; gap: 5px; background: none; }
+.sketch-lines > .sketch-line { border-radius: 2px; background: var(--border-strong); }
+.sketch-chart { flex-direction: row; align-items: flex-end; }
+.widget-sketch > .sketch-bar { flex: 1; height: var(--h); background: var(--accent); opacity: 0.6; }
+/* 小さくしたウィジェットの見出しが枠の外へはみ出さないよう、枠で切る。clip はスクロールの容器にならないので、scrollIntoView でずれない。 */
+.widget { position: relative; display: flex; flex-direction: column; grid-column: var(--col); grid-row: var(--row); padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); overflow: clip; }
+/* 高さはグリッドで決まるので、収まらない分はウィジェットの中でスクロールする。 */
+.widget-body { flex: 1; min-height: 0; overflow: auto; }
+.is-editing .widget { border-style: dashed; border-color: var(--border-strong); }
+/* ウィンドウに浮かべている間の元の場所。デスクトップが透けて見える点線の枠にする。XP スキンのウィンドウの装飾より強くするため .dashboard から指す。 */
+.dashboard > .widget.is-floating { border: 2px dashed var(--border-strong); background: none; }
+.widget.is-floating > .window-controls { display: none; }
+/* 枠を描かないウィジェット。デスクトップに置いたアイコンのように、背景を透かす。編集中は、つかめるよう点線の枠だけを出す。 */
+.dashboard > .widget.is-bare { padding: 0; border-color: transparent; background: none; }
+.dashboard.is-editing > .widget.is-bare { border: 1px dashed var(--border-strong); }
+/* Windows 98 のデスクトップのアイコン。選ぶと名前を紺で塗る。図解を作っている間は、画面のどこでもカーソルを矢印に砂時計を添えたものにし、ボタンなどのカーソルより優先する。 */
+.desktop-icon { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 76px; margin: 0 auto; padding: 2px; border: 0; background: none; color: var(--text); font: 12px/1.2 var(--sans); cursor: default; }
+.desktop-icon > img { image-rendering: pixelated; }
+.desktop-icon > span { padding: 0 3px; border: 1px dotted transparent; }
+.desktop-icon:focus { outline: none; }
+.desktop-icon:focus > span { border-color: #ffff80; background: #000080; color: #fff; }
+:root.is-waiting, :root.is-waiting * { cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22' shape-rendering='crispEdges'><path d='M.5.5v16l4-4 3 6 2-1-3-6h5z' fill='%23fff' stroke='%23000'/><path d='M13 9h8v1.5h-8zM13 19.5h8V21h-8z'/><path d='M14.5 10.5h5V12l-2 2.5 2 2.5v1.5h-5V17l2-2.5-2-2.5z' fill='%23fff' stroke='%23000'/><path d='M15.5 11.5h3l-1.5 2zM15.5 18h3l-1.5-2z'/></svg>") 1 1, progress !important; }
+/* 編集中は、中身はそのまま操作でき、見出しをタイトルバーとしてドラッグする。右上の × と重ならないよう、見出しの右を空ける。 */
+.is-editing .widget > :first-child { cursor: grab; user-select: none; touch-action: none; }
+.is-editing .widget > :first-child:active { cursor: grabbing; }
+/* 外側に描くフォーカスの枠は .widget の clip で切れるので、内側に描く。 */
+.is-editing .widget:focus-visible { outline-offset: -2px; }
+.widget-remove { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.widget-remove:hover { background: var(--surface-2); color: var(--text); }
+/* × は見出しの縦の中央にそろえる。見出しの高さはウィジェットごとに違うので、見出しを基準に置く。 */
+.widget { anchor-scope: --widget-head; }
+.widget > :first-child { anchor-name: --widget-head; }
+.widget-tab-item { display: flex; align-items: center; }
+.widget-resize { position: absolute; right: 0; bottom: 0; z-index: 3; width: 20px; height: 20px; border-bottom-right-radius: inherit; background: linear-gradient(135deg, transparent 50%, var(--border-strong) 50%); cursor: nwse-resize; touch-action: none; }
+/*
+ * タイトルバー右端のボタンは、決まった枠（.window-controls）に並べる。ボタンの大きさと間隔は --ctl と --ctl-gap だけで決める。
+ * 見出しは、並べたボタンの数（--controls）の分だけ右を空ける。--ctl-base は、見出しの右端から枠までの幅。
+ * 既定のスキンでは、今の macOS のウィンドウのボタンにする。外すは赤、ウィンドウ化と全画面は緑、ウィンドウの操作でない更新とアーカイブは灰色の丸にする。
+ * 記号は、macOS と同じく枠にマウスを載せたときだけ出す。アーカイブしている間は、押した状態がわかるよう記号を出したままにする。
+ */
+.widget { --ctl: 12px; --ctl-gap: 8px; --ctl-right: 12px; --ctl-base: 0px; }
+.window-controls { position: absolute; top: anchor(--widget-head center); right: var(--ctl-right); z-index: 3; display: flex; gap: var(--ctl-gap); translate: 0 -50%; }
+.widget:has(> .window-controls) > :first-child { padding-right: calc(var(--ctl-base) + var(--controls) * (var(--ctl) + var(--ctl-gap))); }
+.window-ctl { flex: none; width: var(--ctl); height: var(--ctl); padding: 0; border: 1px solid rgb(0 0 0 / 15%); border-radius: 50%; background: #28c840 center / 8px no-repeat; cursor: pointer; }
+.window-ctl.is-close { background-color: #ff5f57; }
+.window-ctl:is(.is-refresh, .is-archive) { background-color: #a0a0a5; }
+.window-controls:hover > .window-ctl.is-refresh { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M13.5 8.5A5.5 5.5 0 1 1 11 3.4' fill='none' stroke='%23333' stroke-width='2.6'/><path d='M8.5 0.5 15 1.5 12 7z' fill='%23333'/></svg>"); }
+:is(.window-controls:hover > .window-ctl, .window-ctl[aria-pressed="true"]).is-archive { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 1.5h4V3h4v1.6H2V3h4zM3.3 5.6h9.4l-.8 8.9H4.1z' fill='%23333'/></svg>"); }
+.window-controls:hover > .window-ctl.is-close { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M1.5 1.5l5 5M6.5 1.5l-5 5' stroke='%237e0508' stroke-width='1.3'/></svg>"); }
+.window-controls:hover > .window-ctl.is-max { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M1 1h4.2L1 5.2zM7 7H2.8L7 2.8z' fill='%23064f12'/></svg>"); }
+.window-controls:hover > .window-ctl.is-restore { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M3.6 3.6H0.5L3.6 0.5zM4.4 4.4h3.1L4.4 7.5z' fill='%23064f12'/></svg>"); }
+/* 浮かべたウィンドウは、ヘッダーやタスクバーより奥、ページの中身より手前に重ねる。--z は、後から押したものほど大きい。 */
+.float-window { position: fixed; z-index: calc(30 + var(--z)); min-width: 240px; min-height: 120px; border-color: var(--border-strong); background: var(--surface); overflow: hidden; }
+.float-head { align-items: center; flex-wrap: nowrap; cursor: move; user-select: none; touch-action: none; }
+.float-head > .section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 大きさを変える、辺と角のつかみどころ。枠の内側に重ね、角は辺より手前に置く。 */
+.float-edge { position: absolute; z-index: 4; touch-action: none; }
+.float-edge.is-n, .float-edge.is-s { left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.float-edge.is-e, .float-edge.is-w { top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.float-edge.is-n { top: 0; }
+.float-edge.is-s { bottom: 0; }
+.float-edge.is-e { right: 0; }
+.float-edge.is-w { left: 0; }
+.float-edge:is(.is-ne, .is-nw, .is-se, .is-sw) { z-index: 5; width: 12px; height: 12px; }
+.float-edge:is(.is-ne, .is-nw) { top: 0; }
+.float-edge:is(.is-se, .is-sw) { bottom: 0; }
+.float-edge:is(.is-ne, .is-se) { right: 0; }
+.float-edge:is(.is-nw, .is-sw) { left: 0; }
+.float-edge:is(.is-ne, .is-sw) { cursor: nesw-resize; }
+.float-edge:is(.is-nw, .is-se) { cursor: nwse-resize; }
+/*
+ * 「追加」で置く場所を選ぶ間は、グリッドに透明なボタンを重ねて、押した升目を受ける。
+ * いちばん下のウィジェットの下にも置けるよう、画面の下端より先まで広げる。置く先は、升目に重ねた枠で示す。
+ */
+.dashboard-placing { position: absolute; inset: 0 0 auto; z-index: 5; height: calc(max(100%, 100vh - var(--top)) + 25vh); padding: 0; border: 0; background: none; cursor: copy; }
+.dashboard-placing:focus-visible { outline-offset: -2px; }
+/* 置く先の説明は、枠が画面の下へはみ出しても見えるよう上端に置き、下のウィジェットの題名と重なっても読めるよう地の色を付ける。 */
+.dashboard-ghost { z-index: 4; display: grid; place-items: start center; padding-top: 8px; grid-column: var(--col); grid-row: var(--row); border: 2px dashed var(--accent); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; }
+.dashboard-ghost > span { padding: 2px 10px; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; }
+/*
+ * 2 つ以上のウィジェットを重ねた枠。見出しの代わりにタブを並べ、選んだウィジェットを残りの高さいっぱいに出す。中のウィジェットの見出しはタブと重なるので隠す。
+ * タブは折り返すと高さを取るので 1 行に並べ、収まらない分は横にスクロールする。
+ */
+.widget-tabs-head { display: flex; align-items: flex-end; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+.widget-tabs { display: flex; flex: 1; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.widget-tab { margin-bottom: -1px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-2); font-weight: 500; white-space: nowrap; cursor: pointer; }
+.widget-tab:hover { color: var(--text); }
+.widget-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
+.widget-tab-panel:not([hidden]) { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.widget-tab-panel > .section-title { display: none; }
+.section-title { display: flex; align-items: center; margin: 0 0 10px; font-size: 15px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.section-head .section-title { margin: 0; }
+.theme-group { margin-bottom: 18px; }
+/* テーマは見出しを押すと折りたためる。開閉の印は、差分のファイルの見出しと同じく右端に置く。 */
+.theme-group > summary { list-style: none; cursor: pointer; }
+.theme-head { display: flex; align-items: center; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+.theme-head .chevron { margin-left: auto; }
+/* 名前を変えるボタンも、選ぶためのチェックボックスと同じく、マウスを載せたときだけ見せて、隠している間も場所を取る。 */
+.theme-rename { width: 20px; height: 20px; margin-left: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); line-height: 1; cursor: pointer; opacity: 0; }
+.theme-head:hover .theme-rename, .theme-rename:focus-visible { opacity: 1; }
+.theme-rename:hover { background: var(--surface-2); color: var(--text); }
+.cards { display: grid; gap: 10px; }
+/* ピン留めのボタンは、選ぶためのチェックボックスと同じく、マウスを載せたときと、ピン留めしている間だけ見せる。カード全体のリンクより上に置いて押せるようにする。 */
+.pin { position: relative; z-index: 1; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
+.session-card:hover .pin, .pin:focus-visible, .pin[aria-pressed="true"] { opacity: 1; }
+.pin:hover { background: var(--border); color: var(--text); }
+.pin[aria-pressed="true"] { color: var(--accent); }
+/*
+ * 選ぶためのチェックボックスは、カードの状態とテーマ名の左に置く。マウスを載せたときと、選んでいる間だけ見せる。
+ * 隠している間も場所を取り、出し入れで並びがずれないようにする。カード全体のリンクより上に置いて押せるようにする。
+ */
+.select-box { position: relative; z-index: 1; display: inline-grid; place-items: center; cursor: pointer; }
+.theme-head .select-box { margin-right: 8px; }
+.select-box input { margin: 0; opacity: 0; cursor: pointer; }
+.session-card:hover .select-box input, .theme-head:hover .select-box input, .select-box input:checked, .select-box input:indeterminate, .select-box input:focus-visible, .is-selecting .select-box input { opacity: 1; }
+/* 選んでいる間の操作は一覧の下に浮かせ、出てきてもカードの位置を動かさない。狭い画面でも右下の改善要望ボタンに重ならない高さにする。 */
+.selection-bar { position: sticky; bottom: calc(52px + var(--taskbar)); z-index: 2; display: flex; align-items: center; gap: 8px; width: fit-content; margin: 0 auto; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); font-size: 13px; }
+.widget .selection-bar { bottom: 8px; }
+.new-session { padding: 12px; overflow: auto; }
+.new-session .help { margin: 0; }
+/* JIRA の一覧。1 行目に課題キー、状態、担当と更新日時を、2 行目に題名を出す。GitHub Inbox の一覧も同じ形で出す。 */
+.jira-settings { margin-bottom: 12px; }
+.jira-jql { display: grid; gap: 4px; color: var(--text-2); font-size: 12.5px; }
+.jira-max { width: 80px; }
+.jira-fields { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 12.5px; }
+.jira-fields legend { float: left; margin-right: 4px; padding: 0; }
+.jira-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.jira-row { display: grid; gap: 2px; padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+.jira-row:hover { background: var(--surface-2); }
+.jira-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.jira-key { display: flex; min-width: 0; font-family: var(--mono); white-space: pre; }
+/* JIRA の Epic のアイコンと同じ紫。親の題名が長いときは、課題のキーを残して親の側を省略する。 */
+.jira-parent { overflow: hidden; cursor: pointer; color: #904ee2; text-overflow: ellipsis; }
+.jira-meta { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+.jira-summary { overflow-wrap: anywhere; }
+.inbox-section + .inbox-section { margin-top: 12px; }
+.inbox-section-title { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+
+.att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
+.att-ask, .att-question { --k: var(--accent); }
+.att-review { --k: #7a6ae0; }
+.att-permission { --k: var(--serious); }
+.att-pr { --k: var(--critical); }
+.att-reply { --k: #1baf7a; }
+.att-doc { --k: var(--ended); }
+.att-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--muted); }
+.att-kind { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--k) 16%, transparent); border: 1px solid color-mix(in srgb, var(--k) 45%, transparent); color: var(--text); font-weight: 700; white-space: nowrap; }
+.att-session { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.att-title { margin: 0; font-size: 14px; word-break: break-word; }
+/* 選択肢と返答の候補は文になることがあるので、カードの幅で折り返す。1 行のときは他のボタンと同じ高さになる。 */
+.att-option, .reply-option { height: auto; padding-block: 5px; line-height: 1.4; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+
+.session-card { position: relative; display: grid; gap: 6px; padding: 10px 12px; }
+.session-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.session-card.is-dragging { opacity: 0.4; }
+.session-card.is-ended { background: color-mix(in srgb, var(--bg) 50%, var(--surface)); }
+.card-head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.card-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.stretched { color: var(--text); text-decoration: none; }
+.stretched::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
+.card-sub { margin: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.activity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; }
+.task-line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.active-form { max-width: 30ch; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- セッション ---- */
+.session-head { display: grid; align-content: start; gap: 8px; }
+.head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.session-title { margin-bottom: 10px; }
+.session-name { font-size: 18px; }
+/* 見出しのまま書き換えられるよう、幅は名前の長さに合わせる。枠は位置をずらさない outline で、マウスを載せたときだけ出す。 */
+.session-title .session-name { min-width: 0; }
+.name-input { max-width: 100%; padding: 0; border: 0; border-radius: 2px; background: transparent; field-sizing: content; }
+.name-input:hover:not(:focus) { outline: 1px solid var(--border-strong); outline-offset: 3px; }
+.name-input:focus-visible { outline-offset: 3px; }
+.attach { display: inline-flex; align-items: center; gap: 6px; }
+.attach code { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); font: 12px var(--mono); }
+
+/*
+ * チャットは古い順に並べ、新しい発言が一番下に来る。人間の依頼は右寄せの吹き出しにし、Claude の発言は左にそのまま置く。
+ * 時刻はどちらも発言の左の下端に置き、人間の依頼には時刻の上に既読を添える。Claude の発言は幅いっぱいに広がるので、時刻を右に置くと短い発言では本文から離れてしまう。
+ * 数字の幅を揃えて、同じ日の Claude の発言の左端を揃える。
+ */
+/* 列をウィジェットの幅に固定し、横長の表や図は発言の中で横にスクロールさせる。auto の列だと一番広い発言に合わせて広がり、チャット全体が横にスクロールする。 */
+.chat { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px; overflow-x: hidden; }
+.chat-more { justify-self: center; }
+.chat-nav { position: sticky; bottom: 0; display: flex; gap: 4px; justify-self: end; }
+.chat-row { display: flex; align-items: flex-end; gap: 6px; }
+.chat-row.is-human { justify-content: flex-end; }
+.chat-human { max-width: 85%; padding: 8px 12px; border-radius: var(--radius); background: var(--surface-2); }
+.chat-human.is-focused { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-rewind { align-self: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); line-height: 1; cursor: pointer; opacity: 0; }
+.chat-row:hover .chat-rewind, .chat-rewind:focus-visible { opacity: 1; }
+.chat-rewind:hover { background: var(--surface-2); color: var(--text); }
+.chat-edit { display: grid; gap: 6px; margin-left: 15%; }
+/* Claude の発言は、要対応の項目と同じカードにして、1 つの発言の切れ目を見せる。 */
+.chat-claude { flex: 1; min-width: 0; padding: 10px 12px; overflow-x: auto; }
+/* ツールの呼び出しは発言より目立たせず、時刻の列の右から始めて Claude の発言と左端を揃える。 */
+.chat-tool { margin-left: 40px; color: var(--muted); font-size: 12px; }
+.chat-tool summary { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; font-family: var(--mono); }
+.chat-tool pre { margin: 4px 0 0; padding: 8px; max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-meta { display: grid; justify-items: end; flex: none; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; gap: 6px 14px; margin: 0; line-height: 1.65; }
+.summary dt { color: var(--muted); font-size: 12.5px; }
+.summary dd { margin: 0; overflow-wrap: anywhere; }
+.summary.is-loading { opacity: 0.6; }
+/* 概要が長くてもボタンが隠れないよう、概要の側だけをスクロールさせる。 */
+
+.tasks, .subagents, .outbox, .doc-list, .side-docs, .file-list, .barlist { margin: 0; padding: 0; list-style: none; }
+.tasks { display: grid; gap: 7px; }
+.task { display: flex; align-items: flex-start; gap: 8px; }
+.task-icon { position: relative; flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--muted); border-radius: 50%; }
+.task-in_progress .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
+.task-completed .task-icon { border-color: var(--good); background: var(--good); }
+.task-completed .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.task-in_progress .task-text { font-weight: 600; }
+.task-completed .task-text { color: var(--muted); text-decoration: line-through; }
+
+.subagent { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.subagent-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; list-style: none; cursor: pointer; }
+.subagent-row::-webkit-details-marker { display: none; }
+.subagent-row:hover .subagent-desc { text-decoration: underline; }
+.subagent-chat { max-height: 420px; margin-top: 8px; padding: 8px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.bg-command, .bg-output { margin: 6px 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.subagent:last-child { border-bottom: 0; }
+.run { --tone: var(--muted); display: inline-flex; align-items: center; gap: 5px; min-width: 4.5em; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.run.is-running { --tone: var(--busy); color: var(--text); font-weight: 600; }
+.subagent-desc { overflow-wrap: anywhere; }
+.subagent-meta { grid-column: 2; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+
+/* 送信欄はチャットの下端に区切り線で分けて置き、スクロールするのは発言だけにする。枠を小さくしても発言が見えるよう、送信欄の高さは枠の半分までにする。 */
+.composer { flex: none; max-height: 50%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); overflow-y: auto; }
+.reply-options { margin-bottom: 8px; }
+/*
+ * skills の候補は入力欄の下に重ね、送信ボタンの位置を動かさない。
+ * ウィジェットの中のスクロールで切れないよう fixed で置き、anchor で入力欄に合わせる。下に収まらなければ上に出す。
+ */
+.composer-field { anchor-scope: --composer; }
+.composer-field .input { anchor-name: --composer; }
+/* なんでも添付の + は、Slack と同じく入力欄の左下に重ね、文の下に余白を空けて重ならないようにする。押している間は拾えるものに枠を出して、クリックで入ることを示す。 */
+.composer-field { position: relative; }
+.composer-field .input { display: block; padding-bottom: 36px; }
+.attach-toggle { position: absolute; left: 6px; bottom: 6px; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.attach-toggle:hover { color: var(--text); }
+.attach-toggle[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.ctx-pie { display: inline-grid; width: 30px; height: 30px; padding: 0; border: 0; background: none; cursor: default; }
+.ctx-pie svg { width: 100%; height: 100%; fill: none; stroke-width: 3; }
+.ctx-pie-track { fill: var(--surface-2); stroke: var(--border-strong); }
+.ctx-pie-value { fill: var(--text); stroke: none; font-size: 8.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
+.ctx-flyout {
+  position-area: top span-right; margin: 0 0 4px; padding: 10px 12px; min-width: 260px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12.5px;
+}
+.ctx-flyout:popover-open { display: grid; gap: 6px; }
+.is-attaching :is([data-attach], a[href^="http"]) { outline: 1px dashed var(--accent); outline-offset: 1px; cursor: copy; }
+.skill-menu { position: fixed; position-anchor: --composer; top: calc(anchor(bottom) + 2px); left: anchor(left); width: anchor-size(width); position-try-fallbacks: flip-block; z-index: 10; max-height: 260px; margin: 0; padding: 4px; overflow: auto; list-style: none; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.skill-option { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.skill-option:hover { background: var(--surface-2); }
+.skill-option[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.skill-name { flex: none; font: 12.5px var(--mono); }
+.skill-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.outbox { display: grid; gap: 8px; }
+.outbox-item { position: relative; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.outbox-item:has(.outbox-jump:hover) { border-color: var(--accent); }
+.outbox-jump { margin-left: auto; padding: 0; border: 0; background: none; color: var(--link); font: inherit; cursor: pointer; }
+.outbox-item.is-pending { border-color: color-mix(in srgb, var(--warning) 65%, var(--border)); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); }
+.outbox-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12px; }
+
+.pr-view-head { display: flex; align-items: baseline; gap: 8px; }
+.pr-view-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.pr-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; }
+.pr-view-files summary { cursor: pointer; color: var(--text-2); font-size: 12.5px; }
+.pr-view-files ul { display: grid; gap: 2px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.pr-view-files li { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.pr-view-posts { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.pr-threads { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.pr-thread { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px; }
+.pr-thread-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; }
+/* レビュアーの発言は、添えた分析と見分けられるよう、引用のように左に線を引く。 */
+.pr-comment { display: grid; gap: 2px; padding-left: 10px; border-left: 2px solid var(--border-strong); font-size: 13px; }
+
+/* ---- コード ---- */
+.code-view { --bar-h: 76px; display: grid; gap: 10px; }
+.review-bar { position: sticky; top: 0; z-index: 20; display: grid; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.review-banner { display: flex; align-items: center; gap: 12px; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); font-weight: 600; }
+.review-controls { display: flex; align-items: flex-start; gap: 10px; }
+.review-controls .input { flex: 1; height: 52px; resize: none; }
+.review-controls .btn { height: 52px; }
+.review-count { padding-top: 14px; font-size: 13px; white-space: nowrap; }
+.review-count b { font-size: 16px; }
+.review-count:has(select) { display: grid; gap: 4px; padding-top: 0; }
+.review-controls .review-count select.input { height: auto; }
+.code-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
+.range-picker { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.range-picker .input { width: 280px; }
+.code-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 12px; align-items: start; }
+.code-layout.is-loading { opacity: 0.6; }
+.code-side { position: sticky; top: calc(var(--bar-h) + 8px); max-height: calc(100vh - var(--bar-h) - 24px - var(--taskbar)); overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+/* ウィジェットの中では、ファイル一覧の高さを画面ではなくウィジェットの高さに合わせる。 */
+.widget-body:has(> .code-view) { container-type: size; }
+.widget .code-side { max-height: calc(100cqh - var(--bar-h) - 16px); }
+.file-list { display: grid; gap: 2px; margin-top: 8px; }
+.file-item { display: grid; gap: 2px; width: 100%; padding: 5px 6px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.file-item:hover { background: var(--surface-2); }
+.file-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.file-sub { color: var(--muted); font-size: 11.5px; }
+.file-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fstatus { display: inline-grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--muted); color: #fff; font: 700 11px/1 var(--mono); }
+.fstatus-added { background: #1a7f37; }
+.fstatus-modified { background: #9a6700; }
+.fstatus-deleted { background: #cf222e; }
+.fstatus-renamed { background: #6e40c9; }
+.stat { display: inline-flex; flex: none; gap: 6px; font: 12px var(--mono); }
+.stat-add { color: var(--add-ink); }
+.stat-del { color: var(--del-ink); }
+
+.diff-files { display: grid; gap: 12px; min-width: 0; }
+.diff-file { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); scroll-margin-top: calc(var(--bar-h) + 8px); }
+.diff-file-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--border); background: var(--surface-2); text-align: left; cursor: pointer; }
+.diff-file-head-row { display: flex; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.diff-file-head-row .diff-file-head { flex: 1; border-bottom: 0; }
+.viewed-check { flex: none; padding: 0 10px; }
+.path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chevron { color: var(--muted); }
+.diff-note { margin: 0; padding: 12px; color: var(--muted); }
+.diff-scroll { overflow-x: auto; }
+table.diff { width: 100%; min-width: max-content; border-collapse: collapse; font: 12.5px/1.55 var(--mono); }
+.diff td { padding: 0; }
+.diff .ln { width: 1%; min-width: 48px; padding: 0 8px; color: var(--muted); text-align: right; white-space: nowrap; user-select: none; cursor: pointer; }
+.diff .ln:hover { color: var(--accent); }
+.ln-btn { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.diff .sign { width: 1%; padding: 0 4px; color: var(--muted); text-align: center; white-space: pre; user-select: none; }
+.diff .code { padding: 0 12px 0 4px; white-space: pre; }
+/* シンタックスハイライト（highlight.js のクラス）。差分の背景色の上でも読める色にする。 */
+.diff .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
+@media (prefers-color-scheme: dark) {
+  .diff .code { --hl-kw: #ff7b72; --hl-str: #a5d6ff; --hl-com: #8b949e; --hl-num: #79c0ff; --hl-fn: #d2a8ff; --hl-type: #ffa657; }
+}
+.hljs-keyword, .hljs-selector-tag, .hljs-meta .hljs-keyword { color: var(--hl-kw); }
+.hljs-string, .hljs-regexp, .hljs-template-tag, .hljs-attr { color: var(--hl-str); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--hl-com); }
+.hljs-number, .hljs-literal, .hljs-built_in, .hljs-variable.language_ { color: var(--hl-num); }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-name { color: var(--hl-fn); }
+.hljs-type, .hljs-title.class_, .hljs-attribute, .hljs-selector-class, .hljs-params { color: var(--hl-type); }
+.dl-add .code, .dl-add .sign { background: var(--add-bg); }
+.dl-add .ln { background: var(--add-num); }
+.dl-del .code, .dl-del .sign { background: var(--del-bg); }
+.dl-del .ln { background: var(--del-num); }
+.dl.has-comment .ln { color: var(--accent); font-weight: 700; }
+/* 発言の中のファイル名から開いたファイルと行を目立たせる。 */
+.diff-file.is-focused { border-color: var(--accent); }
+.dl.is-focused :is(.ln, .sign, .code) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.diff .hunk td { padding: 2px 12px; border-block: 1px solid var(--border); background: var(--hunk-bg); color: var(--muted); font-size: 12px; white-space: pre; }
+.comment-row td { padding: 0; background: var(--surface); border-block: 1px solid var(--border); }
+.comment-box { position: sticky; left: 12px; display: grid; gap: 6px; width: min(640px, 70vw); margin: 8px 12px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); font: 13px/1.6 var(--sans); white-space: normal; }
+.comment-box.is-editing { border-color: var(--accent); }
+.comment-box.is-pr { border-style: dashed; }
+
+/* ---- 資料 ---- */
+.doc-list { display: grid; }
+.doc-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+.doc-row:hover { background: var(--surface-2); }
+.doc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-row.is-unread .doc-title { font-weight: 700; }
+.doc-session { max-width: 30ch; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.doc-page { display: grid; gap: 12px; }
+.doc-head { display: grid; gap: 6px; padding: 12px 14px; font-size: 13px; }
+.doc-frame { width: 100%; height: calc(100vh - 230px); min-height: 480px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.doc-frame.is-raw { background: #fff; }
+/* ウィンドウでは、資料の上にボタンの行を置く。 */
+.widget-tab-panel > .doc-downloads { flex: none; padding-bottom: 8px; }
+.file-frame { flex: 1; width: 100%; border: 0; background: var(--surface); }
+.file-frame.is-raw { background: #fff; }
+.file-media { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+.video-player { display: flex; flex: 1; flex-direction: column; min-height: 0; background: #000; }
+.wmp-bar { display: none; }
+/* セッション概要の資料。初期配置では幅が狭いので、題名と、形式やリンク先と日時を 2 行に分ける。 */
+.side-docs { display: grid; gap: 2px; }
+/* 行はドラッグで並べ替える。外すボタンは行の右に置き、ピン留めのボタンと同じく、マウスを載せたときだけ見せる。 */
+.side-doc-item { display: flex; align-items: center; min-width: 0; }
+.side-doc-item.is-dragging { opacity: 0.4; }
+.side-doc-item > .side-doc { flex: 1; min-width: 0; }
+.side-doc-rename { flex: 1; min-width: 0; }
+.side-doc-action { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
+.side-doc-item:hover .side-doc-action, .side-doc-action:focus-visible { opacity: 1; }
+.side-doc-action:hover { background: var(--surface-2); color: var(--text); }
+.add-link { margin-bottom: 10px; }
+.side-doc { display: grid; gap: 2px; padding: 5px 6px; border-radius: 4px; color: var(--text); text-decoration: none; }
+.side-doc:hover { background: var(--surface-2); }
+.side-doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favicon { margin-right: 6px; vertical-align: -3px; }
+.side-doc.is-unread .side-doc-title { font-weight: 700; }
+.side-doc-meta { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.side-doc-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 検索 ---- */
+.search-form { display: flex; gap: 8px; }
+.search-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.search-item { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.search-head { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.search-title { flex: 1; min-width: 0; overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.search-hits { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+.search-kind { margin-right: 6px; color: var(--muted); font-size: 12px; }
+.search-item .attach code { overflow-wrap: anywhere; }
+mark { border-radius: 2px; background: color-mix(in srgb, var(--warning) 35%, transparent); color: inherit; }
+/* 検索窓（Cmd/Ctrl + K）は画面の上寄りに出し、候補が増えても入力欄と案内を動かさず、候補の欄の中でスクロールする。 */
+.quick-search { width: min(640px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 96px)); margin: 10vh auto auto; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.quick-search[open] { display: flex; flex-direction: column; }
+.quick-search::backdrop { background: rgb(0 0 0 / 40%); }
+.quick-input { flex: none; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; font-size: 15px; }
+.quick-input:focus-visible { outline: none; }
+.quick-list { flex: 1; min-height: 0; padding: 2px 6px 6px; overflow: auto; }
+.quick-group { display: flex; gap: 8px; padding: 8px 8px 4px; color: var(--muted); font-size: 12px; }
+.quick-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; color: var(--text); text-decoration: none; }
+.quick-item[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.quick-label { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-sub { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.quick-empty { padding: 10px 8px; }
+.quick-foot { flex: none; margin: 0; padding: 6px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+
+/* ---- 使用量 ---- */
+.usage { display: grid; gap: 12px; }
+.usage-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; align-items: start; }
+.tiles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 36px; margin-bottom: 12px; }
+.tile { display: grid; justify-items: start; gap: 2px; }
+.tile-label, .tile-sub { color: var(--muted); font-size: 12px; }
+.tile-value { font-size: 30px; font-weight: 600; line-height: 1.2; }
+.tile-text { padding-top: 8px; font-size: 16px; font-family: var(--mono); }
+.total-line { margin: 0 0 10px; }
+.total-line b { font-size: 22px; font-weight: 600; }
+.barlist { display: grid; gap: 8px; margin-bottom: 8px; }
+.barrow { display: grid; grid-template-columns: var(--bar-label, 140px) minmax(0, 1fr); align-items: center; gap: 10px; }
+.bar-label { overflow: hidden; color: var(--text-2); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.barlist-wide { --bar-label: 210px; }
+.barlist-wide .bar-label { line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
+.bar-track { display: flex; align-items: center; gap: 8px; }
+.bar-fill { flex: none; min-width: 2px; height: 10px; border-radius: 0 4px 4px 0; background: var(--series-1); }
+.bar-value { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.table-view { margin-top: 8px; font-size: 12.5px; }
+.table-view summary { color: var(--text-2); cursor: pointer; }
+table.data { width: 100%; border-collapse: collapse; }
+.data th, .data td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.data th { position: sticky; top: 0; background: var(--surface); color: var(--text-2); font-weight: 600; }
+.data .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- イルカ ---- */
+/* 位置は毎フレーム transform で動かす。吹き出しはこの箱に入れて、イルカと一緒に動かす。 */
+.dolphin { position: fixed; left: 0; top: 0; z-index: 80; width: 160px; height: 120px; }
+.dolphin-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.dolphin-canvas:active { cursor: grabbing; }
+.dolphin-chat { --tail: 50%; position: absolute; bottom: calc(100% + 6px); display: grid; gap: 8px; width: min(340px, calc(100vw - 16px)); padding: 10px 12px 12px; border-color: var(--border-strong); }
+.dolphin-chat.is-below { top: calc(100% + 6px); bottom: auto; }
+/* 吹き出しの尾。枠の色の三角に、1px ずらした地の色の三角を重ねて、枠線だけを残す。 */
+.dolphin-chat::before, .dolphin-chat::after { content: ""; position: absolute; left: var(--tail); border: 8px solid transparent; transform: translateX(-50%); }
+.dolphin-chat::before { top: calc(100% + 1px); border-top-color: var(--border-strong); }
+.dolphin-chat::after { top: 100%; border-top-color: var(--surface); }
+.dolphin-chat.is-below::before { top: auto; bottom: calc(100% + 1px); border-color: transparent transparent var(--border-strong); }
+.dolphin-chat.is-below::after { top: auto; bottom: 100%; border-color: transparent transparent var(--surface); }
+/* 閉じるボタンは角に寄せ、見出しの行の高さを文字に合わせる。 */
+.dolphin-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.dolphin-chat-head .dolphin-close { margin: -4px -6px -4px 0; }
+.dolphin-log { display: grid; gap: 8px; max-height: min(50vh, 360px); overflow: auto; font-size: 13px; }
+.dolphin-log:empty { display: none; }
+.dolphin-say { margin: 0; }
+.dolphin-say .actions { margin-top: 6px; }
+.dolphin-you { justify-self: end; max-width: 85%; padding: 6px 10px; border-radius: var(--radius); background: var(--surface-2); }
+
+.chart { position: relative; width: 100%; min-height: 260px; }
+.chart svg { display: block; touch-action: pan-y; }
+.chart .grid { stroke: var(--grid); stroke-width: 1; }
+.chart .axis { stroke: var(--axis); stroke-width: 1; }
+.axis-text { fill: var(--muted); font-size: 11px; }
+.series-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.series-area { fill: var(--series-1); fill-opacity: 0.1; stroke: none; }
+.series-dot { fill: var(--series-1); stroke: var(--surface); stroke-width: 2; }
+.limit-line { stroke: var(--critical); stroke-width: 1; }
+.limit-label { fill: var(--text-2); font-size: 11px; }
+.end-label { fill: var(--text); font-size: 12px; font-weight: 600; }
+.crosshair { stroke: var(--text-2); stroke-width: 1; }
+.chart-tip { position: absolute; display: grid; gap: 2px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); font-size: 12px; color: var(--text-2); pointer-events: none; }
+.chart-tip strong { color: var(--text); font-size: 14px; }
+
+@media (max-width: 1000px) {
+  .topbar { flex-wrap: wrap; }
+  .code-layout { grid-template-columns: 1fr; }
+  /* 狭い画面では配置を使わず、上から順に縦に積む。升目どおりに動かせないので、編集も出さない。 */
+  .dashboard { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+  .widget { grid-column: auto; grid-row: auto; }
+  .widget-body { overflow: visible; }
+  /* チャットは発言の数だけ伸びるので、縦に積んでも高さを抑えて中でスクロールする。 */
+  .widget-body.chat { max-height: min(70vh, 760px); overflow: auto; }
+  .widget .selection-bar { bottom: calc(52px + var(--taskbar)); }
+  .dashboard-bar, .widget-remove, .window-controls, .widget-resize, .dashboard-placing, .dashboard-ghost { display: none; }
+  .widget-body:has(> .code-view) { container-type: normal; }
+  .code-side, .widget .code-side { position: static; max-height: 320px; }
+}
+
+/* ---- スキン: Windows XP ---- */
+/*
+ * ヘッダーで選ぶと html に data-skin="xp" が付く。往年の Windows XP（Luna の青）に寄せ、OS がダークでも明るい配色で描く。
+ * ダークの配色は :root の変数を上書きしているので、ここでもすべての色の変数を上書きする。
+ */
+:root[data-skin="xp"] {
+  color-scheme: light;
+  --sans: Tahoma, "MS UI Gothic", "Meiryo UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --radius: 3px;
+  --bg: #ece9d8;
+  --surface: #ece9d8;
+  --surface-2: #fff;
+  --border: #aca899;
+  --border-strong: #7f9db9;
+  --text: #000;
+  --text-2: #333;
+  --muted: #5c5c5c;
+  --link: #0033cc;
+  --accent: #316ac5;
+  --primary: #316ac5;
+  --busy: #316ac5;
+  --idle: #e0a000;
+  --ended: #8a8984;
+  --series-1: #316ac5;
+  --grid: #d6d3c4;
+  --axis: #aca899;
+  --add-bg: rgba(26, 127, 55, 0.1);
+  --add-num: rgba(26, 127, 55, 0.2);
+  --del-bg: rgba(207, 34, 46, 0.09);
+  --del-num: rgba(207, 34, 46, 0.18);
+  --add-ink: #1a7f37;
+  --del-ink: #cf222e;
+  --hunk-bg: #e7ecf7;
+  --toast-bg: #ffffe1;
+  --toast-fg: #000;
+}
+[data-skin="xp"] ::selection { background: #316ac5; color: #fff; }
+/* デスクトップの壁紙。data/wallpaper.jpg を置けばその画像を敷き、無ければ青空と緑の丘をグラデーションで描く。 */
+[data-skin="xp"] body {
+  font-size: 13px;
+  background:
+    url("/wallpaper") center / cover no-repeat,
+    radial-gradient(ellipse 75% 34% at 18% 100%, #6aae3c 0 97%, transparent 100%),
+    radial-gradient(ellipse 95% 26% at 82% 100%, #519d2f 0 97%, transparent 100%),
+    linear-gradient(#1f63d8, #4a8fe8 35%, #93c3f1 68%, #d3e8fb);
+  background-attachment: fixed;
+}
+[data-skin="xp"] .diff .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
+
+/*
+ * ヘッダーは画面の下に固定したタスクバーにする。メニューのボタンをスタートボタン、名前を開いているウィンドウのボタン、右端を時計のある通知領域に見立てる。
+ * 高さが決まっているので、狭い画面でも折り返さず、収まらない分は隠す。
+ */
+:root[data-skin="xp"] { --taskbar: 30px; }
+[data-skin="xp"] .app { padding-bottom: calc(16px + var(--taskbar)); }
+[data-skin="xp"] .topbar {
+  --text: #fff; --text-2: #fff; --muted: #dce8ff; --busy: #bfe3ff;
+  position: fixed; inset: auto 0 0; z-index: 70; flex-wrap: nowrap; height: var(--taskbar); padding-block: 0; overflow: hidden;
+  border-top: 1px solid #0b2a85; border-bottom: 0;
+  background: linear-gradient(#3e82f1, #2a66de 10%, #245edc 45%, #2a68e3 85%, #1d48b8);
+}
+[data-skin="xp"] .menu-button {
+  align-self: stretch; display: flex; gap: 6px; width: auto; height: auto; margin: 0 -6px 0 -16px; padding: 0 20px 0 10px;
+  border: 0; border-radius: 0 12px 12px 0; background: linear-gradient(#62bb62, #3d9f3d 14%, #379637 55%, #3a993a 85%, #2b7a2b);
+  color: #fff; font: italic 700 16px/1 "Trebuchet MS", var(--sans); text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+[data-skin="xp"] .menu-button:hover, [data-skin="xp"] .menu-button:has(+ .app-menu:popover-open) { background: linear-gradient(#4f9f4f, #2f882f 14%, #2a7f2a 55%, #2d832d 85%, #20661f); }
+[data-skin="xp"] .menu-button > span { display: none; }
+/* Windows の旗。左上から時計回りに赤、緑、黄、青の 4 色に塗る。 */
+[data-skin="xp"] .menu-button::before {
+  content: ""; width: 17px; height: 15px; border-radius: 4px 6px 4px 6px; transform: skewY(-6deg);
+  background: conic-gradient(#7cbb00 0 25%, #ffbb00 0 50%, #00a1f1 0 75%, #f65314 0);
+}
+[data-skin="xp"] .menu-button::after { content: "スタート"; }
+/* 名前はホームのウィンドウのボタンにする。ホームを開いている間は押し込まれ、ほかの画面では最小化したウィンドウのボタンのように膨らむ。 */
+[data-skin="xp"] .brand {
+  display: flex; align-items: center; height: 24px; padding: 0 12px; border: 1px solid; border-color: #7fb0f9 #0f3a96 #0f3a96 #7fb0f9; border-radius: 3px;
+  background: linear-gradient(#5b9bf8, #3c83f2 12%, #3279ed 85%, #2565d8); font-size: 12px; font-weight: 400;
+}
+[data-skin="xp"] .brand[aria-current="page"] { border-color: #0f3a96 #2f63c4 #2f63c4 #0f3a96; background: linear-gradient(#1b48a6, #1e52b7 20%, #1e52b7); }
+[data-skin="xp"] .topbar-end {
+  align-self: stretch; margin-right: -16px; padding: 0 12px; border-left: 1px solid #1042af;
+  background: linear-gradient(#0c59b9, #139ee9 6%, #18b5f2 12%, #139beb 50%, #1290e8 85%, #0d5fbd);
+}
+[data-skin="xp"] .taskbar-clock { display: inline; margin-left: 4px; font-size: 12px; }
+/* 浮かべたウィンドウのボタンを、名前のボタンの右に並べる。手前のウィンドウのボタンは押し込み、最小化したウィンドウは隠してボタンだけ残す。 */
+.taskbar-windows, .window-ctl.is-min { display: none; }
+[data-skin="xp"] .taskbar-windows { display: flex; flex: 0 1 auto; gap: 3px; min-width: 0; }
+[data-skin="xp"] .taskbar-window {
+  flex: 0 1 160px; min-width: 40px; height: 24px; padding: 0 8px; overflow: hidden; border: 1px solid; border-color: #7fb0f9 #0f3a96 #0f3a96 #7fb0f9; border-radius: 3px;
+  background: linear-gradient(#5b9bf8, #3c83f2 12%, #3279ed 85%, #2565d8); color: #fff; font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+[data-skin="xp"] .taskbar-window:hover { filter: brightness(1.1); }
+[data-skin="xp"] .taskbar-window[aria-pressed="true"] { border-color: #0f3a96 #2f63c4 #2f63c4 #0f3a96; background: linear-gradient(#1b48a6, #1e52b7 20%, #1e52b7); }
+[data-skin="xp"] .float-window.is-min { display: none; }
+/* タイトルバー、タブ、タスクバーのボタンの左端に、ウィジェットのアイコンを描く。--icon と --icon-img は Float.tsx の iconVar で渡す。 */
+[data-skin="xp"] :is(.widget > .section-title, .widget > .section-head > .section-title, .widget > .session-title, .widget-tab, .taskbar-window)::before {
+  content: var(--icon, none); display: inline-block; flex: none; width: 16px; height: 16px; margin-right: 5px;
+  background: var(--icon-img, none) center / 16px no-repeat; font-size: 13px; line-height: 16px; text-align: center; text-shadow: none; vertical-align: -3px;
+}
+/*
+ * ホームの編集中は、案内とボタンのバーをタスクバーのスタートボタンと通知領域のあいだに重ね、ウィジェットの位置を通常時からずらさない。
+ * 重ねる場所を空けるため、名前のボタンは隠す。案内は 1 行に収め、収まらない分は省く。
+ */
+[data-skin="xp"] .topbar-end { anchor-name: --xp-tray; }
+[data-skin="xp"]:has(.dashboard-bar) :is(.brand, .taskbar-windows) { display: none; }
+[data-skin="xp"] .dashboard-bar {
+  --text: #fff; --muted: #fff;
+  position: fixed; bottom: 0; left: anchor(--app-menu right); right: anchor(--xp-tray left); z-index: 71;
+  flex-wrap: nowrap; height: var(--taskbar); margin: 0; padding: 0 12px 0 18px;
+}
+[data-skin="xp"] .dashboard-bar .help { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* ウィジェットの一覧のモーダルはバーの中に置くので、タスクバーの白い文字の色を受け継がないよう決め直す。 */
+[data-skin="xp"] .widget-picker { --text: #000; --muted: #5c5c5c; }
+/* 通知領域のアイコンは枠を付けず、内訳はタスクバーの上に開く小さなウィンドウにする。ウィンドウはタスクバーの白い文字の色を受け継ぐので、文字の色を決め直す。 */
+[data-skin="xp"] .memory-tray { width: 20px; height: 20px; border: 0; }
+[data-skin="xp"] .memory-tray:hover { background: none; }
+[data-skin="xp"] .memory-tray::before { border-color: #0b2a85; background-color: #fff; }
+[data-skin="xp"] .memory-flyout { --text: #000; --text-2: #333; --muted: #5c5c5c; position-area: top span-left; margin: 0 0 4px; }
+[data-skin="xp"] .memory-head { margin: -10px -12px 0; }
+[data-skin="xp"] .rate-tray { width: 20px; height: 20px; border: 0; }
+[data-skin="xp"] .rate-tray:hover { background: none; }
+[data-skin="xp"] .rate-ring-track { stroke: #0b2a85; }
+[data-skin="xp"] .rate-flyout { --text: #000; --text-2: #333; --muted: #5c5c5c; position-area: top span-left; margin: 0 0 4px; }
+[data-skin="xp"] .rate-head { margin: -10px -12px 0; }
+[data-skin="xp"] .ctx-flyout-head { margin: -10px -12px 0; }
+/*
+ * 入力待ちは、通知領域の手のひらのアイコンと右下の件数のバッジで知らせる。昔のアニメーションのように、1 秒に 1 コマで黄色とグレーを交互に表示する。
+ * 点滅させるのは塗りの色だけにし、縁取りは常に表示して形を保つ。
+ * 手のひらは、黄色の線の下に濃い色の太い線を敷いて縁取り、青いタスクバーの上でも形が見えるようにする。
+ */
+.count-tray { display: none; }
+/* XP では作業中の件数を出さず、入力待ちは通知領域だけで知らせる。 */
+[data-skin="xp"] .counts { display: none; }
+[data-skin="xp"] .count-tray { display: inline-flex; }
+[data-skin="xp"] .idle-tray { position: relative; width: 20px; height: 20px; padding: 0; border: 0; }
+[data-skin="xp"] .idle-tray[hidden] { display: none; }
+[data-skin="xp"] .idle-tray::before {
+  content: ""; width: 16px; height: 16px; animation: idle-tray-blink 2s steps(1) infinite;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' stroke-linecap='round' stroke-linejoin='round'><defs><g id='h'><path d='M5 8V3M7.4 7.5V1.8M9.8 7.5V2.3M12.1 8.5V4M5 10.5 3 8.3'/><rect x='5' y='7.5' width='7.1' height='6.2' rx='2.6'/></g></defs><use href='%23h' stroke='%23584000' stroke-width='3.4' fill='%23584000'/><use href='%23h' stroke='%23ffd800' stroke-width='1.8' fill='%23ffd800'/></svg>") center / contain no-repeat;
+}
+[data-skin="xp"] .idle-tray::after {
+  content: attr(data-count); position: absolute; right: -4px; bottom: -3px; min-width: 12px; height: 12px; padding: 0 2px;
+  border-radius: 6px; background: #d81e05; color: #fff; font: bold 9px/12px Tahoma, sans-serif; text-align: center;
+}
+@keyframes idle-tray-blink { 50% { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' stroke-linecap='round' stroke-linejoin='round'><defs><g id='h'><path d='M5 8V3M7.4 7.5V1.8M9.8 7.5V2.3M12.1 8.5V4M5 10.5 3 8.3'/><rect x='5' y='7.5' width='7.1' height='6.2' rx='2.6'/></g></defs><use href='%23h' stroke='%23584000' stroke-width='3.4' fill='%23584000'/><use href='%23h' stroke='%23c0c0c0' stroke-width='1.8' fill='%23c0c0c0'/></svg>"); } }
+@media (prefers-reduced-motion: reduce) { [data-skin="xp"] .idle-tray::before { animation: none; } }
+[data-skin="xp"] .count-tray .count-flyout { position-area: top span-left; }
+[data-skin="xp"] .count:hover { border-color: transparent; background: rgba(255, 255, 255, 0.15); }
+[data-skin="xp"] .count-flyout { --text: #000; --text-2: #333; --muted: #5c5c5c; position-area: top span-right; margin: 0 0 4px; }
+[data-skin="xp"] .count-head { margin: -10px -12px 0; }
+/*
+ * 改善要望のボタンは通知領域に置く。止まっている間は、昔の 16 色のアイコンのような、角張った黄色い電球にする。
+ * 改善中は、電球の右下に、2 本の緑の矢印が輪になって回るバッジを重ねる。昔のアニメーションのように、滑らかには回さず、1 秒に 4 コマ（45 度ずつ）で回す。
+ */
+[data-skin="xp"] .fb-trigger { display: none; }
+[data-skin="xp"] .fb-tray { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; background: none; cursor: pointer; }
+[data-skin="xp"] .fb-tray::before { content: ""; width: 16px; height: 16px; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'><path d='M5.5 11.5v-1.5L3.5 8V4L5 2.5h6L12.5 4v4l-2 2v1.5z' fill='%23ffff00' stroke='%23000'/><path d='M5 4h1V3h2v1H6v2H5z' fill='%23fff'/><path d='M7 10V8h2v2' fill='none' stroke='%23808000'/><path d='M5.5 11.5h5v3h-5z' fill='%23c0c0c0' stroke='%23000'/><path d='M6 13h4' stroke='%23808080'/></svg>") center / contain no-repeat; }
+[data-skin="xp"] .fb-tray.is-running::after {
+  content: ""; position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px;
+  background: center / contain no-repeat url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g id='a'><path d='M3.3 6.3A5 5 0 0 1 10.9 3.9' fill='none' stroke='%23195e19' stroke-width='3.4'/><path d='M12.4 1.8 13.5 5.7 9.4 6z' fill='%23195e19' stroke='%23195e19' stroke-width='1.6' stroke-linejoin='round'/><path d='M3.3 6.3A5 5 0 0 1 10.9 3.9' fill='none' stroke='%2346c846' stroke-width='1.8'/><path d='M12.4 1.8 13.5 5.7 9.4 6z' fill='%2346c846'/></g><use href='%23a' transform='rotate(180 8 8)'/></svg>");
+  animation: xp-spin 2s steps(8) infinite;
+}
+@keyframes xp-spin { to { transform: rotate(360deg); } }
+
+/*
+ * スタートメニュー。青い見出しと足元の帯のあいだに白い欄を置き、タスクバーの上に開く。
+ * popover はヘッダーの中にあり、タスクバーの白い文字の色を受け継ぐので、文字の色を決め直す。
+ */
+[data-skin="xp"] .app-menu {
+  --menu-blue: linear-gradient(#1868ce, #0e60cb 12%, #1667cf 33%, #1e70d9 54%, #3083de 77%, #4c96e4 90%, #5698e2);
+  --text: #000; --muted: #5c5c5c;
+  position-area: top span-right; width: 240px; margin: 0; padding: 0;
+  border: 1px solid #0831d9; border-radius: 7px 7px 0 0; background: #fff;
+}
+[data-skin="xp"] .app-menu:popover-open { display: grid; }
+[data-skin="xp"] .app-menu::before {
+  content: "durun-dashboard"; padding: 14px 12px; border-radius: 6px 6px 0 0; border-bottom: 2px solid #e5a03b; background: var(--menu-blue);
+  color: #fff; font: 700 15px "Trebuchet MS", var(--sans); text-shadow: 1px 1px #0f1089;
+}
+[data-skin="xp"] .app-menu::after { content: ""; height: 34px; background: var(--menu-blue); }
+[data-skin="xp"] .app-menu-items { padding: 6px; }
+[data-skin="xp"] .app-menu-item { border-radius: 0; }
+[data-skin="xp"] .app-menu-submenu { border: 1px solid #0831d9; border-radius: 0; background: #fff; }
+[data-skin="xp"] .app-menu :is(.app-menu-item:hover, .app-menu-sub:is(:hover, :focus-within) > .app-menu-item) { background: #316ac5; color: #fff; }
+[data-skin="xp"] .app-menu-item:hover kbd { color: #fff; }
+
+/* パネルとウィジェットはウィンドウにし、見出しをタイトルバーにする。 */
+[data-skin="xp"] :is(.panel, .widget, .fb-panel, .doc-head, .memory-flyout, .rate-flyout, .count-flyout, .ctx-flyout) {
+  border: 3px solid; border-color: #0855dd #003bda #003bda #0855dd; border-radius: 8px 8px 0 0; background: #ece9d8;
+}
+[data-skin="xp"] .is-editing .widget { border-style: dashed; }
+[data-skin="xp"] .desktop-icon { color: #fff; text-shadow: 1px 1px 1px #000; }
+[data-skin="xp"] .desktop-icon:focus > span { border-color: transparent; background: #316ac5; text-shadow: none; }
+[data-skin="xp"] .widget-remove { width: 21px; height: 21px; margin-left: 2px; border: 1px solid #fff; border-radius: 3px; background: linear-gradient(#ec9077, #e05a32 45%, #c3401c); color: #fff; font-size: 12px; text-shadow: none; }
+[data-skin="xp"] .widget-remove:hover { filter: brightness(1.15); }
+/* XP のタイトルバーのボタンにする。外すは赤い ×、全画面は上辺の太い四角、ウィンドウ化は 2 つの四角を重ねる。アーカイブは赤いゴミ箱にし、アーカイブしている間は灰色にする。 */
+[data-skin="xp"] .widget { --ctl: 22px; --ctl-gap: 2px; --ctl-right: 4px; --ctl-base: 4px; }
+[data-skin="xp"] .window-ctl { border: 1px solid #fff; border-radius: 3px; background: center / 13px no-repeat, linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
+[data-skin="xp"] .window-ctl:hover { filter: brightness(1.15); }
+[data-skin="xp"] .window-controls > .window-ctl.is-close { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'><path d='M3 3l7 7M10 3l-7 7' stroke='%23fff' stroke-width='2'/></svg>"), linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
+[data-skin="xp"] .window-controls > .window-ctl.is-min { display: block; background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'><path d='M3 9h5v2H3z' fill='%23fff'/></svg>"), linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
+[data-skin="xp"] .window-controls > .window-ctl.is-max { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'><path d='M2 2h9v9H2z' fill='none' stroke='%23fff'/><path d='M2 2h9v2H2z' fill='%23fff'/></svg>"), linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
+[data-skin="xp"] .window-controls > .window-ctl.is-restore { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'><path d='M4.5 1.5h7v6h-7z' fill='none' stroke='%23fff'/><path d='M4 1h8v2H4zM1.5 5.5h7v6h-7z' fill='%23fff'/><path d='M2 7h6v4H2z' fill='%232a6cf0'/></svg>"), linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
+[data-skin="xp"] .window-controls > .window-ctl.is-refresh { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M13.5 8.5A5.5 5.5 0 1 1 11 3.4' fill='none' stroke='%23fff' stroke-width='2.4'/><path d='M8.5 0.5 15 1.5 12 7z' fill='%23fff'/></svg>"), linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
+[data-skin="xp"] .window-controls > .window-ctl.is-archive { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 1.5h4V3h4v1.6H2V3h4zM3.3 5.6h9.4l-.8 8.9H4.1zM6 7v6h1.3V7zm2.7 0v6H10V7z' fill='%23fff' fill-rule='evenodd'/></svg>"), linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
+[data-skin="xp"] .window-controls > .window-ctl.is-archive[aria-pressed="true"] { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 1.5h4V3h4v1.6H2V3h4zM3.3 5.6h9.4l-.8 8.9H4.1zM6 7v6h1.3V7zm2.7 0v6H10V7z' fill='%23fff' fill-rule='evenodd'/></svg>"), linear-gradient(#c4c4c4, #9a9a9a 45%, #7d7d7d); }
+[data-skin="xp"] :is(.panel-title, .widget > .section-title, .widget > .section-head, .widget > .session-title, .widget > .widget-tabs-head, .doc-head > .head-row:first-child, .fb-head, .memory-head, .rate-head, .count-head, .ctx-flyout-head) {
+  padding: 4px 8px; border-radius: 5px 5px 0 0; color: #fff; text-shadow: 1px 1px #0f1089;
+  font: 700 13px "Trebuchet MS", var(--sans);
+  background: linear-gradient(#0997ff, #0053ee 8%, #0050ee 40%, #06f 88%, #06f 93%, #005bff 95%, #003dd7 96%, #003dd7);
+}
+[data-skin="xp"] .panel-title { margin: -12px -14px 10px; }
+[data-skin="xp"] .widget > :is(.section-title, .section-head, .session-title, .widget-tabs-head) { margin: -12px -12px 10px; }
+/* タイトルバーの padding が、右端のボタンの分の空きを上書きするので、ここで空け直す。 */
+[data-skin="xp"] .widget:has(> .window-controls) > :first-child { padding-right: calc(var(--ctl-base) + var(--controls) * (var(--ctl) + var(--ctl-gap))); }
+/*
+ * タイトルバーの文字の行の高さを --ctl にそろえ、中身を縦の中央に並べて、タイトルバーの高さを、ボタンの高さと上下の padding の和にする。
+ * 文字のベースラインでそろえると、タイトルバーの高さが端数になり、中央にそろえた右端の枠のボタンが、見出しの中のボタンと 1px 違う位置に描かれる。
+ */
+[data-skin="xp"] .widget > :first-child:not(.widget-tabs-head) { align-items: center; line-height: var(--ctl); }
+/* タブを並べた枠では、タイトルバーにタブを並べる。選んでいるタブはウィンドウの地の色にして、下の中身とつなげる。 */
+[data-skin="xp"] .widget > .widget-tabs-head { border-bottom: 0; }
+[data-skin="xp"] .widget-tabs { margin-bottom: -4px; }
+[data-skin="xp"] .widget-tab { display: flex; align-items: center; margin: 0; padding: 3px 12px 4px; border: 0; border-radius: 5px 5px 0 0; background: none; color: #fff; font: inherit; }
+[data-skin="xp"] .widget-tab:hover { background: rgba(255, 255, 255, 0.2); }
+[data-skin="xp"] .widget-tab[aria-selected="true"] { background: #ece9d8; color: #000; text-shadow: none; }
+[data-skin="xp"] .doc-head > .head-row:first-child { margin: -12px -14px 0; }
+[data-skin="xp"] .fb-head { margin: -10px -12px 0; padding-right: 4px; }
+[data-skin="xp"] :is(.count-pill, .chip, .badge, .btn) { text-shadow: none; }
+/* 明るい背景では黄色や緑の文字が読みにくいので、文字を暗くし、状態の色は背景に敷く。 */
+[data-skin="xp"] :is(.chip-sub-ok, .chip-sub-bad, .chip-sub-warn) { padding: 0 5px; border: 0; border-radius: 3px; line-height: 16px; background: color-mix(in srgb, var(--sub) 28%, transparent); color: color-mix(in srgb, var(--sub) 45%, #000); }
+[data-skin="xp"] .fb-head .fb-icon { width: 21px; height: 21px; margin-left: 2px; border: 1px solid #fff; border-radius: 3px; background: linear-gradient(#6aa6fd, #2b70f0 45%, #1a58d6); color: #fff; font-size: 12px; text-shadow: none; }
+[data-skin="xp"] .fb-head .fb-icon[aria-label="閉じる"] { background: linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
+[data-skin="xp"] .fb-head .fb-icon:hover { filter: brightness(1.15); }
+/* ウィジェットのタイトルバーのボタンは、文字の代わりにアイコンを描いた青いキャプションボタンにする。文字は読み上げ用に残す。文字は幅 0 でも flex の要素として並ぶため、gap を 0 にしてアイコンを中央に置く。 */
+[data-skin="xp"] .widget > .section-head .btn[data-icon] {
+  display: inline-flex; align-items: center; justify-content: center; width: var(--ctl); height: var(--ctl); padding: 0; border: 1px solid #fff; border-radius: 3px; outline: 0;
+  background: linear-gradient(#6aa6fd, #2b70f0 45%, #1a58d6); font-size: 0; gap: 0;
+}
+[data-skin="xp"] .widget > .section-head .btn[data-icon]:hover:not(:disabled) { background: linear-gradient(#6aa6fd, #2b70f0 45%, #1a58d6); filter: brightness(1.15); outline: 0; }
+[data-skin="xp"] .widget > .section-head .btn[data-icon]:is(:active, [aria-expanded="true"]):not(:disabled) { background: linear-gradient(#1a58d6, #2b70f0 55%, #5a96f5); }
+[data-skin="xp"] .widget > .section-head .btn[data-icon]:disabled { opacity: 0.5; }
+[data-skin="xp"] .widget > .section-head .btn[data-icon]::before { content: ""; width: 13px; height: 13px; background: #fff; mask: var(--icon) center / contain no-repeat; }
+[data-skin="xp"] .btn[data-icon="add"] { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6.5 2h3v4.5H14v3H9.5V14h-3V9.5H2v-3h4.5z'/></svg>"); }
+[data-skin="xp"] .btn[data-icon="settings"] { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black'><circle cx='8' cy='8' r='6' stroke-width='3' stroke-dasharray='2.36'/><circle cx='8' cy='8' r='3.6' stroke-width='2.6'/></svg>"); }
+[data-skin="xp"] .btn[data-icon="refresh"] { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M13.5 8.5A5.5 5.5 0 1 1 11 3.4' fill='none' stroke='black' stroke-width='2.4'/><path d='M8.5 0.5 15 1.5 12 7z'/></svg>"); }
+/* メーターは、白い溝に光沢のある四角を並べた進捗バーにする。XP の進捗バーに合わせて通常の色（--accent）を緑にし、注意と危険の色は残す。 */
+[data-skin="xp"] .meter { --accent: #2ed330; height: 12px; padding: 1px; border: 1px solid #686868; border-radius: 3px; background: #fff; }
+[data-skin="xp"] .meter-fill {
+  border-radius: 1px;
+  background: repeating-linear-gradient(90deg, transparent 0 6px, #fff 6px 8px), linear-gradient(rgba(255, 255, 255, 0.7), transparent 45% 55%, rgba(255, 255, 255, 0.5)), var(--c);
+}
+/* 一覧の項目と差分は、ウィンドウの中の白い欄にする。 */
+[data-skin="xp"] :where(.session-card, .att, .chat-claude, .search-item, .diff-file, .code-side) { border-radius: 0; background: #fff; }
+[data-skin="xp"] .session-card:hover { border-color: #316ac5; background: #eef3fd; }
+
+/* ボタンと入力欄。押せるものはマウスを載せると内側が橙に光り、フォーカスは点線で示す。 */
+[data-skin="xp"] .btn {
+  border: 1px solid #003c74; border-radius: 3px; background: linear-gradient(#fff, #ecebe6 86%, #d6d0c5); color: #000; opacity: 1;
+}
+[data-skin="xp"] .btn:hover:not(:disabled) { background: linear-gradient(#fff, #ecebe6 86%, #d6d0c5); filter: none; outline: 2px solid #f8b636; outline-offset: -3px; }
+[data-skin="xp"] .btn:active:not(:disabled) { background: linear-gradient(#cdcac3, #e3e3db 8%, #e5e5de 94%, #f2f2f1); }
+[data-skin="xp"] .btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+[data-skin="xp"] .btn-primary { font-weight: 700; outline: 1px solid #5a7edc; outline-offset: -3px; }
+[data-skin="xp"] .btn:disabled { border-color: #c9c7ba; background: #f5f4ea; color: #aca899; opacity: 1; }
+[data-skin="xp"] .input { border-color: #7f9db9; border-radius: 0; background: #fff; }
+
+/*
+ * スクロールバーは XP の Internet Explorer に寄せ、白に近い溝に、滑り止めの線を引いた水色のつまみと矢印のボタンを置く。
+ * scrollbar-color を指定すると Chrome は ::-webkit-scrollbar の指定を無視するので、XP では使わない。
+ */
+[data-skin="xp"] ::-webkit-scrollbar { width: 17px; height: 17px; background: linear-gradient(to bottom right, #f3f1ec, #fefefb); }
+[data-skin="xp"] ::-webkit-scrollbar-corner { background: #ece9d8; }
+[data-skin="xp"] ::-webkit-scrollbar-thumb, [data-skin="xp"] ::-webkit-scrollbar-button {
+  border: 1px solid; border-color: #fff #a0b5d3 #7da0d4 #fff; border-radius: 3px;
+  background: var(--glyph) center no-repeat, linear-gradient(to bottom right, rgba(255, 255, 255, 0.6), transparent) #b5cbf8;
+}
+[data-skin="xp"] ::-webkit-scrollbar-thumb:hover, [data-skin="xp"] ::-webkit-scrollbar-button:hover { background-color: #cddcfd; }
+[data-skin="xp"] ::-webkit-scrollbar-thumb:active, [data-skin="xp"] ::-webkit-scrollbar-button:active { background-color: #a0baf3; }
+[data-skin="xp"] ::-webkit-scrollbar-thumb:vertical { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='8'><path d='M0 .5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%23eef4fe'/><path d='M1 1.5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%238cb0f8'/></svg>"); }
+[data-skin="xp"] ::-webkit-scrollbar-thumb:horizontal { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='7'><path d='M.5 0v6m2-6v6m2-6v6m2-6v6' stroke='%23eef4fe'/><path d='M1.5 1v6m2-6v6m2-6v6m2-6v6' stroke='%238cb0f8'/></svg>"); }
+/*
+ * 矢印のボタンは、ボタンを出さない macOS でも出るよう display: block にする。
+ * grid や flex の欄では Chrome が両端に 2 つずつ並べるので、内側の 1 つずつは消す。
+ */
+[data-skin="xp"] ::-webkit-scrollbar-button { display: block; width: 17px; height: 17px; }
+[data-skin="xp"] ::-webkit-scrollbar-button:start:increment, [data-skin="xp"] ::-webkit-scrollbar-button:end:decrement { display: none; }
+[data-skin="xp"] ::-webkit-scrollbar-button:vertical:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 5l3.5-3.5L8 5' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+[data-skin="xp"] ::-webkit-scrollbar-button:vertical:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 1l3.5 3.5L8 1' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M5 1L1.5 4.5 5 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M1 1l3.5 3.5L1 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+
+/* タブは選んでいるものとマウスを載せたものの上端を橙にする。 */
+
+/* 通知とイルカの吹き出しは、XP の黄色い吹き出しにする。 */
+[data-skin="xp"] .toast { border: 1px solid #000; border-radius: 6px; }
+[data-skin="xp"] .dolphin-chat { --surface: #ffffe1; --border-strong: #000; border-radius: 8px; }
+
+/*
+ * 動画は Windows Media Player 12 の再生中の画面に似せる。黒から紺へのグラデーションの上に動画を置き、下に細いシークバーと、
+ * 黒いカプセルに収めた操作ボタンを並べる。カプセルの中央には、縁の付いた丸い青の再生ボタンを置く。
+ */
+.wmp-now { display: none; }
+[data-skin="xp"] .video-player { margin: -10px -12px -12px; background: radial-gradient(ellipse 70% 55% at 50% 45%, #163a5c, transparent 70%), linear-gradient(#000 8%, #071a2c 60%, #0c2236); color: #fff; }
+[data-skin="xp"] .video-player .file-media { background: none; }
+[data-skin="xp"] .video-player .file-media::-webkit-media-controls { display: none; }
+[data-skin="xp"] .wmp-now { display: block; margin: 0; padding: 6px 10px; font-size: 12px; }
+[data-skin="xp"] .wmp-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; row-gap: 8px; padding: 6px 8px 10px; }
+[data-skin="xp"] .wmp-seek { grid-column: 1 / -1; width: 100%; height: 5px; margin: 0; border: 1px solid #3a4a5c; border-radius: 3px; background: linear-gradient(90deg, #2a7fd4, #6cc0ff var(--p), #0a121c var(--p)); appearance: none; cursor: pointer; }
+[data-skin="xp"] .wmp-seek::-webkit-slider-thumb { width: 0; height: 0; appearance: none; }
+[data-skin="xp"] .wmp-time { justify-self: end; margin-right: 22px; font-size: 12px; font-variant-numeric: tabular-nums; }
+[data-skin="xp"] .wmp-pill { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 12px; border: 1px solid #6b7584; border-radius: 17px; background: linear-gradient(#4b5361, #1d222b 50%, #0d1015); }
+[data-skin="xp"] .wmp-btn { display: grid; place-items: center; width: 28px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none; color: #f2f6fa; cursor: pointer; }
+[data-skin="xp"] .wmp-btn:hover { border-color: #7d8898; background: linear-gradient(#5a6576, #262c36); }
+[data-skin="xp"] .wmp-btn svg { width: 13px; height: 13px; fill: currentColor; }
+[data-skin="xp"] .wmp-btn .is-stroke { fill: none; stroke: currentColor; stroke-width: 1.4; }
+[data-skin="xp"] .wmp-btn.is-seg { width: 38px; border-color: #7d8898; background: linear-gradient(#5a6576, #262c36 50%, #151a21); }
+[data-skin="xp"] .wmp-btn.is-prev { margin-right: -10px; padding-right: 8px; border-radius: 11px 0 0 11px; }
+[data-skin="xp"] .wmp-btn.is-next { margin-left: -10px; padding-left: 8px; border-radius: 0 11px 11px 0; }
+[data-skin="xp"] .wmp-play { position: relative; z-index: 1; display: grid; place-items: center; width: 46px; height: 46px; padding: 0; border: 3px solid #1b2230; border-radius: 50%; background: radial-gradient(ellipse 70% 45% at 50% 22%, rgba(255, 255, 255, 0.75), transparent 70%), radial-gradient(circle at 50% 70%, #5fb8ff, #1f6fd0 55%, #0b3a86); outline: 1px solid #8a96a8; color: #fff; cursor: pointer; }
+[data-skin="xp"] .wmp-play:hover { filter: brightness(1.15); }
+[data-skin="xp"] .wmp-play svg { width: 20px; height: 20px; fill: currentColor; }
+[data-skin="xp"] .wmp-vol { position: relative; display: flex; align-items: center; }
+[data-skin="xp"] .wmp-vol::after { content: ""; width: 7px; height: 4px; margin-left: 2px; background: #f2f6fa; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* 音量のつまみは、再生中の画面と同じくふだんは隠し、スピーカーにマウスを載せたときにカプセルの上へ出す。 */
+[data-skin="xp"] .wmp-volume { position: absolute; bottom: 100%; left: 50%; display: none; width: 90px; margin: 0 0 8px -45px; accent-color: #3d9bff; }
+[data-skin="xp"] .wmp-vol:is(:hover, :focus-within) .wmp-volume { display: block; }
+[data-skin="xp"] .wmp-full { justify-self: end; }

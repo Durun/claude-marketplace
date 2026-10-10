@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+// integrations.ts は読み込んだ時点の環境変数で JIRA の接続先を決めるので、先に設定してから読み込む。
+process.env.JIRA_BASE_URL = 'https://jira.example';
+process.env.JIRA_EMAIL = 'me@example.com';
+process.env.JIRA_API_TOKEN = 'token';
+const { adfText, jiraDetail, postJiraComment, searchJira } = await import('../server/integrations.ts');
+
+test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/search\/jql\?jql=project\+%3D\+PROJ&maxResults=5&/);
+    return Response.json({
+      issues: [
+        { key: 'PROJ-1', fields: { summary: '直す', status: { name: '進行中', statusCategory: { key: 'indeterminate' } }, assignee: { displayName: '山田' }, updated: '2026-10-07T12:57:27.228+0900', priority: { name: 'High' }, parent: { key: 'PROJ-9', fields: { summary: '親の課題' } }, labels: ['proj'], reporter: { displayName: '佐藤' }, duedate: '2026-10-31' } },
+        { key: 'PROJ-2', fields: { summary: '誰も持っていない', status: { name: '未着手', statusCategory: { key: 'new' } }, assignee: null } },
+      ],
+    });
+  });
+  assert.deepEqual(await searchJira('project = PROJ', 5), [
+    { key: 'PROJ-1', url: 'https://jira.example/browse/PROJ-1', summary: '直す', status: '進行中', statusCategory: 'indeterminate', assignee: '山田', updatedAt: Date.parse('2026-10-07T03:57:27.228Z'), priority: 'High', parent: { key: 'PROJ-9', summary: '親の課題' }, labels: ['proj'], reporter: '佐藤', dueDate: '2026-10-31' },
+    { key: 'PROJ-2', url: 'https://jira.example/browse/PROJ-2', summary: '誰も持っていない', status: '未着手', statusCategory: 'new', assignee: undefined, updatedAt: undefined, priority: undefined, parent: undefined, labels: undefined, reporter: undefined, dueDate: undefined },
+  ]);
+});
+
+test('searchJira は、JQL の誤りを JIRA が返した理由で投げる', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ errorMessages: ['JQL クエリのエラー'] }, { status: 400 }));
+  await assert.rejects(searchJira('foo = =', 5), /JQL クエリのエラー/);
+});
+
+test('adfText は、JIRA の本文の段落、改行、リスト、メンション、リンクを、Markdown として読める文字にする', () => {
+  const text = (t: string) => ({ type: 'text', text: t });
+  const doc = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [text('一行目'), { type: 'hardBreak' }, text('二行目 '), { type: 'mention', attrs: { text: '@山田' } }] },
+      { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [text('項目')] }] }] },
+      { type: 'paragraph', content: [{ type: 'inlineCard', attrs: { url: 'https://example.com' } }] },
+    ],
+  };
+  assert.equal(adfText(doc).trim(), '一行目\n二行目 @山田\n\n- 項目\n\n\nhttps://example.com');
+});
+
+test('jiraDetail は、課題の属性に本文とコメントを古い順に添えて返す', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/issue\/PROJ-1\?fields=/);
+    const p = (s: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: s }] }] });
+    return Response.json({
+      fields: {
+        summary: '直す', status: { name: '進行中', statusCategory: { key: 'indeterminate' } }, assignee: null, description: p('説明'),
+        comment: { comments: [{ author: { displayName: '佐藤' }, body: p('見ました'), created: '2026-10-07T12:00:00.000+0900' }] },
+      },
+    });
+  });
+  const issue = await jiraDetail('PROJ-1');
+  assert.equal(issue.url, 'https://jira.example/browse/PROJ-1');
+  assert.equal(issue.description, '説明');
+  assert.deepEqual(issue.comments, [{ author: '佐藤', body: '見ました', at: Date.parse('2026-10-07T03:00:00.000Z') }]);
+});
+
+test('postJiraComment は、行ごとに段落にしたコメントを投稿し、失敗は JIRA が返した理由で投げる', async (t) => {
+  const sent: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(url, 'https://jira.example/rest/api/3/issue/PROJ-1/comment');
+    sent.push(JSON.parse(String(init.body)));
+    return sent.length === 1 ? Response.json({}) : Response.json({ errorMessages: ['権限がありません'] }, { status: 403 });
+  });
+  await postJiraComment('PROJ-1', 'a\n\nb');
+  assert.deepEqual(sent[0], {
+    body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph', content: [] }, { type: 'paragraph', content: [{ type: 'text', text: 'b' }] }] },
+  });
+  await assert.rejects(postJiraComment('PROJ-1', 'c'), /権限がありません/);
+});
