@@ -2,6 +2,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Attention, BgTask, ChatEntry, FileWhere, Session, Subagent, TaskItem } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
+import { DesktopIcon } from './apps.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
 import { dateTime, fmtTokens, shortDateTime } from './format.ts';
@@ -184,21 +185,27 @@ export const DiagramIcon = ({ s }: { s: Session }) => {
     document.documentElement.classList.add('is-waiting');
     return () => document.documentElement.classList.remove('is-waiting');
   }, [busy]);
-  const make = () => void makeDiagram(s);
-  return (
-    <button
-      class="desktop-icon"
-      aria-busy={busy}
-      title={ready ? 'ダブルクリックで、このセッションの作業を HTML で図解します' : 'まだやり取りがありません'}
-      onDblClick={make}
-      onKeyDown={(e) => e.key === 'Enter' && make()}
-    >
-      {/* 画像をつかむとブラウザのドラッグが始まり、アイコンを動かせなくなるので止める。 */}
-      <img src={DIAGRAM_ICON} alt="" width={32} height={32} draggable={false} />
-      <span>図解</span>
-    </button>
-  );
+  const hint = ready ? 'ダブルクリックで、このセッションの作業を HTML で図解します' : 'まだやり取りがありません';
+  return <DesktopIcon icon={DIAGRAM_ICON} title="図解" hint={hint} busy={busy} onLaunch={() => void makeDiagram(s)} />;
 };
+
+export const REMOTE_TITLE = 'claude.ai/code で開く';
+export const REMOTE_ICON = '/claude-open.svg';
+
+/** セッションを claude.ai/code の新しいタブで開く。Remote Control でつないでいないセッションは開けない。 */
+export const openRemote = (s: Session): void => {
+  if (!s.remoteUrl) return toast('このセッションは claude.ai/code につないでいないので、開けません。', 'error');
+  window.open(s.remoteUrl, '_blank', 'noopener');
+};
+
+export const RemoteIcon = ({ s }: { s: Session }) => (
+  <DesktopIcon
+    icon={REMOTE_ICON}
+    title={REMOTE_TITLE}
+    hint={s.remoteUrl ? 'ダブルクリックで、このセッションを claude.ai/code で開きます' : 'このセッションは claude.ai/code につないでいません'}
+    onLaunch={() => openRemote(s)}
+  />
+);
 
 /** やり取りが進むたびにまとめ直す。まとめ直す間は、前の概要を薄く出しておく。 */
 export const Summary = ({ s }: { s: Session }) => {

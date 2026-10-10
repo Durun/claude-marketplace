@@ -3,7 +3,8 @@ import { EFFORT_LEVELS, MODELS, type Session, type Snapshot } from '../shared/ty
 import { api, attempt } from './api.ts';
 import { HOME_KEY, layoutKeyOf, useDashboards } from './dashboards.ts';
 import { Dashboard, type EditProps, type Widget, type WidgetProps, WidgetPanel } from './Dashboard.tsx';
-import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatOut, floatUp, isFloating, useFloats } from './Float.tsx';
+import { DesktopIcon } from './apps.tsx';
+import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatUp, isFloating, useFloats } from './Float.tsx';
 import { GITHUB_INBOX_TITLE, GithubInbox, githubInboxControls } from './GithubInbox.tsx';
 import { Inbox } from './Inbox.tsx';
 import { JIRA_TITLE, JiraIssues, jiraControls } from './JiraIssues.tsx';
@@ -52,6 +53,10 @@ const useSaved = (key: string, options?: readonly string[]) => {
   return [value, save] as const;
 };
 
+// 新規セッションのウィンドウを開くときに、ディレクトリの欄へ入れる値。ウィンドウが開いていれば、入力欄へ直に渡す。
+let presetCwd: string | undefined;
+const presetListeners = new Set<(cwd: string) => void>();
+
 const NewSession = ({ cwds, onClose }: { cwds: string[]; onClose: () => void }) => {
   const dir = useRef<HTMLInputElement>(null);
   const ask = useRef<HTMLTextAreaElement>(null);
@@ -60,8 +65,18 @@ const NewSession = ({ cwds, onClose }: { cwds: string[]; onClose: () => void }) 
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
   const [busy, setBusy] = useState(false);
+  // セッションの画面から開いたときは、そのセッションの作業ディレクトリを入れる。開いている間にもう一度開かれたら、入れ直す。
   // ディレクトリが埋まっていれば、次に書く最初の依頼から入力できるようにする。
-  useEffect(() => (cwd ? ask : dir).current?.focus(), []);
+  useEffect(() => {
+    const preset = presetCwd;
+    presetCwd = undefined;
+    if (preset) setCwd(preset);
+    (preset || cwd ? ask : dir).current?.focus();
+    presetListeners.add(setCwd);
+    return () => {
+      presetListeners.delete(setCwd);
+    };
+  }, []);
   const ready = !!cwd.trim() && !!prompt.trim();
   const start = async () => {
     if (busy || !ready) return;
@@ -102,13 +117,28 @@ const NEW_SESSION_TAB = { id: NEW_SESSION_KEY };
 const closeNewSession = () => dock(NEW_SESSION_KEY, '', NEW_SESSION_KEY);
 // 入力欄がちょうど収まる大きさ（px）で、画面の上寄りの中ほどに出す。
 const NEW_SESSION_SIZE = { w: 640, h: 290 };
-const openNewSession = (open: boolean): void =>
-  open
-    ? floatUp(NEW_SESSION_KEY, '', NEW_SESSION_TAB)
-    : floatOut(NEW_SESSION_KEY, '', NEW_SESSION_TAB, new DOMRect((innerWidth - NEW_SESSION_SIZE.w) / 2, innerHeight / 8, NEW_SESSION_SIZE.w, NEW_SESSION_SIZE.h));
+export const NEW_SESSION_TITLE = '新規セッション';
+export const NEW_SESSION_ICON = '/claude-new.svg';
+
+/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd を渡すと、ディレクトリの欄にそれを入れる。 */
+export const openNewSession = (cwd?: string): void => {
+  if (cwd && presetListeners.size > 0) presetListeners.forEach((fn) => fn(cwd));
+  else presetCwd = cwd;
+  floatUp(NEW_SESSION_KEY, '', NEW_SESSION_TAB, NEW_SESSION_SIZE);
+};
+
+/** アプリ「新規セッション」のアイコン。cwd は、セッションの画面に置いたときの、そのセッションの作業ディレクトリ。 */
+export const NewSessionIcon = ({ cwd }: { cwd?: string }) => (
+  <DesktopIcon
+    icon={NEW_SESSION_ICON}
+    title={NEW_SESSION_TITLE}
+    hint={cwd ? `ダブルクリックで、${cwd} で始めるセッションの入力欄を開きます` : 'ダブルクリックで、新しいセッションの入力欄を開きます'}
+    onLaunch={() => openNewSession(cwd)}
+  />
+);
 
 export const NewSessionFloat = ({ f, snapshot }: HomeData & { f: Float }) => (
-  <FloatFrame f={f} title="新規セッション" icon="🆕" controls={[{ kind: 'close', label: '閉じる', onClick: closeNewSession }]}>
+  <FloatFrame f={f} title={NEW_SESSION_TITLE} icon={NEW_SESSION_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: closeNewSession }]}>
     <NewSession cwds={recentCwds(snapshot.sessions)} onClose={closeNewSession} />
   </FloatFrame>
 );
@@ -147,7 +177,7 @@ const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.currentTarget.checked)} />
             アーカイブしたセッションも表示
           </label>
-          <button class="btn btn-sm btn-primary" data-icon="add" aria-expanded={creating} onClick={() => openNewSession(creating)}>新規セッション</button>
+          <button class="btn btn-sm btn-primary" data-icon="add" aria-expanded={creating} onClick={() => openNewSession()}>新規セッション</button>
         </div>
       </div>
       <div class={`widget-body${ids.length ? ' is-selecting' : ''}`}>
@@ -163,6 +193,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   sessions: { title: 'セッション', icon: '🗂️', Body: SessionsWidget, size: { w: 14, h: ROWS }, sketch: 'cards' },
   jira: { title: JIRA_TITLE, icon: JIRA_ICON, Body: JiraIssues, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: jiraControls },
   github: { title: GITHUB_INBOX_TITLE, icon: GITHUB_ICON, Body: GithubInbox, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: githubInboxControls },
+  newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },
 };
 
 // 初期配置には、JIRA の設定が無くても使える種類を 1 つずつ入れる。

@@ -24,6 +24,17 @@ export const useApps = (): AppEntry[] => {
   return list;
 };
 
+type DesktopIconProps = { icon: string; title: string; hint: string; busy?: boolean; onLaunch: () => void };
+
+/** ダッシュボードに置くアプリのアイコン。デスクトップのアプリケーションアイコンのように、ダブルクリックか Enter で起動する。icon は画像の URL。 */
+export const DesktopIcon = ({ icon, title, hint, busy, onLaunch }: DesktopIconProps) => (
+  <button class="desktop-icon" aria-busy={busy} title={hint} onDblClick={onLaunch} onKeyDown={(e) => e.key === 'Enter' && onLaunch()}>
+    {/* 画像をつかむとブラウザのドラッグが始まり、アイコンを動かせなくなるので止める。 */}
+    <img src={icon} alt="" width={32} height={32} draggable={false} />
+    <span>{title}</span>
+  </button>
+);
+
 /** メニューや一覧に添えるアイコン。icon は絵文字か、/ で始まる画像の URL。 */
 export const AppIcon = ({ icon, size = 16 }: { icon: string; size?: number }) =>
   icon.startsWith('/') ? (
