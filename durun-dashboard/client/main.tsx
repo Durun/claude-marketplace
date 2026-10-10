@@ -1,6 +1,6 @@
 import { type ComponentType, render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { JIRA_ISSUE_KEY, PR_URL, type Snapshot } from '../shared/types.ts';
+import { JIRA_ISSUE_KEY, PR_URL, type Snapshot, notionPageId } from '../shared/types.ts';
 import { api } from './api.ts';
 import { showWidget } from './Dashboard.tsx';
 import { DOC_KEY, DocFloat, DocViewer, DocsPage, FILE_KEY, FileFloat, openDocFloat, plainClick } from './Docs.tsx';
@@ -16,6 +16,7 @@ import { useLightMode } from './lightMode.ts';
 import { useAttentionEffects } from './notify.ts';
 import { QuickSearch } from './QuickSearch.tsx';
 import { JIRA_KEY, JIRA_WIDGET, JiraFloat, pickJira } from './JiraView.tsx';
+import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
 import { type Route, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
@@ -42,7 +43,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 };
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [WALLPAPER_KEY]: WallpaperFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 
@@ -61,7 +62,7 @@ const Floats = ({ snapshot }: { snapshot: Snapshot }) =>
 /**
  * PR と JIRA の課題へのリンクを押したら、外のサイトではなくダッシュボードで開く。
  * セッションのバッジと、開いているセッションの PR や課題は、そのセッションの「PR」「JIRA」ウィジェットで開き、ほかのものはウィンドウに浮かべる。
- * ダッシュボードの資料へのリンクは、ページを移らずにウィンドウに浮かべる。
+ * ダッシュボードの資料へのリンクは、ページを移らずにウィンドウに浮かべる。Notion のページへのリンクも、トークンを設定してあればウィンドウに浮かべる。
  * 修飾キーつきのクリック、コメントなど PR の中の場所へのリンク、data-external を付けたリンクは、今までどおりブラウザで開く。
  */
 const useLinks = (route: Route, snapshot: Snapshot | null): void => {
@@ -78,8 +79,13 @@ const useLinks = (route: Route, snapshot: Snapshot | null): void => {
         e.preventDefault();
         return openDocFloat(decodeURIComponent(doc));
       }
-      const url = `${u.origin}${u.pathname.replace(/\/$/, '')}`;
       const { route, snapshot } = latest.current;
+      const notion = snapshot?.notion ? notionPageId(u) : undefined;
+      if (notion) {
+        e.preventDefault();
+        return floatUp(NOTION_KEY, '', { id: notion });
+      }
+      const url = `${u.origin}${u.pathname.replace(/\/$/, '')}`;
       const base = snapshot?.jiraBase;
       const jira = base && url.startsWith(`${base}/browse/`) ? url.slice(base.length + '/browse/'.length) : undefined;
       const isPr = !u.hash && PR_URL.test(url);

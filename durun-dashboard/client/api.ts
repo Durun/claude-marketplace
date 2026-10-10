@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, FeedbackContext, FeedbackTarget, FileWhere, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, FeedbackContext, FeedbackTarget, FileWhere, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -58,6 +58,7 @@ export const api = {
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),
   skills: (id: string) => getJson<SkillInfo[]>(`${session(id)}/skills`),
   jiraIssue: (key: string) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}`),
+  notionPage: (id: string) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}`),
   prDetail: (url: string) => getJson<PrDetail>(`/api/pr?${query({ url })}`),
   prThreads: (id: string) => getJson<PrThread[]>(`${session(id)}/pr-threads`),
   prViewed: (id: string) => getJson<string[]>(`${session(id)}/pr-viewed`),

@@ -123,6 +123,7 @@ export const iconVar = (icon: string): string =>
 // GitHub と JIRA のものは、サイトの favicon を使う。jira はサーバーが JIRA_BASE_URL に読み替える。
 export const GITHUB_ICON = `/api/favicon?${new URLSearchParams({ site: 'https://github.com' })}`;
 export const JIRA_ICON = '/api/favicon?site=jira';
+export const NOTION_ICON = `/api/favicon?${new URLSearchParams({ site: 'https://www.notion.so' })}`;
 
 /** ウィンドウ化と全画面の切り替え。全画面は、ウィンドウを閉じて元の枠に戻す。 */
 export const windowControl = (floating: boolean, onClick: (e: MouseEvent) => void): Control =>

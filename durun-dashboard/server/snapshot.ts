@@ -6,6 +6,7 @@ import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraRefreshedAt } from './integrations.ts';
+import { notionEnabled } from './notion.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
 import type { Conversation } from './suggest.ts';
 
@@ -266,6 +267,7 @@ export const buildSnapshot = (): Snapshot => {
     improve: improveState(),
     jiraRefreshedAt: jiraRefreshedAt(),
     jiraBase: jiraBase(),
+    notion: notionEnabled(),
     assets: { js: mtimeMs(path.join(PUBLIC_DIR, 'app.js')), css: mtimeMs(path.join(PUBLIC_DIR, 'style.css')) },
   };
 };

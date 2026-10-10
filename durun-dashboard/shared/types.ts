@@ -104,6 +104,21 @@ export const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 /** 課題の画面に出す中身。description とコメントの本文は、JIRA の形式から Markdown として読める文字にしたもの。 */
 export type JiraDetail = JiraIssue & { description: string; comments: PrPost[] };
 
+/** Notion のページの画面に出す中身。id はハイフンの無い 32 桁で、markdown は本文のブロックを Markdown にしたもの。truncated は、長くて途中までしか読んでいないとき。 */
+export type NotionPage = { id: string; url: string; title: string; icon?: string; updatedAt?: number; markdown: string; truncated: boolean };
+
+const NOTION_HOST = /(^|\.)(notion\.so|notion\.com|notion\.site)$/;
+
+/**
+ * Notion のページの URL から、ハイフンの無い 32 桁の ID を取り出す。Notion の URL でないものと、ページを指さないものは undefined にする。
+ * データベースの中のページを横に開いた URL は、p にページの ID を持つので、そちらを取る。
+ */
+export const notionPageId = (u: URL): string | undefined => {
+  if (u.protocol !== 'https:' || !NOTION_HOST.test(u.hostname)) return undefined;
+  const last = u.searchParams.get('p') ?? u.pathname.split('/').findLast(Boolean) ?? '';
+  return /[0-9a-f]{32}$/i.exec(last.replaceAll('-', ''))?.[0].toLowerCase();
+};
+
 /** JIRA の検索が 1 回で返せる件数の上限。 */
 export const JIRA_MAX_RESULTS = 100;
 
@@ -283,6 +298,8 @@ export type Snapshot = {
   jiraRefreshedAt: number;
   /** 課題の画面の URL の前に付く部分。JIRA を設定していなければ無い。画面は、ここで始まる課題へのリンクをダッシュボードで開く。 */
   jiraBase?: string;
+  /** Notion のトークンを設定してあるか。画面は、設定してあるときだけ、Notion のページへのリンクをダッシュボードで開く。 */
+  notion?: boolean;
   /** 画面のファイルの更新時刻。変わったら画面が読み込み直す。 */
   assets: { js: number; css: number };
 };

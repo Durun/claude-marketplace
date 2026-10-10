@@ -17,6 +17,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { notionPage } from './notion.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -266,7 +267,7 @@ const openPr = (id: string): { cwd: string; branch: string; pr: PrInfo } => {
   return { cwd: meta.cwd, branch, pr };
 };
 
-/** gh の失敗はダッシュボードの不具合ではないので、改善要望にしない。 */
+/** gh や JIRA、Notion の失敗はダッシュボードの不具合ではないので、改善要望にしない。 */
 const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
   try {
     return await call();
@@ -657,6 +658,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
   [/^\/api\/github\/inbox$/, () => viaGh('GitHub の PR を探せません', githubInbox)],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = '']) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key)))],
+  [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = '']) => viaGh('ページを読めません', () => notionPage(id))],
   [/^\/api\/pr$/, (_, __, url) => {
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr));
