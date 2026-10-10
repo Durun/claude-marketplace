@@ -107,9 +107,8 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
       <PinButton s={s} />
     </header>
     <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
-    {(s.pr || s.jira.length > 0 || s.archived) && (
+    {(s.pr || s.jira.length > 0) && (
       <div class="chips">
-        {s.archived && <Chip>アーカイブ</Chip>}
         {s.pr && <PrChips pr={s.pr} session={s.id} />}
         <JiraChips issues={s.jira} session={s.id} />
       </div>
@@ -309,9 +308,10 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[]) => {
   return { groups, dragging: dragging?.id, dragOf, groupDrag };
 };
 
-export const ThemeGroups = ({ snapshot, showAll, sel }: { snapshot: Snapshot; showAll: boolean; sel: Selection }) => {
+/** アーカイブしたセッションは並べない。 */
+export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Selection }) => {
   const [collapsed, setCollapsed] = useState(loadCollapsed);
-  const visible = snapshot.sessions.filter((s) => showAll || !s.archived);
+  const visible = snapshot.sessions.filter((s) => !s.archived);
   const { groups, dragging, dragOf, groupDrag } = useSessionOrder(snapshot, visible);
   if (visible.length === 0) return <Empty>表示できるセッションがありません。</Empty>;
   // 開いた状態で描いたときにも toggle が届くので、変わったときだけ保存する。

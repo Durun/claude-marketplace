@@ -155,7 +155,6 @@ const InboxWidget = ({ snapshot }: HomeWidgetProps) => (
 );
 
 const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
-  const [showAll, setShowAll] = useState(false);
   const creating = isFloating(useFloats(), NEW_SESSION_KEY, '', NEW_SESSION_KEY);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const sel: Selection = {
@@ -174,15 +173,11 @@ const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
       <div class="section-head">
         <h2 class="section-title">セッション</h2>
         <div class="actions">
-          <label class="check">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.currentTarget.checked)} />
-            アーカイブしたセッションも表示
-          </label>
           <button class="btn btn-sm btn-primary" data-icon="add" aria-expanded={creating} onClick={() => openNewSession()}>新規セッション</button>
         </div>
       </div>
       <div class={`widget-body${ids.length ? ' is-selecting' : ''}`}>
-        <ThemeGroups snapshot={snapshot} showAll={showAll} sel={sel} />
+        <ThemeGroups snapshot={snapshot} sel={sel} />
         {ids.length > 0 && <SelectionBar ids={ids} onClear={() => setSelected(new Set())} />}
       </div>
     </>
