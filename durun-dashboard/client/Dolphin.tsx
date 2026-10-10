@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
-import { glide, pushSample, releaseVelocity, type Sample, type Velocity } from './fling.ts';
+import { type Fling, glide, pushSample, releaseVelocity, type Sample, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { onSubmitKey } from './ui.tsx';
 
@@ -27,11 +27,12 @@ type Turn = AssistantMessage & { links?: AssistantReply['links'] };
 
 /**
  * 位置と速さ（px、px/s）と向きと、している技とその進み具合（0〜1）。毎フレーム変わるので、描き直しを起こさない ref に持つ。
- * fling は、勢いよく離されて慣性で飛んでいる間の速さ。
+ * fling は、勢いよく離されて慣性で飛んでいる間の速さと減速の強さ。
  */
-type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Velocity };
+type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Fling };
 
-type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[] };
+/** windUp は、引っぱったまま振り回して勢いをつけた時間（ms）。 */
+type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
 type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag };
@@ -82,12 +83,12 @@ const swim = (m: Motion, dt: number, now: number, held: boolean): void => {
  * 勢いよく離されたら、慣性で滑りながら、進む向きへ体を向ける。泳ぐ速さまで落ちたら、そのまま前へ泳ぎ続ける。
  * 触られていても止めない。飛ばしたのは人間なので、カーソルが上に残っていても飛んでいく。
  */
-const fly = (m: Motion, fling: Velocity, dt: number, now: number): void => {
+const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   const maxX = innerWidth - W;
   const maxY = innerHeight - H;
   const next = glide(m.x, m.y, fling, dt, { maxX, maxY });
   Object.assign(m, next);
-  m.fling = { vx: next.vx, vy: next.vy };
+  m.fling = { vx: next.vx, vy: next.vy, drag: fling.drag };
   // 真上や真下へ飛ぶときは、いま向いている側のまま頭を上げ下げする。
   const yaw = next.vx < -8 ? -Math.PI : next.vx > 8 ? 0 : m.yaw < -Math.PI / 2 ? -Math.PI : 0;
   // 泳ぐときより速く向きを合わせる。飛んでいる間に向きが遅れると、横滑りして見える。
@@ -161,19 +162,21 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
   };
 };
 
-/** 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。勢いよく離せば、その速さで飛ばす。 */
+/** 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。勢いよく離せば、その速さで飛ばす。離す前に長く振り回すほど、遠くまで飛ぶ。 */
 const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
   onPointerDown: (e: PointerEvent) => {
     // 飛んでいる途中でつかまれたら、そこで止める。
     m.fling = undefined;
-    live.drag = { dx: e.clientX - m.x, dy: e.clientY - m.y, x: e.clientX, y: e.clientY, moved: false, samples: [] };
+    live.drag = { dx: e.clientX - m.x, dy: e.clientY - m.y, x: e.clientX, y: e.clientY, moved: false, samples: [], windUp: 0 };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   },
   onPointerMove: (e: PointerEvent) => {
     const d = live.drag;
     if (!d || (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_THRESHOLD)) return;
     d.moved = true;
-    d.samples = pushSample(d.samples, { t: performance.now(), x: e.clientX, y: e.clientY });
+    const sample = { t: performance.now(), x: e.clientX, y: e.clientY };
+    d.windUp = windUp(d.windUp, d.samples.at(-1), sample);
+    d.samples = pushSample(d.samples, sample);
     const x = clamp(e.clientX - d.dx, 0, innerWidth - W);
     const y = clamp(e.clientY - d.dy, 0, innerHeight - H);
     // 引っぱる向きに体を向けるため、動いた量を速さとして残す。
@@ -184,7 +187,7 @@ const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
     live.drag = undefined;
     if (!d) return;
     if (!d.moved) return toggle();
-    const fling = releaseVelocity(d.samples, performance.now());
+    const fling = releaseVelocity(d.samples, performance.now(), d.windUp);
     if (!fling) return;
     // 回っている技は止める。技の回転が残ると、進む向きを向けない。
     Object.assign(m, { fling, trick: undefined });
