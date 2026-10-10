@@ -12,48 +12,68 @@ process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { postToInbox, removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange } = await import('../server/store.ts');
-const { platform, platformFor } = await import('../server/platform.ts');
+const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
+// 受信ソケットに認証の要る OS が読む、このプロセスに見立てたセッションの鍵。要らない OS では読まれない。
+fs.writeFileSync(path.join(tmp, 'claude', 'sessions', `${process.pid}.test.key`), JSON.stringify({ peerToken: 'test-token' }));
+
+type InboxLine = { type: string; token?: string; message?: { role?: string; content: string } };
 
 /** supervisor が名簿から動いているジョブを消すコード。書きかけを読ませないよう、別名で書いてから置き換える。 */
 const dropWorkers = (roster: string): string => `fs.writeFileSync(${js(`${roster}.tmp`)}, '{"workers":{}}'); fs.renameSync(${js(`${roster}.tmp`)}, ${js(roster)});`;
 
-/** 受信ソケットに見立てたサーバーを開き、次に届く 1 行を返す。 */
-const listenInbox = async (socketPath: string): Promise<{ server: net.Server; line: Promise<{ type: string; message: { role?: string; content: string } }> }> => {
+/** 受信ソケットに見立てたサーバーを開き、次の接続に届く行をすべて返す。rejectAuth なら、本物が認証を拒むときと同じく、何も返さずにすぐ閉じる。 */
+const listenInbox = async (socketPath: string, rejectAuth = false): Promise<{ server: net.Server; lines: Promise<InboxLine[]> }> => {
   const server = net.createServer();
-  const line = new Promise<{ type: string; message: { role?: string; content: string } }>((resolve) =>
+  const lines = new Promise<InboxLine[]>((resolve) =>
     server.once('connection', (c) => {
       let buf = '';
-      c.on('data', (chunk) => (buf += chunk.toString()));
-      c.on('end', () => resolve(JSON.parse(buf)));
+      c.on('data', (chunk) => {
+        buf += chunk.toString();
+        if (rejectAuth) c.destroy();
+      });
+      c.on('close', () => resolve(buf.split('\n').filter(Boolean).map((line) => JSON.parse(line) as InboxLine)));
     }),
   );
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
-  return { server, line };
+  return { server, lines };
 };
 
-test('受信ソケットへ送れない OS では、届いたことにせずに理由を返し、送れる OS では 1 行の JSON で届ける', async () => {
-  const socketPath = platform.localSocketPath(tmp, 'direct');
-  await assert.rejects(postToInbox(socketPath, 'こんにちは', platformFor('win32')), /認証が要り/);
+const close = (server: net.Server): Promise<unknown> => new Promise((resolve) => server.close(resolve));
 
-  const inbox = await listenInbox(socketPath);
-  await postToInbox(socketPath, 'こんにちは', platformFor('darwin'));
-  assert.deepEqual(await inbox.line, { type: 'user', message: { role: 'user', content: 'こんにちは' } });
-  await new Promise((resolve) => inbox.server.close(resolve));
+test('受信ソケットへは、トークンがあれば認証の行を先に送り、拒まれて閉じられたら届いたことにしない', async () => {
+  const socketPath = platform.localSocketPath(tmp, 'direct');
+  const message = { type: 'user', message: { role: 'user', content: 'こんにちは' } };
+
+  const open = await listenInbox(socketPath);
+  await postToInbox(socketPath, 'こんにちは');
+  assert.deepEqual(await open.lines, [message]);
+  await close(open.server);
+
+  const keyed = await listenInbox(socketPath);
+  await postToInbox(socketPath, 'こんにちは', 'secret');
+  assert.deepEqual(await keyed.lines, [{ type: 'auth', token: 'secret' }, message]);
+  await close(keyed.server);
+
+  const refusing = await listenInbox(socketPath, true);
+  await assert.rejects(postToInbox(socketPath, 'こんにちは', 'wrong'), /認証を拒まれました/);
+  assert.deepEqual(await refusing.lines, [{ type: 'auth', token: 'wrong' }]);
+  await close(refusing.server);
 });
 
-test('動いているセッションには受信ソケットへ送り、届かなければ未配信に戻して、次に送るときに一緒に届け直す', { skip: platform.inboxBlocker }, async () => {
+test('動いているセッションには受信ソケットへ送り、届かなければ未配信に戻して、次に送るときに一緒に届け直す', async () => {
   // 自分のプロセスを、受信ソケットを持って生きているセッションに見立てる。
   const socketPath = platform.localSocketPath(tmp, 'inbox');
   fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's1.json'), JSON.stringify({ pid: process.pid, sessionId: 's1', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   ensureSession('s1', tmp);
+  // 認証の要る OS では、セッションの鍵のトークンを先に名乗る。
+  const auth = platform.inboxToken(process.pid, path.join(tmp, 'claude', 'sessions')) ? [{ type: 'auth', token: 'test-token' }] : [];
+  const user = (content: string): InboxLine => ({ type: 'user', message: { role: 'user', content } });
 
   const first = await listenInbox(socketPath);
   assert.equal(sendMessage('s1', 'こんにちは').delivery, 'sent');
-  const line = await first.line;
-  assert.equal(line.type, 'user');
-  assert.equal(line.message.content, '[durun-dashboard] 人間から:\nこんにちは');
-  await new Promise((resolve) => first.server.close(resolve));
+  assert.deepEqual(await first.lines, [...auth, user('[durun-dashboard] 人間から:\nこんにちは')]);
+  await close(first.server);
 
   const lost = sendMessage('s1', '届かない').message;
   await new Promise<void>((resolve) => onChange(() => lost.error && resolve()));
@@ -61,9 +81,9 @@ test('動いているセッションには受信ソケットへ送り、届か�
 
   const second = await listenInbox(socketPath);
   sendMessage('s1', 'もう一度');
-  assert.equal((await second.line).message.content, '[durun-dashboard] 人間から:\n届かない\n---\nもう一度');
+  assert.deepEqual(await second.lines, [...auth, user('[durun-dashboard] 人間から:\n届かない\n---\nもう一度')]);
   assert.ok(lost.deliveredAt);
-  await new Promise((resolve) => second.server.close(resolve));
+  await close(second.server);
 });
 
 test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {

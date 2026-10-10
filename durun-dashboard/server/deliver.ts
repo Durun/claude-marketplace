@@ -8,13 +8,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, readJson, readLiveSessions, type LiveSession } from './claude.ts';
-import { claudeCommand, platform, type Platform } from './platform.ts';
+import { CLAUDE_DIR, SESSIONS_DIR, readJson, readLiveSessions, type LiveSession } from './claude.ts';
+import { claudeCommand, platform } from './platform.ts';
 import { newId, state, touch } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
 const STOP_TIMEOUT_MS = 15_000;
+// 認証を拒まれた接続は数ミリ秒で閉じられ、受け付けられた接続は開いたままになる。これだけ待てば見分けられる。
+const AUTH_GRACE_MS = 200;
 
 type Waiter = (text: string) => void;
 const waiters = new Map<string, Waiter>();
@@ -127,14 +129,23 @@ const restartable = (live: LiveSession): boolean =>
  * Claude Code が各セッションに開く受信ソケット（cross-session messaging）へ、1 行の JSON で送る。
  * 作業中のセッションはツール実行の合間に読み、入力待ちのセッションは新しいターンを始めて読む。
  */
-export const postToInbox = (socketPath: string | undefined, text: string, { inboxBlocker }: Pick<Platform, 'inboxBlocker'> = platform): Promise<void> =>
+export const postToInbox = (socketPath: string | undefined, text: string, token?: string): Promise<void> =>
   new Promise((resolve, reject) => {
     if (!socketPath) return reject(new Error('このセッションには受信ソケットがありません'));
-    if (inboxBlocker) return reject(new Error(inboxBlocker));
-    const socket = net.connect(socketPath, () => socket.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`));
+    const line = `${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`;
+    let accepted = !token;
+    const socket = net.connect(socketPath, () => {
+      if (!token) return socket.end(line);
+      // 認証を拒んだ受信ソケットは、何も返さずにすぐ接続を閉じる。閉じられないのを確かめてから本文を送り、届いたと偽らない。
+      socket.write(`${JSON.stringify({ type: 'auth', token })}\n`);
+      setTimeout(() => {
+        accepted = true;
+        if (!socket.destroyed) socket.end(line);
+      }, AUTH_GRACE_MS);
+    });
     // 失敗したときは close より先に error が来るので、reject で決まる。
     socket.on('error', reject);
-    socket.on('close', () => resolve());
+    socket.on('close', () => (accepted ? resolve() : reject(new Error('受信ソケットに認証を拒まれました'))));
   });
 
 /** rewindTo を渡すと、会話をそのエントリまで巻き戻して送る。巻き戻すには止めて再開するので、作業中のセッションと端末のセッションでは失敗する。 */
@@ -152,7 +163,9 @@ export const sendMessage = (sessionId: string, text: string, rewindTo?: string):
   const pending = rewindTo ? [message] : state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
   for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: viaInbox ? 'socket' : 'resume', error: undefined });
   touch();
-  const sent = viaInbox ? postToInbox(live?.messagingSocketPath, formatMessages(pending)) : resume(sessionId, meta.cwd, rewindTo ? formatMessages(pending) : joinTexts(pending), live?.jobId, rewindTo);
+  // 鍵を読めないときも、届けられなかったものとして下で未配信に戻す。
+  const toInbox = async (to: LiveSession): Promise<void> => postToInbox(to.messagingSocketPath, formatMessages(pending), platform.inboxToken(to.pid, SESSIONS_DIR));
+  const sent = viaInbox ? toInbox(live) : resume(sessionId, meta.cwd, rewindTo ? formatMessages(pending) : joinTexts(pending), live?.jobId, rewindTo);
   // 届けられなかったら未配信に戻し、理由を残す。
   sent.catch((e: Error) => {
     for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: e.message });

@@ -2,6 +2,7 @@
 // サーバーのほかのコードは process.platform を見ずに、必ず platform を経由する。
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { MemoryStatus } from '../shared/types.ts';
@@ -12,6 +13,11 @@ export type Run = (file: string, args: string[]) => Promise<string>;
 
 const exec = promisify(execFile);
 const realRun: Run = async (file, args) => (await exec(file, args)).stdout;
+
+/** ディレクトリの一覧とファイルの中身を読む。テストでは偽物に差し替える。 */
+export type Files = { list: (dir: string) => string[]; read: (file: string) => string };
+
+const realFiles: Files = { list: (dir) => fs.readdirSync(dir), read: (file) => fs.readFileSync(file, 'utf8') };
 
 export type Platform = {
   name: 'darwin' | 'win32' | 'other';
@@ -28,8 +34,11 @@ export type Platform = {
   headersHelperSendsPid: boolean;
   /** clientPort から serverPort へ TCP 接続を張っているプロセスの PID。 */
   connectionOwner: (clientPort: number, serverPort: number, run?: Run) => Promise<number | undefined>;
-  /** 受信ソケットへ送れない理由。送れる OS では undefined。 */
-  inboxBlocker?: string;
+  /**
+   * 受信ソケットの接続の最初の行で名乗る、認証のトークン。認証の要らない OS では undefined。
+   * pid は送り先のセッションの claude のプロセス、sessionsDir は Claude Code がセッションファイルを置く場所。読めなければ例外を投げる。
+   */
+  inboxToken: (pid: number, sessionsDir: string, files?: Files) => string | undefined;
   /** dir の下に置く、このプロセスが listen できるローカルのソケットの場所。 */
   localSocketPath: (dir: string, name: string) => string;
 };
@@ -41,6 +50,8 @@ const posix = {
   // sh の $PPID が claude の PID になる。
   headersHelperSendsPid: true,
   connectionOwner: async () => undefined,
+  // Unix ソケットは OS のユーザーだけが開けるので、Claude Code は認証の行を求めない。
+  inboxToken: () => undefined,
   localSocketPath: (dir: string, name: string) => path.posix.join(dir, `${name}.sock`),
 } satisfies Partial<Platform>;
 
@@ -83,8 +94,16 @@ const win32: Platform = {
   headersHelperSendsPid: false,
   // MCP の接続を張っているのは claude のプロセスそのものなので、接続の持ち主がそのまま呼び出し元になる。
   connectionOwner: async (clientPort, serverPort, run = realRun) => ownerInNetstat(await run('netstat', ['-ano']), clientPort, serverPort),
-  // 名前付きパイプは、最初の行で認証しない接続を、何も届けずに閉じる。届いたと偽らないよう、送らずに理由を返す。
-  inboxBlocker: 'Windows の受信ソケットは接続ごとの認証が要り、まだ対応していません。入力待ちのバックグラウンドのセッションと、止まっているセッションには再開して届けられます',
+  // 名前付きパイプは、最初の行で認証しない接続を、何も届けずに閉じる。
+  // Claude Code は、OS のユーザーだけが読める <pid>.<識別子>.key をセッションファイルの隣に置く。その peerToken を名乗ると、別のセッションからのメッセージとして届く。
+  // ponytail: この鍵の形は Claude Code の文書に無い。2.1.296 で確かめた。変わったら読めない理由を返すので、送信したメッセージに出る。
+  inboxToken: (pid, sessionsDir, files = realFiles) => {
+    const name = files.list(sessionsDir).find((f) => f.startsWith(`${pid}.`) && f.endsWith('.key'));
+    if (!name) throw new Error('このセッションの受信ソケットの鍵がありません');
+    const { peerToken } = JSON.parse(files.read(path.win32.join(sessionsDir, name))) as { peerToken?: unknown };
+    if (typeof peerToken !== 'string' || !peerToken) throw new Error('受信ソケットの鍵の形が変わっていて読めません');
+    return peerToken;
+  },
   // Windows でプロセス間の接続を listen できるのは、ファイルシステムではなく名前付きパイプの名前空間。
   localSocketPath: (dir, name) => `\\\\.\\pipe\\${path.win32.basename(dir)}-${name}`,
 };
