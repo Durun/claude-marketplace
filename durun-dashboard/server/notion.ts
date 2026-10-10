@@ -302,6 +302,7 @@ const databaseOf = async (id: string): Promise<NotionPage> => {
     updatedAt: db.last_edited_time ? Date.parse(db.last_edited_time) : undefined,
     markdown: databaseToMarkdown(columns, rows.results),
     truncated: !!rows.has_more,
+    database: true,
   };
 };
 

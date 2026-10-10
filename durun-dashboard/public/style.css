@@ -132,6 +132,19 @@ button, input, textarea { font: inherit; color: inherit; }
 .md th { background: var(--surface-2); text-align: left; }
 .md blockquote { padding-left: 0.8em; border-left: 3px solid var(--border-strong); color: var(--text-2); }
 .md hr { border: 0; border-top: 1px solid var(--border); }
+/* Notion のデータベースは、昔の Excel のシートに見立てる。列の英字と行の番号は表に無いので、カウンターで足す。色はテーマによらず Excel のものにする。 */
+.notion-sheet table { counter-reset: sheet-row; width: max-content; max-width: 100%; border: 1px solid #808080; background: #fff; color: #000; font: 12px/1.4 "MS UI Gothic", "MS PGothic", Tahoma, sans-serif; }
+.notion-sheet tr { counter-reset: sheet-col; counter-increment: sheet-row; }
+/* Excel と同じく、セルに収まらない文字は折り返さずに切る。 */
+.notion-sheet :is(th, td) { counter-increment: sheet-col; max-width: 260px; padding: 2px 4px; border: 1px solid #c0c0c0; background: #fff; overflow: hidden; white-space: nowrap; font-weight: normal; }
+.notion-sheet a { color: #00f; text-decoration: underline; }
+.notion-sheet code { background: none; }
+.notion-sheet tr::before, .notion-sheet th::before { border: 1px solid; border-color: #fff #808080 #808080 #fff; background: #c0c0c0; text-align: center; }
+.notion-sheet tr::before { content: counter(sheet-row); display: table-cell; min-width: 30px; padding: 2px 4px; vertical-align: bottom; }
+/* 見出しの行は、上に列の英字を重ねる。行の番号のセルには、英字の段との境目を引く。 */
+.notion-sheet th { position: relative; padding-top: 22px; }
+.notion-sheet th::before { content: counter(sheet-col, upper-alpha); position: absolute; inset: 0 0 auto; box-sizing: border-box; height: 20px; line-height: 18px; }
+.notion-sheet thead tr::before { background: linear-gradient(#808080, #808080) 0 19px / 100% 1px no-repeat, #c0c0c0; }
 .stack { display: grid; gap: 10px; }
 .stack, .att, .session-card, .session-head, .code-view, .diff-files, .doc-page, .doc-head, .usage, .outbox, .tasks, .doc-list, .side-docs, .file-list, .barlist, .fb-panel, .fb-targets, .search-list, .search-item, .count-flyout, .count-list, .quick-session { grid-template-columns: minmax(0, 1fr); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

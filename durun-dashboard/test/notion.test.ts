@@ -110,6 +110,7 @@ test('notionPage と notionTitle は、データベースの ID なら、行を�
   assert.equal(page.title, '動画の一覧');
   assert.equal(page.url, 'https://www.notion.so/db');
   assert.equal(page.truncated, true);
+  assert.equal(page.database, true);
   assert.equal(page.markdown, ['| 名前 | 状態 |', '| --- | --- |', '| [ep01\\|前編](https://www.notion.so/r1) | 公開 |', '| [無題](https://www.notion.so/r2) |  |'].join('\n'));
   assert.equal(await notionTitle(id), '動画の一覧');
 });
