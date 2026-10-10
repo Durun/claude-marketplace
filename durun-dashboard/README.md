@@ -28,6 +28,21 @@ Windows でも同じ手順で動く。
 フックと statusline のラッパーは Claude Code が Git Bash で動かすので、Claude Code と同じく Git for Windows が要る。
 メモリプレッシャーは macOS でだけ出る。
 
+## Tailscale 経由で開く
+
+サーバーは `127.0.0.1` でだけ listen する。
+ほかの端末から開くには、ダッシュボードを動かしている端末で、[tailscale serve](https://tailscale.com/kb/1312/serve) に tailnet の中へ中継させる。
+
+```sh
+tailscale serve --bg --http=7337 http://127.0.0.1:7337   # http://<端末の名前>:7337
+tailscale serve --http=7337 off                          # やめるとき
+```
+
+tailnet の端末から、`http://<端末の名前>:7337`、`http://<端末の名前>.<tailnet の名前>.ts.net:7337`、Tailscale の IP のどれでも開ける。
+サーバーは、この端末の tailnet での名前と IP を `tailscale status` から読み、その名前で届いたリクエストだけを受ける。
+ダッシュボードには認証が無いので、tailnet につながる端末はどれも、セッションの起動や Claude へのメッセージの送信までできる。ほかの人と共有している tailnet では、ACL でこのポートに届く端末を絞る。
+`http://` で開いた画面では、ブラウザが通知とクリップボードへのコピーを許さない。使うには、tailnet で HTTPS を有効にして `tailscale serve --bg 7337` で中継し、`https://<端末の名前>.<tailnet の名前>.ts.net` で開く。
+
 ## できること
 
 | 画面 | 内容 |
