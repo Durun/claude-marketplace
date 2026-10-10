@@ -31,7 +31,7 @@ type Turn = AssistantMessage & { links?: AssistantReply['links'] };
  */
 type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Fling };
 
-/** windUp は、引っぱったまま振り回して勢いをつけた時間（ms）。 */
+/** windUp は、引っぱったまま振り回して勢いをつけた道のり（px）。 */
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */

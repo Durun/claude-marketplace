@@ -19,12 +19,10 @@ const STILL_MS = 80;
 const MIN_SPEED = 350;
 // 画面を一瞬で横切らないよう、上限を決める。
 const MAX_SPEED = 3500;
-// 水の抵抗に見えるよう、速さに比例して減速する。勢いをつけずに離したときの減速の強さ。
-const DRAG = 2.2;
-// 勢いをつけきったときの減速の強さ。0 に近づけると、いつまでも止まらず跳ね返り続ける。
+// 水の抵抗に見えるよう、速さに比例して減速する。その強さの上限。ほとんど振り回さずに離しても、その場で固まらず少しは滑る。
+const MAX_DRAG = 30;
+// 減速の強さの下限。0 に近づけると、いつまでも止まらず跳ね返り続ける。
 const MIN_DRAG = 0.5;
-// 振り回した時間がこの長さに届いたら、勢いをつけきったものとする。
-const FULL_WIND_UP_MS = 3000;
 // 画面の端で跳ね返るときに残す速さの割合。水の中なので、弾みは小さくする。
 const BOUNCE = 0.45;
 
@@ -32,23 +30,23 @@ const BOUNCE = 0.45;
 export const pushSample = (samples: Sample[], sample: Sample): Sample[] => [...samples.filter((s) => sample.t - s.t <= WINDOW_MS), sample];
 
 /**
- * 引っぱったまま振り回して勢いをつけた時間（ms）。pointermove のたびに、直前の記録と今の記録を渡して足していく。
+ * 引っぱったまま振り回して勢いをつけた道のり（px）。pointermove のたびに、直前の記録と今の記録を渡して足していく。
  * 飛ばせる速さで動いた分だけを数える。ゆっくり運んだ分は数えず、手を止めたら勢いを失ったものとして 0 に戻す。
  */
-export const windUp = (ms: number, prev: Sample | undefined, next: Sample): number => {
+export const windUp = (px: number, prev: Sample | undefined, next: Sample): number => {
   if (!prev) return 0;
   const gap = next.t - prev.t;
   if (gap > STILL_MS) return 0;
-  if (gap <= 0) return ms;
-  const speed = (Math.hypot(next.x - prev.x, next.y - prev.y) / gap) * 1000;
-  return speed < MIN_SPEED ? ms : ms + gap;
+  if (gap <= 0) return px;
+  const moved = Math.hypot(next.x - prev.x, next.y - prev.y);
+  return (moved / gap) * 1000 < MIN_SPEED ? px : px + moved;
 };
 
-/** 勢いをつけた時間（ms）から決める、飛ばした後の減速の強さ。長くつけるほど弱くなり、遠くまで飛ぶ。 */
-const dragAfter = (windUpMs: number): number => DRAG + (MIN_DRAG - DRAG) * Math.min(1, Math.max(0, windUpMs) / FULL_WIND_UP_MS);
+/** 離した速さ（px/s）で、勢いをつけた道のり（px）と同じだけ進んで止まる減速の強さ。道のりが長いほど弱くなり、遠くまで飛ぶ。 */
+const dragAfter = (speed: number, windUpPx: number): number => Math.min(MAX_DRAG, Math.max(MIN_DRAG, speed / Math.max(windUpPx, 1)));
 
-/** 離した瞬間の速さと、その後の減速の強さ。勢いが足りないか、止めてから離したなら undefined。windUpMs は勢いをつけた時間。 */
-export const releaseVelocity = (samples: Sample[], now: number, windUpMs = 0): Fling | undefined => {
+/** 離した瞬間の速さと、その後の減速の強さ。勢いが足りないか、止めてから離したなら undefined。windUpPx は勢いをつけた道のり。 */
+export const releaseVelocity = (samples: Sample[], now: number, windUpPx = 0): Fling | undefined => {
   const recent = samples.filter((s) => now - s.t <= WINDOW_MS);
   const first = recent[0];
   const last = recent.at(-1);
@@ -59,7 +57,7 @@ export const releaseVelocity = (samples: Sample[], now: number, windUpMs = 0): F
   const speed = Math.hypot(vx, vy);
   if (speed < MIN_SPEED) return undefined;
   const scale = Math.min(1, MAX_SPEED / speed);
-  return { vx: vx * scale, vy: vy * scale, drag: dragAfter(windUpMs) };
+  return { vx: vx * scale, vy: vy * scale, drag: dragAfter(speed * scale, windUpPx) };
 };
 
 /** dt 秒ぶん滑らせた位置と速さ。端に当たったら、弾みを弱めて跳ね返す。 */

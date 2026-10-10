@@ -56,37 +56,42 @@ test('飛ばしたものは、進む向きを保ったまま減速し、端に�
   assert.ok(Math.hypot(state.vx, state.vy) < 1);
 });
 
-/** 10ms ごとに 1 回 step px ずつ右へ動かし続けたときに、たまる勢い（ms）。 */
+/** 10ms ごとに 1 回 step px ずつ右へ動かし続けたときに、たまる勢い（px）。 */
 const windUpOf = (count: number, step: number, from = 0): number => {
-  let ms = from;
-  for (let i = 1; i < count; i++) ms = windUp(ms, { t: (i - 1) * 10, x: (i - 1) * step, y: 0 }, { t: i * 10, x: i * step, y: 0 });
-  return ms;
+  let px = from;
+  for (let i = 1; i < count; i++) px = windUp(px, { t: (i - 1) * 10, x: (i - 1) * step, y: 0 }, { t: i * 10, x: i * step, y: 0 });
+  return px;
 };
 
-test('勢いは速く振り回した時間だけたまり、ゆっくり運んでもたまらず、手を止めると失う', () => {
-  assert.equal(windUpOf(101, 20), 1000);
+test('勢いは速く振り回した道のりだけたまり、ゆっくり運んでもたまらず、手を止めると失う', () => {
+  assert.equal(windUpOf(101, 20), 2000);
   assert.equal(windUpOf(101, 1), 0);
   assert.equal(windUp(0, undefined, { t: 0, x: 0, y: 0 }), 0);
+  // 行って戻っても、動いた分だけたまる。
+  assert.equal(windUp(windUp(0, { t: 0, x: 0, y: 0 }, { t: 10, x: 30, y: 40 }), { t: 10, x: 30, y: 40 }, { t: 20, x: 0, y: 0 }), 100);
   // ゆっくり運んでいる間は、たまった勢いを保つ。
   assert.equal(windUpOf(101, 1, 1000), 1000);
   // 200ms 止めてから動かすと、たまった勢いは 0 に戻る。
   assert.equal(windUp(1000, { t: 0, x: 0, y: 0 }, { t: 200, x: 500, y: 0 }), 0);
 });
 
-test('長く勢いをつけて離すほど減速が弱くなり、同じ速さでも遠くまで飛ぶ', () => {
-  const fast = stroke(8, 10, 20, 0);
-  const distance = (windUpMs: number): number => {
-    const fling = releaseVelocity(fast, 75, windUpMs);
+test('振り回した道のりと同じくらいの距離を飛び、道のりが長いほど遠くまで飛ぶ', () => {
+  const distance = (step: number, windUpPx: number): number => {
+    const fling = releaseVelocity(stroke(8, 10, step, 0), 75, windUpPx);
     assert.ok(fling);
     let state: { x: number; y: number } & Fling = { x: 0, y: 0, ...fling };
     for (let i = 0; i < 6000; i++) state = { ...glide(state.x, state.y, state, 1 / 60, { maxX: 1e9, maxY: 1e9 }), drag: fling.drag };
     return state.x;
   };
-  const [none, some, full, over] = [0, 1500, 3000, 60000].map(distance) as [number, number, number, number];
-  assert.ok(none < some && some < full, `${none} < ${some} < ${full}`);
-  assert.ok(full > none * 3, '勢いをつけきると、何倍も遠くまで飛ぶ');
-  // つけきった後は、それ以上伸びない。
-  assert.equal(over, full);
-  // 離した瞬間の速さは、勢いをつけた時間では変わらない。
-  assert.equal(releaseVelocity(fast, 75, 3000)?.vx, releaseVelocity(fast, 75)?.vx);
+  const near = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < expected * 0.2, `${actual} ≒ ${expected}`);
+  near(distance(20, 300), 300);
+  near(distance(20, 1500), 1500);
+  // 離した速さが違っても、飛ぶ距離は道のりで決まる。
+  near(distance(8, 1500), 1500);
+  // ほとんど振り回さずに離しても少しは滑り、どれだけ振り回しても、いつかは止まる。
+  const short = distance(20, 0);
+  assert.ok(short > 30 && short < 100, `${short}`);
+  near(distance(20, 1e9), 2000 / 0.5);
+  // 離した瞬間の速さは、勢いをつけた道のりでは変わらない。
+  assert.equal(releaseVelocity(stroke(8, 10, 20, 0), 75, 3000)?.vx, releaseVelocity(stroke(8, 10, 20, 0), 75)?.vx);
 });
