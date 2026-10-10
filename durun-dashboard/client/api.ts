@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -41,6 +41,9 @@ const seg = (value: string): string => encodeURIComponent(value).replaceAll('%3A
 
 const session = (id: string): string => `/api/sessions/${seg(id)}`;
 
+/** ファイルを読む API の場所。エクスプローラーからセッションの外で開いたファイルは id が空で、セッションを付けずに読む。 */
+const files = (id: string): string => (id ? session(id) : '/api');
+
 /** 値の無い項目を外して、クエリにする。 */
 const query = (params: Record<string, string | undefined>): URLSearchParams =>
   new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined));
@@ -49,10 +52,11 @@ export const api = {
   diff: (id: string, full: boolean, range?: DiffRange, view?: BranchView) =>
     getJson<DiffResult>(`${session(id)}/diff?${query({ full: full ? '1' : undefined, ...range, branch: view?.branch, base: view?.base })}`),
   file: (id: string, path: string, branch?: string) => getJson<DiffFile>(`${session(id)}/file?${query({ path, branch })}`),
-  localFile: (id: string, path: string) => getJson<{ path: string; content: string }>(`${session(id)}/local-file?${query({ path })}`),
-  resolveFile: (id: string, path: string) => getJson<FileTarget>(`${session(id)}/resolve-file?${query({ path })}`),
-  mediaUrl: (id: string, path: string) => `${session(id)}/media?${query({ path })}`,
-  localFileEventsUrl: (id: string, path: string) => `${session(id)}/local-file/events?${query({ path })}`,
+  localFile: (id: string, path: string) => getJson<{ path: string; content: string }>(`${files(id)}/local-file?${query({ path })}`),
+  resolveFile: (id: string, path: string) => getJson<FileTarget>(`${files(id)}/resolve-file?${query({ path })}`),
+  mediaUrl: (id: string, path: string) => `${files(id)}/media?${query({ path })}`,
+  localFileEventsUrl: (id: string, path: string) => `${files(id)}/local-file/events?${query({ path })}`,
+  explorer: (path?: string) => getJson<ExplorerDir>(`/api/explorer?${query({ path })}`),
   chat: (id: string) => getJson<ChatEntry[]>(`${session(id)}/chat`),
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),
@@ -80,6 +84,7 @@ export const api = {
   orderSessions: (ids: string[]) => postJson('/api/sessions/order', { ids }),
   pin: (id: string, pinned: boolean) => postJson(`${session(id)}/pin`, { pinned }),
   addLink: (id: string, url: string, title: string) => postJson(`${session(id)}/links`, { url, title }),
+  addFile: (id: string, path: string) => postJson(`${session(id)}/files`, { path }),
   orderDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/order`, { keys }),
   hideDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/hide`, { keys }),
   renameDoc: (id: string, key: string, title: string) => postJson(`${session(id)}/docs/rename`, { key, title }),

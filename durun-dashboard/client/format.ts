@@ -56,6 +56,14 @@ export const fmtTokens = (n: number): string => {
   return n >= MEGA || Number(kilo) >= KILO ? `${significant(n / MEGA)}M` : `${kilo}k`;
 };
 
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+/** ファイルの大きさ。1024 ごとに単位を上げ、KB から上は小数 1 桁までにする。 */
+export const fmtBytes = (n: number): string => {
+  const i = Math.min(BYTE_UNITS.length - 1, n > 0 ? Math.floor(Math.log2(n) / 10) : 0);
+  return `${i === 0 ? n : (n / 1024 ** i).toFixed(1).replace(/.0$/, '')} ${BYTE_UNITS[i]}`;
+};
+
 export const fmtInt = (n: number): string => Math.round(n).toLocaleString('ja-JP');
 
 export const totalTokens = (t: TokenTotals): number => t.input + t.output + t.cacheRead + t.cacheCreation;

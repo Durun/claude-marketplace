@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
@@ -18,6 +18,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
@@ -48,6 +49,7 @@ const STATIC: Record<string, string> = {
   '/diagram.svg': 'public/diagram.svg',
   '/claude-new.svg': 'public/claude-new.svg',
   '/claude-open.svg': 'public/claude-open.svg',
+  '/explorer.svg': 'public/explorer.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
 };
@@ -197,10 +199,13 @@ const wholeFile = async (id: string, url: URL): Promise<DiffFile> => {
 // ウィンドウに浮かべて読むファイルの上限。大きなログなどで画面が固まらないようにする。
 const MAX_LOCAL_FILE_BYTES = 1024 * 1024;
 
+/** ファイルを探す起点。エクスプローラーからセッションの外で開いたファイルは id が空で、ホームディレクトリから探す。 */
+const baseDir = (id: string): string => (id ? sessionMeta(id).cwd : os.homedir());
+
 /** リポジトリの外のファイルの場所。~ はホームディレクトリにし、相対パスはセッションの作業ディレクトリから探す。行の指定は外す。 */
 const localPath = (id: string, url: URL): { ref: string; full: string; stat?: fs.Stats } => {
   const ref = (url.searchParams.get('path') ?? '').replace(/:[\d-]+$/, '');
-  const full = path.resolve(sessionMeta(id).cwd, ref.replace(/^~(?=\/|$)/, os.homedir()));
+  const full = path.resolve(baseDir(id), ref.replace(/^~(?=\/|$)/, os.homedir()));
   const stat = fs.statSync(full, { throwIfNoEntry: false });
   return { ref, full, stat: stat?.isFile() ? stat : undefined };
 };
@@ -235,7 +240,7 @@ const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
   const { ref, full, stat } = localPath(id, url);
   if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', heading: firstHeading(fs.readFileSync(full, 'utf8')) };
   if (stat && mediaType(full)) return { where: 'local' };
-  if (await inRepo(sessionMeta(id).cwd, ref)) return { where: 'repo' };
+  if (id && (await inRepo(sessionMeta(id).cwd, ref))) return { where: 'repo' };
   if (stat && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local' };
   throw new HttpError(404, `「${ref}」を開けません`);
 };
@@ -502,12 +507,33 @@ const renameDoc = (id: string, body: unknown): void => {
   touch();
 };
 
-/** 外した資料は、発言にまた出ても並べない。足したリンクは、足したものも消す。 */
+/** エクスプローラーから資料に足すファイル。絶対パスで受け、同じファイルを足し直したら時刻を新しくし、外していたものはまた並べる。 */
+const addFile = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const file = field<string>(body, 'path', 'string');
+  if (!path.isAbsolute(file) || !fs.statSync(file, { throwIfNoEntry: false })?.isFile()) throw new HttpError(400, `「${file}」はファイルではありません`);
+  meta.files = [...(meta.files ?? []).filter((f) => f.path !== file), { path: file, at: Date.now() }];
+  meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== file);
+  touch();
+};
+
+/** エクスプローラーで開くフォルダーの中身。読めないフォルダーはダッシュボードの不具合ではないので、理由を添えて 404 にする。 */
+const explore = (url: URL): ExplorerDir => {
+  const dir = url.searchParams.get('path') || undefined;
+  try {
+    return listDir(dir);
+  } catch (e) {
+    throw new HttpError(404, `「${dir}」を開けません（${(e as NodeJS.ErrnoException).code ?? (e as Error).message}）`);
+  }
+};
+
+/** 外した資料は、発言にまた出ても並べない。足したリンクとファイルは、足したものも消す。 */
 const hideDocs = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
   const keys = new Set(strings(body, 'keys'));
   meta.hiddenDocs = [...new Set([...(meta.hiddenDocs ?? []), ...keys])];
   meta.links = meta.links?.filter((l) => !keys.has(l.url));
+  meta.files = meta.files?.filter((f) => !keys.has(f.path));
   meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
   touch();
 };
@@ -628,6 +654,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
   [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
@@ -673,6 +700,10 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/file$/, ([, id = ''], _, url) => wholeFile(id, url)],
   [/^\/api\/sessions\/([^/]+)\/local-file$/, ([, id = ''], _, url) => localFile(id, url)],
   [/^\/api\/sessions\/([^/]+)\/resolve-file$/, ([, id = ''], _, url) => resolveFile(id, url)],
+  // エクスプローラーからセッションの外で開いたファイルは、セッションの id を付けずに読む。
+  [/^\/api\/local-file$/, (_, __, url) => localFile('', url)],
+  [/^\/api\/resolve-file$/, (_, __, url) => resolveFile('', url)],
+  [/^\/api\/explorer$/, (_, __, url) => explore(url)],
   [/^\/api\/sessions\/([^/]+)\/chat$/, ([, id = '']) => chatOf(id)],
   [/^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)\/chat$/, ([, id = '', agentId = '']) => subagentChatOf(id, agentId)],
   [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
@@ -752,9 +783,10 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
-  const media = req.method === 'GET' && /^\/api\/sessions\/([^/]+)\/media$/.exec(url.pathname);
+  // セッションの id が無いものは、エクスプローラーからセッションの外で開いたファイル。
+  const media = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
-  const fileEvents = req.method === 'GET' && /^\/api\/sessions\/([^/]+)\/local-file\/events$/.exec(url.pathname);
+  const fileEvents = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/local-file\/events$/.exec(url.pathname);
   if (fileEvents) return watchLocalFile(req, res, decodeURIComponent(fileEvents[1] ?? ''), url);
   // Chrome を起動するので、他のサイトから GET で起こされないよう POST で受ける。
   const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png)$/.exec(url.pathname);

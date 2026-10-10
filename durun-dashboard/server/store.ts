@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, SavedLink } from '../shared/types.ts';
+import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, SavedFile, SavedLink } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -23,6 +23,8 @@ export type SessionMeta = {
   pinned?: boolean;
   /** 人間が資料に足したリンク */
   links?: SavedLink[];
+  /** 人間がエクスプローラーから資料に足したファイル */
+  files?: SavedFile[];
   /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL で持つ */
   docOrder?: string[];
   hiddenDocs?: string[];

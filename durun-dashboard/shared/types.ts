@@ -169,7 +169,9 @@ export type Session = {
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   links: SavedLink[];
-  /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL で持つ。 */
+  /** 人間がエクスプローラーから資料に足したファイル。 */
+  files: SavedFile[];
+  /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL、ファイルはパスで持つ。 */
   docOrder: string[];
   hiddenDocs: string[];
   /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ。 */
@@ -334,6 +336,18 @@ export const MEDIA_TYPES: Record<string, string> = {
   '.webm': 'video/webm',
   '.mov': 'video/quicktime',
 };
+
+/** エクスプローラーに並べる 1 件。path は区切りを / にそろえた絶対パス。size はファイルのバイト数で、フォルダーには付けない。 */
+export type ExplorerEntry = { name: string; path: string; dir: boolean; size?: number; modifiedAt?: number };
+
+/**
+ * エクスプローラーで開いたフォルダー。parent は 1 つ上のフォルダーで、最上位には無い。home はホームディレクトリ、roots は最上位の場所（Windows ではドライブ）。
+ * truncated は、中身が多くて途中までしか並べていないとき。
+ */
+export type ExplorerDir = { path: string; parent?: string; home: string; roots: string[]; entries: ExplorerEntry[]; truncated: boolean };
+
+/** 人間が資料に足したファイル。path は絶対パス。 */
+export type SavedFile = { path: string; at: number };
 
 /** チャットのファイルパスの開き先。repo はコードの画面、local はウィンドウに浮かべる。 */
 export type FileWhere = 'repo' | 'local';

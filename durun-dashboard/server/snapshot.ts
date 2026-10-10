@@ -169,6 +169,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archived: meta.archived,
     pinned: !!meta.pinned,
     links: meta.links ?? [],
+    files: meta.files ?? [],
     docOrder: meta.docOrder ?? [],
     hiddenDocs: meta.hiddenDocs ?? [],
     docTitles: meta.docTitles ?? {},

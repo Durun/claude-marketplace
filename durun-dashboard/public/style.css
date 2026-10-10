@@ -315,6 +315,7 @@ textarea.input { resize: vertical; min-height: 36px; }
 .app-icon { flex: none; line-height: 1; image-rendering: pixelated; }
 .app-menu-item > .app-icon { margin-right: -4px; }
 .app-menu-sep { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.app-menu-note { margin: 0; padding: 5px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 .app { max-width: 1480px; margin: 0 auto; padding: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -543,6 +544,29 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .new-session { padding: 12px; overflow: auto; }
 .new-session .help { margin: 0; }
 /* 壁紙のウィンドウ。今の壁紙を、画面に近い横長の比で見せる。 */
+/* エクスプローラー。上にパスの欄、左にすぐ開ける場所、右にフォルダーの中身を並べる。 */
+.explorer { display: grid; flex: 1; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.explorer-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--border); }
+.explorer-path { flex: 1; min-width: 0; font: 12px var(--mono); }
+.explorer-main { display: grid; grid-template-columns: 160px minmax(0, 1fr); min-height: 0; }
+.explorer-side { padding: 6px 6px 6px 0; border-right: 1px solid var(--border); overflow: auto; }
+.explorer-heading { margin: 6px 6px 2px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.explorer-places, .explorer-list { margin: 0; padding: 0; list-style: none; }
+.explorer-place-item { display: flex; align-items: center; min-width: 0; }
+.explorer-place-item:hover .side-doc-action { opacity: 1; }
+.explorer-place { flex: 1; min-width: 0; padding: 3px 6px; border: 0; border-radius: 4px; background: none; color: var(--text); font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.explorer-place > span, .explorer-name > span { margin-right: 6px; }
+.explorer-place:hover, .explorer-place[aria-current="true"] { background: var(--surface-2); }
+.explorer-list-wrap { padding: 6px 0 6px 6px; overflow: auto; }
+.explorer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 72px; align-items: center; gap: 12px; padding: 3px 6px; border-radius: 4px; font-size: 13px; cursor: default; user-select: none; }
+.explorer-row:hover { background: var(--surface-2); }
+.explorer-row:focus { outline: none; background: var(--accent); color: #fff; }
+.explorer-row:focus .explorer-meta { color: inherit; }
+.explorer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explorer-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.explorer-size { text-align: right; }
+/* エクスプローラーのファイルをドラッグして上に来ている間の、資料のウィジェット。 */
+.widget-body.is-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .wallpaper { padding: 12px; overflow: auto; }
 .wallpaper .help { margin: 0; }
 .wallpaper-preview { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); object-fit: cover; }

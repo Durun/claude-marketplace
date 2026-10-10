@@ -3,6 +3,8 @@ import type { Attention, ImproveState, MemoryStatus, RateLimit, Session, Snapsho
 import { api } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
+import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, openExplorer } from './Explorer.tsx';
+import { baseName, useFavorites } from './explorerFavorites.ts';
 import { clock, shortDateTime, toMs } from './format.ts';
 import { NowContext } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
@@ -174,7 +176,9 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
   const toggleFullscreen = () => {
     void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   };
-  const apps = useApps();
+  // エクスプローラーは「アプリ」には並べず、お気に入りのフォルダーを選べるよう、独立した項目にする。
+  const apps = useApps().filter((a) => a.kind !== EXPLORER_KEY);
+  const favorites = useFavorites();
   const dashboards = useDashboards();
   // ダッシュボードはホームの配置なので、ほかの画面で選んだらホームへ移る。
   const showHome = () => {
@@ -205,6 +209,17 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
               </div>
             </div>
           )}
+          <div class="app-menu-sub">
+            <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon={EXPLORER_ICON} />{EXPLORER_TITLE}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+            <div class="app-menu-submenu" role="group" aria-label={EXPLORER_TITLE}>
+              <button class="app-menu-item" title="ホームディレクトリを開く" onClick={() => openExplorer()}><AppIcon icon="🏠" />ホーム</button>
+              <hr class="app-menu-sep" />
+              {favorites.map((p) => (
+                <button key={p} class="app-menu-item" title={p} onClick={() => openExplorer(p)}><AppIcon icon="📁" />{baseName(p)}</button>
+              ))}
+              {favorites.length === 0 && <p class="app-menu-note">エクスプローラーの ☆ で、フォルダーをお気に入りに登録できます。</p>}
+            </div>
+          </div>
           <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
             検索<kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
           </button>

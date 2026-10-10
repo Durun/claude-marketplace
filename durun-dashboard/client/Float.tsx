@@ -82,6 +82,9 @@ export const dock = (key: string, scope: string, tabId: string): void => setFloa
 
 const update = (f: Float, patch: Partial<Float>): void => setFloats(floats.map((x) => (same(x, f.key, f.scope, f.tab.id) ? { ...x, ...patch } : x)));
 
+/** ウィンドウの設定を変える。エクスプローラーの開いているフォルダーなど、ウィンドウごとの状態を保存するのに使う。 */
+export const setFloatSettings = (f: Float, settings: WidgetSettings): void => update(f, { tab: { ...f.tab, settings } });
+
 /** 押したウィンドウを、最小化していれば元に戻し、ほかのウィンドウより手前に出す。重なりの順は、一覧の後ろほど手前にする。 */
 const raise = (f: Float): void => {
   if (floats.at(-1) !== f || f.min) setFloats([...floats.filter((x) => x !== f), { ...f, min: undefined }]);

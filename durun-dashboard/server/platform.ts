@@ -44,6 +44,10 @@ export type Platform = {
   localSocketPath: (dir: string, name: string) => string;
   /** この端末を tailnet の中から指す名前と IP。Tailscale が入っていないか、つながっていなければ空。 */
   tailnetHosts: (run?: Run) => Promise<string[]>;
+  /** 画面に渡すパス。画面がどの OS でも / で分けられるよう、区切りを / にそろえる。 */
+  displayPath: (file: string) => string;
+  /** エクスプローラーの最上位に並べる場所。Windows ではつながっているドライブで、ほかの OS では /。exists はテストで偽物に差し替える。 */
+  fileRoots: (exists?: (dir: string) => boolean) => string[];
 };
 
 /** tailscale status --json から、この端末の MagicDNS の名前（完全な名前と先頭のラベル）と IP を取り出す。IPv6 は Host ヘッダーと同じく [] で囲む。 */
@@ -80,6 +84,8 @@ const posix = {
   inboxToken: () => undefined,
   localSocketPath: (dir: string, name: string) => path.posix.join(dir, `${name}.sock`),
   tailnetHosts: tailnetHostsVia(['tailscale']),
+  displayPath: (file: string) => file,
+  fileRoots: () => ['/'],
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -112,6 +118,8 @@ export const ownerInNetstat = (netstat: string, clientPort: number, serverPort: 
   return undefined;
 };
 
+const DRIVE_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
 const win32: Platform = {
   name: 'win32',
   defaultChromePath: (env) => path.win32.join(env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -136,6 +144,8 @@ const win32: Platform = {
   // Windows でプロセス間の接続を listen できるのは、ファイルシステムではなく名前付きパイプの名前空間。
   localSocketPath: (dir, name) => `\\\\.\\pipe\\${path.win32.basename(dir)}-${name}`,
   tailnetHosts: tailnetHostsVia(['tailscale']),
+  displayPath: (file) => file.replaceAll('\\', '/'),
+  fileRoots: (exists = fs.existsSync) => DRIVE_LETTERS.filter((d) => exists(`${d}:\\`)).map((d) => `${d}:/`),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

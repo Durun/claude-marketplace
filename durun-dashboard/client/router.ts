@@ -30,6 +30,12 @@ const parseHash = (hash: string): Route => {
   return { page: 'home' };
 };
 
+/** 開いている画面のセッションの id。セッションの画面でなければ空。 */
+export const currentSessionId = (): string => {
+  const route = parseHash(location.hash);
+  return route.page === 'session' ? route.id : '';
+};
+
 export const href = {
   home: (): string => '#/',
   docs: (): string => '#/docs',

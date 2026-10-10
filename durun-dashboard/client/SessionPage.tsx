@@ -4,6 +4,7 @@ import { api, attempt } from './api.ts';
 import { CodeView } from './CodeView.tsx';
 import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel } from './Dashboard.tsx';
 import { SessionDocs } from './Docs.tsx';
+import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
 import { useFetch } from './hooks.ts';
@@ -165,6 +166,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => void makeDiagram(s) },
   // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリで始める。
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd) },
+  [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: ({ s }) => <ExplorerIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openExplorer(s.cwd) },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
   chat: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },

@@ -1,11 +1,12 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
+import { type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
-import { mediaTypeOf } from './fileRef.ts';
+import { baseName } from './explorerFavorites.ts';
+import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
 import { dateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { ARROW_STEP, moveTo } from './order.ts';
@@ -273,6 +274,23 @@ const useNotionTitles = (urls: string[], enabled: boolean): Map<string, string> 
 /** 修飾キー付きのクリックは、ブラウザの既定の動きに任せる。 */
 export const plainClick = (e: MouseEvent): boolean => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
+/** エクスプローラーから足したファイル。押すと、チャットのファイルパスを押したときと同じ開き方で開く。 */
+const savedFileDoc = (id: string, f: SavedFile): SideDoc => ({
+  key: f.path,
+  keys: [f.path],
+  title: baseName(f.path),
+  href: href.file(id, f.path),
+  sub: 'ファイル',
+  icon: OWN_ICON,
+  at: f.at,
+  attach: f.path,
+  onClick: (e) => {
+    if (!plainClick(e)) return;
+    e.preventDefault();
+    void openFile(id, f.path);
+  },
+});
+
 /** 題名は、ファイル名の後に最初の見出しを付ける。同じ名前のファイルが並んでも、中身で見分けられるようにするため。 */
 const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
   key: f.ref,
@@ -295,9 +313,15 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
  * 人間が付け直した題名は、まとめたリンクのどれかに付いていればその行に出す。
  * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。
+ * エクスプローラーからファイルをドラッグして落とすと、そのファイルを足す。
  */
 export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries: ChatEntry[]; notion: boolean }) => {
   const [adding, setAdding] = useState(false);
+  // エクスプローラーのファイルをドラッグして上に来ている間、落とせることを枠で示す。
+  const [dropping, setDropping] = useState(false);
+  // 前に開いていたときのデータには、足したファイルが無いことがある。
+  const savedFiles = s.files ?? [];
+  const savedPaths = new Set(savedFiles.map((f) => f.path));
   const links = useMemo(() => chatLinks(entries, location.port), [entries]);
   const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries), [entries]));
   const saved = new Set(s.links.map((l) => l.url));
@@ -314,7 +338,8 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
       .filter((d) => !hidden.has(d.id))
       .map((d) => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d) })),
     ...mergeLinks(withTitles(shown, notionTitles)).map(linkDoc),
-    ...files.filter((f) => !hidden.has(f.ref)).map((f) => fileDoc(s.id, f)),
+    ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref)).map((f) => fileDoc(s.id, f)),
+    ...savedFiles.map((f) => savedFileDoc(s.id, f)),
   ].map(renamed));
   return (
     <>
@@ -324,7 +349,23 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
         </h2>
         <button class="btn btn-sm" data-icon="add" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>追加</button>
       </div>
-      <div class="widget-body">
+      <div
+        class={`widget-body${dropping ? ' is-drop' : ''}`}
+        onDragOver={(e) => {
+          if (!e.dataTransfer?.types.includes(FILE_DRAG_TYPE)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          setDropping(true);
+        }}
+        onDragLeave={() => setDropping(false)}
+        onDrop={(e) => {
+          setDropping(false);
+          const file = e.dataTransfer?.getData(FILE_DRAG_TYPE);
+          if (!file) return;
+          e.preventDefault();
+          void attempt('資料の追加', () => api.addFile(s.id, file));
+        }}
+      >
         {adding && <AddLink s={s} onClose={() => setAdding(false)} />}
         {items.length === 0 ? (
           <Empty>資料はありません。</Empty>
@@ -500,8 +541,19 @@ const targetOf = (id: string, ref: string): Promise<FileTarget | undefined> => {
 /** チャットのファイルパスの開き先。開けないものは undefined にする。 */
 export const whereOf = (id: string, ref: string): Promise<FileWhere | undefined> => targetOf(id, ref).then((t) => t?.where);
 
-/** ファイルをウィンドウに浮かべる。行の指定は外し、同じファイルは 1 つのウィンドウにまとめる。 */
+/** ファイルをウィンドウに浮かべる。行の指定は外し、同じファイルは 1 つのウィンドウにまとめる。sessionId が空なら、セッションの外のファイルとして開く。 */
 export const openFileFloat = (sessionId: string, ref: string): void => floatUp(FILE_KEY, sessionId, { id: ref.replace(/:[\d-]+$/, '') });
+
+/**
+ * ファイルを、チャットのファイルパスを押したときと同じ開き方で開く。リポジトリにあるファイルはコードの画面で開き、ほかはウィンドウに浮かべる。
+ * sessionId が空なら、どれもウィンドウに浮かべる。大きすぎるなど、開けないファイルはトーストで知らせる。
+ */
+export const openFile = async (sessionId: string, ref: string): Promise<void> => {
+  const where = await whereOf(sessionId, ref);
+  if (where === 'repo') location.hash = href.file(sessionId, ref);
+  else if (where === 'local') openFileFloat(sessionId, ref);
+  else toast(`「${baseName(ref)}」は開けません`, 'error');
+};
 
 const formatOf = (path: string): DocFormat =>
   /\.md$/i.test(path) ? 'markdown' : /\.html?$/i.test(path) ? 'html' : /\.svg$/i.test(path) ? 'svg' : 'text';

@@ -112,7 +112,25 @@ test('ほかの OS では、Chrome の場所とメモリを分からないもの
   assert.equal(linux.headersHelperSendsPid, true);
 });
 
-const TAILSCALE_STATUS = JSON.stringify({ BackendState: 'Running', Self: { HostName: 'Core PC', DNSName: 'core.tail1234.ts.net.', TailscaleIPs: ['100.88.0.1', 'fd7a:115c:a1e0::1'] } });
+test('画面に渡すパスは、Windows では区切りを / にそろえ、エクスプローラーの最上位には、Windows ではつながっているドライブを、ほかの OS では / を並べる', () => {
+  const win = platformFor('win32');
+  assert.equal(win.displayPath('C:\\Users\\me\\dev'), 'C:/Users/me/dev');
+  const asked: string[] = [];
+  const exists = (dir: string) => {
+    asked.push(dir);
+    return dir === 'C:\\' || dir === 'E:\\';
+  };
+  assert.deepEqual(win.fileRoots(exists), ['C:/', 'E:/']);
+  assert.equal(asked.length, 26);
+
+  for (const name of ['darwin', 'linux']) {
+    const p = platformFor(name);
+    assert.equal(p.displayPath('/Users/me/dev'), '/Users/me/dev');
+    assert.deepEqual(p.fileRoots(() => assert.fail('確かめない')), ['/']);
+  }
+});
+
+const TAILSCALE_STATUS =JSON.stringify({ BackendState: 'Running', Self: { HostName: 'Core PC', DNSName: 'core.tail1234.ts.net.', TailscaleIPs: ['100.88.0.1', 'fd7a:115c:a1e0::1'] } });
 const TAILNET_HOSTS = ['core.tail1234.ts.net', 'core', '100.88.0.1', '[fd7a:115c:a1e0::1]'];
 
 test('tailscale の状態から、この端末の MagicDNS の名前と IP を取り出し、つながっていなければ空にする', () => {

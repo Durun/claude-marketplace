@@ -7,6 +7,9 @@ const FILE_REF = /^[^\s:]+\.\w+(?::\d+(?:-\d+)?)?$/;
 // スキームを省いた URL（example.com/main.js）。最初の区切りがドメイン名に見えるものは、ファイルとみなさない。
 const HOST_PREFIX = /^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\//i;
 
+/** エクスプローラーからドラッグしたファイルの、絶対パスを運ぶ種類。資料のウィジェットが受け取る。 */
+export const FILE_DRAG_TYPE = 'application/x-durun-file';
+
 /** 画像か動画なら、その MIME タイプ。 */
 export const mediaTypeOf = (path: string): string | undefined => MEDIA_TYPES[/\.\w+$/.exec(path)?.[0].toLowerCase() ?? ''];
 
