@@ -470,6 +470,10 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .window-controls:hover > .window-ctl.is-restore { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M3.6 3.6H0.5L3.6 0.5zM4.4 4.4h3.1L4.4 7.5z' fill='%23064f12'/></svg>"); }
 /* 浮かべたウィンドウは、ヘッダーやタスクバーより奥、ページの中身より手前に重ねる。--z は、後から押したものほど大きい。 */
 .float-window { position: fixed; z-index: calc(30 + var(--z)); min-width: 240px; min-height: 120px; border-color: var(--border-strong); background: var(--surface); overflow: hidden; }
+/* 最大化したウィンドウは、タスクバーを残して画面いっぱいに広げる。動かせないので、タイトルバーのカーソルも戻す。 */
+.float-window.is-max { inset: 0 0 var(--taskbar); border-radius: 0; }
+.float-window.is-max > .float-head { cursor: default; }
+.window-ctl:disabled, [data-skin="xp"] .window-ctl:disabled:hover { opacity: 0.45; cursor: default; filter: none; }
 .float-head { align-items: center; flex-wrap: nowrap; cursor: move; user-select: none; touch-action: none; }
 .float-head > .section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 大きさを変える、辺と角のつかみどころ。枠の内側に重ね、角は辺より手前に置く。 */

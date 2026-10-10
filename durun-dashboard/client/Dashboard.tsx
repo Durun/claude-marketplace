@@ -2,7 +2,7 @@
 import type { ComponentChildren, ComponentType, JSX, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AppIcon, setApps } from './apps.tsx';
-import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, isFloating, useFloats, windowControl } from './Float.tsx';
+import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, isFloating, useFloats, dockedControls } from './Float.tsx';
 import {
   COLS,
   ROWS,
@@ -414,7 +414,7 @@ type GroupProps<P> = {
   /** ウィンドウに浮かべているタブか。 */
   floating: (t: Tab) => boolean;
   /** 編集中は渡さない。選んでいるタブを、浮かぶウィンドウと枠のあいだで切り替える。 */
-  onWindow?: (t: Tab, from: DOMRect) => void;
+  onWindow?: (t: Tab, from: DOMRect, max?: boolean) => void;
   children?: ComponentChildren;
 };
 
@@ -425,7 +425,7 @@ type GroupProps<P> = {
 const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, edit, onRemove, floating, onWindow, children }: GroupProps<P>) => {
   const active = p.tabs.find((t) => t.id === p.active) ?? p.tabs[0];
   const body = (t: Tab) => {
-    // 浮かべている間は中身を描かず、点線の枠だけを残す。戻すのはウィンドウの全画面のボタンで行う。
+    // 浮かべている間は中身を描かず、点線の枠だけを残す。戻すのはウィンドウ化のボタンで行う。
     if (floating(t)) return null;
     const w = widgets[kindOf(t.id)];
     const onSettings = (settings: WidgetSettings) => onChange({ ...p, tabs: p.tabs.map((x) => (x.id === t.id ? { ...x, settings } : x)) });
@@ -439,7 +439,7 @@ const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, ed
     ...(own ?? []),
     ...(onRemove && only ? [{ kind: 'close' as const, label: `${titleOf(only)}を外す`, onClick: () => onRemove(only.id) }] : []),
     ...(onWindow && active && !p.free
-      ? [windowControl(floating(active), (e: MouseEvent) => onWindow(active, (e.currentTarget as HTMLElement).closest('.widget')!.getBoundingClientRect()))]
+      ? dockedControls(floating(active), (e, max) => onWindow(active, (e.currentTarget as HTMLElement).closest('.widget')!.getBoundingClientRect(), max))
       : []),
   ];
   return (
@@ -565,7 +565,7 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
       requestListeners.delete(take);
     };
   }, [storageKey, scope, layout, floats]);
-  const toggleWindow = (t: Tab, from: DOMRect) => (floating(t) ? dock(storageKey, scope, t.id) : floatOut(storageKey, scope, t, from));
+  const toggleWindow = (t: Tab, from: DOMRect, max?: boolean) => (floating(t) ? dock(storageKey, scope, t.id) : floatOut(storageKey, scope, t, from, max ? 'dock' : undefined));
   return (
     <>
       {editing && (

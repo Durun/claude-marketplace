@@ -9,8 +9,9 @@ import { type Tab, type WidgetSettings, clamp, kindOf, resizeRect } from './layo
  * 浮かべたウィジェット。key は元のダッシュボードの保存キー、scope はセッション画面ならセッションの id で、ホームなら空にする。
  * tab は元の枠のタブの写しで、ウィンドウで変えた設定は元の枠には戻さない。x, y, w, h は画面上の位置と大きさ（px）。
  * min は最小化してタスクバーにしまっているか。タスクバーがあるのは XP のスキンだけなので、ほかのスキンでは出したままにする。
+ * max は最大化しているときに持ち、最大化する前の状態を表す。float はウィンドウ、dock は元の枠に入れた状態。最大化の間も x, y, w, h は元のまま残す。
  */
-export type Float = { key: string; scope: string; tab: Tab; x: number; y: number; w: number; h: number; min?: boolean };
+export type Float = { key: string; scope: string; tab: Tab; x: number; y: number; w: number; h: number; min?: boolean; max?: 'float' | 'dock' };
 
 const STORAGE_KEY = 'dashboard-floats';
 // 小さくしすぎて、タイトルバーのボタンを押せなくならない大きさ。
@@ -59,13 +60,13 @@ export const isFloating = (list: Float[], key: string, scope: string, tabId: str
 const OFFSET = 24;
 const MARGIN = 40;
 
-/** 枠の今の位置から少しずらし、画面に収まる大きさで浮かべる。 */
-export const floatOut = (key: string, scope: string, tab: Tab, from: DOMRect): void => {
+/** 枠の今の位置から少しずらし、画面に収まる大きさで浮かべる。max を渡すと、元の枠から最大化して出す。 */
+export const floatOut = (key: string, scope: string, tab: Tab, from: DOMRect, max?: 'dock'): void => {
   const x = from.x + OFFSET;
   const y = from.y + OFFSET;
   const w = Math.max(MIN_W, Math.min(from.width, innerWidth - x - MARGIN));
   const h = Math.max(MIN_H, Math.min(from.height, innerHeight - y - MARGIN));
-  setFloats([...floats, { key, scope, tab, x, y, w, h }]);
+  setFloats([...floats, { key, scope, tab, x, y, w, h, max }]);
 };
 
 /** 同じものを浮かべていれば手前に出し、無ければ画面の中ほどに浮かべる。size を渡すと、その大きさ（px）で上寄りの中ほどに出す。 */
@@ -89,14 +90,20 @@ const raise = (f: Float): void => {
 /** 最小化していないウィンドウのうち、いちばん手前のものか。 */
 const isActive = (f: Float): boolean => floats.findLast((x) => !x.min) === f;
 
+/** 最大化する。戻すときのために、ウィンドウだったことを覚えておく。 */
+const maximize = (f: Float): void => update(f, { max: 'float' });
+
+/** 最大化をやめ、最大化する前の状態に戻す。元の枠から最大化していたら、枠に戻す。 */
+const unmaximize = (f: Float): void => (f.max === 'dock' ? dock(f.key, f.scope, f.tab.id) : update(f, { max: undefined }));
+
 /** Windows のタスクバーと同じく、手前のウィンドウなら最小化し、そうでなければ元に戻して手前に出す。 */
 const toggleTask = (f: Float): void => (isActive(f) ? update(f, { min: true }) : raise(f));
 
 /**
- * タイトルバー右端のボタン。kind で見た目を決める。refresh は取り直し、archive はアーカイブ、close は外す、restore はウィンドウ化、max は全画面、min は最小化。
- * pressed を渡すと、切り替えのボタンとして押した状態を示す。
+ * タイトルバー右端のボタン。kind で見た目を決める。refresh は取り直し、archive はアーカイブ、close は外す、restore はウィンドウ化、max は最大化、min は最小化。
+ * pressed を渡すと、切り替えのボタンとして押した状態を示す。disabled のボタンは押せない。
  */
-export type Control = { kind: 'refresh' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; onClick: (e: MouseEvent) => void };
+export type Control = { kind: 'refresh' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; disabled?: boolean; onClick: (e: MouseEvent) => void };
 
 /**
  * タイトルバー右端のボタンを、決まった枠に並べる。ボタンの大きさと間隔は CSS の --ctl と --ctl-gap で決める。
@@ -106,7 +113,7 @@ export const WindowControls = ({ controls }: { controls: Control[] }) =>
   controls.length > 0 && (
     <div class="window-controls">
       {controls.map((c) => (
-        <button key={c.kind} class={`window-ctl is-${c.kind}`} aria-label={c.label} title={c.label} aria-pressed={c.pressed} onClick={c.onClick} />
+        <button key={c.kind} class={`window-ctl is-${c.kind}`} aria-label={c.label} title={c.label} aria-pressed={c.pressed} disabled={c.disabled} onClick={c.onClick} />
       ))}
     </div>
   );
@@ -125,9 +132,14 @@ export const GITHUB_ICON = `/api/favicon?${new URLSearchParams({ site: 'https://
 export const JIRA_ICON = '/api/favicon?site=jira';
 export const NOTION_ICON = `/api/favicon?${new URLSearchParams({ site: 'https://www.notion.so' })}`;
 
-/** ウィンドウ化と全画面の切り替え。全画面は、ウィンドウを閉じて元の枠に戻す。 */
-export const windowControl = (floating: boolean, onClick: (e: MouseEvent) => void): Control =>
-  floating ? { kind: 'max', label: '全画面', onClick } : { kind: 'restore', label: 'ウィンドウ化', onClick };
+/**
+ * 元の枠に並べる、ウィンドウ化と最大化のボタン。onWindow は max を渡すと、最大化して浮かべる。
+ * 浮かべている間の枠には、枠に戻すボタンだけを置く。
+ */
+export const dockedControls = (floating: boolean, onWindow: (e: MouseEvent, max?: boolean) => void): Control[] =>
+  floating
+    ? [{ kind: 'restore', label: '枠に固定', onClick: onWindow }]
+    : [{ kind: 'restore', label: 'ウィンドウ化', onClick: onWindow }, { kind: 'max', label: '最大化', onClick: (e) => onWindow(e, true) }];
 
 // 大きさを変えられる辺と角。n, s, e, w の組み合わせで、角は 2 文字にする。
 export const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
@@ -139,15 +151,27 @@ type DragStart = { x: number; y: number; f: Float; edge?: string };
 /**
  * タイトルバーのドラッグで動かし、上下左右の辺と 4 つの角のドラッグで大きさを変える。
  * タスクバーには、ヘッダーの .taskbar-windows へ、このウィンドウのボタンを置く。
+ * ウィンドウ化のボタンは、最大化していれば前の状態に戻し、ウィンドウなら onDock で元の枠に戻す。元の枠が無いウィンドウでは、最大化している間だけ出す。
+ * 最大化している間は、動かすことも大きさを変えることもできない。
  */
-export const FloatFrame = ({ f, title, icon, controls, children }: { f: Float; title: string; icon: string; controls: Control[]; children: ComponentChildren }) => {
+export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; children: ComponentChildren }) => {
   const drag = useRef<DragStart>();
   const [taskbar, setTaskbar] = useState<Element | null>(null);
   useEffect(() => setTaskbar(document.querySelector('.taskbar-windows')), []);
-  const all: Control[] = [{ kind: 'min', label: '最小化', onClick: () => update(f, { min: true }) }, ...controls];
+  const restore: Control[] = f.max
+    ? [{ kind: 'restore', label: f.max === 'dock' ? '枠に戻す' : '元の大きさに戻す', onClick: () => unmaximize(f) }]
+    : onDock ? [{ kind: 'restore', label: '枠に固定', onClick: onDock }] : [];
+  // 閉じるボタンは、Windows と同じく右端に置く。
+  const all: Control[] = [
+    ...controls.filter((c) => c.kind !== 'close'),
+    { kind: 'min', label: '最小化', onClick: () => update(f, { min: true }) },
+    ...restore,
+    { kind: 'max', label: '最大化', disabled: !!f.max, onClick: () => maximize(f) },
+    ...controls.filter((c) => c.kind === 'close'),
+  ];
   const grab = (edge?: string) => ({
     onPointerDown: (e: PointerEvent) => {
-      if (e.button !== 0 || (e.target as HTMLElement).closest('button, a, input, textarea, select')) return;
+      if (e.button !== 0 || f.max || (e.target as HTMLElement).closest('button, a, input, textarea, select')) return;
       // 中身の文字を選び始めると、ブラウザがドラッグを pointercancel で打ち切るので止める。
       e.preventDefault();
       drag.current = { x: e.clientX, y: e.clientY, f, edge };
@@ -169,17 +193,17 @@ export const FloatFrame = ({ f, title, icon, controls, children }: { f: Float; t
   });
   return (
     <section
-      class={`widget float-window${f.min ? ' is-min' : ''}`}
+      class={`widget float-window${f.min ? ' is-min' : ''}${f.max ? ' is-max' : ''}`}
       aria-label={title}
-      style={`left: ${f.x}px; top: ${f.y}px; width: ${f.w}px; height: ${f.h}px; --z: ${floats.indexOf(f)}; ${controlsVar(all)}; ${iconVar(icon)}`}
+      style={`${f.max ? '' : `left: ${f.x}px; top: ${f.y}px; width: ${f.w}px; height: ${f.h}px; `}--z: ${floats.indexOf(f)}; ${controlsVar(all)}; ${iconVar(icon)}`}
       onPointerDown={() => raise(f)}
     >
-      <div class="section-head float-head" {...grab()}>
+      <div class="section-head float-head" {...grab()} onDblClick={() => (f.max ? unmaximize(f) : maximize(f))}>
         <h2 class="section-title">{title}</h2>
       </div>
       <div class="widget-tab-panel">{children}</div>
       <WindowControls controls={all} />
-      {EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
+      {!f.max && EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
       {taskbar && createPortal(
         <button class="taskbar-window" title={title} style={iconVar(icon)} aria-pressed={isActive(f)} onClick={() => toggleTask(f)}>{title}</button>,
         taskbar,
@@ -196,7 +220,7 @@ export const FloatWindow = <P extends object>({ f, widgets, data, titleOf = (t) 
   if (!w) return null;
   const onSettings = (settings: WidgetSettings) => update(f, { tab: { ...f.tab, settings } });
   return (
-    <FloatFrame f={f} title={titleOf(f.tab.settings?.title || w.title)} icon={w.icon} controls={[...(w.controls?.(data) ?? []), windowControl(true, () => dock(f.key, f.scope, f.tab.id))]}>
+    <FloatFrame f={f} title={titleOf(f.tab.settings?.title || w.title)} icon={w.icon} controls={w.controls?.(data) ?? []} onDock={() => dock(f.key, f.scope, f.tab.id)}>
       <w.Body {...data} settings={f.tab.settings ?? {}} onSettings={onSettings} />
     </FloatFrame>
   );
