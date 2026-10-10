@@ -12,6 +12,7 @@ import { HOME_KEY } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
 import { NowContext, useNow, useSnapshot } from './hooks.ts';
 import { useDeliveryFailureEffects } from './deliveryEffects.ts';
+import { useLightMode } from './lightMode.ts';
 import { useAttentionEffects } from './notify.ts';
 import { QuickSearch } from './QuickSearch.tsx';
 import { JIRA_KEY, JIRA_WIDGET, JiraFloat, pickJira } from './JiraView.tsx';
@@ -100,7 +101,8 @@ const useLinks = (route: Route, snapshot: Snapshot | null): void => {
 const App = () => {
   const route = useRoute();
   const now = useNow();
-  const { snapshot, fresh, connected } = useSnapshot();
+  const light = useLightMode();
+  const { snapshot, fresh, connected } = useSnapshot(light);
   const [searching, setSearching] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // ダッシュボードの編集は、ヘッダーのメニューかショートカットで始める。ショートカットをもう一度押すか、画面を移ったら編集を終える。
@@ -137,7 +139,8 @@ const App = () => {
       {snapshot && <Floats snapshot={snapshot} />}
       <Toasts />
       <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
-      <Dolphin />
+      {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
+      {!light && <Dolphin />}
       <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
     </NowContext.Provider>
   );

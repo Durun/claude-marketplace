@@ -2,7 +2,7 @@ import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { createDolphin, type Pose } from './dolphin3d.ts';
+import type { Pose, createDolphin } from './dolphin3d.ts';
 import { glide, pushSample, releaseVelocity, type Sample, type Velocity } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { onSubmitKey } from './ui.tsx';
@@ -126,10 +126,10 @@ const placeChat = (chat: HTMLElement, m: Motion): void => {
 };
 
 /** 毎フレーム、泳がせて向きを変え、イルカと吹き出しを動かして描く。止める関数を返す。 */
-const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HTMLElement>, m: Motion, live: Live): (() => void) => {
+const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HTMLElement>, m: Motion, live: Live): (() => void) => {
   let view: ReturnType<typeof createDolphin>;
   try {
-    view = createDolphin(canvas, W, H);
+    view = create(canvas, W, H);
   } catch {
     // GPU が使えないなどで WebGL を使えないブラウザでは、描けないのでイルカを出さない。
     box.hidden = true;
@@ -259,7 +259,23 @@ export const Dolphin = () => {
   const motion = useRef<Motion>({ x: innerWidth - W - 16, y: innerHeight - H - 52, vx: 0, vy: 0, tx: 0, ty: 0, restUntil: 0, speed: 0, yaw: 0, pitch: 0, trickT: 0 });
   const live = useRef<Live>({ hover: false, open, thinking });
   Object.assign(live.current, { open, thinking });
-  useEffect(() => (canvas.current && box.current ? animate(canvas.current, box.current, chat, motion.current, live.current) : undefined), []);
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let gone = false;
+    // 3D の描画は大きいので、最初の画面を出した後で読み込む。読み込めなければ、描けないのでイルカを出さない。
+    import('./dolphin3d.ts').then(
+      ({ createDolphin }) => {
+        if (!gone && canvas.current && box.current) stop = animate(createDolphin, canvas.current, box.current, chat, motion.current, live.current);
+      },
+      () => {
+        if (box.current) box.current.hidden = true;
+      },
+    );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, []);
 
   const toggle = () => setOpen((o) => !o);
   const ask = async (text: string) => {
