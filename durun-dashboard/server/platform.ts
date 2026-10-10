@@ -3,9 +3,10 @@
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { MemoryStatus } from '../shared/types.ts';
+import type { HostOs, MemoryStatus } from '../shared/types.ts';
 import { toMemoryStatus } from './memory.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
@@ -111,6 +112,9 @@ const win32: Platform = {
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);
 
 export const platform = platformFor(process.platform);
+
+/** サーバーが動いている OS。改善要望に添えて、OS に限った不具合を調べられるようにする。 */
+export const hostOs = (): HostOs => ({ platform: process.platform, version: os.version(), release: os.release(), arch: process.arch });
 
 /**
  * claude の CLI を起動するコマンド。
