@@ -104,9 +104,9 @@ const toggleTask = (f: Float): void => (isActive(f) ? update(f, { min: true }) :
 
 /**
  * タイトルバー右端のボタン。kind で見た目を決める。refresh は取り直し、archive はアーカイブ、close は外す、restore はウィンドウ化、max は最大化、min は最小化。
- * pressed を渡すと、切り替えのボタンとして押した状態を示す。disabled のボタンは押せない。
+ * pressed を渡すと、切り替えのボタンとして押した状態を示す。
  */
-export type Control = { kind: 'refresh' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; disabled?: boolean; onClick: (e: MouseEvent) => void };
+export type Control = { kind: 'refresh' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; onClick: (e: MouseEvent) => void };
 
 /**
  * タイトルバー右端のボタンを、決まった枠に並べる。ボタンの大きさと間隔は CSS の --ctl と --ctl-gap で決める。
@@ -116,7 +116,7 @@ export const WindowControls = ({ controls }: { controls: Control[] }) =>
   controls.length > 0 && (
     <div class="window-controls">
       {controls.map((c) => (
-        <button key={c.kind} class={`window-ctl is-${c.kind}`} aria-label={c.label} title={c.label} aria-pressed={c.pressed} disabled={c.disabled} onClick={c.onClick} />
+        <button key={c.kind} class={`window-ctl is-${c.kind}`} aria-label={c.label} title={c.label} aria-pressed={c.pressed} onClick={c.onClick} />
       ))}
     </div>
   );
@@ -155,6 +155,7 @@ type DragStart = { x: number; y: number; f: Float; edge?: string };
  * タイトルバーのドラッグで動かし、上下左右の辺と 4 つの角のドラッグで大きさを変える。
  * タスクバーには、ヘッダーの .taskbar-windows へ、このウィンドウのボタンを置く。
  * ウィンドウ化のボタンは、最大化していれば前の状態に戻し、ウィンドウなら onDock で元の枠に戻す。元の枠が無いウィンドウでは、最大化している間だけ出す。
+ * 最大化のボタンは、最大化している間は出さない。
  * 最大化している間は、動かすことも大きさを変えることもできない。
  */
 export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; children: ComponentChildren }) => {
@@ -164,12 +165,13 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
   const restore: Control[] = f.max
     ? [{ kind: 'restore', label: f.max === 'dock' ? '枠に戻す' : '元の大きさに戻す', onClick: () => unmaximize(f) }]
     : onDock ? [{ kind: 'restore', label: '枠に固定', onClick: onDock }] : [];
+  const max: Control[] = f.max ? [] : [{ kind: 'max', label: '最大化', onClick: () => maximize(f) }];
   // 閉じるボタンは、Windows と同じく右端に置く。
   const all: Control[] = [
     ...controls.filter((c) => c.kind !== 'close'),
     { kind: 'min', label: '最小化', onClick: () => update(f, { min: true }) },
     ...restore,
-    { kind: 'max', label: '最大化', disabled: !!f.max, onClick: () => maximize(f) },
+    ...max,
     ...controls.filter((c) => c.kind === 'close'),
   ];
   const grab = (edge?: string) => ({

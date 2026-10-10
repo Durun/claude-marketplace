@@ -474,7 +474,6 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 /* 最大化したウィンドウは、タスクバーを残して画面いっぱいに広げる。動かせないので、タイトルバーのカーソルも戻す。 */
 .float-window.is-max { inset: 0 0 var(--taskbar); border-radius: 0; }
 .float-window.is-max > .float-head { cursor: default; }
-.window-ctl:disabled, [data-skin="xp"] .window-ctl:disabled:hover { opacity: 0.45; cursor: default; filter: none; }
 .float-head { align-items: center; flex-wrap: nowrap; cursor: move; user-select: none; touch-action: none; }
 .float-head > .section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 大きさを変える、辺と角のつかみどころ。枠の内側に重ね、角は辺より手前に置く。 */
