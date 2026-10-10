@@ -20,6 +20,7 @@ import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
 import { type Route, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
+import { useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { Toasts } from './toast.tsx';
@@ -126,6 +127,7 @@ const App = () => {
     return () => removeEventListener('keydown', onKey);
   }, [hasDashboard]);
   useAttentionEffects(fresh);
+  useSessionToasts(fresh);
   useDeliveryFailureEffects(fresh);
   useLinks(route, snapshot);
   return (

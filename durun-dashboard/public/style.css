@@ -327,7 +327,10 @@ textarea.input { resize: vertical; min-height: 36px; }
 
 /* 右下の改善要望ボタンに重ならないよう、その上に出す。 */
 .toasts { position: fixed; right: 16px; bottom: calc(56px + var(--taskbar)); z-index: 100; display: grid; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
-.toast { padding: 10px 14px; border-radius: var(--radius); background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; }
+.toast { padding: 10px 14px; border-radius: var(--radius); background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; text-decoration: none; overflow-wrap: anywhere; }
+/* 消えるときだけ時間をかけて薄くし、マウスを載せて戻すときはすぐ戻す。位置は動かさないので、動きを減らす設定でも薄くする。 */
+.toast.is-leaving { opacity: 0; transition: opacity var(--fade) ease-in; }
+a.toast:hover { text-decoration: underline; }
 .toast-error { background: var(--critical); color: #fff; }
 
 /* ---- 改善要望 ---- */
