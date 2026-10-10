@@ -4,6 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { skipFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
@@ -28,7 +29,8 @@ const listenInbox = async (socketPath: string): Promise<{ server: net.Server; li
 
 test('動いているセッションには受信ソケットへ送り、届かなければ未配信に戻して、次に送るときに一緒に届け直す', async () => {
   // 自分のプロセスを、受信ソケットを持って生きているセッションに見立てる。
-  const socketPath = path.join(tmp, 'inbox.sock');
+  // Windows の受信ソケットは名前付きパイプなので、パイプの名前空間に開く。
+  const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\${path.basename(tmp)}` : path.join(tmp, 'inbox.sock');
   fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's1.json'), JSON.stringify({ pid: process.pid, sessionId: 's1', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   ensureSession('s1', tmp);
@@ -51,7 +53,7 @@ test('動いているセッションには受信ソケットへ送り、届か�
   await new Promise((resolve) => second.server.close(resolve));
 });
 
-test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {
+test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', { skip: skipFakeClaude }, async () => {
   // 偽の claude は、cmux のラッパーを素通しさせる環境変数と、呼ばれた引数を 1 回ごとに書き足す。
   // stop はすぐに戻り、少し後で supervisor の名簿から j2 を消す。再開の --bg は、名簿に j2 が残っていれば複製になるので、それを理由に失敗する。
   const bin = path.join(tmp, 'bin-restart');
@@ -86,7 +88,7 @@ test('入力待ちのバックグラウンドのセッションは、止めて�
   assert.equal(message.deliveredAt, undefined);
 });
 
-test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {
+test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', { skip: skipFakeClaude }, async () => {
   // 受け取った引数を書き出し、依頼が fail なら失敗する偽の claude を PATH の先頭に置く。
   const bin = path.join(tmp, 'bin');
   const argsFile = path.join(tmp, 'args');
@@ -101,7 +103,7 @@ test('新しいセッションは依頼を -- の後に置いて claude --bg で
   await assert.rejects(startSession(tmp, 'fail'), /起動できません/);
 });
 
-test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さず、消せなければ理由を返す', async () => {
+test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さず、消せなければ理由を返す', { skip: skipFakeClaude }, async () => {
   // 偽の claude は呼ばれた引数を書き足す。agents は、動いている j3、止まっている j5、端末の s4 を返す。
   // stop は少し後で supervisor の名簿から j3 を消す。rm は、名簿に残っている j3 と、未コミットの変更がある j5 を断る。
   const bin = path.join(tmp, 'bin-remove');

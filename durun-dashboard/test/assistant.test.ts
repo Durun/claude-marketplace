@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { skipFakeClaude } from './fakeClaude.ts';
 import type { Session, Snapshot } from '../shared/types.ts';
 import { askDolphin } from '../server/assistant.ts';
 
-test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクはボタンにしない', async () => {
+test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクはボタンにしない', { skip: skipFakeClaude }, async () => {
   // 標準入力のプロンプトを書き出し、外へのリンクを混ぜた答えを返す偽の claude を PATH の先頭に置く。
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-assistant-'));
   const promptFile = path.join(tmp, 'prompt');

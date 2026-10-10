@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { skipFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態や要望に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-improve-'));
@@ -52,7 +53,7 @@ test('対応した要望を書かずに止まったウェーブでは、同じ�
   assert.equal(pending().length, 1);
 });
 
-test('待機中に要望が届くと、たまっている要望をすべて渡して再開し、失敗したら ON のまま理由を残して、続けるまで待つ', async () => {
+test('待機中に要望が届くと、たまっている要望をすべて渡して再開し、失敗したら ON のまま理由を残して、続けるまで待つ', { skip: skipFakeClaude }, async () => {
   // 本物の claude を起動しないよう、受け取った引数を書き出してすぐ失敗する claude だけを PATH に置く。
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
   const argsFile = path.join(bin, 'args');

@@ -35,7 +35,7 @@ const NEEDS_HUMAN: Record<string, string> = {
 // push や PR 操作の直後は PR の状態が変わるので取り直す。
 const PR_COMMAND = /\b(git\s+push|gh\s+pr\s+(create|ready|merge|close|reopen))\b/;
 
-// フックは claude プロセスの子として動くので、送られてくる親 PID で MCP の呼び出し元を引ける。
+// フックは送り元の claude プロセスの PID を添えてくるので、それで MCP の呼び出し元を引ける。
 // セッションファイルを書かない -p 実行や、/clear で id が変わった直後もこれで追える。
 const pidSessions = new Map<number, string>();
 

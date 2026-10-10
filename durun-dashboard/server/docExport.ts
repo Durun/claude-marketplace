@@ -3,12 +3,17 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { UpstreamError } from './haiku.ts';
 
 export type ExportFormat = 'pdf' | 'png';
 
-// ponytail: macOS の Chrome の場所を既定にする。ほかの環境では CHROME_PATH で指す。
-const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// ponytail: macOS と Windows の Chrome の場所を既定にする。ほかの環境では CHROME_PATH で指す。
+const DEFAULT_CHROME =
+  process.platform === 'win32'
+    ? path.join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe')
+    : '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME = process.env.CHROME_PATH ?? DEFAULT_CHROME;
 const TIMEOUT_MS = 60_000;
 // 画面の資料と同じ幅で組む。
 const VIEWPORT = { width: 1200, height: 800 };
@@ -60,7 +65,7 @@ const render = async (port: number, file: string, format: ExportFormat): Promise
     await tab.send('Page.enable');
     await tab.send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: format === 'png' ? 2 : 1, mobile: false });
     const loaded = tab.once('Page.loadEventFired');
-    await tab.send('Page.navigate', { url: `file://${file}` });
+    await tab.send('Page.navigate', { url: pathToFileURL(file).href });
     await loaded;
     // 背景色を落とすと、暗い背景に白い文字の資料が読めなくなる。
     if (format === 'pdf') return Buffer.from(String((await tab.send('Page.printToPDF', { printBackground: true })).data), 'base64');
