@@ -124,7 +124,8 @@ button, input, textarea { font: inherit; color: inherit; }
 /* コピーボタンはコードの右上に重なるので、マウスを載せたときとボタンにフォーカスがあるときだけ出す。 */
 .md .code-block { position: relative; margin: 0 0 0.6em; }
 .md .code-block pre { margin: 0; }
-.code-block .btn { position: absolute; top: 5px; right: 5px; opacity: 0; }
+/* コピーのボタンは、あると気づけるよう薄く出しておき、マウスを載せたらはっきり出す。 */
+.code-block .btn { position: absolute; top: 5px; right: 5px; opacity: 0.45; }
 .code-block:hover .btn, .code-block .btn:focus-visible { opacity: 1; }
 .md table { display: block; overflow: auto; border-collapse: collapse; }
 .md :is(th, td) { padding: 4px 10px; border: 1px solid var(--border); }
@@ -595,6 +596,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .name-input { max-width: 100%; padding: 0; border: 0; border-radius: 2px; background: transparent; field-sizing: content; }
 .name-input:hover:not(:focus) { outline: 1px solid var(--border-strong); outline-offset: 3px; }
 .name-input:focus-visible { outline-offset: 3px; }
+.copy-text { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: copy; }
+.copy-text:hover { color: var(--text); text-decoration: underline; }
 .attach { display: inline-flex; align-items: center; gap: 6px; }
 .attach code { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); font: 12px var(--mono); }
 

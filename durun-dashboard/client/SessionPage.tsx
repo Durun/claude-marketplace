@@ -13,7 +13,7 @@ import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, href } from './router.ts';
-import { CopyButton, Empty, Ext, JiraChips, PrChips, StatusBadge } from './ui.tsx';
+import { CopyButton, CopyText, Empty, Ext, JiraChips, PrChips, StatusBadge } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -111,7 +111,10 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
     <div class="widget-body session-head">
       <div class="head-row">
         <ThemeEditor s={s} themes={themes} />
-        <span class="mono muted">{s.repo}{s.branch && ` · ${s.branch}`}</span>
+        <span class="mono muted">
+          <CopyText text={s.cwd} title={`${s.cwd}（押すと絶対パスをコピー）`}>{s.repo}</CopyText>
+          {s.branch && <> · <CopyText text={s.branch} title="押すとブランチ名をコピー">{s.branch}</CopyText></>}
+        </span>
       </div>
       <div class="head-row">
         {s.pr && <PrChips pr={s.pr} session={s.id} />}

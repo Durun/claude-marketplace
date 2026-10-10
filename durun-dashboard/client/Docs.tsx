@@ -407,6 +407,7 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
         class={`doc-frame ${raw ? 'is-raw' : ''}`}
         title={doc.title}
         sandbox="allow-scripts"
+        allow="clipboard-write"
         srcdoc={buildSrcdoc(doc)}
       />
       <FeedbackForm doc={doc} />
@@ -432,7 +433,7 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
       {fetched.error && <p class="card panel error-note">資料を取得できませんでした（{fetched.error}）</p>}
       {doc && <Downloads doc={doc} />}
       {doc && (
-        <iframe class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" srcdoc={buildSrcdoc(doc)} />
+        <iframe class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc)} />
       )}
     </FloatFrame>
   );
@@ -473,7 +474,7 @@ const TextFile = ({ f }: { f: Float }) => {
     <>
       {file.error && <p class="card panel error-note">ファイルを読めませんでした（{file.error}）</p>}
       {file.data && (
-        <iframe class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" srcdoc={buildSrcdoc({ format, content: file.data.content })} />
+        <iframe class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content })} />
       )}
     </>
   );

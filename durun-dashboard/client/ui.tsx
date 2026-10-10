@@ -226,3 +226,12 @@ export const CopyButton = ({ text, label, title }: { text: string; label: string
   };
   return <button class="btn btn-sm" title={title} onClick={click}>{done ? 'コピーしました' : label}</button>;
 };
+
+/** 文字のまま置き、押すと text をコピーする。見えている文字と違う値（ディレクトリ名に対する絶対パスなど）もコピーできる。 */
+export const CopyText = ({ text, title, children }: { text: string; title: string; children: ComponentChildren }) => {
+  const click = async () => {
+    if (await copyText(text)) toast(`コピーしました: ${text}`);
+    else toast('クリップボードにコピーできませんでした', 'error');
+  };
+  return <button class="copy-text" title={title} onClick={click}>{children}</button>;
+};
