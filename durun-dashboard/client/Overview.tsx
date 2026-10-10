@@ -1,4 +1,5 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
+import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Attention, BgTask, ChatEntry, FileWhere, Session, Subagent, TaskItem } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
@@ -13,7 +14,7 @@ import { Composer, MessageInput } from './Messaging.tsx';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty } from './ui.tsx';
+import { Chip, Empty, StatusBadge } from './ui.tsx';
 
 const TASK_LABEL: Record<TaskItem['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -119,15 +120,52 @@ const BgRow = ({ sessionId, t }: { sessionId: string; t: BgTask }) => {
   );
 };
 
-/** サブエージェントと、バックグラウンドの shell と Monitor を、実行中のものから並べる。 */
-export const AgentList = ({ s: { id, subagents, background } }: { s: Session }) => {
-  const rows = [
-    ...subagents.map((a) => ({ running: a.running, el: <SubagentRow key={`a:${a.id}`} sessionId={id} a={a} /> })),
-    ...[...background].reverse().map((t) => ({ running: t.status === 'running', el: <BgRow key={`b:${t.id}`} sessionId={id} t={t} /> })),
-  ].sort((a, b) => Number(b.running) - Number(a.running));
+/** メインエージェントの状態。いま進めているタスクがあれば、それを添える。 */
+const MainAgent = ({ s }: { s: Session }) => {
+  const active = s.tasks.find((t) => t.status === 'in_progress');
   return (
-    <WidgetPanel title="エージェント" count={rows.length}>
-      {rows.length === 0 ? <Empty>エージェントはいません。</Empty> : <ul class="subagents">{rows.map((r) => r.el)}</ul>}
+    <div class="subagent agent-main">
+      <StatusBadge status={s.status} />
+      <span class="subagent-desc">{active ? active.activeForm ?? active.subject : s.name}</span>
+      <span class="subagent-meta">
+        {s.usage.model && <Chip>{s.usage.model}</Chip>}
+        <span title="コンテキストの使用率">コンテキスト {Math.round(s.usage.contextPercent)}%</span>
+      </span>
+    </div>
+  );
+};
+
+/** エージェントのウィジェットの 1 区分。count を渡した区分は、0 件なら empty を出す。 */
+const AgentSection = ({ title, count, empty, children }: { title: string; count?: number; empty?: string; children: ComponentChildren }) => (
+  <section class="agent-section" aria-label={title}>
+    <h3 class="agent-section-title">
+      {title}
+      {count !== undefined && <span class="count-pill">{count}</span>}
+    </h3>
+    {count === 0 ? <p class="help">{empty}</p> : children}
+  </section>
+);
+
+const runningFirst = <T,>(list: T[], running: (item: T) => boolean): T[] => list.toSorted((a, b) => Number(running(b)) - Number(running(a)));
+
+/**
+ * メインエージェント、サブエージェント、ツール（バックグラウンドの shell と Monitor）の 3 つに分けて並べる。
+ * サブエージェントとツールは、実行中のものから並べる。見出しの件数には、メインエージェントを入れない。
+ */
+export const AgentList = ({ s }: { s: Session }) => {
+  const subagents = runningFirst(s.subagents, (a) => a.running);
+  const tools = runningFirst(s.background.toReversed(), (t) => t.status === 'running');
+  return (
+    <WidgetPanel title="エージェント" count={subagents.length + tools.length}>
+      <AgentSection title="メインエージェント">
+        <MainAgent s={s} />
+      </AgentSection>
+      <AgentSection title="サブエージェント" count={subagents.length} empty="サブエージェントはいません。">
+        <ul class="subagents">{subagents.map((a) => <SubagentRow key={a.id} sessionId={s.id} a={a} />)}</ul>
+      </AgentSection>
+      <AgentSection title="ツール" count={tools.length} empty="バックグラウンドで動かしたツールはありません。">
+        <ul class="subagents">{tools.map((t) => <BgRow key={t.id} sessionId={s.id} t={t} />)}</ul>
+      </AgentSection>
     </WidgetPanel>
   );
 };

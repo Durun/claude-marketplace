@@ -652,6 +652,9 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .subagent-chat { max-height: 420px; margin-top: 8px; padding: 8px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 .bg-command, .bg-output { margin: 6px 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .subagent:last-child { border-bottom: 0; }
+.agent-section + .agent-section { margin-top: 12px; }
+.agent-section-title { display: flex; align-items: center; gap: 6px; margin: 0; padding-bottom: 3px; border-bottom: 1px solid var(--border-strong); color: var(--text-2); font-size: 12px; font-weight: 600; }
+.agent-main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 10px; }
 .run { --tone: var(--muted); display: inline-flex; align-items: center; gap: 5px; min-width: 4.5em; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .run.is-running { --tone: var(--busy); color: var(--text); font-weight: 600; }
 .subagent-desc { overflow-wrap: anywhere; }
