@@ -27,7 +27,6 @@ pnpm install-statusline
 Windows でも同じ手順で動く。
 フックと statusline のラッパーは Claude Code が Git Bash で動かすので、Claude Code と同じく Git for Windows が要る。
 メモリプレッシャーは macOS でだけ出る。
-Windows では、受信ソケット経由のメッセージ（作業中、権限の確認待ち、端末のセッション宛て）をまだ届けられず、送信したメッセージに理由を出して未配信のまま残す。
 
 ## できること
 

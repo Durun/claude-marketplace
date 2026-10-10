@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
-import { claudeCommand, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
+import { claudeCommand, type Files, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
 
 const NETSTAT = `
 アクティブな接続
@@ -34,19 +34,36 @@ test('netstat の行から、クライアント側のポートでサーバーへ
   assert.equal(ownerInNetstat(NETSTAT, 50999, 7337), undefined);
 });
 
-test('Windows では、シェルに書くパスを / 区切りにし、MCP の呼び出し元を netstat から引き、受信ソケットへは送らない', async () => {
+test('Windows では、シェルに書くパスを / 区切りにし、MCP の呼び出し元を netstat から引く', async () => {
   const win = platformFor('win32');
   assert.equal(win.shellPath('C:\\Users\\me\\.durun-dashboard'), 'C:/Users/me/.durun-dashboard');
   assert.equal(win.defaultChromePath({ PROGRAMFILES: 'D:\\Apps' }), 'D:\\Apps\\Google\\Chrome\\Application\\chrome.exe');
   assert.equal(win.defaultChromePath({}), 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
   assert.equal(win.localSocketPath('C:\\Temp\\test-abc', 'inbox'), '\\\\.\\pipe\\test-abc-inbox');
   assert.equal(win.headersHelperSendsPid, false);
-  assert.match(win.inboxBlocker ?? '', /認証/);
 
   const { run, calls } = fakeRun({ netstat: NETSTAT });
   assert.equal(await win.connectionOwner(50692, 7337, run), 33544);
   assert.deepEqual(calls, ['netstat -ano']);
   assert.equal(await win.readMemory(run), null);
+});
+
+test('Windows では、受信ソケットのトークンを、送り先のセッションの鍵から読み、読めなければ理由を返す', () => {
+  const win = platformFor('win32');
+  const dir = 'C:\\Users\\me\\.claude\\sessions';
+  const files = (contents: Record<string, string>): Files => ({
+    list: () => Object.keys(contents),
+    read: (file) => contents[file.slice(dir.length + 1)] ?? assert.fail(`無いファイルを読んだ: ${file}`),
+  });
+  // PID が前方一致するだけのほかのセッションの鍵と、セッションファイルは選ばない。
+  const sessions = files({
+    '123.json': '{}',
+    '1234.aaaa.key': JSON.stringify({ peerToken: 'other' }),
+    '123.bbbb.key': JSON.stringify({ peerToken: 'mine', procStartFt: '1', pidDomain: 'win32:core' }),
+  });
+  assert.equal(win.inboxToken(123, dir, sessions), 'mine');
+  assert.throws(() => win.inboxToken(999, dir, sessions), /鍵がありません/);
+  assert.throws(() => win.inboxToken(123, dir, files({ '123.bbbb.key': JSON.stringify({ token: 'renamed' }) })), /鍵の形が変わって/);
 });
 
 test('macOS では、パスをそのまま使い、PID は headersHelper に任せ、メモリを sysctl と vm_stat から読む', async () => {
@@ -55,7 +72,8 @@ test('macOS では、パスをそのまま使い、PID は headersHelper に任�
   assert.equal(mac.defaultChromePath({}), '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
   assert.equal(mac.localSocketPath('/tmp/test-abc', 'inbox'), '/tmp/test-abc/inbox.sock');
   assert.equal(mac.headersHelperSendsPid, true);
-  assert.equal(mac.inboxBlocker, undefined);
+  // Unix ソケットには認証が要らないので、鍵を読みに行かない。
+  assert.equal(mac.inboxToken(123, '/sessions', { list: () => assert.fail('読まない'), read: () => assert.fail('読まない') }), undefined);
 
   const { run, calls } = fakeRun({
     '/usr/sbin/sysctl': '2\n40\n17179869184\ntotal = 2048.00M  used = 512.00M  free = 1536.00M  (encrypted)\n',
