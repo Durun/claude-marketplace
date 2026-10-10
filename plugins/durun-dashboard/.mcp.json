@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "durun-dashboard": {
+      "type": "http",
+      "url": "http://127.0.0.1:${DURUN_DASHBOARD_PORT:-7337}/mcp",
+      "headersHelper": "printf '{\"X-Claude-Pid\":\"%s\"}' \"$PPID\""
+    }
+  }
+}
