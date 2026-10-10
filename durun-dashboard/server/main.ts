@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileWhere, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { askDolphin } from './assistant.ts';
+import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
@@ -30,10 +31,6 @@ const MAX_BODY_BYTES = 10 * 1024 * 1024;
 // ファイル変更は連続して届くので、画面への配信はこの間隔にまとめる。
 const BROADCAST_INTERVAL_MS = 400;
 const PR_CACHE_FILE = 'gh-pr-status-cache.json';
-
-// DNS リバインディングと他サイトからの書き込みを防ぐため、Host と Origin を自分自身に限る。
-const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
-const ALLOWED_ORIGINS = new Set([...ALLOWED_HOSTS].map((h) => `http://${h}`));
 
 const STATIC: Record<string, string> = {
   '/': 'public/index.html',
@@ -699,11 +696,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   throw new HttpError(404, 'not found');
 };
 
-const server = http.createServer((req, res) => {
-  const origin = req.headers.origin;
-  if (!ALLOWED_HOSTS.has(req.headers.host ?? '') || (origin && !ALLOWED_ORIGINS.has(origin))) {
-    return void res.writeHead(403).end('forbidden');
-  }
+const server = http.createServer(async (req, res) => {
+  if (!(await allowRequest(req.headers.host, req.headers.origin, PORT))) return void res.writeHead(403).end('forbidden');
   route(req, res).catch((e: unknown) => {
     // 入力の誤り（4xx）と claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
     const status = e instanceof HttpError ? e.status : e instanceof UpstreamError ? 502 : 500;
