@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { skipFakeClaude } from './fakeClaude.ts';
+import { js, useFakeClaude } from './fakeClaude.ts';
 import type { PrInfo, PrThread } from '../shared/types.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
@@ -12,25 +12,18 @@ process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 const { toPrDetail, toThreads } = await import('../server/integrations.ts');
 const { notesFor } = await import('../server/prReview.ts');
 
-// 標準入力のプロンプトを書き出して呼ばれた回数を数え、プロンプトに載ったスレッドのうち「黙る」を含まないものに答える偽の claude を PATH の先頭に置く。
+// 標準入力のプロンプトを書き出して呼ばれた回数を数え、プロンプトに載ったスレッドのうち「黙る」を含まないものに答える偽の claude を置く。
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
-fs.mkdirSync(path.join(tmp, 'bin'));
-fs.writeFileSync(
-  path.join(tmp, 'bin', 'claude'),
-  `#!/bin/sh
-cat > '${promptFile}'
-echo >> '${callsFile}'
-node -e '
-const prompt = require("fs").readFileSync(process.argv[1], "utf8");
-const ids = [...prompt.matchAll(/<thread id="([^"]+)">([^]*?)<\\/thread>/g)].filter((m) => !m[2].includes("黙る")).map((m) => m[1]);
-const threads = ids.map((id) => ({ id, explanation: " " + id + " の説明 ", factCheck: "正しい", proposal: "直す" }));
-console.log(JSON.stringify({ structured_output: { threads } }));
-' '${promptFile}'
-`,
-  { mode: 0o755 },
+useFakeClaude(
+  tmp,
+  `const prompt = stdin();
+fs.writeFileSync(${js(promptFile)}, prompt);
+fs.appendFileSync(${js(callsFile)}, '\\n');
+const ids = [...prompt.matchAll(/<thread id="([^"]+)">([^]*?)<\\/thread>/g)].filter((m) => !m[2].includes('黙る')).map((m) => m[1]);
+const threads = ids.map((id) => ({ id, explanation: ' ' + id + ' の説明 ', factCheck: '正しい', proposal: '直す' }));
+console.log(JSON.stringify({ structured_output: { threads } }));`,
 );
-process.env.PATH = `${path.join(tmp, 'bin')}${path.delimiter}${process.env.PATH}`;
 const calls = (): number => (fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8').length : 0);
 const lastPrompt = (): string => fs.readFileSync(promptFile, 'utf8');
 
@@ -69,7 +62,7 @@ test('toThreads は、未解決のスレッドだけを、先頭のコメント�
   ]);
 });
 
-test('notesFor は、分析していないスレッドだけを 1 回でまとめて分析し、返信が付いたスレッドは作り直す', { skip: skipFakeClaude }, async () => {
+test('notesFor は、分析していないスレッドだけを 1 回でまとめて分析し、返信が付いたスレッドは作り直す', async () => {
   const a = thread('a', '直して');
   const b = thread('b', 'ここも');
   assert.deepEqual(await notesFor(tree, pr, [a, b]), {
@@ -86,7 +79,7 @@ test('notesFor は、分析していないスレッドだけを 1 回でまと�
   assert.doesNotMatch(lastPrompt(), /<thread id="a">/);
 });
 
-test('notesFor は、分析が返らなかったスレッドの理由を返し、次に頼まれたときに作り直す', { skip: skipFakeClaude }, async () => {
+test('notesFor は、分析が返らなかったスレッドの理由を返し、次に頼まれたときに作り直す', async () => {
   const silent = thread('c', '黙る');
   const before = calls();
   const { notes, failed } = await notesFor(tree, pr, [silent]);

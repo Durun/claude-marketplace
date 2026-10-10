@@ -3,14 +3,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { platform } from './platform.ts';
 import { DATA_DIR } from './store.ts';
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 const SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
 const BACKUP = `${SETTINGS}.bak-durun-dashboard`;
-// statusLine のコマンドは Windows でも Git Bash の sh で動くので、パスを / 区切りで書く。
-const toShellPath = (p: string): string => p.replaceAll(path.sep, '/');
-const TEE = toShellPath(path.join(import.meta.dirname, '..', 'bin', 'statusline-tee.sh'));
+const TEE = platform.shellPath(path.join(import.meta.dirname, '..', 'bin', 'statusline-tee.sh'));
 const STATUSLINE_ORIGINAL = path.join(DATA_DIR, 'statusline-original');
 
 type Settings = { statusLine?: { type?: string; command?: string } & Record<string, unknown> };
@@ -22,7 +21,7 @@ const installStatusline = (settings: Settings): void => {
     fs.mkdirSync(path.dirname(STATUSLINE_ORIGINAL), { recursive: true });
     fs.writeFileSync(STATUSLINE_ORIGINAL, current);
   }
-  settings.statusLine = { ...settings.statusLine, type: 'command', command: `sh '${TEE}' '${toShellPath(DATA_DIR)}'` };
+  settings.statusLine = { ...settings.statusLine, type: 'command', command: `sh '${TEE}' '${platform.shellPath(DATA_DIR)}'` };
 };
 
 const uninstallStatusline = (settings: Settings): void => {

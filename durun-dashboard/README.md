@@ -27,6 +27,7 @@ pnpm install-statusline
 Windows でも同じ手順で動く。
 フックと statusline のラッパーは Claude Code が Git Bash で動かすので、Claude Code と同じく Git for Windows が要る。
 メモリプレッシャーは macOS でだけ出る。
+Windows では、受信ソケット経由のメッセージ（作業中、権限の確認待ち、端末のセッション宛て）をまだ届けられず、送信したメッセージに理由を出して未配信のまま残す。
 
 ## できること
 
@@ -118,3 +119,9 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 pnpm check   # 型検査
 pnpm test
 ```
+
+OS ごとに違う情報の取り方と操作は、互換レイヤー `server/platform.ts` にまとめる。
+ほかのコードは `process.platform` を見ずに、必ずここを経由する。claude の起動も `claudeCommand` を通す。
+OS ごとの実装は `platformFor` で名前から選べ、外のコマンドは引数で差し替えられるので、`test/platform.test.ts` はどの OS の上でも全部の実装を確かめる。
+互換レイヤーの外に OS の判定や claude の起動を書くと、同じテストが落ちる。
+テストで claude を偽物にするときは、`test/fakeClaude.ts` の `useFakeClaude` で node のスクリプトを置く。
