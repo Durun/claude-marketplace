@@ -7,6 +7,7 @@ import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, 
 import { askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
+import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -31,8 +32,11 @@ const ROOT = path.join(import.meta.dirname, '..');
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 // 壁紙の画像は、画面いっぱいの写真でも受けられる大きさまで。
 const MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
-// ファイル変更は連続して届くので、画面への配信はこの間隔にまとめる。
+// ファイル変更は連続して届くので、画面への配信はこの間隔にまとめる。軽量モードの画面には、通信と描き直しを減らすよう、間隔を空けて配る。
 const BROADCAST_INTERVAL_MS = 400;
+const LIGHT_BROADCAST_INTERVAL_MS = 3000;
+// これより小さい応答は、縮めても通信量がほとんど変わらない。
+const MIN_COMPRESS_BYTES = 1024;
 const PR_CACHE_FILE = 'gh-pr-status-cache.json';
 
 const STATIC: Record<string, string> = {
@@ -43,6 +47,8 @@ const STATIC: Record<string, string> = {
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
 };
+// 要るときに読み込むチャンク。名前に中身のハッシュが入る。
+const CHUNK = /^\/chunks\/[\w-]+\.js$/;
 const CONTENT_TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 
 class HttpError extends Error {
@@ -53,8 +59,13 @@ class HttpError extends Error {
   }
 }
 
-const json = (res: ServerResponse, body: unknown, status = 200): void => {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body));
+const json = (req: IncomingMessage, res: ServerResponse, body: unknown, status = 200): void => {
+  const raw = Buffer.from(JSON.stringify(body));
+  const head = { 'content-type': 'application/json; charset=utf-8', vary: 'accept-encoding' };
+  const plain = () => void res.writeHead(status, head).end(raw);
+  const encoding = raw.length >= MIN_COMPRESS_BYTES ? pickEncoding(req.headers['accept-encoding']) : undefined;
+  if (!encoding) return plain();
+  compress(raw, encoding).then((packed) => void res.writeHead(status, { ...head, 'content-encoding': encoding }).end(packed), plain);
 };
 
 const readBytes = async (req: IncomingMessage, max: number): Promise<Buffer> => {
@@ -96,24 +107,32 @@ const sessionMeta = (id: string) => {
   return meta;
 };
 
-const clients = new Set<ServerResponse>();
-let broadcastTimer: NodeJS.Timeout | undefined;
+/** 開いている画面。配る間隔は画面ごとに違うので、間隔ごとにまとめて配る。 */
+const clients = new Map<ServerResponse, { send: (text: string) => void; interval: number }>();
+const broadcastTimers = new Map<number, NodeJS.Timeout>();
 
-const broadcast = (): void => {
-  broadcastTimer = undefined;
-  if (!clients.size) return;
-  const data = `data: ${JSON.stringify(buildSnapshot())}\n\n`;
-  for (const c of clients) c.write(data);
+const snapshotEvent = (): string => `data: ${JSON.stringify(buildSnapshot())}\n\n`;
+
+const broadcast = (interval: number): void => {
+  broadcastTimers.delete(interval);
+  const targets = [...clients.values()].filter((c) => c.interval === interval);
+  if (!targets.length) return;
+  const data = snapshotEvent();
+  for (const c of targets) c.send(data);
 };
 
 const scheduleBroadcast = (): void => {
-  broadcastTimer ??= setTimeout(broadcast, BROADCAST_INTERVAL_MS);
+  for (const { interval } of clients.values()) {
+    if (!broadcastTimers.has(interval)) broadcastTimers.set(interval, setTimeout(() => broadcast(interval), interval));
+  }
 };
 
-const openEvents = (req: IncomingMessage, res: ServerResponse): void => {
-  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-  res.write(`data: ${JSON.stringify(buildSnapshot())}\n\n`);
-  clients.add(res);
+const openEvents = (req: IncomingMessage, res: ServerResponse, url: URL): void => {
+  const encoding = pickEncoding(req.headers['accept-encoding']);
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...(encoding && { 'content-encoding': encoding }) });
+  const send = compressedStream(res, encoding);
+  send(snapshotEvent());
+  clients.set(res, { send, interval: url.searchParams.has('light') ? LIGHT_BROADCAST_INTERVAL_MS : BROADCAST_INTERVAL_MS });
   req.on('close', () => clients.delete(res));
 };
 
@@ -656,14 +675,28 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
 ];
 
-const serveStatic = (res: ServerResponse, pathname: string): boolean => {
-  const file = STATIC[pathname];
+const serveStatic = async (req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> => {
+  const chunk = CHUNK.test(pathname);
+  const file = STATIC[pathname] ?? (chunk ? `public${pathname}` : undefined);
   if (!file) return false;
   const full = path.join(ROOT, file);
-  if (!fs.existsSync(full)) throw new HttpError(404, `${file} がありません。pnpm build を実行してください。`);
-  // コードの変更で作り直したファイルを、読み込み直したときに必ず取り直させる。
-  res.writeHead(200, { 'content-type': `${CONTENT_TYPES[path.extname(full)] ?? 'application/octet-stream'}; charset=utf-8`, 'cache-control': 'no-cache' });
-  fs.createReadStream(full).pipe(res);
+  const stat = fs.statSync(full, { throwIfNoEntry: false });
+  if (!stat) throw new HttpError(404, `${file} がありません。pnpm build を実行してください。`);
+  const etag = etagOf(stat);
+  const head = {
+    'content-type': `${CONTENT_TYPES[path.extname(full)] ?? 'application/octet-stream'}; charset=utf-8`,
+    // コードの変更で作り直したファイルは、読み込み直したときに必ず確かめさせ、変わっていなければ本体を送らない。チャンクは中身が変われば名前も変わるので、確かめさせない。
+    'cache-control': chunk ? 'max-age=31536000, immutable' : 'no-cache',
+    etag,
+    vary: 'accept-encoding',
+  };
+  if (notModified(req.headers['if-none-match'], etag)) {
+    res.writeHead(304, head).end();
+    return true;
+  }
+  const encoding = pickEncoding(req.headers['accept-encoding']);
+  if (encoding) res.writeHead(200, { ...head, 'content-encoding': encoding }).end(await compressedFile(full, etag, encoding));
+  else fs.createReadStream(full).pipe(res.writeHead(200, { ...head, 'content-length': stat.size }));
   return true;
 };
 
@@ -671,11 +704,15 @@ const serveStatic = (res: ServerResponse, pathname: string): boolean => {
  * XP スキンの壁紙。画像の権利の都合でリポジトリに含めず、メニューの「壁紙」で渡した画像だけを配信する。渡していなければ 404 になり、CSS のグラデーションで描く。
  * URL で渡した画像は、サーバーからは取りに行かず、画面をその URL へ送って読ませる。
  */
-const sendWallpaper = (res: ServerResponse): void => {
+const sendWallpaper = (req: IncomingMessage, res: ServerResponse): void => {
   const wallpaper = readWallpaper(DATA_DIR);
   if (!wallpaper) throw new HttpError(404, '壁紙がありません');
   if ('url' in wallpaper) return void res.writeHead(302, { location: wallpaper.url, 'cache-control': 'no-cache' }).end();
-  res.writeHead(200, { 'content-type': wallpaper.type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+  // 画面を開くたびに確かめさせ、変えていなければ画像を送り直さない。
+  const etag = etagOf(fs.statSync(wallpaper.file));
+  const head = { 'content-type': wallpaper.type, 'cache-control': 'no-cache', etag, 'x-content-type-options': 'nosniff' };
+  if (notModified(req.headers['if-none-match'], etag)) return void res.writeHead(304, head).end();
+  res.writeHead(200, head);
   fs.createReadStream(wallpaper.file).pipe(res);
 };
 
@@ -703,8 +740,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     await fillCallerPid(req);
     return handleMcp(req, res, await readBody(req));
   }
-  if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res);
-  if (req.method === 'GET' && url.pathname === '/wallpaper') return sendWallpaper(res);
+  if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res, url);
+  if (req.method === 'GET' && url.pathname === '/wallpaper') return sendWallpaper(req, res);
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
@@ -715,14 +752,14 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // Chrome を起動するので、他のサイトから GET で起こされないよう POST で受ける。
   const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png)$/.exec(url.pathname);
   if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');
-  if (req.method === 'GET' && serveStatic(res, url.pathname)) return;
+  if (req.method === 'GET' && (await serveStatic(req, res, url.pathname))) return;
   for (const [pattern, handler] of routes) {
     const m = pattern.exec(url.pathname);
     if (!m) continue;
     const body = req.method === 'POST' ? await readBody(req) : undefined;
     const result = await handler(m.map((s) => decodeURIComponent(s)), body, url, req);
     if (result === undefined) return void res.writeHead(204).end();
-    return json(res, result);
+    return json(req, res, result);
   }
   throw new HttpError(404, 'not found');
 };
@@ -736,7 +773,7 @@ const server = http.createServer(async (req, res) => {
       console.error(e);
       recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);
     }
-    if (!res.headersSent) json(res, { error: (e as Error).message }, status);
+    if (!res.headersSent) json(req, res, { error: (e as Error).message }, status);
     else res.end();
   });
 });

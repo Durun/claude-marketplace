@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "build": "esbuild client/main.tsx --bundle --format=esm --target=es2022 --outfile=public/app.js",
+    "build": "node server/build.ts",
     "start": "node server/start.ts",
     "check": "tsc --noEmit",
     "test": "node --test test/*.test.ts",

@@ -203,6 +203,8 @@ textarea.input { resize: vertical; min-height: 36px; }
 .badge-busy .dot, .is-running .dot { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .badge-busy .dot, .is-running .dot { animation: none; } }
+/* 軽量モードでは、描き直しを続けさせるアニメーションをすべて止める。 */
+[data-light] *, [data-light] *::before, [data-light] *::after { animation: none !important; }
 
 .count-pill {
   display: inline-block; min-width: 20px; margin-left: 6px; padding: 0 6px; border-radius: 10px;

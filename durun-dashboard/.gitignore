@@ -1,5 +1,6 @@
 node_modules/
 data/
 public/app.js
+public/chunks/
 .env.local
 .claude/worktrees/
