@@ -151,7 +151,12 @@ const reportError = (error: unknown): void => {
   reported.add(message);
   api.reportError(message, error instanceof Error ? error.stack : undefined).catch(() => {});
 };
-addEventListener('error', (e) => reportError(e.error ?? e.message));
+addEventListener('error', (e) => {
+  // 別オリジンのスクリプトの例外は、ブラウザが中身を伏せて 'Script error.' とだけ伝える。
+  // 画面のスクリプトは同じオリジンの app.js だけなので、これは拡張機能などが差し込んだスクリプトの例外で、直せない。
+  if (e.error == null && e.message === 'Script error.') return;
+  reportError(e.error ?? e.message);
+});
 addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 const root = document.getElementById('app');
