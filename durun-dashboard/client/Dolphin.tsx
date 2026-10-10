@@ -2,7 +2,8 @@ import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { createDolphin, type Pose } from './dolphin3d.ts';
+import type { Pose, createDolphin } from './dolphin3d.ts';
+import { glide, pushSample, releaseVelocity, type Sample, type Velocity } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { onSubmitKey } from './ui.tsx';
 
@@ -17,13 +18,20 @@ const TRICK_EVERY_S = 20;
 const TRICK_S = 1.5;
 // 宙返りで描く円の半径（px）。体の長さくらいにしないと、その場で回っているように見える。
 const LOOP_R = 50;
+// 飛ばされた後に泳ぎへ戻るとき、進んでいた向きのこの距離（px）だけ先を次の目的地にする。向きを急に変えないため。
+const CARRY_ON = 240;
+// 尾を振る速さの上限。飛んでいる間の速さにそのまま比例させると、尾が速すぎて震えて見える。
+const MAX_STROKE = 4;
 
 type Turn = AssistantMessage & { links?: AssistantReply['links'] };
 
-/** 位置と速さ（px、px/s）と向きと、している技とその進み具合（0〜1）。毎フレーム変わるので、描き直しを起こさない ref に持つ。 */
-type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number };
+/**
+ * 位置と速さ（px、px/s）と向きと、している技とその進み具合（0〜1）。毎フレーム変わるので、描き直しを起こさない ref に持つ。
+ * fling は、勢いよく離されて慣性で飛んでいる間の速さ。
+ */
+type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Velocity };
 
-type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean };
+type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[] };
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
 type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag };
@@ -71,6 +79,29 @@ const swim = (m: Motion, dt: number, now: number, held: boolean): void => {
 };
 
 /**
+ * 勢いよく離されたら、慣性で滑りながら、進む向きへ体を向ける。泳ぐ速さまで落ちたら、そのまま前へ泳ぎ続ける。
+ * 触られていても止めない。飛ばしたのは人間なので、カーソルが上に残っていても飛んでいく。
+ */
+const fly = (m: Motion, fling: Velocity, dt: number, now: number): void => {
+  const maxX = innerWidth - W;
+  const maxY = innerHeight - H;
+  const next = glide(m.x, m.y, fling, dt, { maxX, maxY });
+  Object.assign(m, next);
+  m.fling = { vx: next.vx, vy: next.vy };
+  // 真上や真下へ飛ぶときは、いま向いている側のまま頭を上げ下げする。
+  const yaw = next.vx < -8 ? -Math.PI : next.vx > 8 ? 0 : m.yaw < -Math.PI / 2 ? -Math.PI : 0;
+  // 泳ぐときより速く向きを合わせる。飛んでいる間に向きが遅れると、横滑りして見える。
+  const ease = Math.min(1, dt * 12);
+  m.yaw += (yaw - m.yaw) * ease;
+  m.pitch += (Math.atan2(-next.vy, Math.abs(next.vx)) - m.pitch) * ease;
+  const speed = Math.hypot(next.vx, next.vy);
+  if (speed > SPEED) return;
+  m.fling = undefined;
+  const ahead = speed > 0 ? CARRY_ON / speed : 0;
+  Object.assign(m, { speed, restUntil: now, tx: clamp(m.x + next.vx * ahead, 0, maxX), ty: clamp(m.y + next.vy * ahead, 0, maxY) });
+};
+
+/**
  * 横へ泳いでいる間だけ、ときどき技を始める。始めた技は触られても最後まで回る。
  * 横向きに限るのは、正面向きや向きを変えている途中では、回る軸が体の軸からずれて見えるため。
  * 宙返りは、上へ描く円が画面に収まるときだけ始める。画面の端に当たると円がつぶれるため。
@@ -95,17 +126,16 @@ const placeChat = (chat: HTMLElement, m: Motion): void => {
 };
 
 /** 毎フレーム、泳がせて向きを変え、イルカと吹き出しを動かして描く。止める関数を返す。 */
-const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HTMLElement>, m: Motion, live: Live): (() => void) => {
+const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HTMLElement>, m: Motion, live: Live): (() => void) => {
   let view: ReturnType<typeof createDolphin>;
   try {
-    view = createDolphin(canvas, W, H);
+    view = create(canvas, W, H);
   } catch {
     // GPU が使えないなどで WebGL を使えないブラウザでは、描けないのでイルカを出さない。
     box.hidden = true;
     return () => {};
   }
-  // 動きを減らす設定の人には、泳がせずにその場に置く。
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // 動きを減らす設定（prefers-reduced-motion）は見ない。Windows でアニメーション効果を切っているだけでも止まり、壊れて見えるため。
   Object.assign(m, { tx: m.x, ty: m.y, restUntil: performance.now() + 2000 });
   let last = performance.now();
   let frame = 0;
@@ -113,12 +143,14 @@ const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HT
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dragging = !!live.drag?.moved;
-    const stopped = still || live.hover || live.open || live.thinking;
-    play(m, dt, !stopped && !dragging);
-    if (!dragging) swim(m, dt, now, stopped);
+    const stopped = live.hover || live.open || live.thinking;
+    play(m, dt, !stopped && !dragging && !m.fling);
+    if (m.fling) fly(m, m.fling, dt, now);
+    else if (!dragging) swim(m, dt, now, stopped);
     box.style.transform = `translate(${m.x}px, ${m.y}px)`;
     if (chat.current) placeChat(chat.current, m);
-    const stroke: Pose['stroke'] = live.thinking || dragging ? 2.5 : still ? 0 : stopped ? 0.4 : 0.6 + Math.hypot(m.vx, m.vy) / SPEED;
+    const moving = Math.min(MAX_STROKE, 0.6 + Math.hypot(m.vx, m.vy) / SPEED);
+    const stroke: Pose['stroke'] = m.fling ? moving : live.thinking || dragging ? 2.5 : stopped ? 0.4 : moving;
     view.draw(dt, { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke });
     frame = requestAnimationFrame(loop);
   };
@@ -129,24 +161,35 @@ const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HT
   };
 };
 
-/** 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。 */
+/** 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。勢いよく離せば、その速さで飛ばす。 */
 const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
   onPointerDown: (e: PointerEvent) => {
-    live.drag = { dx: e.clientX - m.x, dy: e.clientY - m.y, x: e.clientX, y: e.clientY, moved: false };
+    // 飛んでいる途中でつかまれたら、そこで止める。
+    m.fling = undefined;
+    live.drag = { dx: e.clientX - m.x, dy: e.clientY - m.y, x: e.clientX, y: e.clientY, moved: false, samples: [] };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   },
   onPointerMove: (e: PointerEvent) => {
     const d = live.drag;
     if (!d || (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_THRESHOLD)) return;
     d.moved = true;
+    d.samples = pushSample(d.samples, { t: performance.now(), x: e.clientX, y: e.clientY });
     const x = clamp(e.clientX - d.dx, 0, innerWidth - W);
     const y = clamp(e.clientY - d.dy, 0, innerHeight - H);
     // 引っぱる向きに体を向けるため、動いた量を速さとして残す。
     Object.assign(m, { vx: (x - m.x) * 30, vy: (y - m.y) * 30, x, y, tx: x, ty: y, restUntil: performance.now() + 1500 });
   },
   onPointerUp: () => {
-    if (live.drag && !live.drag.moved) toggle();
+    const d = live.drag;
     live.drag = undefined;
+    if (!d) return;
+    if (!d.moved) return toggle();
+    const fling = releaseVelocity(d.samples, performance.now());
+    if (!fling) return;
+    // 回っている技は止める。技の回転が残ると、進む向きを向けない。
+    Object.assign(m, { fling, trick: undefined });
+    // イルカがカーソルの下から飛び去っても、カーソルを動かすまで pointerleave は来ない。泳ぎに戻ったときに触られたままにしない。
+    live.hover = false;
   },
   onPointerCancel: () => {
     live.drag = undefined;
@@ -216,7 +259,23 @@ export const Dolphin = () => {
   const motion = useRef<Motion>({ x: innerWidth - W - 16, y: innerHeight - H - 52, vx: 0, vy: 0, tx: 0, ty: 0, restUntil: 0, speed: 0, yaw: 0, pitch: 0, trickT: 0 });
   const live = useRef<Live>({ hover: false, open, thinking });
   Object.assign(live.current, { open, thinking });
-  useEffect(() => (canvas.current && box.current ? animate(canvas.current, box.current, chat, motion.current, live.current) : undefined), []);
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let gone = false;
+    // 3D の描画は大きいので、最初の画面を出した後で読み込む。読み込めなければ、描けないのでイルカを出さない。
+    import('./dolphin3d.ts').then(
+      ({ createDolphin }) => {
+        if (!gone && canvas.current && box.current) stop = animate(createDolphin, canvas.current, box.current, chat, motion.current, live.current);
+      },
+      () => {
+        if (box.current) box.current.hidden = true;
+      },
+    );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, []);
 
   const toggle = () => setOpen((o) => !o);
   const ask = async (text: string) => {

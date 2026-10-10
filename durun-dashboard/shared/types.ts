@@ -368,12 +368,17 @@ export type FeedbackTarget = {
   route: string;
 };
 
+/** サーバーが動いている OS。version は「Windows 11 Home」のような OS の名前、release はカーネルの版。 */
+export type HostOs = { platform: string; version: string; release: string; arch: string };
+
 /** 改善要望を送ったときの画面の状態。 */
 export type FeedbackContext = {
   url: string;
   viewport: { width: number; height: number; devicePixelRatio: number };
   colorScheme: 'light' | 'dark';
   userAgent: string;
+  /** OS やブラウザが、動きを減らす設定になっているか。アニメーションはこれを見て止める。 */
+  reducedMotion: boolean;
   /** 画面が表示していたデータ */
   snapshot: Snapshot | null;
 };

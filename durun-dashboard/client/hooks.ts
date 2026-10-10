@@ -30,8 +30,9 @@ const cachedSnapshot = (): Snapshot | null => {
 /**
  * snapshot は画面に出すデータで、サーバーから届くまでは、前に開いていたときのデータを出す。
  * fresh はサーバーから届いたものだけで、通知や読み込み直しのように、古いデータで動くと困る処理に使う。
+ * 軽量モードでは、サーバーに間隔を空けて配らせ、タブが裏にある間は受け取らない。そのため、裏にある間は通知も出ない。
  */
-export const useSnapshot = (): { snapshot: Snapshot | null; fresh: Snapshot | null; connected: boolean } => {
+export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh: Snapshot | null; connected: boolean } => {
   const [fresh, setFresh] = useState<Snapshot | null>(null);
   const [cached] = useState(cachedSnapshot);
   const [connected, setConnected] = useState(true);
@@ -43,13 +44,27 @@ export const useSnapshot = (): { snapshot: Snapshot | null; fresh: Snapshot | nu
     // SSE は変化があるまで何も送らないことがある。最初と再接続のたびに取得して、古い表示を残さない。
     const load = () => getJson<Snapshot>('/api/snapshot').then(accept).catch(() => setConnected(false));
     load();
-    const source = new EventSource('/api/events');
-    source.onopen = () => {
-      setConnected(true);
-      load();
+    let source: EventSource | undefined;
+    const open = () => {
+      source = new EventSource(light ? '/api/events?light' : '/api/events');
+      source.onopen = () => {
+        setConnected(true);
+        load();
+      };
+      source.onmessage = (e) => accept(JSON.parse(e.data) as Snapshot);
+      source.onerror = () => setConnected(false);
     };
-    source.onmessage = (e) => accept(JSON.parse(e.data) as Snapshot);
-    source.onerror = () => setConnected(false);
+    const close = () => {
+      source?.close();
+      source = undefined;
+    };
+    // 表に戻ったら、つなぎ直して最新のものを受け取る。
+    const onVisibility = () => {
+      if (document.hidden) close();
+      else if (!source) open();
+    };
+    if (light) document.addEventListener('visibilitychange', onVisibility);
+    if (!light || !document.hidden) open();
     // 閉じるときと読み込み直すときに残し、次に開いたときにすぐ出す。
     const save = () => {
       try {
@@ -60,10 +75,11 @@ export const useSnapshot = (): { snapshot: Snapshot | null; fresh: Snapshot | nu
     };
     addEventListener('pagehide', save);
     return () => {
-      source.close();
+      close();
+      document.removeEventListener('visibilitychange', onVisibility);
       removeEventListener('pagehide', save);
     };
-  }, []);
+  }, [light]);
   return { snapshot: fresh ?? cached, fresh, connected };
 };
 

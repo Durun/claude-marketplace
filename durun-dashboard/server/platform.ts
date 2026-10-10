@@ -3,9 +3,10 @@
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { MemoryStatus } from '../shared/types.ts';
+import type { HostOs, MemoryStatus } from '../shared/types.ts';
 import { toMemoryStatus } from './memory.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
@@ -41,7 +42,32 @@ export type Platform = {
   inboxToken: (pid: number, sessionsDir: string, files?: Files) => string | undefined;
   /** dir の下に置く、このプロセスが listen できるローカルのソケットの場所。 */
   localSocketPath: (dir: string, name: string) => string;
+  /** この端末を tailnet の中から指す名前と IP。Tailscale が入っていないか、つながっていなければ空。 */
+  tailnetHosts: (run?: Run) => Promise<string[]>;
 };
+
+/** tailscale status --json から、この端末の MagicDNS の名前（完全な名前と先頭のラベル）と IP を取り出す。IPv6 は Host ヘッダーと同じく [] で囲む。 */
+export const hostsInTailscaleStatus = (status: string): string[] => {
+  const { BackendState, Self } = JSON.parse(status) as { BackendState?: string; Self?: { DNSName?: string; TailscaleIPs?: string[] } };
+  if (BackendState !== 'Running' || !Self) return [];
+  const dnsName = (Self.DNSName ?? '').replace(/\.$/, '').toLowerCase();
+  const names = dnsName ? [dnsName, dnsName.split('.')[0] ?? ''] : [];
+  return [...names, ...(Self.TailscaleIPs ?? []).map((ip) => (ip.includes(':') ? `[${ip}]` : ip))].filter(Boolean);
+};
+
+/** commands を順に試し、最初に動いた tailscale の CLI に聞く。どれも動かなければ、Tailscale が無いものとして空を返す。 */
+const tailnetHostsVia =
+  (commands: string[]) =>
+  async (run: Run = realRun): Promise<string[]> => {
+    for (const command of commands) {
+      try {
+        return hostsInTailscaleStatus(await run(command, ['status', '--json', '--peers=false']));
+      } catch {
+        // CLI が無いか、Tailscale が止まっている。次の場所を試す。
+      }
+    }
+    return [];
+  };
 
 const SYSCTL_NAMES = ['kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level', 'hw.memsize', 'vm.swapusage'];
 
@@ -53,6 +79,7 @@ const posix = {
   // Unix ソケットは OS のユーザーだけが開けるので、Claude Code は認証の行を求めない。
   inboxToken: () => undefined,
   localSocketPath: (dir: string, name: string) => path.posix.join(dir, `${name}.sock`),
+  tailnetHosts: tailnetHostsVia(['tailscale']),
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -63,6 +90,8 @@ const darwin: Platform = {
     const [sysctl, vmStat] = await Promise.all([run('/usr/sbin/sysctl', ['-n', ...SYSCTL_NAMES]), run('/usr/bin/vm_stat', [])]);
     return toMemoryStatus(sysctl, vmStat);
   },
+  // App Store と配布版の Tailscale は、CLI を PATH に置かず、アプリの中に持つ。
+  tailnetHosts: tailnetHostsVia(['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']),
 };
 
 // ponytail: Linux ではメモリを読まない。広げるなら /proc/pressure/memory と /proc/meminfo から読む。
@@ -106,11 +135,15 @@ const win32: Platform = {
   },
   // Windows でプロセス間の接続を listen できるのは、ファイルシステムではなく名前付きパイプの名前空間。
   localSocketPath: (dir, name) => `\\\\.\\pipe\\${path.win32.basename(dir)}-${name}`,
+  tailnetHosts: tailnetHostsVia(['tailscale']),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);
 
 export const platform = platformFor(process.platform);
+
+/** サーバーが動いている OS。改善要望に添えて、OS に限った不具合を調べられるようにする。 */
+export const hostOs = (): HostOs => ({ platform: process.platform, version: os.version(), release: os.release(), arch: process.arch });
 
 /**
  * claude の CLI を起動するコマンド。

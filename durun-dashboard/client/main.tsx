@@ -11,6 +11,8 @@ import { Header } from './Header.tsx';
 import { HOME_KEY } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
 import { NowContext, useNow, useSnapshot } from './hooks.ts';
+import { useDeliveryFailureEffects } from './deliveryEffects.ts';
+import { useLightMode } from './lightMode.ts';
 import { useAttentionEffects } from './notify.ts';
 import { QuickSearch } from './QuickSearch.tsx';
 import { JIRA_KEY, JIRA_WIDGET, JiraFloat, pickJira } from './JiraView.tsx';
@@ -20,6 +22,7 @@ import { SearchPage } from './Search.tsx';
 import { SESSION_KEY, SessionFloat, SessionPage } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { Toasts } from './toast.tsx';
+import { WALLPAPER_KEY, WallpaperFloat } from './Wallpaper.tsx';
 
 type PageProps = { route: Route; snapshot: Snapshot; editing: boolean; onEditDone: () => void };
 
@@ -39,7 +42,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 };
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [WALLPAPER_KEY]: WallpaperFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 
@@ -98,7 +101,8 @@ const useLinks = (route: Route, snapshot: Snapshot | null): void => {
 const App = () => {
   const route = useRoute();
   const now = useNow();
-  const { snapshot, fresh, connected } = useSnapshot();
+  const light = useLightMode();
+  const { snapshot, fresh, connected } = useSnapshot(light);
   const [searching, setSearching] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // ダッシュボードの編集は、ヘッダーのメニューかショートカットで始める。ショートカットをもう一度押すか、画面を移ったら編集を終える。
@@ -116,6 +120,7 @@ const App = () => {
     return () => removeEventListener('keydown', onKey);
   }, [hasDashboard]);
   useAttentionEffects(fresh);
+  useDeliveryFailureEffects(fresh);
   useLinks(route, snapshot);
   return (
     <NowContext.Provider value={now}>
@@ -134,7 +139,8 @@ const App = () => {
       {snapshot && <Floats snapshot={snapshot} />}
       <Toasts />
       <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
-      <Dolphin />
+      {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
+      {!light && <Dolphin />}
       <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
     </NowContext.Provider>
   );
@@ -148,7 +154,12 @@ const reportError = (error: unknown): void => {
   reported.add(message);
   api.reportError(message, error instanceof Error ? error.stack : undefined).catch(() => {});
 };
-addEventListener('error', (e) => reportError(e.error ?? e.message));
+addEventListener('error', (e) => {
+  // 別オリジンのスクリプトの例外は、ブラウザが中身を伏せて 'Script error.' とだけ伝える。
+  // 画面のスクリプトは同じオリジンの app.js だけなので、これは拡張機能などが差し込んだスクリプトの例外で、直せない。
+  if (e.error == null && e.message === 'Script error.') return;
+  reportError(e.error ?? e.message);
+});
 addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 const root = document.getElementById('app');

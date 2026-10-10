@@ -5,6 +5,7 @@ import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, 
 import { clock, shortDateTime, toMs } from './format.ts';
 import { NowContext } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
+import { setLightMode, useLightMode } from './lightMode.ts';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
@@ -12,6 +13,7 @@ import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Meter, Time, rateColor } from './ui.tsx';
+import { openWallpaper } from './Wallpaper.tsx';
 
 const RateMeter = ({ label, limit }: { label: string; limit: RateLimit }) => {
   const now = useContext(NowContext);
@@ -154,6 +156,7 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
 const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
+  const light = useLightMode();
   const [skin, setSkin] = useState(savedSkin);
   const changeSkin = (next: Skin) => {
     setSkin(next);
@@ -199,6 +202,8 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
             </button>
           )}
           <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>全画面</button>
+          <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
+          <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>軽量モード</button>
           <div class="app-menu-sub">
             <div class="app-menu-item" tabindex={0} aria-haspopup="true">ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
             <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
@@ -234,6 +239,7 @@ const TaskbarClock = () => {
 };
 
 const MEMORY_TICK_MS = 5_000;
+const LIGHT_MEMORY_TICK_MS = 30_000;
 const MEMORY_ID = 'memory-flyout';
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -248,16 +254,18 @@ const fmtBytes = (n: number): string => (n >= GIB ? `${(n / GIB).toFixed(1)} GB`
 /**
  * 通知領域に常駐するメモリプレッシャーのアイコン。目盛りの高さで割合を、色でカーネルが判定した段階を示し、押すと内訳を開く。
  * メモリの変化はサーバーの Node から待ち受けられないので、アクティビティモニタの既定と同じく 5 秒ごとに読み直す。
+ * 軽量モードでは 30 秒ごとにし、タブが裏にある間は読み直さない。
  */
 const MemoryTray = () => {
+  const light = useLightMode();
   const [memory, setMemory] = useState<MemoryStatus | null>(null);
   useEffect(() => {
     // 読めない間は、古い値を見せ続けないよう隠す。
     const load = () => api.memory().then(setMemory, () => setMemory(null));
     load();
-    const timer = setInterval(load, MEMORY_TICK_MS);
+    const timer = setInterval(() => (light && document.hidden) || load(), light ? LIGHT_MEMORY_TICK_MS : MEMORY_TICK_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [light]);
   if (!memory) return null;
   const { label, color } = PRESSURE[memory.level];
   const percent = Math.round(memory.pressurePercent);

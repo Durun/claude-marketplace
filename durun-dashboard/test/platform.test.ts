@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
-import { claudeCommand, type Files, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
+import { claudeCommand, type Files, hostsInTailscaleStatus, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
 
 const NETSTAT = `
 アクティブな接続
@@ -93,6 +93,36 @@ test('ほかの OS では、Chrome の場所とメモリを分からないもの
   assert.equal(linux.defaultChromePath({}), undefined);
   assert.equal(await linux.readMemory(), null);
   assert.equal(linux.headersHelperSendsPid, true);
+});
+
+const TAILSCALE_STATUS = JSON.stringify({ BackendState: 'Running', Self: { HostName: 'Core PC', DNSName: 'core.tail1234.ts.net.', TailscaleIPs: ['100.88.0.1', 'fd7a:115c:a1e0::1'] } });
+const TAILNET_HOSTS = ['core.tail1234.ts.net', 'core', '100.88.0.1', '[fd7a:115c:a1e0::1]'];
+
+test('tailscale の状態から、この端末の MagicDNS の名前と IP を取り出し、つながっていなければ空にする', () => {
+  assert.deepEqual(hostsInTailscaleStatus(TAILSCALE_STATUS), TAILNET_HOSTS);
+  assert.deepEqual(hostsInTailscaleStatus(JSON.stringify({ BackendState: 'Stopped', Self: { DNSName: 'core.tail1234.ts.net.', TailscaleIPs: [] } })), []);
+  assert.deepEqual(hostsInTailscaleStatus(JSON.stringify({ BackendState: 'Running', Self: { DNSName: '', TailscaleIPs: ['100.88.0.1'] } })), ['100.88.0.1']);
+});
+
+test('tailnet での名前は、どの OS でも tailscale の CLI に聞き、macOS ではアプリの中の CLI も試し、CLI が無ければ空にする', async () => {
+  const MAC_APP = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
+  for (const name of ['win32', 'darwin', 'linux']) {
+    const { run, calls } = fakeRun({ tailscale: TAILSCALE_STATUS });
+    assert.deepEqual(await platformFor(name).tailnetHosts(run), TAILNET_HOSTS);
+    assert.deepEqual(calls, ['tailscale status --json --peers=false']);
+  }
+  const tried: string[] = [];
+  const onlyAt =
+    (found: string): Run =>
+    async (file) => {
+      tried.push(file);
+      if (file !== found) throw new Error('ENOENT');
+      return TAILSCALE_STATUS;
+    };
+  assert.deepEqual(await platformFor('darwin').tailnetHosts(onlyAt(MAC_APP)), TAILNET_HOSTS);
+  assert.deepEqual(tried, ['tailscale', MAC_APP]);
+  assert.deepEqual(await platformFor('win32').tailnetHosts(onlyAt(MAC_APP)), []);
+  assert.deepEqual(await platformFor('linux').tailnetHosts(onlyAt(MAC_APP)), []);
 });
 
 test('MCP の呼び出しには、headersHelper が PID を送れない OS でだけ、接続の持ち主の PID を補う', async () => {
