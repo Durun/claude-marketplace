@@ -221,11 +221,12 @@ export type RateLimits = { fiveHour?: RateLimit; sevenDay?: RateLimit; updatedAt
 
 /**
  * macOS のメモリの状態。level はカーネルが判定したメモリプレッシャーの段階で、アクティビティモニタのグラフの色（緑、黄、赤）に当たる。
- * pressurePercent は、カーネルがすぐ使えるとみなすメモリの割合を 100 から引いたもの。ほかはバイト数。
+ * percent は、カーネルがすぐ使えるとみなすメモリの割合を 100 から引いたもの。ほかはバイト数。
  */
-export type MemoryStatus = {
+export type MemoryPressure = {
+  kind: 'pressure';
   level: 'normal' | 'warn' | 'critical';
-  pressurePercent: number;
+  percent: number;
   total: number;
   app: number;
   wired: number;
@@ -233,6 +234,21 @@ export type MemoryStatus = {
   cached: number;
   swapUsed: number;
 };
+
+/**
+ * Windows のメモリの状態。percent は物理メモリの使用率で、タスクマネージャーの「メモリ」の割合に当たる。
+ * Windows は段階を判定しないので、level は使用率から決める。ほかはバイト数。
+ */
+export type MemoryUsage = {
+  kind: 'usage';
+  level: 'normal' | 'warn' | 'critical';
+  percent: number;
+  total: number;
+  used: number;
+  available: number;
+};
+
+export type MemoryStatus = MemoryPressure | MemoryUsage;
 
 /** 画面から始めるセッションと、改善要望を実装するセッションに選べるモデルと effort。どちらも空なら Claude Code の設定に従う。 */
 export const MODELS = ['fable', 'opus', 'sonnet'] as const;

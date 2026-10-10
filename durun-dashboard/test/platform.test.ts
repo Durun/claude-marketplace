@@ -4,6 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
+import { toMemoryUsage } from '../server/memory.ts';
 import { claudeCommand, type Files, hostsInTailscaleStatus, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
 
 const NETSTAT = `
@@ -45,7 +46,22 @@ test('Windows では、シェルに書くパスを / 区切りにし、MCP の�
   const { run, calls } = fakeRun({ netstat: NETSTAT });
   assert.equal(await win.connectionOwner(50692, 7337, run), 33544);
   assert.deepEqual(calls, ['netstat -ano']);
-  assert.equal(await win.readMemory(run), null);
+});
+
+test('Windows では、物理メモリの合計と空きから使用率を求め、使用率で段階を分ける', async () => {
+  const GIB = 1024 ** 3;
+  assert.deepEqual(toMemoryUsage(32 * GIB, 12 * GIB), { kind: 'usage', level: 'normal', percent: 62.5, total: 32 * GIB, used: 20 * GIB, available: 12 * GIB });
+  assert.equal(toMemoryUsage(100, 21).level, 'normal');
+  assert.equal(toMemoryUsage(100, 20).level, 'warn');
+  assert.equal(toMemoryUsage(100, 10).level, 'critical');
+  assert.equal(toMemoryUsage(0, 0).percent, 0);
+
+  // 合計と空きは Node がどの OS でも返すので、外のコマンドを呼ばずに読める。
+  const { run, calls } = fakeRun({});
+  const memory = await platformFor('win32').readMemory(run);
+  assert.deepEqual(calls, []);
+  assert.equal(memory?.kind, 'usage');
+  assert.ok(memory && memory.total > 0 && memory.percent >= 0 && memory.percent <= 100);
 });
 
 test('Windows では、受信ソケットのトークンを、送り先のセッションの鍵から読み、読めなければ理由を返す', () => {
@@ -82,7 +98,8 @@ test('macOS では、パスをそのまま使い、PID は headersHelper に任�
   const memory = await mac.readMemory(run);
   assert.deepEqual(calls.map((c) => c.split(' ')[0]).sort(), ['/usr/bin/vm_stat', '/usr/sbin/sysctl']);
   assert.equal(memory?.level, 'warn');
-  assert.equal(memory?.pressurePercent, 60);
+  assert.equal(memory?.kind, 'pressure');
+  assert.equal(memory?.percent, 60);
   assert.equal(memory?.wired, 100 * 16384);
   assert.equal(memory?.swapUsed, 512 * 1024 * 1024);
 });

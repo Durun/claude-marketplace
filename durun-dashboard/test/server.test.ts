@@ -287,8 +287,9 @@ test('toMemoryStatus は、sysctl と vm_stat の出力から、メモリプレ�
   ].join('\n');
   const page = 16384;
   assert.deepEqual(toMemoryStatus(sysctl, vmStat), {
+    kind: 'pressure',
     level: 'warn',
-    pressurePercent: 65,
+    percent: 65,
     total: 25769803776,
     app: (545064 - 22385) * page,
     wired: 198444 * page,

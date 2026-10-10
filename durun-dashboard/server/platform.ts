@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { HostOs, MemoryStatus } from '../shared/types.ts';
-import { toMemoryStatus } from './memory.ts';
+import { toMemoryStatus, toMemoryUsage } from './memory.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
 export type Run = (file: string, args: string[]) => Promise<string>;
@@ -26,7 +26,7 @@ export type Platform = {
   defaultChromePath: (env: NodeJS.ProcessEnv) => string | undefined;
   /** Claude Code がシェル（Windows では Git Bash）で動かすコマンドに書くパス。 */
   shellPath: (file: string) => string;
-  /** メモリプレッシャーと内訳。読めない OS では null を返し、画面は表示を出さない。 */
+  /** メモリプレッシャー（Windows では使用率）と内訳。読めない OS では null を返し、画面は表示を出さない。 */
   readMemory: (run?: Run) => Promise<MemoryStatus | null>;
   /**
    * MCP の headersHelper が、呼び出し元の claude の PID を X-Claude-Pid に入れられるか。
@@ -117,8 +117,8 @@ const win32: Platform = {
   defaultChromePath: (env) => path.win32.join(env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
   // Git Bash は C:/… の形のパスを読める。\ のままだと、引用符の外でエスケープとして消える。
   shellPath: (file) => file.replaceAll('\\', '/'),
-  // ponytail: Windows ではメモリを読まない。
-  readMemory: async () => null,
+  // Node の os.freemem は、Windows ではタスクマネージャーの「利用可能」と同じ値を返す。
+  readMemory: async () => toMemoryUsage(os.totalmem(), os.freemem()),
   // headersHelper が cmd.exe で動き、$PPID が展開されずに文字のまま届く。
   headersHelperSendsPid: false,
   // MCP の接続を張っているのは claude のプロセスそのものなので、接続の持ち主がそのまま呼び出し元になる。

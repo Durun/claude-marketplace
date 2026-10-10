@@ -253,6 +253,7 @@ const fmtBytes = (n: number): string => (n >= GIB ? `${(n / GIB).toFixed(1)} GB`
 
 /**
  * 通知領域に常駐するメモリプレッシャーのアイコン。目盛りの高さで割合を、色でカーネルが判定した段階を示し、押すと内訳を開く。
+ * Windows では、メモリプレッシャーの代わりに物理メモリの使用率を出す。
  * メモリの変化はサーバーの Node から待ち受けられないので、アクティビティモニタの既定と同じく 5 秒ごとに読み直す。
  * 軽量モードでは 30 秒ごとにし、タブが裏にある間は読み直さない。
  */
@@ -268,25 +269,33 @@ const MemoryTray = () => {
   }, [light]);
   if (!memory) return null;
   const { label, color } = PRESSURE[memory.level];
-  const percent = Math.round(memory.pressurePercent);
-  const summary = `メモリプレッシャー: ${label}（${percent}%）`;
-  const rows: [name: string, bytes: number, sub?: boolean][] = [
-    ['物理メモリ', memory.total],
-    ['使用済みメモリ', memory.app + memory.wired + memory.compressed],
-    ['App メモリ', memory.app, true],
-    ['確保されているメモリ', memory.wired, true],
-    ['圧縮', memory.compressed, true],
-    ['キャッシュされたファイル', memory.cached],
-    ['スワップ使用領域', memory.swapUsed],
-  ];
+  const percent = Math.round(memory.percent);
+  const title = memory.kind === 'pressure' ? 'メモリプレッシャー' : 'メモリ使用率';
+  const summary = `${title}: ${label}（${percent}%）`;
+  const rows: [name: string, bytes: number, sub?: boolean][] =
+    memory.kind === 'pressure'
+      ? [
+          ['物理メモリ', memory.total],
+          ['使用済みメモリ', memory.app + memory.wired + memory.compressed],
+          ['App メモリ', memory.app, true],
+          ['確保されているメモリ', memory.wired, true],
+          ['圧縮', memory.compressed, true],
+          ['キャッシュされたファイル', memory.cached],
+          ['スワップ使用領域', memory.swapUsed],
+        ]
+      : [
+          ['物理メモリ', memory.total],
+          ['使用中', memory.used],
+          ['利用可能', memory.available],
+        ];
   return (
     <>
       <button class="memory-tray" popovertarget={MEMORY_ID} title={summary} aria-label={summary} style={`--c: ${color}; --p: ${percent}%`} />
       <div id={MEMORY_ID} class="memory-flyout" popover>
-        <b class="memory-head">メモリプレッシャー</b>
+        <b class="memory-head">{title}</b>
         <div class="memory-level">
           {label}
-          <Meter percent={percent} color={color} label="メモリプレッシャー" />
+          <Meter percent={percent} color={color} label={title} />
           {percent}%
         </div>
         <dl class="memory-list">
