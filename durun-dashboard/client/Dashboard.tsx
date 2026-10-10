@@ -1,6 +1,7 @@
 // ウィジェットを並べたダッシュボード。ホームとセッション概要が、それぞれのウィジェットを渡して使う。
 import type { ComponentChildren, ComponentType, JSX, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { AppIcon, setApps } from './apps.tsx';
 import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, isFloating, useFloats, windowControl } from './Float.tsx';
 import {
   COLS,
@@ -10,9 +11,11 @@ import {
   type Size,
   type Tab,
   type WidgetSettings,
+  addWidget,
   clamp,
   dropTab,
   dropTarget,
+  freeApps,
   fromSaved,
   keepTabs,
   kindOf,
@@ -29,9 +32,10 @@ export type WidgetProps<P> = P & { settings: WidgetSettings; onSettings: (next: 
 export type Sketch = 'list' | 'cards' | 'text' | 'chat' | 'code' | 'chart';
 /**
  * icon はタイトルバーの左端に添える絵文字。size は、編集の「追加」で空いているところに置くときの大きさ。controls は、タイトルバー右端に並べる、このウィジェットのボタン。
- * bare は、デスクトップのアイコンのように枠もタイトルバーも描かないウィジェット。ウィンドウには浮かべない。
+ * launch を持つものは「アプリ」。デスクトップのアイコンのように枠もタイトルバーも描かず、升目に合わせず好きな位置に置く。ウィンドウには浮かべない。
+ * launch はアプリを起動する。アイコンのほか、スタートメニューの「アプリ」からも呼ぶ。
  */
-export type Widget<P> = { title: string; icon: string; Body: ComponentType<WidgetProps<P>>; size: Size; sketch: Sketch; controls?: (data: P) => Control[]; bare?: boolean };
+export type Widget<P> = { title: string; icon: string; Body: ComponentType<WidgetProps<P>>; size: Size; sketch: Sketch; controls?: (data: P) => Control[]; launch?: (data: P) => void };
 export type EditProps = { editing: boolean; onEditDone: () => void };
 /** リンクで開いた画面に合わせて選ばせるウィジェットの種類。同じ種類へもう一度移れるよう、移るたびに作り直す。 */
 export type WidgetFocus = { kind: string };
@@ -47,11 +51,11 @@ export const WidgetPanel = ({ title, count, children }: { title: string; count?:
   </>
 );
 
-const loadLayout = (key: string, widgets: Record<string, unknown>, defaults: Layout): Layout => {
+const loadLayout = (key: string, widgets: Record<string, { launch?: unknown }>, defaults: Layout): Layout => {
   try {
     const raw = localStorage.getItem(key);
     // 今は無い種類のウィジェットは外す。
-    if (raw) return keepTabs(fromSaved(JSON.parse(raw)), (t) => !!widgets[kindOf(t.id)]);
+    if (raw) return freeApps(keepTabs(fromSaved(JSON.parse(raw)), (t) => !!widgets[kindOf(t.id)]), (t) => !!widgets[kindOf(t.id)]?.launch);
   } catch {
     // 読めない配置は捨てて、初期配置を使う。
   }
@@ -66,7 +70,9 @@ const saveLayout = (key: string, layout: Layout): void => {
   }
 };
 
-const area = (b: Size & { x: number; y: number }): string => `--col: ${b.x + 1} / span ${b.w}; --row: ${b.y + 1} / span ${b.h}`;
+/** free の枠は升目に置かず、左上からの升目の数（--x、--y）で位置を決める。 */
+const area = (b: Size & { x: number; y: number; free?: boolean }): string =>
+  b.free ? `--x: ${b.x}; --y: ${b.y}` : `--col: ${b.x + 1} / span ${b.w}; --row: ${b.y + 1} / span ${b.h}`;
 
 /** 升目 1 つ分の幅と高さ。升目の間の隙間を含む。 */
 const pitchOf = (grid: HTMLElement): { col: number; row: number } => {
@@ -213,6 +219,49 @@ const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: La
   return { ghost, handlers };
 };
 
+type FreeMove = { p: Placement; x: number; y: number; dragging: boolean; next?: Layout };
+
+/**
+ * アプリのアイコンをドラッグで動かす操作。升目に丸めず、押した位置からの移動量のまま動かす。編集中でなくても動かせる。
+ * 動かしている間は show で描くだけにし、離したときに save で保存する。
+ */
+const useFreeMove = (grid: RefObject<HTMLElement>, layout: Layout, show: (next: Layout) => void, save: (next: Layout) => void) => {
+  const move = useRef<FreeMove>();
+  const end = () => {
+    move.current = undefined;
+  };
+  return (p: Placement) => ({
+    onPointerDown: (e: PointerEvent) => {
+      // 編集中の × は、そのまま押せるようにする。
+      if (e.button !== 0 || (e.target as HTMLElement).closest('.window-controls')) return;
+      move.current = { p, x: e.pageX, y: e.pageY, dragging: false };
+    },
+    onPointerMove: (e: PointerEvent) => {
+      const m = move.current;
+      if (!m || !grid.current) return;
+      if (!(e.buttons & 1)) return end();
+      const el = e.currentTarget as HTMLElement;
+      if (!m.dragging) {
+        if (Math.hypot(e.pageX - m.x, e.pageY - m.y) < DRAG_START) return;
+        // 動かし始めてから捕まえる。押してすぐ捕まえると、ダブルクリックがアイコンに届かず起動できない。
+        m.dragging = true;
+        el.setPointerCapture(e.pointerId);
+      }
+      const { col, row } = pitchOf(grid.current);
+      // ダッシュボードの外へは出さない。下は、ウィジェットが無くても画面の下端まで置けるようにする。
+      const x = clamp(m.p.x + (e.pageX - m.x) / col, 0, (grid.current.clientWidth - el.offsetWidth) / col);
+      const y = clamp(m.p.y + (e.pageY - m.y) / row, 0, Math.max(grid.current.clientHeight / row, ROWS) - el.offsetHeight / row);
+      m.next = layout.map((q) => (q.id === m.p.id ? { ...q, x, y } : q));
+      show(m.next);
+    },
+    onPointerUp: () => {
+      if (move.current?.next) save(move.current.next);
+      end();
+    },
+    onLostPointerCapture: end,
+  });
+};
+
 const SKETCHES: Record<Sketch, () => ComponentChildren> = {
   list: () => [70, 55, 80, 45, 65].map((w, i) => <span key={i} class="sketch-row" style={`--w: ${w}%`} />),
   cards: () => [0, 1, 2, 3].map((i) => <span key={i} class="sketch-card" />),
@@ -237,13 +286,22 @@ const WidgetSketch = ({ sketch, size }: { sketch: Sketch; size: Size }) => (
 );
 
 type EditBarProps = {
-  widgets: Record<string, { title: string; size: Size; sketch: Sketch }>;
+  widgets: Record<string, { title: string; icon: string; size: Size; sketch: Sketch; launch?: unknown }>;
   /** 置く場所を待っているウィジェットの名前 */
   placing?: string;
   onAdd: (kind: string) => void;
   onCancel: () => void;
   onReset: () => void;
   onDone: () => void;
+};
+
+// 起動できるものは「アプリ」として、ウィジェットと分けて並べる。
+const pickerGroups = (widgets: EditBarProps['widgets']) => {
+  const entries = Object.entries(widgets);
+  return [
+    { name: 'ウィジェット', list: entries.filter(([, w]) => !w.launch) },
+    { name: 'アプリ', list: entries.filter(([, w]) => w.launch) },
+  ].filter((g) => g.list.length > 0);
 };
 
 const EditBar = ({ widgets, placing, onAdd, onCancel, onReset, onDone }: EditBarProps) => (
@@ -261,16 +319,21 @@ const EditBar = ({ widgets, placing, onAdd, onCancel, onReset, onDone }: EditBar
             <h2 id="widget-picker-title" class="section-title">ウィジェットを追加</h2>
             <button class="btn btn-sm" commandfor="widget-picker" command="close">閉じる</button>
           </div>
-          <div class="widget-picker-list">
-            {Object.entries(widgets).map(([kind, w]) => (
-              <button key={kind} class="widget-picker-item" commandfor="widget-picker" command="close" onClick={() => onAdd(kind)}>
-                <span class="widget-picker-thumb">
-                  <WidgetSketch sketch={w.sketch} size={w.size} />
-                </span>
-                {w.title}
-              </button>
-            ))}
-          </div>
+          {pickerGroups(widgets).map((g) => (
+            <section key={g.name} class="widget-picker-group" aria-label={g.name}>
+              <h3 class="widget-picker-category">{g.name}</h3>
+              <div class="widget-picker-list">
+                {g.list.map(([kind, w]) => (
+                  <button key={kind} class="widget-picker-item" commandfor="widget-picker" command="close" onClick={() => onAdd(kind)}>
+                    <span class="widget-picker-thumb">
+                      {w.launch ? <AppIcon icon={w.icon} size={32} /> : <WidgetSketch sketch={w.sketch} size={w.size} />}
+                    </span>
+                    {w.title}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
         </dialog>
         <button class="btn btn-sm" onClick={onReset}>初期配置に戻す</button>
         <button class="btn btn-sm btn-primary" onClick={onDone}>完了</button>
@@ -289,13 +352,14 @@ const EditBar = ({ widgets, placing, onAdd, onCancel, onReset, onDone }: EditBar
 
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
-type PlacingProps = { grid: RefObject<HTMLElement>; layout: Layout; tab: Tab; title: string; size: Size; onDrop: (next: Layout) => void; onCancel: () => void };
+type PlacingProps = { grid: RefObject<HTMLElement>; layout: Layout; tab: Tab; title: string; size: Size; free: boolean; onDrop: (next: Layout) => void; onCancel: () => void };
 
 /**
  * 「追加」で選んだウィジェットを置く場所を、グリッドに重ねた透明なボタンで受ける。
  * 押した升目が空いていれば新しく置き、ウィジェットの上ならタブとして重ねる。置く先は、升目に重ねた枠で示す。
+ * free のもの（アプリのアイコン）は、ウィジェットの上でも重ねずに、そこへ置く。
  */
-const PlacingLayer = ({ grid, layout, tab, title, size, onDrop, onCancel }: PlacingProps) => {
+const PlacingLayer = ({ grid, layout, tab, title, size, free, onDrop, onCancel }: PlacingProps) => {
   const [cell, setCell] = useState<Cell>();
   const layer = useRef<HTMLButtonElement>(null);
   useEffect(() => layer.current?.focus(), []);
@@ -310,7 +374,9 @@ const PlacingLayer = ({ grid, layout, tab, title, size, onDrop, onCancel }: Plac
   // キーボードの Enter で押したときは、矢印キーで選んだ升目に置く。
   const onClick = (e: MouseEvent) => {
     const c = e.detail ? cellOf(e) : cell;
-    if (c) onDrop(dropTab(layout, tab, c.x, c.y, size, String(Date.now())));
+    if (!c) return;
+    const id = String(Date.now());
+    onDrop(free ? addWidget(layout, { id, ...c, ...size, tabs: [tab], free }) : dropTab(layout, tab, c.x, c.y, size, id));
   };
   return (
     <>
@@ -324,7 +390,7 @@ const PlacingLayer = ({ grid, layout, tab, title, size, onDrop, onCancel }: Plac
         onKeyDown={onKeyDown}
         onClick={onClick}
       />
-      {cell && <DropGhost ghost={ghostOf(layout, tab, cell, size)} />}
+      {cell && <DropGhost ghost={free ? { ...cell, ...size, merge: false } : ghostOf(layout, tab, cell, size)} />}
     </>
   );
 };
@@ -341,7 +407,7 @@ type GroupProps<P> = {
   data: P;
   titleOf: (t: Tab) => string;
   onChange: (next: Placement) => void;
-  /** 編集中だけ渡す。枠そのものに付ける、ドラッグとキーボードの操作。 */
+  /** 枠そのものに付ける、ドラッグとキーボードの操作。編集中の枠と、いつでも動かせるアプリのアイコンに渡す。 */
   edit?: JSX.HTMLAttributes<HTMLElement>;
   /** 編集中だけ渡す。タブごとの × で外す。 */
   onRemove?: (id: string) => void;
@@ -367,19 +433,18 @@ const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, ed
   };
   // タブを並べた枠では、タブごとの × で外すので、タイトルバー右端には × を置かない。
   const only = p.tabs.length === 1 ? p.tabs[0] : undefined;
-  const bare = !!only && !!widgets[kindOf(only.id)]?.bare;
   // ウィンドウに浮かべている間は、ウィジェットのボタンをウィンドウの側に出す。
   const own = active && !floating(active) ? widgets[kindOf(active.id)]?.controls?.(data) : undefined;
   const controls: Control[] = [
     ...(own ?? []),
     ...(onRemove && only ? [{ kind: 'close' as const, label: `${titleOf(only)}を外す`, onClick: () => onRemove(only.id) }] : []),
-    ...(onWindow && active && !bare
+    ...(onWindow && active && !p.free
       ? [windowControl(floating(active), (e: MouseEvent) => onWindow(active, (e.currentTarget as HTMLElement).closest('.widget')!.getBoundingClientRect()))]
       : []),
   ];
   return (
     <section
-      class={`widget${active && floating(active) ? ' is-floating' : ''}${bare ? ' is-bare' : ''}`}
+      class={`widget${active && floating(active) ? ' is-floating' : ''}${p.free ? ' is-app' : ''}`}
       data-tabs={p.tabs.map((t) => kindOf(t.id)).join(' ')}
       aria-label={p.tabs.map(titleOf).join('、')}
       style={`${area(p)}; ${controlsVar(controls)}${only ? `; ${iconVar(widgets[kindOf(only.id)]?.icon ?? '')}` : ''}`}
@@ -452,6 +517,14 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
   };
   const resize = useResize(grid, layout, update);
   const move = useMove(grid, layout, update, (t) => widgets[kindOf(t.id)]?.size);
+  const freeMove = useFreeMove(grid, layout, setLayout, update);
+  // スタートメニューから起動するときも、そのときのデータを渡す。
+  const latest = useRef(data);
+  latest.current = data;
+  useEffect(() => {
+    setApps(Object.entries(widgets).flatMap(([kind, w]) => (w.launch ? [{ kind, title: w.title, icon: w.icon, launch: () => w.launch?.(latest.current) }] : [])));
+    return () => setApps([]);
+  }, [widgets]);
   useEffect(() => setPlacing(undefined), [editing]);
   // リンクで開いた種類のウィジェットを重ねた枠では、そのタブを選ぶ。
   useEffect(() => {
@@ -459,15 +532,20 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
   }, [focus]);
   const titleOf = (t: Tab): string => t.settings?.title || (widgets[kindOf(t.id)]?.title ?? '');
   const replace = (next: Placement) => update(layout.map((p) => (p.id === next.id ? next : p)));
-  // 枠を選んで矢印キーで 1 升ずつ動かし、Shift を押しながらなら大きさを変える。中の入力欄などで押したキーは除く。
-  const onArrow = (id: string) => (e: KeyboardEvent) => {
+  // 枠を選んで矢印キーで 1 升ずつ動かし、Shift を押しながらなら大きさを変える。中の入力欄などで押したキーは除く。アプリのアイコンは大きさを変えない。
+  const onArrow = (p: Placement) => (e: KeyboardEvent) => {
     const step = ARROWS[e.key];
     if (!step || e.target !== e.currentTarget) return;
     e.preventDefault();
-    update((e.shiftKey ? resizeWidget : moveWidget)(layout, id, ...step));
+    update((e.shiftKey && !p.free ? resizeWidget : moveWidget)(layout, p.id, ...step));
+  };
+  const editOf = (p: Placement): JSX.HTMLAttributes<HTMLElement> | undefined => {
+    const drag = p.free ? freeMove(p) : move.handlers(p);
+    if (editing) return { tabIndex: 0, 'aria-describedby': 'dashboard-help', onKeyDown: onArrow(p), ...drag };
+    return p.free ? drag : undefined;
   };
   const remove = (id: string) => update(keepTabs(layout, (t) => t.id !== id));
-  const placingSize = placing && widgets[kindOf(placing.id)]?.size;
+  const placingWidget = placing && widgets[kindOf(placing.id)];
   const floats = useFloats();
   const floating = (t: Tab) => isFloating(floats, storageKey, scope, t.id);
   // 配置に無いか浮かべているウィジェットはウィンドウで手前に出し、枠にあればそのタブを選んで枠まで送る。
@@ -503,7 +581,8 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
       {!editing && layout.length === 0 && <p class="empty">ウィジェットがありません。メニューの「ダッシュボードを編集」から追加できます。</p>}
       <div ref={grid} class={`dashboard${editing ? ' is-editing' : ''}`} style={`--cols: ${COLS}; --rows: ${ROWS}; --top: ${top}px`}>
         {/* 編集中は配列の順に描き、動かしている間に要素の並びを変えない。並びが変わると、ドラッグとキーボードのフォーカスが外れる。 */}
-        {(editing ? layout : readingOrder(layout)).map((p) => (
+        {/* アプリのアイコンは編集中でなくても動かすので、同じ理由で、読む順に並べずに後ろへ置く。 */}
+        {(editing ? layout : [...readingOrder(layout.filter((p) => !p.free)), ...layout.filter((p) => p.free)]).map((p) => (
           <WidgetGroup
             key={p.id}
             p={p}
@@ -511,23 +590,24 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
             data={data}
             titleOf={titleOf}
             onChange={replace}
-            edit={editing ? { tabIndex: 0, 'aria-describedby': 'dashboard-help', onKeyDown: onArrow(p.id), ...move.handlers(p) } : undefined}
+            edit={editOf(p)}
             onRemove={editing ? remove : undefined}
             floating={floating}
             onWindow={editing ? undefined : toggleWindow}
           >
-            {editing && <span class="widget-resize" aria-hidden="true" {...resize(p.id, 'se')} />}
-            {editing && EDGES.filter((edge) => edge !== 'se').map((edge) => <span key={edge} class={`float-edge is-${edge}`} aria-hidden="true" {...resize(p.id, edge)} />)}
+            {editing && !p.free && <span class="widget-resize" aria-hidden="true" {...resize(p.id, 'se')} />}
+            {editing && !p.free && EDGES.filter((edge) => edge !== 'se').map((edge) => <span key={edge} class={`float-edge is-${edge}`} aria-hidden="true" {...resize(p.id, edge)} />)}
           </WidgetGroup>
         ))}
         {editing && move.ghost && <DropGhost ghost={move.ghost} />}
-        {editing && placing && placingSize && (
+        {editing && placing && placingWidget && (
           <PlacingLayer
             grid={grid}
             layout={layout}
             tab={placing}
             title={titleOf(placing)}
-            size={placingSize}
+            size={placingWidget.size}
+            free={!!placingWidget.launch}
             onDrop={(next) => {
               update(next);
               setPlacing(undefined);

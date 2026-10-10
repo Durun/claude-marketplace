@@ -8,7 +8,7 @@ import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from '.
 import { useFetch } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
 import { OutboxList, asksOf } from './Messaging.tsx';
-import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, Summary, TaskList } from './Overview.tsx';
+import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, Summary, TaskList, makeDiagram } from './Overview.tsx';
 import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
@@ -157,7 +157,7 @@ type SessionData = {
 const WIDGETS: Record<string, Widget<SessionData>> = {
   head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
   summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
-  diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', bare: true },
+  diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => void makeDiagram(s) },
   chat: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
   tasks: { title: 'タスク', icon: '✅', Body: TaskList, size: { w: 6, h: 8 }, sketch: 'list' },
@@ -175,7 +175,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
 const DEFAULT_LAYOUT: Layout = [
   { id: 'head', x: 0, y: 0, w: 10, h: 6, tabs: [{ id: 'head' }] },
   { id: 'summary', x: 10, y: 0, w: 6, h: 6, tabs: [{ id: 'summary' }] },
-  { id: 'diagram', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }] },
+  { id: 'diagram', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }], free: true },
   { id: 'main', x: 0, y: 6, w: 18, h: ROWS - 6, tabs: [{ id: 'chat' }, { id: 'code' }, { id: PR_WIDGET }, { id: 'pr' }, { id: JIRA_WIDGET }, { id: 'usage' }] },
   { id: 'side', x: 18, y: 0, w: 6, h: ROWS, tabs: [{ id: 'outbox' }, { id: 'tasks' }, { id: 'subagents' }, { id: 'docs' }], active: 'tasks' },
 ];

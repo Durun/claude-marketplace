@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from 'preact/hooks';
 import type { Attention, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
+import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
 import { clock, shortDateTime, toMs } from './format.ts';
 import { NowContext } from './hooks.ts';
@@ -173,6 +174,7 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
   const toggleFullscreen = () => {
     void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   };
+  const apps = useApps();
   const dashboards = useDashboards();
   // ダッシュボードはホームの配置なので、ほかの画面で選んだらホームへ移る。
   const showHome = () => {
@@ -192,6 +194,17 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
       </button>
       <div id={MENU_ID} class="app-menu" popover onClick={closeOnItem}>
         <div class="app-menu-items">
+          {/* XP のスタートメニューに倣い、マウスを載せるかフォーカスすると右に選択肢を出す。押してもメニューを閉じないよう、button にしない。 */}
+          {apps.length > 0 && (
+            <div class="app-menu-sub">
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true">アプリ<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="アプリ">
+                {apps.map((a) => (
+                  <button key={a.kind} class="app-menu-item" onClick={a.launch}><AppIcon icon={a.icon} />{a.title}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
             検索<kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
           </button>
@@ -216,7 +229,6 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
               <button class="app-menu-item" onClick={rename}>名前を変更</button>
             </div>
           </div>
-          {/* XP のスタートメニューに倣い、マウスを載せるかフォーカスすると右に選択肢を出す。押してもメニューを閉じないよう、button にしない。 */}
           <div class="app-menu-sub">
             <div class="app-menu-item" tabindex={0} aria-haspopup="true">スキン<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
             <div class="app-menu-submenu" role="group" aria-label="スキン">

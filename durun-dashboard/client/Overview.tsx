@@ -133,10 +133,6 @@ export const AgentList = ({ s: { id, subagents, background } }: { s: Session }) 
 
 export const DIAGRAM_ICON = '/diagram.svg';
 
-/**
- * デスクトップのアプリケーションアイコンのように、ダブルクリックか Enter で図解を作る。作り終えたら、同じアイコンのウィンドウで開く。
- * 作るのに数分かかるので、作っている間はカーソルを砂時計にし、もう一度押されても作らない。
- */
 // 図解を作っているセッション。ほかのセッションへ移って戻っても作り終えるまで砂時計を出すため、部品の外に持つ。
 const making = new Set<string>();
 const makingListeners = new Set<() => void>();
@@ -159,24 +155,36 @@ const useMaking = (id: string): boolean => {
   return making.has(id);
 };
 
+const canDiagram = (s: Session): boolean => !!(s.lastPrompt || s.lastMessage);
+
+/** セッションの作業の図解を作り、作り終えたら、図解のアイコンのウィンドウで開く。作っている間にもう一度呼ばれても作らない。 */
+export const makeDiagram = async (s: Session): Promise<void> => {
+  if (making.has(s.id)) return;
+  if (!canDiagram(s)) return toast('まだやり取りがないので、図解を作れません。', 'error');
+  // アイコンを置いていない画面でスタートメニューから起動しても、作り始めたことがわかるようにする。
+  toast('図解を作っています。数分かかります。');
+  setMaking(s.id, true);
+  const doc = await attempt('図解', () => api.diagram(s.id));
+  setMaking(s.id, false);
+  if (!doc) return;
+  showWidget(SESSION_KEY, s.id, 'docs');
+  openDocFloat(doc.id, DIAGRAM_ICON);
+};
+
+/**
+ * デスクトップのアプリケーションアイコンのように、ダブルクリックか Enter で図解を作る。
+ * 作るのに数分かかるので、作っている間はカーソルを砂時計にする。
+ */
 export const DiagramIcon = ({ s }: { s: Session }) => {
   const busy = useMaking(s.id);
-  const ready = !!(s.lastPrompt || s.lastMessage);
+  const ready = canDiagram(s);
   // そのセッションを開いている間は、画面のどこでもカーソルを砂時計にする。
   useEffect(() => {
     if (!busy) return;
     document.documentElement.classList.add('is-waiting');
     return () => document.documentElement.classList.remove('is-waiting');
   }, [busy]);
-  const make = async () => {
-    if (busy || !ready) return;
-    setMaking(s.id, true);
-    const doc = await attempt('図解', () => api.diagram(s.id));
-    setMaking(s.id, false);
-    if (!doc) return;
-    showWidget(SESSION_KEY, s.id, 'docs');
-    openDocFloat(doc.id, DIAGRAM_ICON);
-  };
+  const make = () => void makeDiagram(s);
   return (
     <button
       class="desktop-icon"
@@ -185,7 +193,8 @@ export const DiagramIcon = ({ s }: { s: Session }) => {
       onDblClick={make}
       onKeyDown={(e) => e.key === 'Enter' && make()}
     >
-      <img src={DIAGRAM_ICON} alt="" width={32} height={32} />
+      {/* 画像をつかむとブラウザのドラッグが始まり、アイコンを動かせなくなるので止める。 */}
+      <img src={DIAGRAM_ICON} alt="" width={32} height={32} draggable={false} />
       <span>図解</span>
     </button>
   );

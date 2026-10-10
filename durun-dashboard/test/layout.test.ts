@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLS, addWidget, dropTab, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
+import { COLS, addWidget, dropTab, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
 import { uniqueName } from '../client/dashboards.ts';
 
 test('重なったウィジェットを順に下へ押し出し、配列の順と、グリッドに収まる位置と大きさを保つ', () => {
@@ -41,6 +41,23 @@ test('置いた升目に枠があればタブとして重ね、空いていれ�
   ]);
   assert.deepEqual(dropTab(layout, { id: 'usage' }, 0, 0, size, 'n'), [{ ...main, tabs: [...main.tabs, { id: 'usage' }], active: 'usage' }]);
   assert.deepEqual(keepTabs(layout, (t) => t.id !== 'usage'), [main]);
+});
+
+test('free の枠は、ほかの枠と重なっても押し出さず、押し出されず、タブを重ねる先にもならない', () => {
+  const main = { id: 'main', x: 0, y: 0, w: 10, h: 8, tabs: [{ id: 'chat' }] };
+  const icon = { id: 'icon', x: 12.5, y: 1.25, w: 2, h: 3, tabs: [{ id: 'diagram' }], free: true };
+  const layout = [main, icon];
+  assert.deepEqual(moveWidget(layout, 'main', 5, 0), [{ ...main, x: 5 }, icon]);
+  assert.deepEqual(moveWidget(layout, 'icon', -10, 0), [main, { ...icon, x: 2.5 }]);
+  assert.deepEqual(addWidget([main], { ...icon, x: 1, y: 1 }), [main, { ...icon, x: 1, y: 1 }]);
+  assert.deepEqual(dropTab(layout, { id: 'tasks' }, 13, 2, { w: 4, h: 4 }, 'n'), [main, icon, { id: 'n', x: 13, y: 2, w: 4, h: 4, tabs: [{ id: 'tasks' }] }]);
+});
+
+test('アプリのアイコンだけを入れた枠を free にし、ほかのウィジェットと重ねた枠はそのままにする', () => {
+  const isApp = (t: { id: string }) => t.id.startsWith('diagram');
+  const main = { id: 'main', x: 0, y: 0, w: 10, h: 8, tabs: [{ id: 'chat' }, { id: 'diagram:1' }] };
+  const icon = { id: 'icon', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }] };
+  assert.deepEqual(freeApps([main, icon], isApp), [main, { ...icon, free: true }]);
 });
 
 test('枠を別の枠へ重ねると、タブをすべて移して選んでいたタブを選び、元の枠を消す', () => {

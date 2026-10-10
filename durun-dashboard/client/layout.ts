@@ -6,11 +6,14 @@
 export type WidgetSettings = Record<string, string>;
 /** 枠に入れたウィジェット。id は種類の名前か「種類:追加した時刻」にし、同じ種類を複数置いても重ならないようにする。 */
 export type Tab = { id: string; settings?: WidgetSettings };
-/** グリッドに置く枠。tabs は枠に重ねたウィジェットで、2 つ以上あればタブで切り替える。active は選んでいるタブの id。 */
-export type Placement = { id: string; x: number; y: number; w: number; h: number; tabs: Tab[]; active?: string };
+/**
+ * グリッドに置く枠。tabs は枠に重ねたウィジェットで、2 つ以上あればタブで切り替える。active は選んでいるタブの id。
+ * free は、デスクトップのアイコンのように、升目に合わせず好きな位置に置く枠。x と y は升目の数のまま小数で持ち、ほかの枠と重なっても押し出さず、タブも重ねない。
+ */
+export type Placement = { id: string; x: number; y: number; w: number; h: number; tabs: Tab[]; active?: string; free?: boolean };
 export type Layout = Placement[];
 export type Size = Pick<Placement, 'w' | 'h'>;
-type Box = Pick<Placement, 'id' | 'x' | 'y' | 'w' | 'h'>;
+type Box = Pick<Placement, 'id' | 'x' | 'y' | 'w' | 'h' | 'free'>;
 
 export const COLS = 24;
 export const ROWS = 24;
@@ -54,10 +57,11 @@ const pushDown = <B extends Box>(p: B, placed: Box[]): B => {
   return hit ? pushDown({ ...p, y: hit.y + hit.h }, placed) : p;
 };
 
-/** item を置き、重なるウィジェットはその下へ押し出す。押し出した先で重なるものも、上から順に押し出す。配列の順は保つ。 */
+/** item を置き、重なるウィジェットはその下へ押し出す。押し出した先で重なるものも、上から順に押し出す。配列の順は保つ。free の枠は押し出さず、押し出されもしない。 */
 const place = <B extends Box>(layout: B[], item: B): B[] => {
+  if (item.free) return layout.map((p) => (p.id === item.id ? item : p));
   const placed: B[] = [item];
-  for (const p of readingOrder(layout.filter((q) => q.id !== item.id))) placed.push(pushDown(p, placed));
+  for (const p of readingOrder(layout.filter((q) => q.id !== item.id && !q.free))) placed.push(pushDown(p, placed));
   return layout.map((p) => placed.find((q) => q.id === p.id) ?? p);
 };
 
@@ -86,8 +90,13 @@ export const keepTabs = (layout: Layout, keep: (t: Tab) => boolean): Layout =>
     return tabs.length > 0 ? [{ ...p, tabs }] : [];
   });
 
+/** (x, y) の升目にある枠。free の枠はタブを重ねる先にしないので、除く。 */
 export const placementAt = (layout: Layout, x: number, y: number): Placement | undefined =>
-  layout.find((p) => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h);
+  layout.find((p) => !p.free && x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h);
+
+/** isApp に合うウィジェットだけを入れた枠を free にする。アプリのアイコンを升目に置いていたころの配置も、これで読む。 */
+export const freeApps = (layout: Layout, isApp: (t: Tab) => boolean): Layout =>
+  layout.map((p) => (!p.free && p.tabs.length === 1 && isApp(p.tabs[0]!) ? { ...p, free: true } : p));
 
 /** tab を (x, y) の升目に置くときに、タブとして重ねる先の枠。ほかの枠から移すときは、元の枠から外した後の配置で探す。 */
 export const dropTarget = (layout: Layout, tab: Tab, x: number, y: number): Placement | undefined =>
