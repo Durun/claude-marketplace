@@ -104,8 +104,7 @@ const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HT
     box.hidden = true;
     return () => {};
   }
-  // 動きを減らす設定の人には、泳がせずにその場に置く。
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // 動きを減らす設定（prefers-reduced-motion）は見ない。Windows でアニメーション効果を切っているだけでも止まり、壊れて見えるため。
   Object.assign(m, { tx: m.x, ty: m.y, restUntil: performance.now() + 2000 });
   let last = performance.now();
   let frame = 0;
@@ -113,12 +112,12 @@ const animate = (canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HT
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dragging = !!live.drag?.moved;
-    const stopped = still || live.hover || live.open || live.thinking;
+    const stopped = live.hover || live.open || live.thinking;
     play(m, dt, !stopped && !dragging);
     if (!dragging) swim(m, dt, now, stopped);
     box.style.transform = `translate(${m.x}px, ${m.y}px)`;
     if (chat.current) placeChat(chat.current, m);
-    const stroke: Pose['stroke'] = live.thinking || dragging ? 2.5 : still ? 0 : stopped ? 0.4 : 0.6 + Math.hypot(m.vx, m.vy) / SPEED;
+    const stroke: Pose['stroke'] = live.thinking || dragging ? 2.5 : stopped ? 0.4 : 0.6 + Math.hypot(m.vx, m.vy) / SPEED;
     view.draw(dt, { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke });
     frame = requestAnimationFrame(loop);
   };
