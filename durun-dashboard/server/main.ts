@@ -1,0 +1,755 @@
+// durun-dashboard の HTTP サーバー。ブラウザ向けの API と SSE、Claude Code 向けのフックの受け口と MCP を同じポートで出す。
+import fs from 'node:fs';
+import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileWhere, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { askDolphin } from './assistant.ts';
+import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
+import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
+import { makeDiagram } from './diagram.ts';
+import { type ExportFormat, exportHtml } from './docExport.ts';
+import { recordError } from './errors.ts';
+import { faviconOf } from './favicon.ts';
+import { UpstreamError } from './haiku.ts';
+import { handleHook, type HookInput } from './hooks.ts';
+import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
+import { handleMcp } from './mcp.ts';
+import { readMemory } from './memory.ts';
+import { notesFor } from './prReview.ts';
+import { searchSessions } from './search.ts';
+import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
+import { DATA_DIR, onChange, save, state, touch } from './store.ts';
+import { type Conversation, suggestReplies, suggestTitle, summarize } from './suggest.ts';
+
+const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
+const ROOT = path.join(import.meta.dirname, '..');
+const MAX_BODY_BYTES = 10 * 1024 * 1024;
+// ファイル変更は連続して届くので、画面への配信はこの間隔にまとめる。
+const BROADCAST_INTERVAL_MS = 400;
+const PR_CACHE_FILE = 'gh-pr-status-cache.json';
+
+// DNS リバインディングと他サイトからの書き込みを防ぐため、Host と Origin を自分自身に限る。
+const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
+const ALLOWED_ORIGINS = new Set([...ALLOWED_HOSTS].map((h) => `http://${h}`));
+
+const STATIC: Record<string, string> = {
+  '/': 'public/index.html',
+  '/app.js': 'public/app.js',
+  '/style.css': 'public/style.css',
+  '/diagram.svg': 'public/diagram.svg',
+  '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
+  '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
+};
+const CONTENT_TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const json = (res: ServerResponse, body: unknown, status = 200): void => {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(body));
+};
+
+const readBody = async (req: IncomingMessage): Promise<unknown> => {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'body too large');
+    chunks.push(chunk as Buffer);
+  }
+  const text = Buffer.concat(chunks).toString('utf8');
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(400, 'invalid JSON');
+  }
+};
+
+const field = <T>(body: unknown, key: string, type: 'string' | 'boolean' | 'object'): T => {
+  const v = (body as Record<string, unknown>)[key];
+  if (typeof v !== type) throw new HttpError(400, `${key} must be ${type}`);
+  return v as T;
+};
+
+const strings = (body: unknown, key: string): string[] => {
+  const v = (body as Record<string, unknown>)[key];
+  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) throw new HttpError(400, `${key} must be string[]`);
+  return v;
+};
+
+const sessionMeta = (id: string) => {
+  const meta = state.sessions[id];
+  if (!meta) throw new HttpError(404, `unknown session: ${id}`);
+  return meta;
+};
+
+const clients = new Set<ServerResponse>();
+let broadcastTimer: NodeJS.Timeout | undefined;
+
+const broadcast = (): void => {
+  broadcastTimer = undefined;
+  if (!clients.size) return;
+  const data = `data: ${JSON.stringify(buildSnapshot())}\n\n`;
+  for (const c of clients) c.write(data);
+};
+
+const scheduleBroadcast = (): void => {
+  broadcastTimer ??= setTimeout(broadcast, BROADCAST_INTERVAL_MS);
+};
+
+const openEvents = (req: IncomingMessage, res: ServerResponse): void => {
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+  res.write(`data: ${JSON.stringify(buildSnapshot())}\n\n`);
+  clients.add(res);
+  req.on('close', () => clients.delete(res));
+};
+
+/**
+ * 資料に並べるリンクの favicon を返す。ブラウザにも 1 日覚えさせる。
+ * 他のサイトの画像として読ませて手元のネットワークを探らせないよう、ダッシュボードの画面からの読み込みに限る。
+ * 取ってきた SVG を直接開かれても中のスクリプトが動かないよう、sandbox で返す。
+ */
+const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+  const param = url.searchParams.get('site') ?? '';
+  // ウィジェットのアイコンは、JIRA のホストを知らないので jira と書いて頼む。
+  const site = URL.parse(param === 'jira' ? (jiraBase() ?? '') : param);
+  if (site?.protocol !== 'https:' && site?.protocol !== 'http:') throw new HttpError(400, 'site must be an http(s) URL');
+  const icon = await faviconOf(site.origin);
+  if (!icon) throw new HttpError(404, `favicon がありません: ${site.origin}`);
+  res
+    .writeHead(200, {
+      'content-type': icon.type,
+      'cache-control': 'max-age=86400',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    })
+    .end(icon.body);
+};
+
+/** 画面が表示しているブランチ。Claude が並べた選択肢から、人間が選んだもの。 */
+const viewOf = (q: URLSearchParams): BranchView | undefined => {
+  const branch = q.get('branch');
+  return branch ? { branch, base: q.get('base') ?? undefined } : undefined;
+};
+
+/** ブランチの差分では、このセッションが編集したファイルに印を付けない。作業ツリーで同じパスを編集していても、ブランチの変更ではないため。 */
+const diff = async (id: string, url: URL): Promise<DiffResult> => {
+  const meta = sessionMeta(id);
+  const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
+  const q = url.searchParams;
+  const want = { from: q.get('from') ?? undefined, to: q.get('to') ?? undefined };
+  const view = viewOf(q);
+  const edited = view ? new Set<string>() : (log?.editedFiles ?? new Set<string>());
+  try {
+    return await gitDiff(meta.cwd, cachedPr(meta.cwd, log?.branch)?.baseRef, q.get('full') === '1', edited, want, view);
+  } catch (e) {
+    throw new HttpError(400, `差分を取得できません: ${(e as Error).message.split('\n')[0]}`);
+  }
+};
+
+/** 差分に無いファイルへのリンクで開いたときに、ファイル全体を返す。ブランチを表示しているときは、そのブランチから読む。 */
+const wholeFile = async (id: string, url: URL): Promise<DiffFile> => {
+  const ref = url.searchParams.get('path') ?? '';
+  const branch = url.searchParams.get('branch') ?? undefined;
+  const file = await repoFile(sessionMeta(id).cwd, ref, branch).catch(() => undefined);
+  if (!file) throw new HttpError(404, `「${ref}」は${branch ? ` ${branch} ` : 'リポジトリ'}にありません`);
+  return file;
+};
+
+// ウィンドウに浮かべて読むファイルの上限。大きなログなどで画面が固まらないようにする。
+const MAX_LOCAL_FILE_BYTES = 1024 * 1024;
+
+/** リポジトリの外のファイルの場所。~ はホームディレクトリにし、相対パスはセッションの作業ディレクトリから探す。行の指定は外す。 */
+const localPath = (id: string, url: URL): { ref: string; full: string; stat?: fs.Stats } => {
+  const ref = (url.searchParams.get('path') ?? '').replace(/:[\d-]+$/, '');
+  const full = path.resolve(sessionMeta(id).cwd, ref.replace(/^~(?=\/|$)/, os.homedir()));
+  const stat = fs.statSync(full, { throwIfNoEntry: false });
+  return { ref, full, stat: stat?.isFile() ? stat : undefined };
+};
+
+const mediaType = (full: string): string | undefined => MEDIA_TYPES[path.extname(full).toLowerCase()];
+
+/** リポジトリの外のファイルを読む。 */
+const localFile = (id: string, url: URL): { path: string; content: string } => {
+  const { ref, full, stat } = localPath(id, url);
+  if (!stat || stat.size > MAX_LOCAL_FILE_BYTES) throw new HttpError(404, `「${ref}」を読めません`);
+  return { path: full, content: fs.readFileSync(full, 'utf8') };
+};
+
+/** ウィンドウに浮かべたファイルが書き換わるたびに知らせる。保存で置き換えるエディタでも追えるよう、ファイルではなくディレクトリを見る。 */
+const watchLocalFile = (req: IncomingMessage, res: ServerResponse, id: string, url: URL): void => {
+  const { ref, full } = localPath(id, url);
+  let watcher: fs.FSWatcher;
+  try {
+    watcher = fs.watch(path.dirname(full), (_, file) => file === path.basename(full) && res.write('data: change\n\n'));
+  } catch {
+    throw new HttpError(404, `「${ref}」を見張れません`);
+  }
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+  req.on('close', () => watcher.close());
+};
+
+/**
+ * チャットのファイルパスの開き先。画像と動画はコードの画面で見られず、Markdown は整えた見た目で読みたいので、リポジトリにあってもウィンドウに浮かべる。
+ * どこでも開けなければ 404 にする。
+ */
+const resolveFile = async (id: string, url: URL): Promise<{ where: FileWhere }> => {
+  const { ref, full, stat } = localPath(id, url);
+  if (stat && (mediaType(full) || (/\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES))) return { where: 'local' };
+  if (await inRepo(sessionMeta(id).cwd, ref)) return { where: 'repo' };
+  if (stat && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local' };
+  throw new HttpError(404, `「${ref}」を開けません`);
+};
+
+/** 画像と動画をそのまま返す。動画の再生位置を動かせるよう、Range で求められた範囲だけを返す。 */
+const sendMedia = (req: IncomingMessage, res: ServerResponse, id: string, url: URL): void => {
+  // ほかのサイトの img や video から、手元のファイルを読み込ませない。
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+  const { ref, full, stat } = localPath(id, url);
+  const type = mediaType(full);
+  if (!stat || !type) throw new HttpError(404, `「${ref}」は画像や動画ではありません`);
+  const [, from = '', to = ''] = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '') ?? [];
+  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' };
+  if (!from && !to) {
+    res.writeHead(200, { ...head, 'content-length': stat.size });
+    return void fs.createReadStream(full).pipe(res);
+  }
+  // bytes=-n は末尾の n バイトを指す。
+  const start = from ? Number(from) : Math.max(0, stat.size - Number(to));
+  const end = from && to ? Math.min(Number(to), stat.size - 1) : stat.size - 1;
+  if (start > end) return void res.writeHead(416, { 'content-range': `bytes */${stat.size}` }).end();
+  res.writeHead(206, { ...head, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${stat.size}` });
+  fs.createReadStream(full, { start, end }).pipe(res);
+};
+
+/** セッションのブランチの、開いている PR。閉じた PR のレビューコメントには対応しないので、扱わない。 */
+const openPr = (id: string): { cwd: string; branch: string; pr: PrInfo } => {
+  const meta = sessionMeta(id);
+  const branch = meta.transcriptPath ? summarizeLog(meta.transcriptPath).branch : undefined;
+  const pr = cachedPr(meta.cwd, branch);
+  if (!branch || pr?.state !== 'OPEN') throw new HttpError(404, `開いている PR がありません: ${id}`);
+  return { cwd: meta.cwd, branch, pr };
+};
+
+/** gh の失敗はダッシュボードの不具合ではないので、改善要望にしない。 */
+const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
+  try {
+    return await call();
+  } catch (e) {
+    throw new HttpError(502, `${what}（${(e as Error).message.split('\n')[0]}）`);
+  }
+};
+
+const threadsOf = (pr: PrInfo): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr));
+
+const setViewed = (id: string, body: unknown): Promise<object> => {
+  const file = field<string>(body, 'path', 'string');
+  const viewed = field<boolean>(body, 'viewed', 'boolean');
+  return viaGh('Viewed を切り替えられません', () => setPrViewed(openPr(id).pr, file, viewed)).then(() => ({}));
+};
+
+/** 人間がダッシュボードで書いたコメントを、PR のレビューとして投稿する。commit は、画面が行番号を数えた PR の先端。 */
+const postReview = (id: string, body: unknown): Promise<{ url: string }> => {
+  const commit = field<string>(body, 'commit', 'string');
+  return viaGh('PR に投稿できません', () => postPrReview(openPr(id).pr, commit, toComments(body), field<string>(body, 'summary', 'string')));
+};
+
+const prUrlOf = (url: unknown): string => {
+  if (typeof url !== 'string' || !PR_URL.test(url)) throw new HttpError(400, 'PR の URL ではありません');
+  return url;
+};
+
+/** 人間がダッシュボードで書いたコメントを、PR の会話に投稿する。 */
+const commentPr = (body: unknown): Promise<{ url: string }> => {
+  const text = field<string>(body, 'body', 'string').trim();
+  if (!text) throw new HttpError(400, 'body is empty');
+  const url = prUrlOf(field<string>(body, 'url', 'string'));
+  return viaGh('PR にコメントできません', () => postPrComment(url, text));
+};
+
+const prNotes = async (id: string): Promise<PrNotes> => {
+  const { cwd, branch, pr } = openPr(id);
+  const threads = await threadsOf(pr);
+  const tree = await treeOf(cwd, branch).catch((e: Error) => {
+    throw new HttpError(400, `リポジトリを読めません（${e.message.split('\n')[0]}）`);
+  });
+  return notesFor(tree, pr, threads);
+};
+
+/** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は JIRA が 1 回で返せる範囲に収め、無ければ上限まで返す。 */
+const jiraSearch = async (url: URL): Promise<JiraIssue[]> => {
+  const jql = url.searchParams.get('jql')?.trim();
+  if (!jql) throw new HttpError(400, 'jql is required');
+  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_MAX_RESULTS, 1), JIRA_MAX_RESULTS);
+  try {
+    return await searchJira(jql, max);
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
+};
+
+const jiraKeyOf = (key: string): string => {
+  if (!JIRA_ISSUE_KEY.test(key)) throw new HttpError(400, 'JIRA の課題のキーではありません');
+  return key;
+};
+
+/** 人間がダッシュボードで書いたコメントを、課題に投稿する。 */
+const commentJira = async (key: string, body: unknown): Promise<void> => {
+  const text = field<string>(body, 'body', 'string').trim();
+  if (!text) throw new HttpError(400, 'body is empty');
+  await viaGh('課題にコメントできません', () => postJiraComment(jiraKeyOf(key), text));
+};
+
+/** 会話の全体。表示する範囲は画面が決める。 */
+const chatOf = (id: string): ChatEntry[] => {
+  const meta = sessionMeta(id);
+  return meta.transcriptPath ? summarizeLog(meta.transcriptPath).texts : [];
+};
+
+// 一覧から探すので、URL の id がファイルの名前として使われることはない。
+const subagentChatOf = (id: string, agentId: string): ChatEntry[] => {
+  const meta = sessionMeta(id);
+  const agent = meta.transcriptPath ? readSubagents(meta.transcriptPath).find((a) => a.id === agentId) : undefined;
+  if (!agent) throw new HttpError(404, `unknown subagent: ${agentId}`);
+  return agent.log.texts;
+};
+
+// 出力の末尾だけ返す。長く動く shell や Monitor の出力は数 MB になることがある。
+const BG_OUTPUT_BYTES = 64 * 1024;
+
+/** バックグラウンドの shell と Monitor の出力。セッションが終わると、Claude Code が一時ファイルごと消すことがある。 */
+const bgOutputOf = (id: string, taskId: string): { output?: string } => {
+  const meta = sessionMeta(id);
+  const logs = meta.transcriptPath ? [summarizeLog(meta.transcriptPath), ...readSubagents(meta.transcriptPath).map((a) => a.log)] : [];
+  const task = logs.map((l) => l.bgTasks.get(taskId)).find((t) => t);
+  if (!task) throw new HttpError(404, `unknown task: ${taskId}`);
+  if (!task.outputFile) return {};
+  try {
+    const size = fs.statSync(task.outputFile).size;
+    const buf = Buffer.alloc(Math.min(size, BG_OUTPUT_BYTES));
+    const fd = fs.openSync(task.outputFile, 'r');
+    try {
+      fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return { output: buf.toString('utf8') };
+  } catch {
+    return {};
+  }
+};
+
+/** Claude Code がこのセッションに見せた skills。会話ログに無いセッションでは空になる。 */
+const skillsOf = (id: string): SkillInfo[] => {
+  const meta = sessionMeta(id);
+  const skills = meta.transcriptPath ? summarizeLog(meta.transcriptPath).skills : new Map<string, string>();
+  return [...skills].map(([name, description]) => ({ name, description }));
+};
+
+const readDoc = (id: string): Doc => {
+  const doc = state.docs.find((d) => d.id === id);
+  if (!doc) throw new HttpError(404, `unknown doc: ${id}`);
+  if (!doc.path) return { ...doc, content: doc.content ?? '' };
+  try {
+    return { ...doc, content: fs.readFileSync(doc.path, 'utf8') };
+  } catch {
+    return { ...doc, format: 'text', content: `ファイルを読めません: ${doc.path}` };
+  }
+};
+
+/** HTML と SVG の資料を PDF か PNG にして返す。ほかの形式は画面のスクリプトで描くので、Chrome に開かせても同じ見た目にならない。 */
+const sendExport = async (res: ServerResponse, id: string, format: string): Promise<void> => {
+  const doc = readDoc(id);
+  if (doc.format !== 'html' && doc.format !== 'svg') throw new HttpError(400, `${doc.format} の資料は書き出せません`);
+  const body = await exportHtml(doc.content, format as ExportFormat);
+  res.writeHead(200, { 'content-type': format === 'pdf' ? 'application/pdf' : 'image/png', 'content-length': body.length }).end(body);
+};
+
+/** 派生の要対応は種類ごとに既読の付け方が違う。質問とレビュー依頼は、待っている Claude に取り下げを伝える。 */
+const dismiss = (id: string): void => {
+  const [kind, rest = ''] = id.split(/:(.*)/s);
+  const doc = kind === 'doc' ? state.docs.find((d) => d.id === rest) : undefined;
+  if (kind === 'reply') sessionMeta(rest).replySeenAt = Date.now();
+  else if (doc) doc.seen = true;
+  else if (kind === 'pr') state.dismissed.push(id);
+  else if (isWaiting(id)) resolveAttention(id, '人間はこの依頼を回答せずに閉じました。', '');
+  else state.attention = state.attention.filter((a) => a.id !== id);
+  touch();
+};
+
+const updateOutbox = (id: string, action: 'manual' | 'cancel'): void => {
+  const message = state.outbox.find((m) => m.id === id && !m.deliveredAt);
+  if (!message) throw new HttpError(404, `no pending message: ${id}`);
+  if (action === 'manual') Object.assign(message, { deliveredAt: Date.now(), via: 'manual' });
+  else state.outbox = state.outbox.filter((m) => m !== message);
+  touch();
+};
+
+type Handler = (m: string[], body: unknown, url: URL, req: IncomingMessage) => unknown;
+
+const setTheme = (id: string, body: unknown): void => {
+  sessionMeta(id).theme = field<string>(body, 'theme', 'string').trim() || undefined;
+  touch();
+};
+
+/** アーカイブしたセッションも、一覧に出なくなったセッションも、まとめて新しい名前へ移す。 */
+const setThemeName = (body: unknown): void => {
+  const to = field<string>(body, 'to', 'string').trim();
+  if (!to) throw new HttpError(400, 'to is required');
+  renameTheme(Object.values(state.sessions), field<string>(body, 'from', 'string'), to);
+  touch();
+};
+
+const setTitle = (id: string, body: unknown): void => {
+  sessionMeta(id).title = field<string>(body, 'title', 'string').trim() || undefined;
+  touch();
+};
+
+/**
+ * アーカイブしたら、バックグラウンドのセッションを Claude Code の一覧からも消す。消したセッションには claude attach できないので、そのコマンドも出さない。
+ * 消せなくてもアーカイブは保ち、消せなかった理由を返す。
+ */
+const setArchived = async (id: string, body: unknown): Promise<{ removeError?: string }> => {
+  const meta = sessionMeta(id);
+  meta.archived = field<boolean>(body, 'archived', 'boolean');
+  touch();
+  if (!meta.archived) return {};
+  try {
+    await removeSession(id);
+  } catch (e) {
+    return { removeError: (e as Error).message };
+  }
+  meta.jobId = undefined;
+  touch();
+  return {};
+};
+
+const setPinned = (id: string, body: unknown): void => {
+  sessionMeta(id).pinned = field<boolean>(body, 'pinned', 'boolean') || undefined;
+  touch();
+};
+
+/** 資料に足すリンク。画面がリンクとして開くので、http と https に限る。同じ URL を足し直したら、題名と時刻を新しくし、外していたものはまた並べる。 */
+const addLink = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const url = URL.parse(field<string>(body, 'url', 'string').trim());
+  if (url?.protocol !== 'http:' && url?.protocol !== 'https:') throw new HttpError(400, 'url must be an http(s) URL');
+  const title = field<string>(body, 'title', 'string').trim();
+  meta.links = [...(meta.links ?? []).filter((l) => l.url !== url.href), { url: url.href, title, at: Date.now() }];
+  meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== url.href);
+  touch();
+};
+
+/** 消えたセッションの id は残さない。 */
+const orderSessions = (body: unknown): void => {
+  state.sessionOrder = strings(body, 'ids').filter((id) => id in state.sessions);
+  touch();
+};
+
+const orderDocs = (id: string, body: unknown): void => {
+  sessionMeta(id).docOrder = strings(body, 'keys');
+  touch();
+};
+
+/** 題名を空にすると、付け直す前の題名に戻す。 */
+const renameDoc = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const key = field<string>(body, 'key', 'string');
+  const title = field<string>(body, 'title', 'string').trim();
+  const titles = { ...meta.docTitles, [key]: title };
+  if (!title) delete titles[key];
+  meta.docTitles = titles;
+  touch();
+};
+
+/** 外した資料は、発言にまた出ても並べない。足したリンクは、足したものも消す。 */
+const hideDocs = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const keys = new Set(strings(body, 'keys'));
+  meta.hiddenDocs = [...new Set([...(meta.hiddenDocs ?? []), ...keys])];
+  meta.links = meta.links?.filter((l) => !keys.has(l.url));
+  meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
+  touch();
+};
+
+/** 起動したセッションは、セッションファイルとフックから一覧に現れる。 */
+const newSession = (body: unknown): Promise<void> => {
+  const cwd = field<string>(body, 'cwd', 'string');
+  const prompt = field<string>(body, 'prompt', 'string');
+  if (!prompt.trim()) throw new HttpError(400, 'prompt is required');
+  if (!path.isAbsolute(cwd) || !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new HttpError(400, `ディレクトリがありません: ${cwd}`);
+  }
+  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS));
+};
+
+const conversation = (id: string): Conversation => {
+  const c = conversationOf(id);
+  if (!c) throw new HttpError(404, `no conversation: ${id}`);
+  return c;
+};
+
+const suggestions = (id: string): Promise<string[]> => {
+  const c = conversation(id);
+  if (!c.lastMessage) throw new HttpError(404, `no message to reply: ${id}`);
+  return suggestReplies(c);
+};
+
+const isMessage = (m: unknown): m is AssistantMessage => {
+  const { role, text } = (m ?? {}) as Record<string, unknown>;
+  return (role === 'human' || role === 'dolphin') && typeof text === 'string';
+};
+
+const toMessages = (body: unknown): AssistantMessage[] => {
+  const messages = field<unknown[]>(body, 'messages', 'object');
+  if (!Array.isArray(messages) || !messages.every(isMessage) || messages.at(-1)?.role !== 'human') {
+    throw new HttpError(400, 'messages must be [{ role, text }] ending with human');
+  }
+  return messages;
+};
+
+const MAX_CLIENT_ERROR_CHARS = 4000;
+
+/** 画面で起きた例外。改善要望の材料になるので、長すぎるものは切る。 */
+const clientError = (body: unknown): void => {
+  const { message, stack, url } = (body ?? {}) as Record<string, unknown>;
+  if (typeof message !== 'string' || !message.trim()) throw new HttpError(400, 'message is required');
+  const text = (v: unknown): string | undefined => (typeof v === 'string' ? v.slice(0, MAX_CLIENT_ERROR_CHARS) : undefined);
+  recordError('client', message.slice(0, MAX_CLIENT_ERROR_CHARS), text(stack), text(url));
+};
+
+const toComments = (body: unknown): ReviewComment[] =>
+  field<unknown[]>(body, 'comments', 'object').map((c) => {
+    const r = c as Partial<ReviewComment>;
+    if (typeof r.path !== 'string' || typeof r.body !== 'string') throw new HttpError(400, 'comment needs path and body');
+    return { path: r.path, line: Number(r.line) || 0, side: r.side === 'old' ? 'old' : 'new', lineText: String(r.lineText ?? ''), body: r.body };
+  });
+
+/** branch は、人間がブランチを表示してコメントを付けたときに送られる。 */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 過去の依頼を書き直して、その依頼の直前まで会話を巻き戻して送る。巻き戻せないのはセッションの状態によるので 409 にする。 */
+const rewind = (id: string, body: unknown): ReturnType<typeof sendMessage> => {
+  const to = field<string>(body, 'rewindTo', 'string');
+  if (!UUID.test(to)) throw new HttpError(400, 'rewindTo must be uuid');
+  const sessionId = sessionMeta(id).id;
+  try {
+    return sendMessage(sessionId, field<string>(body, 'text', 'string'), to);
+  } catch (e) {
+    throw new HttpError(409, (e as Error).message);
+  }
+};
+
+const review = (id: string, body: unknown): { delivery: Delivery } => {
+  const { branch } = body as { branch?: unknown };
+  return { delivery: submitReview(sessionMeta(id).id, toComments(body), field<string>(body, 'summary', 'string'), typeof branch === 'string' ? branch : undefined) };
+};
+
+/** 要望は、ダッシュボードを直す Claude が後から読めるよう 1 件 1 ファイルで残す。 */
+const feedback = (body: unknown): { path: string } => {
+  const text = field<string>(body, 'text', 'string').trim();
+  const targets = field<unknown[]>(body, 'targets', 'object');
+  if (!Array.isArray(targets)) throw new HttpError(400, 'targets must be array');
+  if (!text && targets.length === 0) throw new HttpError(400, 'text or targets is required');
+  return { path: saveFeedback(text, targets, field<object>(body, 'context', 'object')) };
+};
+
+// モデルと effort は claude の引数になるので、決めた値だけを通す。空文字は Claude Code の設定に従う。
+const oneOf = (body: unknown, key: string, allowed: readonly string[]): string | undefined => {
+  const v = (body as Record<string, unknown>)[key];
+  if (v === undefined || v === '' || allowed.includes(v as string)) return v as string | undefined;
+  throw new HttpError(400, `${key} must be one of: ${allowed.join(', ')}`);
+};
+
+const flag = (body: unknown, key: string): boolean | undefined => {
+  const v = (body as Record<string, unknown>)[key];
+  if (v !== undefined && typeof v !== 'boolean') throw new HttpError(400, `${key} must be boolean`);
+  return v as boolean | undefined;
+};
+
+const improveSettings = (body: unknown): Partial<ImproveSettings> => {
+  const patch = {
+    enabled: flag(body, 'enabled'),
+    model: oneOf(body, 'model', MODELS),
+    effort: oneOf(body, 'effort', EFFORT_LEVELS),
+  };
+  // 送られなかった項目は、今の設定を undefined で消さないよう外す。
+  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+};
+
+const POST_ROUTES: [RegExp, Handler][] = [
+  [/^\/api\/sessions$/, (_, b) => newSession(b)],
+  [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
+  [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
+  [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
+  [/^\/api\/sessions\/([^/]+)\/title$/, ([, id = ''], b) => setTitle(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
+  [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd)],
+  [/^\/api\/sessions\/([^/]+)\/review$/, ([, id = ''], b) => review(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], b) => setViewed(id, b)],
+  // 候補や概要や PR の分析は作るたびに API を使うので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id)],
+  [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) })],
+  [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id))],
+  [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = '']) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id))],
+  [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = '']) => prNotes(id)],
+  [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
+  [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
+  [/^\/api\/outbox\/([^/]+)\/(manual|cancel)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel')],
+  [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
+  [/^\/api\/jira\/refresh$/, () => refreshJira()],
+  [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
+  [/^\/api\/feedback$/, (_, b) => feedback(b)],
+  [/^\/api\/errors$/, (_, b) => clientError(b)],
+  [/^\/api\/assistant$/, (_, b) => askDolphin(buildSnapshot(), toMessages(b))],
+  [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
+  [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
+];
+
+const GET_ROUTES: [RegExp, Handler][] = [
+  [/^\/api\/snapshot$/, () => buildSnapshot()],
+  [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
+  [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
+  [/^\/api\/github\/inbox$/, () => viaGh('GitHub の PR を探せません', githubInbox)],
+  [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = '']) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key)))],
+  [/^\/api\/pr$/, (_, __, url) => {
+    const pr = prUrlOf(url.searchParams.get('url'));
+    return viaGh('PR を読めません', () => prDetail(pr));
+  }],
+  [/^\/api\/memory$/, () => readMemory()],
+  [/^\/api\/sessions\/([^/]+)\/diff$/, ([, id = ''], _, url) => diff(id, url)],
+  [/^\/api\/sessions\/([^/]+)\/file$/, ([, id = ''], _, url) => wholeFile(id, url)],
+  [/^\/api\/sessions\/([^/]+)\/local-file$/, ([, id = ''], _, url) => localFile(id, url)],
+  [/^\/api\/sessions\/([^/]+)\/resolve-file$/, ([, id = ''], _, url) => resolveFile(id, url)],
+  [/^\/api\/sessions\/([^/]+)\/chat$/, ([, id = '']) => chatOf(id)],
+  [/^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)\/chat$/, ([, id = '', agentId = '']) => subagentChatOf(id, agentId)],
+  [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
+  [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf(id)],
+  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = '']) => threadsOf(openPr(id).pr)],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = '']) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr))],
+  [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
+];
+
+const serveStatic = (res: ServerResponse, pathname: string): boolean => {
+  const file = STATIC[pathname];
+  if (!file) return false;
+  const full = path.join(ROOT, file);
+  if (!fs.existsSync(full)) throw new HttpError(404, `${file} がありません。pnpm build を実行してください。`);
+  // コードの変更で作り直したファイルを、読み込み直したときに必ず取り直させる。
+  res.writeHead(200, { 'content-type': `${CONTENT_TYPES[path.extname(full)] ?? 'application/octet-stream'}; charset=utf-8`, 'cache-control': 'no-cache' });
+  fs.createReadStream(full).pipe(res);
+  return true;
+};
+
+// XP スキンの壁紙。画像の権利の都合でリポジトリに含めず、手元でデータディレクトリに置いた画像だけを配信する。置いていなければ 404 になり、CSS のグラデーションで描く。
+const sendWallpaper = (res: ServerResponse): void => {
+  const file = ['wallpaper.jpg', 'wallpaper.png'].map((name) => path.join(DATA_DIR, name)).find((f) => fs.existsSync(f));
+  if (!file) throw new HttpError(404, 'データディレクトリに wallpaper.jpg がありません');
+  res.writeHead(200, { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg', 'cache-control': 'no-cache' });
+  fs.createReadStream(file).pipe(res);
+};
+
+const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const routes = req.method === 'POST' ? POST_ROUTES : GET_ROUTES;
+  if (url.pathname === '/mcp') {
+    if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
+    return handleMcp(req, res, await readBody(req));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res);
+  if (req.method === 'GET' && url.pathname === '/wallpaper') return sendWallpaper(res);
+  if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
+  const media = req.method === 'GET' && /^\/api\/sessions\/([^/]+)\/media$/.exec(url.pathname);
+  if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
+  const fileEvents = req.method === 'GET' && /^\/api\/sessions\/([^/]+)\/local-file\/events$/.exec(url.pathname);
+  if (fileEvents) return watchLocalFile(req, res, decodeURIComponent(fileEvents[1] ?? ''), url);
+  // Chrome を起動するので、他のサイトから GET で起こされないよう POST で受ける。
+  const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png)$/.exec(url.pathname);
+  if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');
+  if (req.method === 'GET' && serveStatic(res, url.pathname)) return;
+  for (const [pattern, handler] of routes) {
+    const m = pattern.exec(url.pathname);
+    if (!m) continue;
+    const body = req.method === 'POST' ? await readBody(req) : undefined;
+    const result = await handler(m.map((s) => decodeURIComponent(s)), body, url, req);
+    if (result === undefined) return void res.writeHead(204).end();
+    return json(res, result);
+  }
+  throw new HttpError(404, 'not found');
+};
+
+const server = http.createServer((req, res) => {
+  const origin = req.headers.origin;
+  if (!ALLOWED_HOSTS.has(req.headers.host ?? '') || (origin && !ALLOWED_ORIGINS.has(origin))) {
+    return void res.writeHead(403).end('forbidden');
+  }
+  route(req, res).catch((e: unknown) => {
+    // 入力の誤り（4xx）と claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
+    const status = e instanceof HttpError ? e.status : e instanceof UpstreamError ? 502 : 500;
+    if (status === 500) {
+      console.error(e);
+      recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);
+    }
+    if (!res.headersSent) json(res, { error: (e as Error).message }, status);
+    else res.end();
+  });
+});
+
+const watch = (target: string, recursive: boolean, onEvent: (file: string | null) => void): void => {
+  try {
+    fs.watch(target, { recursive }, (_, file) => onEvent(file));
+  } catch {
+    // まだ存在しないディレクトリは監視しない。Claude Code を一度使えば作られる。
+  }
+};
+
+fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
+onChange(scheduleBroadcast);
+for (const dir of [SESSIONS_DIR, STATUSLINE_DIR]) watch(dir, false, scheduleBroadcast);
+for (const dir of [TASKS_DIR, PROJECTS_DIR]) watch(dir, true, scheduleBroadcast);
+// 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
+watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
+watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
+ensureImprover();
+
+// 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。
+for (const event of ['uncaughtException', 'unhandledRejection'] as const) {
+  process.on(event, (e: unknown) => {
+    console.error(e);
+    recordError('server', e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack : undefined, event);
+    save();
+    process.exit(1);
+  });
+}
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    save();
+    process.exit(0);
+  });
+}
+
+server.on('error', (e: NodeJS.ErrnoException) => {
+  process.stderr.write(e.code === 'EADDRINUSE' ? `ポート ${PORT} は使用中です。DURUN_DASHBOARD_PORT で変更できます。\n` : `${e.message}\n`);
+  process.exit(1);
+});
+server.listen(PORT, '127.0.0.1', () => process.stdout.write(`durun-dashboard: http://localhost:${PORT}\n`));
