@@ -112,6 +112,13 @@ export const api = {
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   assistant: (messages: AssistantMessage[]) => postJson<AssistantReply>('/api/assistant', { messages }),
+  /** 画像は JSON にせず、そのまま本文で送る。 */
+  wallpaperFile: async (file: File): Promise<void> => {
+    const res = await fetch('/api/wallpaper', { method: 'POST', headers: { 'content-type': file.type }, body: file });
+    if (!res.ok) throw new Error(await errorText(res));
+  },
+  wallpaperUrl: (url: string) => postJson('/api/wallpaper/url', { url }),
+  resetWallpaper: () => postJson('/api/wallpaper/reset'),
   reportError: (message: string, stack: string | undefined) => postJson('/api/errors', { message, stack, url: location.href }),
 };
 

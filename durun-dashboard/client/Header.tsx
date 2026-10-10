@@ -12,6 +12,7 @@ import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Meter, Time, rateColor } from './ui.tsx';
+import { openWallpaper } from './Wallpaper.tsx';
 
 const RateMeter = ({ label, limit }: { label: string; limit: RateLimit }) => {
   const now = useContext(NowContext);
@@ -199,6 +200,7 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
             </button>
           )}
           <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>全画面</button>
+          <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
           <div class="app-menu-sub">
             <div class="app-menu-item" tabindex={0} aria-haspopup="true">ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
             <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
