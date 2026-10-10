@@ -31,7 +31,7 @@ export const NotionFloat = ({ f }: { f: Float }) => {
             {page.updatedAt !== undefined && <div class="pr-view-meta muted"><span>更新 <Time at={page.updatedAt} /></span></div>}
             {fetched.error && <p class="error-note">読み直せませんでした（{fetched.error}）</p>}
             {page.markdown ? <Markdown text={page.markdown} /> : <Empty>本文はありません。</Empty>}
-            {page.truncated && <p class="muted">長いページなので、途中までを出しています。続きは <OpenInNotion url={page.url}>Notion で開く</OpenInNotion> と読めます。</p>}
+            {page.truncated && <p class="muted">長いので、途中までを出しています。続きは <OpenInNotion url={page.url}>Notion で開く</OpenInNotion> と読めます。</p>}
           </div>
         ) : fetched.error ? (
           <Empty>ページを読めませんでした（{fetched.error}）。<OpenInNotion url={`https://www.notion.so/${f.tab.id}`}>Notion で開く</OpenInNotion></Empty>

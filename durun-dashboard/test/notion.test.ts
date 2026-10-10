@@ -90,3 +90,26 @@ test('notionTitle は、ページの題名だけを読んで覚え、読めな�
   assert.equal(await notionTitle(id), '週報');
   assert.equal(calls, 2);
 });
+
+test('notionPage と notionTitle は、データベースの ID なら、行を表にして題名と一緒に返す', async (t) => {
+  const id = 'c'.repeat(32);
+  const row = (name: string, state: string | null, url: string) => ({
+    url,
+    properties: { 状態: { type: 'select', select: state ? { name: state } : null }, 名前: { type: 'title', title: [text(name)] }, 親: { type: 'relation' }, 完了: { type: 'checkbox', checkbox: false } },
+  });
+  t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+    const path = url.replace('https://api.notion.com/v1/', '');
+    if (path === `databases/${id}`) return Response.json({ url: 'https://www.notion.so/db', title: [text('動画の一覧')], properties: { 状態: { type: 'select' }, 名前: { type: 'title' }, 親: { type: 'relation' }, 完了: { type: 'checkbox' } } });
+    if (path === `databases/${id}/query`) {
+      assert.equal(init?.method, 'POST');
+      return Response.json({ results: [row('ep01|前編', '公開', 'https://www.notion.so/r1'), row('', null, 'https://www.notion.so/r2')], has_more: true });
+    }
+    return Response.json({ message: `Provided ID ${id} is a database, not a page. Use the retrieve database API instead.` }, { status: 400 });
+  });
+  const page = await notionPage(id);
+  assert.equal(page.title, '動画の一覧');
+  assert.equal(page.url, 'https://www.notion.so/db');
+  assert.equal(page.truncated, true);
+  assert.equal(page.markdown, ['| 名前 | 状態 |', '| --- | --- |', '| [ep01\\|前編](https://www.notion.so/r1) | 公開 |', '| [無題](https://www.notion.so/r2) |  |'].join('\n'));
+  assert.equal(await notionTitle(id), '動画の一覧');
+});

@@ -104,7 +104,7 @@ export const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 /** 課題の画面に出す中身。description とコメントの本文は、JIRA の形式から Markdown として読める文字にしたもの。 */
 export type JiraDetail = JiraIssue & { description: string; comments: PrPost[] };
 
-/** Notion のページの画面に出す中身。id はハイフンの無い 32 桁で、markdown は本文のブロックを Markdown にしたもの。truncated は、長くて途中までしか読んでいないとき。 */
+/** Notion のページの画面に出す中身。id はハイフンの無い 32 桁で、markdown は本文のブロックを Markdown にしたもので、データベースでは行の表。truncated は、長くて途中までしか読んでいないとき。 */
 export type NotionPage = { id: string; url: string; title: string; icon?: string; updatedAt?: number; markdown: string; truncated: boolean };
 
 const NOTION_HOST = /(^|\.)(notion\.so|notion\.com|notion\.site)$/;

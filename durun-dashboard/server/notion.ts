@@ -1,4 +1,4 @@
-// Notion のページを、Notion の API で読んで Markdown にする。
+// Notion のページとデータベースを、Notion の API で読んで Markdown にする。
 import type { NotionPage } from '../shared/types.ts';
 
 const TOKEN = process.env.NOTION_TOKEN;
@@ -128,13 +128,15 @@ export const blocksToMarkdown = (blocks: NotionBlock[]): string => {
   return out;
 };
 
-const notionFetch = async <T,>(apiPath: string, retry = true): Promise<T> => {
+/** post を渡すと、それを本文にして POST する。 */
+const notionFetch = async <T,>(apiPath: string, post?: object, retry = true): Promise<T> => {
   if (!TOKEN) throw new Error('~/.durun-dashboard/.env.local に NOTION_TOKEN を設定してください');
-  const res = await fetch(`${API}/${apiPath}`, { headers: { authorization: `Bearer ${TOKEN}`, 'notion-version': API_VERSION, accept: 'application/json' } });
+  const headers = { authorization: `Bearer ${TOKEN}`, 'notion-version': API_VERSION, accept: 'application/json' };
+  const res = await fetch(`${API}/${apiPath}`, post ? { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(post) } : { headers });
   // 子のブロックをまとめて読みに行くと、Notion が間隔を空けるよう求めることがある。求められた秒数だけ待って、1 回だけやり直す。
   if (res.status === 429 && retry) {
     await new Promise((r) => setTimeout(r, Math.min(Number(res.headers.get('retry-after')) || 1, MAX_RETRY_AFTER_SEC) * 1000));
-    return notionFetch(apiPath, false);
+    return notionFetch(apiPath, post, false);
   }
   const body = (await res.json().catch(() => ({}))) as T & { message?: string };
   if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
@@ -164,39 +166,144 @@ const childrenOf = async (id: string, budget: Budget): Promise<NotionBlock[]> =>
   return blocks;
 };
 
+type DateRange = { start: string; end?: string | null };
+
+/** ページのプロパティの値。種類ごとに持つものが違うので、表に出すものだけを並べる。 */
+type PropertyValue = {
+  type?: string;
+  title?: RichText[];
+  rich_text?: RichText[];
+  number?: number | null;
+  select?: { name: string } | null;
+  status?: { name: string } | null;
+  multi_select?: { name: string }[];
+  date?: DateRange | null;
+  checkbox?: boolean;
+  url?: string | null;
+  email?: string | null;
+  phone_number?: string | null;
+  people?: { name?: string }[];
+  files?: { name: string }[];
+  created_time?: string;
+  last_edited_time?: string;
+  formula?: { string?: string | null; number?: number | null; boolean?: boolean | null; date?: DateRange | null };
+  unique_id?: { prefix?: string | null; number: number };
+};
+
 type PageBody = {
+  id?: string;
   url?: string;
   last_edited_time?: string;
   icon?: { emoji?: string } | null;
-  properties?: Record<string, { type?: string; title?: RichText[] }>;
+  properties?: Record<string, PropertyValue>;
+};
+
+type DatabaseBody = Omit<PageBody, 'properties'> & { title?: RichText[]; properties?: Record<string, { type?: string }> };
+
+const escaped = (text: string | null | undefined): string => (text ?? '').replace(ESCAPED, '\\$&');
+const dateRange = (d: DateRange | null | undefined): string => (d ? `${d.start}${d.end ? ` 〜 ${d.end}` : ''}` : '');
+const names = (items: { name?: string }[] | undefined): string => (items ?? []).map((i) => escaped(i.name)).filter(Boolean).join('、');
+
+// リレーションやロールアップなど、ほかのページを読まないと文字にできないものは空にする。
+const cell = (p: PropertyValue | undefined): string => {
+  switch (p?.type) {
+    case 'title': return rich(p.title);
+    case 'rich_text': return rich(p.rich_text);
+    case 'number': return String(p.number ?? '');
+    case 'select': return escaped(p.select?.name);
+    case 'status': return escaped(p.status?.name);
+    case 'multi_select': return names(p.multi_select);
+    case 'date': return dateRange(p.date);
+    case 'checkbox': return p.checkbox ? '✓' : '';
+    case 'url': return p.url ?? '';
+    case 'email': return escaped(p.email);
+    case 'phone_number': return escaped(p.phone_number);
+    case 'people': return names(p.people);
+    case 'files': return names(p.files);
+    case 'created_time': return p.created_time?.slice(0, 10) ?? '';
+    case 'last_edited_time': return p.last_edited_time?.slice(0, 10) ?? '';
+    case 'formula': return p.formula?.date ? dateRange(p.formula.date) : p.formula?.boolean ? '✓' : escaped(p.formula?.string) || String(p.formula?.number ?? '');
+    case 'unique_id': return p.unique_id ? `${p.unique_id.prefix ? `${p.unique_id.prefix}-` : ''}${p.unique_id.number}` : '';
+    default: return '';
+  }
+};
+
+/**
+ * データベースの行を Markdown の表にする。columns はプロパティの名前で、先頭を題名の列にする。
+ * 題名は行のページへのリンクにし、どの行でも空の列は出さない。
+ */
+export const databaseToMarkdown = (columns: string[], rows: PageBody[]): string => {
+  if (!rows.length) return '';
+  const [titleColumn = '', ...rest] = columns;
+  const shown = rest.filter((c) => rows.some((r) => cell(r.properties?.[c])));
+  const line = (cells: string[]): string => `| ${cells.map((c) => c.replaceAll('\n', ' ')).join(' | ')} |`;
+  return [
+    line([titleColumn, ...shown].map(escaped)),
+    `|${' --- |'.repeat(shown.length + 1)}`,
+    ...rows.map((r) => line([`[${cell(r.properties?.[titleColumn]) || '無題'}](${r.url ?? pageUrl(r.id ?? '')})`, ...shown.map((c) => cell(r.properties?.[c]))])),
+  ].join('\n');
 };
 
 const titleOf = (page: PageBody): string => plain(Object.values(page.properties ?? {}).find((p) => p.type === 'title')?.title) || '無題';
 
+const databaseTitle = (db: DatabaseBody): string => plain(db.title) || '無題';
+
+// データベースの ID でページを読むと、Notion はデータベースだと断る。
+const IS_DATABASE = /is a database, not a page/;
+
+/** ページとして読めなかった理由がデータベースだったときは read で読み直し、ほかの理由はそのまま投げる。 */
+const orDatabase = <T,>(read: () => Promise<T>) => (e: unknown): Promise<T> => {
+  if (e instanceof Error && IS_DATABASE.test(e.message)) return read();
+  throw e;
+};
+
 // ponytail: 題名はサーバーが動いている間覚えておく。Notion で題名を変えても、サーバーを起動し直すまで前の題名を出す。
 const titles = new Map<string, Promise<string>>();
 
-/** ページの題名だけを読む。資料の一覧が同じページを何度も尋ねるので、読めた題名は覚えておく。読めなかったページは、次に尋ねられたら読み直す。 */
+/** ページかデータベースの題名だけを読む。資料の一覧が同じページを何度も尋ねるので、読めた題名は覚えておく。読めなかったページは、次に尋ねられたら読み直す。 */
 export const notionTitle = (id: string): Promise<string> => {
   const cached = titles.get(id);
   if (cached) return cached;
-  const title = notionFetch<PageBody>(`pages/${id}`).then(titleOf);
+  const title = notionFetch<PageBody>(`pages/${id}`).then(titleOf, orDatabase(async () => databaseTitle(await notionFetch<DatabaseBody>(`databases/${id}`))));
   titles.set(id, title);
   title.catch(() => titles.delete(id));
   return title;
 };
 
-/** ページの題名と本文。id は、ハイフンの無い 32 桁のページの ID。 */
-export const notionPage = async (id: string): Promise<NotionPage> => {
+const pageOf = async (id: string): Promise<NotionPage> => {
   const budget: Budget = { left: MAX_REQUESTS, truncated: false };
-  const [page, blocks] = await Promise.all([notionFetch<PageBody>(`pages/${id}`), childrenOf(id, budget)]);
+  const blocks = childrenOf(id, budget);
+  // 読めない理由はページのほうから取るので、ブロックのほうの失敗は、ページを読めてから受ける。
+  blocks.catch(() => {});
+  const page = await notionFetch<PageBody>(`pages/${id}`);
   return {
     id,
     url: page.url ?? pageUrl(id),
     title: titleOf(page),
     icon: page.icon?.emoji,
     updatedAt: page.last_edited_time ? Date.parse(page.last_edited_time) : undefined,
-    markdown: blocksToMarkdown(blocks),
+    markdown: blocksToMarkdown(await blocks),
     truncated: budget.truncated,
   };
 };
+
+// ponytail: 行は Notion が 1 回で返す 100 件までを、Notion が返す順に出す。ビューの絞り込みと並び順は API から読めない。
+const databaseOf = async (id: string): Promise<NotionPage> => {
+  const [db, rows] = await Promise.all([
+    notionFetch<DatabaseBody>(`databases/${id}`),
+    notionFetch<{ results: PageBody[]; has_more?: boolean }>(`databases/${id}/query`, { page_size: 100 }),
+  ]);
+  const columns = Object.entries(db.properties ?? {}).sort(([, a], [, b]) => Number(b.type === 'title') - Number(a.type === 'title')).map(([name]) => name);
+  return {
+    id,
+    url: db.url ?? pageUrl(id),
+    title: databaseTitle(db),
+    icon: db.icon?.emoji,
+    updatedAt: db.last_edited_time ? Date.parse(db.last_edited_time) : undefined,
+    markdown: databaseToMarkdown(columns, rows.results),
+    truncated: !!rows.has_more,
+  };
+};
+
+/** ページの題名と本文。id は、ハイフンの無い 32 桁のページの ID。データベースの ID なら、行を表にして本文にする。 */
+export const notionPage = (id: string): Promise<NotionPage> => pageOf(id).catch(orDatabase(() => databaseOf(id)));
