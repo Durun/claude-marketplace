@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { hostOs } from '../server/platform.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態や要望に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
@@ -29,6 +30,8 @@ test('ウェーブを終えたら、最後の発言で対応したとされた�
     await new Promise((r) => setTimeout(r, 5));
   }
   const [first = '', second = '', third = ''] = pending();
+  // どの OS で起きたことかを後から読めるよう、サーバーの OS を添える。
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(feedbackDir, first), 'utf8')).context.os, hostOs());
   // Stop の時点では、最後の発言が会話ログにまだ書かれていないことがある。
   fakeRun('s1', '作業しています。');
   // ウェーブに渡した要望は、残りの数に入れない。

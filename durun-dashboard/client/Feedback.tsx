@@ -68,6 +68,7 @@ const contextOf = (snapshot: Snapshot | null): FeedbackContext => ({
   viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
   colorScheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   userAgent: navigator.userAgent,
+  reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
   snapshot,
 });
 
@@ -169,7 +170,7 @@ const FeedbackPanel = (p: PanelProps) => {
         <span class="spacer" />
         <button class="btn btn-primary" disabled={p.busy || empty} onClick={p.onSend}>送信</button>
       </div>
-      <p class="help fb-help">画面の URL、表示中のデータ、ウィンドウの大きさを添えて ~/.durun-dashboard/feedback/ に保存します。</p>
+      <p class="help fb-help">画面の URL、表示中のデータ、ウィンドウの大きさ、OS を添えて ~/.durun-dashboard/feedback/ に保存します。</p>
       {p.improve && <ImproveStatus improve={p.improve} />}
     </section>
   );

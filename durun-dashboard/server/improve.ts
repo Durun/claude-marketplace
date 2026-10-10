@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ImproveSettings, ImproveState } from '../shared/types.ts';
 import { isAlive, listDir, readJson, summarizeLog } from './claude.ts';
-import { claudeCommand } from './platform.ts';
+import { claudeCommand, hostOs } from './platform.ts';
 import { DATA_DIR, ensureSession, newId, state, touch, type ImproveRun } from './store.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
@@ -127,13 +127,14 @@ export const ensureImprover = (): void => {
  */
 export const nextImprovement = (sessionId: string, lastMessage?: string): void => endRun(sessionId, undefined, lastMessage);
 
-export const saveFeedback = (text: string, targets: unknown[], context: unknown): string => {
+export const saveFeedback = (text: string, targets: unknown[], context: object): string => {
   const createdAt = new Date().toISOString();
   // 同じ秒に続けて送っても順番が崩れないよう、ミリ秒まで名前に入れる。
   const file = path.join(FEEDBACK_DIR, `${createdAt.replace(/[:.]/g, '').slice(0, 20)}-${newId()}.json`);
   fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
   // 画面の状態は大きいので最後に置き、ファイルの先頭で要望と指した要素を読めるようにする。
-  fs.writeFileSync(file, JSON.stringify({ createdAt, text, targets, context }, null, 2));
+  // OS はサーバーで足すので、エラーから起票した要望にも載る。
+  fs.writeFileSync(file, JSON.stringify({ createdAt, text, targets, context: { os: hostOs(), ...context } }, null, 2));
   // 待機中なら、新しい要望を機に再開する。
   if (state.improve.enabled) state.improve.error = undefined;
   // 未対応の数が変わるので、起動しないときも画面を更新させる。
