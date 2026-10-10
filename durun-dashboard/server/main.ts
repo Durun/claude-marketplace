@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileWhere, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { askDolphin } from './assistant.ts';
+import { fillCallerPid } from './callerPid.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -673,6 +674,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   const routes = req.method === 'POST' ? POST_ROUTES : GET_ROUTES;
   if (url.pathname === '/mcp') {
     if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
+    await fillCallerPid(req);
     return handleMcp(req, res, await readBody(req));
   }
   if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res);

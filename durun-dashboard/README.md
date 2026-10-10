@@ -24,6 +24,10 @@ pnpm install-statusline
 `pnpm uninstall-statusline` でラッパーを外す。
 設定を書き換える直前の内容は `~/.claude/settings.json.bak-durun-dashboard` に残る。
 
+Windows でも同じ手順で動く。
+フックと statusline のラッパーは Claude Code が Git Bash で動かすので、Claude Code と同じく Git for Windows が要る。
+メモリプレッシャーは macOS でだけ出る。
+
 ## できること
 
 | 画面 | 内容 |
@@ -106,6 +110,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 | `JIRA_BASE_URL` | JIRA のサイト（例: `https://example.atlassian.net`） |
 | `JIRA_PROJECT_KEYS` | ブランチ名や PR タイトルから課題キーを拾うプロジェクト（カンマ区切り） |
 | `JIRA_EMAIL`、`JIRA_API_TOKEN` | 課題の題名と状態を表示するときと、JIRA Issues のウィジェットを使うときに設定する |
+| `CHROME_PATH` | 資料を PDF と PNG に書き出す Chrome。既定は macOS と Windows の標準の場所 |
 
 ## 開発
 

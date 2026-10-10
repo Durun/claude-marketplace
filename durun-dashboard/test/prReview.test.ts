@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { skipFakeClaude } from './fakeClaude.ts';
 import type { PrInfo, PrThread } from '../shared/types.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
@@ -68,7 +69,7 @@ test('toThreads は、未解決のスレッドだけを、先頭のコメント�
   ]);
 });
 
-test('notesFor は、分析していないスレッドだけを 1 回でまとめて分析し、返信が付いたスレッドは作り直す', async () => {
+test('notesFor は、分析していないスレッドだけを 1 回でまとめて分析し、返信が付いたスレッドは作り直す', { skip: skipFakeClaude }, async () => {
   const a = thread('a', '直して');
   const b = thread('b', 'ここも');
   assert.deepEqual(await notesFor(tree, pr, [a, b]), {
@@ -85,7 +86,7 @@ test('notesFor は、分析していないスレッドだけを 1 回でまと�
   assert.doesNotMatch(lastPrompt(), /<thread id="a">/);
 });
 
-test('notesFor は、分析が返らなかったスレッドの理由を返し、次に頼まれたときに作り直す', async () => {
+test('notesFor は、分析が返らなかったスレッドの理由を返し、次に頼まれたときに作り直す', { skip: skipFakeClaude }, async () => {
   const silent = thread('c', '黙る');
   const before = calls();
   const { notes, failed } = await notesFor(tree, pr, [silent]);

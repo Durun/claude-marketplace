@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { skipFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態に触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-durun-dashboard-'));
@@ -59,7 +60,7 @@ test('バックグラウンドのセッションが AskUserQuestion で入力待
   fs.rmSync(path.join(sessionsDir, `${process.pid}.json`));
 });
 
-test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', async () => {
+test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', { skip: skipFakeClaude }, async () => {
   // 偽の claude は、概要と名前のどちらを頼まれても同じ答えを返す。
   const bin = path.join(tmp, 'bin');
   fs.mkdirSync(bin, { recursive: true });
