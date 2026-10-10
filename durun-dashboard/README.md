@@ -125,6 +125,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 ## 設定
 
 `~/.durun-dashboard/.env.local` に書く。
+ひな形は `.env.example` にあるので、写して使うものだけ値を入れる。
 
 利用者ごとのデータ（状態、改善要望、statusline の記録、`.env.local`）は `~/.durun-dashboard/` に置き、ツールのリポジトリとは分ける。
 置き場所は環境変数 `DURUN_DASHBOARD_DATA_DIR` で変えられる。変えたら中身を新しい場所へ移してから `pnpm install-statusline` をやり直す。
