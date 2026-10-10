@@ -5,15 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { UpstreamError } from './haiku.ts';
+import { platform } from './platform.ts';
 
 export type ExportFormat = 'pdf' | 'png';
 
-// ponytail: macOS と Windows の Chrome の場所を既定にする。ほかの環境では CHROME_PATH で指す。
-const DEFAULT_CHROME =
-  process.platform === 'win32'
-    ? path.join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe')
-    : '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const CHROME = process.env.CHROME_PATH ?? DEFAULT_CHROME;
+const CHROME = process.env.CHROME_PATH ?? platform.defaultChromePath(process.env);
 const TIMEOUT_MS = 60_000;
 // 画面の資料と同じ幅で組む。
 const VIEWPORT = { width: 1200, height: 800 };
@@ -79,6 +75,7 @@ const render = async (port: number, file: string, format: ExportFormat): Promise
 
 /** 資料ごとに Chrome を起動して閉じる。書き出しは人間がボタンを押したときだけなので、起動したままにはしない。 */
 export const exportHtml = async (html: string, format: ExportFormat): Promise<Buffer> => {
+  if (!CHROME) throw new UpstreamError('Chrome の場所が分かりません。CHROME_PATH で指してください');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-export-'));
   const file = path.join(dir, 'doc.html');
   fs.writeFileSync(file, html);

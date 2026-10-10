@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { skipFakeClaude } from './fakeClaude.ts';
+import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態に触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-durun-dashboard-'));
@@ -60,13 +60,10 @@ test('バックグラウンドのセッションが AskUserQuestion で入力待
   fs.rmSync(path.join(sessionsDir, `${process.pid}.json`));
 });
 
-test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', { skip: skipFakeClaude }, async () => {
+test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', async () => {
   // 偽の claude は、概要と名前のどちらを頼まれても同じ答えを返す。
-  const bin = path.join(tmp, 'bin');
-  fs.mkdirSync(bin, { recursive: true });
   const answer = JSON.stringify({ structured_output: { title: 'ログインの修正', doing: 'ログインを直す', now: '直し終えた' } });
-  fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\ncat > /dev/null\necho '${answer}'\n`, { mode: 0o755 });
-  process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+  useFakeClaude(tmp, `stdin(); console.log(${js(answer)});`);
   const transcript = path.join(tmp, 's2.jsonl');
   fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, message: { content: 'ログインを直して' } })}\n`);
   const started = { kind: 'bg', entrypoint: 'cli', startedAt: Date.now() };

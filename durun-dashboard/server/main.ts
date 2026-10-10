@@ -17,7 +17,7 @@ import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
-import { readMemory } from './memory.ts';
+import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
@@ -636,7 +636,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr));
   }],
-  [/^\/api\/memory$/, () => readMemory()],
+  [/^\/api\/memory$/, () => platform.readMemory()],
   [/^\/api\/sessions\/([^/]+)\/diff$/, ([, id = ''], _, url) => diff(id, url)],
   [/^\/api\/sessions\/([^/]+)\/file$/, ([, id = ''], _, url) => wholeFile(id, url)],
   [/^\/api\/sessions\/([^/]+)\/local-file$/, ([, id = ''], _, url) => localFile(id, url)],

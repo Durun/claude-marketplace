@@ -1,6 +1,7 @@
 // ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときだけ sonnet を使う。
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { claudeCommand } from './platform.ts';
 
 const HAIKU_TIMEOUT_MS = 30_000;
 // コードを読みながら答えるので、数分かかることがある。
@@ -42,7 +43,8 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
     const id = randomUUID();
     running.add(id);
     const all = [...COMMON_ARGS, ...args, '--json-schema', JSON.stringify(schema), '--session-id', id];
-    const child = execFile('claude', all, { timeout, cwd }, (err, stdout, stderr) => {
+    const claude = claudeCommand(all);
+    const child = execFile(claude.file, claude.args, { timeout, cwd }, (err, stdout, stderr) => {
       running.delete(id);
       if (err?.killed) return reject(new UpstreamError(`${timeout / 1000} 秒以内に終わりませんでした`));
       try {

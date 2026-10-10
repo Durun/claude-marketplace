@@ -9,6 +9,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, readJson, readLiveSessions, type LiveSession } from './claude.ts';
+import { claudeCommand, platform, type Platform } from './platform.ts';
 import { newId, state, touch } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
@@ -38,7 +39,8 @@ export const formatMessages = (msgs: OutboxMessage[]): string => `[durun-dashboa
 /** claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。 */
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> =>
   new Promise((resolve, reject) => {
-    const child = spawn('claude', args, { cwd, env, stdio: ['ignore', 'ignore', 'pipe'] });
+    const claude = claudeCommand(args, env);
+    const child = spawn(claude.file, claude.args, { cwd, env, stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', reject);
@@ -102,7 +104,8 @@ type Job = { id?: string; sessionId?: string; kind?: string; pid?: number };
  * claude rm は、作業ツリーに未コミットや未 push の変更が残るセッションを消さずに失敗するので、その理由で reject する。
  */
 export const removeSession = async (sessionId: string): Promise<void> => {
-  const { stdout } = await promisify(execFile)('claude', ['agents', '--json', '--all']);
+  const claude = claudeCommand(['agents', '--json', '--all']);
+  const { stdout } = await promisify(execFile)(claude.file, claude.args);
   const job = (JSON.parse(stdout) as Job[]).find((j) => j.sessionId === sessionId && j.kind === 'background');
   if (!job?.id) return;
   // 作業ディレクトリは消えていることがあるので、id だけで動く stop と rm はホームで実行する。
@@ -124,9 +127,10 @@ const restartable = (live: LiveSession): boolean =>
  * Claude Code が各セッションに開く受信ソケット（cross-session messaging）へ、1 行の JSON で送る。
  * 作業中のセッションはツール実行の合間に読み、入力待ちのセッションは新しいターンを始めて読む。
  */
-const postToInbox = (socketPath: string | undefined, text: string): Promise<void> =>
+export const postToInbox = (socketPath: string | undefined, text: string, { inboxBlocker }: Pick<Platform, 'inboxBlocker'> = platform): Promise<void> =>
   new Promise((resolve, reject) => {
     if (!socketPath) return reject(new Error('このセッションには受信ソケットがありません'));
+    if (inboxBlocker) return reject(new Error(inboxBlocker));
     const socket = net.connect(socketPath, () => socket.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`));
     // 失敗したときは close より先に error が来るので、reject で決まる。
     socket.on('error', reject);
