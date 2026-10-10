@@ -19,8 +19,8 @@ const STILL_MS = 80;
 const MIN_SPEED = 350;
 // 画面を一瞬で横切らないよう、上限を決める。
 const MAX_SPEED = 3500;
-// 水の抵抗に見えるよう、速さに比例して減速する。その強さの上限。ほとんど振り回さずに離しても、その場で固まらず少しは滑る。
-const MAX_DRAG = 30;
+// 水の抵抗に見えるよう、速さに比例して減速する。振り回さずに払って離したときの減速の強さ。
+const DRAG = 2.2;
 // 減速の強さの下限。0 に近づけると、いつまでも止まらず跳ね返り続ける。
 const MIN_DRAG = 0.5;
 // 画面の端で跳ね返るときに残す速さの割合。水の中なので、弾みは小さくする。
@@ -42,8 +42,11 @@ export const windUp = (px: number, prev: Sample | undefined, next: Sample): numb
   return (moved / gap) * 1000 < MIN_SPEED ? px : px + moved;
 };
 
-/** 離した速さ（px/s）で、勢いをつけた道のり（px）と同じだけ進んで止まる減速の強さ。道のりが長いほど弱くなり、遠くまで飛ぶ。 */
-const dragAfter = (speed: number, windUpPx: number): number => Math.min(MAX_DRAG, Math.max(MIN_DRAG, speed / Math.max(windUpPx, 1)));
+/**
+ * 飛ばした後の減速の強さ。離した速さ（px/s）だけで決まるいつもの飛ぶ距離に、勢いをつけた道のり（px）を足した分だけ進んで止まるようにする。
+ * 短く払っただけならいつもの減速とほぼ変わらず、振り回すほどなめらかに弱くなって遠くまで飛ぶ。
+ */
+const dragAfter = (speed: number, windUpPx: number): number => Math.max(MIN_DRAG, speed / (speed / DRAG + Math.max(0, windUpPx)));
 
 /** 離した瞬間の速さと、その後の減速の強さ。勢いが足りないか、止めてから離したなら undefined。windUpPx は勢いをつけた道のり。 */
 export const releaseVelocity = (samples: Sample[], now: number, windUpPx = 0): Fling | undefined => {

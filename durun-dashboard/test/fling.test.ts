@@ -75,7 +75,7 @@ test('勢いは速く振り回した道のりだけたまり、ゆっくり運�
   assert.equal(windUp(1000, { t: 0, x: 0, y: 0 }, { t: 200, x: 500, y: 0 }), 0);
 });
 
-test('振り回した道のりと同じくらいの距離を飛び、道のりが長いほど遠くまで飛ぶ', () => {
+test('払って離すといつもの減速で飛び、振り回した道のりの分だけ、なめらかに遠くまで飛ぶ', () => {
   const distance = (step: number, windUpPx: number): number => {
     const fling = releaseVelocity(stroke(8, 10, step, 0), 75, windUpPx);
     assert.ok(fling);
@@ -83,14 +83,16 @@ test('振り回した道のりと同じくらいの距離を飛び、道のり�
     for (let i = 0; i < 6000; i++) state = { ...glide(state.x, state.y, state, 1 / 60, { maxX: 1e9, maxY: 1e9 }), drag: fling.drag };
     return state.x;
   };
-  const near = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < expected * 0.2, `${actual} ≒ ${expected}`);
-  near(distance(20, 300), 300);
-  near(distance(20, 1500), 1500);
-  // 離した速さが違っても、飛ぶ距離は道のりで決まる。
-  near(distance(8, 1500), 1500);
-  // ほとんど振り回さずに離しても少しは滑り、どれだけ振り回しても、いつかは止まる。
-  const short = distance(20, 0);
-  assert.ok(short > 30 && short < 100, `${short}`);
+  const near = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < expected * 0.05, `${actual} ≒ ${expected}`);
+  // 振り回さなければ、離した速さだけで決まる距離を飛ぶ。
+  assert.equal(releaseVelocity(stroke(8, 10, 20, 0), 75)?.drag, 2.2);
+  const base = distance(20, 0);
+  near(base, 2000 / 2.2);
+  // 短く払った分の道のりでは、ほとんど変わらない。
+  near(distance(20, 100), base + 100);
+  near(distance(20, 1500), base + 1500);
+  near(distance(8, 500), distance(8, 0) + 500);
+  // どれだけ振り回しても、いつかは止まる。
   near(distance(20, 1e9), 2000 / 0.5);
   // 離した瞬間の速さは、勢いをつけた道のりでは変わらない。
   assert.equal(releaseVelocity(stroke(8, 10, 20, 0), 75, 3000)?.vx, releaseVelocity(stroke(8, 10, 20, 0), 75)?.vx);
