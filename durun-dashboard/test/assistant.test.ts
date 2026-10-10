@@ -3,22 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Session, Snapshot } from '../shared/types.ts';
 import { askDolphin } from '../server/assistant.ts';
 
 test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクはボタンにしない', async () => {
-  // 標準入力のプロンプトを書き出し、外へのリンクを混ぜた答えを返す偽の claude を PATH の先頭に置く。
+  // 標準入力のプロンプトを書き出し、外へのリンクを混ぜた答えを返す偽の claude を置く。
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-assistant-'));
   const promptFile = path.join(tmp, 'prompt');
-  fs.mkdirSync(path.join(tmp, 'bin'));
   const links = [{ label: '開く', href: '#/s/s1' }, { label: '外', href: 'https://example.com' }, { label: '', href: '#/' }];
-  fs.writeFileSync(
-    path.join(tmp, 'bin', 'claude'),
-    `#!/bin/sh\ncat > '${promptFile}'\necho '${JSON.stringify({ structured_output: { answer: ' 入力待ちです ', links } })}'\n`,
-    { mode: 0o755 },
-  );
-  process.env.PATH = `${path.join(tmp, 'bin')}${path.delimiter}${process.env.PATH}`;
-
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin()); console.log(${js(JSON.stringify({ structured_output: { answer: ' 入力待ちです ', links } }))});`);
   const session = {
     id: 's1', name: '検索画面', theme: 'dash', repo: 'dash', cwd: tmp, status: 'idle', updatedAt: 0, tasks: [], subagents: [], background: [], jira: [],
     usage: { contextTokens: 0, contextWindow: 1, contextPercent: 12.3, exact: false, totals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, timeline: [] },

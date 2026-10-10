@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ImproveSettings, ImproveState } from '../shared/types.ts';
 import { isAlive, listDir, readJson, summarizeLog } from './claude.ts';
+import { claudeCommand } from './platform.ts';
 import { DATA_DIR, ensureSession, newId, state, touch, type ImproveRun } from './store.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
@@ -100,7 +101,8 @@ const startRun = (items: string[]): void => {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const log = fs.openSync(LOG_FILE, 'a');
   // サーバーがコードの変更で再起動しても止まらないよう、別のプロセスグループで動かし、出力はファイルに流す。
-  const child = spawn('claude', args, { cwd: ROOT, detached: true, stdio: ['ignore', log, log] });
+  const claude = claudeCommand(args);
+  const child = spawn(claude.file, claude.args, { cwd: ROOT, detached: true, stdio: ['ignore', log, log] });
   fs.closeSync(log);
   child.on('error', (e) => endRun(sessionId, e.message));
   child.on('exit', (code) => endRun(sessionId, code ? `終了コード ${code}` : undefined));

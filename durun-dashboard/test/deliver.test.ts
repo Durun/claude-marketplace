@@ -4,41 +4,76 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
+const { postToInbox, removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange } = await import('../server/store.ts');
+const { platform } = await import('../server/platform.ts');
+fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
+// 受信ソケットに認証の要る OS が読む、このプロセスに見立てたセッションの鍵。要らない OS では読まれない。
+fs.writeFileSync(path.join(tmp, 'claude', 'sessions', `${process.pid}.test.key`), JSON.stringify({ peerToken: 'test-token' }));
 
-/** 受信ソケットに見立てたサーバーを開き、次に届く 1 行を返す。 */
-const listenInbox = async (socketPath: string): Promise<{ server: net.Server; line: Promise<{ type: string; message: { content: string } }> }> => {
+type InboxLine = { type: string; token?: string; message?: { role?: string; content: string } };
+
+/** supervisor が名簿から動いているジョブを消すコード。書きかけを読ませないよう、別名で書いてから置き換える。 */
+const dropWorkers = (roster: string): string => `fs.writeFileSync(${js(`${roster}.tmp`)}, '{"workers":{}}'); fs.renameSync(${js(`${roster}.tmp`)}, ${js(roster)});`;
+
+/** 受信ソケットに見立てたサーバーを開き、次の接続に届く行をすべて返す。rejectAuth なら、本物が認証を拒むときと同じく、何も返さずにすぐ閉じる。 */
+const listenInbox = async (socketPath: string, rejectAuth = false): Promise<{ server: net.Server; lines: Promise<InboxLine[]> }> => {
   const server = net.createServer();
-  const line = new Promise<{ type: string; message: { content: string } }>((resolve) =>
+  const lines = new Promise<InboxLine[]>((resolve) =>
     server.once('connection', (c) => {
       let buf = '';
-      c.on('data', (chunk) => (buf += chunk.toString()));
-      c.on('end', () => resolve(JSON.parse(buf)));
+      c.on('data', (chunk) => {
+        buf += chunk.toString();
+        if (rejectAuth) c.destroy();
+      });
+      c.on('close', () => resolve(buf.split('\n').filter(Boolean).map((line) => JSON.parse(line) as InboxLine)));
     }),
   );
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
-  return { server, line };
+  return { server, lines };
 };
+
+const close = (server: net.Server): Promise<unknown> => new Promise((resolve) => server.close(resolve));
+
+test('受信ソケットへは、トークンがあれば認証の行を先に送り、拒まれて閉じられたら届いたことにしない', async () => {
+  const socketPath = platform.localSocketPath(tmp, 'direct');
+  const message = { type: 'user', message: { role: 'user', content: 'こんにちは' } };
+
+  const open = await listenInbox(socketPath);
+  await postToInbox(socketPath, 'こんにちは');
+  assert.deepEqual(await open.lines, [message]);
+  await close(open.server);
+
+  const keyed = await listenInbox(socketPath);
+  await postToInbox(socketPath, 'こんにちは', 'secret');
+  assert.deepEqual(await keyed.lines, [{ type: 'auth', token: 'secret' }, message]);
+  await close(keyed.server);
+
+  const refusing = await listenInbox(socketPath, true);
+  await assert.rejects(postToInbox(socketPath, 'こんにちは', 'wrong'), /認証を拒まれました/);
+  assert.deepEqual(await refusing.lines, [{ type: 'auth', token: 'wrong' }]);
+  await close(refusing.server);
+});
 
 test('動いているセッションには受信ソケットへ送り、届かなければ未配信に戻して、次に送るときに一緒に届け直す', async () => {
   // 自分のプロセスを、受信ソケットを持って生きているセッションに見立てる。
-  const socketPath = path.join(tmp, 'inbox.sock');
-  fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
+  const socketPath = platform.localSocketPath(tmp, 'inbox');
   fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's1.json'), JSON.stringify({ pid: process.pid, sessionId: 's1', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   ensureSession('s1', tmp);
+  // 認証の要る OS では、セッションの鍵のトークンを先に名乗る。
+  const auth = platform.inboxToken(process.pid, path.join(tmp, 'claude', 'sessions')) ? [{ type: 'auth', token: 'test-token' }] : [];
+  const user = (content: string): InboxLine => ({ type: 'user', message: { role: 'user', content } });
 
   const first = await listenInbox(socketPath);
   assert.equal(sendMessage('s1', 'こんにちは').delivery, 'sent');
-  const line = await first.line;
-  assert.equal(line.type, 'user');
-  assert.equal(line.message.content, '[durun-dashboard] 人間から:\nこんにちは');
-  await new Promise((resolve) => first.server.close(resolve));
+  assert.deepEqual(await first.lines, [...auth, user('[durun-dashboard] 人間から:\nこんにちは')]);
+  await close(first.server);
 
   const lost = sendMessage('s1', '届かない').message;
   await new Promise<void>((resolve) => onChange(() => lost.error && resolve()));
@@ -46,9 +81,9 @@ test('動いているセッションには受信ソケットへ送り、届か�
 
   const second = await listenInbox(socketPath);
   sendMessage('s1', 'もう一度');
-  assert.equal((await second.line).message.content, '[durun-dashboard] 人間から:\n届かない\n---\nもう一度');
+  assert.deepEqual(await second.lines, [...auth, user('[durun-dashboard] 人間から:\n届かない\n---\nもう一度')]);
   assert.ok(lost.deliveredAt);
-  await new Promise((resolve) => second.server.close(resolve));
+  await close(second.server);
 });
 
 test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {
@@ -57,20 +92,17 @@ test('入力待ちのバックグラウンドのセッションは、止めて�
   const bin = path.join(tmp, 'bin-restart');
   const callsFile = path.join(tmp, 'calls');
   const roster = path.join(tmp, 'claude', 'daemon', 'roster.json');
-  fs.mkdirSync(bin, { recursive: true });
   fs.mkdirSync(path.dirname(roster), { recursive: true });
   fs.writeFileSync(roster, JSON.stringify({ workers: { j2: {} } }));
-  fs.writeFileSync(
-    path.join(bin, 'claude'),
-    [
-      '#!/bin/sh',
-      `printf '%s\\n' "$CMUX_CLAUDE_HOOKS_DISABLED" "$@" '' >> '${callsFile}'`,
-      `[ "$1" != stop ] || { (sleep 0.3; echo '{"workers":{}}' > '${roster}.tmp'; mv '${roster}.tmp' '${roster}') & }`,
-      `[ "$1" != --bg ] || { grep -q j2 '${roster}' && echo 複製になります >&2 || echo 再開できません >&2; exit 1; }`,
-    ].join('\n'),
-    { mode: 0o755 },
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([process.env.CMUX_CLAUDE_HOOKS_DISABLED ?? '', ...args, '']));
+if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});
+if (args[0] === '--bg') {
+  console.error(fs.readFileSync(${js(roster)}, 'utf8').includes('j2') ? '複製になります' : '再開できません');
+  process.exitCode = 1;
+}`,
   );
-  process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
   fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's2.json'), JSON.stringify({ pid: process.pid, sessionId: 's2', cwd: tmp, status: 'idle', kind: 'bg', jobId: 'j2' }));
   ensureSession('s2', tmp);
 
@@ -87,12 +119,10 @@ test('入力待ちのバックグラウンドのセッションは、止めて�
 });
 
 test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {
-  // 受け取った引数を書き出し、依頼が fail なら失敗する偽の claude を PATH の先頭に置く。
+  // 受け取った引数を書き出し、依頼が fail なら失敗する偽の claude を置く。
   const bin = path.join(tmp, 'bin');
   const argsFile = path.join(tmp, 'args');
-  fs.mkdirSync(bin, { recursive: true });
-  fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsFile}'\n[ "$3" != fail ] || { echo 起動できません >&2; exit 1; }\n`, { mode: 0o755 });
-  process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args)); if (args[2] === 'fail') { console.error('起動できません'); process.exitCode = 1; }`);
 
   await startSession(tmp, '- 箇条書きの依頼');
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--', '- 箇条書きの依頼']);
@@ -112,22 +142,17 @@ test('アーカイブで消すときは、動いているバックグラウン�
     { id: 'j5', sessionId: 's5', kind: 'background' },
     { sessionId: 's4', kind: 'interactive', pid: 1 },
   ];
-  fs.mkdirSync(bin, { recursive: true });
   fs.mkdirSync(path.dirname(roster), { recursive: true });
   fs.writeFileSync(roster, JSON.stringify({ workers: { j3: {} } }));
-  fs.writeFileSync(
-    path.join(bin, 'claude'),
-    [
-      '#!/bin/sh',
-      `printf '%s\\n' "$@" '' >> '${callsFile}'`,
-      `[ "$1" != agents ] || echo '${JSON.stringify(jobs)}'`,
-      `[ "$1" != stop ] || { (sleep 0.3; echo '{"workers":{}}' > '${roster}.tmp'; mv '${roster}.tmp' '${roster}') & }`,
-      `[ "$1 $2" != 'rm j3' ] || ! grep -q j3 '${roster}' || { echo 動いています >&2; exit 1; }`,
-      `[ "$1 $2" != 'rm j5' ] || { echo 未コミットの変更があります >&2; exit 1; }`,
-    ].join('\n'),
-    { mode: 0o755 },
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+const fail = (reason) => { console.error(reason); process.exitCode = 1; };
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});
+if (args[0] === 'rm' && args[1] === 'j3' && fs.readFileSync(${js(roster)}, 'utf8').includes('j3')) fail('動いています');
+if (args[0] === 'rm' && args[1] === 'j5') fail('未コミットの変更があります');`,
   );
-  process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
   const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
 
   await removeSession('s3');

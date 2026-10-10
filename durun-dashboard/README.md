@@ -24,6 +24,10 @@ pnpm install-statusline
 `pnpm uninstall-statusline` でラッパーを外す。
 設定を書き換える直前の内容は `~/.claude/settings.json.bak-durun-dashboard` に残る。
 
+Windows でも同じ手順で動く。
+フックと statusline のラッパーは Claude Code が Git Bash で動かすので、Claude Code と同じく Git for Windows が要る。
+メモリプレッシャーは macOS でだけ出る。
+
 ## できること
 
 | 画面 | 内容 |
@@ -106,6 +110,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 | `JIRA_BASE_URL` | JIRA のサイト（例: `https://example.atlassian.net`） |
 | `JIRA_PROJECT_KEYS` | ブランチ名や PR タイトルから課題キーを拾うプロジェクト（カンマ区切り） |
 | `JIRA_EMAIL`、`JIRA_API_TOKEN` | 課題の題名と状態を表示するときと、JIRA Issues のウィジェットを使うときに設定する |
+| `CHROME_PATH` | 資料を PDF と PNG に書き出す Chrome。既定は macOS と Windows の標準の場所 |
 
 ## 開発
 
@@ -113,3 +118,9 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 pnpm check   # 型検査
 pnpm test
 ```
+
+OS ごとに違う情報の取り方と操作は、互換レイヤー `server/platform.ts` にまとめる。
+ほかのコードは `process.platform` を見ずに、必ずここを経由する。claude の起動も `claudeCommand` を通す。
+OS ごとの実装は `platformFor` で名前から選べ、外のコマンドは引数で差し替えられるので、`test/platform.test.ts` はどの OS の上でも全部の実装を確かめる。
+互換レイヤーの外に OS の判定や claude の起動を書くと、同じテストが落ちる。
+テストで claude を偽物にするときは、`test/fakeClaude.ts` の `useFakeClaude` で node のスクリプトを置く。

@@ -1,11 +1,7 @@
-// macOS のメモリプレッシャーと、アクティビティモニタのメモリの欄と同じ内訳を、sysctl と vm_stat から読む。
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+// macOS の sysctl と vm_stat の出力から、メモリプレッシャーと、アクティビティモニタのメモリの欄と同じ内訳を求める。
 import type { MemoryStatus } from '../shared/types.ts';
 
-const run = promisify(execFile);
 const MIB = 1024 * 1024;
-const SYSCTL_NAMES = ['kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level', 'hw.memsize', 'vm.swapusage'];
 // kern.memorystatus_vm_pressure_level は 1 が正常、2 が警告、4 が危険。
 const LEVELS: Record<string, MemoryStatus['level']> = { 2: 'warn', 4: 'critical' };
 
@@ -33,12 +29,4 @@ export const toMemoryStatus = (sysctl: string, vmStat: string): MemoryStatus => 
     // vm.swapusage は「total = 2048.00M  used = 476.12M ...」の形で、常に MiB で書く。
     swapUsed: Number(/used = ([\d.]+)M/.exec(swap)?.[1] ?? 0) * MIB,
   };
-};
-
-// ponytail: macOS だけ読む。Linux に広げるなら /proc/pressure/memory と /proc/meminfo から読む。
-/** macOS 以外では null を返し、画面はメモリプレッシャーを出さない。 */
-export const readMemory = async (): Promise<MemoryStatus | null> => {
-  if (process.platform !== 'darwin') return null;
-  const [sysctl, vmStat] = await Promise.all([run('/usr/sbin/sysctl', ['-n', ...SYSCTL_NAMES]), run('/usr/bin/vm_stat')]);
-  return toMemoryStatus(sysctl.stdout, vmStat.stdout);
 };

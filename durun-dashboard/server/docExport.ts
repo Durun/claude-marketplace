@@ -3,12 +3,13 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { UpstreamError } from './haiku.ts';
+import { platform } from './platform.ts';
 
 export type ExportFormat = 'pdf' | 'png';
 
-// ponytail: macOS の Chrome の場所を既定にする。ほかの環境では CHROME_PATH で指す。
-const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME = process.env.CHROME_PATH ?? platform.defaultChromePath(process.env);
 const TIMEOUT_MS = 60_000;
 // 画面の資料と同じ幅で組む。
 const VIEWPORT = { width: 1200, height: 800 };
@@ -60,7 +61,7 @@ const render = async (port: number, file: string, format: ExportFormat): Promise
     await tab.send('Page.enable');
     await tab.send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: format === 'png' ? 2 : 1, mobile: false });
     const loaded = tab.once('Page.loadEventFired');
-    await tab.send('Page.navigate', { url: `file://${file}` });
+    await tab.send('Page.navigate', { url: pathToFileURL(file).href });
     await loaded;
     // 背景色を落とすと、暗い背景に白い文字の資料が読めなくなる。
     if (format === 'pdf') return Buffer.from(String((await tab.send('Page.printToPDF', { printBackground: true })).data), 'base64');
@@ -74,6 +75,7 @@ const render = async (port: number, file: string, format: ExportFormat): Promise
 
 /** 資料ごとに Chrome を起動して閉じる。書き出しは人間がボタンを押したときだけなので、起動したままにはしない。 */
 export const exportHtml = async (html: string, format: ExportFormat): Promise<Buffer> => {
+  if (!CHROME) throw new UpstreamError('Chrome の場所が分かりません。CHROME_PATH で指してください');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-export-'));
   const file = path.join(dir, 'doc.html');
   fs.writeFileSync(file, html);

@@ -3,25 +3,24 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { js, useFakeClaude } from './fakeClaude.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize } from '../server/suggest.ts';
 
-// 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を PATH の先頭に置く。
+// 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
-fs.mkdirSync(path.join(tmp, 'bin'));
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
-fs.writeFileSync(
-  path.join(tmp, 'bin', 'claude'),
-  `#!/bin/sh
-cat > '${promptFile}'
-echo >> '${callsFile}'
-if grep -q '^失敗$' '${promptFile}'; then echo '{"is_error":true,"result":"usage limit reached"}'; exit 1; fi
-echo '${JSON.stringify({ structured_output: output })}'
-`,
-  { mode: 0o755 },
+useFakeClaude(
+  tmp,
+  `const prompt = stdin();
+fs.writeFileSync(${js(promptFile)}, prompt);
+fs.appendFileSync(${js(callsFile)}, '\\n');
+if (/^失敗$/m.test(prompt)) {
+  console.log('{"is_error":true,"result":"usage limit reached"}');
+  process.exitCode = 1;
+} else console.log(${js(JSON.stringify({ structured_output: output }))});`,
 );
-process.env.PATH = `${path.join(tmp, 'bin')}${path.delimiter}${process.env.PATH}`;
 const calls = (): number => fs.readFileSync(callsFile, 'utf8').length;
 const lastPrompt = (): string => fs.readFileSync(promptFile, 'utf8');
 

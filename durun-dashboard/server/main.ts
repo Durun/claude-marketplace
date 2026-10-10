@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, EFFORT_LEVELS, type FileWhere, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { askDolphin } from './assistant.ts';
+import { fillCallerPid } from './callerPid.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -16,7 +17,7 @@ import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
-import { readMemory } from './memory.ts';
+import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
@@ -635,7 +636,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr));
   }],
-  [/^\/api\/memory$/, () => readMemory()],
+  [/^\/api\/memory$/, () => platform.readMemory()],
   [/^\/api\/sessions\/([^/]+)\/diff$/, ([, id = ''], _, url) => diff(id, url)],
   [/^\/api\/sessions\/([^/]+)\/file$/, ([, id = ''], _, url) => wholeFile(id, url)],
   [/^\/api\/sessions\/([^/]+)\/local-file$/, ([, id = ''], _, url) => localFile(id, url)],
@@ -673,6 +674,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   const routes = req.method === 'POST' ? POST_ROUTES : GET_ROUTES;
   if (url.pathname === '/mcp') {
     if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
+    await fillCallerPid(req);
     return handleMcp(req, res, await readBody(req));
   }
   if (req.method === 'GET' && url.pathname === '/api/events') return openEvents(req, res);
