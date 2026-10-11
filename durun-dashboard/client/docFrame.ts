@@ -1,4 +1,5 @@
 import type { Doc } from '../shared/types.ts';
+import type { Skin } from './skin.ts';
 
 // markdown / mermaid / text を描画する固定のテンプレート。資料の内容は JSON として渡し、HTML としては解釈させない。
 const TEMPLATE_STYLE = `
@@ -137,17 +138,48 @@ if (data.format === 'text') {
 `;
 
 /**
+ * Windows XP のスキンのスクロールバー。ダッシュボード本体と資料の iframe の両方に入れる。
+ * XP の Internet Explorer に寄せ、白に近い溝に、滑り止めの線を引いた水色のつまみと矢印のボタンを置く。
+ * scrollbar-color を指定すると Chrome は ::-webkit-scrollbar の指定を無視するので、XP では使わない。
+ */
+export const XP_SCROLLBAR_STYLE = `
+::-webkit-scrollbar { width: 17px; height: 17px; background: linear-gradient(to bottom right, #f3f1ec, #fefefb); }
+::-webkit-scrollbar-corner { background: #ece9d8; }
+::-webkit-scrollbar-thumb, ::-webkit-scrollbar-button {
+  border: 1px solid; border-color: #fff #a0b5d3 #7da0d4 #fff; border-radius: 3px;
+  background: var(--glyph) center no-repeat, linear-gradient(to bottom right, rgba(255, 255, 255, 0.6), transparent) #b5cbf8;
+}
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-button:hover { background-color: #cddcfd; }
+::-webkit-scrollbar-thumb:active, ::-webkit-scrollbar-button:active { background-color: #a0baf3; }
+::-webkit-scrollbar-thumb:vertical { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='8'><path d='M0 .5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%23eef4fe'/><path d='M1 1.5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%238cb0f8'/></svg>"); }
+::-webkit-scrollbar-thumb:horizontal { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='7'><path d='M.5 0v6m2-6v6m2-6v6m2-6v6' stroke='%23eef4fe'/><path d='M1.5 1v6m2-6v6m2-6v6m2-6v6' stroke='%238cb0f8'/></svg>"); }
+/*
+ * 矢印のボタンは、ボタンを出さない macOS でも出るよう display: block にする。
+ * grid や flex の欄では Chrome が両端に 2 つずつ並べるので、内側の 1 つずつは消す。
+ */
+::-webkit-scrollbar-button { display: block; width: 17px; height: 17px; }
+::-webkit-scrollbar-button:start:increment, ::-webkit-scrollbar-button:end:decrement { display: none; }
+::-webkit-scrollbar-button:vertical:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 5l3.5-3.5L8 5' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+::-webkit-scrollbar-button:vertical:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 1l3.5 3.5L8 1' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+::-webkit-scrollbar-button:horizontal:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M5 1L1.5 4.5 5 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+::-webkit-scrollbar-button:horizontal:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M1 1l3.5 3.5L1 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+`;
+
+/**
  * 資料は Claude が書いた信頼できない内容なので、ダッシュボード本体の DOM には入れない。
  * 呼び出し側は、この文字列を sandbox="allow-scripts" の iframe の srcdoc にだけ渡す。
+ * iframe には本体の CSS が届かないので、スキンのスクロールバーはここで入れる。
  */
-export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'>): string => {
-  if (doc.format === 'html' || doc.format === 'svg') return doc.content;
+export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'>, skin: Skin = 'default'): string => {
+  const skinStyle = skin === 'xp' ? `<style>${XP_SCROLLBAR_STYLE}</style>` : '';
+  // HTML や SVG の資料は、先頭に足すと doctype より前になって互換モードに落ちるので、末尾に足す。
+  if (doc.format === 'html' || doc.format === 'svg') return doc.content + skinStyle;
   // '<' を Unicode エスケープにして、内容に含まれる </script> や <!-- で script 要素が終わらないようにする。
   const data = JSON.stringify({ format: doc.format, content: doc.content }).replace(/</g, '\\u003c');
   return [
     '<!doctype html><html lang="ja"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<style>${TEMPLATE_STYLE}</style></head><body><main id="out"></main>`,
+    `<style>${TEMPLATE_STYLE}</style>${skinStyle}</head><body><main id="out"></main>`,
     `<script type="application/json" id="doc-data">${data}</script>`,
     '<script src="/vendor/marked.js"></script>',
     '<script src="/vendor/mermaid.js"></script>',

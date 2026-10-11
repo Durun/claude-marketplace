@@ -1238,30 +1238,7 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .btn:disabled { border-color: #c9c7ba; background: #f5f4ea; color: #aca899; opacity: 1; }
 [data-skin="xp"] .input { border-color: #7f9db9; border-radius: 0; background: #fff; }
 
-/*
- * スクロールバーは XP の Internet Explorer に寄せ、白に近い溝に、滑り止めの線を引いた水色のつまみと矢印のボタンを置く。
- * scrollbar-color を指定すると Chrome は ::-webkit-scrollbar の指定を無視するので、XP では使わない。
- */
-[data-skin="xp"] ::-webkit-scrollbar { width: 17px; height: 17px; background: linear-gradient(to bottom right, #f3f1ec, #fefefb); }
-[data-skin="xp"] ::-webkit-scrollbar-corner { background: #ece9d8; }
-[data-skin="xp"] ::-webkit-scrollbar-thumb, [data-skin="xp"] ::-webkit-scrollbar-button {
-  border: 1px solid; border-color: #fff #a0b5d3 #7da0d4 #fff; border-radius: 3px;
-  background: var(--glyph) center no-repeat, linear-gradient(to bottom right, rgba(255, 255, 255, 0.6), transparent) #b5cbf8;
-}
-[data-skin="xp"] ::-webkit-scrollbar-thumb:hover, [data-skin="xp"] ::-webkit-scrollbar-button:hover { background-color: #cddcfd; }
-[data-skin="xp"] ::-webkit-scrollbar-thumb:active, [data-skin="xp"] ::-webkit-scrollbar-button:active { background-color: #a0baf3; }
-[data-skin="xp"] ::-webkit-scrollbar-thumb:vertical { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='8'><path d='M0 .5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%23eef4fe'/><path d='M1 1.5h6m-6 2h6m-6 2h6m-6 2h6' stroke='%238cb0f8'/></svg>"); }
-[data-skin="xp"] ::-webkit-scrollbar-thumb:horizontal { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='7'><path d='M.5 0v6m2-6v6m2-6v6m2-6v6' stroke='%23eef4fe'/><path d='M1.5 1v6m2-6v6m2-6v6m2-6v6' stroke='%238cb0f8'/></svg>"); }
-/*
- * 矢印のボタンは、ボタンを出さない macOS でも出るよう display: block にする。
- * grid や flex の欄では Chrome が両端に 2 つずつ並べるので、内側の 1 つずつは消す。
- */
-[data-skin="xp"] ::-webkit-scrollbar-button { display: block; width: 17px; height: 17px; }
-[data-skin="xp"] ::-webkit-scrollbar-button:start:increment, [data-skin="xp"] ::-webkit-scrollbar-button:end:decrement { display: none; }
-[data-skin="xp"] ::-webkit-scrollbar-button:vertical:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 5l3.5-3.5L8 5' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
-[data-skin="xp"] ::-webkit-scrollbar-button:vertical:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='6'><path d='M1 1l3.5 3.5L8 1' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
-[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:decrement { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M5 1L1.5 4.5 5 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
-[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M1 1l3.5 3.5L1 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
+/* スクロールバーの見た目は、資料の iframe にも入れるので client/docFrame.ts の XP_SCROLLBAR_STYLE に置く。 */
 
 /* タブは選んでいるものとマウスを載せたものの上端を橙にする。 */
 

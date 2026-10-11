@@ -4,6 +4,7 @@ import { type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
+import { useSkin } from './skin.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { baseName } from './explorerFavorites.ts';
 import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
@@ -470,6 +471,7 @@ const DocHead = ({ doc, session, onReload, loading }: { doc: Doc; session?: Sess
 
 export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) => {
   const fetched = useFetch(() => api.doc(id), [id]);
+  const skin = useSkin();
   const doc = fetched.data;
   useMarkSeen(doc, snapshot.docs.find((d) => d.id === id));
   if (fetched.error && !doc) {
@@ -491,7 +493,7 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
         title={doc.title}
         sandbox="allow-scripts"
         allow="clipboard-write"
-        srcdoc={buildSrcdoc(doc)}
+        srcdoc={buildSrcdoc(doc, skin)}
       />
       <FeedbackForm doc={doc} />
     </div>
@@ -507,6 +509,7 @@ export const openDocFloat = (id: string, icon?: string): void => floatUp(DOC_KEY
 /** ウィンドウには資料の中身だけを出す。題名はウィンドウのタイトルバーに出す。 */
 export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const fetched = useFetch(() => api.doc(f.tab.id), [f.tab.id]);
+  const skin = useSkin();
   const doc = fetched.data;
   const listed = snapshot.docs.find((d) => d.id === f.tab.id);
   useMarkSeen(doc, listed);
@@ -516,7 +519,7 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
       {fetched.error && <p class="card panel error-note">資料を取得できませんでした（{fetched.error}）</p>}
       {doc && <Downloads doc={doc} />}
       {doc && (
-        <iframe class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc)} />
+        <iframe class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc, skin)} />
       )}
     </FloatFrame>
   );
@@ -561,6 +564,7 @@ const formatOf = (path: string): DocFormat =>
 /** リポジトリの外のファイルを、present の資料と同じ見た目で読む。ファイルが書き換わったら読み込み直す。 */
 const TextFile = ({ f }: { f: Float }) => {
   const file = useFetch(() => api.localFile(f.scope, f.tab.id), [f.scope, f.tab.id]);
+  const skin = useSkin();
   useEffect(() => {
     const source = new EventSource(api.localFileEventsUrl(f.scope, f.tab.id));
     source.onmessage = file.reload;
@@ -571,7 +575,7 @@ const TextFile = ({ f }: { f: Float }) => {
     <>
       {file.error && <p class="card panel error-note">ファイルを読めませんでした（{file.error}）</p>}
       {file.data && (
-        <iframe class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content })} />
+        <iframe class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content }, skin)} />
       )}
     </>
   );

@@ -14,6 +14,7 @@ import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
 import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
+import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Meter, Time, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
@@ -144,18 +145,6 @@ const NotifyButton = () => {
   return <button class="btn btn-sm" onClick={enable}>通知を有効にする</button>;
 };
 
-const SKINS = { default: 'デフォルト', xp: 'Windows XP' } as const;
-type Skin = keyof typeof SKINS;
-const SKIN_KEY = 'dashboard-skin';
-
-const savedSkin = (): Skin => {
-  const v = localStorage.getItem(SKIN_KEY) ?? '';
-  return Object.hasOwn(SKINS, v) ? (v as Skin) : 'default';
-};
-
-// スキンは html の data-skin で CSS を切り替える。最初の描画から保存したスキンで描くよう、読み込んだ時点で当てる。
-document.documentElement.dataset.skin = savedSkin();
-
 const MENU_ID = 'app-menu';
 
 type MenuProps = { onSearch: () => void; onEdit?: () => void };
@@ -166,12 +155,7 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  */
 const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
   const light = useLightMode();
-  const [skin, setSkin] = useState(savedSkin);
-  const changeSkin = (next: Skin) => {
-    setSkin(next);
-    document.documentElement.dataset.skin = next;
-    localStorage.setItem(SKIN_KEY, next);
-  };
+  const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
   const [fullscreen, setFullscreen] = useState(() => !!document.fullscreenElement);
   useEffect(() => {
@@ -254,7 +238,7 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
             <div class="app-menu-item" tabindex={0} aria-haspopup="true">スキン<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
             <div class="app-menu-submenu" role="group" aria-label="スキン">
               {Object.entries(SKINS).map(([id, label]) => (
-                <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => changeSkin(id as Skin)}>{label}</button>
+                <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => setSkin(id as Skin)}>{label}</button>
               ))}
             </div>
           </div>
