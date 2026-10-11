@@ -51,16 +51,17 @@ const Ring = ({ r, width, limit }: { r: number; width?: number; limit?: RateLimi
 /**
  * 通知領域に常駐する使用制限のアイコン。外周のリングが 5 時間、内側の円グラフが 7 日の使用率で、色はそれぞれの使用率で変わる。マウスを載せるかフォーカスすると内訳を開く。
  * タスクバーは overflow: hidden なので、内訳は popover にして最前面に出す。
+ * 値がまだ無いときも空のリングを残し、内訳で出し方を案内する。消すと、出せることに気づけない。
  */
 const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: RateLimit }) => {
-  if (!fiveHour && !sevenDay) return null;
+  const empty = !fiveHour && !sevenDay;
   const flyout = () => document.getElementById(RATE_ID);
   const show = () => flyout()?.showPopover();
   const hide = () => flyout()?.hidePopover();
   const summary = [fiveHour && `5 時間 ${Math.round(fiveHour.usedPercent)}%`, sevenDay && `7 日 ${Math.round(sevenDay.usedPercent)}%`].filter(Boolean).join('、');
   return (
     <>
-      <button class="rate-tray" aria-label={`使用制限: ${summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
+      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <Ring {...RINGS.outer} limit={fiveHour} />
           <Ring {...RINGS.inner} limit={sevenDay} />
@@ -70,6 +71,11 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
         <b class="rate-head">使用制限</b>
         {fiveHour && <RateMeter label="5 時間" limit={fiveHour} />}
         {sevenDay && <RateMeter label="7 日" limit={sevenDay} />}
+        {empty && (
+          <p class="rate-empty">
+            まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。
+          </p>
+        )}
       </div>
     </>
   );

@@ -288,6 +288,7 @@ textarea.input { resize: vertical; min-height: 36px; }
   border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12.5px;
 }
 .rate-flyout:popover-open { display: grid; gap: 8px; }
+.rate-empty { max-width: 260px; margin: 0; color: var(--text-2); }
 /* 通知領域に常駐するメモリプレッシャー。縦の目盛りの高さで割合を、色で段階を示し、押すとボタンの下に内訳を開く。 */
 .memory-tray {
   anchor-name: --memory-tray; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0;
