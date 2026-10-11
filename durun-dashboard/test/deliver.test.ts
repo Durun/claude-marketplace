@@ -4,6 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import type { OutboxMessage } from '../shared/types.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
@@ -138,6 +139,32 @@ test('届けている途中でサーバーが止まったメッセージは、�
   redeliverInterrupted();
   await new Promise((resolve) => setTimeout(resolve, 300));
   assert.equal(fs.existsSync(argsFile), false);
+});
+
+test('渡し終えてから記録する前にサーバーが止まったメッセージは、会話ログに本文が残っているので、届け直さない', async () => {
+  const bin = path.join(tmp, 'bin-arrived');
+  const argsFile = path.join(tmp, 'args-arrived');
+  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args));`);
+  ensureSession('s7', tmp);
+  const at = Date.now();
+  const iso = (ms: number): string => new Date(ms).toISOString();
+  // 再開して渡した本文は人間の発言に、受信ソケットで渡した本文は受信の記録に残る。送る前からあった同じ文面の発言は、届いた証拠にしない。
+  const log = [
+    { type: 'user', timestamp: iso(at - 60_000), message: { role: 'user', content: '前にも言った\n改行つき' } },
+    { type: 'user', timestamp: iso(at + 1000), message: { role: 'user', content: '再開で渡した' } },
+    { type: 'queue-operation', operation: 'enqueue', timestamp: iso(at + 1000), content: '[durun-dashboard] 人間から:\nソケットで渡した' },
+  ];
+  const dir = path.join(tmp, 'claude', 'projects', 'p7');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 's7.jsonl'), log.map((e) => `${JSON.stringify(e)}\n`).join(''));
+  const sent = (id: string, text: string): OutboxMessage => ({ id, sessionId: 's7', text, createdAt: at, deliveredAt: at, via: 'resume', sending: true });
+  const [resumed, socket, lost] = [sent('a1', '再開で渡した'), sent('a2', 'ソケットで渡した'), sent('a3', '前にも言った\n改行つき')];
+  state.outbox.push(resumed, socket, lost);
+
+  redeliverInterrupted();
+  await new Promise<void>((resolve) => onChange(() => !lost.sending && lost.deliveredAt && resolve()));
+  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -2), ['--bg', '--resume', 's7', '--', '前にも言った']);
+  assert.deepEqual([resumed.deliveredAt, socket.deliveredAt, resumed.sending, socket.sending], [at, at, undefined, undefined]);
 });
 
 test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {

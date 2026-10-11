@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, SESSIONS_DIR, readJson, readLiveSessions, type LiveSession } from './claude.ts';
+import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, type LiveSession } from './claude.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { newId, state, touch } from './store.ts';
 
@@ -193,15 +193,48 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
   );
 };
 
+type LogEntry = { timestamp?: string; content?: unknown; message?: { content?: unknown } };
+
+/**
+ * 会話ログに、送った時刻より後の発言として本文が残っているメッセージ。
+ * 再開して渡した本文は人間の発言の message.content に、受信ソケットで渡した本文は受信の記録の content に、どちらも文字列で残る。
+ */
+const arrived = (sessionId: string, msgs: OutboxMessage[]): Set<OutboxMessage> => {
+  const found = new Set<OutboxMessage>();
+  const transcript = findTranscript(sessionId);
+  if (!transcript) return found;
+  for (const line of fs.readFileSync(transcript, 'utf8').split('\n')) {
+    // 行ごとに JSON を読むのは重いので、本文を含まない行は読まない。
+    const candidates = msgs.filter((m) => !found.has(m) && line.includes(JSON.stringify(m.text).slice(1, -1)));
+    if (!candidates.length) continue;
+    let entry: LogEntry;
+    try {
+      entry = JSON.parse(line) as LogEntry;
+    } catch {
+      continue;
+    }
+    const text = [entry.message?.content, entry.content].find((c) => typeof c === 'string');
+    const at = Date.parse(entry.timestamp ?? '');
+    for (const m of candidates) if (text?.includes(m.text) && at >= m.createdAt) found.add(m);
+  }
+  return found;
+};
+
 /**
  * 起動したときに呼ぶ。前のサーバーが届けている途中で止まったメッセージを、未配信に戻して届け直す。
  * コードを変えるたびに node --watch がサーバーを止めるので、セッションを止めてから再開するまでの数秒に重なると、配信済みの記録だけが残って本文が消える。
- * 再開まで済んでから記録する前に止まった分は二重に届くが、消えるよりよい。
+ * 渡し終えてから記録する前に止まった分は、会話ログに本文が残っているので、二重に届けない。
  */
 export const redeliverInterrupted = (): void => {
   const cut = state.outbox.filter((m) => m.sending);
-  for (const m of cut) Object.assign(m, { deliveredAt: undefined, via: undefined, sending: undefined });
+  if (!cut.length) return;
   for (const sessionId of new Set(cut.map((m) => m.sessionId))) {
+    const mine = cut.filter((m) => m.sessionId === sessionId);
+    const done = arrived(sessionId, mine);
+    for (const m of mine) Object.assign(m, done.has(m) ? { sending: undefined } : { deliveredAt: undefined, via: undefined, sending: undefined });
+  }
+  touch();
+  for (const sessionId of new Set(cut.filter((m) => !m.deliveredAt).map((m) => m.sessionId))) {
     const meta = state.sessions[sessionId];
     if (meta) deliver(sessionId, meta.cwd, readLiveSessions().get(sessionId), undelivered(sessionId));
   }
