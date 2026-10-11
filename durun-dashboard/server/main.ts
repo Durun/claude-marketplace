@@ -10,7 +10,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, isWaiting, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
+import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
 import { recordError } from './errors.ts';
@@ -833,6 +833,7 @@ for (const dir of [TASKS_DIR, PROJECTS_DIR]) watch(dir, true, scheduleBroadcast)
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
+redeliverInterrupted();
 
 // 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。
 for (const event of ['uncaughtException', 'unhandledRejection'] as const) {

@@ -230,6 +230,8 @@ export type OutboxMessage = {
   via?: 'socket' | 'resume' | 'mcp' | 'manual' | 'hook';
   /** 届けられなかった理由。未配信に戻っている。 */
   error?: string;
+  /** 届けている途中。サーバーが途中で止まると付いたまま残り、次に起動したときに届け直す。 */
+  sending?: boolean;
 };
 
 /** resetsAt は epoch ミリ秒 */

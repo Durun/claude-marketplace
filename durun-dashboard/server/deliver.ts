@@ -17,6 +17,7 @@ const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
 const STOP_TIMEOUT_MS = 15_000;
 // 認証を拒まれた接続は数ミリ秒で閉じられ、受け付けられた接続は開いたままになる。これだけ待てば見分けられる。
 const AUTH_GRACE_MS = 200;
+const ROSTER_POLL_MS = 500;
 
 type Waiter = (text: string) => void;
 const waiters = new Map<string, Waiter>();
@@ -65,6 +66,7 @@ const waitForStop = (jobId: string): Promise<void> =>
   new Promise((resolve, reject) => {
     const finish = (error?: Error): void => {
       watcher.close();
+      clearInterval(poll);
       clearTimeout(timer);
       if (error) reject(error);
       else resolve();
@@ -76,6 +78,8 @@ const waitForStop = (jobId: string): Promise<void> =>
       if (workers && !(jobId in workers)) finish();
     };
     const watcher = fs.watch(path.dirname(ROSTER), check);
+    // 名簿の置き換えを fs.watch が知らせないことがあるので、間を置いて読み直しもする。
+    const poll = setInterval(check, ROSTER_POLL_MS);
     const timer = setTimeout(() => finish(new Error('セッションを止められません')), STOP_TIMEOUT_MS);
     check();
   });
@@ -158,21 +162,49 @@ export const sendMessage = (sessionId: string, text: string, rewindTo?: string):
   if (rewindTo && viaInbox) throw new Error('作業中のセッションと端末で開いているセッションは巻き戻せません');
   const message: OutboxMessage = { id: newId(), sessionId, text, createdAt: Date.now() };
   state.outbox.push(message);
-  // 前に届けられなかったものも一緒に送る。続けて送られても二重に届かないよう、送る前に配信済みにする。
+  // 前に届けられなかったものも一緒に送る。
   // 巻き戻すときは、捨てる分岐に宛てた未配信のものを混ぜない。-p の依頼は人が打った発言として記録されないので、前置きでダッシュボードからの依頼と分かるようにする。
-  const pending = rewindTo ? [message] : state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
-  for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: viaInbox ? 'socket' : 'resume', error: undefined });
+  deliver(sessionId, meta.cwd, live, rewindTo ? [message] : undelivered(sessionId), rewindTo);
+  return { message, delivery: viaInbox ? 'sent' : 'resumed' };
+};
+
+const undelivered = (sessionId: string): OutboxMessage[] => state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
+
+const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, pending: OutboxMessage[], rewindTo?: string): void => {
+  const viaInbox = !!live && !restartable(live);
+  // 続けて送られても二重に届かないよう、送る前に配信済みにする。届け終えるまでは sending を付けておき、途中でサーバーが止まったら次の起動で届け直せるようにする。
+  // 巻き戻しは、届け直すともう一度巻き戻すので、sending を付けない。
+  for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: viaInbox ? 'socket' : 'resume', error: undefined, sending: rewindTo ? undefined : true });
   touch();
   // 鍵を読めないときも、届けられなかったものとして下で未配信に戻す。
   const toInbox = async (to: LiveSession): Promise<void> => postToInbox(to.messagingSocketPath, formatMessages(pending), platform.inboxToken(to.pid, SESSIONS_DIR));
-  const sent = viaInbox ? toInbox(live) : resume(sessionId, meta.cwd, rewindTo ? formatMessages(pending) : joinTexts(pending), live?.jobId, rewindTo);
-  // 届けられなかったら未配信に戻し、理由を残す。
-  sent.catch((e: Error) => {
-    for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: e.message });
-    touch();
-    console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
-  });
-  return { message, delivery: viaInbox ? 'sent' : 'resumed' };
+  const sent = viaInbox ? toInbox(live) : resume(sessionId, cwd, rewindTo ? formatMessages(pending) : joinTexts(pending), live?.jobId, rewindTo);
+  sent.then(
+    () => {
+      for (const m of pending) m.sending = undefined;
+      touch();
+    },
+    // 届けられなかったら未配信に戻し、理由を残す。
+    (e: Error) => {
+      for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: e.message, sending: undefined });
+      touch();
+      console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
+    },
+  );
+};
+
+/**
+ * 起動したときに呼ぶ。前のサーバーが届けている途中で止まったメッセージを、未配信に戻して届け直す。
+ * コードを変えるたびに node --watch がサーバーを止めるので、セッションを止めてから再開するまでの数秒に重なると、配信済みの記録だけが残って本文が消える。
+ * 再開まで済んでから記録する前に止まった分は二重に届くが、消えるよりよい。
+ */
+export const redeliverInterrupted = (): void => {
+  const cut = state.outbox.filter((m) => m.sending);
+  for (const m of cut) Object.assign(m, { deliveredAt: undefined, via: undefined, sending: undefined });
+  for (const sessionId of new Set(cut.map((m) => m.sessionId))) {
+    const meta = state.sessions[sessionId];
+    if (meta) deliver(sessionId, meta.cwd, readLiveSessions().get(sessionId), undelivered(sessionId));
+  }
 };
 
 /**

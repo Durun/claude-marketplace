@@ -10,8 +10,8 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { postToInbox, removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
-const { ensureSession, onChange } = await import('../server/store.ts');
+const { postToInbox, redeliverInterrupted, removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
+const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
 // 受信ソケットに認証の要る OS が読む、このプロセスに見立てたセッションの鍵。要らない OS では読まれない。
@@ -116,6 +116,28 @@ if (args[0] === '--bg') {
   ]);
   assert.equal(message.error, '再開できません');
   assert.equal(message.deliveredAt, undefined);
+});
+
+test('届けている途中でサーバーが止まったメッセージは、次に起動したときに届け直す', async () => {
+  // 前のサーバーがセッションを止めた後、再開する前に止まった状態。配信済みの記録と sending が残り、セッションはもう動いていない。
+  const bin = path.join(tmp, 'bin-interrupted');
+  const argsFile = path.join(tmp, 'args-interrupted');
+  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args));`);
+  ensureSession('s6', tmp);
+  const cut = { id: 'cut', sessionId: 's6', text: '途中で消えた', createdAt: 2, deliveredAt: 2, via: 'resume' as const, sending: true };
+  const done = { id: 'done', sessionId: 's6', text: '届いている', createdAt: 1, deliveredAt: 1, via: 'resume' as const };
+  state.outbox.push(done, cut);
+
+  redeliverInterrupted();
+  await new Promise<void>((resolve) => onChange(() => !cut.sending && resolve()));
+  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--resume', 's6', '--', '途中で消えた']);
+  assert.ok(cut.deliveredAt > 2);
+
+  // 届け終えたものは、もう一度起動しても送らない。
+  fs.rmSync(argsFile);
+  redeliverInterrupted();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(fs.existsSync(argsFile), false);
 });
 
 test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {
