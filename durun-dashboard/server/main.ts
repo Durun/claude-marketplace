@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
@@ -12,6 +14,7 @@ import { compress, compressedFile, compressedStream, etagOf, notModified, pickEn
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
+import { docAsset } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
@@ -245,14 +248,8 @@ const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
   throw new HttpError(404, `「${ref}」を開けません`);
 };
 
-/** 画像と動画をそのまま返す。動画の再生位置を動かせるよう、Range で求められた範囲だけを返す。 */
-const sendMedia = (req: IncomingMessage, res: ServerResponse, id: string, url: URL): void => {
-  // ほかのサイトの img や video から、手元のファイルを読み込ませない。
-  const fetchSite = req.headers['sec-fetch-site'];
-  if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
-  const { ref, full, stat } = localPath(id, url);
-  const type = mediaType(full);
-  if (!stat || !type) throw new HttpError(404, `「${ref}」は画像や動画ではありません`);
+/** メディアのファイルをそのまま返す。動画や音声の再生位置を動かせるよう、Range で求められた範囲だけを返す。 */
+const sendRange = (req: IncomingMessage, res: ServerResponse, full: string, stat: fs.Stats, type: string): void => {
   const [, from = '', to = ''] = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '') ?? [];
   const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' };
   if (!from && !to) {
@@ -265,6 +262,30 @@ const sendMedia = (req: IncomingMessage, res: ServerResponse, id: string, url: U
   if (start > end) return void res.writeHead(416, { 'content-range': `bytes */${stat.size}` }).end();
   res.writeHead(206, { ...head, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${stat.size}` });
   fs.createReadStream(full, { start, end }).pipe(res);
+};
+
+/** ウィンドウに浮かべる画像と動画を返す。 */
+const sendMedia = (req: IncomingMessage, res: ServerResponse, id: string, url: URL): void => {
+  // ほかのサイトの img や video から、手元のファイルを読み込ませない。
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+  const { ref, full, stat } = localPath(id, url);
+  const type = mediaType(full);
+  if (!stat || !type) throw new HttpError(404, `「${ref}」は画像や動画ではありません`);
+  sendRange(req, res, full, stat, type);
+};
+
+/**
+ * HTML の資料が相対パスで埋め込んだ音声、画像、動画を返す。
+ * 資料の iframe は sandbox で別オリジンの扱いになり、sec-fetch-site では画面からの読み込みと見分けられない。
+ * 代わりに、present でファイルを渡した資料の、そのディレクトリの中のメディアに限る。
+ */
+const sendDocAsset = (req: IncomingMessage, res: ServerResponse, id: string, rel: string): void => {
+  const doc = state.docs.find((d) => d.id === id);
+  const asset = doc?.path && doc.format === 'html' ? docAsset(doc.path, rel) : undefined;
+  const stat = asset && fs.statSync(asset.full, { throwIfNoEntry: false });
+  if (!asset || !stat?.isFile()) throw new HttpError(404, `「${rel}」は資料に埋め込めるファイルではありません`);
+  sendRange(req, res, asset.full, stat, asset.type);
 };
 
 /** セッションのブランチの、開いている PR。閉じた PR のレビューコメントには対応しないので、扱わない。 */
@@ -406,7 +427,9 @@ const readDoc = (id: string): Doc => {
 const sendExport = async (res: ServerResponse, id: string, format: string): Promise<void> => {
   const doc = readDoc(id);
   if (doc.format !== 'html' && doc.format !== 'svg') throw new HttpError(400, `${doc.format} の資料は書き出せません`);
-  const body = await exportHtml(doc.content, format as ExportFormat);
+  // 一時ファイルにして開くので、相対パスで埋め込んだ画像は、資料のディレクトリから読ませる。
+  const html = doc.path && doc.format === 'html' ? withBase(doc.content, `${pathToFileURL(path.dirname(doc.path)).href}/`) : doc.content;
+  const body = await exportHtml(html, format as ExportFormat);
   res.writeHead(200, { 'content-type': format === 'pdf' ? 'application/pdf' : 'image/png', 'content-length': body.length }).end(body);
 };
 
@@ -788,6 +811,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
   const fileEvents = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/local-file\/events$/.exec(url.pathname);
   if (fileEvents) return watchLocalFile(req, res, decodeURIComponent(fileEvents[1] ?? ''), url);
+  const asset = req.method === 'GET' && /^\/api\/docs\/([^/]+)\/files\/(.+)$/.exec(url.pathname);
+  if (asset) return sendDocAsset(req, res, decodeURIComponent(asset[1] ?? ''), decodeURIComponent(asset[2] ?? ''));
   // Chrome を起動するので、他のサイトから GET で起こされないよう POST で受ける。
   const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png)$/.exec(url.pathname);
   if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');

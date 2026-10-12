@@ -1,3 +1,4 @@
+import { withBase } from '../shared/html.ts';
 import type { Doc } from '../shared/types.ts';
 import type { Skin } from './skin.ts';
 
@@ -165,13 +166,29 @@ export const XP_SCROLLBAR_STYLE = `
 ::-webkit-scrollbar-button:horizontal:increment { --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='9'><path d='M1 1l3.5 3.5L1 8' fill='none' stroke='%234d6185' stroke-width='2'/></svg>"); }
 `;
 
+// base を足すと、ページ内リンク（#見出し）も base のアドレスへ移ってしまうので、移らずにその場でスクロールする。
+const HASH_LINK_SCRIPT = `<script>
+document.addEventListener('click', (e) => {
+  const link = e.target.closest && e.target.closest('a[href^="#"]');
+  if (!link || e.defaultPrevented) return;
+  e.preventDefault();
+  const name = decodeURIComponent(link.getAttribute('href').slice(1));
+  const to = name ? document.getElementById(name) || document.getElementsByName(name)[0] : document.documentElement;
+  if (to) to.scrollIntoView();
+});
+</script>`;
+
 /**
  * 資料は Claude が書いた信頼できない内容なので、ダッシュボード本体の DOM には入れない。
  * 呼び出し側は、この文字列を sandbox="allow-scripts" の iframe の srcdoc にだけ渡す。
  * iframe には本体の CSS が届かないので、スキンのスクロールバーはここで入れる。
+ * ファイルから読んだ HTML の資料は、相対パスで埋め込んだ音声や画像を、サーバーが資料のディレクトリから返すアドレスへ向ける。
  */
-export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'>, skin: Skin = 'default'): string => {
+export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<Doc, 'id' | 'path'>>, skin: Skin = 'default'): string => {
   const skinStyle = skin === 'xp' ? `<style>${XP_SCROLLBAR_STYLE}</style>` : '';
+  if (doc.format === 'html' && doc.id && doc.path) {
+    return withBase(doc.content, `/api/docs/${encodeURIComponent(doc.id)}/files/`) + HASH_LINK_SCRIPT + skinStyle;
+  }
   // HTML や SVG の資料は、先頭に足すと doctype より前になって互換モードに落ちるので、末尾に足す。
   if (doc.format === 'html' || doc.format === 'svg') return doc.content + skinStyle;
   // '<' を Unicode エスケープにして、内容に含まれる </script> や <!-- で script 要素が終わらないようにする。
