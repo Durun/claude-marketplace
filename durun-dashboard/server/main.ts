@@ -14,7 +14,7 @@ import { compress, compressedFile, compressedStream, etagOf, notModified, pickEn
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
-import { docAsset } from './docAssets.ts';
+import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
@@ -423,10 +423,17 @@ const readDoc = (id: string): Doc => {
   }
 };
 
-/** HTML と SVG の資料を PDF か PNG にして返す。ほかの形式は画面のスクリプトで描くので、Chrome に開かせても同じ見た目にならない。 */
+/**
+ * HTML と SVG の資料を PDF か PNG にして返す。ほかの形式は画面のスクリプトで描くので、Chrome に開かせても同じ見た目にならない。
+ * HTML のファイルの資料は、相対パスで埋め込んだ音声や画像を中に入れた、1 つで完結する HTML でも返す。
+ */
 const sendExport = async (res: ServerResponse, id: string, format: string): Promise<void> => {
   const doc = readDoc(id);
   if (doc.format !== 'html' && doc.format !== 'svg') throw new HttpError(400, `${doc.format} の資料は書き出せません`);
+  if (format === 'html') {
+    const whole = Buffer.from(doc.path && doc.format === 'html' ? inlineAssets(doc.content, doc.path) : doc.content);
+    return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': whole.length }).end(whole);
+  }
   // 一時ファイルにして開くので、相対パスで埋め込んだ画像は、資料のディレクトリから読ませる。
   const html = doc.path && doc.format === 'html' ? withBase(doc.content, `${pathToFileURL(path.dirname(doc.path)).href}/`) : doc.content;
   const body = await exportHtml(html, format as ExportFormat);
@@ -814,7 +821,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   const asset = req.method === 'GET' && /^\/api\/docs\/([^/]+)\/files\/(.+)$/.exec(url.pathname);
   if (asset) return sendDocAsset(req, res, decodeURIComponent(asset[1] ?? ''), decodeURIComponent(asset[2] ?? ''));
   // Chrome を起動するので、他のサイトから GET で起こされないよう POST で受ける。
-  const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png)$/.exec(url.pathname);
+  const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png|html)$/.exec(url.pathname);
   if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');
   if (req.method === 'GET' && (await serveStatic(req, res, url.pathname))) return;
   for (const [pattern, handler] of routes) {

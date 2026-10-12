@@ -43,7 +43,7 @@ const TOOLS = [
       properties: {
         title: { type: 'string', description: '資料の題名' },
         content: { type: 'string', description: '資料の本文。path を渡すときは省略する。' },
-        path: { type: 'string', description: '資料のファイルパス。開くたびに最新の内容を表示する。HTML のファイルは、同じディレクトリより下の音声、画像、動画を相対パスで埋め込める。' },
+        path: { type: 'string', description: '資料のファイルパス。開くたびに最新の内容を表示する。HTML のファイルは、同じディレクトリより下の音声、画像、動画を相対パスで埋め込める。音声は wav ではなく、軽い ogg にして添える。audio などの要素の src に書いたファイルは、人間が HTML でダウンロードするときに HTML の中に入る。' },
         format: { type: 'string', enum: ['markdown', 'html', 'mermaid', 'svg', 'text'], description: '省略時は拡張子から判断し、分からなければ markdown。' },
       },
       required: ['title'],

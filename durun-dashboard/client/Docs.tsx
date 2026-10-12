@@ -432,10 +432,10 @@ const save = (blob: Blob, name: string): void => {
 
 /** HTML と SVG の資料だけを書き出す。ほかの形式は画面のスクリプトで描くので、ファイルにすると同じ見た目にならない。 */
 const Downloads = ({ doc }: { doc: Doc }) => {
-  const [busy, setBusy] = useState<'pdf' | 'png'>();
+  const [busy, setBusy] = useState<'pdf' | 'png' | 'html'>();
   if (doc.format !== 'html' && doc.format !== 'svg') return null;
   const name = doc.title.replace(/[\\/:*?"<>|]/g, '_');
-  const download = async (format: 'pdf' | 'png') => {
+  const download = async (format: 'pdf' | 'png' | 'html') => {
     setBusy(format);
     const blob = await attempt(`${format.toUpperCase()} の書き出し`, () => api.exportDoc(doc.id, format));
     setBusy(undefined);
@@ -444,9 +444,14 @@ const Downloads = ({ doc }: { doc: Doc }) => {
   return (
     <div class="actions doc-downloads">
       <button class="btn btn-sm" disabled={!!busy} onClick={() => download('pdf')}>{busy === 'pdf' ? '書き出しています…' : 'PDF でダウンロード'}</button>
-      <button class="btn btn-sm" onClick={() => save(new Blob([doc.content], { type: doc.format === 'svg' ? 'image/svg+xml' : 'text/html' }), `${name}.${doc.format}`)}>
-        {doc.format.toUpperCase()} でダウンロード
-      </button>
+      {doc.format === 'html' && doc.path ? (
+        // 相対パスで埋め込んだ音声や画像は、サーバーが HTML の中に入れて返す。
+        <button class="btn btn-sm" disabled={!!busy} onClick={() => download('html')}>{busy === 'html' ? '書き出しています…' : 'HTML でダウンロード'}</button>
+      ) : (
+        <button class="btn btn-sm" onClick={() => save(new Blob([doc.content], { type: doc.format === 'svg' ? 'image/svg+xml' : 'text/html' }), `${name}.${doc.format}`)}>
+          {doc.format.toUpperCase()} でダウンロード
+        </button>
+      )}
       <button class="btn btn-sm" disabled={!!busy} onClick={() => download('png')}>{busy === 'png' ? '書き出しています…' : 'PNG でダウンロード'}</button>
     </div>
   );
