@@ -126,6 +126,8 @@ export type TokenTotals = { input: number; output: number; cacheRead: number; ca
 
 export type Usage = {
   model?: string;
+  /** statusline 由来。statusline を描いたことのないセッションでは分からない。 */
+  effort?: string;
   contextTokens: number;
   contextWindow: number;
   contextPercent: number;

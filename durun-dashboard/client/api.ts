@@ -93,6 +93,9 @@ export const api = {
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/message`, { text }),
   rewind: (id: string, rewindTo: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/rewind`, { rewindTo, text }),
+  /** モデルと effort を変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
+  switchModel: (id: string, text: string, model: string, effort: string) =>
+    postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, model, effort }),
   suggestions: (id: string) => postJson<string[]>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   compact: (id: string) => postJson<void>(`${session(id)}/compact`),

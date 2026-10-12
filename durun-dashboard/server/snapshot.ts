@@ -52,7 +52,8 @@ const buildUsage = (sessionId: string, log: claude.LogSummary | undefined, subs:
   const totals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, ...log?.totals };
   for (const { log: sub } of subs) for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += sub.totals[k];
   return {
-    model: log?.model,
+    model: log?.model ?? sl?.model,
+    effort: sl?.effort,
     contextTokens,
     contextWindow,
     contextPercent: exact ? (sl?.usedPercent ?? 0) : (contextTokens / contextWindow) * 100,

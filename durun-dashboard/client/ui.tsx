@@ -39,14 +39,23 @@ export const Ext = ({ href, class: cls, title, attach, children }: { href: strin
 
 export const Empty = ({ children }: { children: ComponentChildren }) => <p class="empty">{children}</p>;
 
-type ChoiceProps = { label: string; value?: string; options: readonly string[]; onChange: (value: string) => void };
+type ChoiceProps = {
+  label: string;
+  value?: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  /** 空の選択肢の見出し。false なら空を選べない。 */
+  empty?: string | false;
+  disabled?: boolean;
+  title?: string;
+};
 
 /** options から 1 つを選ぶ。空の「既定」も選べる。 */
-export const Choice = ({ label, value, options, onChange }: ChoiceProps) => (
-  <label class="inline-field">
+export const Choice = ({ label, value, options, onChange, empty = '既定', disabled, title }: ChoiceProps) => (
+  <label class="inline-field" title={title}>
     {label}
-    <select class="input input-sm input-auto" value={value ?? ''} onChange={(e) => onChange(e.currentTarget.value)}>
-      <option value="">既定</option>
+    <select class="input input-sm input-auto" disabled={disabled} value={value ?? ''} onChange={(e) => onChange(e.currentTarget.value)}>
+      {empty !== false && <option value="">{empty}</option>}
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
   </label>

@@ -1,6 +1,6 @@
 import type { RefObject } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { Attention, ChatEntry, OutboxMessage, Session, SessionStatus, SkillInfo } from '../shared/types.ts';
+import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type Session, type SessionStatus, type SkillInfo } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { insertAt, useAttachMode } from './attach.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -8,7 +8,8 @@ import { dateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
-import { ContextPie, Empty, Time, copyText, onSubmitKey } from './ui.tsx';
+import { href, currentSessionId } from './router.ts';
+import { Choice, ContextPie, Empty, Time, copyText, onSubmitKey } from './ui.tsx';
 
 const STATUS_HELP: Record<SessionStatus, string> = {
   busy: '作業中です。ツール実行の合間に Claude が読みます。',
@@ -180,19 +181,64 @@ export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit
   );
 };
 
+const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
+const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
+
+/**
+ * 止めて再開できるセッションだけ、モデルと effort を変えられる。
+ * 端末で開いているセッションは、入力待ちでもダッシュボードからは止められない。
+ */
+const canSwitch = (s: Session): boolean => s.status !== 'busy' && (s.status !== 'idle' || s.kind === 'bg');
+
+/**
+ * 今のモデルと effort を選択肢で見せ、選び直した値を持つ。
+ * 選択肢に無いモデルと、分からない effort は、空の選択肢に今の値を出す。
+ */
+const useModelChoice = (s: Session) => {
+  const current = { model: MODELS.find((m) => s.usage.model?.includes(m)) ?? '', effort: EFFORT_LEVELS.find((e) => e === s.usage.effort) ?? '' };
+  const [picked, setPicked] = useState<{ model?: string; effort?: string }>({});
+  const model = picked.model ?? current.model;
+  const effort = picked.effort ?? current.effort;
+  const enabled = canSwitch(s);
+  const title = enabled ? SWITCH_HELP : NO_SWITCH_HELP;
+  return {
+    /** 起動に渡す値。選び直していないモデルは、今の正式な名前で引き継ぐ。 */
+    model: model || (s.usage.model ?? ''),
+    effort,
+    changed: enabled && (model !== current.model || effort !== current.effort),
+    reset: () => setPicked({}),
+    fields: (
+      <>
+        <Choice label="モデル" value={model} options={MODELS} empty={!current.model && (s.usage.model ?? '不明')} disabled={!enabled} title={title} onChange={(v) => setPicked((p) => ({ ...p, model: v }))} />
+        <Choice label="effort" value={effort} options={EFFORT_LEVELS} empty={!current.effort && (s.usage.effort ?? '不明')} disabled={!enabled} title={title} onChange={(v) => setPicked((p) => ({ ...p, effort: v }))} />
+      </>
+    ),
+  };
+};
+
 /** 返答の候補と入力欄。 */
 const MessageForm = ({ s }: { s: Session }) => {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const choice = useModelChoice(s);
+  const switchAndSend = async () => {
+    const res = await attempt('モデルと effort の切り替え', () => api.switchModel(s.id, text, choice.model, choice.effort));
+    if (!res) return false;
+    choice.reset();
+    toast(res.sessionId === s.id ? 'モデルと effort を変えて届けました' : 'モデルと effort を変えた複製に乗り換えて届けました');
+    // このセッションの画面を開いていれば、会話が続く複製の画面へ移る。
+    if (res.sessionId !== s.id && currentSessionId() === s.id) location.hash = href.session(res.sessionId);
+    return true;
+  };
   const send = async () => {
     if (busy || !text.trim()) return;
     setBusy(true);
-    const res = await attempt('メッセージの送信', () => api.message(s.id, text));
+    const res = choice.changed ? await switchAndSend() : await attempt('メッセージの送信', () => api.message(s.id, text));
     setBusy(false);
     if (!res) return;
     setText('');
-    toast(DELIVERY_TOAST[res.delivery]);
+    if (res !== true) toast(DELIVERY_TOAST[res.delivery]);
   };
   // compact した会話は戻せないので、押し間違いでないかを確かめる。
   const compact = async () => {
@@ -212,7 +258,8 @@ const MessageForm = ({ s }: { s: Session }) => {
       <ReplySuggestions s={s} onPick={pick} />
       <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
-        <button class="btn btn-primary" disabled={busy || !text.trim()} onClick={send}>送信</button>
+        <button class="btn btn-primary" disabled={busy || !text.trim()} title={choice.changed ? SWITCH_HELP : undefined} onClick={send}>{choice.changed ? '切り替えて送信' : '送信'}</button>
+        {choice.fields}
         <ContextPie usage={s.usage} />
         <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={compact}>compact</button>
       </div>

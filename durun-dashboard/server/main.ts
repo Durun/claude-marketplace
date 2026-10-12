@@ -12,7 +12,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview } from './deliver.ts';
+import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -663,6 +663,23 @@ const flag = (body: unknown, key: string): boolean | undefined => {
   return v as boolean | undefined;
 };
 
+// 選び直さなかったほうは、画面が今のモデルの正式な名前を送る。
+const MODEL_ID = /^claude-[a-z0-9-]+$/;
+
+/** モデルと effort を変えて依頼を渡す。変えられないのはセッションの状態によるので 409 にする。 */
+const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
+  const text = field<string>(body, 'text', 'string');
+  if (!text.trim()) throw new HttpError(400, 'text is required');
+  const model = field<string>(body, 'model', 'string');
+  if (model && !(MODELS as readonly string[]).includes(model) && !MODEL_ID.test(model)) throw new HttpError(400, 'model must be alias or model id');
+  const sessionId = sessionMeta(id).id;
+  try {
+    return { sessionId: await switchSession(sessionId, text, model, oneOf(body, 'effort', EFFORT_LEVELS)) };
+  } catch (e) {
+    throw new HttpError(409, (e as Error).message);
+  }
+};
+
 const improveSettings = (body: unknown): Partial<ImproveSettings> => {
   const patch = {
     enabled: flag(body, 'enabled'),
@@ -690,6 +707,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b)],
   [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd)],
   [/^\/api\/sessions\/([^/]+)\/review$/, ([, id = ''], b) => review(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b)],

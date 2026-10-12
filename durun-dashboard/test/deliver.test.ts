@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { postToInbox, redeliverInterrupted, removeSession, sendMessage, startSession } = await import('../server/deliver.ts');
+const { postToInbox, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
@@ -210,4 +210,51 @@ if (args[0] === 'rm' && args[1] === 'j5') fail('未コミットの変更があ�
   await removeSession('s4');
   assert.deepEqual(calls(), [['agents', '--json', '--all']]);
   await assert.rejects(removeSession('s5'), /未コミットの変更があります/);
+});
+
+test('モデルと effort を変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。フラグ付きの再開は、本物と同じく複製のジョブ j9 を起動したと書く。agents は、元の j8 と複製の j9 を返す。
+  const bin = path.join(tmp, 'bin-switch');
+  const callsFile = path.join(tmp, 'calls-switch');
+  const roster = path.join(tmp, 'claude', 'daemon', 'roster.json');
+  const jobs = [
+    { id: 'j8', sessionId: 's8', kind: 'background' },
+    { id: 'j9', sessionId: 's9', kind: 'background', pid: 1 },
+  ];
+  fs.writeFileSync(roster, JSON.stringify({ workers: { j8: {} } }));
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});
+if (args[0] === '--bg') console.log('note: the flags you passed started a copy as j9. backgrounded · j9');`,
+  );
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's8.json'), JSON.stringify({ pid: process.pid, sessionId: 's8', cwd: tmp, status: 'idle', kind: 'bg', jobId: 'j8' }));
+  Object.assign(ensureSession('s8', tmp), { title: '調査', theme: 'テーマ', pinned: true });
+  state.docs.push({ id: 'd8', sessionId: 's8', title: '資料', format: 'markdown', content: '', createdAt: 0, seen: true });
+  state.sessionOrder = ['s8'];
+
+  assert.equal(await switchSession('s8', '続けて', 'opus', 'high'), 's9');
+  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  assert.deepEqual(calls, [
+    ['stop', 'j8'],
+    ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--', '続けて'],
+    ['agents', '--json', '--all'],
+    ['agents', '--json', '--all'],
+    ['rm', 'j8'],
+  ]);
+  const copy = state.sessions.s9;
+  assert.deepEqual([copy?.title, copy?.theme, copy?.pinned, copy?.archived], ['調査', 'テーマ', true, false]);
+  assert.equal(state.sessions.s8?.archived, true);
+  assert.equal(state.docs.find((d) => d.id === 'd8')?.sessionId, 's9');
+  assert.deepEqual(state.sessionOrder, ['s9']);
+  const sent = state.outbox.find((m) => m.text === '続けて');
+  assert.equal(sent?.sessionId, 's9');
+  assert.ok(sent?.deliveredAt);
+
+  // 作業中のセッションは止められないので、変えない。
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's10.json'), JSON.stringify({ pid: process.pid, sessionId: 's10', cwd: tmp, status: 'busy', kind: 'bg', jobId: 'j10' }));
+  ensureSession('s10', tmp);
+  await assert.rejects(switchSession('s10', '続けて', 'opus'), /変えられません/);
+  assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });

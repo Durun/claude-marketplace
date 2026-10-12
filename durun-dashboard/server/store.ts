@@ -161,6 +161,23 @@ export const onChange = (fn: () => void): void => {
 
 export const newId = (): string => randomUUID().slice(0, 8);
 
+/**
+ * 人間がセッションに付けた設定と、やり取りした内容を、会話を引き継いだ複製のセッションへ移す。元のセッションはアーカイブする。
+ * モデルと effort を変えるときに、Claude Code が複製を別の id で起動するので使う。
+ */
+export const moveSession = (from: string, to: string): void => {
+  const old = state.sessions[from];
+  if (!old || from === to) return;
+  const { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, replySeenAt, branchViews });
+  Object.assign(old, { archived: true, pinned: undefined, jobId: undefined });
+  for (const items of [state.attention, state.docs, state.outbox]) {
+    for (const item of items) if (item.sessionId === from) item.sessionId = to;
+  }
+  state.sessionOrder = state.sessionOrder.map((id) => (id === from ? to : id));
+  touch();
+};
+
 export const ensureSession = (id: string, cwd: string): SessionMeta => {
   const existing = state.sessions[id];
   if (existing) return existing;

@@ -435,9 +435,11 @@ type RawLimit = { used_percentage?: number; resets_at?: number };
 type RawStatusline = {
   context_window?: { used_percentage?: number; context_window_size?: number };
   rate_limits?: { five_hour?: RawLimit; seven_day?: RawLimit };
+  model?: { id?: string };
+  effort?: { level?: string };
 };
 
-export type StatuslineInfo = { mtime: number; usedPercent?: number; windowSize?: number };
+export type StatuslineInfo = { mtime: number; usedPercent?: number; windowSize?: number; model?: string; effort?: string };
 
 /** statusline-tee.sh が保存した statusline の入力。statusline を描かないバックグラウンドセッションには無い。 */
 export const readStatusline = (sessionId: string): StatuslineInfo | undefined => {
@@ -446,7 +448,7 @@ export const readStatusline = (sessionId: string): StatuslineInfo | undefined =>
   const raw = readJson<RawStatusline>(file);
   if (!raw || mtime === undefined) return undefined;
   const cw = raw.context_window;
-  return { mtime, usedPercent: cw?.used_percentage, windowSize: cw?.context_window_size };
+  return { mtime, usedPercent: cw?.used_percentage, windowSize: cw?.context_window_size, model: raw.model?.id, effort: raw.effort?.level };
 };
 
 const toLimit = (l: RawLimit | undefined): RateLimit | undefined =>

@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, type LiveSession } from './claude.ts';
 import { claudeCommand, platform } from './platform.ts';
-import { newId, state, touch } from './store.ts';
+import { moveSession, newId, state, touch } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
@@ -39,16 +39,20 @@ const joinTexts = (msgs: OutboxMessage[]): string => msgs.map((m) => m.text).joi
 // 送るたびに Claude のコンテキストに積まれるので、前置きは印と送り手だけにする。
 export const formatMessages = (msgs: OutboxMessage[]): string => `[durun-dashboard] 人間から:\n${joinTexts(msgs)}`;
 
-/** claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。 */
-const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> =>
+/** claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。 */
+const claudeOutput = (args: string[], cwd: string, env = process.env): Promise<string> =>
   new Promise((resolve, reject) => {
     const claude = claudeCommand(args, env);
-    const child = spawn(claude.file, claude.args, { cwd, env, stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(claude.file, claude.args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
     let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(stderr.trim() || `exit ${code}`))));
+    child.on('exit', (code) => (code === 0 ? resolve(`${stdout}\n${stderr}`) : reject(new Error(stderr.trim() || `exit ${code}`))));
   });
+
+const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);
 
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
@@ -89,8 +93,9 @@ const waitForStop = (jobId: string): Promise<void> =>
  * 動いているバックグラウンドのセッションは先に止める。止めたセッションは、起動したときのオプション（--model や --settings）で起こし直される。
  * rewindTo を渡すと、そのエントリまで巻き戻して送る。--bg は --resume-session-at を無視するので、このターンだけ -p で動かす。
  * -p では権限の確認に答えられず、確認の要るツールは拒否される。次のメッセージからは、巻き戻した分岐の続きを --bg で再開する。
+ * flags は switchSession が渡す。claude の出力を返す。
  */
-const resume = async (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> => {
+const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string, flags: string[] = []): Promise<string> => {
   // cmux の端末から起動すると、cmux の claude のラッパーが --settings を足す。
   // フラグを付けて --resume すると、バックグラウンドのセッションは起動したときのオプションを守るために複製を作るので、ラッパーに足させない。
   const env = { ...process.env, CMUX_CLAUDE_HOOKS_DISABLED: '1' };
@@ -98,11 +103,20 @@ const resume = async (sessionId: string, cwd: string, text: string, jobId?: stri
     await runClaude(['stop', jobId], cwd, env);
     await waitForStop(jobId);
   }
-  const args = rewindTo ? ['-p', '--resume', sessionId, '--resume-session-at', rewindTo, '--', text] : ['--bg', '--resume', sessionId, '--', text];
-  await runClaude(args, cwd, env);
+  const args = rewindTo ? ['-p', '--resume', sessionId, '--resume-session-at', rewindTo, '--', text] : ['--bg', '--resume', sessionId, ...flags, '--', text];
+  return claudeOutput(args, cwd, env);
 };
 
+const resume = (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> =>
+  relaunch(sessionId, cwd, text, jobId, rewindTo).then(() => undefined);
+
 type Job = { id?: string; sessionId?: string; kind?: string; pid?: number };
+
+const listJobs = async (): Promise<Job[]> => {
+  const claude = claudeCommand(['agents', '--json', '--all']);
+  const { stdout } = await promisify(execFile)(claude.file, claude.args);
+  return JSON.parse(stdout) as Job[];
+};
 
 /**
  * バックグラウンドのセッションを claude rm で一覧から消す。会話ログは残り、claude --resume で開ける。
@@ -110,9 +124,7 @@ type Job = { id?: string; sessionId?: string; kind?: string; pid?: number };
  * claude rm は、作業ツリーに未コミットや未 push の変更が残るセッションを消さずに失敗するので、その理由で reject する。
  */
 export const removeSession = async (sessionId: string): Promise<void> => {
-  const claude = claudeCommand(['agents', '--json', '--all']);
-  const { stdout } = await promisify(execFile)(claude.file, claude.args);
-  const job = (JSON.parse(stdout) as Job[]).find((j) => j.sessionId === sessionId && j.kind === 'background');
+  const job = (await listJobs()).find((j) => j.sessionId === sessionId && j.kind === 'background');
   if (!job?.id) return;
   // 作業ディレクトリは消えていることがあるので、id だけで動く stop と rm はホームで実行する。
   if (job.pid) {
@@ -248,6 +260,42 @@ export const compactSession = (sessionId: string, cwd: string): Promise<void> =>
   const live = readLiveSessions().get(sessionId);
   if (live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは compact できません');
   return resume(sessionId, cwd, '/compact', live?.jobId);
+};
+
+/**
+ * モデルと effort を変えて、依頼を渡す。会話が続くセッションの id を返す。
+ * バックグラウンドのセッションは起動したときのオプションを保存していて、後から変えられない。/model を再開で渡しても、次の再開で元に戻る。
+ * フラグを付けて --resume すると、Claude Code は会話を引き継いだ複製を別の id で起動するので、ダッシュボードの設定を複製へ移し、元のセッションはアーカイブする。
+ * 端末で始めて終わったセッションは保存したオプションを持たないので、同じ id のまま続く。
+ * 止めて再開するので、作業中のセッションと端末で開いているセッションでは失敗する。
+ */
+export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+  const meta = state.sessions[sessionId];
+  if (!meta) throw new Error(`unknown session: ${sessionId}`);
+  const live = readLiveSessions().get(sessionId);
+  if (live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは、モデルと effort を変えられません');
+  state.outbox.push({ id: newId(), sessionId, text, createdAt: Date.now() });
+  const pending = undelivered(sessionId);
+  // 届け直すと複製がもう 1 つできるので、巻き戻しと同じく sending を付けない。
+  for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: 'resume', error: undefined });
+  touch();
+  const flags = [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
+  let output: string;
+  try {
+    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, flags);
+  } catch (e) {
+    for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: (e as Error).message });
+    touch();
+    throw e;
+  }
+  // claude は「backgrounded · ジョブの id」と書く。複製なら、元とは別のジョブの id になる。
+  const jobId = /backgrounded\W+(\w+)/.exec(output)?.[1];
+  const next = (jobId && (await listJobs()).find((j) => j.id === jobId)?.sessionId) || sessionId;
+  if (next === sessionId) return sessionId;
+  moveSession(sessionId, next);
+  // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになる。
+  await removeSession(sessionId).catch((e: Error) => console.error(`${sessionId} を一覧から消せません: ${e.message}`));
+  return next;
 };
 
 const removeAttention = (attentionId: string): void => {
