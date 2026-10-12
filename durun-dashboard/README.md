@@ -96,7 +96,7 @@ Claude へのメッセージを届けられなかったときは、どの画面�
 
 プラグイン durun-dashboard が登録するもの。
 
-- フック: SessionStart、UserPromptSubmit、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
+- フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
 - MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`。新しく起動したセッションから使える。
 
 `pnpm install-statusline` が登録するもの（任意）。

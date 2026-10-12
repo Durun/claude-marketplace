@@ -35,9 +35,35 @@ test('権限の確認の通知は、AskUserQuestion で止まったときは質�
   handleHook({ ...base, notification_type: 'permission_prompt', message: 'Claude needs your permission' }, 0);
   assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: '今すぐ実装してよいですか？\n- 今すぐ実装する\n- 時期を確認してから\n\nどれを直しますか？\n- A\n- B', options: undefined }]);
 
+  handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion' }, 0);
   fs.appendFileSync(transcript, toolUse('Bash', { command: 'rm -rf build' }));
   handleHook({ ...base, notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }, 0);
   assert.deepEqual(dialogs(), [{ kind: 'permission', title: '権限の確認', body: 'Claude needs your permission to use Bash', options: undefined }]);
+});
+
+test('AskUserQuestion の質問は、会話ログにまだ書かれていなくても、ツールを呼ぶ前のフックから記録し、続く権限の確認の通知やサブエージェントのフックでは消さない', () => {
+  state.attention = [];
+  const transcript = path.join(tmp, 'late.jsonl');
+  fs.writeFileSync(transcript, toolUse('Bash', { command: 'ls' }));
+  const base = { session_id: 'late', cwd: tmp, transcript_path: transcript };
+  const questions = [{ question: 'どの単位で 1 本にしますか？', header: '切り方', multiSelect: false, options: [{ label: 'A', description: '出だしだけ' }, { label: 'B' }] }];
+  const asked = [{ kind: 'question', title: '質問', body: 'どの単位で 1 本にしますか？', options: ['A', 'B'] }];
+
+  handleHook({ ...base, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions } }, 0);
+  assert.deepEqual(dialogs(), asked);
+  handleHook({ ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission' }, 0);
+  assert.deepEqual(dialogs(), asked);
+
+  // 裏で動くサブエージェントが進んでも、権限の確認で止まっても、本体の質問は待ったまま。
+  handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Bash', agent_id: 'a1' }, 0);
+  assert.deepEqual(dialogs(), asked);
+  handleHook({ ...base, hook_event_name: 'Notification', notification_type: 'worker_permission_prompt', message: 'worker needs your permission' }, 0);
+  assert.deepEqual(dialogs(), [...asked, { kind: 'permission', title: '権限の確認（サブエージェント）', body: 'worker needs your permission', options: undefined }]);
+  handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Bash', agent_id: 'a1' }, 0);
+  assert.deepEqual(dialogs(), asked);
+
+  handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion' }, 0);
+  assert.deepEqual(dialogs(), []);
 });
 
 test('バックグラウンドのセッションが AskUserQuestion で入力待ちになったら、通知のフックが来なくても会話ログから質問を記録し、次のフックで片付ける', async () => {
@@ -52,6 +78,11 @@ test('バックグラウンドのセッションが AskUserQuestion で入力待
   ensureSession('bg1', tmp).transcriptPath = transcript;
 
   buildSnapshot();
+  buildSnapshot();
+  assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: 'どこで撮りますか？', options: ['stg', 'preview'] }]);
+
+  // 会話ログに書かれる前に通知が届いて権限の確認になっていたら、質問に置き換える。
+  state.attention = [{ id: 'p1', kind: 'permission', sessionId: 'bg1', title: '権限の確認', body: 'Claude needs your permission', createdAt: 0 }];
   buildSnapshot();
   assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: 'どこで撮りますか？', options: ['stg', 'preview'] }]);
 

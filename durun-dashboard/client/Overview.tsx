@@ -356,7 +356,7 @@ export type Jump = { index: number };
 /**
  * 一般的な AI チャットと同じく、古い順に並べて一番下から見せ、上の「前の n 件」でさかのぼる。
  * 新しい発言が来たら、一番下を見ているときだけ送る。読み返している位置は動かさない。
- * asks は Claude が答えを待っている質問。送信欄の代わりに出す。
+ * asks は Claude が人間の操作を待っている質問と権限の確認。質問は送信欄の代わりに、権限の確認は送信欄の上に出す。
  */
 export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntry[]; asks: Attention[]; jump?: Jump }) => {
   // 表示の始まりは最初に届いたときに決めて固定し、発言が増えても上の発言を押し出さない。

@@ -1,5 +1,5 @@
 // Claude Code のフックを受ける。要対応を記録し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切る。
-import { ASK_TOOL, questionDialog, readCustomTitle, summarizeLog } from './claude.ts';
+import { ASK_TOOL, questionDialog, readCustomTitle, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests } from './deliver.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
@@ -18,7 +18,7 @@ export type HookInput = {
   notification_type?: string;
   message?: string;
   tool_name?: string;
-  tool_input?: { command?: unknown };
+  tool_input?: { command?: unknown; questions?: unknown };
 };
 
 /**
@@ -46,25 +46,48 @@ const isDialog = (a: StoredAttention, sessionId: string): boolean => a.sessionId
 
 type Dialog = Pick<StoredAttention, 'kind' | 'title' | 'body' | 'options'>;
 
-/** Claude Code は AskUserQuestion の質問で止まったときも、権限の確認として通知する。そのときは質問として記録する。 */
+const toDialog = (q: ReturnType<typeof questionDialog>): Dialog | undefined => q && { kind: 'question', title: '質問', ...q };
+
+/** PreToolUse を送らない、フックを足す前に始まったセッションの質問は、会話ログから読む。 */
 const questionOf = (meta: SessionMeta): Dialog | undefined => {
   const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
-  const q = log?.lastToolUse === ASK_TOOL ? questionDialog(log.lastQuestions ?? []) : undefined;
-  return q && { kind: 'question', title: '質問', ...q };
+  return log?.lastToolUse === ASK_TOOL ? toDialog(questionDialog(log.lastQuestions ?? [])) : undefined;
 };
 
-const recordNotification = (meta: SessionMeta, input: HookInput): void => {
-  const title = NEEDS_HUMAN[input.notification_type ?? ''];
-  if (!title) return;
-  const dialog: Dialog = (input.notification_type === 'permission_prompt' && questionOf(meta)) || { kind: 'permission', title, body: input.message };
-  state.attention = state.attention.filter((a) => !isDialog(a, meta.id));
+const pushDialog = (meta: SessionMeta, dialog: Dialog, replaces: (a: StoredAttention) => boolean): void => {
+  state.attention = state.attention.filter((a) => !replaces(a));
   state.attention.push({ id: newId(), sessionId: meta.id, ...dialog, createdAt: Date.now() });
   touch();
 };
 
-const clearDialogs = (sessionId: string): void => {
+/**
+ * AskUserQuestion の質問は、ツールを呼ぶ前のフックが渡す入力から記録する。
+ * Claude Code は、呼び出しを会話ログに書くのを回答の後まで遅らせることがあるので、止まった時点の会話ログからは読めない。
+ */
+const recordQuestion = (meta: SessionMeta, input: HookInput): void => {
+  const dialog = toDialog(questionDialog(toQuestions(input.tool_input?.questions)));
+  if (dialog) pushDialog(meta, dialog, (a) => isDialog(a, meta.id));
+};
+
+/**
+ * Claude Code は AskUserQuestion の質問で止まったときも、権限の確認として通知する。記録済みの質問があれば、その通知なので質問を残す。
+ * サブエージェントの権限の確認は、質問と並べて記録する。
+ */
+const recordNotification = (meta: SessionMeta, input: HookInput): void => {
+  const title = NEEDS_HUMAN[input.notification_type ?? ''];
+  if (!title) return;
+  if (input.notification_type === 'permission_prompt') {
+    if (state.attention.some((a) => isDialog(a, meta.id) && a.kind === 'question')) return;
+    const question = questionOf(meta);
+    if (question) return pushDialog(meta, question, (a) => isDialog(a, meta.id));
+  }
+  pushDialog(meta, { kind: 'permission', title, body: input.message }, (a) => isDialog(a, meta.id) && a.kind === 'permission');
+};
+
+/** 質問はセッションの本体が尋ねるので、サブエージェントが先へ進んでも残す。 */
+const clearDialogs = (sessionId: string, fromSubagent: boolean): void => {
   const before = state.attention.length;
-  state.attention = state.attention.filter((a) => !isDialog(a, sessionId));
+  state.attention = state.attention.filter((a) => !isDialog(a, sessionId) || (fromSubagent && a.kind === 'question'));
   if (state.attention.length !== before) touch();
 };
 
@@ -79,8 +102,9 @@ const observe = (meta: SessionMeta, event: string | undefined, input: HookInput)
     touch();
   }
   if (event === 'Notification') return recordNotification(meta, input);
+  if (event === 'PreToolUse' && input.tool_name === ASK_TOOL && !input.agent_id) return recordQuestion(meta, input);
   // 通知以外のイベントが来たら、権限の確認や質問は済んで先へ進んでいる。
-  clearDialogs(meta.id);
+  clearDialogs(meta.id, !!input.agent_id);
   if (event === 'UserPromptSubmit') {
     meta.replySeenAt = Date.now();
     dropStaleRequests(meta.id);

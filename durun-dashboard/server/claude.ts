@@ -193,8 +193,8 @@ const applyUsage = (s: LogSummary, id: string, u: RawUsage, ts: number | undefin
 };
 
 // ツールの入力はモデルが書いたものなので、形の合わない質問や選択肢は外す。
-const toQuestions = (raw: RawQuestion[] | undefined): AskedQuestion[] =>
-  (Array.isArray(raw) ? raw : []).flatMap((q) => {
+export const toQuestions = (raw: unknown): AskedQuestion[] =>
+  (Array.isArray(raw) ? (raw as RawQuestion[]) : []).flatMap((q) => {
     if (typeof q?.question !== 'string') return [];
     const options = (Array.isArray(q.options) ? q.options : []).flatMap((o) => (typeof o?.label === 'string' ? [o.label] : []));
     return [{ question: q.question, options, multiSelect: q.multiSelect === true }];

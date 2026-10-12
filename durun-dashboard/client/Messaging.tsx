@@ -267,20 +267,29 @@ const MessageForm = ({ s }: { s: Session }) => {
   );
 };
 
-/** Claude が答えを待っている、そのセッションの質問。 */
-export const asksOf = (attention: Attention[], sessionId: string): Attention[] => attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question'));
+/**
+ * Claude が人間の操作を待って止まっている、そのセッションの質問と権限の確認。
+ * 質問を読み取れずに権限の確認として届いたときも、止まっていることがチャットで分かるよう、権限の確認も含める。
+ */
+export const asksOf = (attention: Attention[], sessionId: string): Attention[] =>
+  attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question' || a.kind === 'permission'));
 
 /**
  * 送信欄。Claude が質問の答えを待っている間は、質問のカードの回答欄から答えてもらい、通常の送信欄は出さない。
- * 両方を出すと、どちらで答えればよいか迷う。チャットのウィジェットと、ヘッダーの件数から開く一覧で使う。
+ * 両方を出すと、どちらで答えればよいか迷う。権限の確認のカードには回答欄が無いので、送信欄も出す。
+ * チャットのウィジェットと、ヘッダーの件数から開く一覧で使う。
  */
-export const ReplyArea = ({ s, asks, help }: { s: Session; asks: Attention[]; help?: boolean }) =>
-  asks.length > 0 ? <>{asks.map((a) => <AttentionCard key={a.id} a={a} session={s} />)}</> : (
-    <>
-      {help && <p class="help">{STATUS_HELP[s.status]}</p>}
-      <MessageForm s={s} />
-    </>
-  );
+export const ReplyArea = ({ s, asks, help }: { s: Session; asks: Attention[]; help?: boolean }) => (
+  <>
+    {asks.map((a) => <AttentionCard key={a.id} a={a} session={s} />)}
+    {asks.every((a) => a.kind === 'permission') && (
+      <>
+        {help && <p class="help">{STATUS_HELP[s.status]}</p>}
+        <MessageForm s={s} />
+      </>
+    )}
+  </>
+);
 
 /** チャットのウィジェットの下端に置く送信欄。 */
 export const Composer = ({ s, asks }: { s: Session; asks: Attention[] }) => (
