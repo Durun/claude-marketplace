@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
+import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -17,7 +17,7 @@ import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeli
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
-import { OLD_GOOGLE_HOME, fetchBing, fetchLucky } from './bing.ts';
+import { OLD_GOOGLE_HOME, fetchGoogle, fetchLucky } from './google.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
@@ -177,12 +177,8 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
     .end(icon.body);
 };
 
-/**
- * Internet Explorer のウィンドウに出す Bing の検索結果。ダッシュボードと同じオリジンから返すので、sandbox で別のオリジンの扱いにし、スクリプトも止める。
- * ダッシュボードの画面を読み書きさせないため。
- */
 /** I'm Feeling Lucky は検索結果の 1 件目へ移す。結果が無ければ、Google と同じく結果のページを出す。 */
-const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+const sendGoogle = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const lang = req.headers['accept-language'];
   if (url.searchParams.has('btnI')) {
     const to = await fetchLucky(url.search, lang).catch((e: Error) => {
@@ -190,7 +186,7 @@ const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Pr
     });
     if (to) return void res.writeHead(302, { location: to }).end();
   }
-  return sendRetro(res, fetchBing(url.search, lang), url);
+  return sendRetro(res, fetchGoogle(url.search, lang), url);
 };
 
 const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
@@ -206,7 +202,10 @@ const sendRetroSite = (req: IncomingMessage, res: ServerResponse, url: URL): Pro
  */
 let lastFrame = { seq: 0, url: '' };
 
-/** Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。frame は中継の URL。スクリプトを残していても動かさない。 */
+/**
+ * Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。frame は中継の URL。
+ * ダッシュボードと同じオリジンから返すので、CSP の sandbox で別のオリジンの扱いにし、スクリプトも止めて、ダッシュボードの画面を読み書きさせない。
+ */
 const sendRetro = async (res: ServerResponse, page: Promise<string>, frame: URL): Promise<void> => {
   const html = await page.catch((e: Error) => {
     throw new HttpError(502, e.message);
@@ -902,7 +901,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
-  if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
+  if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
   if (req.method === 'GET' && url.pathname === RETRO_PATH) return sendRetroSite(req, res, url);
   if (req.method === 'GET' && url.pathname === YAHOO_HOME_PATH) return sendRetro(res, fetchYahooHome(req.headers['accept-language']), url);

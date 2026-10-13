@@ -1,7 +1,7 @@
 // Internet Explorer のウィンドウに出す、2005 年ごろの Yahoo! JAPAN のトップページと検索結果のページ。
 // トピックスは今の Yahoo! JAPAN のトップから、検索結果は今の Yahoo! 検索から取る。
 import { YAHOO, YAHOO_SEARCH_PATH, frameOf } from '../shared/retro.ts';
-import { type Result, inline } from './bing.ts';
+import { type Result, inline } from './google.ts';
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 10;

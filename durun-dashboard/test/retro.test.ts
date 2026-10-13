@@ -8,8 +8,8 @@ const long = (s: string) => s.repeat(20);
 
 test('frameOf は、昔の見た目で描けるサイトだけを中継に向ける', () => {
   assert.equal(frameOf('https://www.google.com/'), '/api/google');
-  assert.equal(frameOf('https://www.google.com/search?q=a+b&hl=ja'), '/api/bing/search?q=a+b&hl=ja');
-  assert.equal(frameOf('https://www.bing.com/search?q=a'), '/api/bing/search?q=a');
+  assert.equal(frameOf('https://www.google.com/search?q=a+b&hl=ja'), '/api/google/search?q=a+b&hl=ja');
+  assert.equal(frameOf('https://www.bing.com/search?q=a'), '/api/google/search?q=a');
   assert.equal(frameOf('https://www.google.com/maps'), 'https://www.google.com/maps');
   assert.equal(frameOf('https://www.yahoo.co.jp/'), '/api/yahoo');
   assert.equal(frameOf('https://search.yahoo.co.jp/search?p=a'), '/api/yahoo/search?p=a');
