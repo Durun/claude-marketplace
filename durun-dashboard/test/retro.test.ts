@@ -11,6 +11,8 @@ test('frameOf は、昔の見た目で描けるサイトだけを中継に向け
   assert.equal(frameOf('https://www.google.com/search?q=a+b&hl=ja'), '/api/bing/search?q=a+b&hl=ja');
   assert.equal(frameOf('https://www.bing.com/search?q=a'), '/api/bing/search?q=a');
   assert.equal(frameOf('https://www.google.com/maps'), 'https://www.google.com/maps');
+  assert.equal(frameOf('https://www.yahoo.co.jp/'), '/api/yahoo');
+  assert.equal(frameOf('https://search.yahoo.co.jp/search?p=a'), '/api/yahoo/search?p=a');
   assert.equal(frameOf('https://ja.wikipedia.org/wiki/A'), '/api/wikipedia?url=https%3A%2F%2Fja.wikipedia.org%2Fwiki%2FA');
   assert.equal(frameOf('https://www.jiji.com/jc/a'), '/api/retro?url=https%3A%2F%2Fwww.jiji.com%2Fjc%2Fa');
   assert.equal(frameOf('http://www.jiji.com/'), 'http://www.jiji.com/');
@@ -18,7 +20,7 @@ test('frameOf は、昔の見た目で描けるサイトだけを中継に向け
 });
 
 test('siteOfFrame は、frameOf で中継に向けた URL を、元のサイトの URL に戻す', () => {
-  for (const url of ['https://www.google.com/', 'https://www.google.com/search?q=a+b', 'https://ja.wikipedia.org/wiki/A', 'https://www.jiji.com/jc/a']) assert.equal(siteOfFrame(new URL(frameOf(url), 'http://localhost')), url);
+  for (const url of ['https://www.google.com/', 'https://www.google.com/search?q=a+b', 'https://www.yahoo.co.jp/', 'https://search.yahoo.co.jp/search?p=a', 'https://ja.wikipedia.org/wiki/A', 'https://www.jiji.com/jc/a']) assert.equal(siteOfFrame(new URL(frameOf(url), 'http://localhost')), url);
   assert.equal(siteOfFrame(new URL('http://localhost/')), undefined);
 });
 

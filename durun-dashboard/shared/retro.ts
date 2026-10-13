@@ -6,6 +6,10 @@ export const GOOGLE_HOME_PATH = '/api/google';
 export const GOOGLE = 'https://www.google.com/';
 export const WIKIPEDIA_PATH = '/api/wikipedia';
 export const RETRO_PATH = '/api/retro';
+export const YAHOO_HOME_PATH = '/api/yahoo';
+export const YAHOO_SEARCH_PATH = '/api/yahoo/search';
+export const YAHOO = 'https://www.yahoo.co.jp/';
+const YAHOO_SEARCH = 'https://search.yahoo.co.jp/search';
 
 /** 2000 年代の見た目で描き直すサイト。キーはホスト名で、color はヘッダーの帯の色。listing は、どのページも記事の一覧で、段落を本文として出さないサイト。 */
 export const RETRO_SITES: Record<string, { name: string; color: string; listing?: boolean }> = {
@@ -41,6 +45,9 @@ export const frameOf = (url: string): string => {
   // Google は JavaScript を動かさないブラウザに検索結果を返さないので、トップと検索は、Bing の結果を昔の Google の見た目で描く中継に向ける。
   if (u.origin === 'https://www.google.com' && (u.pathname === '/' || u.pathname === '/webhp')) return GOOGLE_HOME_PATH;
   if ((u.origin === 'https://www.google.com' || u.origin === 'https://www.bing.com') && u.pathname === '/search') return `${BING_PATH}${u.search}`;
+  // Yahoo! JAPAN のトップと検索は、専用の当時の見た目で描く。
+  if (u.href === YAHOO) return YAHOO_HOME_PATH;
+  if (u.origin + u.pathname === YAHOO_SEARCH) return `${YAHOO_SEARCH_PATH}${u.search}`;
   if (isWikipedia(u)) return wikipediaFrame(u.href);
   return isRetroSite(u) ? `${RETRO_PATH}?${new URLSearchParams({ url: u.href })}` : url;
 };
@@ -49,5 +56,7 @@ export const frameOf = (url: string): string => {
 export const siteOfFrame = (frame: URL): string | undefined => {
   if (frame.pathname === GOOGLE_HOME_PATH) return GOOGLE;
   if (frame.pathname === BING_PATH) return `${GOOGLE}search${frame.search}`;
+  if (frame.pathname === YAHOO_HOME_PATH) return YAHOO;
+  if (frame.pathname === YAHOO_SEARCH_PATH) return `${YAHOO_SEARCH}${frame.search}`;
   return frame.pathname === WIKIPEDIA_PATH || frame.pathname === RETRO_PATH ? (frame.searchParams.get('url') ?? undefined) : undefined;
 };

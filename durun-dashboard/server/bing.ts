@@ -32,9 +32,9 @@ const linkOf = (href: string): string | undefined => {
 /** Bing の HTML の一部を、強調の太字だけ残した文にする。文字は Bing が HTML として書いたものなので、実体参照はそのまま使える。 */
 const inline = (html: string): string => html.replace(/<(\/?)strong>/g, '<$1b>').replace(/<(?!\/?b>)[^>]*>/g, '');
 
-type Result = { href: string; display: string; title: string; snippet: string };
+export type Result = { href: string; display: string; title: string; snippet: string };
 
-const resultsOf = (html: string): Result[] =>
+export const resultsOf = (html: string): Result[] =>
   html.split('<li class="b_algo"').slice(1).flatMap((item) => {
     const a = /<h2\b[^>]*>\s*<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/.exec(item);
     const href = a && linkOf(a[1] ?? '');
@@ -78,15 +78,16 @@ form{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:2
 <p class="foot">&copy;2005 Google</p>
 </body></html>`;
 
-const fetchPage = async (search: string, lang: string | undefined): Promise<string> => {
+/** Bing の /search の HTML。search は ? からの問い合わせ。 */
+export const fetchBingHtml = async (search: string, lang: string | undefined): Promise<string> => {
   const res = await fetch(`${BING}/search${search}`, { headers: { 'user-agent': USER_AGENT, 'accept-language': lang ?? 'ja' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Bing が ${res.status} を返しました`);
   return res.text();
 };
 
-export const fetchBing = async (search: string, lang: string | undefined): Promise<string> => oldGoogle(await fetchPage(search, lang), search);
+export const fetchBing = async (search: string, lang: string | undefined): Promise<string> => oldGoogle(await fetchBingHtml(search, lang), search);
 
 /** I'm Feeling Lucky で開く、検索結果の 1 件目の行き先。結果が無ければ undefined。 */
 export const luckyOf = (html: string): string | undefined => resultsOf(html)[0]?.href;
 
-export const fetchLucky = async (search: string, lang: string | undefined): Promise<string | undefined> => luckyOf(await fetchPage(search, lang));
+export const fetchLucky = async (search: string, lang: string | undefined): Promise<string | undefined> => luckyOf(await fetchBingHtml(search, lang));

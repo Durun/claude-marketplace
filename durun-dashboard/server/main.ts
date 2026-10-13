@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH, siteOfFrame } from '../shared/retro.ts';
+import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -36,6 +36,7 @@ import { DATA_DIR, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
 import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
+import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -904,6 +905,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
   if (req.method === 'GET' && url.pathname === RETRO_PATH) return sendRetroSite(req, res, url);
+  if (req.method === 'GET' && url.pathname === YAHOO_HOME_PATH) return sendRetro(res, fetchYahooHome(req.headers['accept-language']), url);
+  if (req.method === 'GET' && url.pathname === YAHOO_SEARCH_PATH) return sendRetro(res, fetchYahooSearch(url.search, req.headers['accept-language']), url);
   // セッションの id が無いものは、エクスプローラーからセッションの外で開いたファイル。
   const media = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
