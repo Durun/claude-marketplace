@@ -1,21 +1,31 @@
-// Web のサイトを開く「Internet Explorer」。サイトはブラウザの別のタブで開く。Bing など多くのサイトは X-Frame-Options でダッシュボードの中への埋め込みを断るため。
+// Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
+import { useState } from 'preact/hooks';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
+import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
 
+/** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「ie:開いた時刻」にし、いくつも開けるようにする。 */
 export const IE_KEY = 'ie';
 export const IE_TITLE = 'Internet Explorer';
 export const IE_ICON = '/ie.svg';
-const HOME = 'https://www.bing.com/';
+const SIZE = { w: 960, h: 640 };
 
-const open = (url: string): void => void window.open(url, '_blank', 'noopener');
-
-export const openInternetExplorer = (): void => open(HOME);
+/** url を開いたウィンドウを出す。url が無ければ、Bing で検索するホームを開く。 */
+export const openInternetExplorer = (url = ''): void => floatUp(IE_KEY, '', { id: `${IE_KEY}:${Date.now()}`, settings: { url } }, SIZE);
 
 /** 入力を http(s) の URL に限る。javascript: などを開かせない。 */
 const siteOf = (input: string): URL | undefined => {
   const url = URL.parse(input.trim());
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
+};
+
+/** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Bing で検索する。 */
+const addressOf = (input: string): string => {
+  const text = input.trim();
+  if (siteOf(text)) return text;
+  if (/^[^\s/]+\.[^\s/]{2,}(\/\S*)?$/.test(text)) return `https://${text}`;
+  return `https://www.bing.com/search?${new URLSearchParams({ q: text })}`;
 };
 
 export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<object>) => {
@@ -31,11 +41,67 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
   return (
     <>
       {site ? (
-        <DesktopIcon icon={`/api/favicon?${new URLSearchParams({ site: site.origin })}`} title={site.hostname} hint={`${site.href} を開きます。ダブルクリックで開きます`} shortcut onLaunch={() => open(site.href)} />
+        <DesktopIcon icon={`/api/favicon?${new URLSearchParams({ site: site.origin })}`} title={site.hostname} hint={`${site.href} を開きます。ダブルクリックで開きます`} shortcut onLaunch={() => openInternetExplorer(site.href)} />
       ) : (
-        <DesktopIcon icon={IE_ICON} title={IE_TITLE} hint="Bing を開きます。ダブルクリックで開きます" onLaunch={openInternetExplorer} />
+        <DesktopIcon icon={IE_ICON} title={IE_TITLE} hint="Web のサイトを見ます。ダブルクリックで開きます" onLaunch={() => openInternetExplorer()} />
       )}
       <button class="btn btn-sm desktop-icon-settings" data-icon="settings" onClick={configure}>設定</button>
     </>
+  );
+};
+
+/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で描き、検索結果のページから iframe で開く。 */
+const Home = ({ onGo }: { onGo: (url: string) => void }) => {
+  const [q, setQ] = useState('');
+  const submit = (e: Event) => {
+    e.preventDefault();
+    if (q.trim()) onGo(addressOf(q));
+  };
+  return (
+    <form class="ie-home" onSubmit={submit}>
+      <h1 class="ie-home-logo">Bing</h1>
+      <input class="ie-home-q" aria-label="Bing で検索" value={q} onInput={(e) => setQ(e.currentTarget.value)} autofocus />
+    </form>
+  );
+};
+
+export const InternetExplorerFloat = ({ f }: { f: Float }) => {
+  const url = f.tab.settings?.url ?? '';
+  const [address, setAddress] = useState(url);
+  // 同じ URL を開き直すときも iframe を作り直して読み込ませる。
+  const [reloads, setReloads] = useState(0);
+  const go = (next: string) => {
+    setAddress(next);
+    setReloads((n) => n + 1);
+    setFloatSettings(f, { ...f.tab.settings, url: next });
+  };
+  const submit = (e: Event) => {
+    e.preventDefault();
+    if (address.trim()) go(addressOf(address));
+  };
+  const title = url ? (siteOf(url)?.hostname ?? url) : 'Bing';
+  const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
+  return (
+    <FloatFrame f={f} title={`${title} - ${IE_TITLE}`} icon={IE_ICON} controls={[close]}>
+      <div class="ie">
+        <form class="ie-bar" onSubmit={submit}>
+          <button type="button" class="ie-btn" onClick={() => go('')}>ホーム</button>
+          <button type="button" class="ie-btn" disabled={!url} onClick={() => setReloads((n) => n + 1)}>更新</button>
+          <label class="ie-address">
+            アドレス(D)
+            <input value={address} spellcheck={false} onInput={(e) => setAddress(e.currentTarget.value)} onFocus={(e) => e.currentTarget.select()} />
+          </label>
+          <button class="ie-btn">移動</button>
+          {/* 埋め込みを断るサイトは iframe に出せないので、ブラウザの別のタブで開けるようにする。 */}
+          <button type="button" class="ie-btn" disabled={!url} onClick={() => window.open(url, '_blank', 'noopener')}>別のタブで開く</button>
+        </form>
+        {url ? (
+          // sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。
+          <iframe key={reloads} class="ie-page" title={title} src={url} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
+        ) : (
+          <Home onGo={go} />
+        )}
+      </div>
+    </FloatFrame>
   );
 };
