@@ -586,6 +586,18 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .explorer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explorer-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .explorer-size { text-align: right; }
+/* メモ帳は、スキンによらず Windows XP のメモ帳の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
+.notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.notepad-menubar { display: flex; padding: 1px 0; }
+.notepad-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
+.notepad-menu:hover, .notepad-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
+/* 押したメニューの真下に開く。popovertarget で開いた popover は、押したボタンを位置の基準にできる。 */
+.notepad-dropdown { position-area: block-end span-inline-end; inset: auto; margin: 0; padding: 2px; border: 1px solid #aca899; background: #fff; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.notepad-item { position: relative; display: flex; justify-content: space-between; gap: 32px; width: 100%; min-width: 180px; padding: 3px 18px 3px 22px; border: 0; background: none; text-align: left; }
+.notepad-item:hover { background: #316ac5; color: #fff; }
+.notepad-item[aria-checked="true"]::before { content: "✓"; position: absolute; left: 6px; }
+.notepad-item kbd { font: inherit; }
+.notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
 /* エクスプローラーのファイルをドラッグして上に来ている間の、資料のウィジェット。 */
 .widget-body.is-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .wallpaper { padding: 12px; overflow: auto; }
