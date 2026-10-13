@@ -38,7 +38,14 @@ export const frameOf = (url: string): string => {
   if (!u) return url;
   // Google は JavaScript を動かさないブラウザに検索結果を返さないので、トップと検索は、Bing の結果を昔の Google の見た目で描く中継に向ける。
   if (u.origin === 'https://www.google.com' && (u.pathname === '/' || u.pathname === '/webhp')) return GOOGLE_HOME_PATH;
-  if ((u.origin === 'https://www.google.com' || u.origin === 'https://www.bing.com') && u.pathname === '/search') return `${BING_PATH}?${new URLSearchParams({ q: u.searchParams.get('q') ?? '' })}`;
+  if ((u.origin === 'https://www.google.com' || u.origin === 'https://www.bing.com') && u.pathname === '/search') return `${BING_PATH}${u.search}`;
   if (isWikipedia(u)) return wikipediaFrame(u.href);
   return isRetroSite(u) ? `${RETRO_PATH}?${new URLSearchParams({ url: u.href })}` : url;
+};
+
+/** frameOf の逆で、中継の URL から、ウィンドウが開いているサイトの URL を出す。中継でなければ undefined。 */
+export const siteOfFrame = (frame: URL): string | undefined => {
+  if (frame.pathname === GOOGLE_HOME_PATH) return GOOGLE;
+  if (frame.pathname === BING_PATH) return `${GOOGLE}search${frame.search}`;
+  return frame.pathname === WIKIPEDIA_PATH || frame.pathname === RETRO_PATH ? (frame.searchParams.get('url') ?? undefined) : undefined;
 };

@@ -1,7 +1,7 @@
 // Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
-import { useState } from 'preact/hooks';
-import { GOOGLE, frameOf } from '../shared/retro.ts';
+import { useRef, useState } from 'preact/hooks';
+import { GOOGLE, frameOf, siteOfFrame } from '../shared/retro.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -54,12 +54,51 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
 export const InternetExplorerFloat = ({ f }: { f: Float }) => {
   const url = f.tab.settings?.url || GOOGLE;
   const [address, setAddress] = useState(url);
+  // iframe に読み込ませる URL。ページの中のリンクで移ったときは url だけが変わり、iframe は読み込み直さない。
+  const [src, setSrc] = useState(url);
   // 同じ URL を開き直すときも iframe を作り直して読み込ませる。
   const [reloads, setReloads] = useState(0);
-  const go = (next: string) => {
+  // 戻る・進むのための、このウィンドウで開いたページの並び。ダッシュボードを開き直すと消える。
+  // away は、ほかのサイトの中で移って、今のページが並びに無いこと。
+  const [history, setHistory] = useState({ list: [url], at: 0, away: false });
+  const show = (next: string) => {
     setAddress(next);
-    setReloads((n) => n + 1);
     setFloatSettings(f, { ...f.tab.settings, url: next });
+  };
+  const visit = (next: string) => {
+    setHistory((h) => (h.list[h.at] === next ? { ...h, away: false } : { list: [...h.list.slice(0, h.at + 1), next], at: h.at + 1, away: false }));
+    show(next);
+  };
+  // load で開かせたページの読み込みか。並びにはもう入っているので、onLoad で数えない。
+  const loading = useRef(true);
+  const load = (next: string) => {
+    loading.current = true;
+    setSrc(next);
+    setReloads((n) => n + 1);
+    show(next);
+  };
+  const go = (input: string) => {
+    const next = URL.parse(input)?.href ?? input;
+    visit(next);
+    load(next);
+  };
+  // 並びに無いページから戻るときは、並びの今の位置のページを開く。
+  const step = (by: number) => {
+    const at = history.away && by < 0 ? history.at : history.at + by;
+    setHistory({ ...history, at, away: false });
+    load(history.list[at] ?? GOOGLE);
+  };
+  // 中継したページはダッシュボードと同じオリジンなので、ページの中で移った先を読める。ほかのサイトの中で移った先は読めない。
+  const onLoad = (e: Event) => {
+    const loaded = loading.current;
+    loading.current = false;
+    try {
+      const next = siteOfFrame(new URL((e.currentTarget as HTMLIFrameElement).contentWindow?.location.href ?? ''));
+      if (next) visit(next);
+    } catch {
+      // ほかのオリジンのページは、location を読むと SecurityError になる。進む先は、ブラウザと同じく捨てる。
+      if (!loaded) setHistory((h) => ({ list: h.list.slice(0, h.at + 1), at: h.at, away: true }));
+    }
   };
   const submit = (e: Event) => {
     e.preventDefault();
@@ -71,8 +110,10 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
     <FloatFrame f={f} title={`${title} - ${IE_TITLE}`} icon={IE_ICON} controls={[close]}>
       <div class="ie">
         <form class="ie-bar" onSubmit={submit}>
+          <button type="button" class="ie-btn" disabled={history.at === 0 && !history.away} onClick={() => step(-1)}>戻る</button>
+          <button type="button" class="ie-btn" disabled={history.at === history.list.length - 1} onClick={() => step(1)}>進む</button>
           <button type="button" class="ie-btn" onClick={() => go(GOOGLE)}>ホーム</button>
-          <button type="button" class="ie-btn" onClick={() => setReloads((n) => n + 1)}>更新</button>
+          <button type="button" class="ie-btn" onClick={() => load(url)}>更新</button>
           <label class="ie-address">
             アドレス(D)
             <input value={address} spellcheck={false} onInput={(e) => setAddress(e.currentTarget.value)} onFocus={(e) => e.currentTarget.select()} />
@@ -82,7 +123,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
           <button type="button" class="ie-btn" onClick={() => window.open(url, '_blank', 'noopener')}>別のタブで開く</button>
         </form>
         {/* sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。 */}
-        <iframe key={reloads} class="ie-page" title={title} src={frameOf(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
+        <iframe key={reloads} class="ie-page" title={title} src={frameOf(src)} onLoad={onLoad} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
       </div>
     </FloatFrame>
   );
