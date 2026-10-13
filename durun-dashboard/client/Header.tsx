@@ -5,6 +5,7 @@ import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, openExplorer } from './Explorer.tsx';
 import { baseName, useFavorites } from './explorerFavorites.ts';
+import { MINESWEEPER_ICON, MINESWEEPER_TITLE, SOLITAIRE_ICON, SOLITAIRE_TITLE, openMinesweeper, openSolitaire } from './Games.tsx';
 import { clock, shortDateTime, toMs } from './format.ts';
 import { NowContext } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
@@ -199,6 +200,13 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
               </div>
             </div>
           )}
+          <div class="app-menu-sub">
+            <div class="app-menu-item" tabindex={0} aria-haspopup="true">ゲーム<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+            <div class="app-menu-submenu" role="group" aria-label="ゲーム">
+              <button class="app-menu-item" onClick={openSolitaire}><AppIcon icon={SOLITAIRE_ICON} />{SOLITAIRE_TITLE}</button>
+              <button class="app-menu-item" onClick={openMinesweeper}><AppIcon icon={MINESWEEPER_ICON} />{MINESWEEPER_TITLE}</button>
+            </div>
+          </div>
           <div class="app-menu-sub">
             <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon={EXPLORER_ICON} />{EXPLORER_TITLE}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
             <div class="app-menu-submenu" role="group" aria-label={EXPLORER_TITLE}>

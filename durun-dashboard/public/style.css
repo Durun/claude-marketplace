@@ -603,6 +603,32 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .notepad-item[aria-checked="true"]::before { content: "✓"; position: absolute; left: 6px; }
 .notepad-item kbd { font: inherit; }
 .notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
+/* マインスイーパとソリティアは、スキンによらず Windows XP のものの色で描く。タイトルバーの下から窓の端まで敷き詰める。 */
+.mines { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 6px; margin: -10px -12px -12px; padding: 6px; overflow: auto; background: #c0c0c0; color: #000; }
+.mines-head { display: flex; justify-content: space-between; align-items: center; align-self: stretch; padding: 4px; border: 2px inset #fff; }
+.mines-count { padding: 0 4px; background: #000; color: #f00; font: bold 20px/1.1 monospace; }
+.mines-face { width: 28px; height: 28px; padding: 0; border: 2px outset #fff; background: #c0c0c0; font-size: 16px; }
+.mines-grid { display: grid; grid-template-columns: repeat(var(--w), 16px); border: 3px inset #fff; }
+.mines-cell { width: 16px; height: 16px; padding: 0; border: 2px outset #fff; background: #c0c0c0; color: #000; font: bold 11px/1 Tahoma, sans-serif; }
+.mines-cell.is-open { border: 0; border-top: 1px solid #808080; border-left: 1px solid #808080; }
+.mines-cell[data-n="1"] { color: #00f; }
+.mines-cell[data-n="2"] { color: #008000; }
+.mines-cell[data-n="3"] { color: #f00; }
+.mines-cell[data-n="4"] { color: #000080; }
+.mines-cell[data-n="5"] { color: #800000; }
+.mines-cell[data-n="6"] { color: #008080; }
+.mines-cell[data-n="8"] { color: #808080; }
+.solitaire { display: flex; flex: 1; flex-direction: column; gap: 12px; margin: -10px -12px -12px; padding: 8px 12px; overflow: auto; background: #008000; color: #fff; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.solitaire-bar { display: flex; align-items: center; gap: 12px; }
+.solitaire-new { padding: 2px 8px; border: 1px solid #003c74; border-radius: 3px; background: #ece9d8; color: #000; font: inherit; }
+.solitaire-row { display: grid; grid-template-columns: repeat(7, 60px); gap: 8px; }
+.card-slot, .card-column { display: flex; flex-direction: column; }
+.card { display: block; width: 60px; height: 84px; flex-shrink: 0; padding: 3px 4px; border: 1px solid #000; border-radius: 4px; background: #fff; color: #000; font: bold 14px/1 Tahoma, sans-serif; text-align: left; vertical-align: top; }
+.card-column > .card:not(:first-child) { margin-top: -64px; }
+.card.is-red { color: #d00; }
+.card.is-picked { background: #9db9eb; }
+.card.is-back { background: repeating-linear-gradient(45deg, #1c4fa8 0 4px, #2a62c9 4px 8px); border-color: #fff; outline: 1px solid #000; }
+.card.is-empty { border: 1px solid #00c000; background: none; color: #00c000; text-align: center; font-size: 24px; }
 /* Internet Explorer は、スキンによらず Windows XP の IE の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
 .ie { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .ie-bar { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-bottom: 1px solid #aca899; }
