@@ -54,6 +54,7 @@ const STATIC: Record<string, string> = {
   '/claude-open.svg': 'public/claude-open.svg',
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
+  '/ie.svg': 'public/ie.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
 };
