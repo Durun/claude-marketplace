@@ -9,6 +9,8 @@ export const RETRO_PATH = '/api/retro';
 
 /** 2000 年代の見た目で描き直すサイト。キーはホスト名で、color はヘッダーの帯の色。listing は、どのページも記事の一覧で、段落を本文として出さないサイト。 */
 export const RETRO_SITES: Record<string, { name: string; color: string; listing?: boolean }> = {
+  'www.yahoo.co.jp': { name: 'Yahoo! JAPAN', color: '#ff0033' },
+  'news.yahoo.co.jp': { name: 'Yahoo!ニュース', color: '#ff0033' },
   'b.hatena.ne.jp': { name: 'はてなブックマーク', color: '#3d6ec8', listing: true },
   'www.weblio.jp': { name: 'Weblio 辞書', color: '#ef8200' },
   'dic.nicovideo.jp': { name: 'ニコニコ大百科', color: '#555555' },
