@@ -1234,7 +1234,7 @@ table.data { width: 100%; border-collapse: collapse; }
   background: repeating-linear-gradient(90deg, transparent 0 6px, #fff 6px 8px), linear-gradient(rgba(255, 255, 255, 0.7), transparent 45% 55%, rgba(255, 255, 255, 0.5)), var(--c);
 }
 /* 一覧の項目と差分は、ウィンドウの中の白い欄にする。 */
-[data-skin="xp"] :where(.session-card, .att, .chat-claude, .search-item, .diff-file, .code-side) { border-radius: 0; background: #fff; }
+[data-skin="xp"] :where(.session-card, .att, .search-item, .diff-file, .code-side) { border-radius: 0; background: #fff; }
 [data-skin="xp"] .session-card:hover { border-color: #316ac5; background: #eef3fd; }
 
 /* ボタンと入力欄。押せるものはマウスを載せると内側が橙に光り、フォーカスは点線で示す。 */
@@ -1255,6 +1255,24 @@ table.data { width: 100%; border-collapse: collapse; }
 /* 通知とイルカの吹き出しは、XP の黄色い吹き出しにする。 */
 [data-skin="xp"] .toast { border: 1px solid #000; border-radius: 6px; }
 [data-skin="xp"] .dolphin-chat { --surface: #ffffe1; --border-strong: #000; border-radius: 8px; }
+
+/*
+ * チャットは同じ時代の Skype に寄せる。白い欄に角の丸い吹き出しを並べ、人間の依頼は右の水色、Claude の発言は左の白にする。
+ * 吹き出しの外側に四角いアイコンを置き、アイコンに近い下の角だけ尖らせて、誰の発言かを示す。
+ */
+[data-skin="xp"] .chat { --skype: #00aff0; padding: 8px; background: #fff; }
+[data-skin="xp"] .chat-row::before, [data-skin="xp"] .chat-row.is-human::after {
+  content: "C"; display: grid; place-items: center; flex: none; order: -1; width: 32px; height: 32px;
+  border: 1px solid #aca899; border-radius: 4px; background: linear-gradient(#f0a080, #d97757); color: #fff; font-weight: 700;
+}
+[data-skin="xp"] .chat-row.is-human::before { content: none; }
+[data-skin="xp"] .chat-row.is-human::after { content: "人"; order: 0; background: linear-gradient(#7fd6f7, var(--skype)); }
+[data-skin="xp"] :is(.chat-human, .chat-claude) { padding: 8px 12px; border: 1px solid; border-radius: 10px; }
+[data-skin="xp"] .chat-human { border-color: #8fd3ee; border-bottom-right-radius: 2px; background: #e2f5fc; }
+[data-skin="xp"] .chat-claude { border-color: #c9c9c9; border-bottom-left-radius: 2px; background: #fff; }
+[data-skin="xp"] .chat-human.is-focused { outline-color: var(--skype); }
+/* ツールの呼び出しはアイコンの幅だけ右に寄せ、Claude の発言と左端を揃える。 */
+[data-skin="xp"] .chat-tool { margin-left: 78px; }
 
 /*
  * 動画は Windows Media Player 12 の再生中の画面に似せる。黒から紺へのグラデーションの上に動画を置き、下に細いシークバーと、
