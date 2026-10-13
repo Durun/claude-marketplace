@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { oldYahooSearch, topicsOf, yahooResultsOf } from '../server/yahoo.ts';
+import { yahooResultsOf } from '../server/webSearch.ts';
+import { oldYahooSearch, topicsOf } from '../server/yahoo.ts';
 
 test('topicsOf は、トピックスの記事のリンクの h1 を題にし、記事を中継に向ける', () => {
   const html = '<a href="https://news.yahoo.co.jp/pickup/1"><div><h1><span>題 &amp; 1</span></h1><span>NEW</span>12</div></a><a href="https://news.yahoo.co.jp/pickup/2"><span>h1 の無いリンク</span></a><a href="https://example.com/">よそ</a>';
