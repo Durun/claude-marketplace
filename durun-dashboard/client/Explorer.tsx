@@ -7,6 +7,7 @@ import { openFile } from './Docs.tsx';
 import { baseName, toggleFavorite, useFavorites } from './explorerFavorites.ts';
 import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
+import { clamp } from './layout.ts';
 import { dateTime, fmtBytes } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { currentSessionId } from './router.ts';
@@ -26,6 +27,35 @@ export const openExplorer = (dir?: string): void =>
 export const ExplorerIcon = ({ cwd }: { cwd?: string }) => (
   <DesktopIcon icon={EXPLORER_ICON} title={EXPLORER_TITLE} hint="PC の中のファイルを一覧します。ダブルクリックで開きます" onLaunch={() => openExplorer(cwd)} />
 );
+
+/**
+ * ドラッグで変えられる欄の幅。どのウィンドウでも同じ幅にするため、ウィンドウごとではなくブラウザに 1 つだけ保存する。
+ * drag は仕切りの pointerdown に渡す。sign は、仕切りを右へ動かしたときに欄が広がるなら 1、狭まるなら -1。
+ */
+const useWidth = (key: string, initial: number) => {
+  const [width, setWidth] = useState(() => Number(localStorage.getItem(key)) || initial);
+  const drag = (e: PointerEvent, sign: 1 | -1) => {
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    let next = width;
+    const move = (ev: PointerEvent) => setWidth((next = clamp(width + sign * (ev.clientX - x0), 80, 800)));
+    el.addEventListener('pointermove', move);
+    el.addEventListener(
+      'pointerup',
+      () => {
+        el.removeEventListener('pointermove', move);
+        try {
+          localStorage.setItem(key, String(next));
+        } catch {
+          // 保存できなくても、開いている間はその幅で使える。
+        }
+      },
+      { once: true },
+    );
+  };
+  return [width, drag] as const;
+};
 
 const iconOf = (e: ExplorerEntry): string => {
   if (e.dir) return '📁';
@@ -85,6 +115,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
   const open = (e: ExplorerEntry) => (e.dir ? go(e.path) : void openFile(currentSessionId(), e.path));
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   const starred = !!dir && favorites.includes(dir.path);
+  const [sideWidth, dragSide] = useWidth('explorer-side-width', 160);
   return (
     <FloatFrame f={f} title={dir ? baseName(dir.path) : EXPLORER_TITLE} icon={EXPLORER_ICON} controls={[close]}>
       <div class="explorer">
@@ -102,7 +133,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
           </button>
           <button type="button" class="btn btn-sm" data-icon="refresh" disabled={fetched.loading} onClick={fetched.reload}>更新</button>
         </form>
-        <div class="explorer-main">
+        <div class="explorer-main" style={{ '--side-w': `${sideWidth}px` }}>
           <nav class="explorer-side" aria-label="場所">
             {favorites.length > 0 && (
               <>
@@ -119,6 +150,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
               {dir?.roots.map((r) => <Place key={r} icon="💽" label={r} path={r} current={r === dir.path} onGo={go} />)}
             </ul>
           </nav>
+          <div class="explorer-splitter" role="separator" aria-orientation="vertical" aria-label="場所の幅" onPointerDown={(e) => dragSide(e, 1)} />
           <div class="explorer-list-wrap">
             {fetched.error && <p class="error-note">{fetched.error}</p>}
             {!dir ? (
