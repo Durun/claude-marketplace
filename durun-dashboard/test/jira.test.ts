@@ -41,8 +41,12 @@ test('adfText は、JIRA の本文の段落、改行、リスト、メンショ�
   assert.equal(adfText(doc).trim(), '一行目\n二行目 @山田\n\n- 項目\n\n\nhttps://example.com');
 });
 
-test('jiraDetail は、課題の属性に本文とコメントを古い順に添えて返す', async (t) => {
+test('jiraDetail は、課題の属性に本文とコメントを古い順に添え、子の課題も返す', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (url.includes('/search/jql?')) {
+      assert.match(url, /jql=parent\+%3D\+PROJ-1\+ORDER\+BY\+created\+ASC/);
+      return Response.json({ issues: [{ key: 'PROJ-2', fields: { summary: '子' } }] });
+    }
     assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/issue\/PROJ-1\?fields=/);
     const p = (s: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: s }] }] });
     return Response.json({
@@ -56,6 +60,7 @@ test('jiraDetail は、課題の属性に本文とコメントを古い順に添
   assert.equal(issue.url, 'https://jira.example/browse/PROJ-1');
   assert.equal(issue.description, '説明');
   assert.deepEqual(issue.comments, [{ author: '佐藤', body: '見ました', at: Date.parse('2026-10-07T03:00:00.000Z') }]);
+  assert.deepEqual(issue.children.map((c) => [c.key, c.summary]), [['PROJ-2', '子']]);
 });
 
 test('postJiraComment は、行ごとに段落にしたコメントを投稿し、失敗は JIRA が返した理由で投げる', async (t) => {

@@ -99,7 +99,7 @@ const openParent = (key: string) => (e: MouseEvent) => {
   floatUp(JIRA_KEY, '', { id: key });
 };
 
-const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<string> }) => (
+export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<string> }) => (
   <li>
     <Ext class="jira-row" href={issue.url}>
       <span class="jira-head">

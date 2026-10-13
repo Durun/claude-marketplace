@@ -431,6 +431,9 @@ type JiraIssueBody = {
   errorMessages?: string[];
 };
 
+// ponytail: 子の課題は先頭の 100 件まで。超える Epic が出たら、件数とページ送りを足す。
+const JIRA_CHILDREN_MAX = 100;
+
 const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> => {
   if (!JIRA_BASE || !JIRA_AUTH) throw new Error('~/.durun-dashboard/.env.local に JIRA_BASE_URL、JIRA_EMAIL、JIRA_API_TOKEN を設定してください');
   const res = await fetch(`${JIRA_BASE}/rest/api/3/${apiPath}`, {
@@ -442,10 +445,13 @@ const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> =>
   return body;
 };
 
-/** 課題の画面に出す中身。コメントは古い順に並べる。 */
+/** 課題の画面に出す中身。コメントは古い順に、子の課題（Epic に属する課題やサブタスク）は作った順に並べる。 */
 export const jiraDetail = async (key: string): Promise<JiraDetail> => {
   const fields = 'summary,status,assignee,reporter,priority,parent,labels,duedate,updated,description,comment';
-  const { fields: f } = await jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}`);
+  const [{ fields: f }, children] = await Promise.all([
+    jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}`),
+    searchJira(`parent = ${key} ORDER BY created ASC`, JIRA_CHILDREN_MAX),
+  ]);
   return {
     key,
     url: browseUrl(key),
@@ -461,6 +467,7 @@ export const jiraDetail = async (key: string): Promise<JiraDetail> => {
     dueDate: f?.duedate ?? undefined,
     description: adfText(f?.description).trim(),
     comments: (f?.comment?.comments ?? []).map((c) => ({ author: c.author?.displayName ?? '', body: adfText(c.body).trim(), at: Date.parse(c.created ?? '') })),
+    children,
   };
 };
 

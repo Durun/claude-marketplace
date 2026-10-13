@@ -6,6 +6,7 @@ import { api } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
 import { useFetch } from './hooks.ts';
+import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm } from './PrView.tsx';
 import { Chip, Empty, Time } from './ui.tsx';
@@ -28,6 +29,8 @@ export const pickJira = (session: string, key: string): void => {
 
 const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new: 'muted', indeterminate: 'info', done: 'ok' };
 
+const CHILD_FIELDS = new Set(['assignee', 'priority']);
+
 /** JIRA で開くリンクは、課題へのリンクを横取りする処理に拾わせないよう data-external を付ける。 */
 const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolean; reload: () => void }) => (
   <div class="stack pr-view">
@@ -47,6 +50,9 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
       {issue.updatedAt !== undefined && <span>更新 <Time at={issue.updatedAt} /></span>}
     </div>
     {issue.description ? <Markdown text={issue.description} /> : <Empty>説明はありません。</Empty>}
+    {issue.children.length > 0 && (
+      <ul class="jira-list">{issue.children.map((c) => <IssueRow key={c.key} issue={c} fields={CHILD_FIELDS} />)}</ul>
+    )}
     <ul class="pr-view-posts">
       {issue.comments.map((c) => (
         <li key={`${c.author}${c.at}`} class="pr-comment">

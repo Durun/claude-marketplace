@@ -102,7 +102,7 @@ export type JiraIssue = {
 export const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 
 /** 課題の画面に出す中身。description とコメントの本文は、JIRA の形式から Markdown として読める文字にしたもの。 */
-export type JiraDetail = JiraIssue & { description: string; comments: PrPost[] };
+export type JiraDetail = JiraIssue & { description: string; comments: PrPost[]; children: JiraIssue[] };
 
 /** Notion のページの画面に出す中身。id はハイフンの無い 32 桁で、markdown は本文のブロックを Markdown にしたもので、データベース（database が true）では行の表。truncated は、長くて途中までしか読んでいないとき。 */
 export type NotionPage = { id: string; url: string; title: string; icon?: string; updatedAt?: number; markdown: string; truncated: boolean; database?: boolean };
