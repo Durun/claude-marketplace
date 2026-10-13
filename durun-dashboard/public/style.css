@@ -336,6 +336,11 @@ textarea.input { resize: vertical; min-height: 36px; }
 .app-menu-pinned > span { display: grid; }
 .app-menu-pinned small { color: var(--muted); font-size: 12px; }
 .app-menu-all { font-weight: 700; }
+.app-menu-foot { display: flex; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.app-menu-foot > .app-menu-item { width: auto; gap: 6px; }
+.app-menu-foot-icon { flex: none; width: 16px; height: 16px; padding: 2px; border-radius: 3px; fill: none; stroke: #fff; stroke-width: 2; }
+.app-menu-foot-icon.is-orange { background: linear-gradient(#f9c76b, #e38b1c); }
+.app-menu-foot-icon.is-red { background: linear-gradient(#f28b6b, #d4361b); }
 
 .app { max-width: 1480px; margin: 0 auto; padding: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -1210,7 +1215,7 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .app-menu {
   --menu-blue: linear-gradient(#1868ce, #0e60cb 12%, #1667cf 33%, #1e70d9 54%, #3083de 77%, #4c96e4 90%, #5698e2);
   --text: #000; --muted: #5c5c5c;
-  position-area: top span-right; width: 400px; margin: 0; padding: 0;
+  position-area: top span-right; width: 420px; margin: 0; padding: 0;
   border: 1px solid #0831d9; border-radius: 7px 7px 0 0; background: #fff;
 }
 [data-skin="xp"] .app-menu:popover-open { display: grid; }
@@ -1218,21 +1223,28 @@ table.data { width: 100%; border-collapse: collapse; }
   content: "durun-dashboard"; padding: 14px 12px; border-radius: 6px 6px 0 0; border-bottom: 2px solid #e5a03b; background: var(--menu-blue);
   color: #fff; font: 700 15px "Trebuchet MS", var(--sans); text-shadow: 1px 1px #0f1089;
 }
-[data-skin="xp"] .app-menu::after { content: ""; height: 34px; background: var(--menu-blue); }
 /* 左のプログラムの列は白、右の場所と設定の列は薄い青にする。 */
-[data-skin="xp"] .app-menu-items { display: grid; grid-template-columns: 1fr 1fr; }
-[data-skin="xp"] .app-menu-col { padding: 6px; }
+[data-skin="xp"] .app-menu-items { display: grid; grid-template-columns: 1.1fr 1fr; }
+[data-skin="xp"] .app-menu-col { display: flex; flex-direction: column; padding: 6px; }
+[data-skin="xp"] .app-menu-col > .app-menu-sep { height: 1px; margin: 4px 8px; border: 0; background: linear-gradient(to right, transparent, #c8c8c8 50%, transparent); }
+[data-skin="xp"] .app-menu-col > .app-menu-all-sep { margin-top: auto; }
+[data-skin="xp"] .app-menu-col > .app-menu-item > img.app-icon { width: 32px; height: 32px; }
+[data-skin="xp"] .app-menu-places .app-menu-item > img.app-icon { width: 24px; height: 24px; }
 [data-skin="xp"] .app-menu-col + .app-menu-col { margin: 0; border-top: 0; border-left: 1px solid #95bdee; background: #d3e5fa; }
-[data-skin="xp"] .app-menu-places > :is(.app-menu-item, .app-menu-sub > .app-menu-item) { color: #00136b; }
-[data-skin="xp"] .app-menu-places > .app-menu-sep { border-top-color: #95bdee; }
+[data-skin="xp"] :is(.app-menu-places > .app-menu-item, .app-menu-places > .app-menu-sub > .app-menu-item) { color: #00136b; font-weight: 700; }
+[data-skin="xp"] .app-menu-places > .app-menu-sep { background: linear-gradient(to right, transparent, #95bdee 50%, transparent); }
 [data-skin="xp"] .app-menu-all { justify-content: center; }
-[data-skin="xp"] .app-menu-all > .app-menu-arrow { margin-left: 0; color: #2f9a2f; font-size: 11px; }
+[data-skin="xp"] .app-menu-all > .app-menu-arrow { margin-left: 0; color: #2f9a2f; font-size: 16px; }
 [data-skin="xp"] .app-menu-item { border-radius: 0; }
 [data-skin="xp"] .app-menu-submenu { border: 1px solid #0831d9; border-radius: 0; background: #fff; }
 /* メニューは画面の下端のタスクバーから開くので、選択肢は項目の下端にそろえて上へ伸ばす。 */
 [data-skin="xp"] .app-menu-submenu { top: auto; bottom: -5px; }
 [data-skin="xp"] .app-menu :is(.app-menu-item:hover, .app-menu-sub:is(:hover, :focus-within) > .app-menu-item) { background: #316ac5; color: #fff; }
 [data-skin="xp"] .app-menu-item:hover kbd { color: #fff; }
+/* 足元の青い帯。XP の「ログオフ」「終了オプション」と同じく、白い文字で右に寄せる。 */
+[data-skin="xp"] .app-menu-foot { justify-content: flex-end; gap: 4px; margin: 0; padding: 5px 8px; border: 0; background: var(--menu-blue); }
+[data-skin="xp"] .app-menu-foot > .app-menu-item { color: #fff; }
+[data-skin="xp"] .app-menu-foot-icon { width: 22px; height: 22px; padding: 4px; border: 1px solid #fff; }
 
 /* パネルとウィジェットはウィンドウにし、見出しをタイトルバーにする。 */
 [data-skin="xp"] :is(.panel, .widget, .fb-panel, .doc-head, .memory-flyout, .rate-flyout, .count-flyout, .ctx-flyout) {

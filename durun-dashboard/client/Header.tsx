@@ -202,10 +202,10 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
             {apps.map((a) => (
               <button key={a.kind} class="app-menu-item" onClick={a.launch}><AppIcon icon={a.icon} />{a.title}</button>
             ))}
-            <hr class="app-menu-sep" />
+            <hr class="app-menu-sep app-menu-all-sep" />
             {/* マウスを載せるかフォーカスすると右に選択肢を出す。押してもメニューを閉じないよう、button にしない。 */}
             <div class="app-menu-sub">
-              <div class="app-menu-item app-menu-all" tabindex={0} aria-haspopup="true">すべてのプログラム(P)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-item app-menu-all" tabindex={0} aria-haspopup="true"><span>すべてのプログラム(<u>P</u>)</span><span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="すべてのプログラム">
                 <button class="app-menu-item" onClick={() => openInternetExplorer()}><AppIcon icon={IE_ICON} />{IE_TITLE}</button>
                 <button class="app-menu-item" title="ホームディレクトリを開く" onClick={() => openExplorer()}><AppIcon icon={EXPLORER_ICON} />{EXPLORER_TITLE}</button>
@@ -223,9 +223,9 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
             </div>
           </div>
           <div class="app-menu-col app-menu-places">
-            <a class="app-menu-item" href={href.docs()}>マイ ドキュメント</a>
+            <a class="app-menu-item" href={href.docs()}><AppIcon icon="📁" />マイ ドキュメント</a>
             <div class="app-menu-sub">
-              <div class="app-menu-item" tabindex={0} aria-haspopup="true">最近使ったファイル(D)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🕘" /><span>最近使ったファイル(<u>D</u>)</span><span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="最近使ったファイル">
                 {recent.map((d) => (
                   <a key={d.id} class="app-menu-item" href={href.doc(d.id)}>{d.title}</a>
@@ -246,7 +246,7 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
             </div>
             <hr class="app-menu-sep" />
             <div class="app-menu-sub">
-              <div class="app-menu-item" tabindex={0} aria-haspopup="true">コントロール パネル(C)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🖥️" /><span>コントロール パネル(<u>C</u>)</span><span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="コントロール パネル">
                 <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
                 <div class="app-menu-sub">
@@ -257,12 +257,10 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
                     ))}
                   </div>
                 </div>
-                <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>全画面</button>
-                <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>軽量モード</button>
               </div>
             </div>
             <div class="app-menu-sub">
-              <div class="app-menu-item" tabindex={0} aria-haspopup="true">ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🗂️" />ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
                 {dashboards.list.map((d) => (
                   <button key={d.id} class="app-menu-item" aria-pressed={d.id === dashboards.current} onClick={() => (switchDashboard(d.id), showHome())}>{d.name}</button>
@@ -280,9 +278,18 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
             </div>
             <hr class="app-menu-sep" />
             <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
-              検索(S)<kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
+              <AppIcon icon="🔍" /><span>検索(<u>S</u>)</span><kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
             </button>
           </div>
+        </div>
+        {/* XP の「ログオフ」「終了オプション」の位置に、画面全体の切り替えを置く。 */}
+        <div class="app-menu-foot">
+          <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>
+            <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" /></svg>全画面
+          </button>
+          <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>
+            <svg class="app-menu-foot-icon is-red" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10zM3 13l6-6" /></svg>軽量モード
+          </button>
         </div>
       </div>
     </>
