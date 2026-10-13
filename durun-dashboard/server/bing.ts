@@ -74,12 +74,19 @@ form{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:2
 .logo{margin:0;font-size:72px;letter-spacing:-3px;text-shadow:3px 3px 2px #bbb}
 .foot{margin-top:40px;color:#666;font-size:11px;text-align:center}
 </style></head><body>
-<form action="${BING_PATH}"><h1 class="logo">${LOGO}</h1><input name="q" size="55" autofocus><input type="submit" value="Google 検索"></form>
+<form action="${BING_PATH}"><h1 class="logo">${LOGO}</h1><input name="q" size="55" autofocus><span><input type="submit" value="Google 検索"> <input type="submit" name="btnI" value="I'm Feeling Lucky"></span></form>
 <p class="foot">&copy;2005 Google</p>
 </body></html>`;
 
-export const fetchBing = async (search: string, lang: string | undefined): Promise<string> => {
+const fetchPage = async (search: string, lang: string | undefined): Promise<string> => {
   const res = await fetch(`${BING}/search${search}`, { headers: { 'user-agent': USER_AGENT, 'accept-language': lang ?? 'ja' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Bing が ${res.status} を返しました`);
-  return oldGoogle(await res.text(), search);
+  return res.text();
 };
+
+export const fetchBing = async (search: string, lang: string | undefined): Promise<string> => oldGoogle(await fetchPage(search, lang), search);
+
+/** I'm Feeling Lucky で開く、検索結果の 1 件目の行き先。結果が無ければ undefined。 */
+export const luckyOf = (html: string): string | undefined => resultsOf(html)[0]?.href;
+
+export const fetchLucky = async (search: string, lang: string | undefined): Promise<string | undefined> => luckyOf(await fetchPage(search, lang));

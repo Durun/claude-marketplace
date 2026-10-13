@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { oldGoogle } from '../server/bing.ts';
+import { luckyOf, oldGoogle } from '../server/bing.ts';
 
 const ck = (to: string) => `/ck/a?!&amp;&amp;p=abc&amp;u=a1${Buffer.from(to).toString('base64url')}&amp;ntb=1`;
 const algo = (href: string, title: string, snippet: string) => `<li class="b_algo" data-id><script>x()</script><h2><a href="${href}" target="_blank">${title}</a></h2><p class="b_lineclamp2">${snippet}</p></li>`;
@@ -22,4 +22,9 @@ test('oldGoogle は、検索語を書き出すときに逃がし、ページ送�
   assert.match(html, /value="&quot;&lt;b>"/);
   assert.match(html, /<a href="\/api\/bing\/search\?q=%22%3Cb%3E&amp;first=1">前へ<\/a>/);
   assert.match(html, /<b style="color:#a90a08">2<\/b>/);
+});
+
+test('luckyOf は、http(s) の結果の 1 件目の行き先を返し、結果が無ければ undefined を返す', () => {
+  assert.equal(luckyOf(algo(ck('javascript:alert(1)'), 'x', '') + algo('https://example.com/a', 'A', '') + algo('https://example.com/b', 'B', '')), 'https://example.com/a');
+  assert.equal(luckyOf(''), undefined);
 });

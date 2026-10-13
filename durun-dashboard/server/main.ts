@@ -17,7 +17,7 @@ import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeli
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
-import { OLD_GOOGLE_HOME, fetchBing } from './bing.ts';
+import { OLD_GOOGLE_HOME, fetchBing, fetchLucky } from './bing.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
@@ -180,7 +180,17 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
  * Internet Explorer のウィンドウに出す Bing の検索結果。ダッシュボードと同じオリジンから返すので、sandbox で別のオリジンの扱いにし、スクリプトも止める。
  * ダッシュボードの画面を読み書きさせないため。
  */
-const sendBing = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchBing(url.search, req.headers['accept-language']));
+/** I'm Feeling Lucky は検索結果の 1 件目へ移す。結果が無ければ、Google と同じく結果のページを出す。 */
+const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+  const lang = req.headers['accept-language'];
+  if (url.searchParams.has('btnI')) {
+    const to = await fetchLucky(url.search, lang).catch((e: Error) => {
+      throw new HttpError(502, e.message);
+    });
+    if (to) return void res.writeHead(302, { location: to }).end();
+  }
+  return sendRetro(res, fetchBing(url.search, lang));
+};
 
 const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const self = `http://${req.headers.host}`;
