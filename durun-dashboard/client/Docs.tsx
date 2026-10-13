@@ -131,18 +131,18 @@ const SideDocRow = ({ d, dragging, drag, onRemove, onRename }: RowProps) => {
   );
 };
 
-/** 資料に足すリンクの入力欄。題名を空にすると、URL から題名を付ける。 */
-const AddLink = ({ s, onClose }: { s: Session; onClose: () => void }) => {
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
+/** 資料を足す入力欄。http(s) の URL ならリンクとして、ほかはファイルの絶対パスとして足す。題名はサーバーと画面が付けるので、変えたければ名前を変える。 */
+const AddDoc = ({ s, onClose }: { s: Session; onClose: () => void }) => {
+  const [value, setValue] = useState('');
   const save = async (e: Event) => {
     e.preventDefault();
-    if (await attempt('資料の追加', () => api.addLink(s.id, url.trim(), title.trim()))) onClose();
+    const target = value.trim();
+    const add = /^https?:\/\//i.test(target) ? () => api.addLink(s.id, target, '') : () => api.addFile(s.id, target);
+    if (await attempt('資料の追加', add)) onClose();
   };
   return (
     <form class="card panel stack add-link" onSubmit={save}>
-      <input class="input" type="url" required autoFocus aria-label="URL" placeholder="https://…" value={url} onInput={(e) => setUrl(e.currentTarget.value)} />
-      <input class="input" aria-label="題名" placeholder="題名（空なら URL や Notion のページから付けます）" value={title} onInput={(e) => setTitle(e.currentTarget.value)} />
+      <input class="input" required autoFocus aria-label="URL かファイルのパス" placeholder="https://… か /path/to/file" value={value} onInput={(e) => setValue(e.currentTarget.value)} />
       <div class="actions">
         <span class="spacer" />
         <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>
@@ -324,7 +324,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
 });
 
 /**
- * セッション概要の資料のウィジェット。present で出したものと、人間と Claude の発言に出たリンクと Markdown ファイルと、人間が「追加」で足したリンクを並べる。
+ * セッション概要の資料のウィジェット。present で出したものと、人間と Claude の発言に出たリンクと Markdown ファイルと、人間が「追加」で足したリンクとファイルを並べる。
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
  * 人間が付け直した題名は、まとめたリンクのどれかに付いていればその行に出す。
  * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。claude.ai の artifact へのリンクには、公開したときの題名を付ける。
@@ -384,7 +384,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
           void attempt('資料の追加', () => api.addFile(s.id, file));
         }}
       >
-        {adding && <AddLink s={s} onClose={() => setAdding(false)} />}
+        {adding && <AddDoc s={s} onClose={() => setAdding(false)} />}
         {items.length === 0 ? (
           <Empty>資料はありません。</Empty>
         ) : (

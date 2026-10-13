@@ -25,6 +25,7 @@ import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
+import { pageTitleOf } from './pageTitle.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -535,15 +536,24 @@ const setPinned = (id: string, body: unknown): void => {
   touch();
 };
 
-/** 資料に足すリンク。画面がリンクとして開くので、http と https に限る。同じ URL を足し直したら、題名と時刻を新しくし、外していたものはまた並べる。 */
+/**
+ * 資料に足すリンク。画面がリンクとして開くので、http と https に限る。同じ URL を足し直したら、題名と時刻を新しくし、外していたものはまた並べる。
+ * 題名が空なら、すぐに並べてから、ページの <title> を読んで付ける。
+ */
 const addLink = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
   const url = URL.parse(field<string>(body, 'url', 'string').trim());
   if (url?.protocol !== 'http:' && url?.protocol !== 'https:') throw new HttpError(400, 'url must be an http(s) URL');
-  const title = field<string>(body, 'title', 'string').trim();
-  meta.links = [...(meta.links ?? []).filter((l) => l.url !== url.href), { url: url.href, title, at: Date.now() }];
+  const link = { url: url.href, title: field<string>(body, 'title', 'string').trim(), at: Date.now() };
+  meta.links = [...(meta.links ?? []).filter((l) => l.url !== url.href), link];
   meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== url.href);
   touch();
+  if (link.title) return;
+  void pageTitleOf(url).then((title) => {
+    if (!title) return;
+    link.title = title;
+    touch();
+  });
 };
 
 /** 消えたセッションの id は残さない。 */
