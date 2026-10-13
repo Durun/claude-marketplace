@@ -1330,6 +1330,12 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] :has(> .widget-body.chat) .chat-meta { grid-area: meta; align-self: start; }
 [data-skin="xp"] :has(> .widget-body.chat) :is(.chat-human, .chat-claude) { grid-area: body; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; }
 [data-skin="xp"] :has(> .widget-body.chat) .chat-human.is-focused { outline-color: var(--skype); outline-offset: 2px; }
+/* 人間の発言は、名前も本文も右に寄せ、時刻と書き直しボタンを左端に置く。本文の行は左揃えのまま読みやすくする。 */
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row.is-human { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "rewind name" "meta body"; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row.is-human::before { justify-self: end; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row.is-human .chat-rewind { justify-self: start; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row.is-human .chat-meta { justify-items: start; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-human { justify-self: end; max-width: 85%; }
 [data-skin="xp"] :has(> .widget-body.chat) .chat-tool { margin-left: 0; }
 [data-skin="xp"] :has(> .widget-body.chat) .input { border-color: #c4d0d8; }
 /* ボタンは Skype 5 の角の丸い四角にする。送信などの主なボタンは、通話ボタンと同じ緑にする。 */
