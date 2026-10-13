@@ -16,6 +16,7 @@ import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeli
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
+import { BING_PATH, fetchBing } from './bing.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
@@ -169,6 +170,23 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
       'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     })
     .end(icon.body);
+};
+
+/**
+ * Internet Explorer のウィンドウに出す Bing の検索結果。ダッシュボードと同じオリジンから返すので、sandbox で別のオリジンの扱いにし、スクリプトも止める。
+ * ダッシュボードの画面を読み書きさせないため。
+ */
+const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+  const html = await fetchBing(url.search, req.headers['accept-language'], `http://${req.headers.host}`).catch((e: Error) => {
+    throw new HttpError(502, e.message);
+  });
+  res
+    .writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "sandbox allow-forms; script-src 'none'",
+    })
+    .end(html);
 };
 
 /** 画面が表示しているブランチ。Claude が並べた選択肢から、人間が選んだもの。 */
@@ -841,6 +859,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
+  if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
   // セッションの id が無いものは、エクスプローラーからセッションの外で開いたファイル。
   const media = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);

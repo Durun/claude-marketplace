@@ -20,6 +20,12 @@ const siteOf = (input: string): URL | undefined => {
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
 };
 
+/** Bing の検索結果は、リンクをウィンドウの中で開けるよう、サーバーの中継を通して出す。 */
+const frameSrc = (url: string): string => {
+  const u = URL.parse(url);
+  return u?.origin === 'https://www.bing.com' && u.pathname === '/search' ? `/api/bing/search${u.search}` : url;
+};
+
 /** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Bing で検索する。 */
 const addressOf = (input: string): string => {
   const text = input.trim();
@@ -50,7 +56,7 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
   );
 };
 
-/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で描き、検索結果のページから iframe で開く。 */
+/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で描き、検索結果のページから開く。 */
 const Home = ({ onGo }: { onGo: (url: string) => void }) => {
   const [q, setQ] = useState('');
   const submit = (e: Event) => {
@@ -97,7 +103,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
         </form>
         {url ? (
           // sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。
-          <iframe key={reloads} class="ie-page" title={title} src={url} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
+          <iframe key={reloads} class="ie-page" title={title} src={frameSrc(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
         ) : (
           <Home onGo={go} />
         )}
