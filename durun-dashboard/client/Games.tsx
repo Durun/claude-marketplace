@@ -65,11 +65,11 @@ type Pick = { pile: Pile; index: number };
 
 const CardFace = ({ c, picked, onClick, onDblClick }: { c: Card; picked?: boolean; onClick?: () => void; onDblClick?: () => void }) =>
   c.up ? (
-    <button class={`card${isRed(c) ? ' is-red' : ''}${picked ? ' is-picked' : ''}`} onClick={onClick} onDblClick={onDblClick}>
+    <button class={`sol-card${isRed(c) ? ' is-red' : ''}${picked ? ' is-picked' : ''}`} onClick={onClick} onDblClick={onDblClick}>
       {RANKS[c.r]}{SUITS[c.s]}
     </button>
   ) : (
-    <button class="card is-back" aria-label="裏向きの札" onClick={onClick} />
+    <button class="sol-card is-back" aria-label="裏向きの札" onClick={onClick} />
   );
 
 /** クリックで札を選び、置き先の列か組札をクリックすると動かす。ダブルクリックで組札へ送る。 */
@@ -99,18 +99,18 @@ export const SolitaireFloat = ({ f }: { f: Float }) => {
           {won && <span>おめでとうございます。すべての札を組札に揃えました。</span>}
         </div>
         <div class="solitaire-row">
-          <div class="card-slot" title="山札をめくる">
-            {game.stock.length ? <CardFace c={game.stock.at(-1)!} onClick={() => set(draw(game))} /> : <button class="card is-empty" aria-label="山札を戻す" onClick={() => set(draw(game))}>↻</button>}
+          <div class="sol-slot" title="山札をめくる">
+            {game.stock.length ? <CardFace c={game.stock.at(-1)!} onClick={() => set(draw(game))} /> : <button class="sol-card is-empty" aria-label="山札を戻す" onClick={() => set(draw(game))}>↻</button>}
           </div>
-          <div class="card-slot">
+          <div class="sol-slot">
             {game.waste.length > 0 && <CardFace c={game.waste.at(-1)!} picked={isPicked('waste', game.waste.length - 1)} onClick={() => choose('waste', game.waste.length - 1)} onDblClick={() => set(toFoundation(game, 'waste'))} />}
           </div>
-          <div class="card-slot is-gap" />
+          <div class="sol-slot is-gap" />
           {game.found.map((pile, i) => {
             const p: Pile = `f${i}`;
             return (
-              <div key={p} class="card-slot">
-                {pile.length ? <CardFace c={pile.at(-1)!} picked={isPicked(p, pile.length - 1)} onClick={() => choose(p, pile.length - 1)} /> : <button class="card is-empty" aria-label="組札" onClick={() => drop(p)} />}
+              <div key={p} class="sol-slot">
+                {pile.length ? <CardFace c={pile.at(-1)!} picked={isPicked(p, pile.length - 1)} onClick={() => choose(p, pile.length - 1)} /> : <button class="sol-card is-empty" aria-label="組札" onClick={() => drop(p)} />}
               </div>
             );
           })}
@@ -119,8 +119,8 @@ export const SolitaireFloat = ({ f }: { f: Float }) => {
           {game.tab.map((col, i) => {
             const p: Pile = `t${i}`;
             return (
-              <div key={p} class="card-column">
-                {col.length === 0 && <button class="card is-empty" aria-label="空いた列" onClick={() => drop(p)} />}
+              <div key={p} class="sol-column">
+                {col.length === 0 && <button class="sol-card is-empty" aria-label="空いた列" onClick={() => drop(p)} />}
                 {col.map((c, j) => (
                   <CardFace key={j} c={c} picked={isPicked(p, j)} onClick={() => (c.up ? choose(p, j) : drop(p))} onDblClick={() => j === col.length - 1 && set(toFoundation(game, p))} />
                 ))}

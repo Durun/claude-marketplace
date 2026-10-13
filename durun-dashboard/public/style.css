@@ -622,13 +622,13 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .solitaire-bar { display: flex; align-items: center; gap: 12px; }
 .solitaire-new { padding: 2px 8px; border: 1px solid #003c74; border-radius: 3px; background: #ece9d8; color: #000; font: inherit; }
 .solitaire-row { display: grid; grid-template-columns: repeat(7, 60px); gap: 8px; }
-.card-slot, .card-column { display: flex; flex-direction: column; }
-.card { display: block; width: 60px; height: 84px; flex-shrink: 0; padding: 3px 4px; border: 1px solid #000; border-radius: 4px; background: #fff; color: #000; font: bold 14px/1 Tahoma, sans-serif; text-align: left; vertical-align: top; }
-.card-column > .card:not(:first-child) { margin-top: -64px; }
-.card.is-red { color: #d00; }
-.card.is-picked { background: #9db9eb; }
-.card.is-back { background: repeating-linear-gradient(45deg, #1c4fa8 0 4px, #2a62c9 4px 8px); border-color: #fff; outline: 1px solid #000; }
-.card.is-empty { border: 1px solid #00c000; background: none; color: #00c000; text-align: center; font-size: 24px; }
+.sol-slot, .sol-column { display: flex; flex-direction: column; }
+.sol-card { display: block; width: 60px; height: 84px; flex-shrink: 0; padding: 3px 4px; border: 1px solid #000; border-radius: 4px; background: #fff; color: #000; font: bold 14px/1 Tahoma, sans-serif; text-align: left; vertical-align: top; }
+.sol-column > .sol-card:not(:first-child) { margin-top: -64px; }
+.sol-card.is-red { color: #d00; }
+.sol-card.is-picked { background: #9db9eb; }
+.sol-card.is-back { background: repeating-linear-gradient(45deg, #1c4fa8 0 4px, #2a62c9 4px 8px); border-color: #fff; outline: 1px solid #000; }
+.sol-card.is-empty { border: 1px solid #00c000; background: none; color: #00c000; text-align: center; font-size: 24px; }
 /* Internet Explorer は、スキンによらず Windows XP の IE の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
 .ie { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .ie-bar { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-bottom: 1px solid #aca899; }
