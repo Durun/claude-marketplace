@@ -24,8 +24,10 @@ const chatText = (entries: ChatEntry[]): string =>
     .slice(-MAX_CHAT_CHARS);
 
 /** 作った資料は、present で出した資料と同じく、このセッションの資料の一覧に並べる。 */
-export const makeDiagram = async (sessionId: string, cwd: string, entries: ChatEntry[]): Promise<DocMeta> => {
-  const prompt = `${INSTRUCTIONS}\n\n<chat>\n${chatText(entries)}\n</chat>`;
+export const makeDiagram = async (sessionId: string, cwd: string, entries: ChatEntry[], note: string): Promise<DocMeta> => {
+  // 人間の指示は、決まりの指示より後に置いて優先させる。
+  const extra = note.trim() ? `\n\n人間からの指示です。ほかの指示とぶつかるときは、こちらを優先してください。\n<note>\n${note.trim()}\n</note>` : '';
+  const prompt = `${INSTRUCTIONS}${extra}\n\n<chat>\n${chatText(entries)}\n</chat>`;
   // 作業ツリーを消したセッションでは、そこで claude を起動できないので、ダッシュボードの場所で動かす。
   const dir = fs.existsSync(cwd) ? cwd : process.cwd();
   const { title, html } = await askReader(dir, prompt, objectSchema({ title: { type: 'string' }, html: { type: 'string' } }));

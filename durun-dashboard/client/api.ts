@@ -99,7 +99,7 @@ export const api = {
   suggestions: (id: string) => postJson<string[]>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   compact: (id: string) => postJson<void>(`${session(id)}/compact`),
-  diagram: (id: string) => postJson<DocMeta>(`${session(id)}/diagram`),
+  diagram: (id: string, note: string) => postJson<DocMeta>(`${session(id)}/diagram`, { note }),
   exportDoc: async (id: string, format: 'pdf' | 'png' | 'html'): Promise<Blob> => {
     const res = await fetch(`/api/docs/${seg(id)}/export/${format}`, { method: 'POST' });
     if (!res.ok) throw new Error(await errorText(res));

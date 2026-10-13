@@ -1,9 +1,10 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { Attention, BgTask, ChatEntry, FileWhere, Session, Subagent, TaskItem } from '../shared/types.ts';
+import type { Attention, BgTask, ChatEntry, FileWhere, Session, Snapshot, Subagent, TaskItem } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
+import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
 import { dateTime, fmtTokens, shortDateTime } from './format.ts';
@@ -14,7 +15,7 @@ import { Composer, MessageInput } from './Messaging.tsx';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, StatusBadge } from './ui.tsx';
+import { Chip, Empty, StatusBadge, onSubmitKey } from './ui.tsx';
 
 const TASK_LABEL: Record<TaskItem['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -197,21 +198,72 @@ const useMaking = (id: string): boolean => {
 const canDiagram = (s: Session): boolean => !!(s.lastPrompt || s.lastMessage);
 
 /** セッションの作業の図解を作り、作り終えたら、図解のアイコンのウィンドウで開く。作っている間にもう一度呼ばれても作らない。 */
-export const makeDiagram = async (s: Session): Promise<void> => {
+const makeDiagram = async (s: Session, note: string): Promise<void> => {
   if (making.has(s.id)) return;
-  if (!canDiagram(s)) return toast('まだやり取りがないので、図解を作れません。', 'error');
   // アイコンを置いていない画面でスタートメニューから起動しても、作り始めたことがわかるようにする。
   toast('図解を作っています。数分かかります。');
   setMaking(s.id, true);
-  const doc = await attempt('図解', () => api.diagram(s.id));
+  const doc = await attempt('図解', () => api.diagram(s.id, note));
   setMaking(s.id, false);
   if (!doc) return;
   showWidget(SESSION_KEY, s.id, 'docs');
   openDocFloat(doc.id, DIAGRAM_ICON);
 };
 
+/** 図解の指示のウィンドウの保存キー。scope にセッションの id を入れ、タブの id にもこのキーを入れる。 */
+export const DIAGRAM_PROMPT_KEY = 'diagram-prompt';
+// 指示の欄とボタンがちょうど収まる大きさ（px）。
+const PROMPT_SIZE = { w: 420, h: 220 };
+const closePrompt = (id: string) => dock(DIAGRAM_PROMPT_KEY, id, DIAGRAM_PROMPT_KEY);
+
+/** 図解を作る前に、指示を書くウィンドウを開く。作っている間ややり取りがない間は開かない。 */
+export const launchDiagram = (s: Session): void => {
+  if (making.has(s.id)) return;
+  if (!canDiagram(s)) return toast('まだやり取りがないので、図解を作れません。', 'error');
+  floatUp(DIAGRAM_PROMPT_KEY, s.id, { id: DIAGRAM_PROMPT_KEY }, PROMPT_SIZE);
+};
+
+const DiagramPrompt = ({ s }: { s: Session }) => {
+  const [note, setNote] = useState('');
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  const start = () => {
+    closePrompt(s.id);
+    void makeDiagram(s, note.trim());
+  };
+  return (
+    <div class="stack">
+      <textarea
+        ref={ref}
+        class="input"
+        rows={5}
+        placeholder="図解の指示（任意）。例: 設計の判断を中心に描いて（Cmd/Ctrl + Enter で開始）"
+        value={note}
+        onInput={(e) => setNote(e.currentTarget.value)}
+        onKeyDown={(e) => onSubmitKey(e, start)}
+      />
+      <div class="actions">
+        <span class="spacer" />
+        <button class="btn" onClick={() => closePrompt(s.id)}>キャンセル</button>
+        <button class="btn btn-primary" onClick={start}>OK</button>
+      </div>
+    </div>
+  );
+};
+
+/** セッションが一覧から消えたら、指示のウィンドウは出さない。 */
+export const DiagramPromptFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
+  const s = snapshot.sessions.find((x) => x.id === f.scope);
+  if (!s) return null;
+  return (
+    <FloatFrame f={f} title={`図解 - ${s.name}`} icon={DIAGRAM_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: () => closePrompt(s.id) }]}>
+      <DiagramPrompt s={s} />
+    </FloatFrame>
+  );
+};
+
 /**
- * デスクトップのアプリケーションアイコンのように、ダブルクリックか Enter で図解を作る。
+ * デスクトップのアプリケーションアイコンのように、ダブルクリックか Enter で、図解の指示を書くウィンドウを開く。
  * 作るのに数分かかるので、作っている間はカーソルを砂時計にする。
  */
 export const DiagramIcon = ({ s }: { s: Session }) => {
@@ -224,7 +276,7 @@ export const DiagramIcon = ({ s }: { s: Session }) => {
     return () => document.documentElement.classList.remove('is-waiting');
   }, [busy]);
   const hint = ready ? 'ダブルクリックで、このセッションの作業を HTML で図解します' : 'まだやり取りがありません';
-  return <DesktopIcon icon={DIAGRAM_ICON} title="図解" hint={hint} busy={busy} onLaunch={() => void makeDiagram(s)} />;
+  return <DesktopIcon icon={DIAGRAM_ICON} title="図解" hint={hint} busy={busy} onLaunch={() => launchDiagram(s)} />;
 };
 
 export const REMOTE_TITLE = 'claude.ai/code で開く';

@@ -723,7 +723,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id)],
   [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) })],
   [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id))],
-  [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = '']) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id))],
+  [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = '']) => prNotes(id)],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],

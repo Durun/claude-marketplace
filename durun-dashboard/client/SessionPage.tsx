@@ -10,7 +10,7 @@ import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } f
 import { useFetch } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
 import { OutboxList, asksOf } from './Messaging.tsx';
-import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, makeDiagram, openRemote } from './Overview.tsx';
+import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
 import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
@@ -163,7 +163,7 @@ type SessionData = {
 const WIDGETS: Record<string, Widget<SessionData>> = {
   head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
   summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
-  diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => void makeDiagram(s) },
+  diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => launchDiagram(s) },
   // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリで始める。
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd) },
   [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: ({ s }) => <ExplorerIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openExplorer(s.cwd) },

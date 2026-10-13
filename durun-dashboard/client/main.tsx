@@ -25,6 +25,7 @@ import { useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { Toasts } from './toast.tsx';
+import { DIAGRAM_PROMPT_KEY, DiagramPromptFloat } from './Overview.tsx';
 import { WALLPAPER_KEY, WallpaperFloat } from './Wallpaper.tsx';
 
 type PageProps = { route: Route; snapshot: Snapshot; editing: boolean; onEditDone: () => void };
@@ -45,7 +46,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 };
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 
