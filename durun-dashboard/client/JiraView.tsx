@@ -9,7 +9,7 @@ import { useFetch } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm } from './PrView.tsx';
-import { Chip, Empty, Time } from './ui.tsx';
+import { Chip, Empty, Loading, Time } from './ui.tsx';
 
 export const JIRA_VIEW_TITLE = 'JIRA';
 /** セッション内の「JIRA」ウィジェットの種類の名前。 */
@@ -69,7 +69,7 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
 const JiraView = ({ issueKey, version }: { issueKey: string; version?: string }) => {
   const issue = useFetch(() => api.jiraIssue(issueKey), [issueKey, version]);
   if (issue.data) return <Detail issue={issue.data} loading={issue.loading} reload={issue.reload} />;
-  return <Empty>{issue.error ? `課題を読めませんでした（${issue.error}）` : '読み込んでいます…'}</Empty>;
+  return issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />;
 };
 
 /** セッションに課題が複数あるときは、上に並べたキーで切り替える。状態が変わったら読み直す。 */

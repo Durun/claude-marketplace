@@ -25,6 +25,7 @@ import { useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { Toasts } from './toast.tsx';
+import { Loading } from './ui.tsx';
 import { DIAGRAM_PROMPT_KEY, DiagramPromptFloat } from './Overview.tsx';
 import { WALLPAPER_KEY, WallpaperFloat } from './Wallpaper.tsx';
 
@@ -144,7 +145,7 @@ const App = () => {
         onFeedback={() => setFeedbackOpen((v) => !v)}
       />
       <main class="app">
-        {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <p class="empty">読み込み中…</p>}
+        {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
       </main>
       {snapshot && <Floats snapshot={snapshot} />}
       <Toasts />

@@ -102,3 +102,16 @@ export const useFetch = <T,>(load: () => Promise<T>, deps: unknown[]): FetchStat
   }, [...deps, tick]);
   return { ...state, reload: () => setTick((t) => t + 1) };
 };
+
+let waiting = 0;
+
+/** 待っている間は、画面のどこでもカーソルを矢印と砂時計にする。待ちが重なっても、すべて終わるまで戻さない。 */
+export const useWaitCursor = (on: boolean): void => {
+  useEffect(() => {
+    if (!on) return;
+    document.documentElement.classList.toggle('is-waiting', ++waiting > 0);
+    return () => {
+      document.documentElement.classList.toggle('is-waiting', --waiting > 0);
+    };
+  }, [on]);
+};

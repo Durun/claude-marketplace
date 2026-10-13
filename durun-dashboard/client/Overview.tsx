@@ -9,13 +9,13 @@ import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
 import { dateTime, fmtTokens, shortDateTime } from './format.ts';
 import { isFileRef } from './fileRef.ts';
-import { NowContext, useFetch } from './hooks.ts';
+import { NowContext, useFetch, useWaitCursor } from './hooks.ts';
 import { type CodeLink, Markdown } from './Markdown.tsx';
 import { Composer, MessageInput } from './Messaging.tsx';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, StatusBadge, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
 
 const TASK_LABEL: Record<TaskItem['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -50,7 +50,7 @@ const SubagentChat = ({ sessionId, a }: { sessionId: string; a: Subagent }) => {
   const { data, error } = useFetch(() => api.subagentChat(sessionId, a.id), [sessionId, a.id, a.outputTokens]);
   const codeLink = useMemo(() => fileLink(sessionId), [sessionId]);
   if (error) return <Empty>会話を読み込めません: {error}</Empty>;
-  if (!data) return <Empty>読み込み中です。</Empty>;
+  if (!data) return <Loading />;
   if (data.length === 0) return <Empty>まだやり取りがありません。</Empty>;
   return (
     <div class="chat subagent-chat">
@@ -94,7 +94,7 @@ const BgDetail = ({ sessionId, t }: { sessionId: string; t: BgTask }) => {
       <pre class="bg-command">{t.command}</pre>
       {t.summary && <p class="help">{t.summary}</p>}
       {error ? <Empty>出力を読み込めません: {error}</Empty>
-        : !data ? <Empty>読み込み中です。</Empty>
+        : !data ? <Loading />
         : data.output ? <pre class="bg-output">{data.output}</pre>
         : <Empty>出力はありません。</Empty>}
     </div>
@@ -269,12 +269,7 @@ export const DiagramPromptFloat = ({ f, snapshot }: { f: Float; snapshot: Snapsh
 export const DiagramIcon = ({ s }: { s: Session }) => {
   const busy = useMaking(s.id);
   const ready = canDiagram(s);
-  // そのセッションを開いている間は、画面のどこでもカーソルを砂時計にする。
-  useEffect(() => {
-    if (!busy) return;
-    document.documentElement.classList.add('is-waiting');
-    return () => document.documentElement.classList.remove('is-waiting');
-  }, [busy]);
+  useWaitCursor(busy);
   const hint = ready ? 'ダブルクリックで、このセッションの作業を HTML で図解します' : 'まだやり取りがありません';
   return <DesktopIcon icon={DIAGRAM_ICON} title="図解" hint={hint} busy={busy} onLaunch={() => launchDiagram(s)} />;
 };

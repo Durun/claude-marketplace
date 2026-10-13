@@ -12,6 +12,7 @@ import { JIRA_TITLE, JiraIssues, jiraControls } from './JiraIssues.tsx';
 import { ROWS, type Layout } from './layout.ts';
 import { MessageInput } from './Messaging.tsx';
 import { ThemeGroups, type Selection } from './SessionCards.tsx';
+import { useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
 import { Choice } from './ui.tsx';
 
@@ -66,6 +67,7 @@ const NewSession = ({ cwds, onClose }: { cwds: string[]; onClose: () => void }) 
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
   const [busy, setBusy] = useState(false);
+  useWaitCursor(busy);
   // セッションの画面から開いたときは、そのセッションの作業ディレクトリを入れる。開いている間にもう一度開かれたら、入れ直す。
   // ディレクトリが埋まっていれば、次に書く最初の依頼から入力できるようにする。
   useEffect(() => {

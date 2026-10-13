@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useContext, useRef, useState } from 'preact/hooks';
 import type { JiraIssue, PrInfo, SessionStatus, Usage } from '../shared/types.ts';
 import { fmtInt, relativeTime, totalTokens } from './format.ts';
-import { NowContext } from './hooks.ts';
+import { NowContext, useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
 
 type Tone = 'ok' | 'bad' | 'warn' | 'info' | 'muted';
@@ -38,6 +38,12 @@ export const Ext = ({ href, class: cls, title, attach, children }: { href: strin
   );
 
 export const Empty = ({ children }: { children: ComponentChildren }) => <p class="empty">{children}</p>;
+
+/** 中身を読み込んでいる間に出す。出ている間は、カーソルを砂時計にする。 */
+export const Loading = () => {
+  useWaitCursor(true);
+  return <Empty>読み込み中…</Empty>;
+};
 
 type ChoiceProps = {
   label: string;

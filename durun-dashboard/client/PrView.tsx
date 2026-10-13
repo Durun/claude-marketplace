@@ -8,7 +8,7 @@ import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
 import { useFetch } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Time, onSubmitKey, PrChips } from './ui.tsx';
+import { Chip, Empty, Loading, Time, onSubmitKey, PrChips } from './ui.tsx';
 
 export const PR_TITLE = 'PR';
 /** セッション内の「PR」ウィジェットの種類の名前。 */
@@ -98,7 +98,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
 const PrView = ({ url, version }: { url: string; version?: string }) => {
   const pr = useFetch(() => api.prDetail(url), [url, version]);
   if (pr.data) return <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} />;
-  return <Empty>{pr.error ? `PR を読めませんでした（${pr.error}）` : '読み込んでいます…'}</Empty>;
+  return pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />;
 };
 
 /** セッションの PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */

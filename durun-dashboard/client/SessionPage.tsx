@@ -7,7 +7,7 @@ import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
-import { useFetch } from './hooks.ts';
+import { useFetch, useWaitCursor } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
 import { OutboxList, asksOf } from './Messaging.tsx';
 import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
@@ -197,7 +197,10 @@ export const SESSION_KEY = 'session-dashboard';
 
 const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionData => {
   // ツールの呼び出しだけでも発言が増えるので、会話ログが動くたびに取り直す。
-  const { data: entries = [] } = useFetch(() => api.chat(s.id), [s.id, s.updatedAt]);
+  const chat = useFetch(() => api.chat(s.id).then((entries) => ({ id: s.id, entries })), [s.id, s.updatedAt]);
+  // 開いた直後と別のセッションへ移った直後だけ砂時計にする。会話が動くたびの取り直しでは出さない。
+  useWaitCursor(chat.loading && chat.data?.id !== s.id);
+  const entries = chat.data?.entries ?? [];
   const [jump, setJump] = useState<Jump>();
   return {
     s,

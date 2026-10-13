@@ -7,7 +7,7 @@ import { type Focus, findFocus } from './fileRef.ts';
 import { useFetch } from './hooks.ts';
 import { ReviewBar } from './ReviewBar.tsx';
 import { type ReviewDraft, useReviewDraft } from './review.ts';
-import { Empty } from './ui.tsx';
+import { Empty, Loading } from './ui.tsx';
 
 // レビューバーの高さ。ファイル一覧とスクロール位置の余白をバーの下に合わせる。
 const BAR_HEIGHT = 76;
@@ -229,7 +229,7 @@ const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
           <DiffFiles entries={entries} full={full} review={review} focus={focus} sync={sync} />
         </div>
       )}
-      {!diff.data && !diff.error && <Empty>読み込み中…</Empty>}
+      {!diff.data && !diff.error && <Loading />}
     </div>
   );
 };

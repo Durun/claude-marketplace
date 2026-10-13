@@ -13,7 +13,7 @@ import { useFetch } from './hooks.ts';
 import { ARROW_STEP, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Panel, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, Panel, onSubmitKey } from './ui.tsx';
 
 const FORMAT_LABEL: Record<DocFormat, string> = {
   markdown: 'Markdown',
@@ -499,7 +499,7 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
   if (fetched.error && !doc) {
     return <div class="card panel error-note">資料を取得できませんでした（{fetched.error}）</div>;
   }
-  if (!doc) return <Empty>読み込み中…</Empty>;
+  if (!doc) return <Loading />;
   const raw = doc.format === 'html' || doc.format === 'svg';
   return (
     <div class="doc-page">
