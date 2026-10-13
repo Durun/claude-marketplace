@@ -313,6 +313,11 @@ const PendingItem = ({ m, remoteUrl }: { m: OutboxMessage; remoteUrl?: string })
     }
     setBusy(false);
   };
+  const retry = async () => {
+    setBusy(true);
+    await attempt('再送', () => api.retry(m.id));
+    setBusy(false);
+  };
   const cancel = async () => {
     setBusy(true);
     await attempt('取り消し', () => api.cancel(m.id));
@@ -325,7 +330,8 @@ const PendingItem = ({ m, remoteUrl }: { m: OutboxMessage; remoteUrl?: string })
       <div class="outbox-meta">
         <span class="muted">未配信 · <Time at={m.createdAt} /></span>
         <span class="spacer" />
-        <button class="btn btn-sm btn-primary" disabled={busy} onClick={deliverByHand}>
+        <button class="btn btn-sm btn-primary" disabled={busy} onClick={retry}>再送</button>
+        <button class="btn btn-sm" disabled={busy} onClick={deliverByHand}>
           {remoteUrl ? 'コピーして claude.ai/code を開く' : 'コピーして手動で届ける'}
         </button>
         <button class="btn btn-sm" disabled={busy} onClick={cancel}>取り消し</button>

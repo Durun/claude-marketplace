@@ -180,6 +180,15 @@ export const sendMessage = (sessionId: string, text: string, rewindTo?: string):
   return { message, delivery: viaInbox ? 'sent' : 'resumed' };
 };
 
+/** 届けられなかったメッセージを、送り直す操作で届け直す。同じセッションの未配信のものもまとめて送る。 */
+export const redeliver = (sessionId: string): Delivery => {
+  const meta = state.sessions[sessionId];
+  if (!meta) throw new Error(`unknown session: ${sessionId}`);
+  const live = readLiveSessions().get(sessionId);
+  deliver(sessionId, meta.cwd, live, undelivered(sessionId));
+  return live && !restartable(live) ? 'sent' : 'resumed';
+};
+
 const undelivered = (sessionId: string): OutboxMessage[] => state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
 
 const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, pending: OutboxMessage[], rewindTo?: string): void => {

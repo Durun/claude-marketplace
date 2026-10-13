@@ -12,7 +12,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -452,10 +452,11 @@ const dismiss = (id: string): void => {
   touch();
 };
 
-const updateOutbox = (id: string, action: 'manual' | 'cancel'): void => {
+const updateOutbox = (id: string, action: 'manual' | 'cancel' | 'retry'): void => {
   const message = state.outbox.find((m) => m.id === id && !m.deliveredAt);
   if (!message) throw new HttpError(404, `no pending message: ${id}`);
-  if (action === 'manual') Object.assign(message, { deliveredAt: Date.now(), via: 'manual' });
+  if (action === 'retry') redeliver(message.sessionId);
+  else if (action === 'manual') Object.assign(message, { deliveredAt: Date.now(), via: 'manual' });
   else state.outbox = state.outbox.filter((m) => m !== message);
   touch();
 };
@@ -727,7 +728,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = '']) => prNotes(id)],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
-  [/^\/api\/outbox\/([^/]+)\/(manual|cancel)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel')],
+  [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],

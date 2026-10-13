@@ -115,6 +115,7 @@ export const api = {
   dismiss: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/dismiss`),
   manual: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/manual`),
   cancel: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/cancel`),
+  retry: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/retry`),
   refreshJira: () => postJson('/api/jira/refresh'),
   jiraComment: (key: string, body: string) => postJson(`/api/jira/issues/${seg(key)}/comment`, { body }),
   prComment: (url: string, body: string) => postJson<{ url: string }>('/api/pr/comment', { url, body }),

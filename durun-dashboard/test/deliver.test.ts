@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { postToInbox, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
+const { postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
@@ -85,6 +85,24 @@ test('動いているセッションには受信ソケットへ送り、届か�
   assert.deepEqual(await second.lines, [...auth, user('[durun-dashboard] 人間から:\n届かない\n---\nもう一度')]);
   assert.ok(lost.deliveredAt);
   await close(second.server);
+});
+
+test('再送すると、届けられなかったメッセージだけを、新しいメッセージを足さずに届け直す', async () => {
+  const socketPath = platform.localSocketPath(tmp, 'retry');
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's11.json'), JSON.stringify({ pid: process.pid, sessionId: 's11', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
+  ensureSession('s11', tmp);
+
+  const lost = sendMessage('s11', '届かない').message;
+  await new Promise<void>((resolve) => onChange(() => lost.error && resolve()));
+
+  const inbox = await listenInbox(socketPath);
+  assert.equal(redeliver('s11'), 'sent');
+  const lines = await inbox.lines;
+  assert.equal(lines.at(-1)?.message?.content, '[durun-dashboard] 人間から:\n届かない');
+  assert.ok(lost.deliveredAt);
+  assert.equal(lost.error, undefined);
+  assert.equal(state.outbox.filter((m) => m.sessionId === 's11').length, 1);
+  await close(inbox.server);
 });
 
 test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {
