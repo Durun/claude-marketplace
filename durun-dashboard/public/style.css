@@ -561,7 +561,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .explorer { display: grid; flex: 1; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .explorer-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--border); }
 .explorer-path { flex: 1; min-width: 0; font: 12px var(--mono); }
-.explorer-main { display: grid; grid-template-columns: var(--side-w) 5px minmax(0, 1fr); min-height: 0; }
+.explorer-main { display: grid; grid-template-columns: var(--side-w) 5px minmax(0, 1fr) 5px var(--preview-w); min-height: 0; }
 .explorer-side { padding: 6px 6px 6px 0; overflow: auto; }
 /* 境界の線は 1px のまま、つかめる幅だけを広げる。 */
 .explorer-splitter { background: linear-gradient(var(--border), var(--border)) center / 1px 100% no-repeat; cursor: col-resize; touch-action: none; }
@@ -574,6 +574,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .explorer-place > span, .explorer-name > span { margin-right: 6px; }
 .explorer-place:hover, .explorer-place[aria-current="true"] { background: var(--surface-2); }
 .explorer-list-wrap { padding: 6px 0 6px 6px; overflow: auto; }
+.explorer-preview { padding: 6px 0 6px 6px; overflow: auto; }
+.explorer-preview-media { display: block; max-width: 100%; margin-top: 6px; }
+.explorer-code { border-collapse: collapse; font: 12px/1.5 var(--mono); }
+.explorer-code .ln { padding: 0 8px 0 0; color: var(--muted); text-align: right; vertical-align: top; user-select: none; }
+.explorer-code .code { white-space: pre; }
 .explorer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 72px; align-items: center; gap: 12px; padding: 3px 6px; border-radius: 4px; font-size: 13px; cursor: default; user-select: none; }
 .explorer-row:hover { background: var(--surface-2); }
 .explorer-row:focus { outline: none; background: var(--accent); color: #fff; }
@@ -809,9 +814,9 @@ table.diff { width: 100%; min-width: max-content; border-collapse: collapse; fon
 .diff .sign { width: 1%; padding: 0 4px; color: var(--muted); text-align: center; white-space: pre; user-select: none; }
 .diff .code { padding: 0 12px 0 4px; white-space: pre; }
 /* シンタックスハイライト（highlight.js のクラス）。差分の背景色の上でも読める色にする。 */
-.diff .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
+:is(.diff, .explorer-code) .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
 @media (prefers-color-scheme: dark) {
-  .diff .code { --hl-kw: #ff7b72; --hl-str: #a5d6ff; --hl-com: #8b949e; --hl-num: #79c0ff; --hl-fn: #d2a8ff; --hl-type: #ffa657; }
+  :is(.diff, .explorer-code) .code { --hl-kw: #ff7b72; --hl-str: #a5d6ff; --hl-com: #8b949e; --hl-num: #79c0ff; --hl-fn: #d2a8ff; --hl-type: #ffa657; }
 }
 .hljs-keyword, .hljs-selector-tag, .hljs-meta .hljs-keyword { color: var(--hl-kw); }
 .hljs-string, .hljs-regexp, .hljs-template-tag, .hljs-attr { color: var(--hl-str); }
@@ -1020,7 +1025,7 @@ table.data { width: 100%; border-collapse: collapse; }
     linear-gradient(#1f63d8, #4a8fe8 35%, #93c3f1 68%, #d3e8fb);
   background-attachment: fixed;
 }
-[data-skin="xp"] .diff .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
+[data-skin="xp"] :is(.diff, .explorer-code) .code { --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; }
 
 /*
  * ヘッダーは画面の下に固定したタスクバーにする。メニューのボタンをスタートボタン、名前を開いているウィンドウのボタン、右端を時計のある通知領域に見立てる。

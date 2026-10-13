@@ -9,6 +9,7 @@ import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
 import { clamp } from './layout.ts';
 import { dateTime, fmtBytes } from './format.ts';
+import { highlightLine, languageOf } from './highlight.ts';
 import { useFetch } from './hooks.ts';
 import { currentSessionId } from './router.ts';
 import { Empty } from './ui.tsx';
@@ -63,10 +64,48 @@ const iconOf = (e: ExplorerEntry): string => {
   return type?.startsWith('video/') ? '🎬' : type ? '🖼️' : '📄';
 };
 
-type RowProps = { e: ExplorerEntry; onOpen: () => void };
+// 大きなファイルで描画を待たせすぎない行数。
+const MAX_PREVIEW_LINES = 2000;
+
+/** テキストのファイルを、行番号を付け、色付けできる言語なら色を付けて出す。 */
+const TextPreview = ({ path }: { path: string }) => {
+  const file = useFetch(() => api.localFile('', path), [path]);
+  if (file.error) return <p class="error-note">{file.error}</p>;
+  if (!file.data) return <Empty>読み込んでいます…</Empty>;
+  // UTF-8 として読んだ中身に NUL が混じるものは、テキストではないとみなす。
+  if (file.data.content.includes('\0')) return <Empty>このファイルは中身を表示できません。</Empty>;
+  const lines = file.data.content.split('\n');
+  const lang = languageOf(path);
+  return (
+    <>
+      <table class="explorer-code">
+        <tbody>
+          {lines.slice(0, MAX_PREVIEW_LINES).map((line, i) => (
+            <tr key={i}>
+              <td class="ln">{i + 1}</td>
+              {lang ? <td class="code" dangerouslySetInnerHTML={{ __html: highlightLine(line, lang) }} /> : <td class="code">{line}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {lines.length > MAX_PREVIEW_LINES && <p class="muted">長いので、先頭の {MAX_PREVIEW_LINES} 行を出しています。</p>}
+    </>
+  );
+};
+
+/** 選んだファイルの中身。Windows XP のエクスプローラーのように、画像と動画はそのまま見せる。 */
+const Preview = ({ e }: { e?: ExplorerEntry }) => {
+  if (!e || e.dir) return <Empty>ファイルを選ぶと、ここに中身を出します。</Empty>;
+  const type = mediaTypeOf(e.name);
+  if (type?.startsWith('video/')) return <video class="explorer-preview-media" src={api.mediaUrl('', e.path)} controls />;
+  if (type) return <img class="explorer-preview-media" src={api.mediaUrl('', e.path)} alt={e.name} />;
+  return <TextPreview path={e.path} />;
+};
+
+type RowProps = { e: ExplorerEntry; onOpen: () => void; onSelect: () => void };
 
 /** ダブルクリックか Enter で開く。ファイルは、資料や送信欄へドラッグして渡せる。 */
-const Row = ({ e, onOpen }: RowProps) => (
+const Row = ({ e, onOpen, onSelect }: RowProps) => (
   <li
     class="explorer-row"
     tabIndex={0}
@@ -78,6 +117,7 @@ const Row = ({ e, onOpen }: RowProps) => (
       ev.dataTransfer.setData(FILE_DRAG_TYPE, e.path);
       ev.dataTransfer.setData('text/plain', e.path);
     }}
+    onFocus={onSelect}
     onDblClick={onOpen}
     onKeyDown={(ev) => ev.key === 'Enter' && onOpen()}
   >
@@ -116,6 +156,10 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   const starred = !!dir && favorites.includes(dir.path);
   const [sideWidth, dragSide] = useWidth('explorer-side-width', 160);
+  const [previewWidth, dragPreview] = useWidth('explorer-preview-width', 260);
+  // プレビューに出すファイル。フォルダーを移ったら選び直す。
+  const [selected, setSelected] = useState<ExplorerEntry>();
+  useEffect(() => setSelected(undefined), [dir?.path]);
   return (
     <FloatFrame f={f} title={dir ? baseName(dir.path) : EXPLORER_TITLE} icon={EXPLORER_ICON} controls={[close]}>
       <div class="explorer">
@@ -133,7 +177,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
           </button>
           <button type="button" class="btn btn-sm" data-icon="refresh" disabled={fetched.loading} onClick={fetched.reload}>更新</button>
         </form>
-        <div class="explorer-main" style={{ '--side-w': `${sideWidth}px` }}>
+        <div class="explorer-main" style={{ '--side-w': `${sideWidth}px`, '--preview-w': `${previewWidth}px` }}>
           <nav class="explorer-side" aria-label="場所">
             {favorites.length > 0 && (
               <>
@@ -159,11 +203,16 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
               <Empty>このフォルダーは空です。</Empty>
             ) : (
               <ul class="explorer-list">
-                {dir.entries.map((e) => <Row key={e.path} e={e} onOpen={() => open(e)} />)}
+                {dir.entries.map((e) => <Row key={e.path} e={e} onOpen={() => open(e)} onSelect={() => setSelected(e)} />)}
               </ul>
             )}
             {dir?.truncated && <p class="muted">中身が多いので、途中までを並べています。</p>}
           </div>
+          <div class="explorer-splitter" role="separator" aria-orientation="vertical" aria-label="プレビューの幅" onPointerDown={(e) => dragPreview(e, -1)} />
+          <section class="explorer-preview" aria-label="プレビュー">
+            <h3 class="explorer-heading">プレビュー</h3>
+            <Preview key={selected?.path} e={selected} />
+          </section>
         </div>
       </div>
     </FloatFrame>
