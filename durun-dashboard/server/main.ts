@@ -25,7 +25,7 @@ import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
-import { pageTitleOf } from './pageTitle.ts';
+import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -61,6 +61,7 @@ const STATIC: Record<string, string> = {
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
   '/ie.svg': 'public/ie.svg',
+  '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
 };
@@ -197,10 +198,10 @@ const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Pro
 const sendRetroSite = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchRetro(url.searchParams.get('url') ?? '', req.headers['accept-language']), url);
 
 /**
- * 最後に描き直したページ。描き直したページはスクリプトを動かさず、ダッシュボードとも別のオリジンになるので、ウィンドウはページの中で移った先をここから知る。seq は描き直すたびに増える。
+ * 最後に描き直したページ。描き直したページはスクリプトを動かさず、ダッシュボードとも別のオリジンになるので、ウィンドウはページの中で移った先と題をここから知る。seq は描き直すたびに増える。
  * ponytail: ウィンドウを区別しないので、2 つのウィンドウで同時に移ると取り違える。困ったら、ウィンドウごとの id を中継の URL に付けて分ける。
  */
-let lastFrame = { seq: 0, url: '' };
+let lastFrame = { seq: 0, url: '', title: '' };
 
 /**
  * Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。frame は中継の URL。
@@ -210,7 +211,7 @@ const sendRetro = async (res: ServerResponse, page: Promise<string>, frame: URL)
   const html = await page.catch((e: Error) => {
     throw new HttpError(502, e.message);
   });
-  lastFrame = { seq: lastFrame.seq + 1, url: siteOfFrame(frame) ?? '' };
+  lastFrame = { seq: lastFrame.seq + 1, url: siteOfFrame(frame) ?? '', title: findTitle(html) ?? '' };
   res
     .writeHead(200, {
       'content-type': 'text/html; charset=utf-8',

@@ -1,0 +1,265 @@
+<!-- Internet Explorer のウィンドウで使う、IE8 のツールバーとステータスバーのアイコンを集めたスプライト -->
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="back" viewBox="0 0 28 28">
+    <defs>
+      <linearGradient id="back-body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#6a88c8"/>
+        <stop offset=".12" stop-color="#5d7dc0"/>
+        <stop offset=".28" stop-color="#3a66ae"/>
+        <stop offset=".44" stop-color="#3765a5"/>
+        <stop offset=".49" stop-color="#2a55a5"/>
+        <stop offset=".55" stop-color="#0c3190"/>
+        <stop offset=".61" stop-color="#08308f"/>
+        <stop offset=".67" stop-color="#0a55a8"/>
+        <stop offset=".75" stop-color="#0d78d0"/>
+        <stop offset=".85" stop-color="#1a98e6"/>
+        <stop offset="1" stop-color="#3cb8ee"/>
+      </linearGradient>
+      <radialGradient id="back-glow" cx=".5" cy="1" r=".58">
+        <stop offset="0" stop-color="#8ef0ff" stop-opacity=".85"/>
+        <stop offset=".5" stop-color="#5fd8ff" stop-opacity=".5"/>
+        <stop offset="1" stop-color="#5fd8ff" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="back-shine" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
+        <stop offset=".4" stop-color="#fff" stop-opacity=".35"/>
+        <stop offset="1" stop-color="#fff" stop-opacity=".1"/>
+      </linearGradient>
+      <linearGradient id="back-rim" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#737d94"/>
+        <stop offset=".5" stop-color="#3d4f8e"/>
+        <stop offset="1" stop-color="#40809c"/>
+      </linearGradient>
+    </defs>
+    <circle cx="14" cy="14" r="13" fill="url(#back-body)"/>
+    <circle cx="14" cy="14" r="13" fill="url(#back-glow)"/>
+    <ellipse cx="14" cy="7.6" rx="10.6" ry="6" fill="url(#back-shine)"/>
+    <circle cx="14" cy="14" r="13" fill="none" stroke="url(#back-rim)"/>
+    <path d="M7.3 14 14.6 7.7V12.6H21.6V15.4H14.6V20.3Z" fill="#fff" stroke="#0d2f7c" stroke-opacity=".3" stroke-width=".8" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="refresh" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="refresh-fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#86dc72"/>
+        <stop offset=".5" stop-color="#3aa52a"/>
+        <stop offset="1" stop-color="#227f18"/>
+      </linearGradient>
+    </defs>
+    <g fill="url(#refresh-fill)" stroke="#1b5e12" stroke-width=".8" stroke-linejoin="round">
+      <path d="M7.23 1.2A5 5 0 0 0 2.4 6.2H.7L3.2 9.8 5.7 6.2H4A3.4 3.4 0 0 1 7.28 2.8Z"/>
+      <path d="M8.77 14.8A5 5 0 0 0 13.6 9.8H15.3L12.8 6.2 10.3 9.8H12A3.4 3.4 0 0 1 8.72 13.2Z"/>
+    </g>
+  </symbol>
+  <symbol id="stop" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="stop-fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffa4a4"/>
+        <stop offset=".45" stop-color="#f04848"/>
+        <stop offset="1" stop-color="#a8141e"/>
+      </linearGradient>
+    </defs>
+    <path d="M3.74 2.26 8 6.52 12.26 2.26 13.74 3.74 9.48 8 13.74 12.26 12.26 13.74 8 9.48 3.74 13.74 2.26 12.26 6.52 8 2.26 3.74Z" fill="url(#stop-fill)" stroke="#7e1018" stroke-width=".8" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="compat" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="compat-top" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff"/>
+        <stop offset="1" stop-color="#cdeec4"/>
+      </linearGradient>
+      <linearGradient id="compat-bottom" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#cdeec4"/>
+        <stop offset="1" stop-color="#fff"/>
+      </linearGradient>
+    </defs>
+    <g stroke="#4c9a4a" stroke-linejoin="round">
+      <path d="M2.5 1.5H10L13.5 5V7.2L11.2 9.2 8.6 6.8 6 9.2 2.5 6.8Z" fill="url(#compat-top)"/>
+      <path d="M2.5 9 6 11.4 8.6 9 11.2 11.4 13.5 9.4V14.5H2.5Z" fill="url(#compat-bottom)"/>
+      <path d="M10 1.5V5H13.5" fill="#eaf8e4"/>
+    </g>
+  </symbol>
+  <symbol id="magnifier" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="magnifier-ring" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#6d97f2"/>
+        <stop offset="1" stop-color="#0a35b8"/>
+      </linearGradient>
+      <linearGradient id="magnifier-lens" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff"/>
+        <stop offset="1" stop-color="#d4e3ff"/>
+      </linearGradient>
+    </defs>
+    <path d="M6.6 9.4 2.4 13.6" stroke="#1238b0" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="9.6" cy="6.4" r="4.2" fill="url(#magnifier-lens)" stroke="url(#magnifier-ring)" stroke-width="1.7"/>
+  </symbol>
+  <symbol id="google" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="google-blue" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2f84ee"/>
+        <stop offset="1" stop-color="#0749a8"/>
+      </linearGradient>
+      <linearGradient id="google-red" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff4a3a"/>
+        <stop offset="1" stop-color="#d60000"/>
+      </linearGradient>
+      <linearGradient id="google-green" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#16b048"/>
+        <stop offset="1" stop-color="#00702e"/>
+      </linearGradient>
+      <linearGradient id="google-yellow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffd23a"/>
+        <stop offset="1" stop-color="#e59c00"/>
+      </linearGradient>
+    </defs>
+    <ellipse cx="4.9" cy="3.6" rx="2.4" ry="2.9" fill="url(#google-blue)"/>
+    <rect x="1.1" y="7.2" width="2.7" height="2.7" rx=".6" fill="#163b8e"/>
+    <path d="M9.2 1.6Q9.2.8 10 .8H14.8Q15.6.8 15.6 1.6V5.4H9.2Z" fill="url(#google-red)"/>
+    <path d="M7.6 5.4H15.6V14.6Q15.6 15.4 14.8 15.4H10.8Q10 15.4 10 14.6V9.8H8.4Q7.6 9.8 7.6 9Z" fill="url(#google-green)"/>
+    <ellipse cx="4.5" cy="13.2" rx="3.1" ry="2.2" fill="url(#google-yellow)"/>
+  </symbol>
+  <symbol id="star" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="star-fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff8b4"/>
+        <stop offset=".4" stop-color="#ffd84a"/>
+        <stop offset=".75" stop-color="#ffb000"/>
+        <stop offset="1" stop-color="#f08c00"/>
+      </linearGradient>
+    </defs>
+    <path d="M8 1 10.15 5.65 15.23 6.25 11.47 9.73 12.47 14.75 8 12.25 3.53 14.75 4.53 9.73.77 6.25 5.85 5.65Z" fill="url(#star-fill)" stroke="#b5761a" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="star-add" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="star-add-star" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff8b4"/>
+        <stop offset=".4" stop-color="#ffd84a"/>
+        <stop offset=".75" stop-color="#ffb000"/>
+        <stop offset="1" stop-color="#f08c00"/>
+      </linearGradient>
+      <linearGradient id="star-add-arrow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#9af582"/>
+        <stop offset=".5" stop-color="#4cc634"/>
+        <stop offset="1" stop-color="#22961a"/>
+      </linearGradient>
+    </defs>
+    <path d="M7 .9 8.94 5.13 13.56 5.67 10.14 8.82 11.06 13.38 7 11.1 2.94 13.38 3.86 8.82.44 5.67 5.06 5.13Z" fill="url(#star-add-star)" stroke="#b5761a" stroke-linejoin="round"/>
+    <path d="M6.2 10.2H11V8.2L15.4 11.8 11 15.4V13.4H6.2Z" fill="url(#star-add-arrow)" stroke="#1d6e14" stroke-width=".9" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="home" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="home-roof" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#d4ddf4"/>
+        <stop offset="1" stop-color="#8e9cce"/>
+      </linearGradient>
+      <linearGradient id="home-wall" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff"/>
+        <stop offset="1" stop-color="#ccd3e2"/>
+      </linearGradient>
+      <linearGradient id="home-door" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4f7ce0"/>
+        <stop offset="1" stop-color="#18379a"/>
+      </linearGradient>
+    </defs>
+    <rect x="3.5" y="1.5" width="2" height="4.5" fill="#2b3ec4" stroke="#121c78"/>
+    <rect x="2.5" y="7.5" width="11" height="7" fill="url(#home-wall)" stroke="#67748f"/>
+    <path d="M8 .8 15.4 7.4H.6Z" fill="url(#home-roof)" stroke="#34449a" stroke-width=".9" stroke-linejoin="round"/>
+    <rect x="4.5" y="9.5" width="2.5" height="2.3" fill="#50566e"/>
+    <rect x="9.5" y="9.5" width="2.5" height="5" fill="url(#home-door)" stroke="#13286a" stroke-width=".8"/>
+  </symbol>
+  <symbol id="feed" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="feed-fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffbd72"/>
+        <stop offset=".5" stop-color="#f68b25"/>
+        <stop offset="1" stop-color="#e0640c"/>
+      </linearGradient>
+    </defs>
+    <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" fill="url(#feed-fill)" stroke="#b35210"/>
+    <path d="M4.7 7A4.3 4.3 0 0 1 9 11.3M4.7 3.9A7.4 7.4 0 0 1 12.1 11.3" fill="none" stroke="#fff" stroke-width="1.8"/>
+    <circle cx="4.7" cy="11.3" r="1.5" fill="#fff"/>
+  </symbol>
+  <symbol id="mail" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="mail-paper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff"/>
+        <stop offset="1" stop-color="#dcdcdc"/>
+      </linearGradient>
+    </defs>
+    <rect x="1.5" y="3.5" width="13" height="9" rx=".8" fill="url(#mail-paper)" stroke="#7c7c7c"/>
+    <path d="M4 8.5H9.5M4 10.5H8.5" stroke="#b4b4b4"/>
+    <rect x="10.8" y="4.8" width="2.6" height="2.8" fill="#e23a48" stroke="#a51c2a" stroke-width=".6"/>
+  </symbol>
+  <symbol id="print" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="print-body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#d3d9e3"/>
+        <stop offset="1" stop-color="#9ba4b3"/>
+      </linearGradient>
+    </defs>
+    <rect x="4.5" y=".5" width="7" height="6" fill="#fff" stroke="#7e848c"/>
+    <rect x="1.5" y="5.5" width="13" height="8" rx="1.2" fill="url(#print-body)" stroke="#474d56"/>
+    <path d="M2 6.6H14V8H2Z" fill="#8a9097"/>
+    <path d="M2 8H14V10.2H2Z" fill="#43474e"/>
+    <rect x="4.5" y="11.5" width="7" height="3" fill="#eef8fb" stroke="#62767f"/>
+  </symbol>
+  <symbol id="help" viewBox="0 0 16 16">
+    <defs>
+      <radialGradient id="help-ball" cx=".4" cy=".3" r=".75">
+        <stop offset="0" stop-color="#8fb4ff"/>
+        <stop offset=".5" stop-color="#2f5fd0"/>
+        <stop offset="1" stop-color="#0a2689"/>
+      </radialGradient>
+      <linearGradient id="help-shine" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".7"/>
+        <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <circle cx="8" cy="8" r="7" fill="url(#help-ball)" stroke="#33427a" stroke-width=".9"/>
+    <ellipse cx="8" cy="4.6" rx="4.6" ry="3" fill="url(#help-shine)"/>
+    <path d="M5.9 6.2C5.9 4.7 6.8 3.8 8.2 3.8 9.5 3.8 10.4 4.6 10.4 5.8 10.4 7.4 8.4 7.5 8.4 9.3" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/>
+    <circle cx="8.4" cy="11.9" r="1.15" fill="#fff"/>
+  </symbol>
+  <symbol id="globe" viewBox="0 0 16 16">
+    <defs>
+      <radialGradient id="globe-sea" cx=".42" cy=".36" r=".68">
+        <stop offset="0" stop-color="#a6e4ff"/>
+        <stop offset=".35" stop-color="#4c9cf2"/>
+        <stop offset="1" stop-color="#1b31a0"/>
+      </radialGradient>
+      <linearGradient id="globe-land" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#8af276"/>
+        <stop offset="1" stop-color="#14a23c"/>
+      </linearGradient>
+      <radialGradient id="globe-shine" cx=".5" cy=".5" r=".5">
+        <stop offset="0" stop-color="#fff" stop-opacity=".8"/>
+        <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      </radialGradient>
+      <clipPath id="globe-clip">
+        <circle cx="8" cy="8" r="7"/>
+      </clipPath>
+    </defs>
+    <circle cx="8" cy="8" r="7" fill="url(#globe-sea)"/>
+    <g clip-path="url(#globe-clip)" fill="url(#globe-land)">
+      <path d="M2 4.2C3.4 2.8 5.8 2.4 7.4 3 8 3.6 7.2 4.6 6.6 5.2 6 5.8 6.4 6.8 5.6 7.6 4.8 8.4 3.6 8 3 8.8 2.4 9.6 1.4 9 1.1 8 .9 6.6 1.2 5.2 2 4.2Z"/>
+      <path d="M5.8 9.6C6.8 9.2 8.2 9.6 8.8 10.6 9.4 11.6 8.8 12.6 8.2 13.4 7.6 14.2 7.4 15.2 6.6 15.2 6 14.2 6 13 5.6 12 5.2 11 5.2 10 5.8 9.6Z"/>
+      <path d="M10.8 3.4C12.2 2.8 13.8 3.6 14.6 5 15.2 6.4 14.6 7.4 14.8 8.6 15 9.8 14.2 11.4 13.2 12 12.4 11.2 12.4 10 11.8 9.2 11.2 8.4 10.2 8.4 10 7.2 9.8 6 10.6 5.6 10.4 4.6 10.3 4 10.4 3.6 10.8 3.4Z"/>
+    </g>
+    <ellipse cx="6.8" cy="5" rx="3.6" ry="2.6" fill="url(#globe-shine)"/>
+    <circle cx="8" cy="8" r="7" fill="none" stroke="#1f3a86" stroke-width=".9"/>
+  </symbol>
+  <symbol id="zoom" viewBox="0 0 16 16">
+    <defs>
+      <linearGradient id="zoom-lens" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#eef9ff"/>
+        <stop offset="1" stop-color="#a9d6fa"/>
+      </linearGradient>
+      <linearGradient id="zoom-plus" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2f8ff0"/>
+        <stop offset="1" stop-color="#0b4bb0"/>
+      </linearGradient>
+    </defs>
+    <path d="M10 10 14.2 14.2" stroke="#4f3418" stroke-width="3" stroke-linecap="round"/>
+    <path d="M10 10 14.2 14.2" stroke="#a87c4c" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="6.4" cy="6.4" r="4.7" fill="url(#zoom-lens)" stroke="#6a84aa" stroke-width="1.2"/>
+    <path d="M3.9 6.4H8.9M6.4 3.9V8.9" stroke="url(#zoom-plus)" stroke-width="1.7"/>
+  </symbol>
+</svg>

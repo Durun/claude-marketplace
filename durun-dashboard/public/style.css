@@ -602,17 +602,21 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .explorer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explorer-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .explorer-size { text-align: right; }
+/* メモ帳と Internet Explorer の、XP のメニュー。 */
+.xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
+.xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
+/* 押したメニューの真下に開く。popovertarget で開いた popover は、押したボタンを位置の基準にできる。画面からはみ出すときは、左か上へ開く。 */
+.xp-dropdown { position-area: block-end span-inline-end; position-try-fallbacks: flip-inline, flip-block, flip-block flip-inline; inset: auto; max-width: 360px; margin: 0; padding: 2px; border: 1px solid #aca899; background: #fff; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.xp-item { position: relative; display: flex; justify-content: space-between; gap: 32px; width: 100%; min-width: 180px; padding: 3px 18px 3px 22px; border: 0; background: none; text-align: left; }
+.xp-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-item:hover:not(:disabled) { background: #316ac5; color: #fff; }
+.xp-item:disabled { color: #aca899; }
+.xp-item[aria-checked="true"]::before { content: "✓"; position: absolute; left: 6px; }
+.xp-item kbd { font: inherit; }
+.xp-sep { margin: 3px 1px; border: 0; border-top: 1px solid #aca899; }
 /* メモ帳は、スキンによらず Windows XP のメモ帳の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
 .notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .notepad-menubar { display: flex; padding: 1px 0; }
-.notepad-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
-.notepad-menu:hover, .notepad-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
-/* 押したメニューの真下に開く。popovertarget で開いた popover は、押したボタンを位置の基準にできる。 */
-.notepad-dropdown { position-area: block-end span-inline-end; inset: auto; margin: 0; padding: 2px; border: 1px solid #aca899; background: #fff; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
-.notepad-item { position: relative; display: flex; justify-content: space-between; gap: 32px; width: 100%; min-width: 180px; padding: 3px 18px 3px 22px; border: 0; background: none; text-align: left; }
-.notepad-item:hover { background: #316ac5; color: #fff; }
-.notepad-item[aria-checked="true"]::before { content: "✓"; position: absolute; left: 6px; }
-.notepad-item kbd { font: inherit; }
 .notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
 /* マインスイーパとソリティアは、スキンによらず Windows XP のものの色で描く。タイトルバーの下から窓の端まで敷き詰める。 */
 .mines { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 6px; margin: -10px -12px -12px; padding: 6px; overflow: auto; background: #c0c0c0; color: #000; }
@@ -640,15 +644,68 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .sol-card.is-picked { background: #9db9eb; }
 .sol-card.is-back { background: repeating-linear-gradient(45deg, #1c4fa8 0 4px, #2a62c9 4px 8px); border-color: #fff; outline: 1px solid #000; }
 .sol-card.is-empty { border: 1px solid #00c000; background: none; color: #00c000; text-align: center; font-size: 24px; }
-/* Internet Explorer は、スキンによらず Windows XP の IE の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
-.ie { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
-.ie-bar { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-bottom: 1px solid #aca899; }
-.ie-btn { padding: 2px 6px; border: 1px solid transparent; border-radius: 3px; background: none; font: inherit; }
-.ie-btn:hover:not(:disabled) { border-color: #aca899; background: #fff; }
-.ie-btn:disabled { color: #aca899; }
-.ie-address { display: flex; flex: 1; align-items: center; gap: 4px; color: #555; }
-.ie-address > input { flex: 1; min-width: 0; padding: 2px 3px; border: 1px solid #7f9db9; border-radius: 0; background: #fff; color: #000; font: inherit; }
-.ie-page { flex: 1; min-height: 0; border: 0; background: #fff; }
+/* Internet Explorer は、スキンによらず Windows XP の IE8 の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
+.ie { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #f0ede1; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.ie-icon, .ie img { display: block; flex: none; }
+.ie-grip { flex: none; height: 16px; margin: 0 4px 0 3px; border-left: 2px dotted #aaa79c; }
+/* ▾ の印は、文字の色で描く三角にする。 */
+.ie-drop { width: 13px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: none; }
+.ie-drop::before { content: ""; display: block; width: 0; margin: auto; border: solid transparent; border-width: 3px 3px 0; border-top-color: currentColor; }
+.ie-drop:disabled { color: #aca899; }
+.ie-nav { display: flex; align-items: center; gap: 3px; height: 35px; padding: 0 4px 0 3px; border-top: 1px solid #fff; border-bottom: 1px solid #bdbdb8; background: #f3f4f0; }
+.ie-travel { width: 27px; height: 27px; padding: 0; border: 0; border-radius: 50%; background: none; }
+.ie-travel.is-forward { margin-left: -4px; transform: scaleX(-1); }
+.ie-travel:hover:not(:disabled) { filter: brightness(1.12); }
+.ie-travel:disabled { filter: grayscale(1) brightness(1.3); }
+.ie-drop.is-recent { color: #2f62b8; }
+.ie-drop.is-recent::before { border-width: 4px 4px 0; }
+.ie-field { display: flex; flex: 1; align-items: center; gap: 3px; min-width: 0; height: 23px; padding-left: 3px; border: 1px solid #7f9db9; background: #fff; }
+.ie-field > input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; outline: none; background: none; }
+.ie-field > input::placeholder { color: #8d8d8d; }
+/* XP のコンボボックスの、一覧を開くボタン。 */
+.ie-combo { align-self: stretch; width: 17px; margin: 1px; padding: 0; border: 1px solid #b9cbf3; border-radius: 2px; background: linear-gradient(#dfe8fe, #b6caf7); }
+.ie-combo::before { content: ""; display: block; width: 5px; height: 5px; margin: -3px auto 0; border: solid #4d6185; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.ie-combo:hover { background: linear-gradient(#f0f5ff, #c8d8fa); }
+.ie-tool { display: grid; flex: none; place-items: center; width: 24px; height: 23px; padding: 0; border: 1px solid #c9cac3; border-radius: 3px; background: linear-gradient(#fefefe, #ecece6); }
+.ie-tool:hover:not(:disabled) { border-color: #9db4dc; background: linear-gradient(#fff, #e3ecfa); }
+.ie-tool:disabled .ie-icon { filter: grayscale(1); opacity: .45; }
+.ie-tool.ie-drop { width: 14px; }
+.ie-search { display: flex; flex: 0 1 260px; align-items: center; gap: 2px; min-width: 140px; margin-left: 3px; }
+.ie-menubar { display: flex; align-items: center; height: 22px; border-bottom: 1px solid #c5c2b8; background: #f0ede1; }
+.ie-favbar { display: flex; align-items: center; gap: 1px; height: 30px; padding-right: 2px; border-top: 1px solid #faf8f1; background: #f0ede1; }
+.ie-cmd { display: flex; flex: none; align-items: center; gap: 4px; height: 24px; padding: 0 4px; border: 1px solid transparent; border-radius: 3px; background: none; text-decoration: none; white-space: nowrap; }
+.ie-cmd:hover:not(:disabled), .ie-cmd:has(+ :popover-open) { border-color: #9db4dc; background: linear-gradient(#fff, #e3ecfa); }
+.ie-cmd:disabled { color: #aca899; }
+.ie-cmd:disabled .ie-icon { filter: grayscale(1); opacity: .5; }
+/* IE8 のコマンドバーの、▾ を添えたボタン。 */
+.ie-cmd.is-split::after { content: ""; border: solid transparent; border-width: 3px 3px 0; border-top-color: currentColor; }
+.ie-link { flex: 0 1 auto; min-width: 0; max-width: 180px; }
+.ie-link > span { overflow: hidden; text-overflow: ellipsis; }
+.ie-grip.is-command { margin-left: auto; }
+/* タブの列の下端に、IE8 と同じく線と白い帯を引き、開いているタブは下へ伸ばして帯につなげる。 */
+.ie-tabs { display: flex; align-items: flex-end; gap: 2px; height: 31px; padding: 0 6px 3px; background: linear-gradient(to top, #fcfcfc 2px, #adaeaf 2px 3px, transparent 3px), linear-gradient(#f0eddc, #ece9d7); }
+.ie-tab { display: flex; flex: 0 1 320px; align-items: center; min-width: 48px; height: 24px; border: 1px solid #a5a7a8; border-bottom: 0; border-radius: 3px 3px 0 0; background: linear-gradient(#fbfaf6, #e6e4da); }
+.ie-tab:not(.is-active):hover { background: linear-gradient(#fdfdff, #dde9f8); }
+.ie-tab.is-active { height: 27px; margin-bottom: -3px; padding-bottom: 3px; border-color: #9c9e9f; background: linear-gradient(#e5f3ff 1px, #c7e1fd 2px, #f0f7ff calc(100% - 3px), #fcfcfc calc(100% - 2px)); }
+.ie-tab-label { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; height: 100%; padding: 0 4px 0 6px; border: 0; background: none; text-align: left; }
+.ie-tab-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ie-tab-close { flex: none; width: 16px; height: 16px; margin-right: 4px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: none; color: #5a5a5a; font: bold 13px/14px Tahoma, sans-serif; }
+.ie-tab-close::before { content: "×"; }
+.ie-tab-close:hover { border-color: #b03a2e; background: #e0533f; color: #fff; }
+.ie-newtab { flex: none; width: 26px; height: 20px; border: 1px solid #b4bfcc; border-bottom: 0; border-radius: 2px 2px 0 0; background: #e2eefa; }
+.ie-newtab:hover { background: linear-gradient(#fff, #d5e6fa); }
+.ie-view { position: relative; flex: 1; min-height: 0; overflow: hidden; border-top: 1px solid #77776f; background: #fff; }
+/* ズームは、iframe を拡大率で割った大きさに作ってから拡大率で広げる。ページの幅が狭まり、ブラウザのズームと同じく文字ごと大きく描ける。 */
+.ie-page { position: absolute; top: 0; left: 0; width: calc(100% / var(--zoom)); height: calc(100% / var(--zoom)); border: 0; background: #fff; transform: scale(var(--zoom)); transform-origin: 0 0; }
+.ie-status { display: flex; height: 24px; border-top: 1px solid #c5c2b2; background: #ece9d8; }
+/* 右下の、大きさを変えるつまみの点。 */
+.ie-status::after { content: ""; flex: none; align-self: flex-end; width: 12px; height: 12px; margin: 0 1px 1px 0; background: radial-gradient(circle at 1.5px 1.5px, #aca899 1px, transparent 1.3px) 0 0 / 4px 4px; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.ie-pane { display: flex; flex: none; align-items: center; gap: 5px; width: 19px; padding: 0 4px; border-left: 1px solid #d5d2c3; background: linear-gradient(to right, #f9f7e7 1px, transparent 1px); }
+.ie-pane.is-text { flex: 1; border-left: 0; background: none; }
+.ie-pane.is-zone { width: 138px; }
+.ie-pane.is-zoom { gap: 0; width: auto; }
+.ie-zoom { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 4px; border: 1px solid transparent; border-radius: 2px; background: none; }
+.ie-zoom:hover, .ie-pane .ie-drop:hover, .ie-pane .ie-drop:has(+ :popover-open) { border-color: #9db4dc; background: linear-gradient(#fff, #e3ecfa); }
 /* エクスプローラーのファイルをドラッグして上に来ている間の、資料のウィジェット。 */
 .widget-body.is-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .wallpaper { padding: 12px; overflow: auto; }

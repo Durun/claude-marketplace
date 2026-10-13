@@ -50,7 +50,7 @@ const query = (params: Record<string, string | undefined>): URLSearchParams =>
 
 export const api = {
   /** Internet Explorer の中継が最後に描いたページ。 */
-  lastFrame: () => getJson<{ seq: number; url: string }>('/api/ie/last-frame'),
+  lastFrame: () => getJson<{ seq: number; url: string; title: string }>('/api/ie/last-frame'),
   diff: (id: string, full: boolean, range?: DiffRange, view?: BranchView) =>
     getJson<DiffResult>(`${session(id)}/diff?${query({ full: full ? '1' : undefined, ...range, branch: view?.branch, base: view?.base })}`),
   file: (id: string, path: string, branch?: string) => getJson<DiffFile>(`${session(id)}/file?${query({ path, branch })}`),

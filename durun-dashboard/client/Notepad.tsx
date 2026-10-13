@@ -1,8 +1,8 @@
 // 文字を書き留める「メモ帳」。Windows XP のメモ帳に倣い、スキンによらず XP の見た目で描く。書いた文字はウィンドウの設定に持ち、閉じるまで残す。
-import { Fragment } from 'preact';
 import { useRef } from 'preact/hooks';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
+import { XpMenu } from './XpMenu.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「notepad:開いた時刻」にし、いくつも開けるようにする。 */
 export const NOTEPAD_KEY = 'notepad';
@@ -43,19 +43,7 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
     <FloatFrame f={f} title={`無題 - ${NOTEPAD_TITLE}`} icon={NOTEPAD_ICON} controls={[close]}>
       <div class="notepad">
         <nav class="notepad-menubar">
-          {menus.map((m) => (
-            <Fragment key={m.name}>
-              <button class="notepad-menu" popovertarget={menuId(m.name)}>{m.label}</button>
-              <div id={menuId(m.name)} class="notepad-dropdown" popover onClick={(e) => (e.target as Element).closest('button') && e.currentTarget.hidePopover()}>
-                {m.items.map((i) => (
-                  <button key={i.label} class="notepad-item" role={'checked' in i ? 'menuitemcheckbox' : 'menuitem'} aria-checked={'checked' in i ? i.checked : undefined} onClick={i.onClick}>
-                    {i.label}
-                    {'key' in i && <kbd>{i.key}</kbd>}
-                  </button>
-                ))}
-              </div>
-            </Fragment>
-          ))}
+          {menus.map((m) => <XpMenu key={m.name} id={menuId(m.name)} class="xp-menu" label={m.label} items={m.items} />)}
         </nav>
         <textarea
           ref={area}
