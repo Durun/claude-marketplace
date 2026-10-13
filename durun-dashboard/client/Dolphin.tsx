@@ -5,6 +5,7 @@ import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
 import { type Fling, glide, pushSample, releaseVelocity, type Sample, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
+import { currentSessionId } from './router.ts';
 import { onSubmitKey } from './ui.tsx';
 
 const W = 160;
@@ -285,7 +286,7 @@ export const Dolphin = () => {
     const next: Turn[] = [...turns, { role: 'human', text }];
     setTurns(next);
     setThinking(true);
-    const res = await attempt('イルカへの質問', () => api.assistant(next.map(({ role, text: t }) => ({ role, text: t }))));
+    const res = await attempt('イルカへの質問', () => api.assistant(next.map(({ role, text: t }) => ({ role, text: t })), currentSessionId()));
     setThinking(false);
     if (res) setTurns([...next, { role: 'dolphin', text: res.answer, links: res.links }]);
   };

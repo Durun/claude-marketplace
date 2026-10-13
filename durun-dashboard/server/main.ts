@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { askDolphin } from './assistant.ts';
+import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
@@ -30,7 +30,7 @@ import { notesFor } from './prReview.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
-import { type Conversation, suggestReplies, suggestTitle, summarize } from './suggest.ts';
+import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -604,6 +604,13 @@ const toMessages = (body: unknown): AssistantMessage[] => {
   return messages;
 };
 
+/** 開いている画面のセッションを、イルカに渡す。セッションの画面でなければ渡さない。 */
+const focusOf = async (body: unknown): Promise<Focus | undefined> => {
+  const id = (body as Record<string, unknown>).sessionId;
+  const c = typeof id === 'string' && id ? conversationOf(id) : undefined;
+  return c && { name: c.name, summary: await summaryText(c), chat: chatOf(c.id) };
+};
+
 const MAX_CLIENT_ERROR_CHARS = 4000;
 
 /** 画面で起きた例外。改善要望の材料になるので、長すぎるものは切る。 */
@@ -726,7 +733,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
-  [/^\/api\/assistant$/, (_, b) => askDolphin(buildSnapshot(), toMessages(b))],
+  [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];

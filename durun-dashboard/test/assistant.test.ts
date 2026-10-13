@@ -26,4 +26,10 @@ test('イルカは説明と状態と会話を渡して答えさせ、ダッシ�
   assert.match(prompt, /<guide>\n# durun-dashboard/);
   assert.match(prompt, /"name":"検索画面".*"lastMessage":"終わりました"/);
   assert.match(prompt, /<conversation>\n人間: 何か待ってる？\n\nイルカ: はい\n\n人間: どれ？\n<\/conversation>$/);
+  assert.doesNotMatch(prompt, /<focus>\n/);
+
+  // 開いているセッションがあれば、その概要と、道具の呼び出しを除いた直近の会話を添える。
+  const chat = [{ kind: 'prompt', text: '調べて' }, { kind: 'tool', text: 'Bash' }, { kind: 'message', text: '質問です' }] as const;
+  await askDolphin(snap, [{ role: 'human', text: 'この質問は？' }], { name: '検索画面', summary: 'いま: 回答待ち', chat: [...chat] });
+  assert.match(fs.readFileSync(promptFile, 'utf8'), /<focus>\nセッション: 検索画面\nいま: 回答待ち\n直近の会話:\n人間: 調べて\n\nClaude: 質問です\n<\/focus>/);
 });

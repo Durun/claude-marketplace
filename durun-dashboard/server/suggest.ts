@@ -70,7 +70,7 @@ export const summarize = (c: Conversation): Promise<SessionSummary> => {
 };
 
 /** 返答の候補や名前は、概要を作れなくても作る。 */
-const summaryText = async (c: Conversation): Promise<string | undefined> => {
+export const summaryText = async (c: Conversation): Promise<string | undefined> => {
   const s = await summarize(c).catch(() => undefined);
   return s && `やっていること: ${s.doing}\nいま: ${s.now}`;
 };
