@@ -1,5 +1,5 @@
 // PC の中のファイルを一覧する「エクスプローラー」。ウィンドウに浮かべて開き、開いているフォルダーはウィンドウごとに保存する。
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ExplorerEntry } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
@@ -12,6 +12,7 @@ import { dateTime, fmtBytes } from './format.ts';
 import { highlightLine, languageOf } from './highlight.ts';
 import { useFetch } from './hooks.ts';
 import { currentSessionId } from './router.ts';
+import { TYPE_AHEAD_RESET_MS, nextMatch } from './typeAhead.ts';
 import { Empty } from './ui.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「explorer:開いた時刻」にし、いくつも開けるようにする。 */
@@ -160,9 +161,23 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
   // プレビューに出すファイル。フォルダーを移ったら選び直す。
   const [selected, setSelected] = useState<ExplorerEntry>();
   useEffect(() => setSelected(undefined), [dir?.path]);
+  const list = useRef<HTMLUListElement>(null);
+  // 続けて打った文字と、最後に打った時刻。
+  const typeAhead = useRef({ query: '', at: 0 });
+  const search = (ev: KeyboardEvent) => {
+    if (!dir || ev.key.length !== 1 || ev.ctrlKey || ev.metaKey || ev.altKey || (ev.target as Element).closest('input')) return;
+    const t = typeAhead.current;
+    t.query = (ev.timeStamp - t.at < TYPE_AHEAD_RESET_MS ? t.query : '') + ev.key;
+    t.at = ev.timeStamp;
+    const from = dir.entries.findIndex((e) => e.path === selected?.path);
+    const i = nextMatch(dir.entries.map((e) => e.name), t.query, from);
+    if (i < 0) return;
+    ev.preventDefault();
+    (list.current?.children[i] as HTMLElement | undefined)?.focus();
+  };
   return (
     <FloatFrame f={f} title={dir ? baseName(dir.path) : EXPLORER_TITLE} icon={EXPLORER_ICON} controls={[close]}>
-      <div class="explorer">
+      <div class="explorer" onKeyDown={search}>
         <form
           class="explorer-bar"
           onSubmit={(e) => {
@@ -202,7 +217,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
             ) : dir.entries.length === 0 ? (
               <Empty>このフォルダーは空です。</Empty>
             ) : (
-              <ul class="explorer-list">
+              <ul class="explorer-list" ref={list}>
                 {dir.entries.map((e) => <Row key={e.path} e={e} onOpen={() => open(e)} onSelect={() => setSelected(e)} />)}
               </ul>
             )}
