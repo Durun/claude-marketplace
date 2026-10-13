@@ -1,7 +1,8 @@
 // Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
 import { useRef, useState } from 'preact/hooks';
-import { GOOGLE, frameOf, siteOfFrame } from '../shared/retro.ts';
+import { GOOGLE, frameOf } from '../shared/retro.ts';
+import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -88,17 +89,19 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
     setHistory({ ...history, at, away: false });
     load(history.list[at] ?? GOOGLE);
   };
-  // 中継したページはダッシュボードと同じオリジンなので、ページの中で移った先を読める。ほかのサイトの中で移った先は読めない。
-  const onLoad = (e: Event) => {
+  // 中継が最後に描いたページの seq。これが増えずに読み込みが起きたら、ほかのサイトの中で移ったとみなす。
+  const seen = useRef(-1);
+  const onLoad = async () => {
     const loaded = loading.current;
     loading.current = false;
-    try {
-      const next = siteOfFrame(new URL((e.currentTarget as HTMLIFrameElement).contentWindow?.location.href ?? ''));
-      if (next) visit(next);
-    } catch {
-      // ほかのオリジンのページは、location を読むと SecurityError になる。進む先は、ブラウザと同じく捨てる。
-      if (!loaded) setHistory((h) => ({ list: h.list.slice(0, h.at + 1), at: h.at, away: true }));
-    }
+    const last = await api.lastFrame().catch(() => undefined);
+    if (!last) return;
+    const moved = last.seq !== seen.current;
+    seen.current = last.seq;
+    if (loaded) return;
+    // 進む先は、ブラウザと同じく捨てる。
+    if (moved && last.url) visit(last.url);
+    else setHistory((h) => ({ list: h.list.slice(0, h.at + 1), at: h.at, away: true }));
   };
   const submit = (e: Event) => {
     e.preventDefault();

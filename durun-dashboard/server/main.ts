@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH } from '../shared/retro.ts';
+import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH, siteOfFrame } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -189,21 +189,28 @@ const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Pr
     });
     if (to) return void res.writeHead(302, { location: to }).end();
   }
-  return sendRetro(res, fetchBing(url.search, lang));
+  return sendRetro(res, fetchBing(url.search, lang), url);
 };
 
 const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const self = `http://${req.headers.host}`;
-  return sendRetro(res, fetchWikipedia(url.searchParams.get('url') ?? '', req.headers['accept-language'], self + url.pathname + url.search, self));
+  return sendRetro(res, fetchWikipedia(url.searchParams.get('url') ?? '', req.headers['accept-language'], self + url.pathname + url.search, self), url);
 };
 
-const sendRetroSite = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchRetro(url.searchParams.get('url') ?? '', req.headers['accept-language']));
+const sendRetroSite = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchRetro(url.searchParams.get('url') ?? '', req.headers['accept-language']), url);
 
-/** Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。スクリプトを残していても動かさない。 */
-const sendRetro = async (res: ServerResponse, page: Promise<string>): Promise<void> => {
+/**
+ * 最後に描き直したページ。描き直したページはスクリプトを動かさず、ダッシュボードとも別のオリジンになるので、ウィンドウはページの中で移った先をここから知る。seq は描き直すたびに増える。
+ * ponytail: ウィンドウを区別しないので、2 つのウィンドウで同時に移ると取り違える。困ったら、ウィンドウごとの id を中継の URL に付けて分ける。
+ */
+let lastFrame = { seq: 0, url: '' };
+
+/** Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。frame は中継の URL。スクリプトを残していても動かさない。 */
+const sendRetro = async (res: ServerResponse, page: Promise<string>, frame: URL): Promise<void> => {
   const html = await page.catch((e: Error) => {
     throw new HttpError(502, e.message);
   });
+  lastFrame = { seq: lastFrame.seq + 1, url: siteOfFrame(frame) ?? '' };
   res
     .writeHead(200, {
       'content-type': 'text/html; charset=utf-8',
@@ -794,6 +801,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
 
 const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
   [/^\/api\/github\/inbox$/, () => viaGh('GitHub の PR を探せません', githubInbox)],
@@ -892,7 +900,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
-  if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME));
+  if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
   if (req.method === 'GET' && url.pathname === RETRO_PATH) return sendRetroSite(req, res, url);
