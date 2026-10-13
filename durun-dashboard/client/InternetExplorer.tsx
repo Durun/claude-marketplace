@@ -1,6 +1,7 @@
 // Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
 import { useState } from 'preact/hooks';
+import { isWikipedia, wikipediaFrame } from '../shared/wikipedia.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -20,10 +21,11 @@ const siteOf = (input: string): URL | undefined => {
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
 };
 
-/** Bing の検索結果は、リンクをウィンドウの中で開けるよう、サーバーの中継を通して出す。 */
+/** Bing の検索結果は昔の Google の見た目で、Wikipedia は昔の見た目で描くよう、サーバーの中継を通して出す。 */
 const frameSrc = (url: string): string => {
   const u = URL.parse(url);
-  return u?.origin === 'https://www.bing.com' && u.pathname === '/search' ? `/api/bing/search${u.search}` : url;
+  if (u?.origin === 'https://www.bing.com' && u.pathname === '/search') return `/api/bing/search${u.search}`;
+  return u && isWikipedia(u) ? wikipediaFrame(u.href) : url;
 };
 
 /** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Bing で検索する。 */
@@ -56,7 +58,7 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
   );
 };
 
-/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で描き、検索結果のページから開く。 */
+/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で 2004 年ごろの Google の見た目で描き、Bing の検索結果のページから開く。 */
 const Home = ({ onGo }: { onGo: (url: string) => void }) => {
   const [q, setQ] = useState('');
   const submit = (e: Event) => {
@@ -65,8 +67,11 @@ const Home = ({ onGo }: { onGo: (url: string) => void }) => {
   };
   return (
     <form class="ie-home" onSubmit={submit}>
-      <h1 class="ie-home-logo">Bing</h1>
-      <input class="ie-home-q" aria-label="Bing で検索" value={q} onInput={(e) => setQ(e.currentTarget.value)} autofocus />
+      <h1 class="ie-home-logo">
+        {[...'Google'].map((c) => <span>{c}</span>)}
+      </h1>
+      <input class="ie-home-q" aria-label="検索" size={55} value={q} onInput={(e) => setQ(e.currentTarget.value)} autofocus />
+      <button class="ie-home-go">Google 検索</button>
     </form>
   );
 };
@@ -85,7 +90,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
     e.preventDefault();
     if (address.trim()) go(addressOf(address));
   };
-  const title = url ? (siteOf(url)?.hostname ?? url) : 'Bing';
+  const title = url ? (siteOf(url)?.hostname ?? url) : 'Google';
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (
     <FloatFrame f={f} title={`${title} - ${IE_TITLE}`} icon={IE_ICON} controls={[close]}>

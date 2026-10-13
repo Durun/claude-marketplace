@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { rewriteBing } from '../server/bing.ts';
+import { oldGoogle } from '../server/bing.ts';
 
-const SELF = 'http://localhost:7337';
 const ck = (to: string) => `/ck/a?!&amp;&amp;p=abc&amp;u=a1${Buffer.from(to).toString('base64url')}&amp;ntb=1`;
+const algo = (href: string, title: string, snippet: string) => `<li class="b_algo" data-id><script>x()</script><h2><a href="${href}" target="_blank">${title}</a></h2><p class="b_lineclamp2">${snippet}</p></li>`;
 
-test('rewriteBing は、スクリプトと target="_blank" を除き、結果のリンクを行き先そのものにする', () => {
-  const html = `<html><head><title>t</title><script>alert(1)</script></head><body><a href="https://www.bing.com${ck('https://ja.wikipedia.org/?a=1&b="2"')}" target="_blank">W</a></body></html>`;
-  assert.equal(rewriteBing(html, SELF), '<html><head><base href="https://www.bing.com/"><title>t</title></head><body><a href="https://ja.wikipedia.org/?a=1&amp;b=%222%22">W</a></body></html>');
+test('oldGoogle は、結果の題と要約を強調だけ残して抜き出し、リンクを計測用のリダイレクトから行き先そのものにする', () => {
+  const html = oldGoogle(algo(`https://www.bing.com${ck('https://example.com/a?b="c"')}`, '<strong>XP</strong> の話', '<span class="d">2025年</span> <strong>XP</strong> &amp; 95'), '?q=xp');
+  assert.match(html, /<p class="g"><a href="https:\/\/example\.com\/a\?b=%22c%22"><b>XP<\/b> の話<\/a><br>2025年 <b>XP<\/b> &amp; 95<br><span class="url">example\.com\/a\?b=&quot;c&quot;<\/span><\/p>/);
+  assert.doesNotMatch(html, /script|_blank/);
 });
 
-test('rewriteBing は、http(s) 以外へのリダイレクトを書き換えない', () => {
-  const link = `<a href="${ck('javascript:alert(1)')}">x</a>`;
-  assert.equal(rewriteBing(link, SELF), link);
+test('oldGoogle は、http(s) 以外へのリダイレクトを結果から除き、Wikipedia は中継に向ける', () => {
+  const html = oldGoogle(algo(ck('javascript:alert(1)'), 'x', '') + algo('https://ja.wikipedia.org/wiki/XP', 'W', ''), '?q=xp');
+  assert.doesNotMatch(html, /javascript/);
+  assert.match(html, /<a href="\/api\/wikipedia\?url=https%3A%2F%2Fja\.wikipedia\.org%2Fwiki%2FXP">W<\/a>/);
 });
 
-test('rewriteBing は、検索欄と次のページを、ダッシュボードの中継に向ける', () => {
-  const html = '<form action="/search" id="sb_form"></form><a href="/search?q=a&amp;first=11">次へ</a><a href="/images/search?q=a">画像</a>';
-  assert.equal(rewriteBing(html, SELF), '<form action="http://localhost:7337/api/bing/search" id="sb_form"></form><a href="http://localhost:7337/api/bing/search?q=a&amp;first=11">次へ</a><a href="/images/search?q=a">画像</a>');
+test('oldGoogle は、検索語を書き出すときに逃がし、ページ送りを中継に向ける', () => {
+  const html = oldGoogle('', '?q=%22%3Cb%3E&first=11');
+  assert.match(html, /value="&quot;&lt;b>"/);
+  assert.match(html, /<a href="\/api\/bing\/search\?q=%22%3Cb%3E&amp;first=1">前へ<\/a>/);
+  assert.match(html, /<b style="color:#a90a08">2<\/b>/);
 });

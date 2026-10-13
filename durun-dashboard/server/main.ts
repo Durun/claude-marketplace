@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
+import { WIKIPEDIA_PATH } from '../shared/wikipedia.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -32,6 +33,7 @@ import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
+import { fetchWikipedia } from './wikipedia.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -176,8 +178,16 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
  * Internet Explorer のウィンドウに出す Bing の検索結果。ダッシュボードと同じオリジンから返すので、sandbox で別のオリジンの扱いにし、スクリプトも止める。
  * ダッシュボードの画面を読み書きさせないため。
  */
-const sendBing = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
-  const html = await fetchBing(url.search, req.headers['accept-language'], `http://${req.headers.host}`).catch((e: Error) => {
+const sendBing = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchBing(url.search, req.headers['accept-language']));
+
+const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+  const self = `http://${req.headers.host}`;
+  return sendRetro(res, fetchWikipedia(url.searchParams.get('url') ?? '', req.headers['accept-language'], self + url.pathname + url.search, self));
+};
+
+/** Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。スクリプトを残していても動かさない。 */
+const sendRetro = async (res: ServerResponse, page: Promise<string>): Promise<void> => {
+  const html = await page.catch((e: Error) => {
     throw new HttpError(502, e.message);
   });
   res
@@ -860,6 +870,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
+  if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
   // セッションの id が無いものは、エクスプローラーからセッションの外で開いたファイル。
   const media = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
