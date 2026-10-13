@@ -30,7 +30,7 @@ const linkOf = (href: string): string | undefined => {
 };
 
 /** Bing の HTML の一部を、強調の太字だけ残した文にする。文字は Bing が HTML として書いたものなので、実体参照はそのまま使える。 */
-const inline = (html: string): string => html.replace(/<(\/?)strong>/g, '<$1b>').replace(/<(?!\/?b>)[^>]*>/g, '');
+export const inline = (html: string): string => html.replace(/<(\/?)strong>/g, '<$1b>').replace(/<(?!\/?b>)[^>]*>/g, '');
 
 export type Result = { href: string; display: string; title: string; snippet: string };
 

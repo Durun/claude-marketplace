@@ -1,10 +1,11 @@
 // Internet Explorer のウィンドウに出す、2005 年ごろの Yahoo! JAPAN のトップページと検索結果のページ。
-// トピックスは今の Yahoo! JAPAN のトップから取り、検索結果は Bing の結果を当時の Yahoo! 検索の見た目で描く。
+// トピックスは今の Yahoo! JAPAN のトップから、検索結果は今の Yahoo! 検索から取る。
 import { YAHOO, YAHOO_SEARCH_PATH, frameOf } from '../shared/retro.ts';
-import { type Result, fetchBingHtml, resultsOf } from './bing.ts';
+import { type Result, inline } from './bing.ts';
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 10;
+const YAHOO_SEARCH = 'https://search.yahoo.co.jp/search';
 const MAX_TOPICS = 8;
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36';
 // 当時のトップページに並んでいたカテゴリの一部。カテゴリ検索は終わっているので、押すとその言葉で検索する。
@@ -72,7 +73,7 @@ ${FOOT}
 </div></body></html>`;
 };
 
-/** Bing の検索結果を、当時の Yahoo! 検索の結果のページとして書く。search は Yahoo! 検索の ? からの問い合わせで、p が検索語、b が何件目からか。 */
+/** 検索結果を、当時の Yahoo! 検索の結果のページとして書く。search は Yahoo! 検索の ? からの問い合わせで、p が検索語、b が何件目からか。 */
 export const oldYahooSearch = (results: Result[], search: string): string => {
   const params = new URLSearchParams(search);
   const p = params.get('p') ?? '';
@@ -100,8 +101,17 @@ export const fetchYahooHome = async (lang: string | undefined): Promise<string> 
   return oldYahooHome(topicsOf(await res.text()));
 };
 
+/** 今の Yahoo! 検索の結果のページから、ウェブの結果を取り出す。広告やニュースなどの枠は除く。行き先は http(s) に限る。 */
+export const yahooResultsOf = (html: string): Result[] =>
+  html.split('class="sw-Card Algo').slice(1).flatMap((card) => {
+    const url = URL.parse(/<a href="([^"]*)" class="sw-Card__titleInner"/.exec(card)?.[1]?.replaceAll('&amp;', '&') ?? '');
+    if (url?.protocol !== 'https:' && url?.protocol !== 'http:') return [];
+    const display = url.href.replace(/^https?:\/\//, '');
+    return [{ href: frameOf(url.href), display: display.length > 60 ? `${display.slice(0, 60)}...` : display, title: inline(/<h3\b[^>]*>([\s\S]*?)<\/h3>/.exec(card)?.[1] ?? ''), snippet: inline(/<p class="sw-Card__summary">([\s\S]*?)<\/p>/.exec(card)?.[1] ?? '') }];
+  });
+
 export const fetchYahooSearch = async (search: string, lang: string | undefined): Promise<string> => {
-  const params = new URLSearchParams(search);
-  const bing = new URLSearchParams({ q: params.get('p') ?? '', first: params.get('b') ?? '1' });
-  return oldYahooSearch(resultsOf(await fetchBingHtml(`?${bing}`, lang)), search);
+  const res = await fetch(`${YAHOO_SEARCH}${search}`, { headers: { 'user-agent': USER_AGENT, 'accept-language': lang ?? 'ja' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`Yahoo! 検索が ${res.status} を返しました`);
+  return oldYahooSearch(yahooResultsOf(await res.text()), search);
 };
