@@ -19,6 +19,9 @@ export const useNow = (): number => {
 
 const CACHE_KEY = 'snapshot';
 
+/** SSE を張っているタブが、ほかのタブに配るもの。 */
+type EventsMessage = { kind: 'open' } | { kind: 'error' } | { kind: 'data'; data: string };
+
 const cachedSnapshot = (): Snapshot | null => {
   try {
     return JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Snapshot | null;
@@ -44,24 +47,49 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
     // SSE は変化があるまで何も送らないことがある。最初と再接続のたびに取得して、古い表示を残さない。
     const load = () => getJson<Snapshot>('/api/snapshot').then(accept).catch(() => setConnected(false));
     load();
-    let source: EventSource | undefined;
-    const open = () => {
-      source = new EventSource(light ? '/api/events?light' : '/api/events');
-      source.onopen = () => {
+    const url = light ? '/api/events?light' : '/api/events';
+    // ブラウザは同じホストへの接続を 6 本までしか張らないので、タブごとに SSE を握ると会話ログなどの取得が空きを待たされる。
+    // SSE を張るのは 1 つのタブだけにし、受け取ったものは BroadcastChannel でほかのタブに配る。そのタブが閉じると、ほかのタブが引き継ぐ。
+    const channel = new BroadcastChannel(url);
+    const receive = (m: EventsMessage) => {
+      if (m.kind === 'open') {
         setConnected(true);
         load();
-      };
-      source.onmessage = (e) => accept(JSON.parse(e.data) as Snapshot);
-      source.onerror = () => setConnected(false);
+      } else if (m.kind === 'error') setConnected(false);
+      else accept(JSON.parse(m.data) as Snapshot);
+    };
+    let listening: AbortController | undefined;
+    const open = () => {
+      const abort = new AbortController();
+      listening = abort;
+      channel.onmessage = (e: MessageEvent<EventsMessage>) => receive(e.data);
+      const lead = () =>
+        new Promise<void>((release) => {
+          const source = new EventSource(url);
+          const relay = (m: EventsMessage) => {
+            receive(m);
+            channel.postMessage(m);
+          };
+          source.onopen = () => relay({ kind: 'open' });
+          source.onmessage = (e: MessageEvent<string>) => relay({ kind: 'data', data: e.data });
+          source.onerror = () => relay({ kind: 'error' });
+          abort.signal.addEventListener('abort', () => {
+            source.close();
+            release();
+          });
+        });
+      // 順番待ちの間に止めると AbortError で終わる。止めたのはこのタブなので、知らせることはない。
+      navigator.locks.request(url, { signal: abort.signal }, lead).catch(() => {});
     };
     const close = () => {
-      source?.close();
-      source = undefined;
+      listening?.abort();
+      listening = undefined;
+      channel.onmessage = null;
     };
     // 表に戻ったら、つなぎ直して最新のものを受け取る。
     const onVisibility = () => {
       if (document.hidden) close();
-      else if (!source) open();
+      else if (!listening) open();
     };
     if (light) document.addEventListener('visibilitychange', onVisibility);
     if (!light || !document.hidden) open();
@@ -76,6 +104,7 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
     addEventListener('pagehide', save);
     return () => {
       close();
+      channel.close();
       document.removeEventListener('visibilitychange', onVisibility);
       removeEventListener('pagehide', save);
     };
