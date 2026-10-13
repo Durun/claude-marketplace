@@ -1234,7 +1234,7 @@ table.data { width: 100%; border-collapse: collapse; }
   background: repeating-linear-gradient(90deg, transparent 0 6px, #fff 6px 8px), linear-gradient(rgba(255, 255, 255, 0.7), transparent 45% 55%, rgba(255, 255, 255, 0.5)), var(--c);
 }
 /* 一覧の項目と差分は、ウィンドウの中の白い欄にする。 */
-[data-skin="xp"] :where(.session-card, .att, .search-item, .diff-file, .code-side) { border-radius: 0; background: #fff; }
+[data-skin="xp"] :where(.session-card, .att, .chat-claude, .search-item, .diff-file, .code-side) { border-radius: 0; background: #fff; }
 [data-skin="xp"] .session-card:hover { border-color: #316ac5; background: #eef3fd; }
 
 /* ボタンと入力欄。押せるものはマウスを載せると内側が橙に光り、フォーカスは点線で示す。 */
@@ -1257,31 +1257,28 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .dolphin-chat { --surface: #ffffe1; --border-strong: #000; border-radius: 8px; }
 
 /*
- * チャットは同じ時代の Skype に寄せる。白い欄に角の丸い吹き出しを並べ、人間の依頼は右の水色、Claude の発言は左の白にする。
- * 吹き出しの外側に四角いアイコンを置き、アイコンに近い下の角だけ尖らせて、誰の発言かを示す。
+ * 「チャット」のウィンドウの中だけ、2011 年ごろの Skype 5 に寄せる。吹き出しは使わず、白い欄に発言を上から並べる。
+ * 発言は 1 行目に名前を置き、Claude は青、人間は灰色で書く。時刻は右端に灰色で置く。
  */
-[data-skin="xp"] :has(> .chat) { --skype: #00aff0; }
-[data-skin="xp"] .chat { padding: 8px; background: #fff; }
-[data-skin="xp"] .chat-row::before, [data-skin="xp"] .chat-row.is-human::after {
-  content: "C"; display: grid; place-items: center; flex: none; order: -1; width: 32px; height: 32px;
-  border: 1px solid #aca899; border-radius: 4px; background: linear-gradient(#f0a080, #d97757); color: #fff; font-weight: 700;
+[data-skin="xp"] :has(> .widget-body.chat) { --skype: #00aff0; font-family: "Segoe UI", Meiryo, "Hiragino Sans", sans-serif; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat { gap: 10px; padding: 8px 12px; border: 1px solid #c4d0d8; background: #fff; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name rewind" "body meta"; column-gap: 12px; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row::before { content: "Claude"; grid-area: name; color: #0a83c8; font-size: 12px; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-row.is-human::before { content: "あなた"; color: #7a7a7a; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-rewind { grid-area: rewind; justify-self: end; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-meta { grid-area: meta; align-self: start; }
+[data-skin="xp"] :has(> .widget-body.chat) :is(.chat-human, .chat-claude) { grid-area: body; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-human.is-focused { outline-color: var(--skype); outline-offset: 2px; }
+[data-skin="xp"] :has(> .widget-body.chat) .chat-tool { margin-left: 0; }
+[data-skin="xp"] :has(> .widget-body.chat) .input { border-color: #c4d0d8; }
+/* ボタンは Skype 5 の角の丸い四角にする。送信などの主なボタンは、通話ボタンと同じ緑にする。 */
+[data-skin="xp"] :has(> .widget-body.chat) .btn {
+  border: 1px solid #a8a8a8; border-radius: 4px; background: linear-gradient(#fdfdfd, #e4e4e4); color: #333; filter: none;
 }
-[data-skin="xp"] .chat-row.is-human::before { content: none; }
-[data-skin="xp"] .chat-row.is-human::after { content: "人"; order: 0; background: linear-gradient(#7fd6f7, var(--skype)); }
-[data-skin="xp"] :is(.chat-human, .chat-claude) { padding: 8px 12px; border: 1px solid; border-radius: 10px; }
-[data-skin="xp"] .chat-human { border-color: #8fd3ee; border-bottom-right-radius: 2px; background: #e2f5fc; }
-[data-skin="xp"] .chat-claude { border-color: #c9c9c9; border-bottom-left-radius: 2px; background: #fff; }
-[data-skin="xp"] .chat-human.is-focused { outline-color: var(--skype); }
-/* ツールの呼び出しはアイコンの幅だけ右に寄せ、Claude の発言と左端を揃える。 */
-[data-skin="xp"] .chat-tool { margin-left: 78px; }
-/* チャットの欄のボタンは Skype の丸いボタンにする。送信などの主なボタンは、Skype の通話ボタンと同じ緑にする。 */
-[data-skin="xp"] :has(> .chat) .btn {
-  border: 1px solid #b5b5b5; border-radius: 999px; background: linear-gradient(#fff, #e9e9e9); color: #333; filter: none;
-}
-[data-skin="xp"] :has(> .chat) .btn:hover:not(:disabled) { outline: none; border-color: var(--skype); background: linear-gradient(#fff, #dff3fc); }
-[data-skin="xp"] :has(> .chat) .btn-primary { outline: none; border-color: #3f8a0c; background: linear-gradient(#9be04f, #6cc11f 50%, #55a80f 51%, #4c9a0c); color: #fff; font-weight: 700; text-shadow: 0 -1px 0 #3f8a0c; }
-[data-skin="xp"] :has(> .chat) .btn-primary:hover:not(:disabled) { border-color: #3f8a0c; background: linear-gradient(#aaea60, #78cd2a 50%, #60b416 51%, #55a80f); }
-[data-skin="xp"] :has(> .chat) .btn:disabled { opacity: 0.5; }
+[data-skin="xp"] :has(> .widget-body.chat) .btn:hover:not(:disabled) { outline: none; border-color: #7a9fb5; background: linear-gradient(#fff, #e3eef5); }
+[data-skin="xp"] :has(> .widget-body.chat) .btn-primary { outline: none; border-color: #3b8b14; background: linear-gradient(#8fd24f, #5bb424 50%, #47a414 51%, #3e9a10); color: #fff; font-weight: 700; }
+[data-skin="xp"] :has(> .widget-body.chat) .btn-primary:hover:not(:disabled) { border-color: #3b8b14; background: linear-gradient(#9fdc62, #68c230 50%, #52b11c 51%, #47a414); }
+[data-skin="xp"] :has(> .widget-body.chat) .btn:disabled { opacity: 0.5; }
 
 /*
  * 動画は Windows Media Player 12 の再生中の画面に似せる。黒から紺へのグラデーションの上に動画を置き、下に細いシークバーと、
