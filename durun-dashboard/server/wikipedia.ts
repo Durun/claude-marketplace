@@ -1,6 +1,6 @@
 // Internet Explorer のウィンドウに出す Wikipedia を、2004〜2010 年ごろの既定の見た目の MonoBook で描く。
 // MonoBook は ?useskin=monobook で選べるが、ページの中のリンクはこの指定を引き継がないので、サーバーが取ってきて記事へのリンクを中継に向け直す。
-import { isWikipedia, wikipediaFrame } from '../shared/wikipedia.ts';
+import { isWikipedia, wikipediaFrame } from '../shared/retro.ts';
 
 const TIMEOUT_MS = 10_000;
 // Wikimedia は User-Agent の無い取得を断る。

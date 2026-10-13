@@ -1,8 +1,7 @@
 // Internet Explorer のウィンドウに出す Bing の検索結果。2004 年ごろの Google の結果のページの見た目で描き直す。
 // Bing は結果のリンクに target="_blank" を付けるので、そのまま出すと押したリンクが別のタブで開く。描き直したページのリンクはウィンドウの中で開く。
-import { isWikipedia, wikipediaFrame } from '../shared/wikipedia.ts';
+import { BING_PATH, frameOf } from '../shared/retro.ts';
 
-export const BING_PATH = '/api/bing/search';
 const BING = 'https://www.bing.com';
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 10;
@@ -19,11 +18,11 @@ const destinationOf = (href: string): string => {
   return u?.startsWith('a1') ? Buffer.from(u.slice(2), 'base64url').toString() : href;
 };
 
-/** 結果の行き先を、http(s) に限る。Wikipedia は昔の見た目で開くよう中継に向ける。 */
+/** 結果の行き先を、http(s) に限る。昔の見た目で描けるサイトは中継に向ける。 */
 const linkOf = (href: string): string | undefined => {
   const url = URL.parse(destinationOf(href));
   if (url?.protocol !== 'https:' && url?.protocol !== 'http:') return undefined;
-  return isWikipedia(url) ? wikipediaFrame(url.href) : url.href;
+  return frameOf(url.href);
 };
 
 /** Bing の HTML の一部を、強調の太字だけ残した文にする。文字は Bing が HTML として書いたものなので、実体参照はそのまま使える。 */

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { rewriteWikipedia } from '../server/wikipedia.ts';
-import { isWikipedia } from '../shared/wikipedia.ts';
+import { isWikipedia } from '../shared/retro.ts';
 
 const SELF = 'http://localhost:7337';
 const PAGE = new URL('https://ja.wikipedia.org/wiki/XP');

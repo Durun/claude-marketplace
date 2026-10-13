@@ -1,7 +1,7 @@
 // Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
 import { useState } from 'preact/hooks';
-import { isWikipedia, wikipediaFrame } from '../shared/wikipedia.ts';
+import { frameOf } from '../shared/retro.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -19,13 +19,6 @@ export const openInternetExplorer = (url = ''): void => floatUp(IE_KEY, '', { id
 const siteOf = (input: string): URL | undefined => {
   const url = URL.parse(input.trim());
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
-};
-
-/** Bing の検索結果は昔の Google の見た目で、Wikipedia は昔の見た目で描くよう、サーバーの中継を通して出す。 */
-const frameSrc = (url: string): string => {
-  const u = URL.parse(url);
-  if (u?.origin === 'https://www.bing.com' && u.pathname === '/search') return `/api/bing/search${u.search}`;
-  return u && isWikipedia(u) ? wikipediaFrame(u.href) : url;
 };
 
 /** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Bing で検索する。 */
@@ -108,7 +101,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
         </form>
         {url ? (
           // sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。
-          <iframe key={reloads} class="ie-page" title={title} src={frameSrc(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
+          <iframe key={reloads} class="ie-page" title={title} src={frameOf(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
         ) : (
           <Home onGo={go} />
         )}

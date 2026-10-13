@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { WIKIPEDIA_PATH } from '../shared/wikipedia.ts';
+import { BING_PATH, RETRO_PATH, WIKIPEDIA_PATH } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -17,7 +17,7 @@ import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeli
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
-import { BING_PATH, fetchBing } from './bing.ts';
+import { fetchBing } from './bing.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
@@ -34,6 +34,7 @@ import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
+import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
@@ -185,6 +186,8 @@ const sendWikipedia = (req: IncomingMessage, res: ServerResponse, url: URL): Pro
   const self = `http://${req.headers.host}`;
   return sendRetro(res, fetchWikipedia(url.searchParams.get('url') ?? '', req.headers['accept-language'], self + url.pathname + url.search, self));
 };
+
+const sendRetroSite = (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => sendRetro(res, fetchRetro(url.searchParams.get('url') ?? '', req.headers['accept-language']));
 
 /** Internet Explorer のウィンドウに出す、サーバーが描き直したサイトのページ。スクリプトを残していても動かさない。 */
 const sendRetro = async (res: ServerResponse, page: Promise<string>): Promise<void> => {
@@ -881,6 +884,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
+  if (req.method === 'GET' && url.pathname === RETRO_PATH) return sendRetroSite(req, res, url);
   // セッションの id が無いものは、エクスプローラーからセッションの外で開いたファイル。
   const media = req.method === 'GET' && /^\/api(?:\/sessions\/([^/]+))?\/media$/.exec(url.pathname);
   if (media) return sendMedia(req, res, decodeURIComponent(media[1] ?? ''), url);
