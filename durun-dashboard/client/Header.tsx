@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'preact/hooks';
-import type { Attention, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
+import type { Attention, DocMeta, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
@@ -9,6 +9,7 @@ import { MINESWEEPER_ICON, MINESWEEPER_TITLE, SOLITAIRE_ICON, SOLITAIRE_TITLE, o
 import { clock, shortDateTime, toMs } from './format.ts';
 import { NowContext } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
+import { IE_ICON, IE_KEY, IE_TITLE, openInternetExplorer } from './InternetExplorer.tsx';
 import { setLightMode, useLightMode } from './lightMode.ts';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
@@ -154,7 +155,7 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
+const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) => {
   const light = useLightMode();
   const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
@@ -167,8 +168,10 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
   const toggleFullscreen = () => {
     void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   };
-  // エクスプローラーは「アプリ」には並べず、お気に入りのフォルダーを選べるよう、独立した項目にする。
-  const apps = useApps().filter((a) => a.kind !== EXPLORER_KEY);
+  // Internet Explorer は先頭に固定し、エクスプローラーはお気に入りのフォルダーを選べる「マイ コンピュータ」に置くので、ほかのアプリとは並べない。
+  const apps = useApps().filter((a) => a.kind !== EXPLORER_KEY && a.kind !== IE_KEY);
+  // XP の「最近使ったファイル」と同じく、新しい順に 15 件まで出す。
+  const recent = [...docs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 15);
   const favorites = useFavorites();
   const dashboards = useDashboards();
   // ダッシュボードはホームの配置なので、ほかの画面で選んだらホームへ移る。
@@ -188,67 +191,97 @@ const AppMenu = ({ onSearch, onEdit }: MenuProps) => {
         <span aria-hidden="true">☰</span>
       </button>
       <div id={MENU_ID} class="app-menu" popover onClick={closeOnItem}>
+        {/* Windows XP のスタートメニューに倣い、左にプログラム、右に場所と設定を並べる。XP 以外のスキンでは縦に積む。 */}
         <div class="app-menu-items">
-          {/* XP のスタートメニューに倣い、マウスを載せるかフォーカスすると右に選択肢を出す。押してもメニューを閉じないよう、button にしない。 */}
-          {apps.length > 0 && (
+          <div class="app-menu-col">
+            <button class="app-menu-item app-menu-pinned" onClick={() => openInternetExplorer()}>
+              <AppIcon icon={IE_ICON} size={32} />
+              <span><b>インターネット</b><small>{IE_TITLE}</small></span>
+            </button>
+            {apps.length > 0 && <hr class="app-menu-sep" />}
+            {apps.map((a) => (
+              <button key={a.kind} class="app-menu-item" onClick={a.launch}><AppIcon icon={a.icon} />{a.title}</button>
+            ))}
+            <hr class="app-menu-sep" />
+            {/* マウスを載せるかフォーカスすると右に選択肢を出す。押してもメニューを閉じないよう、button にしない。 */}
             <div class="app-menu-sub">
-              <div class="app-menu-item" tabindex={0} aria-haspopup="true">アプリ<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-              <div class="app-menu-submenu" role="group" aria-label="アプリ">
+              <div class="app-menu-item app-menu-all" tabindex={0} aria-haspopup="true">すべてのプログラム(P)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="すべてのプログラム">
+                <button class="app-menu-item" onClick={() => openInternetExplorer()}><AppIcon icon={IE_ICON} />{IE_TITLE}</button>
+                <button class="app-menu-item" title="ホームディレクトリを開く" onClick={() => openExplorer()}><AppIcon icon={EXPLORER_ICON} />{EXPLORER_TITLE}</button>
                 {apps.map((a) => (
                   <button key={a.kind} class="app-menu-item" onClick={a.launch}><AppIcon icon={a.icon} />{a.title}</button>
                 ))}
+                <div class="app-menu-sub">
+                  <div class="app-menu-item" tabindex={0} aria-haspopup="true">ゲーム<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+                  <div class="app-menu-submenu" role="group" aria-label="ゲーム">
+                    <button class="app-menu-item" onClick={openSolitaire}><AppIcon icon={SOLITAIRE_ICON} />{SOLITAIRE_TITLE}</button>
+                    <button class="app-menu-item" onClick={openMinesweeper}><AppIcon icon={MINESWEEPER_ICON} />{MINESWEEPER_TITLE}</button>
+                  </div>
+                </div>
               </div>
             </div>
-          )}
-          <div class="app-menu-sub">
-            <div class="app-menu-item" tabindex={0} aria-haspopup="true">ゲーム<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-            <div class="app-menu-submenu" role="group" aria-label="ゲーム">
-              <button class="app-menu-item" onClick={openSolitaire}><AppIcon icon={SOLITAIRE_ICON} />{SOLITAIRE_TITLE}</button>
-              <button class="app-menu-item" onClick={openMinesweeper}><AppIcon icon={MINESWEEPER_ICON} />{MINESWEEPER_TITLE}</button>
-            </div>
           </div>
-          <div class="app-menu-sub">
-            <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon={EXPLORER_ICON} />{EXPLORER_TITLE}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-            <div class="app-menu-submenu" role="group" aria-label={EXPLORER_TITLE}>
-              <button class="app-menu-item" title="ホームディレクトリを開く" onClick={() => openExplorer()}><AppIcon icon="🏠" />ホーム</button>
-              <hr class="app-menu-sep" />
-              {favorites.map((p) => (
-                <button key={p} class="app-menu-item" title={p} onClick={() => openExplorer(p)}><AppIcon icon="📁" />{baseName(p)}</button>
-              ))}
-              {favorites.length === 0 && <p class="app-menu-note">エクスプローラーの ☆ で、フォルダーをお気に入りに登録できます。</p>}
+          <div class="app-menu-col app-menu-places">
+            <a class="app-menu-item" href={href.docs()}>マイ ドキュメント</a>
+            <div class="app-menu-sub">
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true">最近使ったファイル(D)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="最近使ったファイル">
+                {recent.map((d) => (
+                  <a key={d.id} class="app-menu-item" href={href.doc(d.id)}>{d.title}</a>
+                ))}
+                {recent.length === 0 && <p class="app-menu-note">(なし)</p>}
+              </div>
             </div>
-          </div>
-          <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
-            検索<kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
-          </button>
-          <a class="app-menu-item" href={href.docs()}>資料</a>
-          {onEdit && (
-            <button class="app-menu-item dashboard-edit" onClick={onEdit}>
-              ダッシュボードを編集<kbd>{shortcutLabel(EDIT_SHORTCUT)}</kbd>
+            <div class="app-menu-sub">
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon={EXPLORER_ICON} />マイ コンピュータ<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="マイ コンピュータ">
+                <button class="app-menu-item" title="ホームディレクトリを開く" onClick={() => openExplorer()}><AppIcon icon="🏠" />ホーム</button>
+                <hr class="app-menu-sep" />
+                {favorites.map((p) => (
+                  <button key={p} class="app-menu-item" title={p} onClick={() => openExplorer(p)}><AppIcon icon="📁" />{baseName(p)}</button>
+                ))}
+                {favorites.length === 0 && <p class="app-menu-note">エクスプローラーの ☆ で、フォルダーをお気に入りに登録できます。</p>}
+              </div>
+            </div>
+            <hr class="app-menu-sep" />
+            <div class="app-menu-sub">
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true">コントロール パネル(C)<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="コントロール パネル">
+                <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
+                <div class="app-menu-sub">
+                  <div class="app-menu-item" tabindex={0} aria-haspopup="true">スキン<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+                  <div class="app-menu-submenu" role="group" aria-label="スキン">
+                    {Object.entries(SKINS).map(([id, label]) => (
+                      <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => setSkin(id as Skin)}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>全画面</button>
+                <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>軽量モード</button>
+              </div>
+            </div>
+            <div class="app-menu-sub">
+              <div class="app-menu-item" tabindex={0} aria-haspopup="true">ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+              <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
+                {dashboards.list.map((d) => (
+                  <button key={d.id} class="app-menu-item" aria-pressed={d.id === dashboards.current} onClick={() => (switchDashboard(d.id), showHome())}>{d.name}</button>
+                ))}
+                <hr class="app-menu-sep" />
+                {onEdit && (
+                  <button class="app-menu-item" onClick={onEdit}>
+                    編集<kbd>{shortcutLabel(EDIT_SHORTCUT)}</kbd>
+                  </button>
+                )}
+                <button class="app-menu-item" onClick={() => (createDashboard(), showHome())}>新規作成</button>
+                <button class="app-menu-item" onClick={() => (duplicateDashboard(), showHome())}>複製</button>
+                <button class="app-menu-item" onClick={rename}>名前を変更</button>
+              </div>
+            </div>
+            <hr class="app-menu-sep" />
+            <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
+              検索(S)<kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
             </button>
-          )}
-          <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>全画面</button>
-          <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
-          <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>軽量モード</button>
-          <div class="app-menu-sub">
-            <div class="app-menu-item" tabindex={0} aria-haspopup="true">ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-            <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
-              {dashboards.list.map((d) => (
-                <button key={d.id} class="app-menu-item" aria-pressed={d.id === dashboards.current} onClick={() => (switchDashboard(d.id), showHome())}>{d.name}</button>
-              ))}
-              <hr class="app-menu-sep" />
-              <button class="app-menu-item" onClick={() => (createDashboard(), showHome())}>新規作成</button>
-              <button class="app-menu-item" onClick={() => (duplicateDashboard(), showHome())}>複製</button>
-              <button class="app-menu-item" onClick={rename}>名前を変更</button>
-            </div>
-          </div>
-          <div class="app-menu-sub">
-            <div class="app-menu-item" tabindex={0} aria-haspopup="true">スキン<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-            <div class="app-menu-submenu" role="group" aria-label="スキン">
-              {Object.entries(SKINS).map(([id, label]) => (
-                <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => setSkin(id as Skin)}>{label}</button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -378,7 +411,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
   const stale = useLiveReload(assets);
   return (
     <header class="topbar">
-      <AppMenu onSearch={onSearch} onEdit={onEdit} />
+      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} />
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />
