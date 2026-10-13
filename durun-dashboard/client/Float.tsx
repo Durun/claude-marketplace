@@ -20,9 +20,12 @@ const MIN_H = 120;
 // タイトルバーを画面の外へ出しきらず、つかんで戻せるよう残す幅（px）。
 const KEEP = 80;
 
+/** タイトルバーを今の画面の中に戻す。広い画面で置いたウィンドウが、狭い画面で外に出たままになるのを防ぐ。 */
+const inView = (f: Float): Float => ({ ...f, x: clamp(f.x, KEEP - f.w, innerWidth - KEEP), y: clamp(f.y, 0, innerHeight - KEEP) });
+
 const load = (): Float[] => {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Float[];
+    return (JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Float[]).map(inView);
   } catch {
     return [];
   }
@@ -85,9 +88,10 @@ const update = (f: Float, patch: Partial<Float>): void => setFloats(floats.map((
 /** ウィンドウの設定を変える。エクスプローラーの開いているフォルダーなど、ウィンドウごとの状態を保存するのに使う。 */
 export const setFloatSettings = (f: Float, settings: WidgetSettings): void => update(f, { tab: { ...f.tab, settings } });
 
-/** 押したウィンドウを、最小化していれば元に戻し、ほかのウィンドウより手前に出す。重なりの順は、一覧の後ろほど手前にする。 */
+/** 押したウィンドウを、最小化していれば元に戻し、画面の外にあれば中に戻し、ほかのウィンドウより手前に出す。重なりの順は、一覧の後ろほど手前にする。 */
 const raise = (f: Float): void => {
-  if (floats.at(-1) !== f || f.min) setFloats([...floats.filter((x) => x !== f), { ...f, min: undefined }]);
+  const next = { ...inView(f), min: undefined };
+  if (floats.at(-1) !== f || f.min || next.x !== f.x || next.y !== f.y) setFloats([...floats.filter((x) => x !== f), next]);
 };
 
 /** 最小化していないウィンドウのうち、いちばん手前のものか。 */
