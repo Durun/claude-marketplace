@@ -1,4 +1,4 @@
-// Internet Explorer のウィンドウに出す Bing の検索結果。2004 年ごろの Google の結果のページの見た目で描き直す。
+// Internet Explorer のウィンドウに出す、2004 年ごろの Google のトップページと、Bing の検索結果をその頃の Google の結果のページの見た目で描き直したもの。
 // Bing は結果のリンクに target="_blank" を付けるので、そのまま出すと押したリンクが別のタブで開く。描き直したページのリンクはウィンドウの中で開く。
 import { BING_PATH, frameOf } from '../shared/retro.ts';
 
@@ -9,6 +9,10 @@ const PAGE_SIZE = 10;
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36';
 // 当時のロゴの文字ごとの色。
 const LOGO = [...'Google'].map((c, i) => `<span style="color:${['#1851ce', '#c41200', '#f3c518', '#1851ce', '#30a72f', '#c41200'][i]}">${c}</span>`).join('');
+
+const STYLE = `body{margin:8px;font-family:arial,sans-serif;font-size:13px;background:#fff;color:#000}
+a:link{color:#0000cc}a:visited{color:#551a8b}
+.logo{font:bold 32px "Book Antiqua",Georgia,"Times New Roman",serif;letter-spacing:-1px;text-shadow:2px 2px 1px #bbb;margin-right:12px}`;
 
 const esc = (s: string): string => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 
@@ -51,9 +55,7 @@ export const oldGoogle = (html: string, search: string): string => {
   const from = (page - 1) * PAGE_SIZE + 1;
   const pages = Array.from({ length: PAGE_SIZE }, (_, i) => (i + 1 === page ? `<b style="color:#a90a08">${i + 1}</b>` : pageLink(q, i + 1, String(i + 1)))).join(' ');
   return `<!doctype html><html><head><meta charset="utf-8"><title>Google 検索: ${esc(q)}</title><style>
-body{margin:8px;font-family:arial,sans-serif;font-size:13px;background:#fff;color:#000}
-a:link{color:#0000cc}a:visited{color:#551a8b}
-.logo{font:bold 32px "Book Antiqua",Georgia,"Times New Roman",serif;letter-spacing:-1px;text-shadow:2px 2px 1px #bbb;margin-right:12px}
+${STYLE}
 .bar{display:flex;justify-content:space-between;margin:8px 0 12px;padding:2px 4px;border-top:1px solid #3366cc;background:#e5ecf9}
 .g{margin:0 0 14px;max-width:42em}.g>a{font-size:16px}.url{color:#008000}
 .nav{margin:24px 0;text-align:center}
@@ -64,6 +66,17 @@ ${results.length ? results.map((r) => `<p class="g"><a href="${esc(r.href)}">${r
 <div class="nav">${page > 1 ? `${pageLink(q, page - 1, '前へ')} ` : ''}${pages} ${results.length ? pageLink(q, page + 1, '次へ') : ''}</div>
 </body></html>`;
 };
+
+/** 当時の Google のトップページ。検索欄は Bing の結果を描き直す中継に送る。 */
+export const OLD_GOOGLE_HOME = `<!doctype html><html><head><meta charset="utf-8"><title>Google</title><style>
+${STYLE}
+form{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:22vh}
+.logo{margin:0;font-size:72px;letter-spacing:-3px;text-shadow:3px 3px 2px #bbb}
+.foot{margin-top:40px;color:#666;font-size:11px;text-align:center}
+</style></head><body>
+<form action="${BING_PATH}"><h1 class="logo">${LOGO}</h1><input name="q" size="55" autofocus><input type="submit" value="Google 検索"></form>
+<p class="foot">&copy;2005 Google</p>
+</body></html>`;
 
 export const fetchBing = async (search: string, lang: string | undefined): Promise<string> => {
   const res = await fetch(`${BING}/search${search}`, { headers: { 'user-agent': USER_AGENT, 'accept-language': lang ?? 'ja' }, signal: AbortSignal.timeout(TIMEOUT_MS) });

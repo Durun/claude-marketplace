@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
-import { BING_PATH, RETRO_PATH, WIKIPEDIA_PATH } from '../shared/retro.ts';
+import { BING_PATH, GOOGLE_HOME_PATH, RETRO_PATH, WIKIPEDIA_PATH } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
@@ -17,7 +17,7 @@ import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeli
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
-import { fetchBing } from './bing.ts';
+import { OLD_GOOGLE_HOME, fetchBing } from './bing.ts';
 import { recordError } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
@@ -882,6 +882,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
+  if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME));
   if (req.method === 'GET' && url.pathname === BING_PATH) return sendBing(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
   if (req.method === 'GET' && url.pathname === RETRO_PATH) return sendRetroSite(req, res, url);

@@ -1,6 +1,9 @@
 // Internet Explorer のウィンドウで、サイトを昔の見た目で開くための中継の入り口。クライアントとサーバーの両方が使う。
 // 中継は、サーバーがページを取ってきて描き直し、ダッシュボードのオリジンから出す。
 export const BING_PATH = '/api/bing/search';
+export const GOOGLE_HOME_PATH = '/api/google';
+/** Internet Explorer の既定のページ。 */
+export const GOOGLE = 'https://www.google.com/';
 export const WIKIPEDIA_PATH = '/api/wikipedia';
 export const RETRO_PATH = '/api/retro';
 
@@ -33,7 +36,9 @@ export const wikipediaFrame = (url: string): string => `${WIKIPEDIA_PATH}?${new 
 export const frameOf = (url: string): string => {
   const u = URL.parse(url);
   if (!u) return url;
-  if (u.origin === 'https://www.bing.com' && u.pathname === '/search') return `${BING_PATH}${u.search}`;
+  // Google は JavaScript を動かさないブラウザに検索結果を返さないので、トップと検索は、Bing の結果を昔の Google の見た目で描く中継に向ける。
+  if (u.origin === 'https://www.google.com' && (u.pathname === '/' || u.pathname === '/webhp')) return GOOGLE_HOME_PATH;
+  if ((u.origin === 'https://www.google.com' || u.origin === 'https://www.bing.com') && u.pathname === '/search') return `${BING_PATH}?${new URLSearchParams({ q: u.searchParams.get('q') ?? '' })}`;
   if (isWikipedia(u)) return wikipediaFrame(u.href);
   return isRetroSite(u) ? `${RETRO_PATH}?${new URLSearchParams({ url: u.href })}` : url;
 };

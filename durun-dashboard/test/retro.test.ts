@@ -7,7 +7,10 @@ const ARTICLE = new URL('https://www.jiji.com/jc/article?k=1');
 const long = (s: string) => s.repeat(20);
 
 test('frameOf は、昔の見た目で描けるサイトだけを中継に向ける', () => {
+  assert.equal(frameOf('https://www.google.com/'), '/api/google');
+  assert.equal(frameOf('https://www.google.com/search?q=a+b&hl=ja'), '/api/bing/search?q=a+b');
   assert.equal(frameOf('https://www.bing.com/search?q=a'), '/api/bing/search?q=a');
+  assert.equal(frameOf('https://www.google.com/maps'), 'https://www.google.com/maps');
   assert.equal(frameOf('https://ja.wikipedia.org/wiki/A'), '/api/wikipedia?url=https%3A%2F%2Fja.wikipedia.org%2Fwiki%2FA');
   assert.equal(frameOf('https://www.jiji.com/jc/a'), '/api/retro?url=https%3A%2F%2Fwww.jiji.com%2Fjc%2Fa');
   assert.equal(frameOf('http://www.jiji.com/'), 'http://www.jiji.com/');

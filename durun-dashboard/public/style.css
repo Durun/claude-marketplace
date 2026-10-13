@@ -638,15 +638,6 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .ie-address { display: flex; flex: 1; align-items: center; gap: 4px; color: #555; }
 .ie-address > input { flex: 1; min-width: 0; padding: 2px 3px; border: 1px solid #7f9db9; border-radius: 0; background: #fff; color: #000; font: inherit; }
 .ie-page { flex: 1; min-height: 0; border: 0; background: #fff; }
-.ie-home { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #fff; }
-.ie-home-logo { margin: 0; font: bold 72px "Book Antiqua", Georgia, "Times New Roman", serif; letter-spacing: -3px; text-shadow: 3px 3px 2px #bbb; }
-/* 当時のロゴの文字ごとの色。 */
-.ie-home-logo > span:nth-child(1), .ie-home-logo > span:nth-child(4) { color: #1851ce; }
-.ie-home-logo > span:nth-child(2), .ie-home-logo > span:nth-child(6) { color: #c41200; }
-.ie-home-logo > span:nth-child(3) { color: #f3c518; }
-.ie-home-logo > span:nth-child(5) { color: #30a72f; }
-.ie-home-q { padding: 2px 3px; border: 1px solid #7f9db9; border-radius: 0; background: #fff; color: #000; font: 16px arial, sans-serif; }
-.ie-home-go { padding: 2px 8px; border: 1px solid #7a7a7a; border-radius: 3px; background: linear-gradient(#fff, #e3e3db); color: #000; font: 13px arial, sans-serif; }
 /* エクスプローラーのファイルをドラッグして上に来ている間の、資料のウィジェット。 */
 .widget-body.is-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .wallpaper { padding: 12px; overflow: auto; }

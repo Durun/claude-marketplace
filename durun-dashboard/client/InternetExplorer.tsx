@@ -1,7 +1,7 @@
 // Web のサイトをウィンドウの中の iframe で開く「Internet Explorer」。メモ帳と同じく、スキンによらず Windows XP の見た目で描く。
 // 編集中に設定で URL を決めると、そのサイトのショートカットになり、サイトの favicon に矢印を重ねて描く。
 import { useState } from 'preact/hooks';
-import { frameOf } from '../shared/retro.ts';
+import { GOOGLE, frameOf } from '../shared/retro.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -12,8 +12,8 @@ export const IE_TITLE = 'Internet Explorer';
 export const IE_ICON = '/ie.svg';
 const SIZE = { w: 960, h: 640 };
 
-/** url を開いたウィンドウを出す。url が無ければ、Bing で検索するホームを開く。 */
-export const openInternetExplorer = (url = ''): void => floatUp(IE_KEY, '', { id: `${IE_KEY}:${Date.now()}`, settings: { url } }, SIZE);
+/** url を開いたウィンドウを出す。url が無ければ、Google を開く。 */
+export const openInternetExplorer = (url = GOOGLE): void => floatUp(IE_KEY, '', { id: `${IE_KEY}:${Date.now()}`, settings: { url } }, SIZE);
 
 /** 入力を http(s) の URL に限る。javascript: などを開かせない。 */
 const siteOf = (input: string): URL | undefined => {
@@ -21,12 +21,12 @@ const siteOf = (input: string): URL | undefined => {
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
 };
 
-/** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Bing で検索する。 */
+/** アドレスバーの入力を開く URL にする。スキームを省いたドメインは https で開き、それ以外は Google で検索する。 */
 const addressOf = (input: string): string => {
   const text = input.trim();
   if (siteOf(text)) return text;
   if (/^[^\s/]+\.[^\s/]{2,}(\/\S*)?$/.test(text)) return `https://${text}`;
-  return `https://www.bing.com/search?${new URLSearchParams({ q: text })}`;
+  return `${GOOGLE}search?${new URLSearchParams({ q: text })}`;
 };
 
 export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<object>) => {
@@ -51,26 +51,8 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
   );
 };
 
-/** Bing のトップページは X-Frame-Options で埋め込みを断るので、ホームは手元で 2004 年ごろの Google の見た目で描き、Bing の検索結果のページから開く。 */
-const Home = ({ onGo }: { onGo: (url: string) => void }) => {
-  const [q, setQ] = useState('');
-  const submit = (e: Event) => {
-    e.preventDefault();
-    if (q.trim()) onGo(addressOf(q));
-  };
-  return (
-    <form class="ie-home" onSubmit={submit}>
-      <h1 class="ie-home-logo">
-        {[...'Google'].map((c) => <span>{c}</span>)}
-      </h1>
-      <input class="ie-home-q" aria-label="検索" size={55} value={q} onInput={(e) => setQ(e.currentTarget.value)} autofocus />
-      <button class="ie-home-go">Google 検索</button>
-    </form>
-  );
-};
-
 export const InternetExplorerFloat = ({ f }: { f: Float }) => {
-  const url = f.tab.settings?.url ?? '';
+  const url = f.tab.settings?.url || GOOGLE;
   const [address, setAddress] = useState(url);
   // 同じ URL を開き直すときも iframe を作り直して読み込ませる。
   const [reloads, setReloads] = useState(0);
@@ -83,28 +65,24 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
     e.preventDefault();
     if (address.trim()) go(addressOf(address));
   };
-  const title = url ? (siteOf(url)?.hostname ?? url) : 'Google';
+  const title = siteOf(url)?.hostname ?? url;
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (
     <FloatFrame f={f} title={`${title} - ${IE_TITLE}`} icon={IE_ICON} controls={[close]}>
       <div class="ie">
         <form class="ie-bar" onSubmit={submit}>
-          <button type="button" class="ie-btn" onClick={() => go('')}>ホーム</button>
-          <button type="button" class="ie-btn" disabled={!url} onClick={() => setReloads((n) => n + 1)}>更新</button>
+          <button type="button" class="ie-btn" onClick={() => go(GOOGLE)}>ホーム</button>
+          <button type="button" class="ie-btn" onClick={() => setReloads((n) => n + 1)}>更新</button>
           <label class="ie-address">
             アドレス(D)
             <input value={address} spellcheck={false} onInput={(e) => setAddress(e.currentTarget.value)} onFocus={(e) => e.currentTarget.select()} />
           </label>
           <button class="ie-btn">移動</button>
           {/* 埋め込みを断るサイトは iframe に出せないので、ブラウザの別のタブで開けるようにする。 */}
-          <button type="button" class="ie-btn" disabled={!url} onClick={() => window.open(url, '_blank', 'noopener')}>別のタブで開く</button>
+          <button type="button" class="ie-btn" onClick={() => window.open(url, '_blank', 'noopener')}>別のタブで開く</button>
         </form>
-        {url ? (
-          // sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。
-          <iframe key={reloads} class="ie-page" title={title} src={frameOf(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
-        ) : (
-          <Home onGo={go} />
-        )}
+        {/* sandbox で、開いたサイトがダッシュボードの画面ごと移動させるのを止める。 */}
+        <iframe key={reloads} class="ie-page" title={title} src={frameOf(url)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" />
       </div>
     </FloatFrame>
   );
