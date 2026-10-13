@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { BgTask, ChatEntry, RateLimit, RateLimits, TaskItem, TokenTotals } from '../shared/types.ts';
+import type { Artifact, BgTask, ChatEntry, RateLimit, RateLimits, TaskItem, TokenTotals } from '../shared/types.ts';
 import { DATA_DIR } from './store.ts';
 
 export const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
@@ -117,6 +117,8 @@ export type LogSummary = {
   bgTasks: Map<string, BgTaskLog>;
   /** 結果が届くまでの、バックグラウンドのツール呼び出し。キーは tool_use の id。 */
   pendingBg: Map<string, Pick<BgTaskLog, 'kind' | 'description' | 'command' | 'startedAt'>>;
+  /** claude.ai に公開した artifact。キーは URL で、同じ URL に公開し直したら新しいほうを残す。 */
+  artifacts: Map<string, Artifact>;
 };
 
 export type BgTaskLog = {
@@ -154,6 +156,10 @@ type LogEntry = {
   attachment?: SkillListing & { prompt?: string };
   /** shell は backgroundTaskId、Monitor は taskId に、動かしたタスクの id を持つ。 */
   toolUseResult?: { backgroundTaskId?: string; taskId?: string };
+  /** frame-link エントリが持つ、公開した artifact の URL と題名と元のファイル。 */
+  frameUrl?: string;
+  title?: string;
+  path?: string;
 };
 
 /** content は 1 行に 1 つの「- 名前: 説明」。説明が複数行にわたることもある。 */
@@ -170,6 +176,7 @@ const emptySummary = (): LogSummary => ({
   skills: new Map(),
   bgTasks: new Map(),
   pendingBg: new Map(),
+  artifacts: new Map(),
 });
 
 // 同じ API 応答はブロックごとに連続したエントリとして書かれ、同じ usage を持つ。直前と同じ id なら差し替えて二重計上を避ける。
@@ -339,6 +346,7 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   if (e.type === 'ai-title') s.title = e.aiTitle;
   else if (e.type === 'last-prompt' && e.lastPrompt) s.lastPrompt = e.lastPrompt;
   else if (e.type === 'cost-state') s.costUsd = e.totalCostUSD;
+  else if (e.type === 'frame-link' && e.frameUrl) s.artifacts.set(e.frameUrl, { url: e.frameUrl, title: e.title ?? '', path: e.path });
   else if (e.type === 'attachment' && e.attachment?.type === 'skill_listing') applySkills(s, e.attachment);
   else if (e.type === 'attachment' && e.attachment?.type === 'queued_command') applyNotifications(s, e.attachment.prompt ?? '');
   if (e.type !== 'user' && e.type !== 'assistant') return;

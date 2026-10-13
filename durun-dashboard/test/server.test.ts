@@ -23,6 +23,13 @@ test('summarizeLog は、会話ログに載った skills の一覧を、後か�
   ]);
 });
 
+test('summarizeLog は、claude.ai に公開した artifact の題名と元のファイルを URL ごとに集め、公開し直したら新しいほうを残す', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-artifacts-')), 'log.jsonl');
+  const link = (title: string, p: string): string => JSON.stringify({ type: 'frame-link', frameUrl: 'https://claude.ai/artifact/abc', title, path: p });
+  fs.writeFileSync(file, `${link('旧題', '/tmp/a.html')}\n${link('新題', '/tmp/b.html')}\n`);
+  assert.deepEqual([...summarizeLog(file).artifacts.values()], [{ url: 'https://claude.ai/artifact/abc', title: '新題', path: '/tmp/b.html' }]);
+});
+
 test('summarizeLog は、バックグラウンドの shell と Monitor を、ツールの結果でタスクの id と結びつけ、終わった通知で状態を更新する', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bg-')), 'log.jsonl');
   const call = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });

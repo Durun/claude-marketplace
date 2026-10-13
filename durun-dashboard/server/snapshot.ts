@@ -176,6 +176,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     docOrder: meta.docOrder ?? [],
     hiddenDocs: meta.hiddenDocs ?? [],
     docTitles: meta.docTitles ?? {},
+    artifacts: [...(log?.artifacts.values() ?? [])],
     pendingMessages: state.outbox.filter((m) => m.sessionId === meta.id && !m.deliveredAt).length,
     awaitingReview: !!review,
     reviewRange: review?.range,

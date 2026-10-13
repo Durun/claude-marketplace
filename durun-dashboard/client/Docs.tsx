@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
+import { type Artifact, type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
@@ -152,7 +152,21 @@ const AddLink = ({ s, onClose }: { s: Session; onClose: () => void }) => {
   );
 };
 
-const linkDoc = (l: MergedLink): SideDoc => ({ key: l.url, keys: l.urls, title: l.title, href: l.url, sub: l.host, icon: faviconSrc(l.url), at: l.at, external: true });
+/** 元のファイルが分かる artifact は、claude.ai の画面を埋め込めないので、元のファイルをウィンドウに浮かべる。 */
+const linkDoc = (id: string, l: MergedLink, artifact?: Artifact): SideDoc => {
+  const doc = { key: l.url, keys: l.urls, title: l.title, href: l.url, sub: l.host, icon: faviconSrc(l.url), at: l.at, external: true };
+  const path = artifact?.path;
+  if (!path) return doc;
+  return {
+    ...doc,
+    external: false,
+    onClick: (e) => {
+      if (!plainClick(e)) return;
+      e.preventDefault();
+      openFileFloat(id, path);
+    },
+  };
+};
 
 /**
  * 並べ替えた後に出た資料は、並べ替えたものより前に新しい順で置く。
@@ -313,7 +327,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * セッション概要の資料のウィジェット。present で出したものと、人間と Claude の発言に出たリンクと Markdown ファイルと、人間が「追加」で足したリンクを並べる。
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
  * 人間が付け直した題名は、まとめたリンクのどれかに付いていればその行に出す。
- * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。
+ * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。claude.ai の artifact へのリンクには、公開したときの題名を付ける。
  * エクスプローラーからファイルをドラッグして落とすと、そのファイルを足す。
  */
 export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries: ChatEntry[]; notion: boolean }) => {
@@ -334,11 +348,14 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
   };
   const shown = [...links.filter((l) => !saved.has(l.url)), ...added].filter((l) => !hidden.has(l.url));
   const notionTitles = useNotionTitles(shown.map((l) => l.url), notion);
+  // 前に開いていたときのデータには、artifact が無いことがある。
+  const artifacts = new Map((s.artifacts ?? []).map((a) => [a.url, a]));
+  const titles = new Map([...notionTitles, ...[...artifacts].flatMap(([url, a]): [string, string][] => (a.title ? [[url, a.title]] : []))]);
   const { items, dragging, dragOf, list } = useDocOrder(s, [
     ...docs
       .filter((d) => !hidden.has(d.id))
       .map((d) => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d) })),
-    ...mergeLinks(withTitles(shown, notionTitles)).map(linkDoc),
+    ...mergeLinks(withTitles(shown, titles)).map((l) => linkDoc(s.id, l, artifacts.get(l.url))),
     ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref)).map((f) => fileDoc(s.id, f)),
     ...savedFiles.map((f) => savedFileDoc(s.id, f)),
   ].map(renamed));

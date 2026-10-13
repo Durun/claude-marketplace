@@ -178,6 +178,8 @@ export type Session = {
   hiddenDocs: string[];
   /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ。 */
   docTitles: Record<string, string>;
+  /** このセッションが claude.ai に公開した artifact。 */
+  artifacts: Artifact[];
   /** 未配信の人間から Claude へのメッセージ数 */
   pendingMessages: number;
   /** request_review で Claude がレビューを待っている */
@@ -352,6 +354,9 @@ export type ExplorerDir = { path: string; parent?: string; home: string; roots: 
 
 /** 人間が資料に足したファイル。path は絶対パス。 */
 export type SavedFile = { path: string; at: number };
+
+/** Claude が claude.ai に公開した artifact。path は公開した元のファイルで、claude.ai の画面は埋め込めないので、中身はこのファイルから読む。 */
+export type Artifact = { url: string; title: string; path?: string };
 
 /** チャットのファイルパスの開き先。repo はコードの画面、local はウィンドウに浮かべる。 */
 export type FileWhere = 'repo' | 'local';
