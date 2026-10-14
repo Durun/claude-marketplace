@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,4 +111,29 @@ test('名前の無いセッションには、Claude の最初の応答が終わ�
   await new Promise<void>((resolve) => onChange(() => meta.title && resolve()));
   assert.equal(meta.title, 'ログインの修正');
   assert.equal(named.title, '手で付けた名前');
+});
+
+test('EnterWorktree は、ほかのセッションがいない worktree なら許可し、いるか入ると決めたばかりなら断り、入る先を決められなければ Claude Code に任せる', (t) => {
+  // git が返す場所と比べるので、macOS で /var を指す /private/var の別名を解いておく。
+  const repo = path.join(fs.realpathSync(tmp), 'repo');
+  execFileSync('git', ['init', '-q', repo]);
+  const sub = path.join(repo, 'apps');
+  fs.mkdirSync(sub);
+  const sessionsDir = path.join(tmp, 'claude', 'sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const live = { 'wt-a': path.join(repo, '.worktrees', 'a', 'src'), 'wt-b': repo, 'wt-c': repo };
+  for (const [id, cwd] of Object.entries(live)) fs.writeFileSync(path.join(sessionsDir, `${id}.json`), JSON.stringify({ pid: process.pid, sessionId: id, cwd, status: 'busy' }));
+  t.after(() => Object.keys(live).forEach((id) => fs.rmSync(path.join(sessionsDir, `${id}.json`))));
+  const enter = (id: string, cwd: string, toolInput: object) =>
+    handleHook({ session_id: id, cwd, hook_event_name: 'PreToolUse', tool_name: 'EnterWorktree', tool_input: toolInput }, 0)?.hookSpecificOutput;
+
+  assert.equal(enter('wt-b', repo, { path: '.worktrees/a' })?.permissionDecision, 'deny');
+  assert.match(enter('wt-b', repo, { name: 'a' })?.permissionDecisionReason ?? '', /別のセッション「wt-a」/);
+  // name の場所は、リポジトリの中のどこから入っても、元の作業ツリーの下に決まる。
+  assert.equal(enter('wt-b', sub, { name: 'b' })?.permissionDecision, 'allow');
+  // 許可した先は、セッションの cwd が移る前でも、ほかのセッションを入れない。許可されたセッション自身は入り直せる。
+  assert.equal(enter('wt-c', repo, { path: path.join(repo, '.claude', 'worktrees', 'b') })?.permissionDecision, 'deny');
+  assert.equal(enter('wt-b', repo, { name: 'b' })?.permissionDecision, 'allow');
+  assert.equal(enter('wt-c', repo, {})?.permissionDecision, 'allow');
+  assert.equal(enter('wt-c', tmp, { name: 'x' }), undefined);
 });

@@ -1,6 +1,9 @@
-// Claude Code のフックを受ける。要対応を記録し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切る。
-import { ASK_TOOL, questionDialog, readCustomTitle, summarizeLog, toQuestions } from './claude.ts';
+// Claude Code のフックを受ける。要対応を記録し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決める。
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests } from './deliver.ts';
+import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
 import { conversationOf } from './snapshot.ts';
@@ -18,8 +21,11 @@ export type HookInput = {
   notification_type?: string;
   message?: string;
   tool_name?: string;
-  tool_input?: { command?: unknown; questions?: unknown };
+  tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown };
 };
+
+/** フックへの応答。PreToolUse で、ツールを使ってよいかを Claude Code に返す。 */
+export type HookOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'allow' | 'deny'; permissionDecisionReason: string } };
 
 /**
  * 人間の操作を待って Claude が止まっている通知。idle_prompt は入力待ちの一覧（reply）で扱う。
@@ -141,7 +147,73 @@ const nameUntitled = (meta: SessionMeta, input: HookInput, responded: boolean): 
   );
 };
 
-export const handleHook = (input: HookInput, pid: number): void => {
+const ENTER_WORKTREE = 'EnterWorktree';
+// worktree を作る場所。.claude/worktrees は Claude Code の既定で、.worktrees は WorktreeCreate のフックで作ることの多い場所。
+const WORKTREE_DIRS = [path.join('.claude', 'worktrees'), '.worktrees'];
+// 許可してから、入った先がセッションファイルの cwd に出るまで待つ時間。WorktreeCreate のフックが依存を入れると数分かかる。
+const ENTERING_MS = 5 * 60 * 1000;
+/** EnterWorktree を許したセッションごとの、入る先の候補と許した時刻。cwd が移る前に、ほかのセッションが同じ先へ入るのを断るために持つ。 */
+const entering = new Map<string, { targets: string[]; at: number }>();
+
+/** cwd を含むリポジトリの元の作業ツリー。worktree の中からでも元の場所を返す。git の外なら undefined。 */
+const repoRoot = (cwd: string): string | undefined => {
+  try {
+    return path.dirname(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * EnterWorktree で入る先の候補。path はその場所で、name は Claude Code が作るか、同じ名前があれば入り直す場所。
+ * どちらも無ければ新しい名前で作るので、候補は無い。git の外で name を渡されたときは、場所を決められないので undefined。
+ */
+const enterTargets = (cwd: string, input: HookInput['tool_input']): string[] | undefined => {
+  if (typeof input?.path === 'string') return [path.resolve(cwd, input.path)];
+  const name = input?.name;
+  if (typeof name !== 'string') return [];
+  const root = repoRoot(cwd);
+  return root ? WORKTREE_DIRS.map((dir) => path.join(root, dir, name)) : undefined;
+};
+
+const isInside = (p: string, dir: string): boolean => {
+  const rel = path.relative(dir, p);
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+
+/** targets の中にいるか、targets へ入ると決めたばかりの、ほかのセッション。読み取りだけで終わる補助のセッションは数えない。 */
+const occupantOf = (self: string, targets: string[]): LiveSession | undefined => {
+  const now = Date.now();
+  return [...readLiveSessions().values()].find((s) => {
+    if (s.sessionId === self || isHelperSession(s.sessionId)) return false;
+    const claim = entering.get(s.sessionId);
+    const places = [s.cwd, ...(claim && now - claim.at < ENTERING_MS ? claim.targets : [])];
+    return places.some((p) => targets.some((t) => isInside(p, t)));
+  });
+};
+
+const decide = (permissionDecision: 'allow' | 'deny', permissionDecisionReason: string): HookOutput => ({
+  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision, permissionDecisionReason },
+});
+
+/**
+ * EnterWorktree の権限の確認を、ほかのセッションがいない worktree なら許可し、いれば断る。1 つの作業ツリーを複数のセッションが同時に書き換えないようにするため。
+ * 入る先を決められないときは、Claude Code の権限の確認に任せる。
+ */
+const enterWorktree = (sessionId: string, cwd: string, input: HookInput['tool_input']): HookOutput | undefined => {
+  const targets = enterTargets(cwd, input);
+  if (!targets) return undefined;
+  const other = occupantOf(sessionId, targets);
+  if (other) {
+    const name = state.sessions[other.sessionId]?.title ?? other.name ?? other.sessionId;
+    return decide('deny', `別のセッション「${name}」が ${other.cwd} にいるか、入ろうとしています。1 つの worktree に複数のセッションが同時に入らないよう、durun-dashboard が止めました。別の worktree を使うか、人間に相談してください。`);
+  }
+  entering.set(sessionId, { targets, at: Date.now() });
+  return decide('allow', 'ほかのセッションがいない worktree なので、durun-dashboard が許可しました。');
+};
+
+/** EnterWorktree の PreToolUse には、使ってよいかを返す。 */
+export const handleHook = (input: HookInput, pid: number): HookOutput | undefined => {
   if (!input.session_id || !input.cwd) return;
   if (pid) pidSessions.set(pid, input.session_id);
   const event = input.hook_event_name;
@@ -151,4 +223,5 @@ export const handleHook = (input: HookInput, pid: number): void => {
   const responded = !input.agent_id && event === 'Stop';
   nameUntitled(meta, input, responded);
   if (responded) nextImprovement(input.session_id, input.last_assistant_message);
+  if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
 };

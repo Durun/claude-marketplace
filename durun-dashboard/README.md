@@ -63,6 +63,7 @@ tailnet の端末から、`http://<端末の名前>:7337`、`http://<端末の�
 | 改善要望（右下のボタン） | ダッシュボードへの要望を書く。Windows XP 風では、ボタンをタスクバーの通知領域に置く。画面の要素をクリックして添えられる。送ると、そのときの URL、表示中のデータ、ウィンドウの大きさ、サーバーが動いている OS と一緒に `~/.durun-dashboard/feedback/` へ保存する |
 
 要対応の受信箱には、Claude からの質問（ask_human と、Claude Code の AskUserQuestion）とレビュー依頼、権限の確認、入力待ちになったセッションの最後の発言、CI の失敗と変更要求、未読の資料が集まる。
+worktree に入る（EnterWorktree）ときの権限の確認は、ほかのセッションがいない worktree ならダッシュボードが許可し、受信箱には出さない。別のセッションがいる worktree と、別のセッションが入ると決めてから 5 分以内の worktree には入らせず、どのセッションがいるかを Claude に返す。名前で入る先は、リポジトリの `.claude/worktrees/` と `.worktrees/` の下の同じ名前とみなす。git の外で名前を渡したときのように入る先を決められないときと、ダッシュボードが止まっているときは、今までどおり Claude Code が権限を確認する。
 AskUserQuestion の質問には、バックグラウンドのセッションならその場で回答でき、セッションを止めてから再開して回答を渡す。端末のセッションでは、Claude Code の画面で答える。
 受信箱と作業中と入力待ちの一覧では、長い発言を行の区切りで切って先頭だけを出し、「もっと読む」で全体を出す。
 ブラウザの通知を許可すると、新しい要対応が届いたときに通知する。
@@ -115,7 +116,7 @@ Claude へのメッセージを届けられなかったときは、どの画面�
 
 プラグイン durun-dashboard が登録するもの。
 
-- フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
+- フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion と EnterWorktree だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
 - MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`。新しく起動したセッションから使える。
 
 `pnpm install-statusline` が登録するもの（任意）。

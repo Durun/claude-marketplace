@@ -24,7 +24,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "AskUserQuestion",
+        "matcher": "AskUserQuestion|EnterWorktree",
         "hooks": [
           {
             "type": "command",
