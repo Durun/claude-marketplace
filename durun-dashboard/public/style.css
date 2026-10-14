@@ -953,12 +953,12 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 }
 .ctx-flyout:popover-open { display: grid; gap: 6px; }
 .is-attaching :is([data-attach], a[href^="http"]) { outline: 1px dashed var(--accent); outline-offset: 1px; cursor: copy; }
-.skill-menu { position: fixed; position-anchor: --composer; top: calc(anchor(bottom) + 2px); left: anchor(left); width: anchor-size(width); position-try-fallbacks: flip-block; z-index: 10; max-height: 260px; margin: 0; padding: 4px; overflow: auto; list-style: none; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
-.skill-option { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
-.skill-option:hover { background: var(--surface-2); }
-.skill-option[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.skill-name { flex: none; font: 12.5px var(--mono); }
-.skill-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.completion-menu { position: fixed; position-anchor: --composer; top: calc(anchor(bottom) + 2px); left: anchor(left); width: anchor-size(width); position-try-fallbacks: flip-block; z-index: 10; max-height: 260px; margin: 0; padding: 4px; overflow: auto; list-style: none; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.completion-option { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.completion-option:hover { background: var(--surface-2); }
+.completion-option[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.completion-label { flex: none; font: 12.5px var(--mono); }
+.completion-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .outbox { display: grid; gap: 8px; }
 .outbox-item { position: relative; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
 .outbox-item:has(.outbox-jump:hover) { border-color: var(--accent); }

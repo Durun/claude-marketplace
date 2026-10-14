@@ -116,7 +116,7 @@ const NewSession = ({ cwds, themes, onClose }: { cwds: string[]; themes: string[
           {themes.map((t) => <option key={t} value={t} />)}
         </datalist>
       </label>
-      <MessageInput value={prompt} setValue={setPrompt} placeholder="最初の依頼（Cmd/Ctrl + Enter で起動）" onSubmit={start} inputRef={ask} />
+      <MessageInput cwd={cwd.trim()} value={prompt} setValue={setPrompt} placeholder="最初の依頼（# で PR と Issue を補完、Cmd/Ctrl + Enter で起動）" onSubmit={start} inputRef={ask} />
       <div class="actions">
         <Choice label="モデル" value={model} options={MODELS} onChange={setModel} />
         <Choice label="effort" value={effort} options={EFFORT_LEVELS} onChange={setEffort} />

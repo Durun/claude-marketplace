@@ -1,11 +1,12 @@
 import type { RefObject } from 'preact';
 import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus, type SkillInfo } from '../shared/types.ts';
+import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { insertAt, useAttachMode } from './attach.ts';
+import { type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { dateTime } from './format.ts';
-import { useFetch } from './hooks.ts';
+import { useCached, useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
 import { href, currentSessionId } from './router.ts';
@@ -45,78 +46,77 @@ const ReplySuggestions = ({ s, onPick }: { s: Session; onPick: (reply: string, r
   );
 };
 
-// 行の頭か空白の後の / から、カーソルまでの語。パスの途中の / では補完しない。
-const SLASH_WORD = /(?:^|\s)\/(\S*)$/;
 const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
+const COMPLETION_ID = 'completion-menu';
 
-type SkillMenuState = { items: SkillInfo[]; active: number };
+type CompletionMenuState = { items: Candidate[]; active: number };
 
-/** 名前の頭か、プラグイン名の後ろの頭に合うものを先に並べる。 */
-const matchSkills = (skills: SkillInfo[], word: string): SkillInfo[] => {
-  const q = word.toLowerCase();
-  const hits = skills.filter((sk) => sk.name.toLowerCase().includes(q));
-  const head = (sk: SkillInfo): boolean => sk.name.toLowerCase().startsWith(q) || sk.name.toLowerCase().includes(`:${q}`);
-  return [...hits.filter(head), ...hits.filter((sk) => !head(sk))];
-};
-
-/** / から始まる語を打つと、Claude Code がこのセッションに見せた skills を候補に出す。まだセッションが無ければ候補は出さない。 */
-const useSkillMenu = (sessionId: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+/**
+ * / か # から始まる語を打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、まだセッションが無ければ出さない。
+ * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。
+ */
+const useCompletion = (sessionId: string | undefined, cwd: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+  const [typed, setTyped] = useState<Typed>();
+  const [active, setActive] = useState(0);
   const { data: skills = [] } = useFetch(() => (sessionId ? api.skills(sessionId) : Promise.resolve([])), [sessionId]);
-  const [menu, setMenu] = useState<SkillMenuState>();
+  const wantsRefs = typed?.mark === '#' && !!(sessionId || cwd);
+  const { data: refs = [] } = useCached((fresh) => (wantsRefs ? api.repoRefs({ sessionId, cwd }, fresh) : Promise.resolve([])), [sessionId, cwd, wantsRefs]);
+  const items = typed ? candidates(typed, skills, refs) : [];
+  const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {
     const el = input.current;
-    const word = el ? SLASH_WORD.exec(el.value.slice(0, el.selectionStart))?.[1] : undefined;
-    const items = word === undefined ? [] : matchSkills(skills, word);
-    setMenu(items.length ? { items, active: 0 } : undefined);
+    setTyped(el ? typedAt(el.value.slice(0, el.selectionStart)) : undefined);
+    setActive(0);
   };
-  // 打ちかけの語を選んだ名前に置き換え、続けて書けるよう空白を足す。
-  const accept = (skill: SkillInfo) => {
+  const close = () => setTyped(undefined);
+  // 打ちかけの語を選んだ候補に置き換え、続けて書けるよう空白を足す。
+  const accept = (picked: Candidate) => {
     const el = input.current;
     if (!el) return;
-    const head = el.value.slice(0, el.selectionStart).replace(/\/\S*$/, `/${skill.name} `);
+    const head = el.value.slice(0, el.selectionStart).replace(/[/#]\S*$/, `${picked.label} `);
     const next = head + el.value.slice(el.selectionEnd);
     el.value = next;
     el.setSelectionRange(head.length, head.length);
     setText(next);
-    setMenu(undefined);
+    close();
   };
   /** 候補を出している間は、上下で選び、Enter か Tab で入れ、Esc で閉じる。扱ったキーなら true を返す。 */
   const onKeyDown = (e: KeyboardEvent): boolean => {
     if (!menu || e.isComposing || e.metaKey || e.ctrlKey) return false;
     const n = menu.items.length;
     const picked = menu.items[menu.active];
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') setMenu({ ...menu, active: (menu.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n });
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') setActive((menu.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
     else if ((e.key === 'Enter' || e.key === 'Tab') && picked) accept(picked);
-    else if (e.key === 'Escape') setMenu(undefined);
+    else if (e.key === 'Escape') close();
     else return false;
     e.preventDefault();
     return true;
   };
   const onKeyUp = (e: KeyboardEvent) => CARET_KEYS.has(e.key) && update();
-  return { menu, update, accept, onKeyDown, onKeyUp, close: () => setMenu(undefined) };
+  return { menu, update, accept, onKeyDown, onKeyUp, close };
 };
 
-const SkillMenu = ({ menu, onPick }: { menu: SkillMenuState; onPick: (skill: SkillInfo) => void }) => {
+const CompletionMenu = ({ menu, onPick }: { menu: CompletionMenuState; onPick: (picked: Candidate) => void }) => {
   const list = useRef<HTMLUListElement>(null);
   useLayoutEffect(() => list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }), [menu.active]);
   return (
-    <ul id="skill-menu" class="skill-menu" role="listbox" aria-label="skills の候補" ref={list}>
-      {menu.items.map((sk, i) => (
+    <ul id={COMPLETION_ID} class="completion-menu" role="listbox" aria-label="入力の候補" ref={list}>
+      {menu.items.map((c, i) => (
         // 押下でフォーカスが入力欄から外れると候補が閉じるので、押下の時点で入れる。
         <li
-          key={sk.name}
-          id={`skill-${i}`}
-          class="skill-option"
+          key={c.label}
+          id={`completion-${i}`}
+          class="completion-option"
           role="option"
           aria-selected={i === menu.active}
-          title={sk.description}
+          title={c.desc}
           onMouseDown={(e) => {
             e.preventDefault();
-            onPick(sk);
+            onPick(c);
           }}
         >
-          <span class="skill-name">/{sk.name}</span>
-          <span class="skill-desc">{sk.description}</span>
+          <span class="completion-label">{c.label}</span>
+          <span class="completion-desc">{c.desc}</span>
         </li>
       ))}
     </ul>
@@ -125,6 +125,8 @@ const SkillMenu = ({ menu, onPick }: { menu: SkillMenuState; onPick: (skill: Ski
 
 type MessageInputProps = {
   sessionId?: string;
+  /** セッションが無いときに、# で PR と Issue を探すリポジトリのディレクトリ。 */
+  cwd?: string;
   value: string;
   setValue: (value: string) => void;
   placeholder: string;
@@ -132,11 +134,11 @@ type MessageInputProps = {
   inputRef?: RefObject<HTMLTextAreaElement>;
 };
 
-/** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills の補完と「なんでも添付」を持つ。 */
-export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
+/** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills と PR・Issue の補完と「なんでも添付」を持つ。 */
+export const MessageInput = ({ sessionId, cwd, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
   const own = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? own;
-  const skills = useSkillMenu(sessionId, input, setValue);
+  const completion = useCompletion(sessionId, cwd, input, setValue);
   // 入力欄の外をクリックしてもカーソル位置は残るので、そこへ入れる。
   const attach = useAttachMode((piece) => {
     const el = input.current;
@@ -154,17 +156,17 @@ export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit
         rows={3}
         placeholder={placeholder}
         aria-autocomplete="list"
-        aria-controls={skills.menu ? 'skill-menu' : undefined}
-        aria-activedescendant={skills.menu ? `skill-${skills.menu.active}` : undefined}
+        aria-controls={completion.menu ? COMPLETION_ID : undefined}
+        aria-activedescendant={completion.menu ? `completion-${completion.menu.active}` : undefined}
         value={value}
         onInput={(e) => {
           setValue(e.currentTarget.value);
-          skills.update();
+          completion.update();
         }}
-        onKeyDown={(e) => skills.onKeyDown(e) || onSubmitKey(e, onSubmit)}
-        onKeyUp={skills.onKeyUp}
-        onClick={skills.update}
-        onBlur={skills.close}
+        onKeyDown={(e) => completion.onKeyDown(e) || onSubmitKey(e, onSubmit)}
+        onKeyUp={completion.onKeyUp}
+        onClick={completion.update}
+        onBlur={completion.close}
       />
       <button
         type="button"
@@ -176,7 +178,7 @@ export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit
       >
         +
       </button>
-      {skills.menu && <SkillMenu menu={skills.menu} onPick={skills.accept} />}
+      {completion.menu && <CompletionMenu menu={completion.menu} onPick={completion.accept} />}
     </div>
   );
 };
@@ -308,7 +310,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   return (
     <>
       <ReplySuggestions s={s} onPick={pick} />
-      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
+      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills、# で PR と Issue を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
         <span class="send-split">
           <button class="btn btn-primary" disabled={busy || !text.trim()} title={mode === 'queue' ? QUEUE_HELP : choice.changed ? SWITCH_HELP : undefined} onClick={send}>

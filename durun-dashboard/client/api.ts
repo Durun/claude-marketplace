@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -66,6 +66,8 @@ export const api = {
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),
   skills: (id: string) => getJson<SkillInfo[]>(`${session(id)}/skills`),
+  /** # の補完に出す PR と Issue。セッションが無ければ、cwd のリポジトリから探す。 */
+  repoRefs: (target: { sessionId?: string; cwd?: string }, fresh?: boolean) => postJson<RepoRef[]>('/api/github/refs', { ...target, fresh }),
   // fresh は、人間が「更新」を押したときに付け、サーバーに覚えた値を使わず読み直させる。
   jiraIssue: (key: string, fresh?: boolean) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}?${query({ fresh: flag(fresh) })}`),
   notionPage: (id: string, fresh?: boolean) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}?${query({ fresh: flag(fresh) })}`),

@@ -27,7 +27,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -372,6 +372,13 @@ const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
 const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
 
 const threadsOf = (pr: PrInfo, fresh = false): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr, fresh));
+
+/** # の補完に出す PR と Issue。セッションの欄ではセッションの、新規セッションの欄では入力したディレクトリのリポジトリから探す。 */
+const githubRefs = (body: unknown) => {
+  const { sessionId, fresh } = body as { sessionId?: unknown; fresh?: unknown };
+  const cwd = typeof sessionId === 'string' ? sessionMeta(sessionId).cwd : field<string>(body, 'cwd', 'string');
+  return viaGh('PR と Issue を読めません', () => repoRefs(cwd, fresh === true));
+};
 
 const setViewed = (id: string, body: unknown): Promise<object> => {
   const file = field<string>(body, 'path', 'string');
@@ -907,6 +914,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
+  // 渡されたディレクトリで gh を動かすので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/github\/refs$/, (_, b) => githubRefs(b)],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b)],

@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, type PrInfo, type PrPost, type PrThread, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -139,9 +139,9 @@ const repoOf = (pr: PrInfo): { host: string; owner: string; name: string; number
   return { host, owner, name, number };
 };
 
-/** gh を呼び、標準出力を返す。input は標準入力に渡す本文。gh が失敗したときは、gh が標準エラーに書いた理由で投げる。 */
-const gh = async (args: string[], input?: string): Promise<string> => {
-  const call = run('gh', args, { maxBuffer: MAX_BUFFER });
+/** gh を呼び、標準出力を返す。input は標準入力に渡す本文で、cwd は gh がリポジトリを決めるディレクトリ。gh が失敗したときは、gh が標準エラーに書いた理由で投げる。 */
+const gh = async (args: string[], input?: string, cwd?: string): Promise<string> => {
+  const call = run('gh', args, { maxBuffer: MAX_BUFFER, cwd });
   call.child.stdin?.end(input);
   const { stdout } = await call.catch((e: { stderr?: string; message: string }) => {
     throw new Error(e.stderr?.trim() || e.message);
@@ -149,7 +149,7 @@ const gh = async (args: string[], input?: string): Promise<string> => {
   return stdout;
 };
 
-const ghApi = async <T,>(args: string[], input?: string): Promise<T> => JSON.parse(await gh(['api', ...args], input)) as T;
+const ghApi = async <T,>(args: string[], input?: string, cwd?: string): Promise<T> => JSON.parse(await gh(['api', ...args], input, cwd)) as T;
 
 const DETAIL_FIELDS = `${PR_FIELDS},author,body,headRefName,additions,deletions,files,comments,reviews,updatedAt`;
 
@@ -316,6 +316,49 @@ export const mergeClaudePrCache = (file: string): void => {
   claudePrStatuses = statuses;
   changed();
 };
+
+// # の補完に出す PR と Issue は、題名がめったに変わらないので、間隔を空けて読み直す。
+const REFS_MAX_AGE = 10 * 60_000;
+// # の後に何も打っていないときに出す、自分の PR と Issue の件数。
+const MINE_LIMIT = 30;
+// 打った語で探す、新しい PR と Issue のそれぞれの件数。
+const REFS_LIMIT = 100;
+const REF_FIELDS = 'number title createdAt';
+const REFS_QUERY = `query($owner: String!, $name: String!, $mine: String!) {
+  mine: search(query: $mine, type: ISSUE, first: ${MINE_LIMIT}) { nodes { __typename ... on PullRequest { ${REF_FIELDS} } ... on Issue { ${REF_FIELDS} } } }
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${REF_FIELDS} } }
+    issues(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${REF_FIELDS} } }
+  }
+}`;
+
+type GhRef = { number: number; title: string; createdAt: string };
+type GhRefs = {
+  mine: { nodes: (GhRef & { __typename: 'PullRequest' | 'Issue' })[] };
+  repository: { pullRequests: { nodes: GhRef[] }; issues: { nodes: GhRef[] } };
+};
+
+const toRef = (kind: RepoRef['kind'], n: GhRef, mine: boolean): RepoRef => ({ number: n.number, title: n.title, kind, createdAt: Date.parse(n.createdAt), mine });
+
+/** 新しい順に並べる。自分のものは後に足すので、同じ番号は自分のものとして残る。 */
+const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
+  const refs = [
+    ...repository.pullRequests.nodes.map((n) => toRef('pr', n, false)),
+    ...repository.issues.nodes.map((n) => toRef('issue', n, false)),
+    ...mine.nodes.map((n) => toRef(n.__typename === 'PullRequest' ? 'pr' : 'issue', n, true)),
+  ];
+  return [...new Map(refs.map((r) => [r.number, r])).values()].sort((a, b) => b.createdAt - a.createdAt);
+};
+
+/**
+ * cwd のリポジトリの、自分が作った新しい PR と Issue と、誰かが作った新しい PR と Issue。{owner} と {repo} は、gh が cwd のリポジトリに置き換える。
+ * ponytail: 打った語で探すのは、新しいものから REFS_LIMIT 件ずつだけ。古いものも番号で探したくなったら、GitHub の検索を足す。
+ */
+export const repoRefs = (cwd: string, fresh = false): Promise<RepoRef[]> =>
+  cached(`repo-refs:${cwd}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
+    const args = ['graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', 'mine=repo:{owner}/{repo} author:@me sort:created-desc', '-f', `query=${REFS_QUERY}`];
+    return toRefs((await ghApi<{ data: GhRefs }>(args, undefined, cwd)).data);
+  });
 
 const JIRA_BASE = process.env.JIRA_BASE_URL?.replace(/\/$/, '');
 const JIRA_PROJECTS = (process.env.JIRA_PROJECT_KEYS ?? '').split(',').map((k) => k.trim()).filter(Boolean);
