@@ -182,6 +182,7 @@ export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit
 };
 
 const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
+const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort で起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
 const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
 
 /**
@@ -240,6 +241,18 @@ const MessageForm = ({ s }: { s: Session }) => {
     setText('');
     if (res !== true) toast(DELIVERY_TOAST[res.delivery]);
   };
+  const fork = async () => {
+    if (busy || !text.trim()) return;
+    setBusy(true);
+    const res = await attempt('セッションの分岐', () => api.fork(s.id, text, choice.model, choice.effort));
+    setBusy(false);
+    if (!res) return;
+    setText('');
+    choice.reset();
+    toast('分岐したセッションに届けました');
+    // このセッションの画面を開いていれば、分岐したセッションの画面へ移る。
+    if (currentSessionId() === s.id) location.hash = href.session(res.sessionId);
+  };
   // compact した会話は戻せないので、押し間違いでないかを確かめる。
   const compact = async () => {
     if (!confirm('このセッションの会話を compact しますか?')) return;
@@ -259,6 +272,7 @@ const MessageForm = ({ s }: { s: Session }) => {
       <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
         <button class="btn btn-primary" disabled={busy || !text.trim()} title={choice.changed ? SWITCH_HELP : undefined} onClick={send}>{choice.changed ? '切り替えて送信' : '送信'}</button>
+        <button class="btn" disabled={busy || !text.trim()} title={FORK_HELP} onClick={fork}>分岐</button>
         {choice.fields}
         <ContextPie usage={s.usage} />
         <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={compact}>compact</button>

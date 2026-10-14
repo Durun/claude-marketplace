@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
+const { forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
@@ -293,4 +293,36 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   ensureSession('s10', tmp);
   await assert.rejects(switchSession('s10', '続けて', 'opus'), /変えられません/);
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
+});
+
+test('分岐するときは、元のセッションを止めずに --fork-session を付けて再開し、分岐先にテーマと JIRA の課題を付けて、渡した依頼を記録する', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。分岐は、新しいジョブ j12 を起動したと書く。agents は、作業中の元の j11 と分岐先の j12 を返す。
+  const bin = path.join(tmp, 'bin-fork');
+  const callsFile = path.join(tmp, 'calls-fork');
+  const jobs = [
+    { id: 'j11', sessionId: 's11', kind: 'background', pid: 1 },
+    { id: 'j12', sessionId: 's12', kind: 'background', pid: 1 },
+  ];
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') console.log('backgrounded · j12');`,
+  );
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's11.json'), JSON.stringify({ pid: process.pid, sessionId: 's11', cwd: tmp, status: 'busy', kind: 'bg', jobId: 'j11' }));
+  Object.assign(ensureSession('s11', tmp), { title: '調査', theme: 'テーマ', jira: ['PROJ-1'], pinned: true });
+
+  assert.equal(await forkSession('s11', '別の案で', 'opus', 'high'), 's12');
+  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  assert.deepEqual(calls, [
+    ['--bg', '--resume', 's11', '--fork-session', '--model', 'opus', '--effort', 'high', '--', '別の案で'],
+    ['agents', '--json', '--all'],
+  ]);
+  const fork = state.sessions.s12;
+  assert.deepEqual([fork?.title, fork?.theme, fork?.jira, fork?.pinned], [undefined, 'テーマ', ['PROJ-1'], undefined]);
+  assert.notEqual(fork?.jira, state.sessions.s11?.jira);
+  assert.deepEqual([state.sessions.s11?.archived, state.sessions.s11?.pinned], [false, true]);
+  const sent = state.outbox.find((m) => m.text === '別の案で');
+  assert.equal(sent?.sessionId, 's12');
+  assert.ok(sent?.deliveredAt);
 });

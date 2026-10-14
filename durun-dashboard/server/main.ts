@@ -13,7 +13,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, compactSession, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -761,17 +761,34 @@ const flag = (body: unknown, key: string): boolean | undefined => {
 // 選び直さなかったほうは、画面が今のモデルの正式な名前を送る。
 const MODEL_ID = /^claude-[a-z0-9-]+$/;
 
-/** モデルと effort を変えて依頼を渡す。変えられないのはセッションの状態によるので 409 にする。 */
-const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
+/** 依頼と、起動に渡すモデルと effort。 */
+const launchOf = (body: unknown): { text: string; model: string; effort?: string } => {
   const text = field<string>(body, 'text', 'string');
   if (!text.trim()) throw new HttpError(400, 'text is required');
   const model = field<string>(body, 'model', 'string');
   if (model && !(MODELS as readonly string[]).includes(model) && !MODEL_ID.test(model)) throw new HttpError(400, 'model must be alias or model id');
+  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS) };
+};
+
+/** モデルと effort を変えて依頼を渡す。変えられないのはセッションの状態によるので 409 にする。 */
+const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
+  const { text, model, effort } = launchOf(body);
   const sessionId = sessionMeta(id).id;
   try {
-    return { sessionId: await switchSession(sessionId, text, model, oneOf(body, 'effort', EFFORT_LEVELS)) };
+    return { sessionId: await switchSession(sessionId, text, model, effort) };
   } catch (e) {
     throw new HttpError(409, (e as Error).message);
+  }
+};
+
+/** 会話を引き継いだ別のセッションを起動して依頼を渡し、元のセッションは残す。起動できないのは claude の失敗なので 502 にする。 */
+const fork = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
+  const { text, model, effort } = launchOf(body);
+  const sessionId = sessionMeta(id).id;
+  try {
+    return { sessionId: await forkSession(sessionId, text, model, effort) };
+  } catch (e) {
+    throw new HttpError(502, (e as Error).message);
   }
 };
 
@@ -846,6 +863,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
   [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/fork$/, ([, id = ''], b) => fork(id, b)],
   [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd)],
   [/^\/api\/sessions\/([^/]+)\/review$/, ([, id = ''], b) => review(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b)],

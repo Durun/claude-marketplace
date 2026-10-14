@@ -100,6 +100,9 @@ export const api = {
   /** モデルと effort を変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
   switchModel: (id: string, text: string, model: string, effort: string) =>
     postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, model, effort }),
+  /** 会話を引き継いだ別のセッションを起動して送る。分岐したセッションの id が返る。 */
+  fork: (id: string, text: string, model: string, effort: string) =>
+    postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, model, effort }),
   suggestions: (id: string) => postJson<string[]>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   compact: (id: string) => postJson<void>(`${session(id)}/compact`),

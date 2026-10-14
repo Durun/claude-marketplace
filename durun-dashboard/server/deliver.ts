@@ -54,13 +54,16 @@ const claudeOutput = (args: string[], cwd: string, env = process.env): Promise<s
 
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);
 
+/** 起動に渡すモデルと effort。空なら渡さず、Claude Code の設定に従わせる。 */
+const modelFlags = (model?: string, effort?: string): string[] => [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
+
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
  * model と effort が空なら Claude Code の設定に従う。
  * theme を渡すと、起動したセッションに付ける。
  */
 export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string): Promise<void> => {
-  const output = await claudeOutput(['--bg', ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : []), '--', prompt], cwd);
+  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   if (!theme) return;
   // 起動は済んでいるので、テーマを付けられなくても失敗にしない。
@@ -321,10 +324,9 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   // 届け直すと複製がもう 1 つできるので、巻き戻しと同じく sending を付けない。
   for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: 'resume', error: undefined });
   touch();
-  const flags = [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
   let output: string;
   try {
-    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, flags);
+    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort));
   } catch (e) {
     for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: (e as Error).message });
     touch();
@@ -337,6 +339,23 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになる。
   await removeSession(sessionId).catch((e: Error) => console.error(`${sessionId} を一覧から消せません: ${e.message}`));
   return next;
+};
+
+/**
+ * 会話を引き継いだ別のセッションをバックグラウンドで起動して、依頼を渡す。起動したセッションの id を返す。
+ * 元のセッションは止めずに残すので、作業中のセッションと端末で開いているセッションからも分岐できる。
+ * テーマと、set_task で付けた JIRA の課題は、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
+ */
+export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+  const meta = state.sessions[sessionId];
+  if (!meta) throw new Error(`unknown session: ${sessionId}`);
+  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort), '--', text], meta.cwd);
+  const fork = await backgroundedSession(output);
+  if (!fork) throw new Error('分岐したセッションの id を引けません');
+  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira] });
+  state.outbox.push({ id: newId(), sessionId: fork, text, createdAt: Date.now(), deliveredAt: Date.now(), via: 'resume' });
+  touch();
+  return fork;
 };
 
 const removeAttention = (attentionId: string): void => {
