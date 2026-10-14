@@ -22,6 +22,7 @@ pnpm install-statusline
 画面を開いた直後と読み込み直した直後は、前に開いていたときのデータを先に出し、サーバーから届いたら差し替える。
 PR、JIRA、Notion、GitHub の Inbox と、haiku が作るセッションの概要と返答の候補は、サーバーが `~/.durun-dashboard/cache.json` に覚えておき、サーバーを起動し直した後も、読み終えるのを待たずに出す。
 古くなったものは裏で読み直し、変わったら画面を差し替える。「更新」を押したときは、読み直し終えるのを待つ。
+会話ログは、サーバーを止めるときに読んだところまでの要約を `~/.durun-dashboard/log-summaries.json` に残し、次に起動したときは続きから読む。
 
 `pnpm uninstall-statusline` でラッパーを外す。
 設定を書き換える直前の内容は `~/.claude/settings.json.bak-durun-dashboard` に残る。

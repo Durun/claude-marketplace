@@ -1,4 +1,5 @@
 // Claude Code がローカルに残すファイルを読む。実行中セッション、会話ログ、TaskCreate のタスク、statusline の入力。
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -382,7 +383,41 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   }
 };
 
-const summaries = new Map<string, LogSummary>();
+// 起動し直した直後に会話ログを頭から読み直さないよう、要約を前回の続きとしてファイルに残す。
+const SUMMARIES_FILE = path.join(DATA_DIR, 'log-summaries.json');
+// 要約の作り方が変わったら残した要約を使わないよう、このファイルの中身のハッシュを添える。
+const CODE = createHash('sha1').update(fs.readFileSync(import.meta.filename)).digest('base64url');
+// これより前に動きの無かった会話ログは一覧に出ず、読み直すことがまれなので、要約を残さない。
+const KEEP_SUMMARY_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** JSON に Map と Set を書けるよう、印を付けた配列にする。 */
+const tagged = (_: string, v: unknown): unknown => (v instanceof Map ? { $map: [...v] } : v instanceof Set ? { $set: [...v] } : v);
+const untagged = (_: string, v: unknown): unknown => {
+  const t = v as { $map?: [unknown, unknown][]; $set?: unknown[] } | null;
+  return t?.$map ? new Map(t.$map) : t?.$set ? new Set(t.$set) : v;
+};
+
+const loadSummaries = (): Map<string, LogSummary> => {
+  try {
+    const saved = JSON.parse(fs.readFileSync(SUMMARIES_FILE, 'utf8'), untagged) as { code?: string; logs?: Record<string, LogSummary> };
+    return new Map(saved.code === CODE ? Object.entries(saved.logs ?? {}) : []);
+  } catch {
+    // 無いか壊れていれば、会話ログを頭から読む。
+    return new Map();
+  }
+};
+
+const summaries = loadSummaries();
+
+/** サーバーを止めるときに、会話ログの要約を書き出す。読みかけの例外で止まるときは、要約が途中の状態かもしれないので呼ばない。 */
+export const saveLogSummaries = (): void => {
+  const since = Date.now() - KEEP_SUMMARY_MS;
+  const logs = Object.fromEntries([...summaries].filter(([, s]) => (s.lastActivityAt ?? 0) > since));
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = `${SUMMARIES_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ code: CODE, logs }, tagged));
+  fs.renameSync(tmp, SUMMARIES_FILE);
+};
 
 /**
  * 会話ログを前回の続きから読み、要約を更新して返す。
