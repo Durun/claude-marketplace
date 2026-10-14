@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 幾何と判定境界の図</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>メモ一覧の次のページを読む判定</h1>
+<!-- 使いどころ: 位置、寸法、しきい値の空間的な関係が判定式そのものであるとき。 -->
+<!-- before-after との違い: before-after は構造の差分。こちらは同一構造の状態差を座標で示す。 -->
+<!-- 作法: 読まない状態と読む状態を、同じ寸法と同じ座標系で並置し、判定に使う座標だけラベルを付ける。 -->
+<p>結論: 末尾の要素の上端がビューポート下端から 400px 以内に入った時点で、次のページを読む。判定は <code>rect.top &lt;= viewportHeight + 400</code> の1式で表せる。</p>
+
+<figure>
+<svg viewBox="0 0 640 260" role="img" aria-label="末尾が遠い状態と近い状態の2つ。末尾の要素の上端がビューポート下端から 400px 以内に入ったかで、次のページを読むかを判定する">
+  <g font-family="-apple-system, sans-serif" font-size="11">
+    <!-- 末尾が遠い -->
+    <text x="30" y="20" fill="currentColor">末尾が遠い</text>
+    <rect x="30" y="130" width="230" height="50" fill="var(--surface)"/>
+    <rect x="30" y="30" width="230" height="100" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <text x="36" y="46" fill="var(--muted)">ビューポート</text>
+    <line x1="260" y1="130" x2="270" y2="130" stroke="currentColor" stroke-width="1.5"/>
+    <text x="276" y="134" fill="var(--muted)">下端</text>
+    <rect x="70" y="200" width="150" height="30" fill="var(--surface)" stroke="currentColor"/>
+    <text x="80" y="219" fill="currentColor">末尾の要素</text>
+    <line x1="30" y1="180" x2="270" y2="180" stroke="var(--ng)" stroke-width="1.5"/>
+    <text x="276" y="184" fill="var(--ng)">下端 + 400px</text>
+    <line x1="70" y1="200" x2="270" y2="200" stroke="currentColor" stroke-dasharray="3 3"/>
+    <text x="276" y="204" fill="var(--muted)">rect.top</text>
+    <text x="36" y="250" fill="var(--ng)">top &gt; 下端 + 400px → 次のページを読まない</text>
+
+    <!-- 末尾が近い -->
+    <text x="370" y="20" fill="currentColor">末尾が近い</text>
+    <rect x="370" y="130" width="230" height="50" fill="var(--surface)"/>
+    <rect x="370" y="30" width="230" height="100" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <text x="376" y="46" fill="var(--muted)">ビューポート</text>
+    <rect x="410" y="145" width="150" height="30" fill="var(--new-bg)" stroke="var(--new)"/>
+    <text x="420" y="164" fill="currentColor">末尾の要素</text>
+    <line x1="370" y1="180" x2="610" y2="180" stroke="var(--ok)" stroke-width="1.5"/>
+    <line x1="410" y1="145" x2="610" y2="145" stroke="currentColor" stroke-dasharray="3 3"/>
+    <text x="376" y="250" fill="var(--ok)">top &lt;= 下端 + 400px → 次のページを読む</text>
+  </g>
+</svg>
+<figcaption>判定に使う座標は末尾の要素の上端とビューポート下端の2つだけである。<code>400px</code> は、次のページの応答を待つ間にスクロールが末尾へ着いてしまわないための余裕である。</figcaption>
+</figure>
+
+<p class="callout">
+凡例: 実線の枠がビューポート、灰色の帯が下端から 400px の範囲、破線が判定に使う要素の座標。赤が読まない境界、緑が読む境界、青が範囲に入った要素。
+</p>
+</body>
+<script src="../assets/base.js"></script>

@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: データ構造（テーブルカード + 入れ子型）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>データ構造</h1>
+
+<h2>リレーショナル: テーブルカード + 多重度</h2>
+<!-- 使いどころ: テーブルの追加やリレーションの変更を含む設計で、多重度（1:N/N:M）が論点のとき。 -->
+<!-- 変更に関係するテーブルだけ描く。全カラム列挙はせず、キー、新規カラム、論点のカラムに絞る。 -->
+<!-- テーブル2〜3個で直列の関係なら、SVGを描かず多重度ラベルを挟んだカード並びで足りる。 -->
+<!-- 関係が3本以上で交差するなら flow-svg.html の作法でSVGにする。 -->
+<style>
+  .erd { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .erd .rel { color: var(--muted); font-size: .85rem; text-align: center; white-space: nowrap; }
+  .tbl { border: 1.5px solid var(--border); border-radius: .5rem; min-width: 13rem; overflow: hidden; }
+  .tbl.changed { border-color: var(--new); }
+  .tbl .name { padding: .3rem .8rem; background: var(--surface); font-weight: bold; border-bottom: 1px solid var(--border); }
+  .tbl.changed .name { color: var(--new); background: var(--new-bg); }
+  .tbl ul { list-style: none; margin: 0; padding: .4rem .8rem; font-size: .85rem; font-family: ui-monospace, monospace; }
+  .tbl .key { font-size: .7rem; color: var(--muted); }
+  .tbl .new-col { color: var(--new); }
+</style>
+<div class="erd">
+  <div class="tbl">
+    <div class="name">users</div>
+    <ul>
+      <li>id <span class="key">PK</span></li>
+      <li>name</li>
+    </ul>
+  </div>
+  <div class="rel">1 ──── N<br>note は<br>user に属する</div>
+  <div class="tbl">
+    <div class="name">notes</div>
+    <ul>
+      <li>id <span class="key">PK</span></li>
+      <li>owner_id <span class="key">FK → users</span></li>
+      <li>status <span class="key">draft | published | archived</span></li>
+    </ul>
+  </div>
+  <div class="rel">1 ──── N<br>share_link は<br>note に属する</div>
+  <div class="tbl changed">
+    <div class="name">share_links（新規）</div>
+    <ul>
+      <li>token <span class="key">PK</span></li>
+      <li>note_id <span class="key">FK → notes</span></li>
+      <li class="new-col">expires_at</li>
+    </ul>
+  </div>
+</div>
+
+<h2>入れ子構造: TypeScript 型で示す</h2>
+<!-- 使いどころ: JSONペイロード、設定、レスポンスなど階層を持つデータ。 -->
+<!-- 散文や箇条書きの入れ子より、型注釈（optional、union、配列）で曖昧性を消せる。実コードの型があるならコピーし、乖離させない。 -->
+<!-- フィールドの意味は行末コメントに1行で。長い説明は本文へ出す。変更点は意味色で示す。 -->
+<style>
+  pre.type { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: .8rem 1rem; overflow-x: auto; font-size: .85rem; line-height: 1.6; }
+  pre.type .cm { color: var(--muted); }
+  pre.type .add { color: var(--new); }
+</style>
+<pre class="type"><code>type NoteResponse = {
+  id: number;                 <span class="cm">// notes.id</span>
+  title: string;
+  status: "draft" | "published" | "archived";
+  updatedAt: string;          <span class="cm">// ISO 8601 (UTC)</span>
+  <span class="add">share?: {                   <span class="cm">// 発行済みの共有リンクがあるときだけ付く</span>
+    url: string;              <span class="cm">// /s/{token} を含む完全な URL</span>
+    expiresAt: string;        <span class="cm">// share_links.expires_at</span>
+  };</span>
+};</code></pre>
+<p><span class="badge new">青 = 今回の追加フィールド</span></p>
+<script src="../assets/base.js"></script>

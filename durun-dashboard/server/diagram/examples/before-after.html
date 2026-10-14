@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: Before / After 対比</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>メモ本文を HTML へ変換する場所の変更</h1>
+<!-- 使いどころ: 差分こそが設計の本体のとき。左右のレイアウトを必ず揃える（位置が変わると読者は差分を探せない）。 -->
+<!-- 枠と見出しの色で Before=グレー（既存）、After=青（変更後）を示す。図の中でも変更点だけを --new で塗る。 -->
+<div class="cols2">
+  <figure class="card before">
+    <figcaption>Before: web が変換する</figcaption>
+    <svg viewBox="0 32 280 52" role="img" aria-label="Before: api がメモ本文を Markdown のまま返し、web が HTML へ変換する">
+      <defs><marker id="a1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor">
+        <rect x="10" y="40" width="90" height="36" rx="6"/>
+        <rect x="180" y="40" width="90" height="36" rx="6"/>
+        <line x1="100" y1="58" x2="178" y2="58" marker-end="url(#a1)"/>
+      </g>
+      <g font-size="12" fill="currentColor" text-anchor="middle">
+        <text x="55" y="62">api</text>
+        <text x="225" y="62">web（変換）</text>
+        <text x="140" y="50" font-size="10">Markdown</text>
+      </g>
+    </svg>
+  </figure>
+  <figure class="card after">
+    <figcaption>After: api が変換して返す</figcaption>
+    <svg viewBox="0 32 280 52" role="img" aria-label="After: api がメモ本文を HTML へ変換して返し、web はそのまま表示する">
+      <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor">
+        <rect x="10" y="40" width="90" height="36" rx="6" stroke="var(--new)"/>
+        <rect x="180" y="40" width="90" height="36" rx="6"/>
+        <line x1="100" y1="58" x2="178" y2="58" marker-end="url(#a2)"/>
+      </g>
+      <g font-size="12" fill="currentColor" text-anchor="middle">
+        <text x="55" y="62" fill="var(--new)">api（変換）</text>
+        <text x="225" y="62">web</text>
+        <text x="140" y="50" font-size="10">HTML</text>
+      </g>
+    </svg>
+  </figure>
+</div>
+<script src="../assets/base.js"></script>

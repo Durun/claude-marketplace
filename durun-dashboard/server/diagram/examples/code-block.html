@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: コードブロック</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>コードブロック</h1>
+
+<h2>そのまま書く</h2>
+<!-- 使いどころ: 設定ファイル、コマンド、シグネチャなど、字面そのものが設計の内容のとき。 -->
+<!-- base.css が pre を整形するため、追加のCSSは要らない。 -->
+<!-- data-lang に言語名を書くと、枠の右上へ薄字で出る。 -->
+<!-- 抜粋に徹する。動くコード全体を貼ると、どこが論点か読み手が探すことになる。 -->
+<p>結論: 共有リンクでメモを開けるのは、メモが <code>published</code> で、リンクの期限内のときだけにする。</p>
+<pre data-lang="TypeScript"><code>// apps/api/src/share/open.ts
+app.get("/s/:token", async (req, res) => {
+  const link = await shareLinkRepository.findByToken(req.params.token);
+  if (!link) return res.sendStatus(404);
+  if (link.expiresAt &lt;= new Date()) return res.sendStatus(410);
+  const note = await noteRepository.findById(link.noteId);
+  if (note?.status !== "published") return res.sendStatus(404);
+  return res.json(note);
+});</code></pre>
+
+<h2>変更点を意味色で示す</h2>
+<!-- 使いどころ: 既存コードへの数行の追加と削除が論点のとき。 -->
+<!-- base.css の .cm（注釈）、.add（追加）、.del（削除）を span で巻く。 -->
+<!-- 変更が構造の入れ替えにまで及ぶなら before-after.html の2カラム対比にする。 -->
+<pre data-lang="TypeScript"><code>app.post("/api/notes/:noteId/share", async (req, res) => {
+  const note = await noteRepository.findById(req.params.noteId);
+<span class="del">- if (!note) return res.sendStatus(404);</span>
+<span class="add">+ if (!note || note.ownerId !== req.user.id) return res.sendStatus(404);   <span class="cm">// 他人のメモがあることを知らせない</span></span>
+  const { url, expiresAt } = await shareLinkRepository.issue(note.id);
+  return res.status(201).json({ url, expiresAt });
+});</code></pre>
+<p><span class="badge new">青 = 追加</span> <span class="badge ng">赤 = 削除</span></p>
+
+<h2>長いコードは畳む</h2>
+<!-- 20行を超えると読み手は読み飛ばす。主張に要る数行だけ本文へ出し、残りは details へ入れる。 -->
+<details>
+  <summary>設定ファイルの全体（参考）</summary>
+  <pre data-lang="JSON"><code>{
+  "shareLink": { "defaultExpiresInDays": 7, "maxExpiresInDays": 30 },
+  "tokenBytes": 16,
+  "imageBucket": "notes-images",
+  "maxImageBytes": 5242880
+}</code></pre>
+</details>
+
+<h2>使わない場面</h2>
+<ul>
+  <li>データの型を示したい → <a href="data-structure.html">data-structure.html</a> の TypeScript 型</li>
+  <li>HTTP のリクエストとレスポンスの実例 → <a href="http-api.html">http-api.html</a> の生HTTP</li>
+  <li>1語〜1行の識別子、パス、コマンド名 → 本文中の <code>&lt;code&gt;</code> で足りる</li>
+</ul>
+<p>構文強調のライブラリは読み込まない。単一ファイルで完結させるためである。色を付けたい箇所だけ span を巻く。</p>
+<script src="../assets/base.js"></script>

@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 意思決定カード（ADR風）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>意思決定</h1>
+<!-- 使いどころ: 意思決定セクション。決定文をカード先頭に1文（BLUF）。却下案は details に折りたたむ。 -->
+<!-- 折りたたんでよいのは「読まなくても判断できる」情報だけ。決定そのものは隠さない。 -->
+<div class="card" style="margin-bottom:1rem;">
+  <h2 style="margin-top:0; border:0;">D1. 共有リンクのトークンは推測できない乱数にして share_links に保存する</h2>
+  <p>token は 16 バイトの乱数から作り、有効期限と一緒に <code>share_links</code> へ保存する。署名付き URL は使わない。</p>
+  <div class="cols2">
+    <div>
+      <span class="badge ok">利点</span>
+      <ul>
+        <li>発行後でも、<code>share_links</code> の行を消せばリンクを失効できる</li>
+        <li>token からメモの ID も有効期限も読み取れない</li>
+      </ul>
+    </div>
+    <div>
+      <span class="badge ng">代償</span>
+      <ul>
+        <li>共有リンクを開くたびに <code>share_links</code> を 1 回引く</li>
+      </ul>
+    </div>
+  </div>
+  <details>
+    <summary>却下案: 署名付き URL</summary>
+    <p>署名付き URL は、署名の鍵を替えない限り、発行済みのリンクを失効させられない。鍵を替えると有効なリンクもすべて無効になるため、却下した。</p>
+  </details>
+</div>
+<div class="callout warn">
+  <strong>未決:</strong> 共有リンクの有効期限の既定を 7 日にするか 30 日にするか。プロダクトオーナーの確認待ち。
+</div>
+<script src="../assets/base.js"></script>

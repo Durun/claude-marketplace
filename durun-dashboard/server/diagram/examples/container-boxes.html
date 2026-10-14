@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 構成図（入れ子ボックス, C4風）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>システム内の位置づけ</h1>
+<!-- 使いどころ: 「システム全体のどこの話か」を最初に示すとき。囲み=境界（Gestaltの囲みと近接）。 -->
+<!-- 線が要らない包含関係なら HTML の入れ子で足りる。コンポーネント間の呼び出しが論点になったら flow-svg.html へ。 -->
+<!-- 変更対象だけ意味色で強調し、無関係な箱は淡色にする。Component 以深は設計HTMLでは描かない。 -->
+<style>
+  .container { border: 1.5px solid var(--border); border-radius: .6rem; padding: .8rem; margin: .5rem 0; }
+  .container > .label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .node { display: inline-block; border: 1.5px solid var(--border); border-radius: .4rem; padding: .3rem .8rem; margin: .3rem; background: var(--surface); }
+  .node.changed { border-color: var(--new); color: var(--new); background: var(--new-bg); }
+  .node.dim { color: var(--muted); border-style: dashed; }
+</style>
+<div class="container">
+  <div class="label">システム: メモ共有アプリ</div>
+  <div class="container">
+    <div class="label">アプリケーション</div>
+    <span class="node dim">web</span>
+    <span class="node changed">api（共有リンクの発行を追加）</span>
+  </div>
+  <div class="container">
+    <div class="label">データ</div>
+    <span class="node changed">PostgreSQL: share_links テーブル（新規）</span>
+    <span class="node dim">オブジェクトストレージ</span>
+  </div>
+</div>
+<p><span class="badge new">青 = 今回の変更対象</span> <span class="badge">破線 = 既存のまま変更しない</span></p>
+<script src="../assets/base.js"></script>

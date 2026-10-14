@@ -1,0 +1,121 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: ファイルツリー</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>変更するファイル構成</h1>
+<!-- この例は 2 つ並べてある。単一ルートの基本形と、領域別に分けるバリアントである。 -->
+<!-- 使いどころ: 新規ファイルと変更ファイルの配置を示すとき。ディレクトリ構造そのものが「どこに何を置くか」という設計判断を表す。 -->
+<!-- Tree View の定石: インデントガイド線（縦罫線）で階層を示し、ディレクトリは details/summary で畳める。 -->
+<!-- 変更のないファイルは省くか details を閉じておく。全ファイル列挙は全部盛り図と同じアンチパターン。 -->
+<!-- 新規（青）と既存ファイルの変更（黄）を塗り分ける。読み手が「作るもの」と「触るもの」を先に切り分けられる。 -->
+<!-- ディレクトリ名は末尾 / で示す。アイコンや絵文字での種別表現はしない。 -->
+<style>
+  .tree { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85rem; line-height: 1.9; }
+  .tree ul { list-style: none; margin: 0; padding-left: 1.1rem; border-left: 1px solid var(--border); }
+  .tree > ul { border-left: none; padding-left: 0; }
+  .tree li { padding-left: .4rem; }
+  /* 基本形は枠を消す。単一ルートでは囲みが増えるだけで、階層はガイド線だけで読める。 */
+  .tree.flat details { border: none; padding: 0; margin: 0; }
+  .tree summary { color: var(--fg); }
+  .tree .note { color: var(--muted); font-family: -apple-system, "Hiragino Sans", sans-serif; font-size: .8rem; margin-left: .6rem; }
+  .tree .new-file { color: var(--new); }
+  .tree .mod-file { color: var(--mod); }
+  .tree .del-file { color: var(--ng); text-decoration: line-through; }
+  /* 領域別ツリーは details の枠（base.css）をそのまま活かす。領域の囲みと入れ子の包含関係を同じ記法で表せる。 */
+  .tree.by-area > ul > li { padding-left: 0; }
+</style>
+
+<h2>基本形: 単一ルート</h2>
+<figure>
+  <div class="tree flat">
+    <ul>
+      <li>
+        <details open>
+          <summary>apps/api/src/</summary>
+          <ul>
+            <li>
+              <details open>
+                <summary class="new-file">share/</summary>
+                <ul>
+                  <li><span class="new-file">issue.ts</span> <span class="badge new">新規</span><span class="note">POST /api/notes/:noteId/share のルートハンドラ</span></li>
+                  <li><span class="new-file">open.ts</span> <span class="badge new">新規</span><span class="note">GET /s/:token のルートハンドラ。期限と status の判定を持つ</span></li>
+                </ul>
+              </details>
+            </li>
+            <li><span class="mod-file">index.ts</span> <span class="badge mod">変更</span><span class="note">share ルートの登録を追加</span></li>
+            <li><span class="del-file">public-note.ts</span> <span class="badge ng">削除</span><span class="note">メモ ID をそのまま公開していた旧ルート。open.ts に置き換え</span></li>
+            <li>
+              <details>
+                <summary>notes/</summary>
+                <ul>
+                  <li>get.ts<span class="note">変更なし</span></li>
+                </ul>
+              </details>
+            </li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </div>
+  <figcaption>青 = 新規、黄 = 既存ファイルの変更、赤取り消し線 = 削除。変更のないディレクトリは閉じてある。</figcaption>
+</figure>
+
+<h2>バリアント: 領域別に分ける</h2>
+<!-- 使いどころ: 変更が離れた複数のディレクトリにまたがり、共通の親までさかのぼると中身のない階層ばかりになるとき。 -->
+<!-- ルートを領域ごとに複数立て、各ルートの summary にはリポジトリルートからの相対パスを丸ごと書く。 -->
+<!-- 「テストと文書」のように、パスではなく役割でまとめたルートを混ぜてよい。読み手が探す単位はディレクトリではなく領域だからである。 -->
+<!-- 役割でまとめたルートは summary の末尾に / を付けない。ディレクトリではないことが区別できる。 -->
+<!-- ルートは 4 つ以内に抑える。それ以上になるなら変更範囲そのものが広すぎる合図であり、設計を分割する。 -->
+<!-- 領域は枠で囲む（.tree.by-area は details の枠を消さない）。枠がないとルートの並びが 1 つのツリーの兄弟に見える。 -->
+<!-- 枠は入れ子にすると包含関係も表す。開いたディレクトリが枠になるので、領域の中のどこに入るかが一目で分かる。 -->
+<figure>
+  <div class="tree by-area">
+    <ul>
+      <li>
+        <details open>
+          <summary>apps/web/src/editor/</summary>
+          <ul>
+            <li>
+              <details open>
+                <summary>upload/</summary>
+                <ul>
+                  <li><span class="new-file">direct-upload.ts</span> <span class="badge new">新規</span><span class="note">API が返した署名付き URL へ画像を直接送る</span></li>
+                  <li><span class="del-file">post-image.ts</span> <span class="badge ng">削除</span></li>
+                </ul>
+              </details>
+            </li>
+            <li>
+              <details open>
+                <summary>components/</summary>
+                <ul>
+                  <li><span class="mod-file">Editor/</span> <span class="badge mod">変更</span><span class="note">貼り付け時の送り先を差し替える。本文の編集は動かさない</span></li>
+                </ul>
+              </details>
+            </li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details open>
+          <summary>apps/api/src/uploads/</summary>
+          <ul>
+            <li><span class="mod-file">handler.ts</span> <span class="badge mod">変更</span><span class="note">画像を受け取らず、署名付き URL を返す</span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details>
+          <summary>テストと文書</summary>
+          <ul>
+            <li><span class="mod-file">apps/api/test/uploads.test.ts:21-48</span> <span class="badge mod">変更</span></li>
+            <li><span class="new-file">画像の直接アップロードの E2E テスト</span> <span class="badge new">新規</span><span class="note">画像を貼って保存し、表示されるまでを確認する</span></li>
+            <li><span class="mod-file">docs/images.md</span> <span class="badge mod">変更</span><span class="note">:12, :40-55</span></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </div>
+  <figcaption>枠 1 つが 1 領域で、枠の入れ子が包含関係を表す。変更は 3 つの領域に分かれる。実装（web と api）と、それに追随するテストと文書である。</figcaption>
+</figure>
+<script src="../assets/base.js"></script>

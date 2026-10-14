@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: プレビュー領域</title>
+<link rel="stylesheet" href="../assets/base.css">
+<link rel="stylesheet" href="../assets/preview.css">
+<script src="../assets/preview.js"></script>
+<body>
+<h1>共有リンクのコピー通知</h1>
+<!-- 使いどころ: 完成物の見た目や動きそのものが説明の対象で、文章と静止画では伝わりにくいとき。 -->
+<!-- before-after との違い: あちらは構造の差分を静止画で比べる。こちらは読み手が実物を触って確かめる。 -->
+<!-- 作法: 実演は1つにつき1つの動きだけを見せる。動く実演には data-reset を付けて何度でも試せるようにする。 -->
+<!-- 高さ: 中身を position: absolute だけで組むと面が縮んで隠れる。data-height で面の高さを決める。 -->
+<p>結論: 共有リンクをコピーすると、画面下部から通知（トースト）をせり上げて表示する。4秒後に自動で下へ戻る。閉じるボタンでも消える。</p>
+
+<h2>表示の動き</h2>
+<figure class="preview" data-label="トースト（実演）" data-height="9rem" data-reset>
+  <template>
+    <style>
+      /* 実演の中の CSS は Shadow DOM に閉じるため、本文の見た目に影響しない */
+      .page { color: var(--muted); font-size: .85rem; line-height: 1.9; }
+      .toast {
+        position: absolute;
+        left: .8rem;
+        right: .8rem;
+        bottom: .8rem;
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        padding: .6rem .8rem;
+        border: 1px solid var(--new);
+        border-radius: .4rem;
+        background: var(--new-bg);
+        color: var(--fg);
+        font-size: .85rem;
+        /* 下端の余白ぶんも下げて、面の外へ完全に逃がす */
+        transform: translateY(calc(100% + .8rem));
+        transition: transform .4s ease-out;
+      }
+      .toast.shown { transform: translateY(0); }
+      .toast .grow { flex: 1; }
+      .toast button { font: inherit; cursor: pointer; }
+    </style>
+    <div class="page">メモの本文。<br>共有リンクのコピーが終わると、<br>トーストがせり上がる。</div>
+    <div class="toast">
+      <span class="grow">共有リンクをコピーしました。</span>
+      <button type="button" class="close">閉じる</button>
+    </div>
+    <script>
+      const toast = root.querySelector('.toast');
+      setTimeout(() => toast.classList.add('shown'), 1000);
+      setTimeout(() => toast.classList.remove('shown'), 5000);
+      root.querySelector('.close').addEventListener('click', () => toast.classList.remove('shown'));
+    </script>
+  </template>
+  <figcaption>実演の開始から1秒後にせり上がり、4秒間表示して下へ戻る。閉じるボタンでも戻る。「初期状態に戻す」で待機からやり直せる。</figcaption>
+</figure>
+
+<h2>共有リンク欄の中身</h2>
+<p>動きのない見た目だけを見せるときは <code>data-reset</code> を省く。</p>
+<figure class="preview" data-label="共有リンク欄のレイアウト">
+  <template>
+    <style>
+      .share { display: flex; gap: .6rem; align-items: center; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: .4rem; font-size: .85rem; color: var(--fg); }
+      .thumb { width: 3rem; height: 3rem; border-radius: .3rem; background: var(--surface); border: 1px solid var(--border); }
+      .grow { flex: 1; }
+      .action { color: var(--new); border: 1px solid var(--new); border-radius: .3rem; padding: .1rem .6rem; }
+    </style>
+    <div class="share">
+      <div class="thumb"></div>
+      <div class="grow"><strong>メモのタイトル</strong><br>有効期限は発行の7日後。</div>
+      <span class="action">コピー</span>
+    </div>
+  </template>
+  <figcaption>サムネイル、タイトルと有効期限、コピーボタンの3要素で構成する。</figcaption>
+</figure>
+
+<p class="callout">
+実演は Shadow DOM で囲むだけであり、iframe のような JavaScript の隔離はない。実演のスクリプトは引数の <code>root</code> の配下だけを触ること。
+</p>
+</body>
+<script src="../assets/base.js"></script>

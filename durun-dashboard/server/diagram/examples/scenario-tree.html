@@ -1,0 +1,175 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 検証シナリオツリー（前提条件の共有）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>検証ケース</h1>
+<!-- 使いどころ: 受け入れ条件の表で「メモ 482 の詳細画面を新しいタブで開き、」のような前提条件が行ごとに重複するとき。 -->
+<!-- 共有する前提条件を親ノードへくくり出し、リーフには操作と期待結果だけを残す。 -->
+<!-- 圧縮するのは前提条件の重複だけである。操作と期待結果は表と同じ字面のまま残す。 -->
+<!-- 観測方法を削ると検証可能性が落ちるため、受け入れ条件の表の「文字を削らない」原則はリーフの中では守る。 -->
+<!-- condition-tree.html との違い: あちらは入れ子が条件分岐で、枝は互いに排他である。 -->
+<!-- こちらは入れ子が前提条件の共有で、兄弟の並び順が実行順である。前の手順の結果を次の手順が引き継ぐ。 -->
+<!-- 前提条件がケースごとに違って共有できないなら、ツリーにせず表のままにする。親が増えるだけで読む量は減らない。 -->
+<!-- バッジは 2 種類を使い分ける。前提条件のノードには前提の種類（グレー）、リーフには系とケース番号（緑と赤）を置く。 -->
+<!-- 系とケース番号は 1 つのバッジにまとめる。表の「#」列と「系」列に当たる情報で、常に対で読むためである。 -->
+<!-- ケース番号を残すのは、他の文書から番号で参照でき、正常系と異常系の網羅も表と同じように確認できるからである。 -->
+<!-- ケースには図を入れてよい。置く位置は「操作」と「期待結果」の次の行から下で、図が本文を割り込まないようにする。 -->
+<!-- 図を入れるのは、そのケースでしか出てこない構造や境界を、文だけでは指し示せないときに限る。共通の前提を説明する図は節の冒頭へ置く。 -->
+<!-- 前提条件のノードは details にして畳めるようにする。検証中は今実行している前提の枝だけを開いて読める。 -->
+<!-- 既定はすべて open にする。文書として通しで読むときに、閉じた枝があるとケースの見落としにつながる。 -->
+<style>
+  .stree ul { list-style: none; margin: 0; padding-left: 1.2rem; border-left: 1px solid var(--border); }
+  .stree > ul { border-left: none; padding-left: 0; }
+  .stree li { margin: .45rem 0; padding-left: .5rem; }
+  /* base.css の details の枠を消す。前提の入れ子はガイド線だけで読めるので、枠は段の数だけ増えて邪魔になる。 */
+  .stree details { border: none; padding: 0; margin: 0; }
+  /* 前提条件の文言は太字にして、リーフの操作と見分ける。 */
+  .stree summary { font-weight: 600; color: var(--fg); }
+  /* 期待結果はリーフの中で改行して置く。操作と観測を同じ行に詰めると、どこまでが操作か読めなくなる。 */
+  .stree .then { display: block; color: var(--muted); font-size: .9rem; margin-top: .15rem; }
+  /* 記号だけだと意味を推測させるので「期待」の語も添える。薄い色で操作の字面より後ろに退かせる。 */
+  .stree .then::before { content: "期待 ⇒ "; opacity: .7; }
+  /* 1 ケースを薄い面で囲う。図を入れたときに、どこからどこまでが 1 ケースかが縦に長くても見失われないため。 */
+  .stree .case { background: var(--surface); border-radius: .4rem; padding: .5rem .7rem; margin: .5rem 0; }
+  /* ケースの中の図は期待結果の次の行から置く。操作と期待結果を先に読ませ、図は根拠として後ろに従える。 */
+  .stree .case figure { margin: .6rem 0 0; }
+  .stree .case figure svg, .stree .case figure img { max-width: 100%; height: auto; }
+  .stree .case figcaption { color: var(--muted); font-size: .8rem; margin-top: .2rem; }
+</style>
+<!-- この例は 2 つ並べてある。前提条件が 1 段の基本形と、前提条件が階層化するバリアントである。 -->
+
+<h2>基本形: 前提条件が 1 段</h2>
+<figure>
+  <div class="stree">
+    <ul>
+      <li>
+        <details open>
+          <summary><span class="badge">前提: ページ</span> メモ 482（published、共有リンクなし）の詳細画面を新しいタブで開く</summary>
+          <ul>
+            <li class="case"><span class="badge ok">正常 2-1</span>
+              「共有リンクを発行」ボタン（<code>&lt;button&gt;</code>）をクリックする
+              <span class="then"><code>POST /api/notes/482/share</code> が 201 を返し、<code>share_links</code> が 1 行増える。画面に共有 URL（<code>/s/&lt;token&gt;</code>）が出る。<code>token</code> は 22 文字の URL セーフな文字列である（16 バイトの乱数を base64url にしたもの。D1）</span>
+            </li>
+            <li class="case"><span class="badge ok">正常 2-2</span>
+              2-1 の共有 URL を新しいタブで開く
+              <span class="then">200 でタイトルと本文が表示される（発行したリンクが開けている＝2-3 の陽性対照）</span>
+            </li>
+            <li class="case"><span class="badge ok">正常 2-3</span>
+              詳細画面のタブで「アーカイブ」ボタンをクリックし、2-2 のタブを再読み込みする
+              <span class="then">404 になり、本文を含まない（archived は published ではない）。<code>share_links</code> の行は消えない</span>
+            </li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details open>
+          <summary><span class="badge">前提: ページ</span> メモ 482（archived）の詳細画面を新しいタブで開き直す</summary>
+          <ul>
+            <li class="case"><span class="badge ok">正常 2-4</span>
+              「公開」ボタンをクリックして published に戻し、2-2 のタブを再読み込みする
+              <span class="then">200 でメモが表示される（archived の間も <code>share_links</code> の行は残っており、同じ <code>token</code> が再び開く）</span>
+            </li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </div>
+  <figcaption>グレーのバッジが前提条件、緑のバッジが検証ケースである。同じ親の下の兄弟は上から順に実行し、詳細画面を開き直さずに前のケースの結果を引き継ぐ。表で書くと 4 行すべてに「メモ 482 の詳細画面を新しいタブで開き」が並び、結果の引き継ぎは「同じ画面のまま」という前の行への参照でしか表せない。</figcaption>
+</figure>
+
+<h2>バリアント: 前提条件が階層化する</h2>
+<!-- 使いどころ: 全ケースに効く前提（環境）と、一部のケースだけに効く前提（ページと、ページ内の状態）が混ざるとき。 -->
+<!-- 段ごとに前提の種類が変わるので、前提バッジの語で何の前提かを示す。 -->
+<!-- バッジがないと、深い段のノードが前提条件なのか操作なのか読み手が判別できなくなる。 -->
+<!-- 深さは前提条件 3 段までに抑える。それ以上必要になったら、検証したい観点が 1 つの図に混ざっている合図なので節を分ける。 -->
+<!-- リーフを持たない中間ノードは作らない。前提を足しただけで検証しないなら、その段は削って子を親へ繰り上げる。 -->
+<!-- 兄弟の並び順が実行順という規則は段をまたいでも同じで、上のノードから順に実行する。 -->
+<figure>
+  <div class="stree">
+    <ul>
+      <li>
+        <details open>
+          <summary><span class="badge">前提: 環境</span> web、api、PostgreSQL、オブジェクトストレージを起動し、操作開始時刻（UTC）を控える</summary>
+          <ul>
+            <li>
+              <details open>
+                <summary><span class="badge">前提: ページ</span> メモ 482（published）の共有リンクを発行し、<code>expires_at</code> を操作開始の 2 分後に更新して、共有 URL を新しいタブで開く</summary>
+                <ul>
+                  <li class="case"><span class="badge ok">正常 3-1</span>
+                    共有画面のタブを再読み込みする
+                    <span class="then">200 でタイトルと本文が表示される（期限内は何度でも開ける＝陽性対照）。本文は保存した Markdown を表示のたびに HTML へ変換したものである（D2）</span>
+                  </li>
+                  <li class="case"><span class="badge ok">正常 3-2</span>
+                    アドレスバーの <code>token</code> の末尾 1 文字を別の文字に書き換えて、新しいタブで開く
+                    <span class="then">404 になり、メモの内容を含まない（1 文字違いの <code>token</code> で別の共有リンクが開くことはない）</span>
+                  </li>
+                  <li>
+                    <details open>
+                      <summary><span class="badge">前提: 状態</span> 操作開始から 2 分が過ぎるまで待つ</summary>
+                      <ul>
+                        <li class="case"><span class="badge ok">正常 3-3</span>
+                          共有画面のタブを再読み込みする
+                          <span class="then">410 になり、期限切れの案内が出る。本文は含まない（3-1 で開いても <code>expires_at</code> は延びない）</span>
+                          <!-- 図を入れる例。このケースでしか出てこない、開いた時刻と expires_at の前後関係を、文だけでは指し示せないため置いている。 -->
+                          <figure>
+                            <svg viewBox="0 0 480 104" role="img" aria-label="共有リンクは発行から expires_at まで開ける。expires_at を過ぎた再読み込みは 410 になり、途中で開いても expires_at は延びない">
+                              <g fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M14 62H466" opacity=".5"/>
+                                <path d="M460 57L467 62L460 67"/>
+                                <path d="M40 62H300" stroke-width="4"/>
+                                <path d="M40 54V70M130 54V70M390 54V70"/>
+                                <path d="M300 22V98" stroke="var(--ng)" stroke-dasharray="5 4"/>
+                              </g>
+                              <g fill="currentColor" font-size="11" font-family="ui-monospace, monospace" text-anchor="middle">
+                                <text x="40" y="44">発行</text>
+                                <text x="130" y="44">3-1 再読み込み（200）</text>
+                                <text x="390" y="44">3-3 再読み込み（410）</text>
+                                <text x="170" y="86">有効</text>
+                                <text x="390" y="86">期限切れ</text>
+                                <text x="300" y="14" fill="var(--ng)">expires_at（操作開始の 2 分後）</text>
+                              </g>
+                            </svg>
+                            <figcaption>破線が <code>expires_at</code> である。3-1 で開いても <code>expires_at</code> は動かず、これを過ぎた再読み込みは 410 になる。</figcaption>
+                          </figure>
+                        </li>
+                        <li class="case"><span class="badge ok">正常 3-4</span>
+                          メモ 482 の詳細画面で「共有リンクを発行」ボタンをクリックし、出てきた URL を新しいタブで開く
+                          <span class="then">200 でメモが表示される。3-3 の <code>token</code> は 410 のままである（期限切れは <code>token</code> 単位であり、メモは published のまま）</span>
+                        </li>
+                      </ul>
+                    </details>
+                  </li>
+                </ul>
+              </details>
+            </li>
+            <li>
+              <details open>
+                <summary><span class="badge">前提: ページ</span> HTTPS でない URL（<code>navigator.clipboard</code> が使えない）でメモ 482 の詳細画面を新しいタブで開く</summary>
+                <ul>
+                  <li class="case"><span class="badge ok">正常 4-1</span>
+                    「共有リンクを発行」ボタンをクリックし、続けて「リンクをコピー」ボタンをクリックする
+                    <span class="then">共有 URL が選択状態の入力欄に出て、手でコピーできる（<code>navigator.clipboard</code> が無くてもコピーの手段が残る）。ブラウザのコンソールに例外が出ない</span>
+                  </li>
+                </ul>
+              </details>
+            </li>
+            <li>
+              <details open>
+                <summary><span class="badge">前提: 状態</span> オブジェクトストレージを停止する</summary>
+                <ul>
+                  <li class="case"><span class="badge ng">異常 5-1</span>
+                    画像を貼ったメモ 483（共有リンクは発行済み）の共有 URL を新しいタブで開く
+                    <span class="then">200 で本文が表示され、画像の位置に代替テキストが出る（画像の取得失敗が本文の表示を妨げない）。ブラウザのコンソールに画像の読み込み失敗以外の例外が出ない</span>
+                  </li>
+                </ul>
+              </details>
+            </li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </div>
+  <figcaption>前提条件は 3 段である。環境（全ケース共通）、ページ（開き直しの単位）、状態（期限の経過とオブジェクトストレージの停止）。3-3 と 3-4 は期限が切れた状態を共有し、3-1 と 3-2 が使った共有リンクのあとに続けて実行する。</figcaption>
+</figure>
+<script src="../assets/base.js"></script>

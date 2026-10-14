@@ -14,14 +14,14 @@ test('XP のスキンでは、資料の iframe にスクロールバーの見た
   assert.match(buildSrcdoc({ format: 'svg', content: '<svg></svg>' }, 'xp'), /^<svg><\/svg><style>\s*::-webkit-scrollbar /);
 });
 
-test('HTML の資料は doctype を先頭に残し、スクロールバーの見た目を末尾に足す', () => {
+test('HTML の資料は doctype を先頭に残し、ページ内リンクの扱いとスクロールバーの見た目を末尾に足す', () => {
   const srcdoc = buildSrcdoc({ format: 'html', content: HTML }, 'xp');
   assert.ok(srcdoc.startsWith(HTML));
-  assert.match(srcdoc.slice(HTML.length), /^<style>\s*::-webkit-scrollbar /);
+  assert.match(srcdoc.slice(HTML.length), /^<script>.*a\[href\^="#"\].*<\/script><style>\s*::-webkit-scrollbar /s);
 });
 
 test('デフォルトのスキンでは、資料にスクロールバーの見た目を足さない', () => {
-  assert.equal(buildSrcdoc({ format: 'html', content: HTML }), HTML);
+  assert.doesNotMatch(buildSrcdoc({ format: 'html', content: HTML }), /::-webkit-scrollbar/);
   assert.doesNotMatch(buildSrcdoc({ format: 'markdown', content: '# 見出し' }), /::-webkit-scrollbar/);
 });
 

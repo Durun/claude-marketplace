@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 用語集ホバー</title>
+<!-- 用語集は base.css と base.js だけで動く。ホバーのマークアップは base.js が読み込み時に付ける。 -->
+<link rel="stylesheet" href="../assets/base.css">
+
+<h1>例: 用語集ホバー</h1>
+<p class="subhead">本文に出てくる用語へマウスを乗せると説明が出る。編集するのは末尾の用語集テーブルだけでよい。</p>
+
+<h2>本文</h2>
+<p>
+  メモの所有者は、共有リンクを発行して他人にメモを見せる。リンクの末尾にあるトークンが、開くメモを決める。
+  トークンは <code>share_links</code> に保存し、有効期限が切れるか、所有者が失効させると使えなくなる。
+</p>
+<p>
+  メモの状態は draft、published、archived のどれかで、共有リンクで開けるのは published だけである。
+  貼った画像はオブジェクトストレージに置き、本文には画像の場所だけを書く。
+</p>
+
+<h2>用語</h2>
+<!-- 用語集は付録なので閉じた状態で置く。本文のホバーで足りる読者に一覧を開かせない。 -->
+<details id="glossary">
+  <summary>用語一覧を開く</summary>
+  <table>
+    <thead><tr><th>用語</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><strong>共有リンク（リンク）</strong></td><td>メモを他人に見せるために発行する URL。末尾のトークンで、開くメモが決まる</td></tr>
+      <tr><td><strong>トークン</strong></td><td>共有リンクごとに発行する、推測できない乱数。<code>share_links</code> に保存して照合する</td></tr>
+      <tr><td><strong>有効期限</strong></td><td>共有リンクを使える期限（<code>expires_at</code>）。過ぎたトークンでは、メモを開けない</td></tr>
+      <tr><td><strong>失効</strong></td><td>有効期限の前に、共有リンクを使えなくすること。<code>share_links</code> の行を消すと失効する</td></tr>
+      <tr><td><strong>draft / published / archived</strong></td><td>メモの <code>status</code> がとる値。draft は書き途中、published は共有リンクで開ける状態、archived は一覧から外した状態</td></tr>
+      <tr><td><strong>オブジェクトストレージ</strong></td><td>メモに貼った画像を置く保存先。本文は PostgreSQL に、画像はここに分けて置く</td></tr>
+      <tr><td><strong>所有者（owner）</strong></td><td>メモを書いた利用者。<code>notes.owner_id</code> が指す <code>users</code> の行で、編集と共有リンクの発行ができる</td></tr>
+    </tbody>
+  </table>
+</details>
+
+<script src="../assets/base.js"></script>

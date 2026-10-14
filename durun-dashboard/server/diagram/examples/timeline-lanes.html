@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 時間軸レーン図</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>メモ画面を開くときの時間配分</h1>
+<!-- 使いどころ: 並行して進む主体があり、占有、待ち、重なりが論点のとき。 -->
+<!-- flow-svg との違い: flow-svg は接続関係のみで時間を持たない。こちらは横軸が時間で、区間の長さに意味がある。 -->
+<!-- 作法: レーン名を左に固定し、目盛りは3〜4本に絞る。バーの x と幅は実測値をそのまま比例させる。 -->
+<p>結論: 画像の取得と Markdown の変換が重なるため、画像を貼ったメモでも変換の完了時刻は遅れない。変換が終わった時点で本文が表示される。</p>
+
+<figure>
+<svg viewBox="0 0 640 200" role="img" aria-label="ネットワークとメインスレッドの2レーン。画像の取得中も Markdown の変換が進むため、変換の完了時刻は変わらない">
+  <g font-family="-apple-system, sans-serif" font-size="11">
+    <!-- 時間軸と目盛り -->
+    <line x1="130" y1="170" x2="620" y2="170" stroke="currentColor" stroke-width="1"/>
+    <g fill="var(--muted)">
+      <text x="130" y="188">0ms</text>
+      <text x="290" y="188">100ms</text>
+      <text x="450" y="188">200ms</text>
+      <text x="588" y="188">300ms</text>
+    </g>
+    <g stroke="var(--border)" stroke-dasharray="3 3">
+      <line x1="290" y1="30" x2="290" y2="170"/>
+      <line x1="450" y1="30" x2="450" y2="170"/>
+    </g>
+
+    <!-- レーン名 -->
+    <g fill="currentColor">
+      <text x="20" y="60">ネットワーク</text>
+      <text x="20" y="120">メインスレッド</text>
+    </g>
+
+    <!-- ネットワークレーン。青がこの設計で増える区間 -->
+    <rect x="130" y="42" width="152" height="24" rx="3" fill="var(--surface)" stroke="currentColor"/>
+    <text x="138" y="59" fill="currentColor">メモ本文の API 取得 95ms</text>
+    <rect x="290" y="42" width="208" height="24" rx="3" fill="var(--new-bg)" stroke="var(--new)"/>
+    <text x="298" y="59" fill="currentColor">画像の取得 130ms</text>
+
+    <!-- メインスレッドレーン -->
+    <rect x="290" y="102" width="128" height="24" rx="3" fill="var(--surface)" stroke="currentColor"/>
+    <text x="298" y="119" fill="currentColor">Markdown の変換</text>
+    <rect x="498" y="102" width="80" height="24" rx="3" fill="var(--new-bg)" stroke="var(--new)"/>
+    <text x="506" y="119" fill="currentColor">画像の描画</text>
+
+    <!-- 重なりの注記 -->
+    <line x1="290" y1="66" x2="290" y2="102" stroke="var(--new)" stroke-dasharray="2 2"/>
+    <text x="300" y="88" font-size="10" fill="var(--new)">取得と変換が重なる区間 80ms</text>
+  </g>
+</svg>
+<figcaption>青がこの設計で増える処理。画像の取得はメインスレッドを占有しないため、Markdown の変換の完了時刻は変わらない。</figcaption>
+</figure>
+
+<p class="callout">
+凡例: 横軸は時間、レーンは同時に動く主体。青が変更で増える区間、グレーが既存。破線は重なりの開始点を指す。
+</p>
+</body>
+<script src="../assets/base.js"></script>

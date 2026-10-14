@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 状態遷移（バッジ列 + 遷移表）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>メモのライフサイクル</h1>
+<!-- 使いどころ: エンティティが状態列を持つとき。状態3個以下ならバッジ+矢印で十分、SVGは不要。 -->
+<!-- 禁止遷移が論点のときは図より遷移表（状態×イベント）の方が漏れが見える。 -->
+<p style="font-size:1.05rem;">
+  <span class="badge">draft</span> →
+  <span class="badge ok">published</span> ⇄
+  <span class="badge ng">archived</span>
+</p>
+<h2>遷移表</h2>
+<table>
+  <thead>
+    <tr><th>状態 \ イベント</th><th>publish</th><th>archive</th><th>edit</th><th>share</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><span class="badge">draft</span></td><td>→ published</td><td><span class="badge ng">禁止</span></td><td>draft のまま</td><td><span class="badge ng">禁止</span> 公開してから共有する</td></tr>
+    <tr><td><span class="badge ok">published</span></td><td>変化なし</td><td>→ archived</td><td>published のまま</td><td>published のまま（共有リンクを発行）</td></tr>
+    <tr><td><span class="badge ng">archived</span></td><td>→ published</td><td>変化なし</td><td><span class="badge ng">禁止</span> 公開に戻してから編集する</td><td><span class="badge ng">禁止</span></td></tr>
+  </tbody>
+</table>
+<script src="../assets/base.js"></script>

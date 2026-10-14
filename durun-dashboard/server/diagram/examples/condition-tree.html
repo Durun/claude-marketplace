@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 条件ツリー（分岐の論理構造）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>共有リンクを開くリクエストの分岐</h1>
+<!-- 使いどころ: 「どの条件でどの結果になるか」の分岐構造が設計の本体のとき。 -->
+<!-- 分岐だけならツリー（HTML/CSS）で足りる。合流、ループ、並行が出たら flow-svg.html の SVG フローチャートへ。 -->
+<!-- 各リーフに結果バッジを置き、辿れない組み合わせがないかをレビュワーが目視で確認できる形にする。 -->
+<!-- 分岐の網羅性が受け入れ条件に直結するなら、ツリーではなく条件×結果の表（デシジョンテーブル）の方が漏れが見える。 -->
+<style>
+  .ctree ul { list-style: none; margin: 0; padding-left: 1.3rem; border-left: 1px solid var(--border); }
+  .ctree > ul { border-left: none; padding-left: 0; }
+  .ctree li { margin: .5rem 0; padding-left: .4rem; }
+  .cond { font-weight: 600; }
+  .arm { color: var(--muted); font-size: .85rem; margin-right: .4rem; }
+</style>
+<figure>
+  <div class="ctree">
+    <ul>
+      <li><span class="cond">token は share_links に存在するか</span>
+        <ul>
+          <li><span class="arm">No →</span> <span class="badge ng">404</span> 本文なし</li>
+          <li><span class="arm">Yes →</span> <span class="cond">expires_at は現在より後か</span>
+            <ul>
+              <li><span class="arm">No →</span> <span class="badge ng">410</span> 期限切れを知らせるページ（再発行は持ち主に頼む）</li>
+              <li><span class="arm">Yes →</span> <span class="cond">メモは published か</span>
+                <ul>
+                  <li><span class="arm">No →</span> <span class="badge ng">404</span> 本文なし</li>
+                  <li><span class="arm">Yes →</span> <span class="badge ok">200</span> メモ本文（Markdown を HTML に変換して返す）</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+  <figcaption>結果は 4 通り。published でないメモに 403 ではなく 404 を返すのは、リンクの先のメモが下書きや保管中であることを、リンクを持つ人に知らせないためである。</figcaption>
+</figure>
+<script src="../assets/base.js"></script>

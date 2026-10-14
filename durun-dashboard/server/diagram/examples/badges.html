@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: バッジ一覧</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+/* マージ済みPRの紫。base.css は --merged の色だけを持つので、バッジの形はここで足す */
+.badge.merged { color: var(--merged); background: transparent; border-color: var(--merged); }
+
+/* 自信度: 記号だけで段階が読めるので、意味色は足さず枠線と文字色を既定のままにする。
+   最低段階だけ既存の赤（未確定と同じ意味）を借りる */
+.conf { font-family: ui-monospace, monospace; letter-spacing: .05em; }
+.conf .off { opacity: .35; }
+.badge.conf-low { color: var(--ng); background: var(--ng-bg); border-color: var(--ng); }
+
+/* チップ列: 値そのものを見せるので、丸バッジでなく角丸の等幅にする */
+.strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: .3rem; margin: .5rem 0; font-size: .78rem; }
+.strip .node { border: 1px solid var(--border); border-radius: .35rem; padding: .3rem .45rem; font-family: ui-monospace, monospace; background: var(--bg); }
+.strip .node.out { border-style: dashed; color: var(--muted); }
+.strip .node.hit { border-color: var(--new); color: var(--new); }
+.strip .node.stop { border-color: var(--ng); color: var(--ng); }
+.strip .node.lost { border-color: var(--ng); color: var(--muted); text-decoration: line-through; }
+.strip .sep { color: var(--muted); align-self: center; }
+.legend { font-size: .8rem; color: var(--muted); }
+.legend .node { font-size: .75rem; }
+</style>
+<body>
+<h1>バッジ</h1>
+<!-- 使いどころ: 語の脇に状態や区分を添えるとき。バッジは単独の図ではなく、他の技法の中で使う語彙である。 -->
+<!-- バッジにするのは短い区分だけ。文になるものは本文か表に書く。 -->
+
+<h2>意味色の対応</h2>
+<p>色は文書全体で同じ意味に固定する。色だけに意味を担わせず、ラベルの語で意味が分かるようにする。</p>
+<table>
+  <thead><tr><th>バッジ</th><th>意味</th><th>ラベルの例</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge ok">採用</span></td><td>採用、正常、完了</td><td>採用 / 正常 / 利点 / 実装済み</td></tr>
+    <tr><td><span class="badge ng">禁止</span></td><td>禁止、異常、却下</td><td>禁止 / 異常 / 代償 / 未確定</td></tr>
+    <tr><td><span class="badge new">新規</span></td><td>今回の変更点、新規追加</td><td>新規 / 追記 / 本設計</td></tr>
+    <tr><td><span class="badge mod">変更</span></td><td>既存物の変更</td><td>変更 / 執筆中</td></tr>
+    <tr><td><span class="badge merged">マージ済み</span></td><td>マージ済みPR</td><td>PRの状態にだけ使う（<a href="pr-stack.html">pr-stack.html</a>）</td></tr>
+    <tr><td><span class="badge">対象外</span></td><td>スコープ外、既存のまま、区分の表示</td><td>対象外 / 既存 / 自動 / 手動</td></tr>
+  </tbody>
+</table>
+
+<h2>状態バッジ</h2>
+<p>色に加えて記号を入れる。白黒印刷や色覚の違いでも、済みと未済が区別できる。</p>
+
+<h3>スコープの IN / OUT</h3>
+<!-- 見出しに素の絵文字を置くより、バッジに入れる方が「見出しの一部」でなく状態表示だと分かる。 -->
+<div class="cols2">
+  <div class="card">
+    <h3 style="margin-top:0;"><span class="badge ok">✅ 今回やる</span></h3>
+    <ul>
+      <li>共有リンクの発行（<code>POST /api/notes/:noteId/share</code>）の新設</li>
+      <li><code>GET /s/:token</code> で共有リンクからメモを開けるようにする</li>
+    </ul>
+  </div>
+  <div class="card" style="color: var(--muted);">
+    <h3 style="margin-top:0;"><span class="badge">⏭ 今回やらない</span></h3>
+    <ul>
+      <li>メモの全文検索：別機能で設計する</li>
+      <li>共有リンクのパスワード保護：発行の仕組みと独立に決められる</li>
+    </ul>
+  </div>
+</div>
+
+<h3>文書の進捗</h3>
+<!-- 文書の冒頭に置く。読み手が「どこまで確定した文書か」を本文へ入る前に知れる。 -->
+<p>
+  <span class="badge ok">✅ 受け入れ条件を承認</span>
+  <span class="badge ok">✅ 意思決定を承認</span>
+  <span class="badge mod">🖊 コード設計 執筆中</span>
+  <span class="badge">⏭ PR作成 未着手</span>
+</p>
+
+<h2>日付付き意思決定バッジ</h2>
+<p>その記述を誰がいつ決めたかを、本文の文を伸ばさずに添える。決定そのものには色を付けず、未決だけ赤で目立たせる。</p>
+<p><strong>共有 = 共有リンクを知っている人だけがメモを読める</strong> <span class="badge">ユーザー決定 2026-10-07</span></p>
+<table>
+  <thead><tr><th>論点</th><th>決めたこと</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>共有リンクのトークンを推測できない乱数にする</td>
+      <td><span class="badge">ユーザー決定 2026-10-07</span> 署名付き URL は発行後に失効させられない。乱数を <code>share_links</code> に保存すれば、行を消して失効できる。長さを 32 バイトにするのは本設計の決定</td>
+    </tr>
+    <tr>
+      <td>メモ本文を Markdown のまま保存する</td>
+      <td><span class="badge">ユーザー決定 2026-10-08</span> 変換後の HTML を保存すると、変換の仕様を直すたびに全メモを作り直すことになる。表示のたびに変換すれば、保存したデータは変わらない</td>
+    </tr>
+    <tr>
+      <td>共有リンクの有効期限の既定</td>
+      <td><span class="badge ng">未確定</span> 7 日にすると連休をまたぐ共有が切れ、30 日にすると使われないリンクが長く残る。確定後に変えると、発行済みのリンクの扱いも決め直しになる</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>自信度インジケータ</h2>
+<!-- 使いどころ: 裏取りの度合いが記述ごとに違うとき。読み手が「そのまま信じてよい記述」と「自分で確かめる記述」を仕分けられる。 -->
+<p>その記述をどこまで裏取りしたかを、3段階の丸で示す。段階は記号の数で読めるので意味色は足さず、最低段階だけ未確定と同じ赤にする。</p>
+<table>
+  <thead><tr><th>インジケータ</th><th>意味</th><th>付ける基準</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="badge conf"><span>●●●</span> 高</span></td>
+      <td>そのまま実装してよい</td>
+      <td>一次情報（仕様書、公式ドキュメント、実コード）で確認した</td>
+    </tr>
+    <tr>
+      <td><span class="badge conf"><span>●●</span><span class="off">●</span> 中</span></td>
+      <td>実装前に一度確かめる</td>
+      <td>周辺のコードや既存の実装から推測した</td>
+    </tr>
+    <tr>
+      <td><span class="badge conf conf-low"><span>●</span><span class="off">●●</span> 低</span></td>
+      <td>先に検証してから設計を確定する</td>
+      <td>未検証。外れた場合に設計が変わる</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>本文では、裏取りの度合いが分かれる記述の直後に置く。</p>
+<ul>
+  <li>410 Gone は、対象のリソースがもう使えず、その状態が恒久的だと見込まれることを表す <span class="badge conf"><span>●●●</span> 高</span>（<a href="https://www.rfc-editor.org/rfc/rfc9110.html#name-410-gone">RFC 9110</a> で確認）</li>
+  <li>メモ本文は 1 件あたり 100 KB に収まる <span class="badge conf"><span>●●</span><span class="off">●</span> 中</span>（既存メモの大きさからの推測）</li>
+  <li>1 つのメモに画像を 20 枚まで貼るとき、共有リンクの表示は 1 秒以内に終わる <span class="badge conf conf-low"><span>●</span><span class="off">●●</span> 低</span>（未測定。超えるなら画像を遅延読み込みにする）</li>
+</ul>
+
+<h2>チップ列</h2>
+<p>並びに沿って、どれが対象でどこで止まるかを示す。値そのものを見せるので丸バッジにしない。破線や取り消し線に意味を持たせたら、必ず凡例を添える。</p>
+<figure>
+  <div class="strip">
+    <span class="node hit">share_links.token</span><span class="sep">→</span>
+    <span class="node">expires_at</span><span class="sep">→</span>
+    <span class="node out">owner_id</span><span class="sep">→</span>
+    <span class="node stop">status = archived</span><span class="sep">→</span>
+    <span class="node lost">本文の HTML 変換</span>
+  </div>
+  <figcaption>GET /s/:token の検査を左から順に進め、status が archived で打ち切る。持ち主の確認（owner_id）は、共有リンクを開くときには行わない。</figcaption>
+</figure>
+<p class="legend">
+  凡例:
+  <span class="node hit">青の実線</span> 照合に当たる /
+  <span class="node">実線</span> 通過 /
+  <span class="node out">破線</span> 対象外 /
+  <span class="node stop">赤の実線</span> 打ち切り /
+  <span class="node lost">取り消し線</span> 実行されない
+</p>
+</body>
+<script src="../assets/base.js"></script>

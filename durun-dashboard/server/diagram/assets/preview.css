@@ -1,0 +1,38 @@
+/* プレビュー領域（実演パネル）のスタイル。preview.js とセットで使う。 */
+/* 枠と「プレビュー」ラベルで、本文の一部ではなく実演であることを見た目で示す。 */
+.preview {
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  margin: 1.2rem 0;
+  overflow: hidden;
+}
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .3rem .6rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: .8rem;
+  color: var(--muted);
+}
+.preview-bar .grow { flex: 1; }
+.preview-bar button {
+  font: inherit;
+  color: var(--new);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: .3rem;
+  padding: .1rem .6rem;
+  cursor: pointer;
+}
+/* 実演の中身が置かれる面。demo 側の座標基準になるよう position を張る。
+   面の外へ出た要素はここで切る。画面外からせり上がる動きを、面の外へはみ出さずに見せるためである */
+.preview-stage {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  padding: .8rem;
+  min-height: 4rem;
+}
+.preview > figcaption { padding: .3rem .6rem .5rem; margin: 0; }

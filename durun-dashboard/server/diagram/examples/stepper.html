@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: フェーズステッパー</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>段階リリース計画</h1>
+<!-- 使いどころ: 段階リリース、マイグレーション手順、フェーズ分け。日付ではなく「フェーズの完了条件」を書く（腐りにくい）。 -->
+<!-- 線形3ステップ以下なら番号リストで十分。図にするのは現在地の強調が欲しいときだけ。 -->
+<style>
+  .stepper { display: flex; gap: 0; list-style: none; padding: 0; counter-reset: step; }
+  .stepper li { flex: 1; position: relative; text-align: center; padding-top: 2rem; font-size: .85rem; }
+  .stepper li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 1.6rem; height: 1.6rem; line-height: 1.6rem; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--border);
+  }
+  .stepper li:not(:last-child)::after {
+    content: ""; position: absolute; top: .8rem; left: calc(50% + 1rem); right: calc(-50% + 1rem);
+    border-top: 2px solid var(--border);
+  }
+  .stepper li.done::before { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); content: "✓"; counter-increment: step; }
+  .stepper li.current::before { border-color: var(--new); color: var(--new); font-weight: bold; }
+  .stepper small { display: block; color: var(--muted); }
+</style>
+<ol class="stepper">
+  <li class="done">スキーマの追加<small>migration が CI で通る</small></li>
+  <li class="current">共有リンクの API<small>preview で共有リンクを発行できる</small></li>
+  <li>共有画面<small>preview で共有リンクからメモが開く</small></li>
+  <li>公開<small>社内の 10 人が 7 日間エラーなしで使う</small></li>
+</ol>
+<script src="../assets/base.js"></script>

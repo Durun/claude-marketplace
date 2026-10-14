@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: HTTP通信のリファレンスカード</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>HTTP通信</h1>
+<!-- 使いどころ: エンドポイントの新設と変更。 -->
+<!-- 散文で「〜を渡すと〜が返る」と書かず、メソッドとパス、パラメータ表、ステータス表、実例の形式に落とし、曖昧性を消す。 -->
+<!-- 呼び出しの時間順序（誰が誰を呼ぶか）が論点のときは flow-svg.html、単一APIの契約ならこの形式。 -->
+<!-- パラメータ表には 必須/任意 と型を必ず書く。ステータス表は異常系を網羅する（成功だけ書かない）。 -->
+<style>
+  .endpoint { font-family: ui-monospace, monospace; font-size: 1rem; margin: .8rem 0; }
+  /* 暗い画面では --new と --ok が明るい色になるため、文字を白に固定せず背景色にしてコントラストを保つ。 */
+  .method { display: inline-block; padding: .05rem .6rem; border-radius: .3rem; font-weight: bold; color: var(--bg); background: var(--ok); }
+  .method.post { background: var(--new); }
+  pre.http { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; padding: .8rem 1rem; overflow-x: auto; font-size: .85rem; }
+</style>
+
+<div class="card">
+  <p class="endpoint"><span class="method post">POST</span> /api/notes/{noteId}/share</p>
+  <p>メモの共有リンクを1本発行する。認証が必要で、メモの持ち主だけが呼べる。</p>
+
+  <h3>パラメータ</h3>
+  <table>
+    <thead><tr><th>名前</th><th>位置</th><th>型</th><th>必須</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>noteId</code></td><td>path</td><td>integer</td><td>必須</td><td>notes.id</td></tr>
+      <tr><td><code>expiresInDays</code></td><td>body (JSON)</td><td>integer (1〜30)</td><td>任意</td><td>リンクの有効日数。省略すると 7</td></tr>
+    </tbody>
+  </table>
+
+  <h3>レスポンス</h3>
+  <table>
+    <thead><tr><th>ステータス</th><th>条件</th><th>ボディ</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge ok">201</span></td><td>共有リンクを発行した</td><td>JSON。<code>url</code> と <code>expiresAt</code> を含む</td></tr>
+      <tr><td><span class="badge ng">400</span></td><td><code>expiresInDays</code> が 1〜30 の整数でない</td><td>空</td></tr>
+      <tr><td><span class="badge ng">401</span></td><td>ログインしていない</td><td>空</td></tr>
+      <tr><td><span class="badge ng">404</span></td><td>メモが無い、または持ち主が違う</td><td>空。どちらなのかを区別できる情報を返さない</td></tr>
+      <tr><td><span class="badge ng">409</span></td><td>メモが <code>published</code> でない</td><td>空</td></tr>
+      <tr><td><span class="badge ng">503</span></td><td>データベース障害</td><td>空。<code>Retry-After: 10</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>実例</h3>
+  <!-- 実例は生のHTTPメッセージで示す。curl より 何が線上を流れるか が一意に伝わる。ヘッダは論点のものだけ載せる。 -->
+  <pre class="http"><code>POST /api/notes/482/share HTTP/1.1
+Host: notes.example.com
+Content-Type: application/json
+Cookie: session=e3b0c442
+
+{ "expiresInDays": 7 }
+
+HTTP/1.1 201 Created
+Content-Type: application/json
+Cache-Control: no-store
+
+{ "url": "https://notes.example.com/s/Zk3pVx9Qe2Lm8TnHs4YdWa", "expiresAt": "2026-10-21T09:00:00Z" }</code></pre>
+</div>
+<script src="../assets/base.js"></script>

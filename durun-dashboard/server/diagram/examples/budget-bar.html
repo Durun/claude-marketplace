@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 予算線付き横棒バー</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+/* バーの幅は「実測値 ÷ 目盛り上限」の百分率を直接書く。
+   目盛り上限は予算の2倍に取り、予算線が中央に来るようにして超過の度合いを読みやすくする。 */
+.bar-row { display: grid; grid-template-columns: 7rem 1fr 6rem; gap: .5rem; align-items: center; margin: .35rem 0; }
+.bar-track { position: relative; height: 1.4rem; background: var(--surface); border: 1px solid var(--border); border-radius: .2rem; }
+.bar-fill { height: 100%; background: var(--new-bg); border-right: 2px solid var(--new); }
+.bar-fill.over { background: var(--ng-bg); border-right-color: var(--ng); }
+.bar-budget { position: absolute; top: -.2rem; bottom: -.2rem; border-left: 2px dashed var(--ng); }
+.bar-val { font-variant-numeric: tabular-nums; font-size: .85rem; }
+.bar-label { font-size: .85rem; }
+</style>
+<body>
+<h1>メモ画面の JavaScript のサイズ</h1>
+<!-- 使いどころ: 実測値がしきい値の内か外かが結論のとき。値が2〜4個なら表よりバーが速い。 -->
+<!-- 内訳と削減の経緯まで示すなら表にする。両方を出すと同じ情報が二重になる。 -->
+<p>結論: 無圧縮では予算 200 KB を超えるが、gzip 後は 96 KB で予算内に収まる。</p>
+
+<figure>
+<div>
+  <div class="bar-row">
+    <span class="bar-label">無圧縮</span>
+    <div class="bar-track">
+      <div class="bar-fill over" style="width:78%"></div>
+      <div class="bar-budget" style="left:50%"></div>
+    </div>
+    <span class="bar-val">312 KB <span class="badge ng">超過</span></span>
+  </div>
+  <div class="bar-row">
+    <span class="bar-label">gzip 後</span>
+    <div class="bar-track">
+      <div class="bar-fill" style="width:24%"></div>
+      <div class="bar-budget" style="left:50%"></div>
+    </div>
+    <span class="bar-val">96 KB <span class="badge ok">予算内</span></span>
+  </div>
+</div>
+<figcaption>赤の破線が予算 200 KB。バーの幅は実測値 ÷ 目盛り上限 400 KB の比である。</figcaption>
+</figure>
+
+<p class="callout">
+凡例: 破線が予算、青が予算内、赤が超過。バーの色だけでなく右端のバッジでも判定を示す。
+</p>
+</body>
+<script src="../assets/base.js"></script>

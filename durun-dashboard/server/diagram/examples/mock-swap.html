@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: 差し替えフロー図（モックとスタブ）</title>
+<link rel="stylesheet" href="../assets/base.css">
+<body>
+<h1>画像の保存先の差し替え構造</h1>
+<!-- 使いどころ: テスト戦略や段階導入で、処理フローの一部が実装ごと入れ替わることが論点のとき。 -->
+<!-- 「どこにインターフェースの切れ目があり、何と何が入れ替わるか」を1枚で示す。呼び出し側は変更しないことを図で主張する。 -->
+<!-- 破線枠 = インターフェース（実体ではない）。実装が3個以上になったら図ではなく表（実装×採用環境）にする。 -->
+<!-- レイアウト: 横方向 = 処理の流れ、縦方向 = 差し替え構造。実装はインターフェースの下にぶら下げる。軸に意味を固定すると見通しが良い。 -->
+<figure>
+  <svg viewBox="0 0 640 230" role="img" aria-label="handler は NoteImageStore インターフェースだけに依存し、その下に本番のオブジェクトストレージ実装とテストのメモリ上のスタブがぶら下がる">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g fill="none" stroke="currentColor" stroke-width="1.2">
+      <rect x="20" y="30" width="120" height="44" rx="6"/>
+      <rect x="300" y="30" width="220" height="44" rx="6" stroke-dasharray="5 4"/>
+      <rect x="150" y="160" width="220" height="44" rx="6"/>
+      <rect x="400" y="160" width="220" height="44" rx="6" stroke="var(--new)" stroke-width="2"/>
+      <line x1="140" y1="52" x2="298" y2="52" marker-end="url(#arrow)"/>
+      <line x1="370" y1="74" x2="300" y2="158" marker-end="url(#arrow)"/>
+      <line x1="450" y1="74" x2="510" y2="158" marker-end="url(#arrow)" stroke="var(--new)"/>
+    </g>
+    <g font-size="12" fill="currentColor" text-anchor="middle">
+      <text x="80" y="56">handler</text>
+      <text x="410" y="49">NoteImageStore</text>
+      <text x="410" y="65" font-size="10" opacity=".7">interface</text>
+      <text x="260" y="186">ObjectStorageNoteImageStore</text>
+      <text x="510" y="180" fill="var(--new)">InMemoryNoteImageStore</text>
+      <text x="510" y="196" font-size="10" fill="var(--new)">テスト用スタブ</text>
+      <text x="219" y="44" font-size="10">save(noteId, image)</text>
+      <text x="306" y="116" font-size="10">本番 DI</text>
+      <text x="515" y="116" font-size="10" fill="var(--new)">テスト DI</text>
+    </g>
+  </svg>
+  <figcaption>handler は破線のインターフェースにだけ依存する。テストでは青のスタブを注入し、handler 側は無変更で済む。</figcaption>
+</figure>
+<script src="../assets/base.js"></script>

@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>例: PRスタック図</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+/* GitHub の Stacked pull requests パネルに倣った縦一列のレイアウト。
+   上が最後にマージするPR、下が土台。左のレールと各行のアイコンが依存の連なりを表す。 */
+.stack { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: .5rem; overflow: hidden; }
+.stack li {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .55rem .9rem .55rem 2.9rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.stack li:first-child { border-top: none; }
+/* 左レール。行をまたいで縦線を連続させ、両端は半分で止める */
+.stack li::before {
+  content: "";
+  position: absolute;
+  left: 1.5rem;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--border);
+}
+.stack li:first-child::before { top: 50%; }
+.stack li:last-child::before { bottom: 50%; }
+/* 状態アイコン。レール上に置き、背景を行と同色にして線を断つことで節点に見せる */
+.ico {
+  position: absolute;
+  left: .95rem;
+  top: .65rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: currentColor;
+  background: inherit;
+}
+/* 色はマージまでの距離を表す。青=これから作るもの、緑=承認済みで進行中、
+   紫=マージ済みで動かせないもの、グレー=まだ手が入る前。
+   紫は GitHub の配色に合わせた PR状態専用の色で、他の図では使わない。 */
+.ico.design { color: var(--new); }
+.ico.review { color: var(--ok); }
+.ico.merged { color: var(--merged); }
+.ico.draft, .ico.base { color: var(--muted); }
+/* マージ済みのバッジも同じ紫にし、色とラベルの両方で示す */
+.badge.merged { color: var(--merged); background: transparent; border-color: var(--merged); }
+/* 現在の設計が対応する行。青の縦バーと背景で示す */
+.stack li.current { background: var(--new-bg); }
+.stack li.current::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-left: 3px solid var(--new);
+}
+.stack .title { font-weight: 600; }
+.stack .sub { display: block; color: var(--muted); font-size: .8rem; font-weight: 400; }
+.stack .sub code { font-size: .78rem; }
+.stack .spacer { flex: 1; }
+.stack a { color: inherit; }
+</style>
+<body>
+<h1>PRスタック</h1>
+<!-- 使いどころ: base branch が未マージPRのとき、積む順序とブランチ名の対応、マージ順を示す。 -->
+<!-- stepper との違い: stepper は工程の進行。こちらは依存関係とブランチ名の対応で、順序を変えられない。 -->
+<!-- 各行はPRへのリンクにする。読者がその場でスタックを辿れることが、この図の主な価値である。 -->
+<!-- 状態はアイコンの形で区別し、色は補助として重ねる。凡例を図の下に置く。 -->
+
+<!-- アイコン定義。出典: Octicons 16px 版（MIT License、Copyright (c) GitHub Inc.、https://github.com/primer/octicons）。
+     使う絵の symbol だけを写せばよい。
+     symbol にすると同じ絵を <use href="#i-…"> で何度も参照でき、色は呼び出し側の currentColor で決まる。 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-draft" viewBox="0 0 16 16"><path d="M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1Zm9.5 14a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM2.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM3.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM14 7.5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Zm0-4.25a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Z"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></symbol>
+  <symbol id="i-merged" viewBox="0 0 16 16"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 16 16"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/></symbol>
+</svg>
+
+<p>結論: 本設計は未マージの3本の上に積む。土台の <a href="https://github.com/example/notes-app/pull/21">#21</a> がマージされるまで単独でリリースできない。</p>
+
+<figure>
+<ul class="stack">
+  <li class="current">
+    <svg class="ico design" role="img" aria-label="本設計"><use href="#i-draft"/></svg>
+    <span class="title">メモの画面に共有ボタンを置き、共有リンクをコピーできるようにする
+      <span class="sub">本設計 ・ <code>feature/note-share-button</code></span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge new">本設計</span>
+  </li>
+  <li>
+    <svg class="ico draft" role="img" aria-label="Draft"><use href="#i-draft"/></svg>
+    <span class="title"><a href="https://github.com/example/notes-app/pull/33">GET /s/:token を追加し、期限内の共有リンクのメモだけを返す</a>
+      <span class="sub">#33 ・ <code>feature/share-link-open</code> ・ 2 コミット</span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge">Draft</span>
+  </li>
+  <li>
+    <svg class="ico draft" role="img" aria-label="Draft"><use href="#i-draft"/></svg>
+    <span class="title"><a href="https://github.com/example/notes-app/pull/26">POST /api/notes/:noteId/share を追加し、持ち主だけが共有リンクを発行できるようにする</a>
+      <span class="sub">#26 ・ <code>feature/share-link-issue</code> ・ 4 コミット</span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge">Draft</span>
+  </li>
+  <li>
+    <svg class="ico review" role="img" aria-label="レビュー中"><use href="#i-open"/></svg>
+    <span class="title"><a href="https://github.com/example/notes-app/pull/21">共有リンクを保存する share_links テーブルを追加する</a>
+      <span class="sub">#21 ・ <code>feature/share-links-table</code> ・ 5 コミット</span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge ok">レビュー中</span>
+  </li>
+  <li>
+    <svg class="ico merged" role="img" aria-label="マージ済み"><use href="#i-merged"/></svg>
+    <span class="title"><a href="https://github.com/example/notes-app/pull/12">notes.status を draft、published、archived の 3 値だけに制約する</a>
+      <span class="sub">#12 ・ <code>refactor/note-status-constraint</code> ・ 1 コミット</span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge merged">マージ済み</span>
+  </li>
+  <li>
+    <svg class="ico base" role="img" aria-label="ブランチ"><use href="#i-branch"/></svg>
+    <span class="title"><code>main</code>
+      <span class="sub">スタックの土台となるブランチ</span>
+    </span>
+    <span class="spacer"></span>
+    <span class="badge">base</span>
+  </li>
+</ul>
+<figcaption>上が最後にマージするPR、下が土台。青が本設計の位置で、下から順にマージする。各行はPRへ飛べる。</figcaption>
+</figure>
+
+<p class="callout">
+凡例: アイコンの形が種類を、色がマージまでの距離を表す。
+形は 二重丸の分岐＝Draft、矢印付き＝レビュー中、合流＝マージ済み、枝＝ブランチ。
+色は 青＝これから作る本設計、緑＝承認済みで進行中、紫＝マージ済みで動かせない、グレー＝まだ手が入る前。
+状態はバッジにも書き、色だけに意味を持たせない。
+</p>
+</body>
+<script src="../assets/base.js"></script>

@@ -1,0 +1,264 @@
+/* 図解の資料に共通のスタイル。ダッシュボードが資料の <head> に入れる。 */
+/* 色は意味で固定する: 緑=採用/正常、赤=禁止/異常、青=変更点/新規、グレー=スコープ外/既存。 */
+:root {
+  --fg: #1a1a1a;
+  --bg: #ffffff;
+  --muted: #6b7280;
+  --border: #d1d5db;
+  --surface: #f6f7f9;
+  --ok: #15803d;
+  --ok-bg: #f0fdf4;
+  --ng: #b91c1c;
+  --ng-bg: #fef2f2;
+  --new: #1d4ed8;
+  --new-bg: #eff6ff;
+  /* 既存物の変更の黄。新規（青）と変更を区別したいときだけ使う */
+  --mod: #a16207;
+  --mod-bg: #fefce8;
+  /* マージ済みPRの紫。GitHub の配色に合わせた、PR状態にだけ使う色である */
+  --merged: #8250df;
+  /* 本文中のインラインコードの文字色。意味色ではないので、他の用途には使わない */
+  --code: #a35b43;
+  --code-bg: #faf5f2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e5e7eb;
+    --bg: #111418;
+    --muted: #9ca3af;
+    --border: #374151;
+    --surface: #1b2027;
+    --ok: #4ade80;
+    --ok-bg: #12291a;
+    --ng: #f87171;
+    --ng-bg: #2f1616;
+    --new: #60a5fa;
+    --new-bg: #14243c;
+    --mod: #fbbf24;
+    --mod-bg: #2b2410;
+    --merged: #a371f7;
+    --code: #e89064;
+    --code-bg: #241d19;
+  }
+}
+/* リンクはブラウザ既定色に任せない。既定の濃い青はダークテーマで沈む */
+a { color: var(--new); }
+body {
+  color: var(--fg);
+  background: var(--bg);
+  font-family: -apple-system, "Hiragino Sans", sans-serif;
+  line-height: 1.7;
+  max-width: 60rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+h1 { font-size: 1.4rem; }
+/* h1 直下に置く要約1文。本文と区別して、結論を先に読ませる */
+.subhead { color: var(--muted); margin-top: -.6rem; }
+h2 { font-size: 1.15rem; margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--border); padding: .4rem .7rem; text-align: left; vertical-align: top; }
+th { background: var(--surface); }
+.badge {
+  display: inline-block;
+  font-size: .75rem;
+  padding: .05rem .5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.badge.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+.badge.ng { color: var(--ng); background: var(--ng-bg); border-color: var(--ng); }
+.badge.new { color: var(--new); background: var(--new-bg); border-color: var(--new); }
+.badge.mod { color: var(--mod); background: var(--mod-bg); border-color: var(--mod); }
+.card {
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  padding: .8rem 1rem;
+  background: var(--surface);
+}
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 40rem) { .cols2 { grid-template-columns: 1fr; } }
+/* 段の中では figure の既定マージンを消す。段の間隔は gap が持つ */
+.cols2 > figure { margin: 0; }
+/* Before/After は枠と見出しの色でも区別する。図の中の変更点まで目を移す前に、どちらが変更後かが分かる */
+.card > figcaption { margin: 0 0 .3rem; font-weight: 600; }
+.card.before { border-color: var(--muted); }
+.card.before > figcaption { color: var(--muted); }
+.card.after { border-color: var(--new); background: var(--new-bg); }
+.card.after > figcaption { color: var(--new); }
+.callout {
+  border-left: 4px solid var(--new);
+  background: var(--new-bg);
+  padding: .5rem .9rem;
+  border-radius: 0 .4rem .4rem 0;
+}
+.callout.warn { border-color: var(--ng); background: var(--ng-bg); }
+figure { margin: 1.2rem 0; }
+figcaption { color: var(--muted); font-size: .85rem; margin-top: .3rem; }
+details { border: 1px solid var(--border); border-radius: .4rem; padding: .4rem .8rem; margin: .6rem 0; }
+summary { cursor: pointer; color: var(--muted); }
+svg { max-width: 100%; height: auto; }
+/* コードブロック。長い行は折り返さず横スクロールへ逃がし、インデントの見た目を保つ */
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  padding: .8rem 1rem;
+  overflow-x: auto;
+  font-size: .85rem;
+  line-height: 1.6;
+}
+/* data-lang を付けると言語名がブロック右上に出る。何の言語かを本文で断らずに済む */
+pre[data-lang]::before {
+  content: attr(data-lang);
+  display: block;
+  text-align: right;
+  color: var(--muted);
+  font-size: .7rem;
+  line-height: 1;
+  margin-bottom: .5rem;
+}
+/* 本文中のインラインコード。地の文と同じ大きさだと読みにくいので、やや小さくするに留めて色で分ける */
+:not(pre) > code {
+  color: var(--code);
+  background: var(--code-bg);
+  /*border: 1px solid var(--border);*/
+  /*border-radius: .3rem;*/
+  padding: .15em .35em;
+  font-size: .95em;
+  /* 枠の高さを 1em 前後に揃える。行の高さは変えたくないので、行送りに影響しない値にする */
+  line-height: 1.35;
+  /* 等幅フォントはベースラインが低く、地の文に対して枠が沈んで見える。その分を持ち上げる */
+  position: relative;
+  top: -.05em;
+}
+/* コード内の意味色。cm=注釈、add=追加行、del=削除行 */
+pre .cm { color: var(--muted); }
+pre .add { color: var(--new); }
+pre .del { color: var(--ng); }
+
+/* 見出しの目次を画面右端に置く。畳んだ状態は見出しの階層を写した目盛りで、ホバーで見出し名まで開く。 */
+/* 対になる組み立ては base.js にある。 */
+
+/* 本文（上の 60rem）の左右に目次の幅を取れない画面では出さない。本文に重ねるより出さない方がよい */
+.outline { display: none; }
+@media (min-width: 76rem) {
+  .outline {
+    display: block;
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+  }
+}
+
+/* 目盛り。見出しの深さを線の長さで表すため、色ではなく長さだけで階層を示す */
+.outline-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+.outline-strip span {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.outline-strip span[data-level="2"] { width: 1.1rem; }
+.outline-strip span[data-level="3"] { width: 0.6rem; }
+/* 読んでいる節。色に意味を持たせないため、意味色ではなく本文色で濃くする */
+.outline-strip span.current { background: var(--fg); }
+
+.outline-panel {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+  /* 畳んだときも読み上げ順を保つため、display ではなく可視性で切り替える */
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.outline:hover .outline-panel,
+.outline:focus-within .outline-panel { visibility: visible; opacity: 1; }
+/* 開いている間は目盛りを隠す。同じ場所に重ねて出すので、両方見えると二重に読める */
+.outline:hover .outline-strip,
+.outline:focus-within .outline-strip { visibility: hidden; }
+
+.outline-panel a {
+  display: block;
+  padding: 0.15rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-decoration: none;
+}
+.outline-panel a[data-level="3"] { padding-left: 1.4rem; }
+.outline-panel a:hover { background: var(--surface); }
+.outline-panel a.current { color: var(--fg); font-weight: 600; }
+
+/* ---- 用語と参照番号のホバー ---- */
+/* 用語のマークアップは base.js が自動で付ける。本文側は無編集でよい。
+   下線は点線のみにして、本文の可読性を落とさない（意味色は使わない）。 */
+.term {
+  border-bottom: 1px dotted var(--muted);
+  cursor: help;
+}
+/* 参照番号（U1・D1 など）のバッジ。本文中の参照も定義箇所の識別子セルもこの見た目に揃える。
+   状態バッジ（.badge）より一段大きく、角丸を浅くして、識別子であることを形で区別する。
+   色は .badge.new（青＝意思決定）と .badge.ng（赤＝未決事項）を書き手または base.js が付ける。 */
+.badge.uid {
+  font-size: .85rem;
+  font-weight: 600;
+  padding: .1rem .45rem;
+  border-radius: .25rem;
+  /* 桁数が違っても幅と字面の中心を揃える。U1 と U12 が並んだときに左右へ振れない */
+  min-width: 1.6em;
+  text-align: center;
+}
+/* 本文中の参照はリンクなので、.term の点線下線を残さずバッジの枠線ひとつにする */
+a.term.ref {
+  text-decoration: none;
+  border-bottom-style: solid;
+  border-bottom-color: currentColor;
+  cursor: pointer;
+}
+/* 吹き出しは文書に1つだけ置き、スクリプトが位置を計算して使い回す。
+   用語ごとの ::after だと、行末で折り返した語が1行目の断片を基準に出て画面外へはみ出す。 */
+#tip {
+  position: fixed;
+  z-index: 10;
+  /* 参照番号は論点・暫定解・確認先を全文で載せるため、用語の説明より広く取る */
+  max-width: min(34rem, 84vw);
+  padding: .4rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: .4rem;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: .8rem;
+  line-height: 1.5;
+  pointer-events: none;
+}
+#tip[hidden] { display: none; }
+/* 参照番号の吹き出しは定義箇所の見た目を縮小して入れるため、テキストの吹き出しより広く高く取る。
+   縮小しても収まらない項目は下端を切り、定義箇所へ飛べば全文が読める状態に留める。 */
+#tip.rich {
+  max-width: min(52rem, 92vw);
+  max-height: 60vh;
+  overflow: hidden;
+  padding: .5rem;
+}
+/* 縮小の中身は本文と同じ字送りで組む。吹き出しの .8rem を継ぐと縮小と二重にかかる */
+.tip-clone { font-size: 1rem; line-height: 1.7; }
