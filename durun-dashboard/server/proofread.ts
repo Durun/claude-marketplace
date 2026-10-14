@@ -1,7 +1,7 @@
 // 文章校正。文章を前から 1 文ずつ、前提知識を持たない読み手（sonnet）に読ませ、7 つの軸で読み進めやすさを評価する。
 // 読み手の答えに、区切りでの回収の確認（Jev）、指す先までの距離（コード）、1 文の負担（形態素解析）を組み合わせて指摘にする。軸と根拠は README にある。
 // AI が書いた文章は、書き手だけが持つ文脈を前提にしがちで、初めて読む人は「何のこと？」と止まる。それを文ごとに見つける。
-import type { ProofEvent, ProofFinding, ProofReading } from '../shared/types.ts';
+import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
 import { UpstreamError, askHaiku, askSonnet, objectSchema } from './haiku.ts';
 import { type NoulQuestion, askNoul, hasJev } from './jev.ts';
 import { type Morpheme, analyze, demonstratives, isContentWord, isPlainWagoVerb, isPredicate } from './morph.ts';
@@ -276,9 +276,25 @@ const variantFindings = async (text: string, sentences: ProofSentence[], glossar
   return out;
 };
 
-/** 文章を校正し、進み具合を emit に順に渡す。signal が中止されたら、残りの文を読ませない。テストでは、辞書を取得しないよう analyzer を差し替える。 */
+/** 続きから校正するときに画面が送る、前に読んだ文の答え。文の数が合わなければ、初めから読む。形の崩れた答えの文は読み直す。 */
+export const priorReadings = (list: unknown, count: number): (ProofReading | null)[] => {
+  if (!Array.isArray(list) || list.length !== count) return [];
+  return list.map((r) => {
+    if (!r || typeof r !== 'object') return null;
+    try {
+      return readingOf(r as Record<string, unknown>);
+    } catch {
+      return null;
+    }
+  });
+};
+
+/**
+ * 文章を校正し、進み具合を emit に順に渡す。signal が中止されたら、残りの文を読ませない。
+ * prior に答えがある文は読み直さず、その答えから指摘を作り直す。テストでは、辞書を取得しないよう analyzer を差し替える。
+ */
 export const proofread = async (
-  text: string, sentences: ProofSentence[], glossary: string, emit: (e: ProofEvent) => void, signal: AbortSignal, analyzer = analyze,
+  text: string, sentences: ProofSentence[], glossary: string, emit: (e: ProofEvent) => void, signal: AbortSignal, prior: (ProofReading | null)[] = [], analyzer = analyze,
 ): Promise<void> => {
   // 形態素解析は候補を足すだけなので、使えなくても読み手だけで進める。
   const morphemes = await analyzer(text).catch((e: Error) => void emit({ type: 'error', message: `形態素解析を使えませんでした（${e.message}）` }));
@@ -293,7 +309,7 @@ export const proofread = async (
   const readings: (ProofReading | undefined)[] = [];
   await pool([...sentences.keys()], PARALLEL, signal, async (i) => {
     try {
-      const reading = readingOf(await askSonnet(readerPrompt(text, sentences, i, glossary, hints?.[i]), READER_SCHEMA));
+      const reading = prior[i] ?? readingOf(await askSonnet(readerPrompt(text, sentences, i, glossary, hints?.[i]), READER_SCHEMA));
       readings[i] = reading;
       emit({ type: 'read', i, reading, findings: readFindings(sentences, i, reading, hints?.[i]) });
     } catch (e) {
@@ -343,4 +359,48 @@ export const proofread = async (
   late.forEach((findings, i) => emit({ type: 'findings', i, findings }));
   await Promise.all([variants, words]);
   emit({ type: 'done' });
+};
+
+const REVISER = `<text> は、初めて読む人が前から読み進められるかを校正した文章で、各文の前に [番号] が付いています。<findings> は、読み手が引っかかった箇所への指摘で、[番号] は指摘を受けた文です。<glossary> は読み手が知っている用語集です。
+指摘が解消するように、文章を書き直してください。
+- edits には、書き直す文の番号 n と、その文と置き換える文章 text を挙げる。書き直さない文は挙げない。
+- text では、文を分けたり、説明の文を足したりしてよい。文を消すときは空にする。[番号] は書かない。
+- 番号の後に（固定）と付いた文は、人間がこのまま残すと決めた文なので、書き直さない。
+- 人間のコメントが付いた指摘は、コメントに従って直す。
+- 指摘の無い文は、前後を直して合わなくなったときだけ書き直す。
+- 用語集にある語は、説明を足さずに使ってよい。
+- 書き手の主張と事実は変えない。文章に書かれていない事実を足さない。`;
+const REVISER_SCHEMA = objectSchema({ edits: listOf({ n: { type: 'integer' }, text: STR }) });
+// 長い文章では書き直す文が多く、2 分を超えることがある。
+const REVISE_TIMEOUT_MS = 10 * 60_000;
+const LEVEL_NOTE: Record<ProofFinding['level'], string> = { fail: '読み進めを妨げる', note: '気にしてほしい' };
+
+const noteLine = (n: ReviseNote): string => [
+  `[${n.i + 1}] ${n.axis}（${LEVEL_NOTE[n.level]}）：${n.quote ? `「${n.quote}」` : ''}${n.message}`,
+  n.suggestions?.length && `  言い換えの候補：${n.suggestions.join('、')}`,
+  n.comment?.trim() && `  人間のコメント：${n.comment.trim()}`,
+].filter(Boolean).join('\n');
+
+/** 文を edits の文章に置き換える。文と文のあいだ（改行や箇条書きの記号）は元のまま残す。 */
+export const applyEdits = (text: string, sentences: ProofSentence[], edits: Map<number, string>): string => {
+  let out = '';
+  let pos = 0;
+  sentences.forEach((s, n) => {
+    out += text.slice(pos, s.start) + (edits.get(n) ?? s.text);
+    pos = s.end;
+  });
+  return out + text.slice(pos);
+};
+
+/** 指摘に沿って書き直した文章を返す。文ごとに置き換えさせ、固定した文は、答えに含まれていても元のまま残す。 */
+export const revise = async (text: string, sentences: ProofSentence[], glossary: string, fixed: Set<number>, notes: ReviseNote[]): Promise<string> => {
+  const prompt = [
+    REVISER,
+    `<glossary>\n${glossary.trim() || '（なし）'}\n</glossary>`,
+    `<text>\n${numbered(text, sentences, sentences.length, (n) => (fixed.has(n) ? '（固定）' : ''))}\n</text>`,
+    `<findings>\n${notes.map(noteLine).join('\n') || '（なし）'}\n</findings>`,
+  ].join('\n\n');
+  const out = await askSonnet(prompt, REVISER_SCHEMA, REVISE_TIMEOUT_MS);
+  const edits = listIn(out.edits).filter((e) => Number.isInteger(e.n) && typeof e.text === 'string' && !fixed.has((e.n as number) - 1));
+  return applyEdits(text, sentences, new Map(edits.map((e) => [(e.n as number) - 1, e.text as string])));
 };

@@ -447,6 +447,30 @@ export type ProofEvent =
   | { type: 'error'; i?: number; message: string }
   | { type: 'done' };
 
+/** 文章校正の 1 回分。text は校正を始めた時点の文章で、文の位置はこれを指す。readings と errors は文ごとで、まだ読んでいない文は null。notices は全体の失敗。 */
+export type ProofRun = {
+  text: string; sentences: { start: number; end: number }[]; tools: string[]; done: boolean;
+  readings: (ProofReading | null)[]; findings: ProofFinding[][]; errors: (string | null)[]; notices: string[];
+};
+
+/** 人間が指摘に付けたコメント。ignore なら、その指摘を数に入れず、修正版でも直さない。 */
+export type ProofComment = { text: string; ignore: boolean };
+
+/**
+ * 文章校正の版。text は編集中の文章で、run は最後に校正した結果。from は、どの版の指摘から作ったか。
+ * fixed は人間が固定した文の本文で、その文の指摘は数に入れず、修正版でも一字も変えない。修正版にも引き継ぐ。
+ * comments のキーは、指摘を見分ける文字列。
+ */
+export type ProofVersion = { text: string; from?: number; run?: ProofRun; fixed: string[]; comments: Record<string, ProofComment> };
+
+/** 文章校正のファイル。版を重ねて文章を直す過程を残す。title は「最近使ったファイル」に出す名前。 */
+export type ProofFile = { id: string; title: string; glossary: string; versions: ProofVersion[]; updatedAt: number };
+
+export type ProofFileMeta = Pick<ProofFile, 'id' | 'title' | 'updatedAt'>;
+
+/** 修正版を作るときに渡す指摘。i は文の番号（0 から）で、comment は人間がその指摘に付けたコメント。 */
+export type ReviseNote = ProofFinding & { i: number; comment?: string };
+
 /** 改善要望で、人間が画面上で指した要素。 */
 export type FeedbackTarget = {
   /** body からの CSS セレクタ。クラス名から、描画しているコンポーネントを探せる。 */

@@ -616,10 +616,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .xp-sep { margin: 3px 1px; border: 0; border-top: 1px solid #aca899; }
 /* メモ帳は、スキンによらず Windows XP のメモ帳の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
 .notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
-.notepad-menubar { display: flex; padding: 1px 0; }
+.notepad-menubar, .proof-menubar { display: flex; padding: 1px 0; }
 .notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
 /* 文章校正。読み手がまだ読んでいない文は灰色にし、読み進めを妨げる文は赤、気にしてほしい文は黄に塗る。語句の印は、妨げるものを赤い波線、ほかを橙の点線にする。 */
-.proof { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+/* XP の見た目は明るい配色だけなので、暗い画面でもチェックボックスや入力欄を明るく描く。 */
+.proof { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; color-scheme: light; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .proof-bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
 .proof-bar > button, .proof-axes > button { padding: 2px 10px; border: 1px solid #003c74; border-radius: 3px; background: linear-gradient(#fff, #ece9d8); color: #000; font: inherit; }
 .proof-bar > button:disabled { border-color: #c9c7ba; color: #aca899; }
@@ -638,14 +639,41 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof-sentence[data-level="fail"] { background: #ffc8c8; }
 .proof-sentence[data-level="error"] { text-decoration: underline dotted #808080; }
 .proof-sentence[aria-current="true"] { outline: 1px dotted #000; }
+.proof-sentence[data-level="fixed"] { background: #d7f0d2; }
+.proof-fix { width: 12px; height: 12px; margin: 0 3px 0 0; vertical-align: -1px; }
+.proof-term { text-decoration: underline dotted #1f5c99; text-decoration-skip-ink: none; cursor: help; }
 .proof-sentence mark { background: none; color: inherit; text-decoration: underline dotted #d26a00; text-decoration-skip-ink: none; }
 .proof-sentence mark[data-fail="true"] { text-decoration: underline wavy #e00000; }
-.proof-detail { flex: none; width: 320px; overflow: auto; padding: 8px; border-left: 1px solid #aca899; background: #fff; }
+/* 右の列は、選んだ文の指摘を上に、用語集を下に置く。用語集は高さを抑え、指摘を読む場所を残す。 */
+.proof-side { display: flex; flex: none; flex-direction: column; width: 320px; border-left: 1px solid #aca899; background: #fff; }
+.proof-detail { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.proof-gloss { flex: none; max-height: 40%; overflow: auto; padding: 4px 8px 8px; border-top: 1px solid #aca899; }
+.proof-gloss summary { cursor: pointer; font-weight: bold; }
+.proof-gloss table { width: 100%; margin-top: 4px; border-collapse: collapse; }
+.proof-gloss th, .proof-gloss td { padding: 2px 4px; border-bottom: 1px solid #ece9d8; text-align: left; vertical-align: top; }
+.proof-gloss th { white-space: nowrap; }
+.proof-gloss td:last-child { color: #808080; text-align: right; }
+.proof-gloss tr[data-unused] { color: #aca899; }
+.proof-gloss p { margin: 4px 0 0; color: #808080; }
+.proof-tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid #aca899; }
+.proof-tabs > button { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
+.proof-tabs > button[aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
+/* 「最近使ったファイル」は、項目の右に入れ子のメニューを開く。 */
+.proof-submenu::after { content: "▶"; position: absolute; right: 6px; font-size: 8px; line-height: 16px; }
+.proof-recent { position-area: inline-end span-block-end; position-try-fallbacks: flip-inline, flip-block; }
 .proof-detail blockquote { margin: 0 0 8px; padding: 4px 6px; border-left: 3px solid #aca899; background: #f6f5ef; white-space: pre-wrap; }
 .proof-detail p { margin: 0 0 6px; }
 .proof-findings { display: grid; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
 .proof-findings > li { display: grid; gap: 2px; padding: 4px 6px; border-left: 3px solid #e8c547; }
 .proof-findings > li[data-level="fail"] { border-left-color: #e00000; }
+.proof-findings > li[data-ignored] { border-left-color: #c9c7ba; color: #808080; }
+.proof-comment { margin: 2px 0 0; padding: 2px 6px; background: #f6f5ef; white-space: pre-wrap; }
+.proof-link { margin-left: 6px; padding: 0; border: 0; background: none; color: #0000ee; font: inherit; text-decoration: underline; cursor: pointer; }
+.proof-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.proof-actions > button { padding: 0 6px; border: 1px solid #aca899; border-radius: 2px; background: linear-gradient(#fff, #ece9d8); color: #000; font: inherit; }
+.proof-actions > button:disabled { color: #aca899; }
+.proof-edit { display: grid; gap: 4px; }
+.proof-edit textarea, .proof-edit input { padding: 2px 4px; border: 1px solid #7f9db9; font: inherit; resize: vertical; }
 .proof-findings q { font-weight: bold; }
 .proof-better { color: #1f5c99; }
 .proof-detail summary { cursor: pointer; }

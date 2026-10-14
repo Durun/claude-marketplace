@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ReviewComment, type SkillInfo } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type ReviewComment, type ReviseNote, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -30,7 +30,8 @@ import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClau
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
-import { MAX_SENTENCES, proofread } from './proofread.ts';
+import { recentProofFiles, readProofFile, writeProofFile } from './proofFiles.ts';
+import { MAX_SENTENCES, priorReadings, proofread, revise } from './proofread.ts';
 import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
@@ -771,19 +772,46 @@ const improveSettings = (body: unknown): Partial<ImproveSettings> => {
   return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
 };
 
-/** 文章校正の進み具合を、出来事ごとに 1 行の JSON で流す。画面が読むのをやめたら、残りの文を読ませない。 */
+const proofSentences = (text: string): ReturnType<typeof parseProof> => {
+  const sentences = parseProof(text);
+  if (!sentences.length) throw new HttpError(400, 'text is required');
+  if (sentences.length > MAX_SENTENCES) throw new HttpError(400, `文が多すぎます。${MAX_SENTENCES} 文までにしてください（${sentences.length} 文あります）`);
+  return sentences;
+};
+
+/** 文章校正の進み具合を、出来事ごとに 1 行の JSON で流す。画面が読むのをやめたら、残りの文を読ませない。続きから校正するときは、前に読んだ文の答えを readings で受ける。 */
 const proofreadStream = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
   const body = await readBody(req);
   const text = field<string>(body, 'text', 'string');
   const glossary = field<string>(body, 'glossary', 'string');
-  const sentences = parseProof(text);
-  if (!sentences.length) throw new HttpError(400, 'text is required');
-  if (sentences.length > MAX_SENTENCES) throw new HttpError(400, `文が多すぎます。${MAX_SENTENCES} 文までにしてください（${sentences.length} 文あります）`);
+  const sentences = proofSentences(text);
+  const prior = priorReadings((body as { readings?: unknown }).readings, sentences.length);
   const stop = new AbortController();
   res.on('close', () => stop.abort());
   res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
-  await proofread(text, sentences, glossary, (e) => res.write(`${JSON.stringify(e)}\n`), stop.signal);
+  await proofread(text, sentences, glossary, (e) => res.write(`${JSON.stringify(e)}\n`), stop.signal, prior);
   res.end();
+};
+
+/** 校正した文章を、残した指摘とコメントに沿って書き直す。fixed は固定した文の番号（0 から）。 */
+const reviseProof = async (body: unknown): Promise<{ text: string }> => {
+  const text = field<string>(body, 'text', 'string');
+  const fixed = field<unknown[]>(body, 'fixed', 'object');
+  const notes = field<unknown[]>(body, 'notes', 'object');
+  if (!Array.isArray(fixed) || !Array.isArray(notes)) throw new HttpError(400, 'fixed and notes must be arrays');
+  const valid = notes.filter((n): n is ReviseNote => Number.isInteger((n as ReviseNote)?.i) && typeof (n as ReviseNote).message === 'string');
+  return { text: await revise(text, proofSentences(text), field<string>(body, 'glossary', 'string'), new Set(fixed.filter(Number.isInteger) as number[]), valid) };
+};
+
+/** 文章校正のファイルは画面が組み立てたものを残す。開き直したときに画面が壊れないよう、骨組みだけを確かめる。 */
+const proofFileOf = (id: string, body: unknown): ProofFile => {
+  const versions = field<unknown[]>(body, 'versions', 'object');
+  const isVersion = (v: unknown): boolean => {
+    const { text, fixed, comments } = (v ?? {}) as Partial<ProofVersion>;
+    return typeof text === 'string' && Array.isArray(fixed) && typeof comments === 'object' && comments !== null;
+  };
+  if (!Array.isArray(versions) || !versions.length || !versions.every(isVersion)) throw new HttpError(400, 'versions must be a non-empty array of versions');
+  return { id, title: field<string>(body, 'title', 'string'), glossary: field<string>(body, 'glossary', 'string'), versions: versions as ProofVersion[], updatedAt: Date.now() };
 };
 
 const POST_ROUTES: [RegExp, Handler][] = [
@@ -822,6 +850,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
+  [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b)],
+  [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
@@ -842,6 +872,9 @@ const GET_ROUTES: [RegExp, Handler][] = [
     return viaGh('PR を読めません', () => prDetail(pr));
   }],
   [/^\/api\/memory$/, () => platform.readMemory()],
+  [/^\/api\/proofread\/files$/, () => recentProofFiles()],
+  // 無いファイルは、画面が新しく書き始めるので null を返す。読めないファイルと見分けるため、404 にはしない。
+  [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = '']) => readProofFile(id)],
   [/^\/api\/sessions\/([^/]+)\/diff$/, ([, id = ''], _, url) => diff(id, url)],
   [/^\/api\/sessions\/([^/]+)\/file$/, ([, id = ''], _, url) => wholeFile(id, url)],
   [/^\/api\/sessions\/([^/]+)\/local-file$/, ([, id = ''], _, url) => localFile(id, url)],

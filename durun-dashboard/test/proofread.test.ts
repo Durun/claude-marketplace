@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
-import { piecesOf } from '../client/proofread.ts';
-import type { ProofEvent, ProofReading } from '../shared/types.ts';
-import { ledgerFinding, proofread, readFindings, wordFindings } from '../server/proofread.ts';
+import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../client/proofread.ts';
+import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
+import { ledgerFinding, priorReadings, proofread, readFindings, revise, wordFindings } from '../server/proofread.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
 
 const DOC = `# 方針
@@ -136,7 +136,7 @@ console.log(JSON.stringify({ structured_output: out }));`);
   try {
     const events: ProofEvent[] = [];
     const noMorph = () => Promise.reject(new Error('辞書がありません'));
-    await proofread(DOC, parseProof(DOC), 'CDN：配信網', (e) => events.push(e), new AbortController().signal, noMorph);
+    await proofread(DOC, parseProof(DOC), 'CDN：配信網', (e) => events.push(e), new AbortController().signal, [], noMorph);
     assert.deepEqual(events[0], { type: 'error', message: '形態素解析を使えませんでした（辞書がありません）' });
     assert.deepEqual(events[1], { type: 'plan', sentences: parseProof(DOC).map(({ start, end }) => ({ start, end })), tools: ['sonnet', 'Jev'] });
     assert.equal(events.filter((e) => e.type === 'read').length, 6);
@@ -149,4 +149,59 @@ console.log(JSON.stringify({ structured_output: out }));`);
     delete process.env.DURUN_DASHBOARD_FAKE_JEV;
     jev.close();
   }
+});
+
+test('続きから校正すると、前に読んだ文は読み手に読ませ直さず、前の答えから指摘を作り直す。形の崩れた答えの文は読み直す', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
+  const asked = path.join(tmp, 'asked');
+  useFakeClaude(tmp, `const prompt = stdin();
+const k = /<sentence>\\n\\[(\\d+)\\]/.exec(prompt)?.[1];
+if (k) fs.appendFileSync(${js(asked)}, k + '\\n');
+console.log(JSON.stringify({ structured_output: k ? ${js(reading())} : { groups: [] } }));`);
+  const sentences = parseProof(DOC);
+  const unlinked = reading({ link: { relation: 'none', marked: false } });
+  const prior = priorReadings([unlinked, unlinked, { role: {} }, unlinked, null, null], sentences.length);
+  assert.deepEqual(priorReadings([unlinked], sentences.length), []);
+  const events: ProofEvent[] = [];
+  await proofread(DOC, sentences, '', (e) => events.push(e), new AbortController().signal, prior, () => Promise.reject(new Error('辞書がありません')));
+  assert.deepEqual(fs.readFileSync(asked, 'utf8').trim().split('\n').sort(), ['3', '5', '6']);
+  const reads = events.flatMap((e) => (e.type === 'read' ? [e] : []));
+  assert.equal(reads.length, 6);
+  assert.deepEqual(reads.find((e) => e.i === 1)?.findings, [{ axis: '連結', level: 'note', message: '前の文との関係が読み取れない' }]);
+  assert.equal(events.at(-1)?.type, 'done');
+});
+
+test('修正版は、指摘と人間のコメントを渡して文ごとに書き直させ、固定した文と、文と文のあいだの記号は元のまま残す', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-revise-'));
+  const promptFile = path.join(tmp, 'prompt');
+  // 書き手は、固定した [2] まで書き直そうとする。
+  const edits = { edits: [{ n: 2, text: '決めたことは次の 2 つである。' }, { n: 3, text: '**パス**：公開 HTML に埋め込む値を決める。' }, { n: 4, text: '' }] };
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nconsole.log(JSON.stringify({ structured_output: ${js(edits)} }));`);
+  const notes: ReviseNote[] = [{ i: 2, axis: '参照', level: 'fail', quote: '焼く', message: '指す先が見つからない', comment: '埋め込むと言い換える' }];
+  const text = await revise(DOC, parseProof(DOC), 'CDN：配信網', new Set([1]), notes);
+  assert.equal(text, DOC.replace('**パス**：公開 HTML が焼く値を決める。焼くとは、HTML に値を埋め込むことである。', '**パス**：公開 HTML に埋め込む値を決める。'));
+  const prompt = fs.readFileSync(promptFile, 'utf8');
+  assert.ok(prompt.includes('\n\n[2]（固定） 決定は次のとおりである。\n\n1. [3] **パス**'));
+  assert.ok(prompt.includes('[3] 参照（読み進めを妨げる）：「焼く」指す先が見つからない\n  人間のコメント：埋め込むと言い換える'));
+  assert.ok(prompt.includes('<glossary>\nCDN：配信網\n</glossary>'));
+});
+
+test('校正の進み具合を版に積み、固定した文の指摘と「コメントして無視」にした指摘を、数と修正版から外す', () => {
+  const plain = (axis: ProofFinding['axis'], quote?: string): ProofFinding => ({ axis, level: 'note', quote, message: `${axis}の指摘` });
+  const [a, b, c] = [plain('語', '甲'), plain('参照', '乙'), plain('連結')];
+  let run = applyEvent(emptyRun('甲である。乙である。'), { type: 'plan', sentences: [{ start: 0, end: 5 }, { start: 5, end: 10 }], tools: ['sonnet'] });
+  run = applyEvent(run, { type: 'read', i: 0, reading: reading(), findings: [a] });
+  run = applyEvent(run, { type: 'findings', i: 1, findings: [b, c] });
+  assert.deepEqual(run.readings, [reading(), null]);
+  const ver = { ...newVersion(run.text), fixed: ['甲である。'], comments: { [findingKey(1, b)]: { text: '前の章で定義済み', ignore: true }, [findingKey(1, c)]: { text: 'だからでつなぐ', ignore: false } } };
+  assert.deepEqual([isIgnored(ver, run, 0, a), isIgnored(ver, run, 1, b), isIgnored(ver, run, 1, c)], [true, true, false]);
+  assert.deepEqual(reviseInput(ver, run), { fixed: [0], notes: [{ ...c, i: 1, comment: 'だからでつなぐ' }] });
+});
+
+test('用語集は「語：説明」と説明の無い「語」を読み、足した語は末尾の行にする。ファイルの名前は最後の版の最初の行にする', () => {
+  assert.deepEqual(glossaryEntries('API：外から呼ぶ口\n\n  PostgreSQL  \nURL: http://a'), [{ term: 'API', note: '外から呼ぶ口' }, { term: 'PostgreSQL', note: '' }, { term: 'URL', note: 'http://a' }]);
+  assert.equal(addTerm('API：外から呼ぶ口\n', '共有リンク', ' メモを見せる URL '), 'API：外から呼ぶ口\n共有リンク：メモを見せる URL');
+  assert.equal(addTerm('', 'PostgreSQL', ''), 'PostgreSQL');
+  const file = newFile('1', '元の文章');
+  assert.equal(titleOf({ ...file, versions: [...file.versions, newVersion('\n## 直した見出し\n本文', 0)] }), '直した見出し');
 });

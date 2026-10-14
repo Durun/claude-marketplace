@@ -71,7 +71,7 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
 
 export const askHaiku = (prompt: string, schema: object): Promise<Record<string, unknown>> => askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS);
 
-export const askSonnet = (prompt: string, schema: object): Promise<Record<string, unknown>> => askClaude(prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS);
+export const askSonnet = (prompt: string, schema: object, timeout = SONNET_TIMEOUT_MS): Promise<Record<string, unknown>> => askClaude(prompt, schema, SONNET_ARGS, timeout);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>

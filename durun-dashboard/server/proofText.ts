@@ -127,12 +127,12 @@ export const isFar = (sentences: ProofSentence[], from: number, to: number): boo
   return distance > NEAR_SENTENCES && sentences[from]?.top !== sentences[to]?.top;
 };
 
-/** upto 番目より前の文に [1] からの番号を付けた本文。文と文のあいだの改行や箇条書きの記号は、元の文章のまま残す。 */
-export const numbered = (text: string, sentences: ProofSentence[], upto: number): string => {
+/** upto 番目より前の文に [1] からの番号を付けた本文。文と文のあいだの改行や箇条書きの記号は、元の文章のまま残す。tag は番号の後に添える印。 */
+export const numbered = (text: string, sentences: ProofSentence[], upto: number, tag = (_n: number) => ''): string => {
   let out = '';
   let pos = 0;
   sentences.slice(0, upto).forEach((s, n) => {
-    out += `${text.slice(pos, s.start)}[${n + 1}] ${s.text}`;
+    out += `${text.slice(pos, s.start)}[${n + 1}]${tag(n)} ${s.text}`;
     pos = s.end;
   });
   return out;

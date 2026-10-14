@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -126,9 +126,9 @@ export const api = {
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
-  /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。 */
-  proofread: async (text: string, glossary: string, onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {
-    const res = await fetch('/api/proofread', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, glossary }), signal });
+  /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。readings に答えがある文は読み直さない。 */
+  proofread: async (text: string, glossary: string, readings: (ProofReading | null)[], onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {
+    const res = await fetch('/api/proofread', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, glossary, readings }), signal });
     if (!res.ok || !res.body) throw new Error(await errorText(res));
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let rest = '';
@@ -138,6 +138,11 @@ export const api = {
       for (const line of lines) if (line) onEvent(JSON.parse(line) as ProofEvent);
     }
   },
+  proofFiles: () => getJson<ProofFileMeta[]>('/api/proofread/files'),
+  /** 無いファイルは null。 */
+  proofFile: (id: string) => getJson<ProofFile | null>(`/api/proofread/files/${seg(id)}`),
+  saveProofFile: (file: ProofFile) => postJson(`/api/proofread/files/${seg(file.id)}`, file),
+  reviseProof: (text: string, glossary: string, fixed: number[], notes: ReviseNote[]) => postJson<{ text: string }>('/api/proofread/revise', { text, glossary, fixed, notes }),
   /** 画像は JSON にせず、そのまま本文で送る。 */
   wallpaperFile: async (file: File): Promise<void> => {
     const res = await fetch('/api/wallpaper', { method: 'POST', headers: { 'content-type': file.type }, body: file });
