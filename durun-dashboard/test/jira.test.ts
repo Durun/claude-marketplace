@@ -41,6 +41,23 @@ test('adfText は、JIRA の本文の段落、改行、リスト、メンショ�
   assert.equal(adfText(doc).trim(), '一行目\n二行目 @山田\n\n- 項目\n\n\nhttps://example.com');
 });
 
+test('adfText は、見出し、表、タスクリスト、コードとリンクの装飾を Markdown の書き方にし、太字は文字だけ残す', () => {
+  const text = (t: string, mark?: object) => ({ type: 'text', text: t, marks: mark && [mark] });
+  const p = (...content: object[]) => ({ type: 'paragraph', content });
+  const row = (type: string, ...cells: object[][]) => ({ type: 'tableRow', content: cells.map((content) => ({ type, content })) });
+  const task = (t: string, state: string) => ({ type: 'taskItem', attrs: { state }, content: [text(t)] });
+  const doc = {
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 2 }, content: [text('凡例')] },
+      { type: 'table', content: [row('tableHeader', [p(text('記号'))], [p(text('意味'))]), row('tableCell', [p(text('A'))], [p(text('a|b')), p(text('続き'))])] },
+      { type: 'taskList', content: [task('未', 'TODO'), task('済', 'DONE')] },
+      p(text('global', { type: 'code' }), text(' と '), text('PR', { type: 'link', attrs: { href: 'https://example.com/pr' } }), text(' は'), text('大事。', { type: 'strong' })),
+    ],
+  };
+  assert.equal(adfText(doc).trim(), '## 凡例\n\n| 記号 | 意味 |\n| --- | --- |\n| A | a\\|b 続き |\n\n- [ ] 未\n- [x] 済\n\n\n`global` と [PR](https://example.com/pr) は大事。');
+});
+
 test('jiraDetail は、課題の属性に本文とコメントを古い順に添え、子の課題も返す', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     if (url.includes('/search/jql?')) {

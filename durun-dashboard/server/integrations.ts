@@ -396,20 +396,50 @@ export const searchJira = async (jql: string, max: number): Promise<JiraIssue[]>
 /** 課題の画面の URL の前に付く部分。設定が無ければ undefined。 */
 export const jiraBase = (): string | undefined => JIRA_BASE && JIRA_AUTH && JIRA_BASE;
 
-type Adf = { type?: string; text?: string; attrs?: { text?: string; url?: string; shortName?: string }; content?: Adf[] };
+type Adf = {
+  type?: string;
+  text?: string;
+  attrs?: { text?: string; url?: string; shortName?: string; level?: number; state?: string };
+  marks?: { type?: string; attrs?: { href?: string } }[];
+  content?: Adf[];
+};
 
-// 段落や見出し、リストは空行で区切り、Markdown として読める程度の文字にする。リストの直後の段落が項目の続きと読まれないよう、リストの後にも空行を置く。表や装飾は文字だけ残す。
-const BLOCKS = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'rule', 'mediaSingle', 'tableRow']);
+// 段落や見出し、リストは空行で区切り、Markdown として読める程度の文字にする。リストの直後の段落が項目の続きと読まれないよう、リストの後にも空行を置く。
+const BLOCKS = new Set(['paragraph', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'rule', 'mediaSingle']);
 
-/** JIRA の本文やコメントの形式（Atlassian Document Format）を、画面に出す文字にする。 */
+// 太字と斜体は文字だけ残す。marked は日本語の句読点に接した ** を閉じず、記号のまま出してしまう。
+const markedText = (node: Adf): string => {
+  const has = (type: string) => node.marks?.find((m) => m.type === type);
+  const text = has('code') ? `\`${node.text ?? ''}\`` : (node.text ?? '');
+  const href = has('link')?.attrs?.href;
+  return href ? `[${text}](${href})` : text;
+};
+
+// GFM の表は、表の 1 行を Markdown の 1 行に書くので、セルの中の改行は空白にし、区切りの | はエスケープする。
+const cellText = (cell: Adf): string => adfText(cell).trim().replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|');
+
+// ponytail: GFM の表は、セルの結合と、セルの中のリストを表せない。結合したセルは左に詰め、リストは 1 行につなぐ。崩れる表が出たら、ADF から <table> を直接組む。
+const tableText = (table: Adf): string => {
+  const rows = (table.content ?? []).map((row) => (row.content ?? []).map(cellText));
+  const width = Math.max(0, ...rows.map((r) => r.length));
+  const line = (cells: string[]): string => `| ${Array.from({ length: width }, (_, i) => cells[i] ?? '').join(' | ')} |`;
+  // GFM の表には見出しの行が要るので、先頭の行を見出しにする。JIRA の表は既定で先頭の行が見出しになっている。
+  const [head = [], ...body] = rows;
+  return `${[line(head), line(Array(width).fill('---')), ...body.map(line)].join('\n')}\n\n`;
+};
+
+/** JIRA の本文やコメントの形式（Atlassian Document Format）を、画面に出す Markdown にする。 */
 export const adfText = (node: Adf | null | undefined): string => {
   if (!node) return '';
-  if (node.type === 'text') return node.text ?? '';
+  if (node.type === 'text') return markedText(node);
   if (node.type === 'hardBreak') return '\n';
   if (node.type === 'mention' || node.type === 'emoji') return node.attrs?.text ?? node.attrs?.shortName ?? '';
   if (node.type === 'inlineCard') return node.attrs?.url ?? '';
+  if (node.type === 'table') return tableText(node);
   const inner = (node.content ?? []).map(adfText).join('');
+  if (node.type === 'heading') return `${'#'.repeat(node.attrs?.level ?? 1)} ${inner}\n\n`;
   if (node.type === 'listItem') return `- ${inner.trim()}\n`;
+  if (node.type === 'taskItem') return `- [${node.attrs?.state === 'DONE' ? 'x' : ' '}] ${inner.trim()}\n`;
   if (node.type === 'codeBlock') return `\`\`\`\n${inner}\n\`\`\`\n\n`;
   return BLOCKS.has(node.type ?? '') ? `${inner}\n\n` : inner;
 };

@@ -33,7 +33,7 @@ const CHILD_FIELDS = new Set(['assignee', 'priority']);
 
 /** JIRA で開くリンクは、課題へのリンクを横取りする処理に拾わせないよう data-external を付ける。 */
 const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolean; reload: () => void }) => (
-  <div class="stack pr-view">
+  <div class="stack pr-view jira-view">
     <div class="pr-view-head">
       <a class="pr-view-title" href={issue.url} target="_blank" rel="noopener noreferrer" data-external>{issue.key} {issue.summary}</a>
       <span class="spacer" />
