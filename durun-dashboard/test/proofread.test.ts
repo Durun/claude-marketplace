@@ -180,12 +180,13 @@ console.log(JSON.stringify({ structured_output: k ? ${js(reading())} : { groups:
   assert.equal(events.at(-1)?.type, 'done');
 });
 
-test('修正版は、指摘と人間のコメントを渡して文ごとに書き直させ、固定した文と、文と文のあいだの記号は元のまま残す', async () => {
+test('修正版は、指摘と人間のコメントを渡して文ごとに opus に書き直させ、固定した文と、文と文のあいだの記号は元のまま残す', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-revise-'));
   const promptFile = path.join(tmp, 'prompt');
+  const argsFile = path.join(tmp, 'args');
   // 書き手は、固定した [2] まで書き直そうとする。
   const edits = { edits: [{ n: 2, text: '決めたことは次の 2 つである。' }, { n: 3, text: '**パス**：公開 HTML に埋め込む値を決める。' }, { n: 4, text: '' }] };
-  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nconsole.log(JSON.stringify({ structured_output: ${js(edits)} }));`);
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nfs.writeFileSync(${js(argsFile)}, args.join(' '));\nconsole.log(JSON.stringify({ structured_output: ${js(edits)} }));`);
   const notes: ReviseNote[] = [{ i: 2, axis: '参照', level: 'fail', quote: '焼く', message: '指す先が見つからない', comment: '埋め込むと言い換える' }];
   const text = await revise(DOC, parseProof(DOC), 'CDN：配信網', new Set([1]), notes);
   assert.equal(text, DOC.replace('**パス**：公開 HTML が焼く値を決める。焼くとは、HTML に値を埋め込むことである。', '**パス**：公開 HTML に埋め込む値を決める。'));
@@ -193,6 +194,7 @@ test('修正版は、指摘と人間のコメントを渡して文ごとに書�
   assert.ok(prompt.includes('\n\n[2]（固定） 決定は次のとおりである。\n\n1. [3] **パス**'));
   assert.ok(prompt.includes('[3] 参照（読み進めを妨げる）：「焼く」指す先が見つからない\n  人間のコメント：埋め込むと言い換える'));
   assert.ok(prompt.includes('<glossary>\nCDN：配信網\n</glossary>'));
+  assert.match(fs.readFileSync(argsFile, 'utf8'), /--model opus --effort medium /);
 });
 
 test('校正の進み具合を版に積み、固定した文の指摘と「コメントして無視」にした指摘を、数と修正版から外す', () => {

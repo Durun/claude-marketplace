@@ -3,7 +3,7 @@
 // AI が書いた文章は、書き手だけが持つ文脈を前提にしがちで、初めて読む人は「何のこと？」と止まる。それを文ごとに見つける。
 import { findingKey, sentenceText } from '../shared/proofread.ts';
 import type { ProofEvent, ProofFinding, ProofReading, ProofRun, ProofVersion, ReviseNote } from '../shared/types.ts';
-import { type OnUsage, UpstreamError, askHaiku, askSonnet, objectSchema } from './haiku.ts';
+import { type OnUsage, UpstreamError, askHaiku, askOpus, askSonnet, objectSchema } from './haiku.ts';
 import { type NoulQuestion, askNoul, hasJev } from './jev.ts';
 import { type Morpheme, analyze, demonstratives, isContentWord, isPlainWagoVerb, isPredicate } from './morph.ts';
 import { type ClosureLevel, type ProofSentence, closuresOf, isFar, numbered } from './proofText.ts';
@@ -376,8 +376,6 @@ const REVISER = `<text> は、初めて読む人が前から読み進められ�
 - 用語集にある語は、説明を足さずに使ってよい。
 - 書き手の主張と事実は変えない。文章に書かれていない事実を足さない。`;
 const REVISER_SCHEMA = objectSchema({ edits: listOf({ n: { type: 'integer' }, text: STR }) });
-// 長い文章では書き直す文が多く、2 分を超えることがある。
-const REVISE_TIMEOUT_MS = 10 * 60_000;
 const LEVEL_NOTE: Record<ProofFinding['level'], string> = { fail: '読み進めを妨げる', note: '気にしてほしい' };
 
 const noteLine = (n: ReviseNote, label = `[${n.i + 1}]`): string => [
@@ -405,7 +403,7 @@ export const revise = async (text: string, sentences: ProofSentence[], glossary:
     `<text>\n${numbered(text, sentences, sentences.length, (n) => (fixed.has(n) ? '（固定）' : ''))}\n</text>`,
     `<findings>\n${notes.map((n) => noteLine(n)).join('\n') || '（なし）'}\n</findings>`,
   ].join('\n\n');
-  const out = await askSonnet(prompt, REVISER_SCHEMA, undefined, REVISE_TIMEOUT_MS);
+  const out = await askOpus(prompt, REVISER_SCHEMA);
   const edits = listIn(out.edits).filter((e) => Number.isInteger(e.n) && typeof e.text === 'string' && !fixed.has((e.n as number) - 1));
   return applyEdits(text, sentences, new Map(edits.map((e) => [(e.n as number) - 1, e.text as string])));
 };

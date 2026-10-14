@@ -1,4 +1,4 @@
-// ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。
+// ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。文章校正の修正版は opus に書かせる。
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { TokenTotals } from '../shared/types.ts';
@@ -9,6 +9,8 @@ const HAIKU_TIMEOUT_MS = 30_000;
 const SONNET_TIMEOUT_MS = 2 * 60_000;
 // コードを読みながら答えるので、数分かかることがある。
 const READER_TIMEOUT_MS = 10 * 60_000;
+// 長い文章では書き直す文が多く、数分かかることがある。
+const OPUS_TIMEOUT_MS = 10 * 60_000;
 
 // フック、MCP、CLAUDE.md を外す。フックが動くと、このセッションもダッシュボードに記録される。
 const COMMON_ARGS = ['-p', '--safe-mode', '--no-session-persistence', '--output-format', 'json'];
@@ -25,6 +27,12 @@ const SONNET_ARGS = [
   '--model', 'sonnet', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
   '--system-prompt', '頼まれた文章を読み、求められた形で判定する。',
+];
+
+// 指摘に沿って文章を書き直させる。直し方を考えさせるため、sonnet より確かな opus を、思考を外さずに動かす。時間と消費を抑えるよう、effort は medium にする。
+const OPUS_ARGS = [
+  '--model', 'opus', '--effort', 'medium', '--tools', '',
+  '--system-prompt', '頼まれた文章を、求められた形で書き直す。',
 ];
 
 // 事実を確かめるにはコードを読んで推論する必要があるため、haiku より確かな sonnet に、読むだけのツールを渡す。確認の要る操作は断る。
@@ -88,8 +96,11 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
 export const askHaiku = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
   askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS, undefined, onUsage);
 
-export const askSonnet = (prompt: string, schema: object, onUsage?: OnUsage, timeout = SONNET_TIMEOUT_MS): Promise<Record<string, unknown>> =>
-  askClaude(prompt, schema, SONNET_ARGS, timeout, undefined, onUsage);
+export const askSonnet = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
+  askClaude(prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS, undefined, onUsage);
+
+export const askOpus = (prompt: string, schema: object): Promise<Record<string, unknown>> =>
+  askClaude(prompt, schema, OPUS_ARGS, OPUS_TIMEOUT_MS);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>
