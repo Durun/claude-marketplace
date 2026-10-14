@@ -179,7 +179,9 @@ export type Session = {
   links: SavedLink[];
   /** 人間がエクスプローラーから資料に足したファイル。 */
   files: SavedFile[];
-  /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL、ファイルはパスで持つ。 */
+  /** Claude が MCP の proofread で校正した文章。前に受け取ったスナップショットには無いことがある。 */
+  proofFiles?: SavedProof[];
+  /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL、ファイルはパス、校正した文章は文章校正アプリのファイルの id で持つ。 */
   docOrder: string[];
   hiddenDocs: string[];
   /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ。 */
@@ -385,6 +387,9 @@ export type ExplorerDir = { path: string; parent?: string; home: string; roots: 
 
 /** 人間が資料に足したファイル。path は絶対パス。 */
 export type SavedFile = { path: string; at: number };
+
+/** Claude が校正した、文章校正アプリのファイル。title は校正したときのファイルの名前。 */
+export type SavedProof = { id: string; title: string; at: number };
 
 /** Claude が claude.ai に公開した artifact。path は公開した元のファイルで、claude.ai の画面は埋め込めないので、中身はこのファイルから読む。 */
 export type Artifact = { url: string; title: string; path?: string };

@@ -677,13 +677,14 @@ const explore = (url: URL): ExplorerDir => {
   }
 };
 
-/** 外した資料は、発言にまた出ても並べない。足したリンクとファイルは、足したものも消す。 */
+/** 外した資料は、発言にまた出ても並べない。足したリンクとファイルと、Claude が校正した文章は、覚えたものも消す。 */
 const hideDocs = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
   const keys = new Set(strings(body, 'keys'));
   meta.hiddenDocs = [...new Set([...(meta.hiddenDocs ?? []), ...keys])];
   meta.links = meta.links?.filter((l) => !keys.has(l.url));
   meta.files = meta.files?.filter((f) => !keys.has(f.path));
+  meta.proofFiles = meta.proofFiles?.filter((p) => !keys.has(p.id));
   meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
   meta.pinnedDocs = meta.pinnedDocs?.filter((k) => !keys.has(k));
   touch();

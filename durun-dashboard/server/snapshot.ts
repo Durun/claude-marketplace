@@ -180,6 +180,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     pinned: !!meta.pinned,
     links: meta.links ?? [],
     files: meta.files ?? [],
+    proofFiles: meta.proofFiles ?? [],
     docOrder: meta.docOrder ?? [],
     hiddenDocs: meta.hiddenDocs ?? [],
     docTitles: meta.docTitles ?? {},

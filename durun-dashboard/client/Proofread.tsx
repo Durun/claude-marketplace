@@ -25,6 +25,9 @@ const USAGE_KEY = 'proofread-usage';
 
 export const openProofread = (): void => floatUp(PROOFREAD_KEY, '', { id: `${PROOFREAD_KEY}:${Date.now()}` }, SIZE);
 
+/** id のファイルを開く。資料から同じファイルを開き直したときは、前に開いたウィンドウを手前に出す。 */
+export const openProofFile = (id: string): void => floatUp(PROOFREAD_KEY, '', { id: `${PROOFREAD_KEY}:${id}` }, SIZE);
+
 // 添付を受けた Claude は、MCP の proofread でこのアプリと同じ校正を走らせ、結果をこのアプリのファイルに残す。
 export const ProofreadIcon = () => (
   <DesktopIcon

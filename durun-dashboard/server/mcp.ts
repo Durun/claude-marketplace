@@ -308,7 +308,12 @@ const runProofread = async (res: ServerResponse, rpcId: RpcId, params: RpcParams
     const file: ProofFile = { id: newId(), title: '', glossary, versions: [{ ...newVersion(text), run }], updatedAt: Date.now() };
     const title = titleOf(file);
     writeProofFile({ ...file, title });
-    const saved = `校正の結果を、文章校正アプリのファイル「${title}」（file: ${file.id}）に保存しました。人間は、アプリの「ファイル」の「最近使ったファイル」から開けます。\n${commentHint(0)}`;
+    const meta = state.sessions[sessionId];
+    if (meta) {
+      meta.proofFiles = [...(meta.proofFiles ?? []), { id: file.id, title, at: Date.now() }];
+      touch();
+    }
+    const saved = `校正の結果を、文章校正アプリのファイル「${title}」（file: ${file.id}）に保存しました。人間は、このセッションの資料か、アプリの「ファイル」の「最近使ったファイル」から開けます。\n${commentHint(0)}`;
     result = textResult(`${saved}\n\n${proofReport(run)}`);
   } catch (e) {
     result = textResult(`校正の結果を保存できませんでした。${(e as Error).message}`, true);
