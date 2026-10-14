@@ -1222,7 +1222,11 @@ table.data { width: 100%; border-collapse: collapse; }
   /* チャットは発言の数だけ伸びるので、縦に積んでも高さを抑えて中でスクロールする。 */
   .widget-body.chat { max-height: min(70vh, 760px); overflow: auto; }
   .widget .selection-bar { bottom: calc(52px + var(--taskbar)); }
-  .dashboard-bar, .widget-remove, .window-controls, .widget-resize, .dashboard-placing, .dashboard-ghost { display: none; }
+  .dashboard-bar, .widget-remove, .widget:not(.float-window) > .window-controls, .widget-resize, .dashboard-placing, .dashboard-ghost { display: none; }
+  /* 浮かべたウィンドウは枠の外に出ているので、タイトルバーのボタンを残して閉じられるようにし、指で押せるよう大きくする。
+     広い画面で置いたウィンドウは右の端が画面の外に出てボタンを押せなくなるので、横いっぱいに広げて縦だけ動かせるようにする。 */
+  .float-window { --ctl: 20px; }
+  .float-window:not(.is-max) { left: 0 !important; width: 100% !important; }
   .widget-body:has(> .code-view) { container-type: normal; }
   .code-side, .widget .code-side { position: static; max-height: 320px; }
 }
