@@ -287,6 +287,8 @@ export type ImproveState = ImproveSettings & {
   sessionId?: string;
   /** 対応中の要望の書き出し */
   current?: string;
+  /** ウェーブが使用制限で止まっているときの、制限が明ける時刻（epoch ミリ秒）。明けたら同じセッションで続ける。 */
+  limitResetsAt?: number;
   /** 対応中のものを除いた、未対応の要望の数 */
   pending: number;
   /** 待機している理由。新しい要望が届くか、人間が続けると消える。 */

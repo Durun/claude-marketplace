@@ -27,6 +27,7 @@ import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
+import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
@@ -1016,12 +1017,17 @@ const watch = (target: string, recursive: boolean, onEvent: (file: string | null
 fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
 onChange(scheduleBroadcast);
 for (const dir of [SESSIONS_DIR, STATUSLINE_DIR]) watch(dir, false, scheduleBroadcast);
-for (const dir of [TASKS_DIR, PROJECTS_DIR]) watch(dir, true, scheduleBroadcast);
+watch(TASKS_DIR, true, scheduleBroadcast);
+watch(PROJECTS_DIR, true, (file) => {
+  scheduleBroadcast();
+  if (file) onTranscriptChange(file);
+});
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
 redeliverInterrupted();
+checkLimits();
 
 // 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。
 for (const event of ['uncaughtException', 'unhandledRejection'] as const) {

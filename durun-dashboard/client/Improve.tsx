@@ -1,5 +1,6 @@
 import { EFFORT_LEVELS, MODELS, type ImproveSettings, type ImproveState } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { shortDateTime } from './format.ts';
 import { href } from './router.ts';
 import { Choice } from './ui.tsx';
 
@@ -20,6 +21,7 @@ const statusText = (i: ImproveState): string | undefined => {
   const rest = i.pending ? `（残り ${i.pending} 件）` : '';
   if (i.running && !i.enabled) return `対応中のウェーブを終えたら止まります: ${i.current ?? ''}`;
   if (i.running) return `対応中: ${i.current ?? ''}${rest}`;
+  if (i.limitResetsAt) return `使用制限で止まっています。${shortDateTime(i.limitResetsAt, Date.now())} に制限が明けたら続けます: ${i.current ?? ''}${rest}`;
   if (i.enabled && i.error) return '待機しています。新しい要望が届くか「続ける」を押すと、次のウェーブを始めます。';
   if (i.enabled) return i.pending ? 'セッションを起動しています…' : '要望を送ると、自動で実装を始めます。';
   return i.pending ? `未対応の要望が ${i.pending} 件あります。` : undefined;
@@ -37,7 +39,7 @@ export const ImproveStatus = ({ improve }: { improve: ImproveState }) => {
         </label>
         <span class="spacer" />
         {improve.enabled && improve.error && !improve.running && <button class="btn btn-sm" onClick={() => save({ enabled: true })}>続ける</button>}
-        {improve.running && improve.sessionId && <a class="fb-link" href={href.session(improve.sessionId)}>進み具合を見る</a>}
+        {(improve.running || improve.limitResetsAt) && improve.sessionId && <a class="fb-link" href={href.session(improve.sessionId)}>進み具合を見る</a>}
       </div>
       {status && <p class="help fb-help">{status}</p>}
       {improve.error && <p class="help fb-help error-text">{improve.error}</p>}

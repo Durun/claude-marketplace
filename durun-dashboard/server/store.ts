@@ -46,6 +46,8 @@ export type SessionMeta = {
   startedAt?: number;
   /** 改善要望を実装するためにダッシュボードが起動したセッション */
   improver?: boolean;
+  /** 使用制限が明けて続けさせた制限の、止まった時刻。同じ制限で 2 度続けさせないために残す。 */
+  limitResumedAt?: number;
 };
 
 export type StoredAttention = {

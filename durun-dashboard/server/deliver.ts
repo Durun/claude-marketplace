@@ -271,6 +271,20 @@ export const compactSession = (sessionId: string, cwd: string): Promise<void> =>
   return resume(sessionId, cwd, '/compact', live?.jobId);
 };
 
+/** 使用制限が明けたときに渡す依頼。人間が続きを頼むときと同じ言い方にし、制限で止まったことには触れない。 */
+export const CONTINUE_PROMPT = '続けて';
+
+/**
+ * 使用制限で止まったセッションに、続きを頼む。人間からの発言ではないので、前置きを付けない。
+ * 動いていないセッションは、人間が閉じたものなので起こさない。
+ */
+export const continueAfterLimit = async (sessionId: string, cwd: string): Promise<void> => {
+  const live = readLiveSessions().get(sessionId);
+  if (!live) return;
+  if (restartable(live)) return resume(sessionId, cwd, CONTINUE_PROMPT, live.jobId);
+  return postToInbox(live.messagingSocketPath, CONTINUE_PROMPT, platform.inboxToken(live.pid, SESSIONS_DIR));
+};
+
 /**
  * モデルと effort を変えて、依頼を渡す。会話が続くセッションの id を返す。
  * バックグラウンドのセッションは起動したときのオプションを保存していて、後から変えられない。/model を再開で渡しても、次の再開で元に戻る。

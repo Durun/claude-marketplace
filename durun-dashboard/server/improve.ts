@@ -2,12 +2,14 @@
 // セッションは要望の全体を見て計画を立て、似た作業をまとめて進める。ウェーブを終えたら一区切りとし、残りと新しい要望は次のセッションで計画し直す。
 // OFF にすると、対応中のウェーブを終えたところで止まる。
 // 失敗したときと、済んだ要望が無いまま終わったときは、ON のまま待機する。新しい要望が届くか、人間が続けると再開する。
+// 使用制限で止まったときはウェーブを区切らず、制限が明けたら同じセッションで続ける。
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ImproveSettings, ImproveState } from '../shared/types.ts';
-import { isAlive, listDir, readJson, summarizeLog } from './claude.ts';
+import { findTranscript, isAlive, listDir, readJson, summarizeLog, type UsageLimit } from './claude.ts';
+import { CONTINUE_PROMPT } from './deliver.ts';
 import { claudeCommand, hostOs } from './platform.ts';
 import { DATA_DIR, ensureSession, newId, state, touch, type ImproveRun } from './store.ts';
 
@@ -52,6 +54,11 @@ const lastLogLine = (): string => {
 
 const alive = (run: ImproveRun): boolean => run.pid > 0 && isAlive(run.pid);
 
+const limitOf = (run: ImproveRun): UsageLimit | undefined => {
+  const transcript = state.sessions[run.sessionId]?.transcriptPath ?? findTranscript(run.sessionId);
+  return transcript ? summarizeLog(transcript).limit : undefined;
+};
+
 /** 最後の発言の「対応した要望:」より後に名前がある要望を、対応を終えたものとみなす。 */
 const doneItems = (message: string | undefined, pending: string[]): string[] => {
   const at = message?.lastIndexOf(DONE_MARK) ?? -1;
@@ -74,6 +81,8 @@ const finishWave = (sessionId: string, lastMessage: string | undefined): void =>
 const endRun = (sessionId: string, failure?: string, lastMessage?: string): void => {
   const run = state.improve.run;
   if (run?.sessionId !== sessionId) return;
+  // 使用制限で止まったウェーブは区切らない。制限が明けたら、limitResume.ts が resumeImprover で続けさせる。
+  if (limitOf(run)) return;
   state.improve.run = undefined;
   if (failure) state.improve.error = `改善のセッションが止まりました（${failure}）。${lastLogLine()}`;
   else finishWave(sessionId, lastMessage);
@@ -81,11 +90,11 @@ const endRun = (sessionId: string, failure?: string, lastMessage?: string): void
   ensureImprover();
 };
 
-const startRun = (items: string[]): void => {
-  const sessionId = randomUUID();
+/** 改善のセッションを -p で動かし、pid を返す。session は、新しく始めるか続けるかを決める引数。 */
+const launch = (sessionId: string, session: string[], prompt: string): number => {
   const { model, effort } = state.improve;
   const args = [
-    '-p', '--session-id', sessionId,
+    '-p', ...session,
     // 可変長の引数なので、プロンプトを飲み込まないよう後ろに別のオプションを置く。
     // 人間の確認を待たずに進めるよう、コードレビューの依頼は使わせない。
     '--allowedTools', 'mcp__plugin_durun-dashboard_durun-dashboard', '--disallowedTools', 'mcp__plugin_durun-dashboard_durun-dashboard__request_review',
@@ -96,7 +105,7 @@ const startRun = (items: string[]): void => {
     '--settings', JSON.stringify({ env: { BASH_DEFAULT_TIMEOUT_MS: String(BASH_TIMEOUT_MS) } }),
     ...(model ? ['--model', model] : []),
     ...(effort ? ['--effort', effort] : []),
-    promptFor(items),
+    prompt,
   ];
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const log = fs.openSync(LOG_FILE, 'a');
@@ -106,8 +115,22 @@ const startRun = (items: string[]): void => {
   fs.closeSync(log);
   child.on('error', (e) => endRun(sessionId, e.message));
   child.on('exit', (code) => endRun(sessionId, code ? `終了コード ${code}` : undefined));
+  return child.pid ?? 0;
+};
+
+const startRun = (items: string[]): void => {
+  const sessionId = randomUUID();
+  const pid = launch(sessionId, ['--session-id', sessionId], promptFor(items));
   Object.assign(ensureSession(sessionId, ROOT), { title: '改善要望の対応', improver: true });
-  state.improve.run = { sessionId, pid: child.pid ?? 0, items, summary: `${items.length} 件の要望のウェーブ`, startedAt: Date.now() };
+  state.improve.run = { sessionId, pid, items, summary: `${items.length} 件の要望のウェーブ`, startedAt: Date.now() };
+  touch();
+};
+
+/** 使用制限で止まったウェーブを、同じセッションに続きを頼んで続ける。 */
+export const resumeImprover = (): void => {
+  const run = state.improve.run;
+  if (!run || alive(run)) return;
+  run.pid = launch(run.sessionId, ['--resume', run.sessionId], CONTINUE_PROMPT);
   touch();
 };
 
@@ -153,13 +176,15 @@ export const updateImprove = (patch: Partial<ImproveSettings>): void => {
 export const improveState = (): ImproveState => {
   const { enabled, model, effort, run, error } = state.improve;
   const running = !!run && alive(run);
+  const limit = run && !running ? limitOf(run) : undefined;
   return {
     enabled,
     model,
     effort,
     running,
     sessionId: run?.sessionId,
-    current: running ? run?.summary : undefined,
+    current: running || limit ? run?.summary : undefined,
+    limitResetsAt: limit?.resetsAt,
     pending: pendingItems().filter((f) => !run?.items?.includes(f)).length,
     error,
   };

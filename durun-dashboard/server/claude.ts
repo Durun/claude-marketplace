@@ -105,6 +105,8 @@ export type LogSummary = {
   /** 最後に AskUserQuestion で尋ねた質問 */
   lastQuestions?: AskedQuestion[];
   lastActivityAt?: number;
+  /** 使用制限で断られて止まったときの、止まった時刻とリセットの時刻（epoch ミリ秒）。続きのやり取りが載ったら消す。 */
+  limit?: UsageLimit;
   timeline: [number, number][];
   editedFiles: Set<string>;
   /** 人間の依頼と Claude の発言。会話の表示と、過去のセッションの検索に使う。 */
@@ -158,6 +160,9 @@ type LogEntry = {
   toolUseResult?: { backgroundTaskId?: string; taskId?: string };
   /** frame-link エントリが持つ、公開した artifact の URL と題名と元のファイル。 */
   frameUrl?: string;
+  /** 使用制限で断られたときに、Claude Code が合成した発言に添える理由と、リセットの時刻（epoch 秒）。 */
+  apiError?: string;
+  apiErrorParams?: { rate_limit_info?: { resetsAt?: number } };
   title?: string;
   path?: string;
 };
@@ -333,6 +338,13 @@ const applySkills = (s: LogSummary, listing: SkillListing): void => {
   }
 };
 
+export type UsageLimit = { at: number; resetsAt: number };
+
+const limitOf = (e: LogEntry, ts: number | undefined): UsageLimit | undefined => {
+  const resetsAt = e.apiErrorParams?.rate_limit_info?.resetsAt;
+  return e.apiError === 'usage_limit_reached' && resetsAt && ts ? { at: ts, resetsAt: resetsAt * 1000 } : undefined;
+};
+
 const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void => {
   if (!line) return;
   let e: LogEntry;
@@ -353,6 +365,7 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   if (e.cwd) s.cwd = e.cwd;
   if (e.gitBranch) s.branch = e.gitBranch;
   if (ts) s.lastActivityAt = ts;
+  s.limit = limitOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
   else {
     applyBgResult(s, e);
