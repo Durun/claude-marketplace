@@ -39,6 +39,8 @@ import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
+import { hasJev } from './jev.ts';
+import { MINES_ROW, minesHint } from './minesweeper.ts';
 import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
@@ -872,6 +874,21 @@ const proofreadStream = async (req: IncomingMessage, res: ServerResponse): Promi
   res.end();
 };
 
+// 上級の盤面（30×16）まで受ける。
+const MAX_MINES_CELLS = 480;
+
+/** rows は人間に見えているマインスイーパの盤面。地雷の位置は渡させない。 */
+const minesHintOf = async (body: unknown): Promise<{ odds: (number | null)[] }> => {
+  if (!hasJev()) throw new HttpError(503, 'Jev のキーを設定していません');
+  const rows = strings(body, 'rows');
+  const mines = (body as Record<string, unknown>).mines;
+  const width = rows[0]?.length ?? 0;
+  if (!width || !rows.every((r) => MINES_ROW.test(r) && r.length === width) || rows.length * width > MAX_MINES_CELLS || !Number.isInteger(mines)) {
+    throw new HttpError(400, 'rows must be rows of the same length made of . F 0-8, and mines must be an integer');
+  }
+  return { odds: await minesHint(rows, mines as number) };
+};
+
 /** 校正した文章を、残した指摘とコメントに沿って書き直す。fixed は固定した文の番号（0 から）。 */
 const reviseProof = async (body: unknown): Promise<{ text: string }> => {
   const text = field<string>(body, 'text', 'string');
@@ -940,6 +957,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
+  // 作るたびに Jev を使うので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],

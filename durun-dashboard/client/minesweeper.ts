@@ -67,3 +67,9 @@ export const toggleFlag = (prev: Board, i: number): Board => {
   b.cells[i]!.flag = !b.cells[i]!.flag;
   return b;
 };
+
+/** 人間に見えている盤面を、行ごとの文字列にする。. は開いていないマス、F は旗、0〜8 は開いたマスの周りの地雷の数。地雷の位置は含めない。 */
+export const visibleRows = (b: Board): string[] =>
+  Array.from({ length: b.h }, (_, y) =>
+    b.cells.slice(y * b.w, (y + 1) * b.w).map((c, x) => (c.open && !c.mine ? String(countAround(b, y * b.w + x)) : c.flag ? 'F' : '.')).join(''),
+  );

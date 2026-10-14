@@ -85,6 +85,9 @@ export const dock = (key: string, scope: string, tabId: string): void => setFloa
 
 const update = (f: Float, patch: Partial<Float>): void => setFloats(floats.map((x) => (same(x, f.key, f.scope, f.tab.id) ? { ...x, ...patch } : x)));
 
+/** 開いている間に設定が変わっていても、今のウィンドウを返す。閉じていれば undefined。 */
+export const latestFloat = (f: Float): Float | undefined => floats.find((x) => same(x, f.key, f.scope, f.tab.id));
+
 /** ウィンドウの設定を変える。エクスプローラーの開いているフォルダーなど、ウィンドウごとの状態を保存するのに使う。 */
 export const setFloatSettings = (f: Float, settings: WidgetSettings): void => update(f, { tab: { ...f.tab, settings } });
 

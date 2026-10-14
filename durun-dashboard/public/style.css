@@ -716,6 +716,8 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .mines-grid { display: grid; grid-template-columns: repeat(var(--w), 16px); border: 3px inset #fff; }
 .mines-cell { width: 16px; height: 16px; padding: 0; border: 2px outset #fff; background: #c0c0c0; color: #000; font: bold 11px/1 Tahoma, sans-serif; }
 .mines-cell.is-open { border: 0; border-top: 1px solid #808080; border-left: 1px solid #808080; }
+/* イルカのヒント。地雷がある確率を、そのまま赤の濃さにする。 */
+.mines-cell.is-hint { background-image: linear-gradient(rgb(255 0 0 / var(--odds)), rgb(255 0 0 / var(--odds))); }
 .mines-cell[data-n="1"] { color: #00f; }
 .mines-cell[data-n="2"] { color: #008000; }
 .mines-cell[data-n="3"] { color: #f00; }

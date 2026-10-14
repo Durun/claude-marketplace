@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
+import { useFloats } from './Float.tsx';
+import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
 import { type Fling, glide, pushSample, releaseVelocity, type Sample, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { currentSessionId } from './router.ts';
@@ -215,9 +217,10 @@ const DolphinSays = ({ turn: t }: { turn: Turn }) => (
   </div>
 );
 
-type ChatProps = { turns: Turn[]; thinking: boolean; onAsk: (text: string) => void; onClose: () => void; chatRef: RefObject<HTMLElement> };
+/** onHint は、マインスイーパのヒントを出せるときだけ渡す。 */
+type ChatProps = { turns: Turn[]; thinking: boolean; onAsk: (text: string) => void; onHint?: () => void; onClose: () => void; chatRef: RefObject<HTMLElement> };
 
-const DolphinChat = ({ turns, thinking, onAsk, onClose, chatRef }: ChatProps) => {
+const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatProps) => {
   const [text, setText] = useState('');
   const log = useRef<HTMLDivElement>(null);
   useEffect(() => log.current?.scrollTo({ top: log.current.scrollHeight }), [turns.length, thinking]);
@@ -246,14 +249,18 @@ const DolphinChat = ({ turns, thinking, onAsk, onClose, chatRef }: ChatProps) =>
         onKeyDown={(e) => onSubmitKey(e, ask)}
       />
       <div class="actions">
+        {onHint && <button class="btn btn-sm" disabled={thinking} title="マインスイーパの各マスに地雷がある確率を Jev で推定し、高いほど赤く塗る" onClick={onHint}>ヒント</button>}
         <button class="btn btn-sm btn-primary" disabled={thinking || !text.trim()} onClick={ask}>聞く</button>
       </div>
     </section>
   );
 };
 
-/** 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。 */
-export const Dolphin = () => {
+/**
+ * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。
+ * jev は Jev を使えるか。使えてマインスイーパを開いていれば、吹き出しからヒントを出せる。
+ */
+export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
@@ -281,6 +288,7 @@ export const Dolphin = () => {
     };
   }, []);
 
+  const mines = useFloats().find((f) => f.key === MINESWEEPER_KEY);
   const toggle = () => setOpen((o) => !o);
   const ask = async (text: string) => {
     const next: Turn[] = [...turns, { role: 'human', text }];
@@ -290,10 +298,19 @@ export const Dolphin = () => {
     setThinking(false);
     if (res) setTurns([...next, { role: 'dolphin', text: res.answer, links: res.links }]);
   };
+  const hint = async (f: NonNullable<typeof mines>) => {
+    setThinking(true);
+    const done = await attempt('マインスイーパのヒント', async () => {
+      await askMinesHint(f);
+      return true;
+    });
+    setThinking(false);
+    if (done) setTurns((t) => [...t, { role: 'dolphin', text: 'マインスイーパのマスを、地雷がありそうなほど赤く塗りました。マスに乗せると確率が出ます。' }]);
+  };
 
   return (
     <div class="dolphin" ref={box}>
-      {open && <DolphinChat turns={turns} thinking={thinking} onAsk={ask} onClose={() => setOpen(false)} chatRef={chat} />}
+      {open && <DolphinChat turns={turns} thinking={thinking} onAsk={ask} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
       <canvas
         ref={canvas}
         class="dolphin-canvas"

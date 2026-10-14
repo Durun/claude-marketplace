@@ -1,8 +1,9 @@
 // スタートメニューの「ゲーム」から開く、マインスイーパとソリティア。Windows XP のものに倣い、スキンによらず同じ見た目で描く。
 // 盤面はウィンドウの設定に JSON で持ち、画面を読み込み直しても続きから遊べるようにする。
 import { useEffect, useState } from 'preact/hooks';
-import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
-import { type Board, countAround, flagsLeft, newBoard, reveal, toggleFlag } from './minesweeper.ts';
+import { api } from './api.ts';
+import { type Float, FloatFrame, dock, floatUp, latestFloat, setFloatSettings } from './Float.tsx';
+import { type Board, countAround, flagsLeft, newBoard, reveal, toggleFlag, visibleRows } from './minesweeper.ts';
 import { type Card, type Game, type Pile, RANKS, SUITS, deal, draw, isRed, isWon, move, toFoundation } from './solitaire.ts';
 
 export const MINESWEEPER_KEY = 'minesweeper';
@@ -38,11 +39,40 @@ const useSaved = <T,>(f: Float, fresh: () => T): T => {
 
 const closeOf = (f: Float) => ({ kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) });
 
+/** Jev が推定した、マスごとの地雷がある確率。開いていないマスのほかは null。rows は推定した時の盤面で、盤面が変わったら出さない。 */
+type Hint = { rows: string; odds: (number | null)[] };
+
+const rowsKey = (b: Board): string => visibleRows(b).join('/');
+
+const loadHint = (f: Float, board: Board): Hint | undefined => {
+  try {
+    const hint = f.tab.settings?.hint ? (JSON.parse(f.tab.settings.hint) as Hint) : undefined;
+    return hint?.rows === rowsKey(board) ? hint : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** ヒントを出せる盤面か。勝ち負けが決まった後は、出しても役に立たない。 */
+export const canHint = (f: Float): boolean => {
+  const board = loadState<Board>(f);
+  return !board || board.state === 'ready' || board.state === 'play';
+};
+
+/** 今の盤面のヒントを Jev に推定させ、ウィンドウに残す。待つ間に盤面が変わっていれば、残しても出ない。 */
+export const askMinesHint = async (f: Float): Promise<void> => {
+  const board = loadState<Board>(f) ?? newBoard();
+  const { odds } = await api.minesHint(visibleRows(board), board.mines);
+  const cur = latestFloat(f);
+  if (cur) setFloatSettings(cur, { ...cur.tab.settings, hint: JSON.stringify({ rows: rowsKey(board), odds } satisfies Hint) });
+};
+
 const FACE: Record<Board['state'], string> = { ready: '🙂', play: '🙂', won: '😎', lost: '😵' };
 
 export const MinesweeperFloat = ({ f }: { f: Float }) => {
   const board = useSaved(f, newBoard);
   const set = (b: Board) => b !== board && saveState(f, b);
+  const hint = loadHint(f, board);
   return (
     <FloatFrame f={f} title={MINESWEEPER_TITLE} icon={MINESWEEPER_ICON} controls={[closeOf(f)]}>
       <div class="mines">
@@ -53,10 +83,13 @@ export const MinesweeperFloat = ({ f }: { f: Float }) => {
         <div class="mines-grid" style={`--w: ${board.w}`} onContextMenu={(e) => e.preventDefault()}>
           {board.cells.map((c, i) => {
             const n = c.open && !c.mine ? countAround(board, i) : 0;
+            const odds = hint?.odds[i];
             return (
               <button
                 key={i}
-                class={`mines-cell${c.open ? ' is-open' : ''}`}
+                class={`mines-cell${c.open ? ' is-open' : ''}${odds != null ? ' is-hint' : ''}`}
+                style={odds != null ? `--odds: ${odds}` : undefined}
+                title={odds != null ? `地雷がある確率 ${Math.round(odds * 100)}%` : undefined}
                 data-n={n || undefined}
                 aria-label={c.open ? (c.mine ? '地雷' : String(n)) : c.flag ? '旗' : '未開封'}
                 onClick={() => set(reveal(board, i))}

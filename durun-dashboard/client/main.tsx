@@ -158,7 +158,7 @@ const App = () => {
         <Toasts />
         <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
         {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
-        {!light && <Dolphin />}
+        {!light && <Dolphin jev={snapshot?.jev} />}
         <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
       </CacheVersionContext.Provider>
     </NowContext.Provider>

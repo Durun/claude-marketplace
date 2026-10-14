@@ -162,6 +162,7 @@ export const api = {
   /** 無いファイルは null。 */
   proofFile: (id: string) => getJson<ProofFile | null>(`/api/proofread/files/${seg(id)}`),
   saveProofFile: (file: ProofFile) => postJson(`/api/proofread/files/${seg(file.id)}`, file),
+  minesHint: (rows: string[], mines: number) => postJson<{ odds: (number | null)[] }>('/api/minesweeper/hint', { rows, mines }),
   reviseProof: (text: string, glossary: string, fixed: number[], notes: ReviseNote[]) => postJson<{ text: string }>('/api/proofread/revise', { text, glossary, fixed, notes }),
   /** 画像は JSON にせず、そのまま本文で送る。 */
   wallpaperFile: async (file: File): Promise<void> => {

@@ -339,6 +339,8 @@ export type Snapshot = {
   jiraBase?: string;
   /** Notion のトークンを設定してあるか。画面は、設定してあるときだけ、Notion のページへのリンクをダッシュボードで開く。 */
   notion?: boolean;
+  /** Jev のキーを設定してあるか。画面は、設定してあるときだけ、イルカの吹き出しにマインスイーパのヒントを出す。 */
+  jev?: boolean;
   /** Claude が MCP で文章校正のファイルにコメントを書き込んだ時刻を、ファイルの id ごとに持つ。画面が前に受け取ったスナップショットから描き始めるときは無い。 */
   proofCommentedAt?: Record<string, number>;
   /** 画面のファイルの更新時刻。変わったら画面が読み込み直す。 */

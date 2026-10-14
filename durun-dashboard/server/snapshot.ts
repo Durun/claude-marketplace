@@ -7,6 +7,7 @@ import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraRefreshedAt } from './integrations.ts';
+import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
@@ -288,6 +289,7 @@ export const buildSnapshot = (): Snapshot => {
     cacheVersion: cacheVersion(),
     jiraBase: jiraBase(),
     notion: notionEnabled(),
+    jev: hasJev(),
     proofCommentedAt,
     assets: { js: mtimeMs(path.join(PUBLIC_DIR, 'app.js')), css: mtimeMs(path.join(PUBLIC_DIR, 'style.css')) },
   };

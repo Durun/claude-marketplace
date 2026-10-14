@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { test } from 'node:test';
-import { newBoard, reveal, toggleFlag } from '../client/minesweeper.ts';
+import { newBoard, reveal, toggleFlag, visibleRows } from '../client/minesweeper.ts';
+import { minesHint } from '../server/minesweeper.ts';
 import { type Game, deal, draw, move, toFoundation } from '../client/solitaire.ts';
 
 test('マインスイーパは、最初に開いたマスとその周りに地雷を置かず、空きマスから周りを続けて開く', () => {
@@ -20,6 +22,41 @@ test('マインスイーパは、地雷を開くと負け、地雷以外をす�
   assert.equal(reveal(first, 1).state, 'won');
   const lost = reveal({ ...first, state: 'play', cells: [{ mine: false, open: false, flag: false }, { mine: true, open: false, flag: false }] }, 1);
   assert.equal(lost.state, 'lost');
+});
+
+test('マインスイーパの見えている盤面は、開いたマスを周りの地雷の数、旗を F、ほかを . で表し、地雷の位置を含めない', () => {
+  const cell = (mine: boolean, open = false, flag = false) => ({ mine, open, flag });
+  const b = { ...newBoard({ w: 3, h: 2, mines: 2 }), state: 'play' as const, cells: [cell(false, true), cell(true), cell(false), cell(false, true), cell(true, false, true), cell(false, true)] };
+  assert.deepEqual(visibleRows(b), ['2..', '2F2']);
+});
+
+test('マインスイーパのヒントは、開いていないマスだけを Jev に問い、答えをマスの位置に並べる', async () => {
+  const asked: string[] = [];
+  const jev = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { state, questions } = JSON.parse(body) as { state: Record<string, unknown>; questions: Record<string, { instructions: string }> };
+      assert.deepEqual(state['盤面'], ['1..', '2F1']);
+      const answers = Object.entries(questions).map(([id, q], n) => {
+        asked.push(q.instructions);
+        return [id, { noul: n / 10 }];
+      });
+      res.end(JSON.stringify({ answers: Object.fromEntries(answers) }));
+    });
+  });
+  await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
+  process.env.DURUN_DASHBOARD_FAKE_JEV = `http://127.0.0.1:${(jev.address() as { port: number }).port}/`;
+  try {
+    assert.deepEqual(await minesHint(['1..', '2F1'], 2), [null, 0, 0.1, null, null, null]);
+    assert.equal(asked.length, 2);
+    assert.match(asked[0]!, /上から 1 行目、左から 2 列目/);
+    assert.deepEqual(await minesHint(['12', 'F1'], 1), [null, null, null, null]);
+    assert.equal(asked.length, 2);
+  } finally {
+    delete process.env.DURUN_DASHBOARD_FAKE_JEV;
+    jev.close();
+  }
 });
 
 const card = (s: number, r: number, up = true) => ({ s, r, up });
