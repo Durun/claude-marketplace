@@ -1,5 +1,5 @@
 // 文章校正で、指摘の付いた語句が文のどこにあるかを決める。校正の進み具合を版に積み、人間が無視した指摘を見分ける。
-import type { ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote } from './types.ts';
+import type { ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote, TokenTotals } from './types.ts';
 
 export type Mark = { quote: string; note: string; fail: boolean };
 
@@ -21,7 +21,14 @@ export const piecesOf = (sentence: string, marks: Mark[]): Piece[] => {
   return out;
 };
 
-export const emptyRun = (text: string): ProofRun => ({ text, sentences: [], tools: [], done: false, readings: [], findings: [], errors: [], notices: [] });
+export const emptyRun = (text: string): ProofRun => ({ text, sentences: [], tools: [], done: false, readings: [], findings: [], errors: [], notices: [], usage: {} });
+
+const addTokens = (a: TokenTotals | undefined, b: TokenTotals): TokenTotals => ({
+  input: (a?.input ?? 0) + b.input,
+  output: (a?.output ?? 0) + b.output,
+  cacheRead: (a?.cacheRead ?? 0) + b.cacheRead,
+  cacheCreation: (a?.cacheCreation ?? 0) + b.cacheCreation,
+});
 
 export const applyEvent = (run: ProofRun, e: ProofEvent): ProofRun => {
   const set = <T>(list: T[], i: number, value: T) => Object.assign([...list], { [i]: value });
@@ -32,6 +39,9 @@ export const applyEvent = (run: ProofRun, e: ProofEvent): ProofRun => {
       return { ...run, readings: set(run.readings, e.i, e.reading), findings: set(run.findings, e.i, [...(run.findings[e.i] ?? []), ...e.findings]) };
     case 'findings':
       return { ...run, findings: set(run.findings, e.i, [...(run.findings[e.i] ?? []), ...e.findings]) };
+    case 'usage':
+      // 数えていない校正の続きを読んだ分だけを足すと、校正全体の数に見えてしまうので、数えないままにする。
+      return run.usage ? { ...run, usage: { ...run.usage, [e.model]: addTokens(run.usage[e.model], e.usage) } } : run;
     case 'error':
       return e.i === undefined ? { ...run, notices: [...run.notices, e.message] } : { ...run, errors: set(run.errors, e.i, e.message) };
     case 'done':

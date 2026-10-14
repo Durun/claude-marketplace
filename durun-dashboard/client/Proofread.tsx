@@ -4,12 +4,14 @@
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
-import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion } from '../shared/types.ts';
+import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion, TokenTotals } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
+import { fmtInt, fmtTokens, totalTokens } from './format.ts';
 import { toast } from './toast.tsx';
 import { copyText } from './ui.tsx';
+import { XpMenu } from './XpMenu.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「proofread:開いた時刻」にし、いくつも開けるようにする。 */
 export const PROOFREAD_KEY = 'proofread';
@@ -178,6 +180,26 @@ const Glossary = ({ glossary, text }: { glossary: string; text: string }) => {
   );
 };
 
+const TOKEN_KINDS: [keyof TokenTotals, string][] = [['input', '入力'], ['output', '出力'], ['cacheRead', 'キャッシュ読取'], ['cacheCreation', 'キャッシュ作成']];
+
+/** 内訳は、使った種類だけを並べる。Jev はキャッシュの数を返さない。 */
+const breakdown = (t: TokenTotals, fmt: (n: number) => string): string =>
+  TOKEN_KINDS.filter(([k]) => t[k] > 0).map(([k, label]) => `${label} ${fmt(t[k])}`).join('、');
+
+/** 「表示」のメニューで出す、ウィンドウの下端の欄。選んでいる版の校正で、モデルごとに使ったトークン数を出す。 */
+const UsageBar = ({ run }: { run?: ProofRun }) => {
+  const models = Object.entries(run?.usage ?? {});
+  const note = !run ? 'まだ校正していません' : !run.usage ? '記録がありません' : !models.length && 'まだ使っていません';
+  return (
+    <div class="proof-status">
+      <span>消費トークン</span>
+      {note ? <span>{note}</span> : models.map(([model, t]) => (
+        <span key={model} title={breakdown(t, fmtInt)}>{model} 合計 {fmtTokens(totalTokens(t))}（{breakdown(t, fmtTokens)}）</span>
+      ))}
+    </div>
+  );
+};
+
 /** 結果を見ているときも、校正した時点の文章ではなく、版の今の文章をコピーする。k は版の番号（0 から）。 */
 const copyVersion = async (ver: ProofVersion, k: number): Promise<void> => {
   if (await copyText(ver.text)) toast(`v${k + 1} をコピーしました`);
@@ -198,6 +220,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
   // 見せる軸。空なら全部を見せる。
   const [only, setOnly] = useState<ProofAxis>();
   const [recent, setRecent] = useState<ProofFileMeta[]>([]);
+  const showUsage = f.tab.settings?.usage === 'on';
   const stop = useRef<AbortController | null>(null);
   const latest = useRef<ProofFile>();
   const saved = useRef<ProofFile>();
@@ -248,7 +271,8 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
   const changeVersion = (n: number, fn: (ver: ProofVersion) => ProofVersion) =>
     setFile((cur) => cur && { ...cur, versions: cur.versions.map((x, k) => (k === n ? fn(x) : x)) });
   const setGlossary = (glossary: string) => setFile((cur) => cur && { ...cur, glossary });
-  const openFile = (id: string) => setFloatSettings(f, { file: id });
+  // 前のファイルの文章と用語集を新規のファイルに引き継がないよう、設定は表示の設定だけを残して作り直す。
+  const openFile = (id: string) => setFloatSettings(f, { file: id, usage: showUsage ? 'on' : 'off' });
 
   /** resume なら、前に止めた校正の続きから読む。読み終えた文は読み直さず、指摘だけを作り直す。 */
   const start = (n: number, resume: boolean) => {
@@ -261,7 +285,9 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
     // 読んでいる途中で別のファイルを開いたら、届いた結果をそのファイルに書かない。
     const onRun = (fn: (run: ProofRun) => ProofRun) =>
       setFile((cur) => (cur?.id === file.id ? { ...cur, versions: cur.versions.map((x, k) => (k === n && x.run ? { ...x, run: fn(x.run) } : x)) } : cur));
-    changeVersion(n, (x) => ({ ...x, run: emptyRun(text) }));
+    // 続きから校正するときは、前に読んだ分の消費トークンに足していく。
+    const fresh = emptyRun(text);
+    changeVersion(n, (x) => ({ ...x, run: resume ? { ...fresh, usage: x.run?.usage } : fresh }));
     setRunning(n);
     setEditing(false);
     setPicked(0);
@@ -327,8 +353,15 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
               </>
             )}
           </div>
+          <XpMenu
+            id={menuId('view')}
+            class="xp-menu"
+            label="表示(V)"
+            items={[{ label: '消費トークン(T)', checked: showUsage, onClick: () => setFloatSettings(f, { ...f.tab.settings, usage: showUsage ? 'off' : 'on' }) }]}
+          />
         </nav>
         {body}
+        {showUsage && ver && <UsageBar run={ver.run} />}
       </div>
     </FloatFrame>
   );

@@ -648,6 +648,10 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof-count { color: inherit; opacity: .75; }
 .proof-notice { margin: 0 6px 4px; padding: 2px 6px; border: 1px solid #c9a227; background: #fff7d1; }
 .proof-body { display: flex; flex: 1; min-height: 0; border-top: 1px solid #aca899; }
+/* 「表示」のメニューで出す下端の欄。XP のステータスバーと同じく欄を区切り、狭いウィンドウでは後ろの欄を省略する。 */
+.proof-status { display: flex; flex: none; margin-top: auto; border-top: 1px solid #c5c2b2; line-height: 22px; }
+.proof-status > span { min-width: 0; padding: 0 6px; overflow: hidden; border-left: 1px solid #d5d2c3; white-space: nowrap; text-overflow: ellipsis; }
+.proof-status > span:first-child { flex: none; border-left: 0; }
 .proof-input, .proof-text, .proof-glossary textarea { flex: 1; min-height: 0; margin: 0; padding: 4px 6px; border: 0; border-radius: 0; background: #fff; color: #000; font: 14px/1.7 "MS UI Gothic", "Meiryo UI", sans-serif; resize: none; outline: none; }
 .proof-glossary { display: flex; flex: none; flex-direction: column; gap: 2px; width: 280px; padding-top: 2px; border-left: 1px solid #aca899; }
 .proof-glossary textarea { font-size: 12.5px; }

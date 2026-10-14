@@ -1,6 +1,7 @@
 // ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import type { TokenTotals } from '../shared/types.ts';
 import { claudeCommand } from './platform.ts';
 
 const HAIKU_TIMEOUT_MS = 30_000;
@@ -38,6 +39,19 @@ const running = new Set<string>();
 
 export const isHelperSession = (sessionId: string): boolean => running.has(sessionId);
 
+/** 問い合わせ 1 回で使ったトークン数を受け取る。 */
+export type OnUsage = (usage: TokenTotals) => void;
+
+/** claude -p と Jev が返す usage。Jev はキャッシュの項目を返さない。 */
+export type RawUsage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+
+export const tokensOf = (u: RawUsage): TokenTotals => ({
+  input: u.input_tokens ?? 0,
+  output: u.output_tokens ?? 0,
+  cacheRead: u.cache_read_input_tokens ?? 0,
+  cacheCreation: u.cache_creation_input_tokens ?? 0,
+});
+
 /** すべての項目を必須にした object の JSON Schema。 */
 export const objectSchema = (properties: Record<string, object>): object => ({
   type: 'object',
@@ -47,7 +61,7 @@ export const objectSchema = (properties: Record<string, object>): object => ({
 });
 
 /** JSON Schema に沿った答えを返す。 */
-const askClaude = (prompt: string, schema: object, args: string[], timeout: number, cwd?: string): Promise<Record<string, unknown>> =>
+const askClaude = (prompt: string, schema: object, args: string[], timeout: number, cwd?: string, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
   new Promise((resolve, reject) => {
     const id = randomUUID();
     running.add(id);
@@ -57,7 +71,9 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
       running.delete(id);
       if (err?.killed) return reject(new UpstreamError(`${timeout / 1000} 秒以内に終わりませんでした`));
       try {
-        const out = JSON.parse(stdout) as { result?: string; structured_output?: Record<string, unknown> };
+        const out = JSON.parse(stdout) as { result?: string; structured_output?: Record<string, unknown>; usage?: RawUsage };
+        // 求めた形で答えなくても、トークンは使っている。
+        if (out.usage) onUsage?.(tokensOf(out.usage));
         if (!out.structured_output) throw new UpstreamError(out.result || '答えが返りませんでした');
         resolve(out.structured_output);
       } catch (e) {
@@ -69,9 +85,11 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
     child.stdin?.end(prompt);
   });
 
-export const askHaiku = (prompt: string, schema: object): Promise<Record<string, unknown>> => askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS);
+export const askHaiku = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
+  askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS, undefined, onUsage);
 
-export const askSonnet = (prompt: string, schema: object, timeout = SONNET_TIMEOUT_MS): Promise<Record<string, unknown>> => askClaude(prompt, schema, SONNET_ARGS, timeout);
+export const askSonnet = (prompt: string, schema: object, onUsage?: OnUsage, timeout = SONNET_TIMEOUT_MS): Promise<Record<string, unknown>> =>
+  askClaude(prompt, schema, SONNET_ARGS, timeout, undefined, onUsage);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>

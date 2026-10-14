@@ -444,18 +444,24 @@ export type ProofReading = {
 /**
  * 文章校正の進み具合として、サーバーが 1 行に 1 つずつ送る出来事。
  * plan は文の位置。read はその文を読んだ結果。findings は、区切りや文書全体を見てから足す指摘。
+ * usage は、モデルに 1 回問い合わせるたびに送る、その問い合わせで使ったトークン数。model は tools と同じ名前にする。
  */
 export type ProofEvent =
   | { type: 'plan'; sentences: { start: number; end: number }[]; tools: string[] }
   | { type: 'read'; i: number; reading: ProofReading; findings: ProofFinding[] }
   | { type: 'findings'; i: number; findings: ProofFinding[] }
+  | { type: 'usage'; model: string; usage: TokenTotals }
   | { type: 'error'; i?: number; message: string }
   | { type: 'done' };
 
-/** 文章校正の 1 回分。text は校正を始めた時点の文章で、文の位置はこれを指す。readings と errors は文ごとで、まだ読んでいない文は null。notices は全体の失敗。 */
+/**
+ * 文章校正の 1 回分。text は校正を始めた時点の文章で、文の位置はこれを指す。readings と errors は文ごとで、まだ読んでいない文は null。notices は全体の失敗。
+ * usage はモデルごとに使ったトークン数で、数えていない校正には無い。
+ */
 export type ProofRun = {
   text: string; sentences: { start: number; end: number }[]; tools: string[]; done: boolean;
   readings: (ProofReading | null)[]; findings: ProofFinding[][]; errors: (string | null)[]; notices: string[];
+  usage?: Record<string, TokenTotals>;
 };
 
 /** 人間が指摘に付けたコメント。ignore なら、その指摘を数に入れず、修正版でも直さない。 */

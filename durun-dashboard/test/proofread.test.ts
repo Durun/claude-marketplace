@@ -105,7 +105,7 @@ test('指摘の付いた語句は、文の中で最初に現れた所に印を�
   ]);
 });
 
-test('文章校正は、読み手の答えを文ごとに流し、区切りで Jev に回収を確かめ、文書全体から用語の揺れを探してから終わる', async () => {
+test('文章校正は、読み手の答えを文ごとに流し、区切りで Jev に回収を確かめ、文書全体から用語の揺れを探してから終わり、使ったトークン数をモデルごとに数える', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
   // 読み手には、文の番号ごとに決めた答えを返す。用語の揺れを探す依頼には、組を 1 つ返す。
   const answers = {
@@ -113,13 +113,16 @@ test('文章校正は、読み手の答えを文ごとに流し、区切りで J
     6: reading({ refs: [{ quote: 'event-receiver', antecedent: -2 }], questions: [{ quote: '配る', question: '配るとは何をすることか', kind: 'definition', wait: true }] }),
   };
   const variants = { groups: [{ terms: ['公開 HTML', 'HTML'], thing: '配る HTML', use: 'HTML' }] };
+  const usage = { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 4 };
   useFakeClaude(tmp, `const prompt = stdin();
 const k = /<sentence>\\n\\[(\\d+)\\]/.exec(prompt)?.[1];
 const out = prompt.startsWith('次の <text> の文章で') ? ${js(variants)} : ${js(answers)}[k] ?? ${js(reading())};
-console.log(JSON.stringify({ structured_output: out }));`);
+console.log(JSON.stringify({ structured_output: out, usage: ${js(usage)} }));`);
   // Jev には、「焼くとは」まで読んでいれば焼くの疑問が解けたと答えさせる。
   const asked: string[] = [];
+  let jevCalls = 0;
   const jev = http.createServer((req, res) => {
+    jevCalls++;
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
@@ -128,7 +131,7 @@ console.log(JSON.stringify({ structured_output: out }));`);
         asked.push(q.instructions);
         return [id, { type: 'noul', noul: q.instructions.includes('焼く') && state['既読の部分']!.includes('焼くとは') ? 0.9 : 0.1 }];
       });
-      res.end(JSON.stringify({ answers: Object.fromEntries(noul) }));
+      res.end(JSON.stringify({ answers: Object.fromEntries(noul), usage: { input_tokens: 10, output_tokens: 1 } }));
     });
   });
   await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
@@ -145,6 +148,12 @@ console.log(JSON.stringify({ structured_output: out }));`);
     assert.deepEqual(findingsOf(2).sort(), [['参照', 'note', '焼く'], ['語', 'fail', '公開 HTML']]);
     assert.deepEqual(findingsOf(5), [['参照', 'fail', 'event-receiver'], ['回収', 'fail', '配る']]);
     assert.ok(asked.length > 0 && asked.every((q) => q.includes('`既読の部分` または `用語集`')));
+    // sonnet には 6 文の読み手と用語の揺れで 7 回、Jev には区切りごとに問い合わせる。
+    assert.deepEqual(events.reduce(applyEvent, emptyRun(DOC)).usage, {
+      sonnet: { input: 7, output: 14, cacheRead: 21, cacheCreation: 28 },
+      Jev: { input: 10 * jevCalls, output: jevCalls, cacheRead: 0, cacheCreation: 0 },
+    });
+    assert.equal(events.reduce(applyEvent, { ...emptyRun(DOC), usage: undefined }).usage, undefined);
   } finally {
     delete process.env.DURUN_DASHBOARD_FAKE_JEV;
     jev.close();
