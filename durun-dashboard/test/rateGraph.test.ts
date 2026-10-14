@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { RatePoint } from '../shared/types.ts';
-import { FIVE_HOURS_MS, SEVEN_DAYS_MS, rateGraphShape } from '../client/rateGraph.ts';
+import { FIVE_HOURS_MS, SEVEN_DAYS_MS, paceOf, rateGraphShape } from '../client/rateGraph.ts';
 
 // 四角は x が 6〜234、y が 6（100%）〜50（0%）。
 const END = Date.UTC(2026, 9, 14, 18, 0);
@@ -46,4 +46,11 @@ test('rateGraphShape は、直前の点より前を今にせず、リセット�
     pace: 50,
   });
   assert.equal(rateGraphShape({ usedPercent: 30 }, FIVE_HOURS_MS, at(0.5)), undefined);
+});
+
+test('paceOf は、均等なペースに対する使用率の比を返し、使っていなければ 0、経過がほぼ 0 なら 999 で止める', () => {
+  assert.equal(paceOf(30, 60), 50);
+  assert.equal(paceOf(90, 60), 150);
+  assert.equal(paceOf(0, 0), 0);
+  assert.equal(paceOf(5, 0), 999);
 });

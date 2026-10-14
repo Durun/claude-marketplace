@@ -24,6 +24,9 @@ export type RateGraphShape = {
   pace: number;
 };
 
+// 枠の始まりの直後は経過がほぼ 0 で割り算が発散するので、ここで止める。
+const MAX_PACE = 999;
+
 const unit = (ratio: number): number => Math.min(1, Math.max(0, ratio));
 const tenth = (px: number): number => Math.round(px * 10) / 10;
 
@@ -44,3 +47,6 @@ export const rateGraphShape = (limit: RateLimit, windowMs: number, now: number):
     pace: unit((current - start) / windowMs) * 100,
   };
 };
+
+/** 使用ペース。even は rateGraphShape の pace。100% なら、今のペースのまま使うとリセットでちょうど使い切る。 */
+export const paceOf = (usedPercent: number, even: number): number => (usedPercent > 0 ? Math.min(MAX_PACE, (usedPercent / even) * 100) : 0);

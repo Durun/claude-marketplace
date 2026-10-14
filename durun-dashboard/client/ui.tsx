@@ -176,15 +176,18 @@ export const JiraChips = ({ issues, session }: { issues: JiraIssue[]; session?: 
 type Step = [min: number, color: string];
 
 // コンテキストは小さいうちから色を変えて肥大化に気づかせる。レート制限は使い切りに近い 70% と 90% で変える。
+// 使用ペースは、リセットでちょうど使い切る 100% と、その 1 割増しの 110% で変える。
 
 const CONTEXT_STEPS: Step[] = [[40, 'var(--critical)'], [30, 'var(--serious)'], [20, 'var(--warning)']];
 const RATE_STEPS: Step[] = [[90, 'var(--critical)'], [70, 'var(--warning)']];
+const PACE_STEPS: Step[] = [[110, 'var(--critical)'], [100, 'var(--warning)'], [0, 'var(--good)']];
 
 const stepColor = (steps: Step[], percent: number): string =>
   steps.find(([min]) => Math.round(percent) >= min)?.[1] ?? 'var(--accent)';
 
 export const contextColor = (percent: number): string => stepColor(CONTEXT_STEPS, percent);
 export const rateColor = (percent: number): string => stepColor(RATE_STEPS, percent);
+export const paceColor = (percent: number): string => stepColor(PACE_STEPS, percent);
 
 export const Meter = ({ percent, color, label }: { percent: number; color: string; label: string }) => (
   <div class="meter" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} style={`--c: ${color}`}>

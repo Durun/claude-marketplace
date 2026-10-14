@@ -14,18 +14,19 @@ import { setLightMode, useLightMode } from './lightMode.ts';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
-import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, rateGraphShape } from './rateGraph.ts';
+import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, type RateGraphShape, paceOf, rateGraphShape } from './rateGraph.ts';
 import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
-import { Empty, Meter, Time, rateColor } from './ui.tsx';
+import { Empty, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 
-/** 今の枠の使用率の推移。破線の対角線は、枠の始まりで 0%、リセットで 100% になる均等なペース。 */
-const RateGraph = ({ label, limit, windowMs, now }: { label: string; limit: RateLimit; windowMs: number; now: number }) => {
-  const shape = rateGraphShape(limit, windowMs, now);
-  if (!shape) return null;
+// 使用率の数字を、四角の左上の角から離す距離。
+const VALUE_INSET = 5;
+
+/** 今の枠の使用率の推移。破線の対角線は、枠の始まりで 0%、リセットで 100% になる均等なペース。左上に今の使用率を出す。 */
+const RateGraph = ({ label, limit, shape }: { label: string; limit: RateLimit; shape: RateGraphShape }) => {
   const used = Math.round(limit.usedPercent);
   const pace = Math.round(shape.pace);
   const gap = used - pace;
@@ -40,22 +41,26 @@ const RateGraph = ({ label, limit, windowMs, now }: { label: string; limit: Rate
       <line class="rate-graph-pace" x1={PLOT.left} y1={PLOT.bottom} x2={PLOT.right} y2={PLOT.top} />
       <path class="rate-graph-line" d={shape.path} />
       <circle class="rate-graph-dot" cx={shape.dot.x} cy={shape.dot.y} r={DOT_RADIUS} stroke-width={RING_STROKE} />
+      <text class="rate-graph-value" x={PLOT.left + VALUE_INSET} y={PLOT.top + VALUE_INSET}>{used}%</text>
     </svg>
   );
 };
 
+/** バーは使用ペースで、半分が 100%（リセットでちょうど使い切る）。リセットの時刻が分からず、ペースを出せない値は、使用率の数字を出す。 */
 const RateMeter = ({ label, limit, windowMs }: { label: string; limit: RateLimit; windowMs: number }) => {
   const now = useContext(NowContext);
   const reset = limit.resetsAt ? shortDateTime(toMs(limit.resetsAt), now) : undefined;
+  const shape = rateGraphShape(limit, windowMs, now);
+  const pace = shape && paceOf(limit.usedPercent, shape.pace);
+  const title = pace === undefined ? `${label}の使用率` : `${label}の使用ペースは ${Math.round(pace)}%。100% なら、今のペースのままリセットでちょうど使い切る。バーの半分が 100%`;
   return (
     <div class="rate-item">
-      <div class="rate" title={reset ? `${label}の使用率。${reset} にリセット` : `${label}の使用率`}>
+      <div class="rate" title={reset ? `${title}。${reset} にリセット` : title}>
         <span class="rate-label">{label}</span>
-        <Meter percent={limit.usedPercent} color={rateColor(limit.usedPercent)} label={`${label}の使用率`} />
-        <span class="rate-value">{Math.round(limit.usedPercent)}%</span>
+        {pace === undefined ? <span class="rate-value">{Math.round(limit.usedPercent)}%</span> : <Meter percent={pace / 2} color={paceColor(pace)} label={`${label}の使用ペース（半分が 100%）`} />}
         {reset && <span class="rate-reset">{reset} リセット</span>}
       </div>
-      <RateGraph label={label} limit={limit} windowMs={windowMs} now={now} />
+      {shape && <RateGraph label={label} limit={limit} shape={shape} />}
     </div>
   );
 };
