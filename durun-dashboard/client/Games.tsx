@@ -1,6 +1,6 @@
 // スタートメニューの「ゲーム」から開く、マインスイーパとソリティア。Windows XP のものに倣い、スキンによらず同じ見た目で描く。
 // 盤面はウィンドウの設定に JSON で持ち、画面を読み込み直しても続きから遊べるようにする。
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
 import { type Board, countAround, flagsLeft, newBoard, reveal, toggleFlag } from './minesweeper.ts';
 import { type Card, type Game, type Pile, RANKS, SUITS, deal, draw, isRed, isWon, move, toFoundation } from './solitaire.ts';
@@ -16,21 +16,32 @@ export const SOLITAIRE_ICON = '🃏';
 export const openMinesweeper = (): void => floatUp(MINESWEEPER_KEY, '', { id: MINESWEEPER_KEY }, { w: 260, h: 320 });
 export const openSolitaire = (): void => floatUp(SOLITAIRE_KEY, '', { id: SOLITAIRE_KEY }, { w: 560, h: 560 });
 
-const loadState = <T,>(f: Float, fresh: () => T): T => {
+const loadState = <T,>(f: Float): T | undefined => {
   try {
-    return f.tab.settings?.state ? (JSON.parse(f.tab.settings.state) as T) : fresh();
+    return f.tab.settings?.state ? (JSON.parse(f.tab.settings.state) as T) : undefined;
   } catch {
-    return fresh();
+    return undefined;
   }
 };
 const saveState = (f: Float, state: unknown): void => setFloatSettings(f, { ...f.tab.settings, state: JSON.stringify(state) });
+
+/** 保存した盤面を読む。まだ無ければ一度だけ作って保存する。描き直すたびに作ると、ほかのウィンドウを動かすだけで配り直してしまう。 */
+const useSaved = <T,>(f: Float, fresh: () => T): T => {
+  const saved = loadState<T>(f);
+  const [first] = useState(() => saved ?? fresh());
+  const missing = saved === undefined;
+  useEffect(() => {
+    if (missing) saveState(f, first);
+  }, [missing]);
+  return saved ?? first;
+};
 
 const closeOf = (f: Float) => ({ kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) });
 
 const FACE: Record<Board['state'], string> = { ready: '🙂', play: '🙂', won: '😎', lost: '😵' };
 
 export const MinesweeperFloat = ({ f }: { f: Float }) => {
-  const board = loadState(f, newBoard);
+  const board = useSaved(f, newBoard);
   const set = (b: Board) => b !== board && saveState(f, b);
   return (
     <FloatFrame f={f} title={MINESWEEPER_TITLE} icon={MINESWEEPER_ICON} controls={[closeOf(f)]}>
@@ -74,7 +85,7 @@ const CardFace = ({ c, picked, onClick, onDblClick }: { c: Card; picked?: boolea
 
 /** クリックで札を選び、置き先の列か組札をクリックすると動かす。ダブルクリックで組札へ送る。 */
 export const SolitaireFloat = ({ f }: { f: Float }) => {
-  const game = loadState(f, () => deal());
+  const game = useSaved(f, () => deal());
   const [pick, setPick] = useState<Pick>();
   const set = (g: Game | undefined) => {
     setPick(undefined);
