@@ -1414,7 +1414,7 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .widget-remove { width: 21px; height: 21px; margin-left: 2px; border: 1px solid #fff; border-radius: 3px; background: linear-gradient(#ec9077, #e05a32 45%, #c3401c); color: #fff; font-size: 12px; text-shadow: none; }
 [data-skin="xp"] .widget-remove:hover { filter: brightness(1.15); }
 /* XP のタイトルバーのボタンにする。外すは赤い ×、全画面は上辺の太い四角、ウィンドウ化は 2 つの四角を重ねる。アーカイブは赤いゴミ箱にし、アーカイブしている間は灰色にする。 */
-[data-skin="xp"] .widget { --ctl: 22px; --ctl-gap: 2px; --ctl-right: 4px; --ctl-base: 4px; }
+[data-skin="xp"] :is(.widget, .fb-panel) { --ctl: 22px; --ctl-gap: 2px; --ctl-right: 4px; --ctl-base: 4px; }
 [data-skin="xp"] .window-ctl { border: 1px solid #fff; border-radius: 3px; background: center / 13px no-repeat, linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
 [data-skin="xp"] .window-ctl:hover { filter: brightness(1.15); }
 [data-skin="xp"] .window-controls > .window-ctl.is-close { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'><path d='M3 3l7 7M10 3l-7 7' stroke='%23fff' stroke-width='2'/></svg>"), linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
@@ -1449,8 +1449,12 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] :is(.count-pill, .chip, .badge, .btn) { text-shadow: none; }
 /* 明るい背景では黄色や緑の文字が読みにくいので、文字を暗くし、状態の色は背景に敷く。 */
 [data-skin="xp"] :is(.chip-sub-ok, .chip-sub-bad, .chip-sub-warn) { padding: 0 5px; border: 0; border-radius: 3px; line-height: 16px; background: color-mix(in srgb, var(--sub) 28%, transparent); color: color-mix(in srgb, var(--sub) 45%, #000); }
-[data-skin="xp"] .fb-head .fb-icon { width: 21px; height: 21px; margin-left: 2px; border: 1px solid #fff; border-radius: 3px; background: linear-gradient(#6aa6fd, #2b70f0 45%, #1a58d6); color: #fff; font-size: 12px; text-shadow: none; }
-[data-skin="xp"] .fb-head .fb-icon[aria-label="閉じる"] { background: linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
+/* 改善要望の歯車と × は、ウィジェットのタイトルバーのボタンと同じ大きさにし、同じ太さのアイコンを描く。文字は aria-label で読み上げるので、大きさを 0 にして隠す。 */
+[data-skin="xp"] .fb-head .fb-icon {
+  width: var(--ctl); height: var(--ctl); margin-left: var(--ctl-gap); border: 1px solid #fff; border-radius: 3px; font-size: 0;
+  background: center / 13px no-repeat url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff'><circle cx='8' cy='8' r='6' stroke-width='3' stroke-dasharray='2.36'/><circle cx='8' cy='8' r='3.6' stroke-width='2.6'/></svg>"), linear-gradient(#6aa6fd, #2b70f0 45%, #1a58d6);
+}
+[data-skin="xp"] .fb-head .fb-icon[aria-label="閉じる"] { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'><path d='M3 3l7 7M10 3l-7 7' stroke='%23fff' stroke-width='2'/></svg>"), linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
 [data-skin="xp"] .fb-head .fb-icon:hover { filter: brightness(1.15); }
 /* ウィジェットのタイトルバーのボタンは、文字の代わりにアイコンを描いた青いキャプションボタンにする。文字は読み上げ用に残す。文字は幅 0 でも flex の要素として並ぶため、gap を 0 にしてアイコンを中央に置く。 */
 [data-skin="xp"] .widget > .section-head .btn[data-icon] {
