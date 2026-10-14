@@ -1,5 +1,5 @@
 // TypeSafe の判定モデル Jev に、二値の問い（Noul）をまとめて投げる。数百ミリ秒で、問いごとの「はい」の確率を返す。
-// キーは環境変数 TYPESAFE_AI_API_KEY から読む。無いときは呼び出し側が Claude で代える。
+// キーは ~/.durun-dashboard/.env.local の TYPESAFE_AI_API_KEY から、起動時に環境変数として読む。無いときは呼び出し側が haiku で代える。
 import { UpstreamError } from './haiku.ts';
 
 // テストでは、偽の Jev のアドレスに差し替える。
