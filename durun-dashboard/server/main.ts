@@ -26,7 +26,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, treeOf } from './integrations.ts';
+import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -425,6 +425,13 @@ const commentJira = async (key: string, body: unknown): Promise<void> => {
   const text = field<string>(body, 'body', 'string').trim();
   if (!text) throw new HttpError(400, 'body is empty');
   await viaGh('課題にコメントできません', () => postJiraComment(jiraKeyOf(key), text));
+};
+
+/** 人間がダッシュボードで選んだトランジションで、課題のステータスを移す。id は JIRA のトランジションの id で、数字だけでできている。 */
+const transitionIssue = async (key: string, body: unknown): Promise<void> => {
+  const id = field<string>(body, 'id', 'string');
+  if (!/^\d+$/.test(id)) throw new HttpError(400, 'id must be digits');
+  await viaGh('ステータスを変えられません', () => transitionJira(jiraKeyOf(key), id));
 };
 
 /** 会話の全体。表示する範囲は画面が決める。 */
@@ -855,6 +862,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
+  [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b)],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],

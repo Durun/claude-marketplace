@@ -959,6 +959,15 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .pr-view-head { display: flex; align-items: baseline; gap: 8px; }
 .pr-view-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .pr-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; }
+/* 課題のステータスは、押すと移せる先をステータスの下に並べる。 */
+.jira-status { anchor-scope: --jira-status; }
+.jira-status-button { anchor-name: --jira-status; display: inline-flex; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+.jira-status-button:hover:not(:disabled) > .chip { filter: brightness(1.25); }
+.jira-status-menu { position-anchor: --jira-status; position-area: bottom span-right; margin: 4px 0 0; padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.jira-status-menu:popover-open { display: grid; gap: 2px; }
+.jira-status-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; cursor: pointer; }
+.jira-status-item:hover { background: var(--surface-2); }
+.jira-status-note { margin: 0; padding: 4px 8px; color: var(--muted); font-size: 12.5px; }
 .pr-view-files summary { cursor: pointer; color: var(--text-2); font-size: 12.5px; }
 .pr-view-files ul { display: grid; gap: 2px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
 .pr-view-files li { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }

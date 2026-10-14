@@ -101,8 +101,11 @@ export type JiraIssue = {
 /** 課題のキーとして通す形。サーバーは JIRA の REST の URL に埋めるので、ほかの文字を通さない。 */
 export const JIRA_ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 
-/** 課題の画面に出す中身。description とコメントの本文は、JIRA の形式から Markdown として読める文字にしたもの。 */
-export type JiraDetail = JiraIssue & { description: string; comments: PrPost[]; children: JiraIssue[] };
+/** 課題を今のステータスから移すトランジション。name はトランジションの名前で、status と statusCategory は移った後のステータス。 */
+export type JiraTransition = { id: string; name: string; status: string; statusCategory?: string };
+
+/** 課題の画面に出す中身。description とコメントの本文は、JIRA の形式から Markdown として読める文字にしたもの。transitions は、読んだときに移せたステータス。 */
+export type JiraDetail = JiraIssue & { description: string; comments: PrPost[]; children: JiraIssue[]; transitions: JiraTransition[] };
 
 /** Notion のページの画面に出す中身。id はハイフンの無い 32 桁で、markdown は本文のブロックを Markdown にしたもので、データベース（database が true）では行の表。truncated は、長くて途中までしか読んでいないとき。 */
 export type NotionPage = { id: string; url: string; title: string; icon?: string; updatedAt?: number; markdown: string; truncated: boolean; database?: boolean };

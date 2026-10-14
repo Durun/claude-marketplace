@@ -5,7 +5,7 @@ import { test } from 'node:test';
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';
-const { adfText, jiraDetail, jiraKeyOfUrl, postJiraComment, searchJira } = await import('../server/integrations.ts');
+const { adfText, jiraDetail, jiraKeyOfUrl, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
 const { pageTitleOf } = await import('../server/pageTitle.ts');
 
 test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
@@ -59,19 +59,25 @@ test('adfText は、見出し、表、タスクリスト、コードとリンク
   assert.equal(adfText(doc).trim(), '## 凡例\n\n| 記号 | 意味 |\n| --- | --- |\n| A | a\\|b 続き |\n\n- [ ] 未\n- [x] 済\n\n\n`global` と [PR](https://example.com/pr) は大事。');
 });
 
-test('jiraDetail は、課題の属性に本文とコメントを古い順に添え、子の課題も返す', async (t) => {
+test('jiraDetail は、課題の属性に本文とコメントを古い順に添え、子の課題と、今のステータスへのものを除いた移せる先も返す', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     if (url.includes('/search/jql?')) {
       assert.match(url, /jql=parent\+%3D\+PROJ-1\+ORDER\+BY\+created\+ASC/);
       return Response.json({ issues: [{ key: 'PROJ-2', fields: { summary: '子' } }] });
     }
-    assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/issue\/PROJ-1\?fields=/);
+    assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/issue\/PROJ-1\?fields=.*&expand=transitions$/);
     const p = (s: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: s }] }] });
+    const to = (name: string, key: string) => ({ name, statusCategory: { key } });
     return Response.json({
       fields: {
         summary: '直す', status: { name: '進行中', statusCategory: { key: 'indeterminate' } }, assignee: null, description: p('説明'),
         comment: { comments: [{ author: { displayName: '佐藤' }, body: p('見ました'), created: '2026-10-07T12:00:00.000+0900' }] },
       },
+      transitions: [
+        { id: '11', name: '未着手', to: to('未着手', 'new') },
+        { id: '21', name: '進行中', to: to('進行中', 'indeterminate') },
+        { id: '31', name: 'レビューに出す', to: to('レビュー中', 'indeterminate') },
+      ],
     });
   });
   const issue = await jiraDetail('PROJ-1');
@@ -79,6 +85,22 @@ test('jiraDetail は、課題の属性に本文とコメントを古い順に添
   assert.equal(issue.description, '説明');
   assert.deepEqual(issue.comments, [{ author: '佐藤', body: '見ました', at: Date.parse('2026-10-07T03:00:00.000Z') }]);
   assert.deepEqual(issue.children.map((c) => [c.key, c.summary]), [['PROJ-2', '子']]);
+  assert.deepEqual(issue.transitions, [
+    { id: '11', name: '未着手', status: '未着手', statusCategory: 'new' },
+    { id: '31', name: 'レビューに出す', status: 'レビュー中', statusCategory: 'indeterminate' },
+  ]);
+});
+
+test('transitionJira は、選んだトランジションで課題を移し、失敗は JIRA が項目ごとに返した理由でも投げる', async (t) => {
+  const sent: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(url, 'https://jira.example/rest/api/3/issue/PROJ-1/transitions');
+    sent.push(JSON.parse(String(init.body)));
+    return sent.length === 1 ? new Response(null, { status: 204 }) : Response.json({ errorMessages: [], errors: { resolution: '解決状況を選んでください' } }, { status: 400 });
+  });
+  await transitionJira('PROJ-1', '31');
+  assert.deepEqual(sent[0], { transition: { id: '31' } });
+  await assert.rejects(transitionJira('PROJ-1', '41'), /解決状況を選んでください/);
 });
 
 test('postJiraComment は、行ごとに段落にしたコメントを投稿し、失敗は JIRA が返した理由で投げる', async (t) => {

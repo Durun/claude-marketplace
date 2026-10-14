@@ -349,7 +349,7 @@ export const refreshJira = (): void => {
   changed();
 };
 
-/** 人間が「更新」で JIRA の情報を取り直させた時刻。 */
+/** 人間が「更新」で JIRA の情報を取り直させたか、ダッシュボードで課題のステータスを移した時刻。 */
 export const jiraRefreshedAt = (): number => refreshedAt;
 
 type JiraSearchBody = {
@@ -458,6 +458,7 @@ type JiraIssueBody = {
     description?: Adf | null;
     comment?: { comments?: { author?: { displayName?: string }; body?: Adf; created?: string }[] };
   };
+  transitions?: { id: string; name: string; to?: { name?: string; statusCategory?: { key?: string } } }[];
   errorMessages?: string[];
 };
 
@@ -470,16 +471,17 @@ const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> =>
     ...init,
     headers: { authorization: JIRA_AUTH, accept: 'application/json', 'content-type': 'application/json' },
   });
-  const body = (await res.json().catch(() => ({}))) as T & { errorMessages?: string[] };
-  if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
+  // JIRA は、トランジションの画面で埋める項目が足りないときなどに、理由を errorMessages ではなく項目ごとの errors に返す。
+  const body = (await res.json().catch(() => ({}))) as T & { errorMessages?: string[]; errors?: Record<string, string> };
+  if (!res.ok) throw new Error([...(body.errorMessages ?? []), ...Object.values(body.errors ?? {})].join(' ') || `HTTP ${res.status}`);
   return body;
 };
 
 /** 課題の画面に出す中身。コメントは古い順に、子の課題（Epic に属する課題やサブタスク）は作った順に並べる。 */
 export const jiraDetail = async (key: string): Promise<JiraDetail> => {
   const fields = 'summary,status,assignee,reporter,priority,parent,labels,duedate,updated,description,comment';
-  const [{ fields: f }, children] = await Promise.all([
-    jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}`),
+  const [{ fields: f, transitions }, children] = await Promise.all([
+    jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}&expand=transitions`),
     searchJira(`parent = ${key} ORDER BY created ASC`, JIRA_CHILDREN_MAX),
   ]);
   return {
@@ -498,7 +500,19 @@ export const jiraDetail = async (key: string): Promise<JiraDetail> => {
     description: adfText(f?.description).trim(),
     comments: (f?.comment?.comments ?? []).map((c) => ({ author: c.author?.displayName ?? '', body: adfText(c.body).trim(), at: Date.parse(c.created ?? '') })),
     children,
+    // どのステータスからも移せるトランジションは、今のステータスへ移すものも返るので外す。
+    transitions: (transitions ?? [])
+      .filter((t) => t.to?.name !== f?.status?.name)
+      .map((t) => ({ id: t.id, name: t.name, status: t.to?.name ?? t.name, statusCategory: t.to?.statusCategory?.key })),
   };
+};
+
+/** 課題のステータスをトランジションで移す。その課題のバッジと JIRA Issues のウィジェットに、移した後のステータスを読み直させる。 */
+export const transitionJira = async (key: string, id: string): Promise<void> => {
+  await jiraFetch(`issue/${key}/transitions`, { method: 'POST', body: JSON.stringify({ transition: { id } }) });
+  jiraCache.delete(key);
+  refreshedAt = Date.now();
+  changed();
 };
 
 /** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */

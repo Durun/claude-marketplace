@@ -122,6 +122,7 @@ export const api = {
   retry: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/retry`),
   refreshJira: () => postJson('/api/jira/refresh'),
   jiraComment: (key: string, body: string) => postJson(`/api/jira/issues/${seg(key)}/comment`, { body }),
+  jiraTransition: (key: string, id: string) => postJson(`/api/jira/issues/${seg(key)}/transitions`, { id }),
   prComment: (url: string, body: string) => postJson<{ url: string }>('/api/pr/comment', { url, body }),
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),

@@ -1,13 +1,15 @@
 // JIRA の課題を、本文とコメントとともに読み、コメントを投稿する。
 // セッションの課題はセッション内の「JIRA」ウィジェットで、ほかの課題はウィンドウに浮かべて開く。
-import type { JiraDetail, Session } from '../shared/types.ts';
-import { api } from './api.ts';
+import { useId, useState } from 'preact/hooks';
+import type { JiraDetail, JiraTransition, Session } from '../shared/types.ts';
+import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
 import { pickInWidget, useFetch, usePicked } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm } from './PrView.tsx';
+import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time } from './ui.tsx';
 
 export const JIRA_VIEW_TITLE = 'JIRA';
@@ -20,6 +22,36 @@ const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new
 
 const CHILD_FIELDS = new Set(['assignee', 'priority']);
 
+/** ステータスを押すと、課題を読んだときに JIRA が返した移せる先を並べる。選ぶと、そのトランジションで移してから課題を読み直す。 */
+const StatusMenu = ({ issue, onMoved }: { issue: JiraDetail; onMoved: () => void }) => {
+  const id = useId();
+  const [busy, setBusy] = useState(false);
+  const move = async (t: JiraTransition) => {
+    setBusy(true);
+    const done = await attempt('ステータスの変更', () => api.jiraTransition(issue.key, t.id).then(() => true));
+    setBusy(false);
+    if (!done) return;
+    toast(`${issue.key} を「${t.status}」にしました`);
+    onMoved();
+  };
+  return (
+    <span class="jira-status">
+      <button class="jira-status-button" popovertarget={id} disabled={busy} title="押すと、ステータスを変えられます">
+        <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>
+      </button>
+      <div id={id} class="jira-status-menu" popover>
+        {issue.transitions.length === 0 && <p class="jira-status-note">移せるステータスはありません。</p>}
+        {issue.transitions.map((t) => (
+          <button key={t.id} class="jira-status-item" popovertarget={id} popovertargetaction="hide" onClick={() => void move(t)}>
+            <Chip tone={CATEGORY_TONE[t.statusCategory ?? '']}>{t.status}</Chip>
+            {t.name !== t.status && <span class="muted">{t.name}</span>}
+          </button>
+        ))}
+      </div>
+    </span>
+  );
+};
+
 /** JIRA で開くリンクは、課題へのリンクを横取りする処理に拾わせないよう data-external を付ける。 */
 const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolean; reload: () => void }) => (
   <div class="stack pr-view jira-view">
@@ -29,7 +61,7 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
       <button class="btn btn-sm" data-icon="refresh" disabled={loading} title="JIRA から読み直します" onClick={reload}>更新</button>
     </div>
     <div class="pr-view-meta muted">
-      {issue.status && <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>}
+      {issue.status && <StatusMenu issue={issue} onMoved={reload} />}
       {issue.labels?.map((l) => <Chip key={l}>{l}</Chip>)}
       <span>担当 {issue.assignee ?? '未割り当て'}</span>
       {issue.reporter && <span>報告 {issue.reporter}</span>}
