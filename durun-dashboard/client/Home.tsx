@@ -8,6 +8,7 @@ import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
+import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatUp, isFloating, useFloats } from './Float.tsx';
 import { GITHUB_INBOX_TITLE, GithubInbox, githubInboxControls } from './GithubInbox.tsx';
 import { Inbox } from './Inbox.tsx';
@@ -213,6 +214,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   [IE_KEY]: { title: IE_TITLE, icon: IE_ICON, Body: InternetExplorerIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openInternetExplorer() },
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },
   [PROOFREAD_KEY]: { title: PROOFREAD_TITLE, icon: PROOFREAD_ICON, Body: () => <ProofreadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openProofread() },
+  [TERMINAL_KEY]: { title: TERMINAL_TITLE, icon: TERMINAL_ICON, Body: () => <TerminalIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTerminal() },
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },
 };
 

@@ -48,6 +48,8 @@ export type Platform = {
   displayPath: (file: string) => string;
   /** エクスプローラーの最上位に並べる場所。Windows ではつながっているドライブで、ほかの OS では /。exists はテストで偽物に差し替える。 */
   fileRoots: (exists?: (dir: string) => boolean) => string[];
+  /** 人間が設定に書いたコマンドの行を、シェルで動かすときの起動するファイルと引数。node-pty に渡す。 */
+  shellCommand: (line: string) => { file: string; args: string[] | string };
 };
 
 /** tailscale status --json から、この端末の MagicDNS の名前（完全な名前と先頭のラベル）と IP を取り出す。IPv6 は Host ヘッダーと同じく [] で囲む。 */
@@ -86,6 +88,7 @@ const posix = {
   tailnetHosts: tailnetHostsVia(['tailscale']),
   displayPath: (file: string) => file,
   fileRoots: () => ['/'],
+  shellCommand: (line: string) => ({ file: '/bin/sh', args: ['-c', line] }),
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -146,6 +149,9 @@ const win32: Platform = {
   tailnetHosts: tailnetHostsVia(['tailscale']),
   displayPath: (file) => file.replaceAll('\\', '/'),
   fileRoots: (exists = fs.existsSync) => DRIVE_LETTERS.filter((d) => exists(`${d}:\\`)).map((d) => `${d}:/`),
+  // node-pty は配列の引数を引用符でくくり直し、行の中の引用符を崩すので、cmd.exe の引数を 1 つの文字列で渡す。
+  // /s を付けた cmd.exe は最初と最後の引用符だけを外し、間の行をそのまま動かす。Node の shell: true と同じ渡し方。
+  shellCommand: (line) => ({ file: 'cmd.exe', args: `/d /s /c "${line}"` }),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

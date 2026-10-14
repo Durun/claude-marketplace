@@ -62,6 +62,10 @@ export const api = {
   mediaUrl: (id: string, path: string) => `${files(id)}/media?${query({ path })}`,
   localFileEventsUrl: (id: string, path: string) => `${files(id)}/local-file/events?${query({ path })}`,
   explorer: (path?: string) => getJson<ExplorerDir>(`/api/explorer?${query({ path })}`),
+  /** 端末の出力を流す SSE。cwd を省くと、サーバーのホームディレクトリで動かす。 */
+  terminalEventsUrl: (cwd?: string) => `/api/terminal?${query({ cwd })}`,
+  terminalInput: (id: string, data: string) => postJson(`/api/terminal/${seg(id)}/input`, { data }),
+  resizeTerminal: (id: string, cols: number, rows: number) => postJson(`/api/terminal/${seg(id)}/resize`, { cols, rows }),
   chat: (id: string) => getJson<ChatEntry[]>(`${session(id)}/chat`),
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),

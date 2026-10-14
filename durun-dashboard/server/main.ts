@@ -42,6 +42,7 @@ import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText
 import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
+import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -66,10 +67,12 @@ const STATIC: Record<string, string> = {
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
   '/proofread.svg': 'public/proofread.svg',
+  '/terminal.svg': 'public/terminal.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
+  '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
 };
 // 要るときに読み込むチャンク。名前に中身のハッシュが入る。
 const CHUNK = /^\/chunks\/[\w-]+\.js$/;
@@ -690,6 +693,17 @@ const hideDocs = (id: string, body: unknown): void => {
   touch();
 };
 
+/** 閉じた端末への入力と大きさの変更は、画面がつなぎ直すまでの間に届くので、404 で知らせる。 */
+const terminalInput = (id: string, body: unknown): void => {
+  if (!writeTerminal(id, field<string>(body, 'data', 'string'))) throw new HttpError(404, '端末は閉じています');
+};
+
+const terminalResize = (id: string, body: unknown): void => {
+  const { cols, rows } = body as { cols?: unknown; rows?: unknown };
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || Number(cols) < 1 || Number(rows) < 1) throw new HttpError(400, 'cols and rows must be positive integers');
+  if (!resizeTerminal(id, Number(cols), Number(rows))) throw new HttpError(404, '端末は閉じています');
+};
+
 /** 起動したセッションは、セッションファイルとフックから一覧に現れる。 */
 const newSession = (body: unknown): Promise<void> => {
   const cwd = field<string>(body, 'cwd', 'string');
@@ -922,6 +936,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b)],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b)],
+  [/^\/api\/terminal\/([\w-]+)\/input$/, ([, id = ''], b) => terminalInput(id, b)],
+  [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
@@ -1034,6 +1050,12 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'POST' && url.pathname === '/api/proofread') return proofreadStream(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
+  // 端末でコマンドを動かすので、ほかのサイトの img などから GET で起こされないよう、ダッシュボードの画面からの接続に限る。
+  if (req.method === 'GET' && url.pathname === '/api/terminal') {
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+    return streamTerminal(res, url.searchParams.get('cwd') || os.homedir());
+  }
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);

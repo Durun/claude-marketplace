@@ -188,6 +188,13 @@ test('MCP の呼び出しには、headersHelper が PID を送れない OS で�
   assert.equal(sent.headers['x-claude-pid'], '$PPID');
 });
 
+test('設定に書いたコマンドの行は、Windows では cmd.exe に行のまま渡し、ほかの OS では sh -c で動かす', () => {
+  const line = 'tmux new-session -A -s "$(basename "$PWD")"';
+  assert.deepEqual(platformFor('darwin').shellCommand(line), { file: '/bin/sh', args: ['-c', line] });
+  assert.deepEqual(platformFor('other').shellCommand(line), { file: '/bin/sh', args: ['-c', line] });
+  assert.deepEqual(platformFor('win32').shellCommand('wsl tmux new -A -s "a b"'), { file: 'cmd.exe', args: '/d /s /c "wsl tmux new -A -s "a b""' });
+});
+
 test('claude は、偽物が指されていれば node でそれを動かし、なければ PATH の claude を起動する', () => {
   assert.deepEqual(claudeCommand(['--bg', '--', '依頼'], {}), { file: 'claude', args: ['--bg', '--', '依頼'] });
   assert.deepEqual(claudeCommand(['stop', 'j1'], { DURUN_DASHBOARD_FAKE_CLAUDE: '/tmp/fake.mjs' }), { file: process.execPath, args: ['/tmp/fake.mjs', 'stop', 'j1'] });
