@@ -1,6 +1,6 @@
 import type { RefObject } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type Session, type SessionStatus, type SkillInfo } from '../shared/types.ts';
+import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus, type SkillInfo } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { insertAt, useAttachMode } from './attach.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -181,6 +181,39 @@ export const MessageInput = ({ sessionId, value, setValue, placeholder, onSubmit
   );
 };
 
+type SendMode = 'send' | 'queue';
+const SEND_MODE_KEY = 'send-mode';
+const QUEUE_HELP = 'Claude が入力待ちになるまで保留し、質問していなければ古い順に 1 つずつ送ります';
+
+/** 選んだ送り方はブラウザに覚え、次に開いた送信欄でも使う。 */
+const useSendMode = (): [SendMode, (mode: SendMode) => void] => {
+  const [mode, setMode] = useState<SendMode>(() => (localStorage.getItem(SEND_MODE_KEY) === 'queue' ? 'queue' : 'send'));
+  const choose = (next: SendMode) => {
+    localStorage.setItem(SEND_MODE_KEY, next);
+    setMode(next);
+  };
+  return [mode, choose];
+};
+
+/** 送信のボタンの右の ▾ で、すぐに送る「送信」と、保留する「キュー」を切り替える。 */
+const SendModeMenu = ({ mode, onChange }: { mode: SendMode; onChange: (mode: SendMode) => void }) => {
+  const id = useId();
+  const item = (value: SendMode, label: string, help: string) => (
+    <button class="send-mode-item" role="menuitemradio" aria-checked={mode === value} popovertarget={id} popovertargetaction="hide" onClick={() => onChange(value)}>
+      {label}<span class="muted">{help}</span>
+    </button>
+  );
+  return (
+    <>
+      <button class="btn btn-primary send-mode-toggle" popovertarget={id} aria-haspopup="menu" aria-label="送り方を選ぶ" title="送り方を選ぶ">▾</button>
+      <div id={id} class="send-mode-menu" popover role="menu">
+        {item('send', '送信', 'すぐに届けます')}
+        {item('queue', 'キュー', QUEUE_HELP)}
+      </div>
+    </>
+  );
+};
+
 const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
 const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort で起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
 const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
@@ -223,6 +256,12 @@ const MessageForm = ({ s }: { s: Session }) => {
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const choice = useModelChoice(s);
+  const [mode, setMode] = useSendMode();
+  const queue = async () => {
+    const res = await attempt('キューへの追加', () => api.queue(s.id, text));
+    if (res) toast(res.queued ? '保留しました。Claude が入力待ちになったら送ります' : 'Claude が入力待ちなので、すぐに送りました');
+    return !!res;
+  };
   const switchAndSend = async () => {
     const res = await attempt('モデルと effort の切り替え', () => api.switchModel(s.id, text, choice.model, choice.effort));
     if (!res) return false;
@@ -235,7 +274,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   const send = async () => {
     if (busy || !text.trim()) return;
     setBusy(true);
-    const res = choice.changed ? await switchAndSend() : await attempt('メッセージの送信', () => api.message(s.id, text));
+    const res = mode === 'queue' ? await queue() : choice.changed ? await switchAndSend() : await attempt('メッセージの送信', () => api.message(s.id, text));
     setBusy(false);
     if (!res) return;
     setText('');
@@ -271,7 +310,12 @@ const MessageForm = ({ s }: { s: Session }) => {
       <ReplySuggestions s={s} onPick={pick} />
       <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
-        <button class="btn btn-primary" disabled={busy || !text.trim()} title={choice.changed ? SWITCH_HELP : undefined} onClick={send}>{choice.changed ? '切り替えて送信' : '送信'}</button>
+        <span class="send-split">
+          <button class="btn btn-primary" disabled={busy || !text.trim()} title={mode === 'queue' ? QUEUE_HELP : choice.changed ? SWITCH_HELP : undefined} onClick={send}>
+            {mode === 'queue' ? 'キュー' : choice.changed ? '切り替えて送信' : '送信'}
+          </button>
+          <SendModeMenu mode={mode} onChange={setMode} />
+        </span>
         <button class="btn" disabled={busy || !text.trim()} title={FORK_HELP} onClick={fork}>分岐</button>
         {choice.fields}
         <ContextPie usage={s.usage} />
@@ -288,6 +332,55 @@ const MessageForm = ({ s }: { s: Session }) => {
 export const asksOf = (attention: Attention[], sessionId: string): Attention[] =>
   attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question' || a.kind === 'permission'));
 
+/** 保留しているメッセージ。書き直している間はサーバーが送らないので、書き直しを始めるときと終えるときに知らせる。 */
+const QueuedItem = ({ m }: { m: QueuedMessage }) => {
+  const [draft, setDraft] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const run = async (label: string, fn: () => Promise<unknown>): Promise<boolean> => {
+    setBusy(true);
+    const done = await attempt(label, () => fn().then(() => true));
+    setBusy(false);
+    return !!done;
+  };
+  const edit = async () => {
+    if (await run('書き直しの開始', () => api.editQueued(m.id))) setDraft(m.text);
+  };
+  // 取りやめるときも、元の文で保存して書き直しを終え、送れるようにする。
+  const save = async (text: string) => {
+    if (text.trim() && (await run('書き直した文の保存', () => api.saveQueued(m.id, text)))) setDraft(undefined);
+  };
+  if (draft !== undefined) {
+    return (
+      <li class="outbox-item is-queued">
+        <MessageInput sessionId={m.sessionId} value={draft} setValue={setDraft} placeholder="書き直した文（Cmd/Ctrl + Enter で保存）" onSubmit={() => save(draft)} />
+        <div class="actions">
+          <button class="btn btn-sm" disabled={busy} onClick={() => save(m.text)}>キャンセル</button>
+          <button class="btn btn-sm btn-primary" disabled={busy || !draft.trim()} onClick={() => save(draft)}>保存</button>
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li class="outbox-item is-queued">
+      <p class="plain">{m.text}</p>
+      <div class="outbox-meta">
+        <span class="muted">{m.editing ? '書き直し中のため送りません' : '保留中'} · <Time at={m.createdAt} /></span>
+        <span class="spacer" />
+        <button class="btn btn-sm" disabled={busy} onClick={edit}>編集</button>
+        <button class="btn btn-sm" disabled={busy} onClick={() => run('取り消し', () => api.cancelQueued(m.id))}>取り消し</button>
+      </div>
+    </li>
+  );
+};
+
+/** 「キュー」で保留しているメッセージ。Claude が入力待ちになったら、上から 1 つずつ送られる。 */
+const QueuedList = ({ s }: { s: Session }) =>
+  s.queued?.length ? (
+    <ul class="outbox queued-list" aria-label="保留しているメッセージ">
+      {s.queued.map((m) => <QueuedItem key={m.id} m={m} />)}
+    </ul>
+  ) : null;
+
 /**
  * 送信欄。Claude が質問の答えを待っている間は、質問のカードの回答欄から答えてもらい、通常の送信欄は出さない。
  * 両方を出すと、どちらで答えればよいか迷う。権限の確認のカードには回答欄が無いので、送信欄も出す。
@@ -295,6 +388,7 @@ export const asksOf = (attention: Attention[], sessionId: string): Attention[] =
  */
 export const ReplyArea = ({ s, asks, help }: { s: Session; asks: Attention[]; help?: boolean }) => (
   <>
+    <QueuedList s={s} />
     {asks.map((a) => <AttentionCard key={a.id} a={a} session={s} />)}
     {asks.every((a) => a.kind === 'permission') && (
       <>

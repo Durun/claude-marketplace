@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, type LiveSession } from './claude.ts';
+import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession } from './claude.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { ensureSession, moveSession, newId, state, touch } from './store.ts';
 
@@ -234,6 +234,41 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
       console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
     },
   );
+};
+
+const ASK_KINDS = new Set(['ask', 'question', 'permission']);
+
+/**
+ * 保留したメッセージを送ってよいか。Claude が入力待ちで、質問や権限の確認で止まっていないときに限る。
+ * 質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。
+ * 送った直後のセッションは、読み始めるまで入力待ちに見えるので、前に送ったメッセージに Claude が返事をするまでは送らない。
+ */
+const readyForQueue = (sessionId: string, live: LiveSession | undefined): boolean => {
+  const meta = state.sessions[sessionId];
+  if (!meta || live?.status !== 'idle' || state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind))) return false;
+  const sent = state.outbox.filter((m) => m.sessionId === sessionId);
+  if (sent.some((m) => !m.deliveredAt || m.sending)) return false;
+  const transcript = meta.transcriptPath ?? findTranscript(sessionId);
+  const log = transcript ? summarizeLog(transcript) : undefined;
+  if (log?.lastToolUse) return false;
+  return !sent.length || (log?.lastMessageAt ?? 0) > Math.max(...sent.map((m) => m.createdAt));
+};
+
+/**
+ * 送れるようになったセッションへ、保留したメッセージを古い順に 1 つ送る。状態が変わるたびに呼ぶ。
+ * 先頭のメッセージを書き直している間は、順番を変えないよう、そのセッションへは何も送らない。
+ */
+export const flushQueue = (): void => {
+  if (!state.queue.length) return;
+  const live = readLiveSessions();
+  for (const sessionId of new Set(state.queue.map((m) => m.sessionId))) {
+    const head = state.queue.find((m) => m.sessionId === sessionId);
+    if (!head || head.editing || !readyForQueue(sessionId, live.get(sessionId))) continue;
+    // 送ってから外す。送る途中で状態が変わってここが呼ばれても、送っている間は readyForQueue が止める。
+    sendMessage(sessionId, head.text);
+    state.queue = state.queue.filter((m) => m !== head);
+    touch();
+  }
 };
 
 type LogEntry = { timestamp?: string; content?: unknown; message?: { content?: unknown } };

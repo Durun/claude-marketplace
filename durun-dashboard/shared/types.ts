@@ -198,6 +198,8 @@ export type Session = {
   branchViews?: BranchView[];
   /** 一覧のカードに出す概要。まだ作っていないセッションと、やり取りの無いセッションには無い。 */
   summary?: SessionSummary;
+  /** 「キュー」で保留しているメッセージ。古い順に並べる。前に受け取ったスナップショットには無いことがある。 */
+  queued?: QueuedMessage[];
 };
 
 /**
@@ -246,6 +248,16 @@ export type OutboxMessage = {
   error?: string;
   /** 届けている途中。サーバーが途中で止まると付いたまま残り、次に起動したときに届け直す。 */
   sending?: boolean;
+};
+
+/** 人間が「キュー」で保留したメッセージ。Claude が入力待ちで質問していないときに、古い順に 1 つずつ送る。 */
+export type QueuedMessage = {
+  id: string;
+  sessionId: string;
+  text: string;
+  createdAt: number;
+  /** 人間が書き直している間は送らない。 */
+  editing?: boolean;
 };
 
 /** 使用率が変わった時点。at は epoch ミリ秒 */

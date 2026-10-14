@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type ReviewComment, type ReviseNote, type SkillInfo } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -14,7 +14,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, compactSession, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -37,7 +37,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise } from './proofread.ts'
 import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
-import { DATA_DIR, onChange, save, state, touch } from './store.ts';
+import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
 import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
@@ -533,6 +533,29 @@ const updateOutbox = (id: string, action: 'manual' | 'cancel' | 'retry'): void =
   touch();
 };
 
+const queueText = (body: unknown): string => {
+  const text = field<string>(body, 'text', 'string');
+  if (!text.trim()) throw new HttpError(400, 'text is required');
+  return text;
+};
+
+/** 「キュー」で保留する。今送れるセッションなら、touch から呼ばれる flushQueue がすぐに送る。送らずに残したかを返す。 */
+const queueMessage = (id: string, body: unknown): { queued: boolean } => {
+  const message: QueuedMessage = { id: newId(), sessionId: sessionMeta(id).id, text: queueText(body), createdAt: Date.now() };
+  state.queue.push(message);
+  touch();
+  return { queued: state.queue.includes(message) };
+};
+
+/** edit で書き直しを始め、save で書き直した文に置き換えて書き直しを終える。cancel で保留をやめる。 */
+const updateQueue = (id: string, action: 'edit' | 'save' | 'cancel', body: unknown): void => {
+  const message = state.queue.find((m) => m.id === id);
+  if (!message) throw new HttpError(404, `no queued message: ${id}`);
+  if (action === 'cancel') state.queue = state.queue.filter((m) => m !== message);
+  else Object.assign(message, action === 'edit' ? { editing: true } : { editing: undefined, text: queueText(body) });
+  touch();
+};
+
 type Handler = (m: string[], body: unknown, url: URL, req: IncomingMessage) => unknown;
 
 const setTheme = (id: string, body: unknown): void => {
@@ -865,6 +888,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/pin$/, ([, id = ''], b) => pinDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
+  [/^\/api\/sessions\/([^/]+)\/queue$/, ([, id = ''], b) => queueMessage(id, b)],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
   [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b)],
   [/^\/api\/sessions\/([^/]+)\/fork$/, ([, id = ''], b) => fork(id, b)],
@@ -881,6 +905,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
+  [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
@@ -1051,9 +1076,14 @@ const watch = (target: string, recursive: boolean, onEvent: (file: string | null
 
 fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
 onChange(scheduleBroadcast);
+// 保留したメッセージは、セッションが入力待ちになったときと、質問への回答や前のメッセージの配信で状態が変わったときに送る。
+onChange(flushQueue);
 // 使用率の推移は statusline が変わるたびに記録する。起動時にも記録し、次の更新まで推移が空にならないようにする。
 recordRateLimits();
-watch(SESSIONS_DIR, false, scheduleBroadcast);
+watch(SESSIONS_DIR, false, () => {
+  scheduleBroadcast();
+  flushQueue();
+});
 watch(STATUSLINE_DIR, false, () => {
   recordRateLimits();
   scheduleBroadcast();
@@ -1061,6 +1091,7 @@ watch(STATUSLINE_DIR, false, () => {
 watch(TASKS_DIR, true, scheduleBroadcast);
 watch(PROJECTS_DIR, true, (file) => {
   scheduleBroadcast();
+  flushQueue();
   if (file) onTranscriptChange(file);
 });
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
@@ -1068,6 +1099,7 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
 redeliverInterrupted();
+flushQueue();
 checkLimits();
 
 // 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。

@@ -186,6 +186,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     pinnedDocs: meta.pinnedDocs ?? [],
     artifacts: [...(log?.artifacts.values() ?? [])],
     pendingMessages: state.outbox.filter((m) => m.sessionId === meta.id && !m.deliveredAt).length,
+    queued: state.queue.filter((m) => m.sessionId === meta.id),
     awaitingReview: !!review,
     reviewRange: review?.range,
     branchViews: meta.branchViews,

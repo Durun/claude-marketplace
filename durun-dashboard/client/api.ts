@@ -99,6 +99,8 @@ export const api = {
   startSession: (cwd: string, prompt: string, model: string, effort: string, theme: string) => postJson('/api/sessions', { cwd, prompt, model, effort, theme }),
   message: (id: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/message`, { text }),
+  /** 「キュー」で保留する。今送れるセッションなら、すぐに送られて queued が false になる。 */
+  queue: (id: string, text: string) => postJson<{ queued: boolean }>(`${session(id)}/queue`, { text }),
   rewind: (id: string, rewindTo: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/rewind`, { rewindTo, text }),
   /** モデルと effort を変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
@@ -127,6 +129,9 @@ export const api = {
   manual: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/manual`),
   cancel: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/cancel`),
   retry: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/retry`),
+  editQueued: (queuedId: string) => postJson(`/api/queue/${seg(queuedId)}/edit`),
+  saveQueued: (queuedId: string, text: string) => postJson(`/api/queue/${seg(queuedId)}/save`, { text }),
+  cancelQueued: (queuedId: string) => postJson(`/api/queue/${seg(queuedId)}/cancel`),
   refreshJira: () => postJson('/api/jira/refresh'),
   jiraComment: (key: string, body: string) => postJson(`/api/jira/issues/${seg(key)}/comment`, { body }),
   jiraTransition: (key: string, id: string) => postJson(`/api/jira/issues/${seg(key)}/transitions`, { id }),

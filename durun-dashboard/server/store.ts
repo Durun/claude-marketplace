@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, RatePoint, SavedFile, SavedLink } from '../shared/types.ts';
+import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedFile, SavedLink } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -107,6 +107,8 @@ type State = {
   // ponytail: 資料は削除しないので溜まり続ける。重くなったら古いものを消す。
   docs: StoredDoc[];
   outbox: OutboxMessage[];
+  /** 人間が「キュー」で保留したメッセージ。送ったら outbox に移す。 */
+  queue: QueuedMessage[];
   /** 既読にした派生の要対応（PR の状態など）の id */
   dismissed: string[];
   /** 改善要望の自動実装。model と effort は空なら Claude Code の設定に従う。error があれば待機する。 */
@@ -121,7 +123,7 @@ type State = {
   rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
 };
 
-const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], rateWindows: {} });
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], rateWindows: {} });
 
 // 壊れたファイルを空の状態で上書きしないよう、読めないときは起動を止める。
 const load = (): State => {

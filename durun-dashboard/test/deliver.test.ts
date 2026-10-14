@@ -4,14 +4,14 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import type { OutboxMessage } from '../shared/types.ts';
+import type { OutboxMessage, QueuedMessage } from '../shared/types.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
+const { flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
@@ -183,6 +183,62 @@ test('渡し終えてから記録する前にサーバーが止まったメッ�
   await new Promise<void>((resolve) => onChange(() => !lost.sending && lost.deliveredAt && resolve()));
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -2), ['--bg', '--resume', 's7', '--', '前にも言った']);
   assert.deepEqual([resumed.deliveredAt, socket.deliveredAt, resumed.sending, socket.sending], [at, at, undefined, undefined]);
+});
+
+test('保留したメッセージは、入力待ちで質問の無いセッションへ古い順に 1 つずつ送り、前に送ったものに返事が来るまでと、先頭を書き直している間は送らない', async () => {
+  const socketPath = platform.localSocketPath(tmp, 'queue');
+  const live = (status: string): void =>
+    fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 'q1.json'), JSON.stringify({ pid: process.pid, sessionId: 'q1', cwd: tmp, status, messagingSocketPath: socketPath }));
+  const dir = path.join(tmp, 'claude', 'projects', 'pq');
+  fs.mkdirSync(dir, { recursive: true });
+  const reply = (text: string): void =>
+    fs.appendFileSync(path.join(dir, 'q1.jsonl'), `${JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } })}\n`);
+  reply('前の返事');
+  ensureSession('q1', tmp);
+  const queued = (id: string, text: string): QueuedMessage => ({ id, sessionId: 'q1', text, createdAt: Date.now() });
+  const second = queued('k2', '二つ目');
+  state.queue.push(queued('k1', '一つ目'), second);
+  const left = (): string[] => state.queue.map((m) => m.text);
+  const received = async (inbox: Awaited<ReturnType<typeof listenInbox>>): Promise<string | undefined> => {
+    const lines = await inbox.lines;
+    await close(inbox.server);
+    return lines.at(-1)?.message?.content;
+  };
+
+  live('busy');
+  flushQueue();
+  assert.deepEqual(left(), ['一つ目', '二つ目']);
+  live('idle');
+  state.attention.push({ id: 'aq', kind: 'question', sessionId: 'q1', title: '質問', createdAt: Date.now() });
+  flushQueue();
+  assert.deepEqual(left(), ['一つ目', '二つ目']);
+  state.attention = state.attention.filter((a) => a.id !== 'aq');
+  // 質問がまだ記録されていなくても、会話ログで答えを待っているツールの呼び出しがあれば送らない。
+  fs.appendFileSync(path.join(dir, 'q1.jsonl'), `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskUserQuestion', input: {} }] } })}\n`);
+  flushQueue();
+  assert.deepEqual(left(), ['一つ目', '二つ目']);
+  reply('質問への答えを受けた返事');
+
+  const first = await listenInbox(socketPath);
+  flushQueue();
+  assert.deepEqual(left(), ['二つ目']);
+  assert.equal(await received(first), '[durun-dashboard] 人間から:\n一つ目');
+  const delivered = (): boolean => !state.outbox.some((m) => m.sessionId === 'q1' && m.sending);
+  if (!delivered()) await new Promise<void>((resolve) => onChange(() => delivered() && resolve()));
+  // 届けた後も、Claude が読み始めるまでは入力待ちに見える。
+  flushQueue();
+  assert.deepEqual(left(), ['二つ目']);
+
+  second.editing = true;
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  reply('一つ目への返事');
+  flushQueue();
+  assert.deepEqual(left(), ['二つ目']);
+  second.editing = undefined;
+  const next = await listenInbox(socketPath);
+  flushQueue();
+  assert.deepEqual(left(), []);
+  assert.equal(await received(next), '[durun-dashboard] 人間から:\n二つ目');
 });
 
 test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {
