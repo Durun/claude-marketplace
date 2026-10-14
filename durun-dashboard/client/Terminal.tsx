@@ -1,4 +1,4 @@
-// ダッシュボードを動かしている端末で、screen や tmux のセッションにアタッチする「ターミナル」。アタッチするコマンドは、サーバーの TERMINAL_ATTACH_COMMAND で決める。
+// ダッシュボードを動かしている端末で、screen や tmux のセッションにアタッチする「コマンドプロンプト」。アタッチするコマンドは、サーバーの TERMINAL_ATTACH_COMMAND で決める。
 // ダッシュボードが起動し直して接続が切れたら、つなぎ直してアタッチし直す。端末の中身は screen や tmux に残る。
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
@@ -10,7 +10,7 @@ import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「terminal:開いた時刻」にし、いくつも開けるようにする。 */
 export const TERMINAL_KEY = 'terminal';
-export const TERMINAL_TITLE = 'ターミナル';
+export const TERMINAL_TITLE = 'コマンドプロンプト';
 export const TERMINAL_ICON = '/terminal.svg';
 const SIZE = { w: 760, h: 480 };
 
@@ -68,7 +68,7 @@ export const TerminalFloat = ({ f }: { f: Float }) => {
   useEffect(() => {
     let live = true;
     let stop: (() => void) | undefined;
-    // xterm.js は大きいので、ターミナルを開くときだけ読み込む。
+    // xterm.js は大きいので、コマンドプロンプトを開くときだけ読み込む。
     void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([{ Terminal }, { FitAddon }]) => {
       const host = el.current;
       if (!live || !host) return;

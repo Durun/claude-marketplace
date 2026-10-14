@@ -639,7 +639,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .notepad-menubar, .proof-menubar { display: flex; padding: 1px 0; }
 .notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
-/* ターミナル。xterm.js が描く端末を、ウィンドウの余白なしで敷き詰める。端末の大きさは、この枠に収まる行と桁の数で決める。xterm.js は自分の要素に terminal のクラスを付けるので、枠には別の名前を使う。 */
+/* コマンドプロンプト。xterm.js が描く端末を、ウィンドウの余白なしで敷き詰める。端末の大きさは、この枠に収まる行と桁の数で決める。xterm.js は自分の要素に terminal のクラスを付けるので、枠には別の名前を使う。 */
 .terminal-host { flex: 1; min-height: 0; margin: -10px -12px -12px; background: #000; }
 .terminal-host > .xterm { height: 100%; padding: 4px; }
 /* 文章校正。読み手がまだ読んでいない文は灰色にし、読み進めを妨げる文は赤、気にしてほしい文は黄に塗る。語句の印は、妨げるものを赤い波線、ほかを橙の点線にする。 */

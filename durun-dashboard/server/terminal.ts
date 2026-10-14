@@ -1,4 +1,4 @@
-// アプリ「ターミナル」の中継。TERMINAL_ATTACH_COMMAND に書いたコマンドを端末で動かして screen や tmux のセッションにアタッチし、その端末と画面の入出力をつなぐ。
+// アプリ「コマンドプロンプト」の中継。TERMINAL_ATTACH_COMMAND に書いたコマンドを端末で動かして screen や tmux のセッションにアタッチし、その端末と画面の入出力をつなぐ。
 // ダッシュボードはコードを変えるたびに起動し直すので、端末の中身は screen や tmux に持たせ、ここではアタッチするコマンドだけを動かす。
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';

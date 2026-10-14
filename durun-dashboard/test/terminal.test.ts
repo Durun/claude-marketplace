@@ -29,7 +29,7 @@ const fakeResponse = () => {
 /** SSE の data を、event の種類によらずつないだもの。端末の出力は分かれて届くことがある。 */
 const dataOf = (body: string): string => [...body.matchAll(/^data: (.*)$/gm)].map((m) => JSON.parse(m[1] ?? '""') as string).join('');
 
-test('ターミナルは、アタッチするコマンドを端末で動かして出力を流し、ready の id で入力を届け、コマンドが終わったら exit を送って閉じる', { timeout: 10_000 }, async () => {
+test('コマンドプロンプトは、アタッチするコマンドを端末で動かして出力を流し、ready の id で入力を届け、コマンドが終わったら exit を送って閉じる', { timeout: 10_000 }, async () => {
   const res = fakeResponse();
   const closed = new Promise((resolve) => res.once('close', resolve));
   // どの OS のシェルでも同じに動くよう、1 行読んで返すコマンドを node で書く。
@@ -43,7 +43,7 @@ test('ターミナルは、アタッチするコマンドを端末で動かし�
   assert.equal(writeTerminal(id, 'x'), false);
 });
 
-test('ターミナルは、アタッチするコマンドが無いか作業ディレクトリが無ければ、端末を開かずに理由を exit で送る', async () => {
+test('コマンドプロンプトは、アタッチするコマンドが無いか作業ディレクトリが無ければ、端末を開かずに理由を exit で送る', async () => {
   const unset = fakeResponse();
   await streamTerminal(unset as unknown as ServerResponse, os.tmpdir(), '');
   assert.match(unset.body, /^event: exit\ndata: ".*TERMINAL_ATTACH_COMMAND/);
