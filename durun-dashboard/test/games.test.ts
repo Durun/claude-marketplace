@@ -37,7 +37,7 @@ test('マインスイーパのヒントは、セオリーを前提に、開い�
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       const { state, questions } = JSON.parse(body) as { state: Record<string, unknown>; questions: Record<string, { instructions: string }> };
-      assert.match(String(state['セオリー']), /残りの地雷が 0 の数字に接しているマスは安全/);
+      assert.match(String(state.theory), /A cell next to a number with 0 remaining mines is safe/);
       const answers = Object.entries(questions).map(([id, q], n) => {
         asked.push(q.instructions);
         return [id, { noul: n / 10 }];
@@ -52,8 +52,9 @@ test('マインスイーパのヒントは、セオリーを前提に、開い�
     assert.equal(asked.length, 2);
     // 左上の 1 のすぐ右のマス。周りの図では自分を ? に、盤の外を # にする。
     assert.match(asked[0]!, /#####\n#####\n#1\?\.#\n#2F1#\n#####/);
-    assert.match(asked[0]!, /左の数字 1: 周りの旗 1 個なので、残りの地雷は 0 個。それが、開いていないマス 1 個（\?）のどこかにある/);
-    assert.match(asked[0]!, /左下の数字 2: 周りの旗 1 個なので、残りの地雷は 1 個/);
+    assert.match(asked[0]!, /The 1 to the left: 1 flag around it, so 0 mines remain among its 1 unopened cell \(\?\)\./);
+    assert.match(asked[0]!, /The 2 to the lower left: 1 flag around it, so 1 mine remains among/);
+    assert.match(asked[0]!, /The 1 to the lower right: .* among its 2 unopened cells \(\?; right\)\./);
     assert.deepEqual(await minesHint(['12', 'F1'], 1), [null, null, null, null]);
     assert.equal(asked.length, 2);
   } finally {
