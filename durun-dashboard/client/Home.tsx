@@ -162,8 +162,10 @@ const InboxWidget = ({ snapshot }: HomeWidgetProps) => (
 const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
   const creating = isFloating(useFloats(), NEW_SESSION_KEY, '', NEW_SESSION_KEY);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 一覧から消えたセッションは、選んだ数にも操作の対象にも入れない。
+  const ids = snapshot.sessions.filter((s) => selected.has(s.id)).map((s) => s.id);
   const sel: Selection = {
-    selected,
+    selected: new Set(ids),
     toggle: (ids, on) =>
       setSelected((prev) => {
         const next = new Set(prev);
@@ -171,8 +173,6 @@ const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
         return next;
       }),
   };
-  // 一覧から消えたセッションは、選んだ数にも操作の対象にも入れない。
-  const ids = snapshot.sessions.filter((s) => selected.has(s.id)).map((s) => s.id);
   return (
     <>
       <div class="section-head">

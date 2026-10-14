@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Session, Snapshot, TaskItem } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
-import { ARROW_STEP, arrangeSessions, moveTo } from './order.ts';
+import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { Chip, ContextBar, Empty, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
 
@@ -92,12 +92,19 @@ const PinButton = ({ s }: { s: Session }) => (
   </button>
 );
 
+/** 選んでいる間は、カードを押しても画面を移らず、選ぶかどうかを切り替える。続けて選んでいる途中で、セッションの画面へ飛ばないようにするため。 */
+const toggleWhileSelecting = (e: MouseEvent, s: Session, sel: Selection): void => {
+  if (!sel.selected.size) return;
+  e.preventDefault();
+  sel.toggle([s.id], !sel.selected.has(s.id));
+};
+
 const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers }) => (
   <article class={`card session-card is-${s.status}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
     <header class="card-head">
       <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
       <StatusBadge status={s.status} />
-      <h3 class="card-title"><a class="stretched" href={href.session(s.id)}>{s.name}</a></h3>
+      <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
       <span class="muted nowrap"><Time at={s.updatedAt} /></span>
       <PinButton s={s} />
     </header>
@@ -203,18 +210,23 @@ const moveToGroup = (s: Session, to: string): Promise<unknown> =>
 /**
  * セッションの並べ替えと、まとまりの間の移動。並べた順と移した先は、サーバーから届くまでの間も手元の状態で出す。ドラッグの間は、離すまで保存しない。
  * 未分類はテーマが空のセッションに画面が付けた名前で、空のテーマを送るとリポジトリ名に戻るので、ほかのまとまりからは移せない。
+ * 選んだカードをほかのまとまりへ移すと、選んだほかのセッションも一緒に移す。ドラッグの間に動かして見せるのは、ドラッグしたカードだけにする。
  */
-const useSessionOrder = (snapshot: Snapshot, visible: Session[]) => {
+const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<string>) => {
   const [order, setOrder] = useState(snapshot.sessionOrder);
   useEffect(() => setOrder(snapshot.sessionOrder), [snapshot.sessionOrder.join('\n')]);
   const [dragging, setDragging] = useState<Session>();
-  const [moved, setMoved] = useState<{ id: string; group: string }>();
+  const [moved, setMoved] = useState<{ ids: string[]; group: string }>();
   // 移した先がサーバーから届いたら、手元の移動を捨てる。
   useEffect(() => {
-    const s = visible.find((v) => v.id === moved?.id);
-    if (!dragging && s && groupOf(s) === moved?.group) setMoved(undefined);
+    const arrived = moved?.ids.every((id) => {
+      const s = visible.find((v) => v.id === id);
+      return !s || groupOf(s) === moved.group;
+    });
+    if (!dragging && arrived) setMoved(undefined);
   }, [snapshot]);
-  const placeOf = (s: Session): string => (moved?.id === s.id ? moved.group : groupOf(s));
+  const placeOf = (s: Session): string => (moved?.ids.includes(s.id) ? moved.group : groupOf(s));
+  const carried = !dragging ? [] : selected.has(dragging.id) ? visible.filter((v) => selected.has(v.id)) : [dragging];
   const groups = groupSessions(visible, snapshot.themes, order, placeOf);
   const ids = groups.flatMap((g) => g.sessions.map((s) => s.id));
   // キーボードで動かしたカードは、並べ直すときに DOM から外れてフォーカスを失うので、動かした先でフォーカスし直す。
@@ -238,7 +250,7 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[]) => {
     const last = groups.find((g) => g.theme === group)?.sessions.at(-1)?.id;
     const i = before ? rest.indexOf(before) : rest.indexOf(last ?? '') + 1;
     setOrder([...rest.slice(0, i), dragging.id, ...rest.slice(i)]);
-    setMoved({ id: dragging.id, group });
+    setMoved({ ids: [dragging.id], group });
   };
   const cancel = () => {
     setDragging(undefined);
@@ -264,9 +276,14 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[]) => {
       if (!dragging) return;
       e.preventDefault();
       setDragging(undefined);
-      save(ids);
       const to = placeOf(dragging);
-      if (to !== groupOf(dragging)) void moveToGroup(dragging, to).then((ok) => ok || setMoved(undefined));
+      if (to === groupOf(dragging)) return save(ids);
+      // 一緒に移すセッションは、ドラッグしたカードの後ろに並べる。
+      const moving = carried.filter((s) => s.id === dragging.id || groupOf(s) !== to);
+      const others = moving.filter((s) => s.id !== dragging.id).map((s) => s.id);
+      save(gatherAfter(ids, dragging.id, others));
+      setMoved({ ids: moving.map((s) => s.id), group: to });
+      void Promise.all(moving.map((s) => moveToGroup(s, to))).then((oks) => oks.every(Boolean) || setMoved(undefined));
     },
   });
   const dragOf = (s: Session, group: string): DragHandlers => ({
@@ -300,14 +317,14 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[]) => {
       save(moveTo(ids, s.id, target.id));
     },
   });
-  return { groups, dragging: dragging?.id, dragOf, groupDrag };
+  return { groups, carried: new Set(carried.map((s) => s.id)), dragOf, groupDrag };
 };
 
 /** アーカイブしたセッションは並べない。 */
 export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Selection }) => {
   const [collapsed, setCollapsed] = useState(loadCollapsed);
   const visible = snapshot.sessions.filter((s) => !s.archived);
-  const { groups, dragging, dragOf, groupDrag } = useSessionOrder(snapshot, visible);
+  const { groups, carried, dragOf, groupDrag } = useSessionOrder(snapshot, visible, sel.selected);
   if (visible.length === 0) return <Empty>表示できるセッションがありません。</Empty>;
   // 開いた状態で描いたときにも toggle が届くので、変わったときだけ保存する。
   const onToggle = (theme: string, open: boolean) => {
@@ -330,7 +347,7 @@ export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Select
             </h3>
           </summary>
           <div class="cards">
-            {g.sessions.map((s) => <SessionCard key={s.id} s={s} sel={sel} dragging={s.id === dragging} drag={dragOf(s, g.theme)} />)}
+            {g.sessions.map((s) => <SessionCard key={s.id} s={s} sel={sel} dragging={carried.has(s.id)} drag={dragOf(s, g.theme)} />)}
           </div>
         </details>
       ))}

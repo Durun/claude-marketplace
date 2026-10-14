@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Session } from '../shared/types.ts';
-import { arrangeDocs, arrangeSessions, moveTo } from '../client/order.ts';
+import { arrangeDocs, arrangeSessions, gatherAfter, moveTo } from '../client/order.ts';
 
 const session = (id: string, status: Session['status'], updatedAt: number) => ({ id, status, updatedAt }) as Session;
 
@@ -21,4 +21,9 @@ test('arrangeDocs は、ピン留めした資料を上にまとめ、どちら�
 test('moveTo は、下へ動かすと target の後ろに、上へ動かすと target の前に置く', () => {
   assert.deepEqual(moveTo(['a', 'b', 'c'], 'a', 'b'), ['b', 'a', 'c']);
   assert.deepEqual(moveTo(['a', 'b', 'c'], 'c', 'a'), ['c', 'a', 'b']);
+});
+
+test('gatherAfter は、離れた位置にあるものを、元の並びのまま key のすぐ後ろへまとめる', () => {
+  assert.deepEqual(gatherAfter(['a', 'b', 'c', 'd', 'e'], 'c', ['e', 'a']), ['b', 'c', 'a', 'e', 'd']);
+  assert.deepEqual(gatherAfter(['a', 'b', 'c'], 'c', ['a']), ['b', 'c', 'a']);
 });

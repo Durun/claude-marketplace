@@ -9,6 +9,13 @@ export const moveTo = (keys: string[], key: string, target: string): string[] =>
   return [...rest.slice(0, i), key, ...rest.slice(i)];
 };
 
+/** others を key のすぐ後ろへまとめる。others どうしの並びは keys の中の順に従う。 */
+export const gatherAfter = (keys: string[], key: string, others: string[]): string[] => {
+  const rest = keys.filter((k) => !others.includes(k));
+  const at = rest.indexOf(key) + 1;
+  return [...rest.slice(0, at), ...keys.filter((k) => others.includes(k)), ...rest.slice(at)];
+};
+
 const STATUS_RANK: Record<SessionStatus, number> = { busy: 0, idle: 1, done: 2, interrupted: 2, ended: 3 };
 
 const bySessionOrder = (a: Session, b: Session): number =>
