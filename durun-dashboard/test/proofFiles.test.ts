@@ -8,7 +8,7 @@ import { test } from 'node:test';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proof-files-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = tmp;
 const { readProofFile, recentProofFiles, writeProofFile } = await import('../server/proofFiles.ts');
-const { newFile } = await import('../client/proofread.ts');
+const { newFile } = await import('../shared/proofread.ts');
 
 test('文章校正のファイルは 1 件を 1 つの JSON に保存し、最近使ったファイルは最後に保存した順に並べる', () => {
   assert.deepEqual(recentProofFiles(), []);

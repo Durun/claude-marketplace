@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
-import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../client/proofread.ts';
+import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
-import { ledgerFinding, priorReadings, proofread, readFindings, revise, wordFindings } from '../server/proofread.ts';
+import { commentFindings, ledgerFinding, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } from '../server/proofread.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
 
 const DOC = `# 方針
@@ -196,6 +196,28 @@ test('校正の進み具合を版に積み、固定した文の指摘と「コ�
   const ver = { ...newVersion(run.text), fixed: ['甲である。'], comments: { [findingKey(1, b)]: { text: '前の章で定義済み', ignore: true }, [findingKey(1, c)]: { text: 'だからでつなぐ', ignore: false } } };
   assert.deepEqual([isIgnored(ver, run, 0, a), isIgnored(ver, run, 1, b), isIgnored(ver, run, 1, c)], [true, true, false]);
   assert.deepEqual(reviseInput(ver, run), { fixed: [0], notes: [{ ...c, i: 1, comment: 'だからでつなぐ' }] });
+});
+
+test('MCP で校正した Claude には、指摘の付いた文と読めなかった文ごとに番号を振った指摘を返し、コメントはその番号で指した指摘に残す', () => {
+  const a: ProofFinding = { axis: '語', level: 'note', quote: '甲', message: '言い換えられる', suggestions: ['甲乙'] };
+  const b: ProofFinding = { axis: '参照', level: 'fail', quote: '丙', message: '指す先が書かれていない' };
+  const c: ProofFinding = { axis: '連結', level: 'note', message: '前の文との関係が読み取れない' };
+  let run = applyEvent(emptyRun('甲である。乙である。丙である。'), { type: 'plan', sentences: [{ start: 0, end: 5 }, { start: 5, end: 10 }, { start: 10, end: 15 }], tools: ['sonnet'] });
+  run = applyEvent(run, { type: 'read', i: 0, reading: reading(), findings: [a] });
+  run = applyEvent(run, { type: 'error', i: 1, message: '答えが返りませんでした' });
+  run = applyEvent(run, { type: 'findings', i: 2, findings: [b, c] });
+  run = applyEvent(run, { type: 'error', message: '形態素解析を使えませんでした' });
+  assert.equal(proofReport(run), [
+    '文章を 3 文に分けて読み、読み進めを妨げる指摘が 1 件、気にしてほしい指摘が 2 件ありました。',
+    '形態素解析を使えませんでした',
+    '[1] 甲である。\n#1 語（気にしてほしい）：「甲」言い換えられる\n  言い換えの候補：甲乙',
+    '[2] 乙である。\n読めませんでした。答えが返りませんでした',
+    '[3] 丙である。\n#2 参照（読み進めを妨げる）：「丙」指す先が書かれていない\n#3 連結（気にしてほしい）：前の文との関係が読み取れない',
+  ].join('\n\n'));
+  const commented = { ...newVersion(run.text), run, comments: { [findingKey(0, a)]: { text: '人間のコメント', ignore: false } } };
+  const { ver, missing } = commentFindings(commented, [{ n: 2, text: '前の章で定義済み', ignore: true }, { n: 4, text: '無い指摘', ignore: false }]);
+  assert.deepEqual(ver.comments, { [findingKey(0, a)]: { text: '人間のコメント', ignore: false }, [findingKey(2, b)]: { text: '前の章で定義済み', ignore: true } });
+  assert.deepEqual(missing, [4]);
 });
 
 test('用語集は「語：説明」と説明の無い「語」を読み、足した語は末尾の行にする。ファイルの名前は最後の版の最初の行にする', () => {

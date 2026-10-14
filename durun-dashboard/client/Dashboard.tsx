@@ -2,6 +2,7 @@
 import type { ComponentChildren, ComponentType, JSX, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AppIcon, setApps } from './apps.tsx';
+import { attachIcon, composerAt } from './attach.ts';
 import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, isFloating, useFloats, dockedControls } from './Float.tsx';
 import {
   COLS,
@@ -219,22 +220,31 @@ const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: La
   return { ghost, handlers };
 };
 
-type FreeMove = { p: Placement; x: number; y: number; dragging: boolean; next?: Layout };
+/** composer は、アイコンを重ねている送信欄。 */
+type FreeMove = { p: Placement; start: Layout; x: number; y: number; dragging: boolean; next?: Layout; composer?: HTMLElement };
 
 /**
  * アプリのアイコンをドラッグで動かす操作。升目に丸めず、押した位置からの移動量のまま動かす。編集中でなくても動かせる。
  * 動かしている間は show で描くだけにし、離したときに save で保存する。
+ * 書き足す値を持つアイコンを送信欄の上で離したときは、メッセージに添付し、アイコンは動かす前の位置に戻す。
  */
 const useFreeMove = (grid: RefObject<HTMLElement>, layout: Layout, show: (next: Layout) => void, save: (next: Layout) => void) => {
   const move = useRef<FreeMove>();
+  const over = (m: FreeMove, composer?: HTMLElement) => {
+    if (m.composer === composer) return;
+    m.composer?.classList.remove('is-drop');
+    composer?.classList.add('is-drop');
+    m.composer = composer;
+  };
   const end = () => {
+    if (move.current) over(move.current);
     move.current = undefined;
   };
   return (p: Placement) => ({
     onPointerDown: (e: PointerEvent) => {
       // 編集中の × は、そのまま押せるようにする。
       if (e.button !== 0 || (e.target as HTMLElement).closest('.window-controls')) return;
-      move.current = { p, x: e.pageX, y: e.pageY, dragging: false };
+      move.current = { p, start: layout, x: e.pageX, y: e.pageY, dragging: false };
     },
     onPointerMove: (e: PointerEvent) => {
       const m = move.current;
@@ -253,9 +263,14 @@ const useFreeMove = (grid: RefObject<HTMLElement>, layout: Layout, show: (next: 
       const y = clamp(m.p.y + (e.pageY - m.y) / row, 0, Math.max(grid.current.clientHeight / row, ROWS) - el.offsetHeight / row);
       m.next = layout.map((q) => (q.id === m.p.id ? { ...q, x, y } : q));
       show(m.next);
+      over(m, composerAt(el, e.clientX, e.clientY));
     },
-    onPointerUp: () => {
-      if (move.current?.next) save(move.current.next);
+    onPointerUp: (e: PointerEvent) => {
+      const m = move.current;
+      if (m?.composer) {
+        attachIcon(e.currentTarget as HTMLElement, m.composer);
+        show(m.start);
+      } else if (m?.next) save(m.next);
       end();
     },
     onLostPointerCapture: end,

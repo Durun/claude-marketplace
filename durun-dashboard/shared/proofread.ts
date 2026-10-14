@@ -1,5 +1,5 @@
 // 文章校正で、指摘の付いた語句が文のどこにあるかを決める。校正の進み具合を版に積み、人間が無視した指摘を見分ける。
-import type { ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote } from '../shared/types.ts';
+import type { ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote } from './types.ts';
 
 export type Mark = { quote: string; note: string; fail: boolean };
 

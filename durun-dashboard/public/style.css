@@ -787,8 +787,8 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .ie-pane.is-zoom { gap: 0; width: auto; }
 .ie-zoom { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 4px; border: 1px solid transparent; border-radius: 2px; background: none; }
 .ie-zoom:hover, .ie-pane .ie-drop:hover, .ie-pane .ie-drop:has(+ :popover-open) { border-color: #9db4dc; background: linear-gradient(#fff, #e3ecfa); }
-/* エクスプローラーのファイルをドラッグして上に来ている間の、資料のウィジェット。 */
-.widget-body.is-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
+/* ドラッグしたものを上で離すと受け取る所。エクスプローラーのファイルは資料のウィジェットが、アプリのアイコンは送信欄が受け取る。 */
+.widget-body.is-drop, .composer-field.is-drop .input { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .wallpaper { padding: 12px; overflow: auto; }
 .wallpaper .help { margin: 0; }
 .wallpaper-preview { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); object-fit: cover; }

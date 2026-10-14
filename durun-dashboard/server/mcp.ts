@@ -1,12 +1,16 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import type { BranchView, DiffRange, DocFormat } from '../shared/types.ts';
+import { applyEvent, emptyRun, newVersion, titleOf } from '../shared/proofread.ts';
+import type { BranchView, DiffRange, DocFormat, ProofFile } from '../shared/types.ts';
 import { readLiveSessions } from './claude.ts';
 import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
+import { readProofFile, writeProofFile } from './proofFiles.ts';
+import { MAX_SENTENCES, commentFindings, proofReport, proofread } from './proofread.ts';
+import { type ProofSentence, parseProof } from './proofText.ts';
 import { newId, state, touch, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -20,7 +24,8 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 図解や資料で説明すると伝わりやすいときは present で表示してください。ファイルに書いた資料は path で渡すと、開くたびに最新の内容が表示されます。
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
-- 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。`;
+- 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
+- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。`;
 
 const TOOLS = [
   {
@@ -97,6 +102,43 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'proofread',
+    description:
+      'ダッシュボードの文章校正アプリで、初めて読む人が文章を前から読み進められるかを文ごとに調べ、番号を振った指摘を返す。人間がメッセージに文章校正アプリを添付したときに使う。結果はアプリのファイルに保存し、人間もアプリで開ける。文の数だけ sonnet を動かすので、数分かかる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '校正する文章のファイルパス。Markdown の見出しと箇条書きを、説明の区切りとして読む。' },
+        text: { type: 'string', description: '校正する文章。path を渡すときは省略する。' },
+        glossary: { type: 'string', description: '読み手が知っている語の用語集。1 行に「語：説明」か「語」を書く。読み手は、書いた語を知っているものとして読む。' },
+      },
+    },
+  },
+  {
+    name: 'comment_proofread',
+    description:
+      'proofread の指摘に、書き手の事情を踏まえたコメントを返す。コメントは、人間が文章校正アプリで修正版を作るときに、その指摘をどう直すかの指示になる。主要な指摘にコメントを返したら、文章は直さずにターンを終える。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', description: 'proofread が返したファイルの id' },
+        comments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              n: { type: 'integer', description: '指摘の番号（#3 なら 3）' },
+              text: { type: 'string', description: 'コメント。修正版でどう直してほしいか、または指摘が当たらない事情。' },
+              ignore: { type: 'boolean', description: 'true なら「コメントして無視」にする。その指摘は数に入れず、修正版でも直さない。' },
+            },
+            required: ['n', 'text'],
+          },
+        },
+      },
+      required: ['file', 'comments'],
+    },
+  },
 ];
 
 type RpcId = string | number;
@@ -139,9 +181,8 @@ const pendingCalls = new Map<string, string>();
 
 const sseMessage = (body: object): string => `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', ...body })}\n\n`;
 
-const waitForHuman = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, params: RpcParams, item: StoredAttention): void => {
-  const callKey = `${String(req.headers['x-claude-pid'])}:${rpcId}`;
-  pendingCalls.set(callKey, item.id);
+/** 結果が出るまで長くかかる呼び出しを SSE で返し、打ち切られないよう、終えるまで message() を進捗として通知し続ける。返す関数に結果を渡すと終える。 */
+const openStream = (res: ServerResponse, rpcId: RpcId, params: RpcParams, message: () => string): ((result: object) => void) => {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
   // SSE のコメント行では打ち切りが延びないため、呼び出しに付いた progressToken で進捗通知を送る。
   const progressToken = (params._meta as { progressToken?: string | number } | undefined)?.progressToken;
@@ -149,19 +190,26 @@ const waitForHuman = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, p
   const keepalive = setInterval(() => {
     progress += 1;
     if (progressToken === undefined) res.write(': keepalive\n\n');
-    else res.write(sseMessage({ method: 'notifications/progress', params: { progressToken, progress, message: '人間の回答を待っています' } }));
+    else res.write(sseMessage({ method: 'notifications/progress', params: { progressToken, progress, message: message() } }));
   }, KEEPALIVE_MS);
-  const waiter = (text: string): void => {
+  res.on('close', () => clearInterval(keepalive));
+  return (result) => {
     clearInterval(keepalive);
+    res.end(sseMessage({ id: rpcId, result }));
+  };
+};
+
+const waitForHuman = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, params: RpcParams, item: StoredAttention): void => {
+  const callKey = `${String(req.headers['x-claude-pid'])}:${rpcId}`;
+  pendingCalls.set(callKey, item.id);
+  const finish = openStream(res, rpcId, params, () => '人間の回答を待っています');
+  const waiter = (text: string): void => {
     pendingCalls.delete(callKey);
-    res.end(sseMessage({ id: rpcId, result: textResult(text) }));
+    finish(textResult(text));
   };
   waitFor(item.id, waiter);
   // 接続が切れても項目は残す。後で人間が答えたら、送信キュー経由で届ける。
-  res.on('close', () => {
-    clearInterval(keepalive);
-    unwait(item.id, waiter);
-  });
+  res.on('close', () => unwait(item.id, waiter));
 };
 
 const inferFormat = (file: string | undefined): DocFormat => {
@@ -221,6 +269,70 @@ const showBranches = async (req: IncomingMessage, sessionId: string, args: ToolA
   return textResult(first ? `コードの表示を ${first.label ?? first.branch} に切り替えました: ${url}` : `コードの表示を、このセッションの変更だけに戻しました: ${url}`);
 };
 
+/** 校正する文章。path は作業ディレクトリから読む。読めなければ、Claude に返すエラーの結果。 */
+const proofSource = (sessionId: string, args: ToolArgs): { text: string; sentences: ProofSentence[] } | { error: object } => {
+  const file = str(args.path) && path.resolve(state.sessions[sessionId]?.cwd ?? '', String(args.path));
+  try {
+    const text = file ? fs.readFileSync(file, 'utf8') : str(args.text);
+    const sentences = text ? parseProof(text) : [];
+    if (!text || !sentences.length) return { error: textResult('校正する文章を、path か text で渡してください。', true) };
+    if (sentences.length > MAX_SENTENCES) return { error: textResult(`文が多すぎます。${MAX_SENTENCES} 文までにしてください（${sentences.length} 文あります）。`, true) };
+    return { text, sentences };
+  } catch (e) {
+    return { error: textResult(`ファイルを読めません: ${(e as Error).message}`, true) };
+  }
+};
+
+/**
+ * 文章校正アプリと同じ校正を走らせ、結果をアプリのファイルに保存してから、番号を振った指摘を返す。
+ * 呼び出しが取り消されたら残りの文は読まず、読み終えた分を保存する。アプリの「続きから校正」で続けられる。
+ */
+const runProofread = async (res: ServerResponse, rpcId: RpcId, params: RpcParams, sessionId: string, args: ToolArgs): Promise<void> => {
+  const source = proofSource(sessionId, args);
+  if ('error' in source) return send(res, { id: rpcId, result: source.error });
+  const { text, sentences } = source;
+  const glossary = typeof args.glossary === 'string' ? args.glossary : '';
+  let run = emptyRun(text);
+  const stop = new AbortController();
+  res.on('close', () => stop.abort());
+  const finish = openStream(res, rpcId, params, () => `${run.readings.filter(Boolean).length} / ${sentences.length} 文を読みました`);
+  let result: object;
+  try {
+    await proofread(text, sentences, glossary, (e) => (run = applyEvent(run, e)), stop.signal);
+    const file: ProofFile = { id: newId(), title: '', glossary, versions: [{ ...newVersion(text), run }], updatedAt: Date.now() };
+    const title = titleOf(file);
+    writeProofFile({ ...file, title });
+    const saved = `校正の結果を、文章校正アプリのファイル「${title}」（file: ${file.id}）に保存しました。人間は、アプリの「ファイル」の「最近使ったファイル」から開けます。\n書き手の事情を知っている指摘には、comment_proofread で番号を指してコメントを返してください。`;
+    result = textResult(`${saved}\n\n${proofReport(run)}`);
+  } catch (e) {
+    result = textResult(`校正の結果を保存できませんでした。${(e as Error).message}`, true);
+  }
+  if (!stop.signal.aborted) finish(result);
+};
+
+const toComment = (v: unknown): { n: number; text: string; ignore: boolean } | undefined => {
+  const { n, text, ignore } = (v ?? {}) as ToolArgs;
+  const body = str(text);
+  return Number.isInteger(n) && body ? { n: n as number, text: body.trim(), ignore: ignore === true } : undefined;
+};
+
+/** proofread が作るファイルは、校正した版 1 つから始まる。その版の指摘に、番号で指したコメントを残す。 */
+const commentProofread = (args: ToolArgs): object => {
+  const id = str(args.file);
+  // id はファイル名になるので、英数字と - と _ だけに絞る。
+  const file = id && /^[\w-]{1,64}$/.test(id) ? readProofFile(id) : null;
+  const [ver, ...rest] = file?.versions ?? [];
+  if (!file || !ver?.run) return textResult('file に、proofread が返したファイルの id を渡してください。', true);
+  const given = Array.isArray(args.comments) ? args.comments : [];
+  const comments = given.flatMap((c) => toComment(c) ?? []);
+  if (!comments.length || comments.length !== given.length) return textResult('comments の各要素に、指摘の番号 n とコメント text を渡してください。', true);
+  const { ver: next, missing } = commentFindings(ver, comments);
+  const notFound = missing.length ? `#${missing.join('、#')} の指摘はありません。` : '';
+  if (missing.length === comments.length) return textResult(notFound, true);
+  writeProofFile({ ...file, versions: [next, ...rest], updatedAt: Date.now() });
+  return textResult(`コメントを ${comments.length - missing.length} 件残しました。${notFound}人間が文章校正アプリでコメントを読み、修正版を作ります。主要な指摘にコメントを返し終えたら、文章は直さずにターンを終えてください。`);
+};
+
 /** from を省いたときは範囲を決めず、画面の既定（分岐点から未コミットの変更まで）に任せる。 */
 const reviewRange = async (sessionId: string, args: ToolArgs): Promise<DiffRange | undefined> => {
   const from = str(args.from);
@@ -250,6 +362,10 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void showBranches(req, sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
+    case 'proofread':
+      return void runProofread(res, rpcId, params, sessionId, args);
+    case 'comment_proofread':
+      return send(res, { id: rpcId, result: commentProofread(args) });
     default:
       return send(res, { id: rpcId, error: { code: METHOD_NOT_FOUND, message: `Unknown tool: ${String(params.name)}` } });
   }

@@ -1,7 +1,8 @@
 // 文章校正。文章を前から 1 文ずつ、前提知識を持たない読み手（sonnet）に読ませ、7 つの軸で読み進めやすさを評価する。
 // 読み手の答えに、区切りでの回収の確認（Jev）、指す先までの距離（コード）、1 文の負担（形態素解析）を組み合わせて指摘にする。軸と根拠は README にある。
 // AI が書いた文章は、書き手だけが持つ文脈を前提にしがちで、初めて読む人は「何のこと？」と止まる。それを文ごとに見つける。
-import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
+import { findingKey, sentenceText } from '../shared/proofread.ts';
+import type { ProofEvent, ProofFinding, ProofReading, ProofRun, ProofVersion, ReviseNote } from '../shared/types.ts';
 import { UpstreamError, askHaiku, askSonnet, objectSchema } from './haiku.ts';
 import { type NoulQuestion, askNoul, hasJev } from './jev.ts';
 import { type Morpheme, analyze, demonstratives, isContentWord, isPlainWagoVerb, isPredicate } from './morph.ts';
@@ -375,8 +376,8 @@ const REVISER_SCHEMA = objectSchema({ edits: listOf({ n: { type: 'integer' }, te
 const REVISE_TIMEOUT_MS = 10 * 60_000;
 const LEVEL_NOTE: Record<ProofFinding['level'], string> = { fail: '読み進めを妨げる', note: '気にしてほしい' };
 
-const noteLine = (n: ReviseNote): string => [
-  `[${n.i + 1}] ${n.axis}（${LEVEL_NOTE[n.level]}）：${n.quote ? `「${n.quote}」` : ''}${n.message}`,
+const noteLine = (n: ReviseNote, label = `[${n.i + 1}]`): string => [
+  `${label} ${n.axis}（${LEVEL_NOTE[n.level]}）：${n.quote ? `「${n.quote}」` : ''}${n.message}`,
   n.suggestions?.length && `  言い換えの候補：${n.suggestions.join('、')}`,
   n.comment?.trim() && `  人間のコメント：${n.comment.trim()}`,
 ].filter(Boolean).join('\n');
@@ -398,9 +399,37 @@ export const revise = async (text: string, sentences: ProofSentence[], glossary:
     REVISER,
     `<glossary>\n${glossary.trim() || '（なし）'}\n</glossary>`,
     `<text>\n${numbered(text, sentences, sentences.length, (n) => (fixed.has(n) ? '（固定）' : ''))}\n</text>`,
-    `<findings>\n${notes.map(noteLine).join('\n') || '（なし）'}\n</findings>`,
+    `<findings>\n${notes.map((n) => noteLine(n)).join('\n') || '（なし）'}\n</findings>`,
   ].join('\n\n');
   const out = await askSonnet(prompt, REVISER_SCHEMA, REVISE_TIMEOUT_MS);
   const edits = listIn(out.edits).filter((e) => Number.isInteger(e.n) && typeof e.text === 'string' && !fixed.has((e.n as number) - 1));
   return applyEdits(text, sentences, new Map(edits.map((e) => [(e.n as number) - 1, e.text as string])));
+};
+
+/** MCP で校正した Claude に見せる指摘の並び。並びの位置に 1 を足した数を指摘の番号にし、コメントもこの番号で受ける。 */
+const numberedFindings = (run: ProofRun): { i: number; f: ProofFinding }[] => run.findings.flatMap((list, i) => list.map((f) => ({ i, f })));
+
+/** MCP で校正した Claude に返す結果。指摘の付いた文と読めなかった文ごとに、文に続けて番号を振った指摘を並べる。 */
+export const proofReport = (run: ProofRun): string => {
+  const list = numberedFindings(run);
+  const count = (level: ProofFinding['level']) => list.filter(({ f }) => f.level === level).length;
+  const blocks = run.sentences.flatMap((_, i) => {
+    const notes = list.flatMap((x, k) => (x.i === i ? [noteLine({ ...x.f, i }, `#${k + 1}`)] : []));
+    const error = run.errors[i];
+    return notes.length || error ? [[`[${i + 1}] ${sentenceText(run, i)}`, ...notes, ...(error ? [`読めませんでした。${error}`] : [])].join('\n')] : [];
+  });
+  return [`文章を ${run.sentences.length} 文に分けて読み、読み進めを妨げる指摘が ${count('fail')} 件、気にしてほしい指摘が ${count('note')} 件ありました。`, ...run.notices, ...blocks].join('\n\n');
+};
+
+/** Claude が指摘の番号で返したコメントを、校正した版に残す。番号に当たる指摘が無いコメントは残さず、missing に番号を返す。 */
+export const commentFindings = (ver: ProofVersion, comments: { n: number; text: string; ignore: boolean }[]): { ver: ProofVersion; missing: number[] } => {
+  const list = ver.run ? numberedFindings(ver.run) : [];
+  const next = { ...ver.comments };
+  const missing: number[] = [];
+  for (const { n, text, ignore } of comments) {
+    const hit = list[n - 1];
+    if (hit) next[findingKey(hit.i, hit.f)] = { text, ignore };
+    else missing.push(n);
+  }
+  return { ver: { ...ver, comments: next }, missing };
 };

@@ -3,11 +3,11 @@
 // 校正を終えた版から、指摘に沿って書き直した次の版を作れる。良い文を固定しながら版を重ねると、固定した文を残したまま直しを重ねられる。
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
 import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
-import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from './proofread.ts';
 import { toast } from './toast.tsx';
 import { copyText } from './ui.tsx';
 
@@ -21,7 +21,16 @@ const SAVE_DELAY_MS = 500;
 
 export const openProofread = (): void => floatUp(PROOFREAD_KEY, '', { id: `${PROOFREAD_KEY}:${Date.now()}` }, SIZE);
 
-export const ProofreadIcon = () => <DesktopIcon icon={PROOFREAD_ICON} title={PROOFREAD_TITLE} hint="初めて読む人が、文章を前から読み進められるかを調べます。ダブルクリックで開きます" onLaunch={openProofread} />;
+// 添付を受けた Claude は、MCP の proofread でこのアプリと同じ校正を走らせ、結果をこのアプリのファイルに残す。
+export const ProofreadIcon = () => (
+  <DesktopIcon
+    icon={PROOFREAD_ICON}
+    title={PROOFREAD_TITLE}
+    hint="初めて読む人が、文章を前から読み進められるかを調べます。ダブルクリックで開きます。送信欄へドラッグすると、メッセージに添付して Claude に使わせます"
+    attach="文章校正アプリ（durun-dashboard の proofread ツール）"
+    onLaunch={openProofread}
+  />
+);
 
 const AXES: { axis: ProofAxis; hint: string }[] = [
   { axis: '参照', hint: '既知のように書いた語句の指す先が、そこまでの本文か用語集で分かるか' },

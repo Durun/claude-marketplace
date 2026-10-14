@@ -11,6 +11,25 @@ export const insertAt = (value: string, at: number, piece: string): { value: str
   return { value: head + value.slice(at), caret: head.length };
 };
 
+/** アプリのアイコンを重ねている送信欄。書き足す値（data-attach）を持たないアイコンなら探さない。 */
+export const composerAt = (icon: HTMLElement, x: number, y: number): HTMLElement | undefined => {
+  if (!icon.querySelector('[data-attach]')) return undefined;
+  // 動かしているアイコン自身は除き、その下にあるものを見る。
+  return document.elementsFromPoint(x, y).find((el) => !icon.contains(el))?.closest<HTMLElement>('.composer-field') ?? undefined;
+};
+
+/** アイコンの data-attach を、送信欄のカーソル位置に書き足す。入力欄の onInput に届くよう、input を起こす。 */
+export const attachIcon = (icon: HTMLElement, composer: HTMLElement): void => {
+  const piece = icon.querySelector('[data-attach]')?.getAttribute('data-attach');
+  const input = composer.querySelector('textarea');
+  if (!piece || !input) return;
+  const next = insertAt(input.value, input.selectionEnd, piece);
+  input.value = next.value;
+  input.setSelectionRange(next.caret, next.caret);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+};
+
 // 書き足す先は 1 つに限る。別の送信欄で入ったら、前の送信欄の添付モードを抜ける。
 let stopOther: (() => void) | undefined;
 
