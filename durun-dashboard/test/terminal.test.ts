@@ -30,6 +30,8 @@ const fakeResponse = () => {
 const dataOf = (body: string): string => [...body.matchAll(/^data: (.*)$/gm)].map((m) => JSON.parse(m[1] ?? '""') as string).join('');
 
 test('コマンドプロンプトは、アタッチするコマンドを端末で動かして出力を流し、ready の id で入力を届け、コマンドが終わったら exit を送って閉じる', { timeout: 10_000 }, async () => {
+  // サーバーと同じく、node --watch の子が受け継ぐ変数を持たせても、止めるときに例外を投げない。
+  process.env.WATCH_REPORT_DEPENDENCIES = '1';
   const res = fakeResponse();
   const closed = new Promise((resolve) => res.once('close', resolve));
   // どの OS のシェルでも同じに動くよう、1 行読んで返すコマンドを node で書く。

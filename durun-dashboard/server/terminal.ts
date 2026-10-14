@@ -10,6 +10,21 @@ import { newId } from './store.ts';
 const terminals = new Map<string, IPty>();
 
 /**
+ * 端末を止める。Windows の node-pty は止めるときに子プロセスを fork し、最初に届いたメッセージを子の一覧として読む。
+ * サーバーは node --watch の子として WATCH_REPORT_DEPENDENCIES を受け継いでおり、fork した子もそれを受け継ぐと、先に読み込んだファイルの知らせを送ってきて、node-pty が例外を投げる。
+ * fork は kill の中で同期に済むので、その間だけこの変数を外す。
+ */
+const killTerminal = (term: IPty): void => {
+  const { WATCH_REPORT_DEPENDENCIES } = process.env;
+  delete process.env.WATCH_REPORT_DEPENDENCIES;
+  try {
+    term.kill();
+  } finally {
+    if (WATCH_REPORT_DEPENDENCIES !== undefined) process.env.WATCH_REPORT_DEPENDENCIES = WATCH_REPORT_DEPENDENCIES;
+  }
+};
+
+/**
  * cwd でアタッチするコマンドを動かし、端末の出力を SSE で流す。最初に ready で id を送り、コマンドが終わったら exit で理由を送って閉じる。
  * 画面が接続を切ったら、アタッチしたコマンドだけを止める。screen や tmux のセッションは残る。
  */
@@ -30,7 +45,7 @@ export const streamTerminal = async (res: ServerResponse, cwd: string, command =
     return exit(`端末を開けません（${(e as Error).message}）`);
   }
   // モジュールを読んでいる間に、画面が接続を切っていることがある。
-  if (res.destroyed) return term.kill();
+  if (res.destroyed) return killTerminal(term);
   const id = newId();
   terminals.set(id, term);
   res.write(`event: ready\ndata: ${JSON.stringify(id)}\n\n`);
@@ -47,7 +62,7 @@ export const streamTerminal = async (res: ServerResponse, cwd: string, command =
   });
   res.on('close', () => {
     terminals.delete(id);
-    term.kill();
+    killTerminal(term);
   });
 };
 
