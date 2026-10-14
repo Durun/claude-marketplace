@@ -67,7 +67,8 @@ export const api = {
   notionPage: (id: string) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}`),
   notionTitle: (id: string) => getJson<{ title: string }>(`/api/notion/pages/${seg(id)}/title`),
   prDetail: (url: string) => getJson<PrDetail>(`/api/pr?${query({ url })}`),
-  prThreads: (id: string) => getJson<PrThread[]>(`${session(id)}/pr-threads`),
+  /** pr は PR の URL。無ければ、今のブランチの PR。 */
+  prThreads: (id: string, pr?: string) => getJson<PrThread[]>(`${session(id)}/pr-threads?${query({ pr })}`),
   prViewed: (id: string) => getJson<string[]>(`${session(id)}/pr-viewed`),
   doc: (id: string) => getJson<Doc>(`/api/docs/${seg(id)}`),
   search: (q: string) => getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -108,7 +109,7 @@ export const api = {
     if (!res.ok) throw new Error(await errorText(res));
     return res.blob();
   },
-  prNotes: (id: string) => postJson<PrNotes>(`${session(id)}/pr-notes`),
+  prNotes: (id: string, pr: string) => postJson<PrNotes>(`${session(id)}/pr-notes`, { pr }),
   review: (id: string, comments: ReviewComment[], summary: string, branch?: string) =>
     postJson<{ delivery: Delivery }>(`${session(id)}/review`, { comments, summary, branch }),
   prReview: (id: string, comments: ReviewComment[], summary: string, commit: string) =>

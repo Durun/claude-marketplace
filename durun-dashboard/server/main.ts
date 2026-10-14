@@ -345,10 +345,14 @@ const sendDocAsset = (req: IncomingMessage, res: ServerResponse, id: string, rel
   sendRange(req, res, asset.full, stat, asset.type);
 };
 
-/** セッションのブランチの、開いている PR。閉じた PR のレビューコメントには対応しないので、扱わない。 */
-const openPr = (id: string): { cwd: string; branch: string; pr: PrInfo } => {
+/**
+ * セッションのブランチの、開いている PR。url を渡すと、居たことのあるブランチの PR からその URL のものを選ぶ。
+ * 閉じた PR のレビューコメントには対応しないので、扱わない。
+ */
+const openPr = (id: string, url?: unknown): { cwd: string; branch: string; pr: PrInfo } => {
   const meta = sessionMeta(id);
-  const branch = meta.transcriptPath ? summarizeLog(meta.transcriptPath).branch : undefined;
+  const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
+  const branch = url ? [...(log?.branches ?? [])].find((b) => cachedPr(meta.cwd, b)?.url === url) : log?.branch;
   const pr = cachedPr(meta.cwd, branch);
   if (!branch || pr?.state !== 'OPEN') throw new HttpError(404, `開いている PR がありません: ${id}`);
   return { cwd: meta.cwd, branch, pr };
@@ -390,8 +394,8 @@ const commentPr = (body: unknown): Promise<{ url: string }> => {
   return viaGh('PR にコメントできません', () => postPrComment(url, text));
 };
 
-const prNotes = async (id: string): Promise<PrNotes> => {
-  const { cwd, branch, pr } = openPr(id);
+const prNotes = async (id: string, body: unknown): Promise<PrNotes> => {
+  const { cwd, branch, pr } = openPr(id, (body as { pr?: unknown }).pr);
   const threads = await threadsOf(pr);
   const tree = await treeOf(cwd, branch).catch((e: Error) => {
     throw new HttpError(400, `リポジトリを読めません（${e.message.split('\n')[0]}）`);
@@ -844,7 +848,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) })],
   [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id))],
   [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string'))],
-  [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = '']) => prNotes(id)],
+  [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b)],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
@@ -889,7 +893,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)\/chat$/, ([, id = '', agentId = '']) => subagentChatOf(id, agentId)],
   [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
   [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf(id)],
-  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = '']) => threadsOf(openPr(id).pr)],
+  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr)],
   [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = '']) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr))],
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
 ];

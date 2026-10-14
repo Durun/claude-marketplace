@@ -839,6 +839,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .stretched::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
 .card-sub { margin: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+/* セッションの PR や課題を切り替える番号は、ウィジェットに出しているものに色を付ける。 */
+.chips > .btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .activity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; }
 .task-line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .active-form { max-width: 30ch; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }

@@ -6,6 +6,7 @@ import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { headLines } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
+import { PrPicker, usePickedPr } from './PrView.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Time, onSubmitKey } from './ui.tsx';
@@ -103,15 +104,15 @@ const ThreadCard = ({ s, pr, t, note, failed, sent }: ThreadProps) => {
 type Props = { s: Session; outbox: OutboxMessage[] };
 
 /**
- * 開いている PR の未解決のスレッドを並べる。Claude が応答を始めたときと終えたとき、レビューの状態が変わったとき、「更新」を押したときに読み直す。
+ * 選んだ PR が開いていれば、未解決のスレッドを並べる。Claude が応答を始めたときと終えたとき、レビューの状態が変わったとき、「更新」を押したときに読み直す。
  * 分析は数分かかるので、スレッドを先に出す。スレッドに返信が付くと、分析を頼み直す。
  */
-const PrThreads = ({ s, outbox }: Props) => {
-  const pr = s.pr?.state === 'OPEN' ? s.pr : undefined;
-  const threads = useFetch(() => (pr ? api.prThreads(s.id) : Promise.resolve([])), [pr?.url, pr?.review, s.status]);
+const PrThreads = ({ s, outbox, picked }: Props & { picked?: PrInfo }) => {
+  const pr = picked?.state === 'OPEN' ? picked : undefined;
+  const threads = useFetch(() => (pr ? api.prThreads(s.id, pr.url) : Promise.resolve([])), [pr?.url, pr?.review, s.status]);
   const list = threads.data ?? [];
   const key = list.map((t) => `${t.id}:${t.comments.at(-1)?.id}`).join();
-  const notes = useFetch(() => (list.length ? api.prNotes(s.id) : Promise.resolve(undefined)), [key]);
+  const notes = useFetch(() => (pr && list.length ? api.prNotes(s.id, pr.url) : Promise.resolve(undefined)), [key]);
   const failed = notes.loading ? undefined : (notes.data?.failed ?? notes.error);
   const reload = () => {
     threads.reload();
@@ -127,10 +128,11 @@ const PrThreads = ({ s, outbox }: Props) => {
         {pr && <button class="btn btn-sm" data-icon="refresh" disabled={threads.loading} title="PR のレビューコメントを読み直します" onClick={reload}>更新</button>}
       </div>
       <div class="widget-body">
-        {!s.pr ? (
+        <PrPicker s={s} pr={picked} />
+        {!picked ? (
           <Empty>このセッションのブランチには PR がありません。</Empty>
         ) : !pr ? (
-          <Empty>PR #{s.pr.number} は{s.pr.state === 'MERGED' ? 'マージ済みです' : '閉じています'}。</Empty>
+          <Empty>PR #{picked.number} は{picked.state === 'MERGED' ? 'マージ済みです' : '閉じています'}。</Empty>
         ) : threads.error ? (
           <Empty>レビューコメントを読めませんでした（{threads.error}）</Empty>
         ) : !threads.data ? (
@@ -149,5 +151,8 @@ const PrThreads = ({ s, outbox }: Props) => {
   );
 };
 
-/** セッションを移ったら作り直し、前のセッションのスレッドを出したまま依頼を送らせない。 */
-export const PrReview = (props: Props) => <PrThreads key={props.s.id} {...props} />;
+/** セッションや PR を移ったら作り直し、前の PR のスレッドを出したまま依頼を送らせない。 */
+export const PrReview = (props: Props) => {
+  const picked = usePickedPr(props.s);
+  return <PrThreads key={`${props.s.id} ${picked?.url}`} {...props} picked={picked} />;
+};

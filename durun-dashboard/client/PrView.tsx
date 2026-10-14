@@ -1,7 +1,7 @@
 // GitHub の PR を、本文・変更したファイル・会話とともに読み、会話にコメントを投稿する。
 // セッションの PR はセッション内の「PR」ウィジェットで、ほかの PR はウィンドウに浮かべて開く。
 import { useState } from 'preact/hooks';
-import type { PrDetail, Session } from '../shared/types.ts';
+import type { PrDetail, PrInfo, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
@@ -101,21 +101,30 @@ const PrView = ({ url, version }: { url: string; version?: string }) => {
   return pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />;
 };
 
-/** セッションに PR が複数あるときは、上に並べた番号で切り替える。PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
-export const PrWidget = ({ s }: { s: Session }) => {
+/** 「PR」と「PR コメント」のウィジェットで出している、セッションの PR。選んだ PR は 2 つのウィジェットで共通にする。 */
+export const usePickedPr = (s: Session): PrInfo | undefined => {
   const pick = usePicked(PR_WIDGET, s.id);
   // 前に開いていたときのデータには、PR の一覧が無いことがある。
   const prs = s.prs ?? [];
-  const pr = prs.find((p) => p.url === pick) ?? prs[0];
+  return prs.find((p) => p.url === pick) ?? prs[0];
+};
+
+/** セッションに PR が複数あるときに上に並べる番号。押すと、ウィジェットで出す PR を切り替える。 */
+export const PrPicker = ({ s, pr }: { s: Session; pr?: PrInfo }) =>
+  s.prs && s.prs.length > 1 ? (
+    <div class="chips">
+      {s.prs.map((p) => (
+        <button key={p.url} class="btn btn-sm" aria-pressed={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
+      ))}
+    </div>
+  ) : null;
+
+/** PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
+export const PrWidget = ({ s }: { s: Session }) => {
+  const pr = usePickedPr(s);
   return (
     <WidgetPanel title={PR_TITLE}>
-      {prs.length > 1 && (
-        <div class="chips">
-          {prs.map((p) => (
-            <button key={p.url} class="btn btn-sm" aria-pressed={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
-          ))}
-        </div>
-      )}
+      <PrPicker s={s} pr={pr} />
       {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
     </WidgetPanel>
   );
