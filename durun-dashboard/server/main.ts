@@ -601,6 +601,14 @@ const renameDoc = (id: string, body: unknown): void => {
   touch();
 };
 
+const pinDocs = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const keys = new Set(strings(body, 'keys'));
+  const rest = (meta.pinnedDocs ?? []).filter((k) => !keys.has(k));
+  meta.pinnedDocs = field<boolean>(body, 'pinned', 'boolean') ? [...rest, ...keys] : rest;
+  touch();
+};
+
 /** エクスプローラーから資料に足すファイル。絶対パスで受け、同じファイルを足し直したら時刻を新しくし、外していたものはまた並べる。 */
 const addFile = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
@@ -629,6 +637,7 @@ const hideDocs = (id: string, body: unknown): void => {
   meta.links = meta.links?.filter((l) => !keys.has(l.url));
   meta.files = meta.files?.filter((f) => !keys.has(f.path));
   meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
+  meta.pinnedDocs = meta.pinnedDocs?.filter((k) => !keys.has(k));
   touch();
 };
 
@@ -776,6 +785,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/docs\/pin$/, ([, id = ''], b) => pinDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
   [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b)],

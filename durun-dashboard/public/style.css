@@ -1003,7 +1003,10 @@ table.diff { width: 100%; min-width: max-content; border-collapse: collapse; fon
 .wmp-bar { display: none; }
 /* セッション概要の資料。初期配置では幅が狭いので、題名と、形式やリンク先と日時を 2 行に分ける。 */
 .side-docs { display: grid; gap: 2px; }
-/* 行はドラッグで並べ替える。外すボタンは行の右に置き、ピン留めのボタンと同じく、マウスを載せたときだけ見せる。 */
+/*
+ * 行はドラッグで並べ替える。行の右のボタンは、マウスを載せたときだけ見せる。
+ * ピン留めした資料のピンは、いちばん上にある理由が分かるよう、いつも見せる。
+ */
 .side-doc-item { display: flex; align-items: center; min-width: 0; }
 .side-doc-item.is-dragging { opacity: 0.4; }
 .side-doc-item > .side-doc { flex: 1; min-width: 0; }
@@ -1011,6 +1014,8 @@ table.diff { width: 100%; min-width: max-content; border-collapse: collapse; fon
 .side-doc-action { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
 .side-doc-item:hover .side-doc-action, .side-doc-action:focus-visible { opacity: 1; }
 .side-doc-action:hover { background: var(--surface-2); color: var(--text); }
+.side-doc-action[aria-pressed="true"] { opacity: 1; color: var(--accent); }
+.side-doc-action svg { display: block; margin: auto; }
 .add-link { margin-bottom: 10px; }
 .side-doc { display: grid; gap: 2px; padding: 5px 6px; border-radius: 4px; color: var(--text); text-decoration: none; }
 .side-doc:hover { background: var(--surface-2); }

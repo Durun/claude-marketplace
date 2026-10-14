@@ -16,7 +16,7 @@ test('イルカは説明と状態と会話を渡して答えさせ、ダッシ�
   const session = {
     id: 's1', name: '検索画面', theme: 'dash', repo: 'dash', cwd: tmp, status: 'idle', updatedAt: 0, tasks: [], subagents: [], background: [], jira: [],
     usage: { contextTokens: 0, contextWindow: 1, contextPercent: 12.3, exact: false, totals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, timeline: [] },
-    archived: false, pinned: false, links: [], files: [], docOrder: [], hiddenDocs: [], docTitles: {}, artifacts: [], pendingMessages: 0, awaitingReview: false, lastMessage: '終わりました',
+    archived: false, pinned: false, links: [], files: [], docOrder: [], hiddenDocs: [], docTitles: {}, pinnedDocs: [], artifacts: [], pendingMessages: 0, awaitingReview: false, lastMessage: '終わりました',
   } satisfies Session;
   const snap = { now: 0, sessions: [session], attention: [], docs: [], outbox: [], themes: [], sessionOrder: [], improve: { enabled: false, running: false, pending: 0 }, jiraRefreshedAt: 0, assets: { js: 0, css: 0 } } satisfies Snapshot;
 

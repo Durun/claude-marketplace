@@ -4,7 +4,7 @@ import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
 import { ARROW_STEP, arrangeSessions, moveTo } from './order.ts';
 import { href } from './router.ts';
-import { Chip, ContextBar, Empty, JiraChips, PrChips, StatusBadge, Time } from './ui.tsx';
+import { Chip, ContextBar, Empty, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -88,12 +88,7 @@ const PinButton = ({ s }: { s: Session }) => (
     title={s.pinned ? 'ピン留めを外す' : 'ピン留めして一覧の先頭に出す'}
     onClick={() => attempt('ピン留めの切り替え', () => api.pin(s.id, !s.pinned))}
   >
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <g transform="rotate(45 8 8)">
-        <path d="M5 1h6v1.5H9.8v4L12 9H4l2.2-2.5v-4H5z" fill="currentColor" />
-        <path d="M8 9v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-      </g>
-    </svg>
+    <PinIcon />
   </button>
 );
 

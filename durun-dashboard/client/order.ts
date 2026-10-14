@@ -19,3 +19,17 @@ export const arrangeSessions = (sessions: Session[], order: string[]): Session[]
   const rank = new Map(order.map((id, i) => [id, i]));
   return sessions.toSorted((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1) || bySessionOrder(a, b));
 };
+
+/**
+ * セッション概要の資料の並び。ピン留めした資料をほかの資料より上にまとめ、どちらの中でも人間が並べ替えた順に従う。
+ * 並べ替えた後に出た資料は、並べ替えたものより前に新しい順で置く。
+ * 1 行にまとめたリンクは、まとめたもののうち並べ替えた順でいちばん前の位置に置き、新しいリンクがまとまっても行を動かさない。
+ */
+export const arrangeDocs = <T extends { keys: string[]; at: number; pinned?: boolean }>(docs: T[], order: string[]): T[] => {
+  const rank = new Map(order.map((k, i) => [k, i]));
+  const rankOf = (d: T): number => {
+    const ranks = d.keys.flatMap((k) => rank.get(k) ?? []);
+    return ranks.length ? Math.min(...ranks) : -1;
+  };
+  return docs.toSorted((a, b) => (a.pinned ? 0 : 1) - (b.pinned ? 0 : 1) || rankOf(a) - rankOf(b) || b.at - a.at);
+};

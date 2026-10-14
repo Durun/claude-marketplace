@@ -10,10 +10,10 @@ import { baseName } from './explorerFavorites.ts';
 import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
 import { dateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
-import { ARROW_STEP, moveTo } from './order.ts';
+import { ARROW_STEP, arrangeDocs, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, Panel, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, Panel, PinIcon, onSubmitKey } from './ui.tsx';
 
 const FORMAT_LABEL: Record<DocFormat, string> = {
   markdown: 'Markdown',
@@ -56,10 +56,10 @@ export const DocsPage = ({ snapshot }: { snapshot: Snapshot }) => (
 );
 
 /**
- * セッション概要の資料の 1 行。keys は並べ替えと外すときに使う、present の資料の id か、1 行にまとめたリンクの URL。key はそのうち行を表すもの。
+ * セッション概要の資料の 1 行。keys は並べ替えとピン留めと外すときに使う、present の資料の id か、1 行にまとめたリンクの URL。key はそのうち行を表すもの。
  * sub は形式かリンク先のホスト、icon はタイトルの先頭に添える favicon。
  */
-type SideDoc = { key: string; keys: string[]; title: string; href: string; sub: string; icon?: string; at: number; unread?: boolean; external?: boolean; attach?: string; onClick?: (e: MouseEvent) => void };
+type SideDoc = { key: string; keys: string[]; title: string; href: string; sub: string; icon?: string; at: number; unread?: boolean; pinned?: boolean; external?: boolean; attach?: string; onClick?: (e: MouseEvent) => void };
 
 // present で出した資料はダッシュボードの中で開くので、ダッシュボードの favicon を添える。
 const OWN_ICON = document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href;
@@ -90,9 +90,9 @@ const RenameDoc = ({ title, onDone }: { title: string; onDone: (title?: string) 
   />
 );
 
-type RowProps = { d: SideDoc; dragging: boolean; drag: DragHandlers; onRemove: () => void; onRename: (title: string) => void };
+type RowProps = { d: SideDoc; dragging: boolean; drag: DragHandlers; onPin: () => void; onRemove: () => void; onRename: (title: string) => void };
 
-const SideDocRow = ({ d, dragging, drag, onRemove, onRename }: RowProps) => {
+const SideDocRow = ({ d, dragging, drag, onPin, onRemove, onRename }: RowProps) => {
   const [renaming, setRenaming] = useState(false);
   const done = (title?: string) => {
     setRenaming(false);
@@ -121,6 +121,9 @@ const SideDocRow = ({ d, dragging, drag, onRemove, onRename }: RowProps) => {
       ) : (
         <a class={`side-doc${d.unread ? ' is-unread' : ''}`} href={d.href} data-attach={d.attach} onClick={d.onClick}>{body}</a>
       )}
+      <button class="side-doc-action" aria-pressed={d.pinned} title={d.pinned ? 'ピン留めを外す' : 'ピン留めしていちばん上に出す'} aria-label={`${d.title}をピン留め`} onClick={onPin}>
+        <PinIcon />
+      </button>
       <button class="side-doc-action" title="名前を変える" aria-label={`${d.title}の名前を変える`} onClick={() => setRenaming(true)}>
         ✎
       </button>
@@ -168,19 +171,6 @@ const linkDoc = (id: string, l: MergedLink, artifact?: Artifact): SideDoc => {
   };
 };
 
-/**
- * 並べ替えた後に出た資料は、並べ替えたものより前に新しい順で置く。
- * 1 行にまとめたリンクは、まとめたもののうち並べ替えた順でいちばん前の位置に置き、新しいリンクがまとまっても行を動かさない。
- */
-const arrange = (docs: SideDoc[], order: string[]): SideDoc[] => {
-  const rank = new Map(order.map((k, i) => [k, i]));
-  const rankOf = (d: SideDoc): number => {
-    const ranks = d.keys.flatMap((k) => rank.get(k) ?? []);
-    return ranks.length ? Math.min(...ranks) : -1;
-  };
-  return docs.toSorted((a, b) => rankOf(a) - rankOf(b) || b.at - a.at);
-};
-
 /** 資料の並べ替え。並べ替えた順は、サーバーから届くまでの間も手元の順で出す。ドラッグの間は、離すまで保存しない。 */
 const useDocOrder = (s: Session, docs: SideDoc[]) => {
   const [order, setOrder] = useState(s.docOrder);
@@ -189,7 +179,7 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
   const list = useRef<HTMLUListElement>(null);
   // キーボードで動かした行は、並べ直すときに DOM から外れてフォーカスを失うので、動かした先でフォーカスし直す。
   const refocus = useRef<string>();
-  const items = arrange(docs, order);
+  const items = arrangeDocs(docs, order);
   const keys = items.map((d) => d.key);
   // 保存する順には、1 行にまとめたリンクをすべて入れる。
   const expand = (next: string[]): string[] => next.flatMap((k) => items.find((d) => d.key === k)?.keys ?? []);
@@ -326,7 +316,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
 /**
  * セッション概要の資料のウィジェット。present で出したものと、人間と Claude の発言に出たリンクと Markdown ファイルと、人間が「追加」で足したリンクとファイルを並べる。
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
- * 人間が付け直した題名は、まとめたリンクのどれかに付いていればその行に出す。
+ * 人間が付け直した題名とピン留めは、まとめたリンクのどれかに付いていればその行に出す。
  * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。claude.ai の artifact へのリンクには、公開したときの題名を付ける。
  * エクスプローラーからファイルをドラッグして落とすと、そのファイルを足す。
  */
@@ -342,10 +332,13 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
   const saved = new Set(s.links.map((l) => l.url));
   const hidden = new Set(s.hiddenDocs);
   const added = s.links.map((l) => ({ url: l.url, title: l.title || titleOf(new URL(l.url)), host: new URL(l.url).host, at: l.at }));
-  const renamed = (d: SideDoc): SideDoc => {
-    const title = d.keys.map((k) => s.docTitles[k]).find(Boolean);
-    return title ? { ...d, title } : d;
-  };
+  // 前に開いていたときのデータには、ピン留めした資料が無いことがある。
+  const pinned = new Set(s.pinnedDocs ?? []);
+  const customized = (d: SideDoc): SideDoc => ({
+    ...d,
+    title: d.keys.map((k) => s.docTitles[k]).find(Boolean) ?? d.title,
+    pinned: d.keys.some((k) => pinned.has(k)),
+  });
   const shown = [...links.filter((l) => !saved.has(l.url)), ...added].filter((l) => !hidden.has(l.url));
   const notionTitles = useNotionTitles(shown.map((l) => l.url), notion);
   // 前に開いていたときのデータには、artifact が無いことがある。
@@ -358,7 +351,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
     ...mergeLinks(withTitles(shown, titles)).map((l) => linkDoc(s.id, l, artifacts.get(l.url))),
     ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref)).map((f) => fileDoc(s.id, f)),
     ...savedFiles.map((f) => savedFileDoc(s.id, f)),
-  ].map(renamed));
+  ].map(customized));
   return (
     <>
       <div class="section-head">
@@ -390,7 +383,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
         ) : (
           <ul class="side-docs" ref={list}>
             {items.map((d) => (
-              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d.key)} onRemove={() => attempt('資料を外す', () => api.hideDocs(s.id, d.keys))} onRename={(title) => attempt('資料の名前の変更', () => api.renameDoc(s.id, d.key, title))} />
+              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d.key)} onPin={() => attempt('ピン留めの切り替え', () => api.pinDocs(s.id, d.keys, !d.pinned))} onRemove={() => attempt('資料を外す', () => api.hideDocs(s.id, d.keys))} onRename={(title) => attempt('資料の名前の変更', () => api.renameDoc(s.id, d.key, title))} />
             ))}
           </ul>
         )}

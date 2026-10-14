@@ -30,6 +30,8 @@ export type SessionMeta = {
   hiddenDocs?: string[];
   /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ */
   docTitles?: Record<string, string>;
+  /** 人間が資料のウィジェットでピン留めした資料。キーは docOrder と同じ */
+  pinnedDocs?: string[];
   firstSeen: number;
   /** この時刻までの Claude の発言は人間が確認済み */
   replySeenAt: number;
@@ -168,8 +170,8 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, replySeenAt, branchViews });
+  const { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews });
   Object.assign(old, { archived: true, pinned: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;

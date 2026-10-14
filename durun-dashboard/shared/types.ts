@@ -178,6 +178,8 @@ export type Session = {
   hiddenDocs: string[];
   /** 人間が資料のウィジェットで付け直した題名。キーは docOrder と同じ。 */
   docTitles: Record<string, string>;
+  /** 人間が資料のウィジェットでピン留めした資料。ほかの資料より上に出す。キーは docOrder と同じ。 */
+  pinnedDocs: string[];
   /** このセッションが claude.ai に公開した artifact。 */
   artifacts: Artifact[];
   /** 未配信の人間から Claude へのメッセージ数 */
