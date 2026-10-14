@@ -240,8 +240,11 @@ export type OutboxMessage = {
   sending?: boolean;
 };
 
-/** resetsAt は epoch ミリ秒 */
-export type RateLimit = { usedPercent: number; resetsAt?: number };
+/** 使用率が変わった時点。at は epoch ミリ秒 */
+export type RatePoint = [at: number, usedPercent: number];
+
+/** resetsAt は epoch ミリ秒。points は、今の枠の中で使用率が変わった時点を古い順に並べたもの。 */
+export type RateLimit = { usedPercent: number; resetsAt?: number; points?: RatePoint[] };
 export type RateLimits = { fiveHour?: RateLimit; sevenDay?: RateLimit; updatedAt: number };
 
 /**

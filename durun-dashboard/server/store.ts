@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, SavedFile, SavedLink } from '../shared/types.ts';
+import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, RatePoint, SavedFile, SavedLink } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -98,6 +98,9 @@ export type ErrorRecord = {
   item?: string;
 };
 
+/** 今の枠の使用率の推移。resetsAt は枠の終わり（epoch ミリ秒）で、変わったら新しい枠なので点を捨てる。 */
+export type RateWindow = { resetsAt: number; points: RatePoint[] };
+
 type State = {
   sessions: Record<string, SessionMeta>;
   attention: StoredAttention[];
@@ -114,9 +117,11 @@ type State = {
   prNotes: Record<string, PrThreadNote>;
   /** 人間がホームで並べ替えたセッションの順 */
   sessionOrder: string[];
+  /** 5 時間と 7 日の使用制限それぞれの、今の枠の使用率の推移 */
+  rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
 };
 
-const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] });
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], rateWindows: {} });
 
 // 壊れたファイルを空の状態で上書きしないよう、読めないときは起動を止める。
 const load = (): State => {

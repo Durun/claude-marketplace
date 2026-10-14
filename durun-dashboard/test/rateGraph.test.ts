@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import type { RatePoint } from '../shared/types.ts';
+import { FIVE_HOURS_MS, SEVEN_DAYS_MS, rateGraphShape } from '../client/rateGraph.ts';
+
+// 四角は x が 6〜234、y が 6（100%）〜50（0%）。
+const END = Date.UTC(2026, 9, 14, 18, 0);
+const at = (ratio: number): number => END - FIVE_HOURS_MS + FIVE_HOURS_MS * ratio;
+
+test('rateGraphShape は、点が無くても、枠の始まりの 0% から今の使用率までを直線で結び、今の位置と均等なペースを返す', () => {
+  assert.deepEqual(rateGraphShape({ usedPercent: 10, resetsAt: END }, FIVE_HOURS_MS, at(0.5)), {
+    path: 'M6,50L120,45.6',
+    dot: { x: 120, y: 45.6 },
+    pace: 50,
+  });
+  assert.equal(rateGraphShape({ usedPercent: 0, resetsAt: END }, FIVE_HOURS_MS, at(0))?.path, 'M6,50L6,50');
+});
+
+test('rateGraphShape は、最初の点までを 0% から直線で結び、その先は記録した点で折れる階段を、今の時刻まで同じ使用率で伸ばす', () => {
+  const points: RatePoint[] = [[at(0.25), 10], [at(0.5), 30]];
+  assert.deepEqual(rateGraphShape({ usedPercent: 30, resetsAt: END, points }, FIVE_HOURS_MS, at(0.75)), {
+    path: 'M6,50L63,45.6H120V36.8H177V36.8',
+    dot: { x: 177, y: 36.8 },
+    pace: 75,
+  });
+});
+
+test('rateGraphShape は、枠の長さに合わせて横軸を割り当て、リセットを過ぎた今は右端と 100% で止める', () => {
+  assert.deepEqual(rateGraphShape({ usedPercent: 50, resetsAt: END }, SEVEN_DAYS_MS, END - SEVEN_DAYS_MS / 2), {
+    path: 'M6,50L120,28',
+    dot: { x: 120, y: 28 },
+    pace: 50,
+  });
+  assert.deepEqual(rateGraphShape({ usedPercent: 100, resetsAt: END, points: [[at(0.5), 60]] }, FIVE_HOURS_MS, END + 3_600_000), {
+    path: 'M6,50L120,23.6H234V6',
+    dot: { x: 234, y: 6 },
+    pace: 100,
+  });
+});
+
+test('rateGraphShape は、直前の点より前を今にせず、リセットの時刻が無い値は描かない', () => {
+  const points: RatePoint[] = [[at(0.5), 30]];
+  assert.deepEqual(rateGraphShape({ usedPercent: 30, resetsAt: END, points }, FIVE_HOURS_MS, at(0.25)), {
+    path: 'M6,50L120,36.8H120V36.8',
+    dot: { x: 120, y: 36.8 },
+    pace: 50,
+  });
+  assert.equal(rateGraphShape({ usedPercent: 30 }, FIVE_HOURS_MS, at(0.5)), undefined);
+});

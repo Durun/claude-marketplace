@@ -12,7 +12,7 @@ import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
-import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, summarizeLog } from './claude.ts';
+import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
@@ -1017,7 +1017,13 @@ const watch = (target: string, recursive: boolean, onEvent: (file: string | null
 
 fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
 onChange(scheduleBroadcast);
-for (const dir of [SESSIONS_DIR, STATUSLINE_DIR]) watch(dir, false, scheduleBroadcast);
+// 使用率の推移は statusline が変わるたびに記録する。起動時にも記録し、次の更新まで推移が空にならないようにする。
+recordRateLimits();
+watch(SESSIONS_DIR, false, scheduleBroadcast);
+watch(STATUSLINE_DIR, false, () => {
+  recordRateLimits();
+  scheduleBroadcast();
+});
 watch(TASKS_DIR, true, scheduleBroadcast);
 watch(PROJECTS_DIR, true, (file) => {
   scheduleBroadcast();

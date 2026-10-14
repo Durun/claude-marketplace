@@ -14,6 +14,7 @@ import { setLightMode, useLightMode } from './lightMode.ts';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
+import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, rateGraphShape } from './rateGraph.ts';
 import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
@@ -21,15 +22,40 @@ import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Meter, Time, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 
-const RateMeter = ({ label, limit }: { label: string; limit: RateLimit }) => {
+/** 今の枠の使用率の推移。破線の対角線は、枠の始まりで 0%、リセットで 100% になる均等なペース。 */
+const RateGraph = ({ label, limit, windowMs, now }: { label: string; limit: RateLimit; windowMs: number; now: number }) => {
+  const shape = rateGraphShape(limit, windowMs, now);
+  if (!shape) return null;
+  const used = Math.round(limit.usedPercent);
+  const pace = Math.round(shape.pace);
+  const gap = used - pace;
+  const versus = gap === 0 ? 'と同じ' : `より ${Math.abs(gap)} ポイント${gap > 0 ? '高い' : '低い'}`;
+  return (
+    <svg
+      class="rate-graph" width={GRAPH_WIDTH} height={GRAPH_HEIGHT} viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`} role="img" style={`--c: ${rateColor(limit.usedPercent)}`}
+      aria-label={`${label}の使用率の推移。今は ${used}% で、均等なペースの ${pace}% ${versus}`}
+    >
+      <title>破線は、枠の始まりで 0%、リセットで 100% になる均等なペース</title>
+      <rect class="rate-graph-frame" x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} />
+      <line class="rate-graph-pace" x1={PLOT.left} y1={PLOT.bottom} x2={PLOT.right} y2={PLOT.top} />
+      <path class="rate-graph-line" d={shape.path} />
+      <circle class="rate-graph-dot" cx={shape.dot.x} cy={shape.dot.y} r={DOT_RADIUS} stroke-width={RING_STROKE} />
+    </svg>
+  );
+};
+
+const RateMeter = ({ label, limit, windowMs }: { label: string; limit: RateLimit; windowMs: number }) => {
   const now = useContext(NowContext);
   const reset = limit.resetsAt ? shortDateTime(toMs(limit.resetsAt), now) : undefined;
   return (
-    <div class="rate" title={reset ? `${label}の使用率。${reset} にリセット` : `${label}の使用率`}>
-      <span class="rate-label">{label}</span>
-      <Meter percent={limit.usedPercent} color={rateColor(limit.usedPercent)} label={`${label}の使用率`} />
-      <span class="rate-value">{Math.round(limit.usedPercent)}%</span>
-      {reset && <span class="rate-reset">{reset} リセット</span>}
+    <div class="rate-item">
+      <div class="rate" title={reset ? `${label}の使用率。${reset} にリセット` : `${label}の使用率`}>
+        <span class="rate-label">{label}</span>
+        <Meter percent={limit.usedPercent} color={rateColor(limit.usedPercent)} label={`${label}の使用率`} />
+        <span class="rate-value">{Math.round(limit.usedPercent)}%</span>
+        {reset && <span class="rate-reset">{reset} リセット</span>}
+      </div>
+      <RateGraph label={label} limit={limit} windowMs={windowMs} now={now} />
     </div>
   );
 };
@@ -72,8 +98,8 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
       </button>
       <div id={RATE_ID} class="rate-flyout" popover="manual">
         <b class="rate-head">使用制限</b>
-        {fiveHour && <RateMeter label="5 時間" limit={fiveHour} />}
-        {sevenDay && <RateMeter label="7 日" limit={sevenDay} />}
+        {fiveHour && <RateMeter label="5 時間" limit={fiveHour} windowMs={FIVE_HOURS_MS} />}
+        {sevenDay && <RateMeter label="7 日" limit={sevenDay} windowMs={SEVEN_DAYS_MS} />}
         {empty && (
           <p class="rate-empty">
             まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。

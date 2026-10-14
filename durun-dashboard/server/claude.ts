@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Artifact, BgTask, ChatEntry, RateLimit, RateLimits, TaskItem, TokenTotals } from '../shared/types.ts';
-import { DATA_DIR } from './store.ts';
+import { DATA_DIR, type RateWindow, state, touch } from './store.ts';
 
 export const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 export const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
@@ -485,13 +485,44 @@ const newestLimit = (limits: (RawLimit | undefined)[], now: number): RateLimit |
   return toLimit(current[0]);
 };
 
+/** 記録した推移は、同じ枠の値にだけ添える。リセットされた後に、前の枠の推移を見せない。 */
+const withPoints = (limit: RateLimit | undefined, recorded: RateWindow | undefined): RateLimit | undefined =>
+  recorded && limit?.resetsAt === recorded.resetsAt ? { ...limit, points: recorded.points } : limit;
+
 /** レート制限はアカウント単位なので、全セッションの statusline から最新の値を選ぶ。 */
 export const readRateLimits = (): RateLimits | undefined => {
   const now = Date.now();
   const all = listDir(STATUSLINE_DIR)
     .filter((f) => f.endsWith('.json') && now - (mtimeOf(path.join(STATUSLINE_DIR, f)) ?? 0) < RATE_LIMIT_MAX_AGE_MS)
     .map((f) => readJson<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
-  const fiveHour = newestLimit(all.map((l) => l?.five_hour), now);
-  const sevenDay = newestLimit(all.map((l) => l?.seven_day), now);
+  const fiveHour = withPoints(newestLimit(all.map((l) => l?.five_hour), now), state.rateWindows.fiveHour);
+  const sevenDay = withPoints(newestLimit(all.map((l) => l?.seven_day), now), state.rateWindows.sevenDay);
   return fiveHour || sevenDay ? { fiveHour, sevenDay, updatedAt: now } : undefined;
+};
+
+/**
+ * 今の枠の使用率の推移を、新しい値で進める。使用率が最後の点と変わったときだけ点を足し、変わらなければ prev をそのまま返す。
+ * 枠は始まりの使用率が 0 なので、点が無いときは 0 から変わったかを見る。resetsAt が変わったら新しい枠として、前の点を捨てる。
+ */
+export const advanceRateWindow = (prev: RateWindow | undefined, limit: RateLimit | undefined, now: number): RateWindow | undefined => {
+  // リセットの時刻が無い値は、どの枠のものか分からない。
+  if (limit?.resetsAt === undefined) return prev;
+  const current = prev?.resetsAt === limit.resetsAt ? prev : { resetsAt: limit.resetsAt, points: [] };
+  const last = current.points.at(-1)?.[1] ?? 0;
+  return limit.usedPercent === last ? current : { ...current, points: [...current.points, [now, limit.usedPercent]] };
+};
+
+// ponytail: statusline が変わるたびに全セッションの入力を読み直す。セッションが増えて重くなったら、変わったファイルだけを読む。
+/** statusline から読んだ今の使用率を、今の枠の推移に記録する。変わったときだけ保存して、画面へ配る。 */
+export const recordRateLimits = (): void => {
+  const limits = readRateLimits();
+  const now = Date.now();
+  let updated = false;
+  for (const key of ['fiveHour', 'sevenDay'] as const) {
+    const next = advanceRateWindow(state.rateWindows[key], limits?.[key], now);
+    if (next === state.rateWindows[key]) continue;
+    state.rateWindows[key] = next;
+    updated = true;
+  }
+  if (updated) touch();
 };
