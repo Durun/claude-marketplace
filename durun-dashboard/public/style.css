@@ -677,9 +677,9 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof-tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid #aca899; }
 .proof-tabs > button { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
 .proof-tabs > button[aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
-/* 「最近使ったファイル」は、項目の右に入れ子のメニューを開く。 */
+/* 「最近使ったファイル」と版のエクスポートは、項目の右に入れ子のメニューを開く。 */
 .proof-submenu::after { content: "▶"; position: absolute; right: 6px; font-size: 8px; line-height: 16px; }
-.proof-recent { position-area: inline-end span-block-end; position-try-fallbacks: flip-inline, flip-block; }
+.proof-submenu + .xp-dropdown { position-area: inline-end span-block-end; position-try-fallbacks: flip-inline, flip-block; }
 .proof-detail blockquote { margin: 0 0 8px; padding: 4px 6px; border-left: 3px solid #aca899; background: #f6f5ef; white-space: pre-wrap; }
 .proof-detail p { margin: 0 0 6px; }
 .proof-findings { display: grid; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }

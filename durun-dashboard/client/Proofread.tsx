@@ -9,6 +9,7 @@ import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from './proofread.ts';
 import { toast } from './toast.tsx';
+import { copyText } from './ui.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「proofread:開いた時刻」にし、いくつも開けるようにする。 */
 export const PROOFREAD_KEY = 'proofread';
@@ -168,6 +169,12 @@ const Glossary = ({ glossary, text }: { glossary: string; text: string }) => {
   );
 };
 
+/** 結果を見ているときも、校正した時点の文章ではなく、版の今の文章をコピーする。k は版の番号（0 から）。 */
+const copyVersion = async (ver: ProofVersion, k: number): Promise<void> => {
+  if (await copyText(ver.text)) toast(`v${k + 1} をコピーしました`);
+  else toast('クリップボードにコピーできませんでした', 'error');
+};
+
 export const ProofreadFloat = ({ f }: { f: Float }) => {
   // ファイルに保存する前から開いていたウィンドウは、タブの id の時刻をファイルの id にし、設定に残る文章と用語集を引き継ぐ。
   const fileId = f.tab.settings?.file ?? f.tab.id.slice(PROOFREAD_KEY.length + 1);
@@ -273,12 +280,14 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
 
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   const menuId = (name: string) => `proofread-${f.tab.id}-${name}`;
+  const n = file ? Math.min(v, file.versions.length - 1) : 0;
+  const ver = file?.versions[n];
   const frame = (title: string, body: ComponentChildren) => (
     <FloatFrame f={f} title={`${title} - ${PROOFREAD_TITLE}`} icon={PROOFREAD_ICON} controls={[close]}>
       <div class="proof">
         <nav class="proof-menubar">
           <button class="xp-menu" popovertarget={menuId('file')}>ファイル(F)</button>
-          {/* 最近使ったファイルは、ファイルのメニューの中から開く入れ子の popover にする。項目を押したら、入れ子ごと閉じる。 */}
+          {/* 最近使ったファイルと版のエクスポートは、ファイルのメニューの中から開く入れ子の popover にする。項目を押したら、入れ子ごと閉じる。 */}
           <div
             id={menuId('file')}
             class="xp-dropdown"
@@ -291,7 +300,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
           >
             <button class="xp-item" onClick={() => openFile(String(Date.now()))}><span>新規(N)</span></button>
             <button class="xp-item proof-submenu" popovertarget={menuId('recent')}><span>最近使ったファイル(F)</span></button>
-            <div id={menuId('recent')} class="xp-dropdown proof-recent" popover>
+            <div id={menuId('recent')} class="xp-dropdown" popover>
               {recent.map((r) => (
                 <button key={r.id} class="xp-item" role="menuitemcheckbox" aria-checked={r.id === fileId} onClick={() => openFile(r.id)}>
                   <span>{r.title || '無題'}</span>
@@ -300,6 +309,14 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
               ))}
               {!recent.length && <button class="xp-item" disabled><span>（なし）</span></button>}
             </div>
+            {ver && (
+              <>
+                <button class="xp-item proof-submenu" popovertarget={menuId('export')}><span>v{n + 1} をエクスポート(E)</span></button>
+                <div id={menuId('export')} class="xp-dropdown" popover>
+                  <button class="xp-item" onClick={() => copyVersion(ver, n)}><span>クリップボードにコピー(C)</span></button>
+                </div>
+              </>
+            )}
           </div>
         </nav>
         {body}
@@ -307,9 +324,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
     </FloatFrame>
   );
 
-  if (!file) return frame('無題', <p class="proof-notice">{failed ? `ファイルを開けませんでした（${failed}）` : '開いています'}</p>);
-  const n = Math.min(v, file.versions.length - 1);
-  const ver = file.versions[n]!;
+  if (!file || !ver) return frame('無題', <p class="proof-notice">{failed ? `ファイルを開けませんでした（${failed}）` : '開いています'}</p>);
   const run = ver.run;
   const tabs = (
     <div class="proof-tabs" role="tablist" aria-label="版">
@@ -320,6 +335,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
       ))}
     </div>
   );
+  const copy = <button title="この版の文章をクリップボードにコピーします" onClick={() => copyVersion(ver, n)}>コピー</button>;
 
   if (editing || !run) {
     const fixed = ver.fixed.filter((s) => ver.text.includes(s)).length;
@@ -329,6 +345,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
         <div class="proof-bar">
           <button disabled={!ver.text.trim()} onClick={() => start(n, false)}>校正</button>
           {run && <button onClick={() => setEditing(false)}>結果を見る</button>}
+          {copy}
           {fixed > 0 && <span>固定した文が {fixed} 文あります。修正版でも変えません。</span>}
         </div>
         <div class="proof-body">
@@ -377,6 +394,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
           <button onClick={() => start(n, true)}>続きから校正</button>
         )}
         <button onClick={() => setEditing(true)}>編集</button>
+        {copy}
         <span>{status}</span>
       </div>
       <div class="proof-axes" role="group" aria-label="見せる軸">
