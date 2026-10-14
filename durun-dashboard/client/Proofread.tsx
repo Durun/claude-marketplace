@@ -20,6 +20,8 @@ export const PROOFREAD_ICON = '/proofread.svg';
 const SIZE = { w: 960, h: 640 };
 // 打つたびに保存しないよう、手が止まってから保存する。
 const SAVE_DELAY_MS = 500;
+// 消費トークンを出すかは、新しく開くウィンドウにも引き継ぐよう、ウィンドウごとではなくブラウザに 1 つだけ保存する。
+const USAGE_KEY = 'proofread-usage';
 
 export const openProofread = (): void => floatUp(PROOFREAD_KEY, '', { id: `${PROOFREAD_KEY}:${Date.now()}` }, SIZE);
 
@@ -220,7 +222,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
   // 見せる軸。空なら全部を見せる。
   const [only, setOnly] = useState<ProofAxis>();
   const [recent, setRecent] = useState<ProofFileMeta[]>([]);
-  const showUsage = f.tab.settings?.usage === 'on';
+  const [showUsage, setShowUsage] = useState(() => localStorage.getItem(USAGE_KEY) === 'on');
   const stop = useRef<AbortController | null>(null);
   const latest = useRef<ProofFile>();
   const saved = useRef<ProofFile>();
@@ -271,8 +273,16 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
   const changeVersion = (n: number, fn: (ver: ProofVersion) => ProofVersion) =>
     setFile((cur) => cur && { ...cur, versions: cur.versions.map((x, k) => (k === n ? fn(x) : x)) });
   const setGlossary = (glossary: string) => setFile((cur) => cur && { ...cur, glossary });
-  // 前のファイルの文章と用語集を新規のファイルに引き継がないよう、設定は表示の設定だけを残して作り直す。
-  const openFile = (id: string) => setFloatSettings(f, { file: id, usage: showUsage ? 'on' : 'off' });
+  // 前のファイルの文章と用語集を新規のファイルに引き継がないよう、設定を作り直す。
+  const openFile = (id: string) => setFloatSettings(f, { file: id });
+  const toggleUsage = () => {
+    setShowUsage(!showUsage);
+    try {
+      localStorage.setItem(USAGE_KEY, showUsage ? 'off' : 'on');
+    } catch {
+      // 保存できなくても、開いている間は切り替えられる。
+    }
+  };
 
   /** resume なら、前に止めた校正の続きから読む。読み終えた文は読み直さず、指摘だけを作り直す。 */
   const start = (n: number, resume: boolean) => {
@@ -357,7 +367,7 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
             id={menuId('view')}
             class="xp-menu"
             label="表示(V)"
-            items={[{ label: '消費トークン(T)', checked: showUsage, onClick: () => setFloatSettings(f, { ...f.tab.settings, usage: showUsage ? 'off' : 'on' }) }]}
+            items={[{ label: '消費トークン(T)', checked: showUsage, onClick: toggleUsage }]}
           />
         </nav>
         {body}
