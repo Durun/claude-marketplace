@@ -5,7 +5,7 @@ import type { PrDetail, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
-import { useFetch } from './hooks.ts';
+import { pickInWidget, useFetch, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time, onSubmitKey, PrChips } from './ui.tsx';
@@ -101,12 +101,25 @@ const PrView = ({ url, version }: { url: string; version?: string }) => {
   return pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />;
 };
 
-/** セッションの PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
-export const PrWidget = ({ s }: { s: Session }) => (
-  <WidgetPanel title={PR_TITLE}>
-    {s.pr ? <PrView key={s.pr.url} url={s.pr.url} version={JSON.stringify(s.pr)} /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
-  </WidgetPanel>
-);
+/** セッションに PR が複数あるときは、上に並べた番号で切り替える。PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
+export const PrWidget = ({ s }: { s: Session }) => {
+  const pick = usePicked(PR_WIDGET, s.id);
+  // 前に開いていたときのデータには、PR の一覧が無いことがある。
+  const prs = s.prs ?? [];
+  const pr = prs.find((p) => p.url === pick) ?? prs[0];
+  return (
+    <WidgetPanel title={PR_TITLE}>
+      {prs.length > 1 && (
+        <div class="chips">
+          {prs.map((p) => (
+            <button key={p.url} class="btn btn-sm" aria-pressed={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
+          ))}
+        </div>
+      )}
+      {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
+    </WidgetPanel>
+  );
+};
 
 /** URL の owner/repo#番号 を見出しにする。 */
 export const PrFloat = ({ f }: { f: Float }) => {

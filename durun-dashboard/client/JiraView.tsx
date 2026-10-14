@@ -1,11 +1,10 @@
 // JIRA の課題を、本文とコメントとともに読み、コメントを投稿する。
 // セッションの課題はセッション内の「JIRA」ウィジェットで、ほかの課題はウィンドウに浮かべて開く。
-import { useEffect, useState } from 'preact/hooks';
 import type { JiraDetail, Session } from '../shared/types.ts';
 import { api } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
-import { useFetch } from './hooks.ts';
+import { pickInWidget, useFetch, usePicked } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm } from './PrView.tsx';
@@ -16,16 +15,6 @@ export const JIRA_VIEW_TITLE = 'JIRA';
 export const JIRA_WIDGET = 'jira';
 /** ウィンドウに浮かべた課題の保存キー。タブの id に課題のキーを入れる。 */
 export const JIRA_KEY = 'jira';
-
-/** セッションのウィジェットで選ぶよう頼まれた課題。セッションの id ごとに持つ。 */
-const picked = new Map<string, string>();
-const pickListeners = new Set<() => void>();
-
-/** セッションに課題が複数あるとき、ウィジェットでその課題を選ぶ。 */
-export const pickJira = (session: string, key: string): void => {
-  picked.set(session, key);
-  pickListeners.forEach((fn) => fn());
-};
 
 const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new: 'muted', indeterminate: 'info', done: 'ok' };
 
@@ -74,22 +63,14 @@ const JiraView = ({ issueKey, version }: { issueKey: string; version?: string })
 
 /** セッションに課題が複数あるときは、上に並べたキーで切り替える。状態が変わったら読み直す。 */
 export const JiraWidget = ({ s }: { s: Session }) => {
-  const [pick, setPick] = useState(picked.get(s.id));
-  useEffect(() => {
-    const take = () => setPick(picked.get(s.id));
-    take();
-    pickListeners.add(take);
-    return () => {
-      pickListeners.delete(take);
-    };
-  }, [s.id]);
+  const pick = usePicked(JIRA_WIDGET, s.id);
   const issue = s.jira.find((j) => j.key === pick) ?? s.jira[0];
   return (
     <WidgetPanel title={JIRA_VIEW_TITLE}>
       {s.jira.length > 1 && (
         <div class="chips">
           {s.jira.map((j) => (
-            <button key={j.key} class="btn btn-sm" aria-pressed={j === issue} title={j.summary} onClick={() => pickJira(s.id, j.key)}>{j.key}</button>
+            <button key={j.key} class="btn btn-sm" aria-pressed={j === issue} title={j.summary} onClick={() => pickInWidget(JIRA_WIDGET, s.id, j.key)}>{j.key}</button>
           ))}
         </div>
       )}

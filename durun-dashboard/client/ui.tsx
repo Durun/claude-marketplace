@@ -136,7 +136,7 @@ const ciChip = (c: PrInfo['checks']): { text: string; tone: Tone } | undefined =
 
 /** JIRA のチップと同じく、PR 番号の右に題名の先頭を添え、区切って CI とレビューの状態を並べ、1 つのチップにまとめる。 */
 /**
- * session を渡すと、押したときにそのセッションの「PR」ウィジェットを開く。開く処理は、PR へのリンクの横取りが data-session を読んで行う。
+ * session を渡すと、押したときにそのセッションの「PR」ウィジェットでその PR を開く。開く処理は、PR へのリンクの横取りが data-session を読んで行う。
  * hideTitle は、すぐそばに題名を出している画面で、題名を重ねて出さないために渡す。
  */
 export const PrChips = ({ pr, session, hideTitle }: { pr: PrInfo; session?: string; hideTitle?: boolean }) => {

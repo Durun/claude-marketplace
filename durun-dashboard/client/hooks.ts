@@ -144,3 +144,27 @@ export const useWaitCursor = (on: boolean): void => {
     };
   }, [on]);
 };
+
+/** セッションのウィジェットで選ぶよう頼まれたもの。ウィジェットの種類とセッションの id ごとに持つ。 */
+const picked = new Map<string, string>();
+const pickListeners = new Set<() => void>();
+
+/** セッションのウィジェットに選べるものが複数あるとき、value を選ぶ。PR は URL で、JIRA の課題はキーで選ぶ。 */
+export const pickInWidget = (kind: string, session: string, value: string): void => {
+  picked.set(`${kind}\0${session}`, value);
+  pickListeners.forEach((fn) => fn());
+};
+
+export const usePicked = (kind: string, session: string): string | undefined => {
+  const key = `${kind}\0${session}`;
+  const [pick, setPick] = useState(picked.get(key));
+  useEffect(() => {
+    const take = () => setPick(picked.get(key));
+    take();
+    pickListeners.add(take);
+    return () => {
+      pickListeners.delete(take);
+    };
+  }, [key]);
+  return pick;
+};

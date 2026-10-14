@@ -97,9 +97,10 @@ const clearDialogs = (sessionId: string, fromSubagent: boolean): void => {
   if (state.attention.length !== before) touch();
 };
 
+/** stack の PR は、ほかのブランチに居ながらまとめて push や作成をするので、居たことのあるブランチの PR をすべて取り直す。 */
 const refreshPrFor = (meta: SessionMeta): void => {
-  const branch = meta.transcriptPath ? summarizeLog(meta.transcriptPath).branch : undefined;
-  if (branch) void refreshPr(meta.cwd, branch);
+  if (!meta.transcriptPath) return;
+  for (const branch of summarizeLog(meta.transcriptPath).branches) void refreshPr(meta.cwd, branch);
 };
 
 const observe = (meta: SessionMeta, event: string | undefined, input: HookInput): void => {

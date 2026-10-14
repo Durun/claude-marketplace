@@ -144,7 +144,9 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   recordBgQuestion(meta, log, live);
   const name = displayName(meta, log);
   const pr = cachedPr(meta.cwd, log?.branch);
-  const jiraKeys = new Set([...meta.jira, ...findJiraKeys([log?.branch, name, pr?.title])]);
+  const branches = [...(log?.branches ?? [])].reverse();
+  const prs = branches.flatMap((b) => cachedPr(meta.cwd, b) ?? []);
+  const jiraKeys = new Set([...meta.jira, ...findJiraKeys([...branches, name, ...prs.map((p) => p.title)])]);
   const repo = repoName(meta.cwd);
   const review = state.attention.find((a) => a.sessionId === meta.id && a.kind === 'review');
   return {
@@ -167,6 +169,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     subagents: subs.map((s) => toSubagent(s, !!live)),
     background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
     pr,
+    prs,
     jira: [...jiraKeys].map(jiraIssue),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,

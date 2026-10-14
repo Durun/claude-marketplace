@@ -30,6 +30,15 @@ test('summarizeLog は、claude.ai に公開した artifact の題名と元の�
   assert.deepEqual([...summarizeLog(file).artifacts.values()], [{ url: 'https://claude.ai/artifact/abc', title: '新題', path: '/tmp/b.html' }]);
 });
 
+test('summarizeLog は、居たブランチを最後に居た順に並べ、戻ってきたブランチは末尾へ移す', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-branches-')), 'log.jsonl');
+  const on = (gitBranch: string): string => `${JSON.stringify({ type: 'user', gitBranch, message: { content: '' } })}\n`;
+  fs.writeFileSync(file, ['a', 'b', 'b', 'a', 'c', 'b'].map(on).join(''));
+  const log = summarizeLog(file);
+  assert.deepEqual([...log.branches], ['a', 'c', 'b']);
+  assert.equal(log.branch, 'b');
+});
+
 test('summarizeLog は、バックグラウンドの shell と Monitor を、ツールの結果でタスクの id と結びつけ、終わった通知で状態を更新する', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bg-')), 'log.jsonl');
   const call = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });

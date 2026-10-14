@@ -122,7 +122,8 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
         </span>
       </div>
       <div class="head-row">
-        {s.pr && <PrChips pr={s.pr} session={s.id} />}
+        {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
+        {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
         <JiraChips issues={s.jira} session={s.id} />
         {s.attachCommand && (
           <span class="attach">

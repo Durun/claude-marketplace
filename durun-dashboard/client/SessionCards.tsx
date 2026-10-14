@@ -109,9 +109,10 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
       <PinButton s={s} />
     </header>
     <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
-    {(s.pr || s.jira.length > 0) && (
+    {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
+    {(s.prs?.length || s.jira.length > 0) && (
       <div class="chips">
-        {s.pr && <PrChips pr={s.pr} session={s.id} />}
+        {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
         <JiraChips issues={s.jira} session={s.id} />
       </div>
     )}

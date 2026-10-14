@@ -164,7 +164,10 @@ export type Session = {
   tasks: TaskItem[];
   subagents: Subagent[];
   background: BgTask[];
+  /** 今のブランチの PR。 */
   pr?: PrInfo;
+  /** これまでに居たブランチの PR。今のブランチの PR を先頭に、最後に居た順に並べる。 */
+  prs: PrInfo[];
   jira: JiraIssue[];
   usage: Usage;
   archived: boolean;

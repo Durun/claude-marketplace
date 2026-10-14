@@ -65,7 +65,7 @@ const inflight = new Set<string>();
 
 export const refreshPr = async (cwd: string, branch: string): Promise<void> => {
   const key = `${cwd}\0${branch}`;
-  if (inflight.has(key)) return;
+  if (BASE_BRANCH.test(branch) || inflight.has(key)) return;
   inflight.add(key);
   try {
     const { stdout } = await run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', PR_FIELDS], { cwd });

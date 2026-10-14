@@ -90,6 +90,8 @@ export type LogSummary = {
   title?: string;
   cwd?: string;
   branch?: string;
+  /** これまでに居たブランチ。最後に居た順に並べるので、今のブランチが末尾になる。 */
+  branches: Set<string>;
   model?: string;
   contextTokens: number;
   lastUsageId?: string;
@@ -172,6 +174,7 @@ type SkillListing = { type?: string; names?: string[]; content?: string };
 
 const emptySummary = (): LogSummary => ({
   offset: 0,
+  branches: new Set(),
   contextTokens: 0,
   totals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
   timeline: [],
@@ -363,7 +366,11 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   else if (e.type === 'attachment' && e.attachment?.type === 'queued_command') applyNotifications(s, e.attachment.prompt ?? '');
   if (e.type !== 'user' && e.type !== 'assistant') return;
   if (e.cwd) s.cwd = e.cwd;
-  if (e.gitBranch) s.branch = e.gitBranch;
+  if (e.gitBranch && e.gitBranch !== s.branch) {
+    s.branches.delete(e.gitBranch);
+    s.branches.add(e.gitBranch);
+    s.branch = e.gitBranch;
+  }
   if (ts) s.lastActivityAt = ts;
   s.limit = limitOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
