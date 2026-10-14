@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usage } from '../shared/types.ts';
+import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
@@ -276,6 +277,7 @@ export const buildSnapshot = (): Snapshot => {
     sessionOrder: state.sessionOrder,
     improve: improveState(),
     jiraRefreshedAt: jiraRefreshedAt(),
+    cacheVersion: cacheVersion(),
     jiraBase: jiraBase(),
     notion: notionEnabled(),
     proofCommentedAt,

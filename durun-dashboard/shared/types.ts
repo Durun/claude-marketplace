@@ -317,6 +317,8 @@ export type Snapshot = {
   improve: ImproveState;
   /** 人間が「更新」で JIRA の情報を取り直させた時刻。JIRA の一覧のウィジェットは、変わったら探し直す。 */
   jiraRefreshedAt: number;
+  /** サーバーが外部の情報源から裏で読み直した値が変わるたびに増える。画面は、変わったらサーバーのキャッシュを通す API を取り直す。前に受け取ったスナップショットには無いことがある。 */
+  cacheVersion?: number;
   /** 課題の画面の URL の前に付く部分。JIRA を設定していなければ無い。画面は、ここで始まる課題へのリンクをダッシュボードで開く。 */
   jiraBase?: string;
   /** Notion のトークンを設定してあるか。画面は、設定してあるときだけ、Notion のページへのリンクをダッシュボードで開く。 */
@@ -419,8 +421,8 @@ export type SearchResult = {
 /** results は新しい順に上限まで。total は当たったセッションの数。 */
 export type SearchResponse = { results: SearchResult[]; total: number };
 
-/** セッションの概要。doing は全体で取り組んでいること、now はいまの状況。 */
-export type SessionSummary = { doing: string; now: string };
+/** セッションの概要。doing は全体で取り組んでいること、now はいまの状況。stale は、まとめ直している間に返した前のやり取りの概要の印。 */
+export type SessionSummary = { doing: string; now: string; stale?: boolean };
 
 /** イルカの吹き出しでの会話。dolphin はイルカの答え。 */
 export type AssistantMessage = { role: 'human' | 'dolphin'; text: string };

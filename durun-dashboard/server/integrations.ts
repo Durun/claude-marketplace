@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, type PrInfo, type PrPost, type PrThread, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { cached, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
 
@@ -59,34 +60,45 @@ const toPrInfo = (pr: GhPr): PrInfo => ({
   baseRef: pr.baseRefName,
 });
 
-/** null は「PR が無い」ことを確認済みの印。 */
-const prCache = new Map<string, { cwd: string; branch: string; pr: PrInfo | null }>();
-const inflight = new Set<string>();
+// カードに出すブランチの PR は、すべてのセッションのブランチの分を読むので、gh を呼びすぎないよう間隔を空けて読み直す。
+const BRANCH_PR_MAX_AGE = 10 * 60_000;
+// PR の画面は、開いている間に CI やレビューが進むので、短い間隔で読み直す。
+const PR_MAX_AGE = 30_000;
+// GitHub の Inbox は検索に数秒かかるので、PR の画面より間隔を空ける。
+const INBOX_MAX_AGE = 60_000;
 
-export const refreshPr = async (cwd: string, branch: string): Promise<void> => {
-  const key = `${cwd}\0${branch}`;
-  if (BASE_BRANCH.test(branch) || inflight.has(key)) return;
-  inflight.add(key);
+/** null は「PR が無い」ことを確認済みの印。gh 未認証や GitHub 以外のリポジトリでも null にして、PR を出さない。 */
+const findPr = async (cwd: string, branch: string): Promise<PrInfo | null> => {
   try {
     const { stdout } = await run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', PR_FIELDS], { cwd });
     const [pr] = JSON.parse(stdout) as GhPr[];
-    prCache.set(key, { cwd, branch, pr: pr ? toPrInfo(pr) : null });
+    return pr ? toPrInfo(pr) : null;
   } catch (e) {
-    // gh 未認証や GitHub 以外のリポジトリでは PR を出さない。
-    prCache.set(key, { cwd, branch, pr: null });
     console.error(`gh pr list failed in ${cwd}: ${(e as Error).message.split('\n')[0]}`);
-  } finally {
-    inflight.delete(key);
-    changed();
+    return null;
   }
 };
 
-/** キャッシュ済みの PR を返す。初めてのブランチは裏で取りに行き、取れたら changed() で知らせる。 */
+// ブランチ名は空白を含まないので、ディレクトリとは空白で区切る。
+const branchKey = (cwd: string, branch: string): string => `pr-branch:${cwd} ${branch}`;
+
+/** PR を作ったりマージしたりしたブランチの PR を、覚えた値が新しくても読み直す。 */
+export const refreshPr = async (cwd: string, branch: string): Promise<void> => {
+  if (!BASE_BRANCH.test(branch)) await cached(branchKey(cwd, branch), { fresh: true }, () => findPr(cwd, branch));
+};
+
+type ClaudePrStatus = { title: string; state: PrInfo['state']; checks: PrInfo['checks']; review: string };
+
+/** Claude Code が実行中セッションの PR について書き残した状態。URL ごとに、gh で読んだ状態より優先する。 */
+let claudePrStatuses: Partial<Record<string, ClaudePrStatus>> = {};
+
+/** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
 export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
   if (!branch || BASE_BRANCH.test(branch)) return undefined;
-  const hit = prCache.get(`${cwd}\0${branch}`);
-  if (!hit) void refreshPr(cwd, branch);
-  return hit?.pr ?? undefined;
+  const pr = peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch));
+  const s = pr && claudePrStatuses[pr.url];
+  if (!pr || !s) return pr ?? undefined;
+  return { ...pr, title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review };
 };
 
 // 解決済みかどうかは REST の API では分からないので、GraphQL で読む。
@@ -234,13 +246,19 @@ export const toInbox = (data: GhInbox): InboxSection[] =>
     .map((s) => ({ title: s.title, prs: s.prs.map(toInboxPr) }));
 
 /** GitHub の PR のダッシュボードの Inbox と同じ区分で、自分に関わる開いた PR を集める。 */
-export const githubInbox = async (): Promise<InboxSection[]> => toInbox((await ghApi<{ data: GhInbox }>(['graphql', '-f', `query=${INBOX_QUERY}`])).data);
+export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
+  cached('github-inbox', { maxAge: INBOX_MAX_AGE, fresh }, async () => toInbox((await ghApi<{ data: GhInbox }>(['graphql', '-f', `query=${INBOX_QUERY}`])).data));
 
 /** PR の本文、変更したファイル、会話を GitHub から読む。 */
-export const prDetail = async (url: string): Promise<PrDetail> => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail);
+export const prDetail = (url: string, fresh = false): Promise<PrDetail> =>
+  cached(`pr:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
 
 /** PR の会話にコメントを投稿し、投稿したコメントの URL を返す。 */
-export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => ({ url: (await gh(['pr', 'comment', url, '--body-file', '-'], body)).trim() });
+export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => {
+  const posted = (await gh(['pr', 'comment', url, '--body-file', '-'], body)).trim();
+  forgetCached(`pr:${url}`);
+  return { url: posted };
+};
 
 type GhPullRequest = { id: string; reviewThreads?: { nodes?: GhThread[] }; files?: { nodes?: { path: string; viewerViewedState: string }[] } };
 
@@ -254,7 +272,8 @@ const prQuery = async (pr: PrInfo, query: string): Promise<GhPullRequest | undef
 };
 
 /** PR の未解決のレビュースレッド。 */
-export const prThreads = async (pr: PrInfo): Promise<PrThread[]> => toThreads((await prQuery(pr, THREADS_QUERY))?.reviewThreads?.nodes ?? []);
+export const prThreads = (pr: PrInfo, fresh = false): Promise<PrThread[]> =>
+  cached(`pr-threads:${pr.url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toThreads((await prQuery(pr, THREADS_QUERY))?.reviewThreads?.nodes ?? []));
 
 // ponytail: ファイルは先頭の 100 件まで。超える PR が出たら、ページを送って読む。
 const FILES_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
@@ -262,8 +281,9 @@ const FILES_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
 }`;
 
 /** GitHub で、自分が「Viewed」にした PR のファイル。 */
-export const prViewed = async (pr: PrInfo): Promise<string[]> =>
-  ((await prQuery(pr, FILES_QUERY))?.files?.nodes ?? []).filter((f) => f.viewerViewedState === 'VIEWED').map((f) => f.path);
+export const prViewed = (pr: PrInfo, fresh = false): Promise<string[]> =>
+  cached(`pr-viewed:${pr.url}`, { maxAge: PR_MAX_AGE, fresh }, async () =>
+    ((await prQuery(pr, FILES_QUERY))?.files?.nodes ?? []).filter((f) => f.viewerViewedState === 'VIEWED').map((f) => f.path));
 
 /** GitHub の「Viewed」を切り替える。mutation は PR の node id を受けるので、先に読む。 */
 export const setPrViewed = async (pr: PrInfo, file: string, viewed: boolean): Promise<void> => {
@@ -272,6 +292,7 @@ export const setPrViewed = async (pr: PrInfo, file: string, viewed: boolean): Pr
   const op = viewed ? 'markFileAsViewed' : 'unmarkFileAsViewed';
   const mutation = `mutation($id: ID!, $path: String!) { ${op}(input: { pullRequestId: $id, path: $path }) { clientMutationId } }`;
   await ghApi(['graphql', '--hostname', repoOf(pr).host, '-f', `id=${id}`, '-f', `path=${file}`, '-f', `query=${mutation}`]);
+  forgetCached(`pr-viewed:${pr.url}`);
 };
 
 /** 行へのコメントと全体コメントを、1 つのレビュー（COMMENT）として PR に投稿する。commit は、行番号を数えた PR の先端。 */
@@ -284,19 +305,15 @@ export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewC
     comments: comments.map((c) => ({ path: c.path, line: c.line, side: c.side === 'old' ? 'LEFT' : 'RIGHT', body: c.body })),
   };
   const res = await ghApi<{ html_url: string }>(['--hostname', host, '--method', 'POST', `repos/${owner}/${name}/pulls/${number}/reviews`, '--input', '-'], JSON.stringify(review));
+  forgetCached(`pr:${pr.url}`, `pr-threads:${pr.url}`);
   return { url: res.html_url };
 };
-
-type ClaudePrStatus = { title: string; state: PrInfo['state']; checks: PrInfo['checks']; review: string };
 
 /** Claude Code が実行中セッションの PR 状態を定期更新しているキャッシュを取り込む。自前で GitHub を見に行かずに済む。 */
 export const mergeClaudePrCache = (file: string): void => {
   const statuses = readJson<Record<string, ClaudePrStatus>>(file);
   if (!statuses) return;
-  for (const { pr } of prCache.values()) {
-    const s = pr && statuses[pr.url];
-    if (pr && s) Object.assign(pr, { title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review });
-  }
+  claudePrStatuses = statuses;
   changed();
 };
 
@@ -318,35 +335,27 @@ export const findJiraKeys = (texts: (string | undefined)[]): string[] => {
 
 const browseUrl = (key: string): string => `${JIRA_BASE ?? ''}/browse/${key}`;
 
-const jiraCache = new Map<string, { summary?: string; status?: string }>();
-
-const fetchJira = async (key: string): Promise<void> => {
-  jiraCache.set(key, {});
-  try {
-    const res = await fetch(`${JIRA_BASE}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,status`, {
-      headers: { authorization: JIRA_AUTH ?? '', accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = (await res.json()) as { fields?: { summary?: string; status?: { name?: string } } };
-    jiraCache.set(key, { summary: body.fields?.summary, status: body.fields?.status?.name });
-    changed();
-  } catch (e) {
-    console.error(`JIRA ${key}: ${(e as Error).message}`);
-  }
-};
+// カードのバッジに出す題名とステータスは、すべてのセッションの課題の分を読むので、間隔を空けて読み直す。
+const JIRA_BADGE_MAX_AGE = 10 * 60_000;
+// 課題の画面と一覧は、開いている間に変わったものを出すよう、短い間隔で読み直す。
+const JIRA_MAX_AGE = 30_000;
 
 /** API トークンが無いときはリンクだけ返す。 */
 export const jiraIssue = (key: string): JiraIssue => {
-  if (JIRA_AUTH && !jiraCache.has(key)) void fetchJira(key);
-  return { key, url: browseUrl(key), ...jiraCache.get(key) };
+  const badge = JIRA_AUTH
+    ? peekCached(`jira-issue:${key}`, { maxAge: JIRA_BADGE_MAX_AGE }, async () => {
+        const { fields } = await jiraFetch<JiraIssueBody>(`issue/${encodeURIComponent(key)}?fields=summary,status`);
+        return { summary: fields?.summary, status: fields?.status?.name };
+      })
+    : undefined;
+  return { key, url: browseUrl(key), ...badge };
 };
 
 let refreshedAt = 0;
 
 export const refreshJira = (): void => {
-  jiraCache.clear();
   refreshedAt = Date.now();
-  changed();
+  forgetCached(/^jira/);
 };
 
 /** 人間が「更新」で JIRA の情報を取り直させたか、ダッシュボードで課題のステータスを移した時刻。 */
@@ -392,6 +401,9 @@ export const searchJira = async (jql: string, max: number): Promise<JiraIssue[]>
     dueDate: f?.duedate ?? undefined,
   }));
 };
+
+/** JIRA Issues のウィジェットに並べる課題。 */
+export const jiraList = (jql: string, max: number): Promise<JiraIssue[]> => cached(`jira-search:${max} ${jql}`, { maxAge: JIRA_MAX_AGE }, () => searchJira(jql, max));
 
 /** 課題の画面の URL の前に付く部分。設定が無ければ undefined。 */
 export const jiraBase = (): string | undefined => JIRA_BASE && JIRA_AUTH && JIRA_BASE;
@@ -478,7 +490,9 @@ const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> =>
 };
 
 /** 課題の画面に出す中身。コメントは古い順に、子の課題（Epic に属する課題やサブタスク）は作った順に並べる。 */
-export const jiraDetail = async (key: string): Promise<JiraDetail> => {
+export const jiraDetail = (key: string, fresh = false): Promise<JiraDetail> => cached(`jira:${key}`, { maxAge: JIRA_MAX_AGE, fresh }, () => readJiraDetail(key));
+
+const readJiraDetail = async (key: string): Promise<JiraDetail> => {
   const fields = 'summary,status,assignee,reporter,priority,parent,labels,duedate,updated,description,comment';
   const [{ fields: f, transitions }, children] = await Promise.all([
     jiraFetch<JiraIssueBody>(`issue/${key}?fields=${fields}&expand=transitions`),
@@ -510,15 +524,15 @@ export const jiraDetail = async (key: string): Promise<JiraDetail> => {
 /** 課題のステータスをトランジションで移す。その課題のバッジと JIRA Issues のウィジェットに、移した後のステータスを読み直させる。 */
 export const transitionJira = async (key: string, id: string): Promise<void> => {
   await jiraFetch(`issue/${key}/transitions`, { method: 'POST', body: JSON.stringify({ transition: { id } }) });
-  jiraCache.delete(key);
   refreshedAt = Date.now();
-  changed();
+  forgetCached(`jira-issue:${key}`, `jira:${key}`, /^jira-search:/);
 };
 
 /** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */
 export const postJiraComment = async (key: string, text: string): Promise<void> => {
   const content = text.split('\n').map((line) => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] }));
   await jiraFetch(`issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body: { type: 'doc', version: 1, content } }) });
+  forgetCached(`jira:${key}`);
 };
 
 /** URL が JIRA の課題の画面なら、その課題のキー。 */

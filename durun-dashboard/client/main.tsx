@@ -11,7 +11,7 @@ import { type Float, floatUp, useFloats } from './Float.tsx';
 import { Header } from './Header.tsx';
 import { HOME_KEY } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
-import { NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
+import { CacheVersionContext, NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
 import { useDeliveryFailureEffects } from './deliveryEffects.ts';
 import { useLightMode } from './lightMode.ts';
 import { useAttentionEffects } from './notify.ts';
@@ -140,24 +140,26 @@ const App = () => {
   useLinks(route, snapshot);
   return (
     <NowContext.Provider value={now}>
-      <Header
-        snapshot={snapshot}
-        assets={fresh?.assets}
-        connected={connected}
-        home={route.page === 'home'}
-        onSearch={() => setSearching(true)}
-        onEdit={hasDashboard ? () => setEditing(true) : undefined}
-        onFeedback={() => setFeedbackOpen((v) => !v)}
-      />
-      <main class="app">
-        {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
-      </main>
-      {snapshot && <Floats snapshot={snapshot} />}
-      <Toasts />
-      <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
-      {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
-      {!light && <Dolphin />}
-      <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
+      <CacheVersionContext.Provider value={snapshot?.cacheVersion ?? 0}>
+        <Header
+          snapshot={snapshot}
+          assets={fresh?.assets}
+          connected={connected}
+          home={route.page === 'home'}
+          onSearch={() => setSearching(true)}
+          onEdit={hasDashboard ? () => setEditing(true) : undefined}
+          onFeedback={() => setFeedbackOpen((v) => !v)}
+        />
+        <main class="app">
+          {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
+        </main>
+        {snapshot && <Floats snapshot={snapshot} />}
+        <Toasts />
+        <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
+        {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
+        {!light && <Dolphin />}
+        <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
+      </CacheVersionContext.Provider>
     </NowContext.Provider>
   );
 };

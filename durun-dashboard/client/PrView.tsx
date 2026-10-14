@@ -5,7 +5,7 @@ import type { PrDetail, PrInfo, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
-import { pickInWidget, useFetch, usePicked } from './hooks.ts';
+import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time, onSubmitKey, PrChips } from './ui.tsx';
@@ -96,7 +96,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
 
 /** 開いたときと「更新」を押したとき、version が変わったときに GitHub から読み直す。 */
 const PrView = ({ url, version }: { url: string; version?: string }) => {
-  const pr = useFetch(() => api.prDetail(url), [url, version]);
+  const pr = useCached((fresh) => api.prDetail(url, fresh), [url, version]);
   if (pr.data) return <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} />;
   return pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />;
 };

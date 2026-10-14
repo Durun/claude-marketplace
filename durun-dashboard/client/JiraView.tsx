@@ -5,7 +5,7 @@ import type { JiraDetail, JiraTransition, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
-import { pickInWidget, useFetch, usePicked } from './hooks.ts';
+import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm } from './PrView.tsx';
@@ -88,7 +88,7 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
 
 /** 開いたときと「更新」を押したとき、version が変わったときに JIRA から読み直す。 */
 const JiraView = ({ issueKey, version }: { issueKey: string; version?: string }) => {
-  const issue = useFetch(() => api.jiraIssue(issueKey), [issueKey, version]);
+  const issue = useCached((fresh) => api.jiraIssue(issueKey, fresh), [issueKey, version]);
   if (issue.data) return <Detail issue={issue.data} loading={issue.loading} reload={issue.reload} />;
   return issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />;
 };

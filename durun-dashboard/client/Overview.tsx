@@ -9,7 +9,7 @@ import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
 import { dateTime, fmtTokens, shortDateTime } from './format.ts';
 import { isFileRef } from './fileRef.ts';
-import { NowContext, useFetch, useWaitCursor } from './hooks.ts';
+import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
 import { type CodeLink, Markdown } from './Markdown.tsx';
 import { Composer, MessageInput } from './Messaging.tsx';
 import { href } from './router.ts';
@@ -296,11 +296,11 @@ export const RemoteIcon = ({ s }: { s: Session }) => (
 export const Summary = ({ s }: { s: Session }) => {
   const ready = !!(s.lastPrompt || s.lastMessage);
   const progress = `${s.status} ${s.lastMessageAt} ${s.lastPrompt} ${s.tasks.map((t) => t.status).join()}`;
-  const { data, loading, error } = useFetch(() => (ready ? api.summary(s.id) : Promise.resolve(undefined)), [s.id, progress, ready]);
+  const { data, loading, error } = useCached(() => (ready ? api.summary(s.id) : Promise.resolve(undefined)), [s.id, progress, ready]);
   return (
     <WidgetPanel title="概要">
       {data ? (
-        <dl class={`summary ${loading ? 'is-loading' : ''}`}>
+        <dl class={`summary ${loading || data.stale ? 'is-loading' : ''}`}>
           <dt>やっていること</dt>
           <dd>{data.doing}</dd>
           <dt>いま</dt>

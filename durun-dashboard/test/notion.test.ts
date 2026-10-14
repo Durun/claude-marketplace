@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { notionPageId } from '../shared/types.ts';
 
 // notion.ts は読み込んだ時点の環境変数でトークンを決めるので、先に設定してから読み込む。
+// 読んだページを覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置く。
+process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-notion-'));
 process.env.NOTION_TOKEN = 'secret';
 const { blocksToMarkdown, notionPage, notionTitle } = await import('../server/notion.ts');
 
@@ -72,7 +77,7 @@ test('notionPage は、題名と更新日時に、続きのページと子のブ
 
 test('notionPage は、読めないページを Notion が返した理由で投げる', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({ message: 'Could not find page' }, { status: 404 }));
-  await assert.rejects(notionPage(ID), /Could not find page/);
+  await assert.rejects(notionPage('d'.repeat(32)), /Could not find page/);
 });
 
 test('notionTitle は、ページの題名だけを読んで覚え、読めなかったページは次に読み直す', async (t) => {

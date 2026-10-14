@@ -1,5 +1,6 @@
 // セッションのやり取りから、概要と、人間が Claude に送る返答の候補と、セッション名の候補を haiku に作らせる。
 import type { Session, SessionStatus, SessionSummary, TaskItem } from '../shared/types.ts';
+import { cached, refreshing } from './cache.ts';
 import { UpstreamError, askHaiku, objectSchema } from './haiku.ts';
 
 const MAX_REPLIES = 3;
@@ -41,32 +42,22 @@ const promptOf = (instructions: string, blocks: Record<string, string | undefine
 /** 1 回きりのセッションでは、最初と最後の依頼が同じなので片方だけ渡す。 */
 const laterPrompt = (c: Conversation): string | undefined => (c.lastPrompt !== c.firstPrompt ? c.lastPrompt : undefined);
 
-/** セッションごとに最後の結果だけを持ち、材料が同じなら作り直さない。失敗したときは、次に頼まれたときに作り直す。 */
-const latestPerSession = <T>() => {
-  const cache = new Map<string, { prompt: string; value: Promise<T> }>();
-  return (id: string, prompt: string, make: () => Promise<T>): Promise<T> => {
-    const hit = cache.get(id);
-    if (hit?.prompt === prompt) return hit.value;
-    const value = make();
-    cache.set(id, { prompt, value });
-    value.catch(() => cache.get(id)?.value === value && cache.delete(id));
-    return value;
-  };
-};
-
-const summaries = latestPerSession<SessionSummary>();
-const replies = latestPerSession<string[]>();
-
-export const summarize = (c: Conversation): Promise<SessionSummary> => {
+/**
+ * セッションごとに最後の概要を覚え、材料が同じなら作り直さない。失敗したときは、次に頼まれたときに作り直す。
+ * やり取りが進んだら、前の概要に stale を付けてすぐ返し、裏でまとめ直す。
+ */
+export const summarize = async (c: Conversation): Promise<SessionSummary> => {
   const tasks = c.tasks.map((t) => `- [${TASK_TEXT[t.status]}] ${t.subject}`).join('\n');
   const prompt = promptOf(SUMMARY_INSTRUCTIONS, {
     theme: c.theme, session_name: c.name, status: STATUS_TEXT[c.status], first_prompt: c.firstPrompt, last_prompt: laterPrompt(c), tasks, last_message: c.lastMessage,
   });
-  return summaries(c.id, prompt, async () => {
+  const key = `summary:${c.id}`;
+  const summary = await cached(key, { input: prompt }, async () => {
     const { doing, now } = await askHaiku(prompt, objectSchema({ doing: { type: 'string' }, now: { type: 'string' } }));
     if (typeof doing !== 'string' || typeof now !== 'string' || !doing.trim() || !now.trim()) throw new UpstreamError('概要が返りませんでした');
     return { doing: doing.trim(), now: now.trim() };
   });
+  return refreshing(key, prompt) ? { ...summary, stale: true } : summary;
 };
 
 /** 返答の候補や名前は、概要を作れなくても作る。 */
@@ -75,10 +66,13 @@ export const summaryText = async (c: Conversation): Promise<string | undefined> 
   return s && `やっていること: ${s.doing}\nいま: ${s.now}`;
 };
 
-/** 同じやり取りには作り直さない。 */
-export const suggestReplies = async (c: Conversation): Promise<string[]> => {
-  const prompt = promptOf(REPLY_INSTRUCTIONS, { theme: c.theme, session_name: c.name, summary: await summaryText(c), last_prompt: c.lastPrompt, last_message: c.lastMessage });
-  return replies(c.id, prompt, async () => {
+/**
+ * 同じ発言には作り直さない。前の発言への候補は役に立たないので、発言が変わったら作り終えるのを待つ。
+ * 概要はまとめ直す途中の前のものでも材料として足りるので、概要が変わっただけでは作り直さない。
+ */
+export const suggestReplies = (c: Conversation): Promise<string[]> =>
+  cached(`replies:${c.id}`, { input: JSON.stringify([c.theme, c.name, c.lastPrompt, c.lastMessage]), wait: true }, async () => {
+    const prompt = promptOf(REPLY_INSTRUCTIONS, { theme: c.theme, session_name: c.name, summary: await summaryText(c), last_prompt: c.lastPrompt, last_message: c.lastMessage });
     const { replies: list } = await askHaiku(prompt, objectSchema({ replies: { type: 'array', items: { type: 'string' } } }));
     if (!Array.isArray(list)) throw new UpstreamError('候補が返りませんでした');
     return list
@@ -86,7 +80,6 @@ export const suggestReplies = async (c: Conversation): Promise<string[]> => {
       .map((r) => r.trim())
       .slice(0, MAX_REPLIES);
   });
-};
 
 /** 頼まれるたびに作り直す。気に入らない名前が出たら、もう一度頼めるようにするため。 */
 export const suggestTitle = async (c: Conversation): Promise<string> => {

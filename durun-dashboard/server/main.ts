@@ -12,6 +12,7 @@ import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
+import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -26,7 +27,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, searchJira, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -367,7 +368,10 @@ const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
   }
 };
 
-const threadsOf = (pr: PrInfo): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr));
+/** 人間が「更新」を押したか。外部の情報源から読む値を、覚えた値を使わずに読み直す。 */
+const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
+
+const threadsOf = (pr: PrInfo, fresh = false): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr, fresh));
 
 const setViewed = (id: string, body: unknown): Promise<object> => {
   const file = field<string>(body, 'path', 'string');
@@ -409,7 +413,7 @@ const jiraSearch = async (url: URL): Promise<JiraIssue[]> => {
   if (!jql) throw new HttpError(400, 'jql is required');
   const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_MAX_RESULTS, 1), JIRA_MAX_RESULTS);
   try {
-    return await searchJira(jql, max);
+    return await jiraList(jql, max);
   } catch (e) {
     throw new HttpError(400, (e as Error).message);
   }
@@ -895,13 +899,13 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
-  [/^\/api\/github\/inbox$/, () => viaGh('GitHub の PR を探せません', githubInbox)],
-  [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = '']) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key)))],
-  [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = '']) => viaGh('ページを読めません', () => notionPage(id))],
+  [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url)))],
+  [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url)))],
+  [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url)))],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) }))],
   [/^\/api\/pr$/, (_, __, url) => {
     const pr = prUrlOf(url.searchParams.get('url'));
-    return viaGh('PR を読めません', () => prDetail(pr));
+    return viaGh('PR を読めません', () => prDetail(pr, wantsFresh(url)));
   }],
   [/^\/api\/memory$/, () => platform.readMemory()],
   [/^\/api\/proofread\/files$/, () => recentProofFiles()],
@@ -919,8 +923,8 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)\/chat$/, ([, id = '', agentId = '']) => subagentChatOf(id, agentId)],
   [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
   [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf(id)],
-  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr)],
-  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = '']) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr))],
+  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url))],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr, wantsFresh(url)))],
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
 ];
 
@@ -1072,6 +1076,7 @@ for (const event of ['uncaughtException', 'unhandledRejection'] as const) {
     console.error(e);
     recordError('server', e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack : undefined, event);
     save();
+    saveCache();
     process.exit(1);
   });
 }
@@ -1079,6 +1084,7 @@ for (const event of ['uncaughtException', 'unhandledRejection'] as const) {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     save();
+    saveCache();
     process.exit(0);
   });
 }

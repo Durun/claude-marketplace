@@ -44,6 +44,9 @@ const session = (id: string): string => `/api/sessions/${seg(id)}`;
 /** ファイルを読む API の場所。エクスプローラーからセッションの外で開いたファイルは id が空で、セッションを付けずに読む。 */
 const files = (id: string): string => (id ? session(id) : '/api');
 
+/** クエリに載せる真偽値。偽なら項目ごと外す。 */
+const flag = (on?: boolean): string | undefined => (on ? '1' : undefined);
+
 /** 値の無い項目を外して、クエリにする。 */
 const query = (params: Record<string, string | undefined>): URLSearchParams =>
   new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined));
@@ -63,16 +66,17 @@ export const api = {
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),
   skills: (id: string) => getJson<SkillInfo[]>(`${session(id)}/skills`),
-  jiraIssue: (key: string) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}`),
-  notionPage: (id: string) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}`),
+  // fresh は、人間が「更新」を押したときに付け、サーバーに覚えた値を使わず読み直させる。
+  jiraIssue: (key: string, fresh?: boolean) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}?${query({ fresh: flag(fresh) })}`),
+  notionPage: (id: string, fresh?: boolean) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}?${query({ fresh: flag(fresh) })}`),
   notionTitle: (id: string) => getJson<{ title: string }>(`/api/notion/pages/${seg(id)}/title`),
-  prDetail: (url: string) => getJson<PrDetail>(`/api/pr?${query({ url })}`),
+  prDetail: (url: string, fresh?: boolean) => getJson<PrDetail>(`/api/pr?${query({ url, fresh: flag(fresh) })}`),
   /** pr は PR の URL。無ければ、今のブランチの PR。 */
-  prThreads: (id: string, pr?: string) => getJson<PrThread[]>(`${session(id)}/pr-threads?${query({ pr })}`),
-  prViewed: (id: string) => getJson<string[]>(`${session(id)}/pr-viewed`),
+  prThreads: (id: string, pr?: string, fresh?: boolean) => getJson<PrThread[]>(`${session(id)}/pr-threads?${query({ pr, fresh: flag(fresh) })}`),
+  prViewed: (id: string, fresh?: boolean) => getJson<string[]>(`${session(id)}/pr-viewed?${query({ fresh: flag(fresh) })}`),
   doc: (id: string) => getJson<Doc>(`/api/docs/${seg(id)}`),
   search: (q: string) => getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`),
-  githubInbox: () => getJson<InboxSection[]>('/api/github/inbox'),
+  githubInbox: (fresh?: boolean) => getJson<InboxSection[]>(`/api/github/inbox?${query({ fresh: flag(fresh) })}`),
   jira: (jql: string, max: number) => getJson<JiraIssue[]>(`/api/jira?${new URLSearchParams({ jql, max: String(max) })}`),
   memory: () => getJson<MemoryStatus | null>('/api/memory'),
   theme: (id: string, theme: string) => postJson(`${session(id)}/theme`, { theme }),

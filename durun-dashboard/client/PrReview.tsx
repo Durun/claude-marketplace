@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import type { OutboxMessage, PrInfo, PrThread, PrThreadNote, Session } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { headLines } from './format.ts';
-import { useFetch } from './hooks.ts';
+import { useCached, useFetch } from './hooks.ts';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
 import { PrPicker, usePickedPr } from './PrView.tsx';
 import { href } from './router.ts';
@@ -109,7 +109,7 @@ type Props = { s: Session; outbox: OutboxMessage[] };
  */
 const PrThreads = ({ s, outbox, picked }: Props & { picked?: PrInfo }) => {
   const pr = picked?.state === 'OPEN' ? picked : undefined;
-  const threads = useFetch(() => (pr ? api.prThreads(s.id, pr.url) : Promise.resolve([])), [pr?.url, pr?.review, s.status]);
+  const threads = useCached((fresh) => (pr ? api.prThreads(s.id, pr.url, fresh) : Promise.resolve([])), [pr?.url, pr?.review, s.status]);
   const list = threads.data ?? [];
   const key = list.map((t) => `${t.id}:${t.comments.at(-1)?.id}`).join();
   const notes = useFetch(() => (pr && list.length ? api.prNotes(s.id, pr.url) : Promise.resolve(undefined)), [key]);

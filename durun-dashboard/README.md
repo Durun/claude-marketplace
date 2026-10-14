@@ -20,6 +20,8 @@ pnpm install-statusline
 `pnpm start` の間は、コードを変えるとサーバーが自動で再起動し、開いている画面も読み込み直す。
 書きかけの入力があるときは読み込み直さず、ヘッダーに読み込み直すボタンを出す。
 画面を開いた直後と読み込み直した直後は、前に開いていたときのデータを先に出し、サーバーから届いたら差し替える。
+PR、JIRA、Notion、GitHub の Inbox と、haiku が作るセッションの概要と返答の候補は、サーバーが `~/.durun-dashboard/cache.json` に覚えておき、サーバーを起動し直した後も、読み終えるのを待たずに出す。
+古くなったものは裏で読み直し、変わったら画面を差し替える。「更新」を押したときは、読み直し終えるのを待つ。
 
 `pnpm uninstall-statusline` でラッパーを外す。
 設定を書き換える直前の内容は `~/.claude/settings.json.bak-durun-dashboard` に残る。

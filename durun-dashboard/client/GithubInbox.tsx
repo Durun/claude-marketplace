@@ -3,7 +3,7 @@ import { useEffect } from 'preact/hooks';
 import type { InboxPr } from '../shared/types.ts';
 import { api } from './api.ts';
 import type { Control } from './Float.tsx';
-import { useFetch } from './hooks.ts';
+import { useCached } from './hooks.ts';
 import { Empty, Ext, Time } from './ui.tsx';
 
 export const GITHUB_INBOX_TITLE = 'GitHub Inbox';
@@ -28,7 +28,7 @@ const PrRow = ({ pr }: { pr: InboxPr }) => (
 );
 
 export const GithubInbox = () => {
-  const { data, error, reload } = useFetch(api.githubInbox, []);
+  const { data, error, reload } = useCached(api.githubInbox, []);
   useEffect(() => {
     addEventListener(REFRESH_EVENT, reload);
     return () => removeEventListener(REFRESH_EVENT, reload);

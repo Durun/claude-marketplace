@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import type { Snapshot } from '../shared/types.ts';
 import { getJson } from './api.ts';
 
@@ -114,23 +114,44 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
 
 type FetchState<T> = { data?: T; error?: string; loading: boolean; reload: () => void };
 
-/** 取得中も直前の結果を残す。画面が一瞬空にならないようにするため。 */
-export const useFetch = <T,>(load: () => Promise<T>, deps: unknown[]): FetchState<T> => {
+/**
+ * 取得中も直前の結果を残す。画面が一瞬空にならないようにするため。
+ * load に渡す fresh は、reload で読み直したときに true になる。サーバーのキャッシュを通す API には、覚えた値を使わずに読み直させる。
+ * version だけが変わったときは、読み込み中にせずに取り直す。サーバーが裏で読み直した値に差し替えるだけだからである。
+ */
+export const useFetch = <T,>(load: (fresh: boolean) => Promise<T>, deps: unknown[], version?: number): FetchState<T> => {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true });
   const [tick, setTick] = useState(0);
+  const forced = useRef(false);
+  const lastDeps = useRef<unknown[]>();
   useEffect(() => {
     let alive = true;
-    setState((s) => ({ ...s, loading: true, error: undefined }));
-    load().then(
+    const current = [...deps, tick];
+    const quiet = lastDeps.current?.length === current.length && current.every((v, i) => Object.is(v, lastDeps.current?.[i]));
+    lastDeps.current = current;
+    const fresh = forced.current;
+    forced.current = false;
+    if (!quiet) setState((s) => ({ ...s, loading: true, error: undefined }));
+    load(fresh).then(
       (data) => alive && setState({ data, loading: false }),
       (e: unknown) => alive && setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : String(e) })),
     );
     return () => {
       alive = false;
     };
-  }, [...deps, tick]);
-  return { ...state, reload: () => setTick((t) => t + 1) };
+  }, [...deps, tick, version]);
+  const reload = () => {
+    forced.current = true;
+    setTick((t) => t + 1);
+  };
+  return { ...state, reload };
 };
+
+/** サーバーが外部の情報源から裏で読み直した値が変わるたびに増える数。スナップショットから受け取る。 */
+export const CacheVersionContext = createContext(0);
+
+/** サーバーのキャッシュを通す API を読む。サーバーが裏で読み直した値が変わったら、取り直して差し替える。 */
+export const useCached = <T,>(load: (fresh: boolean) => Promise<T>, deps: unknown[]): FetchState<T> => useFetch(load, deps, useContext(CacheVersionContext));
 
 let waiting = 0;
 

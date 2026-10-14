@@ -4,7 +4,7 @@ import { type BranchView, type CommitInfo, type DiffFile, type DiffRange, type D
 import { api, attempt } from './api.ts';
 import { DiffStat, FileDiff, STATUS_LETTER } from './DiffTable.tsx';
 import { type Focus, findFocus } from './fileRef.ts';
-import { useFetch } from './hooks.ts';
+import { useCached, useFetch } from './hooks.ts';
 import { ReviewBar } from './ReviewBar.tsx';
 import { type ReviewDraft, useReviewDraft } from './review.ts';
 import { Empty, Loading } from './ui.tsx';
@@ -147,8 +147,9 @@ type PrSync = ReturnType<typeof usePrSync>;
  * スレッドは、Claude が応答を始めたときと終えたときに読み直す。PR に返信や修正が加わっていることがあるため。
  */
 const usePrSync = (s: Session, pr: PrInfo | undefined) => {
-  const threads = useFetch(() => (pr ? api.prThreads(s.id) : Promise.resolve([])), [pr?.url, s.status]);
-  const remote = useFetch(() => (pr ? api.prViewed(s.id) : Promise.resolve([])), [pr?.url]);
+  const threads = useCached((fresh) => (pr ? api.prThreads(s.id, undefined, fresh) : Promise.resolve([])), [pr?.url, s.status]);
+  // Viewed は、サーバーが裏で読み直しても取り直さない。切り替えた直後に取り直すと、書き込む前の状態で画面を戻してしまうため。
+  const remote = useFetch((fresh) => (pr ? api.prViewed(s.id, fresh) : Promise.resolve([])), [pr?.url]);
   const [viewed, setLocal] = useState<Set<string>>(new Set());
   useEffect(() => setLocal(new Set(remote.data)), [remote.data]);
   if (!pr) return undefined;

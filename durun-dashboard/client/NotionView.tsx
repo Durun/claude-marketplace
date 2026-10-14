@@ -1,7 +1,7 @@
 // Notion のページを、ウィンドウに浮かべて読む。
 import { api } from './api.ts';
 import { type Float, FloatFrame, NOTION_ICON, dock } from './Float.tsx';
-import { useFetch } from './hooks.ts';
+import { useCached } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { Empty, Time } from './ui.tsx';
 
@@ -15,7 +15,7 @@ const OpenInNotion = ({ url, class: cls, children }: { url: string; class?: stri
 
 /** 題名はページを読むまで分からないので、それまでは「Notion」を見出しにする。読めないときも、Notion で開けるようにする。 */
 export const NotionFloat = ({ f }: { f: Float }) => {
-  const fetched = useFetch(() => api.notionPage(f.tab.id), [f.tab.id]);
+  const fetched = useCached((fresh) => api.notionPage(f.tab.id, fresh), [f.tab.id]);
   const page = fetched.data;
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (

@@ -4,7 +4,7 @@ import { JIRA_MAX_RESULTS, type JiraIssue } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
-import { useFetch } from './hooks.ts';
+import { useCached } from './hooks.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
 import { Chip, Empty, Ext, Time, onSubmitKey } from './ui.tsx';
@@ -132,7 +132,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const jql = settings.jql || DEFAULT_JQL;
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
-  const { data, error } = useFetch(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
+  const { data, error } = useCached(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
   return (
     <>
       <div class="section-head">

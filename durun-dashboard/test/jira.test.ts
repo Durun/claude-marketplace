@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 // integrations.ts は読み込んだ時点の環境変数で JIRA の接続先を決めるので、先に設定してから読み込む。
+// 読んだ課題を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置く。
+process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-jira-'));
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';

@@ -4,10 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
-import { type Conversation, suggestReplies, suggestTitle, summarize } from '../server/suggest.ts';
+import type { Conversation } from '../server/suggest.ts';
 
 // 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
+// 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
+process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
+const { suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
@@ -51,4 +54,9 @@ test('概要や候補を作れなければ理由を返し、次に頼まれた�
 test('セッション名の候補は、概要と最初の依頼も材料にして作る', async () => {
   assert.equal(await suggestTitle(conversation('s1', '直しました')), '返答候補の表示');
   assert.match(lastPrompt(), /<summary>\nやっていること: 候補を出す.*<first_prompt>\n候補を出して\n<\/first_prompt>/s);
+});
+
+test('概要は、やり取りが進んだら、前の概要に古い印を付けてすぐ返し、裏でまとめ直す', async () => {
+  assert.deepEqual(await summarize(conversation('s3', '一つ目')), { doing: '候補を出す', now: '直し終えた' });
+  assert.deepEqual(await summarize(conversation('s3', '二つ目')), { doing: '候補を出す', now: '直し終えた', stale: true });
 });

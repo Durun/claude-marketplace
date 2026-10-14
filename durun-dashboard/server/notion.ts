@@ -1,5 +1,6 @@
 // Notion のページとデータベースを、Notion の API で読んで Markdown にする。
 import type { NotionPage } from '../shared/types.ts';
+import { cached } from './cache.ts';
 
 const TOKEN = process.env.NOTION_TOKEN;
 const API = 'https://api.notion.com/v1';
@@ -257,18 +258,15 @@ const orDatabase = <T,>(read: () => Promise<T>) => (e: unknown): Promise<T> => {
   throw e;
 };
 
-// ponytail: 題名はサーバーが動いている間覚えておく。Notion で題名を変えても、サーバーを起動し直すまで前の題名を出す。
-const titles = new Map<string, Promise<string>>();
+// 題名は資料の一覧が同じページを何度も尋ねるうえ、めったに変わらないので、ページの中身より長く覚える。
+const TITLE_MAX_AGE = 60 * 60_000;
+const PAGE_MAX_AGE = 60_000;
 
-/** ページかデータベースの題名だけを読む。資料の一覧が同じページを何度も尋ねるので、読めた題名は覚えておく。読めなかったページは、次に尋ねられたら読み直す。 */
-export const notionTitle = (id: string): Promise<string> => {
-  const cached = titles.get(id);
-  if (cached) return cached;
-  const title = notionFetch<PageBody>(`pages/${id}`).then(titleOf, orDatabase(async () => databaseTitle(await notionFetch<DatabaseBody>(`databases/${id}`))));
-  titles.set(id, title);
-  title.catch(() => titles.delete(id));
-  return title;
-};
+/** ページかデータベースの題名だけを読む。読めなかったページは、次に尋ねられたら読み直す。 */
+export const notionTitle = (id: string): Promise<string> =>
+  cached(`notion-title:${id}`, { maxAge: TITLE_MAX_AGE }, () =>
+    notionFetch<PageBody>(`pages/${id}`).then(titleOf, orDatabase(async () => databaseTitle(await notionFetch<DatabaseBody>(`databases/${id}`)))),
+  );
 
 const pageOf = async (id: string): Promise<NotionPage> => {
   const budget: Budget = { left: MAX_REQUESTS, truncated: false };
@@ -307,4 +305,5 @@ const databaseOf = async (id: string): Promise<NotionPage> => {
 };
 
 /** ページの題名と本文。id は、ハイフンの無い 32 桁のページの ID。データベースの ID なら、行を表にして本文にする。 */
-export const notionPage = (id: string): Promise<NotionPage> => pageOf(id).catch(orDatabase(() => databaseOf(id)));
+export const notionPage = (id: string, fresh = false): Promise<NotionPage> =>
+  cached(`notion:${id}`, { maxAge: PAGE_MAX_AGE, fresh }, () => pageOf(id).catch(orDatabase(() => databaseOf(id))));
