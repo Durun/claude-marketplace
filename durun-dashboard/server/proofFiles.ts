@@ -10,6 +10,9 @@ const RECENT = 15;
 
 const fileOf = (id: string): string => path.join(DIR, `${id}.json`);
 
+/** Claude が MCP でコメントを書き込んだ時刻を、ファイルの id ごとに持つ。開いているアプリは、時刻が変わったらファイルを読み直してコメントを取り込む。 */
+export const proofCommentedAt: Record<string, number> = {};
+
 /** 最後に保存した順に並べる。 */
 export const recentProofFiles = (): ProofFileMeta[] => {
   if (!fs.existsSync(DIR)) return [];

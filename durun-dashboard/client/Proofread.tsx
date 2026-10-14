@@ -3,8 +3,8 @@
 // 校正を終えた版から、指摘に沿って書き直した次の版を作れる。良い文を固定しながら版を重ねると、固定した文を残したまま直しを重ねられる。
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
-import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion, TokenTotals } from '../shared/types.ts';
+import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, mergeComments, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
+import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion, Snapshot, TokenTotals } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -208,7 +208,7 @@ const copyVersion = async (ver: ProofVersion, k: number): Promise<void> => {
   else toast('クリップボードにコピーできませんでした', 'error');
 };
 
-export const ProofreadFloat = ({ f }: { f: Float }) => {
+export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   // ファイルに保存する前から開いていたウィンドウは、タブの id の時刻をファイルの id にし、設定に残る文章と用語集を引き継ぐ。
   const fileId = f.tab.settings?.file ?? f.tab.id.slice(PROOFREAD_KEY.length + 1);
   const [file, setFile] = useState<ProofFile>();
@@ -269,6 +269,18 @@ export const ProofreadFloat = ({ f }: { f: Float }) => {
       live = false;
     };
   }, [fileId]);
+  // Claude が MCP でコメントを書き込んだら、開いているファイルを読み直して取り込む。
+  const commented = snapshot.proofCommentedAt?.[fileId];
+  useEffect(() => {
+    if (!commented) return;
+    api.proofFile(fileId).then(
+      (disk) => {
+        const base = saved.current;
+        if (disk && base?.id === disk.id) setFile((cur) => (cur?.id === disk.id ? mergeComments(cur, base, disk) : cur));
+      },
+      (e: Error) => toast(`Claude のコメントを読み込めませんでした（${e.message}）`, 'error'),
+    );
+  }, [commented]);
 
   const changeVersion = (n: number, fn: (ver: ProofVersion) => ProofVersion) =>
     setFile((cur) => cur && { ...cur, versions: cur.versions.map((x, k) => (k === n ? fn(x) : x)) });

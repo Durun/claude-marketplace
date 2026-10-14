@@ -1,5 +1,5 @@
 // 文章校正で、指摘の付いた語句が文のどこにあるかを決める。校正の進み具合を版に積み、人間が無視した指摘を見分ける。
-import type { ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote, TokenTotals } from './types.ts';
+import type { ProofComment, ProofEvent, ProofFile, ProofFinding, ProofRun, ProofVersion, ReviseNote, TokenTotals } from './types.ts';
 
 export type Mark = { quote: string; note: string; fail: boolean };
 
@@ -72,6 +72,20 @@ export const reviseInput = (ver: ProofVersion, run: ProofRun): { fixed: number[]
   fixed: run.sentences.flatMap((_, i) => (isFixed(ver, run, i) ? [i] : [])),
   notes: run.findings.flatMap((list, i) => list.filter((f) => !isIgnored(ver, run, i, f)).map((f) => ({ ...f, i, comment: ver.comments[findingKey(i, f)]?.text }))),
 });
+
+/**
+ * Claude が MCP でファイルに書き込んだコメントを、開いているファイル cur に取り込む。base は cur を最後に読み込んだか保存したときの中身、disk は今のファイルの中身。
+ * 人間の書きかけの変更を消さないよう、base から disk で変わったコメントだけを重ねる。重ねるものが無ければ cur をそのまま返す。
+ */
+export const mergeComments = (cur: ProofFile, base: ProofFile, disk: ProofFile): ProofFile => {
+  const same = (a: ProofComment, b?: ProofComment) => a.text === b?.text && a.ignore === b?.ignore;
+  const versions = cur.versions.map((ver, k) => {
+    const was = base.versions[k]?.comments ?? {};
+    const added = Object.entries(disk.versions[k]?.comments ?? {}).filter(([key, c]) => !same(c, was[key]));
+    return added.length ? { ...ver, comments: { ...ver.comments, ...Object.fromEntries(added) } } : ver;
+  });
+  return versions.some((ver, k) => ver !== cur.versions[k]) ? { ...cur, versions } : cur;
+};
 
 /** 用語集の 1 行は「語：説明」か、説明の無い「語」。サーバーの読み方と合わせる。 */
 export const glossaryEntries = (glossary: string): { term: string; note: string }[] =>

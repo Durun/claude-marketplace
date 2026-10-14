@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
-import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
+import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, mergeComments, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
 import { commentFindings, ledgerFinding, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } from '../server/proofread.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
@@ -229,6 +229,19 @@ test('MCP で校正した Claude には、指摘の付いた文と読めなか�
   const { ver, missing } = commentFindings(commented, [{ n: 2, text: '前の章で定義済み', ignore: true }, { n: 4, text: '無い指摘', ignore: false }]);
   assert.deepEqual(ver.comments, { [findingKey(0, a)]: { text: '人間のコメント', ignore: false }, [findingKey(2, b)]: { text: '前の章で定義済み', ignore: true } });
   assert.deepEqual(missing, [4]);
+});
+
+test('Claude がファイルに書き込んだコメントだけを開いているファイルに重ね、人間がまだ保存していない変更は残す', () => {
+  const comment = (text: string) => ({ text, ignore: false });
+  const file = newFile('1', '甲である。');
+  const base = { ...file, versions: [file.versions[0]!, { ...newVersion('乙である。', 0), comments: { a: comment('人間'), b: comment('取り消す') } }] };
+  // 人間は、保存する前に a を書き換えて b を取り消した。Claude は、v2 に c を足し、a を書き換えなかった。
+  const cur = { ...base, versions: [base.versions[0]!, { ...base.versions[1]!, comments: { a: comment('書き換えた') } }] };
+  const disk = { ...base, versions: [base.versions[0]!, { ...base.versions[1]!, comments: { ...base.versions[1]!.comments, c: { text: 'Claude', ignore: true } } }] };
+  const merged = mergeComments(cur, base, disk);
+  assert.deepEqual(merged.versions[1]!.comments, { a: comment('書き換えた'), c: { text: 'Claude', ignore: true } });
+  assert.equal(merged.versions[0], cur.versions[0]);
+  assert.equal(mergeComments(cur, base, base), cur);
 });
 
 test('用語集は「語：説明」と説明の無い「語」を読み、足した語は末尾の行にする。ファイルの名前は最後の版の最初の行にする', () => {

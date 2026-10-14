@@ -3,15 +3,15 @@ import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { applyEvent, emptyRun, newVersion, titleOf } from '../shared/proofread.ts';
-import type { BranchView, DiffRange, DocFormat, ProofFile } from '../shared/types.ts';
+import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '../shared/types.ts';
 import { readLiveSessions } from './claude.ts';
 import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
-import { readProofFile, writeProofFile } from './proofFiles.ts';
+import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread } from './proofread.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { newId, state, touch, type StoredAttention } from './store.ts';
+import { changed, newId, state, touch, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
 // Claude Code は無通信が 300 秒続いたツール呼び出しを打ち切る。人間の回答を待つ間は、それより短い間隔で進捗を通知する。
@@ -25,7 +25,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
-- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。`;
+- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。`;
 
 const TOOLS = [
   {
@@ -105,24 +105,27 @@ const TOOLS = [
   {
     name: 'proofread',
     description:
-      'ダッシュボードの文章校正アプリで、初めて読む人が文章を前から読み進められるかを文ごとに調べ、番号を振った指摘を返す。人間がメッセージに文章校正アプリを添付したときに使う。結果はアプリのファイルに保存し、人間もアプリで開ける。文の数だけ sonnet を動かすので、数分かかる。',
+      'ダッシュボードの文章校正アプリで、初めて読む人が文章を前から読み進められるかを文ごとに調べ、番号を振った指摘を返す。人間がメッセージに文章校正アプリを添付したときに使う。結果はアプリのファイルに保存し、人間もアプリで開ける。文の数だけ sonnet を動かすので、数分かかる。file と version を渡すと、人間がアプリで校正を終えた版の指摘を、校正し直さずに返す。',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: '校正する文章のファイルパス。Markdown の見出しと箇条書きを、説明の区切りとして読む。' },
         text: { type: 'string', description: '校正する文章。path を渡すときは省略する。' },
         glossary: { type: 'string', description: '読み手が知っている語の用語集。1 行に「語：説明」か「語」を書く。読み手は、書いた語を知っているものとして読む。' },
+        file: { type: 'string', description: 'アプリのファイルの id。version と合わせて渡すと、その版の指摘を返す。path と text は省略する。' },
+        version: { type: 'integer', description: '版の番号（v3 なら 3）' },
       },
     },
   },
   {
     name: 'comment_proofread',
     description:
-      'proofread の指摘に、書き手の事情を踏まえたコメントを返す。コメントは、人間が文章校正アプリで修正版を作るときに、その指摘をどう直すかの指示になる。主要な指摘にコメントを返したら、文章は直さずにターンを終える。',
+      'proofread が返した版の指摘に、書き手の事情を踏まえたコメントを返す。コメントは、人間が文章校正アプリで修正版を作るときに、その指摘をどう直すかの指示になる。主要な指摘にコメントを返したら、文章は直さずにターンを終える。',
     inputSchema: {
       type: 'object',
       properties: {
         file: { type: 'string', description: 'proofread が返したファイルの id' },
+        version: { type: 'integer', description: 'コメントを付ける版の番号（v3 なら 3）。proofread が指摘を返した版を渡す。' },
         comments: {
           type: 'array',
           items: {
@@ -136,7 +139,7 @@ const TOOLS = [
           },
         },
       },
-      required: ['file', 'comments'],
+      required: ['file', 'version', 'comments'],
     },
   },
 ];
@@ -283,6 +286,9 @@ const proofSource = (sessionId: string, args: ToolArgs): { text: string; sentenc
   }
 };
 
+/** proofread の結果に添える、comment_proofread の呼び方。k は版の番号（0 から）。 */
+const commentHint = (k: number): string => `書き手の事情を知っている指摘には、comment_proofread に file と version: ${k + 1} を渡し、番号を指してコメントを返してください。`;
+
 /**
  * 文章校正アプリと同じ校正を走らせ、結果をアプリのファイルに保存してから、番号を振った指摘を返す。
  * 呼び出しが取り消されたら残りの文は読まず、読み終えた分を保存する。アプリの「続きから校正」で続けられる。
@@ -302,7 +308,7 @@ const runProofread = async (res: ServerResponse, rpcId: RpcId, params: RpcParams
     const file: ProofFile = { id: newId(), title: '', glossary, versions: [{ ...newVersion(text), run }], updatedAt: Date.now() };
     const title = titleOf(file);
     writeProofFile({ ...file, title });
-    const saved = `校正の結果を、文章校正アプリのファイル「${title}」（file: ${file.id}）に保存しました。人間は、アプリの「ファイル」の「最近使ったファイル」から開けます。\n書き手の事情を知っている指摘には、comment_proofread で番号を指してコメントを返してください。`;
+    const saved = `校正の結果を、文章校正アプリのファイル「${title}」（file: ${file.id}）に保存しました。人間は、アプリの「ファイル」の「最近使ったファイル」から開けます。\n${commentHint(0)}`;
     result = textResult(`${saved}\n\n${proofReport(run)}`);
   } catch (e) {
     result = textResult(`校正の結果を保存できませんでした。${(e as Error).message}`, true);
@@ -316,21 +322,44 @@ const toComment = (v: unknown): { n: number; text: string; ignore: boolean } | u
   return Number.isInteger(n) && body ? { n: n as number, text: body.trim(), ignore: ignore === true } : undefined;
 };
 
-/** proofread が作るファイルは、校正した版 1 つから始まる。その版の指摘に、番号で指したコメントを残す。 */
-const commentProofread = (args: ToolArgs): object => {
+/** file と version で指した、校正を終えた版。k は版の番号（0 から）。指せなければ、Claude に返すエラーの結果。 */
+const proofVersion = (args: ToolArgs): { file: ProofFile; k: number; ver: ProofVersion } | { error: object } => {
   const id = str(args.file);
   // id はファイル名になるので、英数字と - と _ だけに絞る。
   const file = id && /^[\w-]{1,64}$/.test(id) ? readProofFile(id) : null;
-  const [ver, ...rest] = file?.versions ?? [];
-  if (!file || !ver?.run) return textResult('file に、proofread が返したファイルの id を渡してください。', true);
+  if (!file) return { error: textResult('file に、文章校正アプリのファイルの id を渡してください。', true) };
+  // version を知らないスキーマのまま動いているセッションは文字列で渡すので、数に直して引く。
+  const k = Number(args.version) - 1;
+  const ver = file.versions[k];
+  if (!ver) return { error: textResult(`version に版の番号を渡してください。このファイルには v${file.versions.length} までの版があります。`, true) };
+  // 校正の途中の版は、続きを読むと指摘が増えて番号がずれるので、校正を終えた版だけを指せるようにする。
+  if (!ver.run?.done) return { error: textResult(`v${k + 1} は校正を終えていません。人間がアプリで校正を終えてから、もう一度呼んでください。`, true) };
+  return { file, k, ver };
+};
+
+/** 人間がアプリで校正を終えた版の指摘を、校正し直さずに返す。 */
+const versionReport = (args: ToolArgs): object => {
+  const target = proofVersion(args);
+  if ('error' in target) return target.error;
+  const { file, k, ver } = target;
+  return textResult(`文章校正アプリのファイル「${file.title}」（file: ${file.id}）の v${k + 1} の校正の結果です。\n${commentHint(k)}\n\n${proofReport(ver.run!)}`);
+};
+
+/** 指した版の指摘に、番号で指したコメントを残す。開いているアプリには、スナップショットで書き込んだことを知らせ、コメントを取り込ませる。 */
+const commentProofread = (args: ToolArgs): object => {
+  const target = proofVersion(args);
+  if ('error' in target) return target.error;
+  const { file, k, ver } = target;
   const given = Array.isArray(args.comments) ? args.comments : [];
   const comments = given.flatMap((c) => toComment(c) ?? []);
   if (!comments.length || comments.length !== given.length) return textResult('comments の各要素に、指摘の番号 n とコメント text を渡してください。', true);
   const { ver: next, missing } = commentFindings(ver, comments);
   const notFound = missing.length ? `#${missing.join('、#')} の指摘はありません。` : '';
   if (missing.length === comments.length) return textResult(notFound, true);
-  writeProofFile({ ...file, versions: [next, ...rest], updatedAt: Date.now() });
-  return textResult(`コメントを ${comments.length - missing.length} 件残しました。${notFound}人間が文章校正アプリでコメントを読み、修正版を作ります。主要な指摘にコメントを返し終えたら、文章は直さずにターンを終えてください。`);
+  writeProofFile({ ...file, versions: file.versions.map((x, n) => (n === k ? next : x)), updatedAt: Date.now() });
+  proofCommentedAt[file.id] = Date.now();
+  changed();
+  return textResult(`v${k + 1} にコメントを ${comments.length - missing.length} 件残しました。${notFound}人間が文章校正アプリでコメントを読み、修正版を作ります。主要な指摘にコメントを返し終えたら、文章は直さずにターンを終えてください。`);
 };
 
 /** from を省いたときは範囲を決めず、画面の既定（分岐点から未コミットの変更まで）に任せる。 */
@@ -363,7 +392,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'proofread':
-      return void runProofread(res, rpcId, params, sessionId, args);
+      return str(args.file) ? send(res, { id: rpcId, result: versionReport(args) }) : void runProofread(res, rpcId, params, sessionId, args);
     case 'comment_proofread':
       return send(res, { id: rpcId, result: commentProofread(args) });
     default:
