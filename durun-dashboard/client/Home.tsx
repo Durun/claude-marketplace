@@ -58,36 +58,43 @@ const useSaved = (key: string, options?: readonly string[]) => {
   return [value, save] as const;
 };
 
-// 新規セッションのウィンドウを開くときに、ディレクトリの欄へ入れる値。ウィンドウが開いていれば、入力欄へ直に渡す。
-let presetCwd: string | undefined;
-const presetListeners = new Set<(cwd: string) => void>();
+// 新規セッションのウィンドウを開くときに、ディレクトリとテーマの欄へ入れる値。ウィンドウが開いていれば、入力欄へ直に渡す。
+type Preset = { cwd: string; theme: string };
+let presetOnOpen: Preset | undefined;
+const presetListeners = new Set<(preset: Preset) => void>();
 
-const NewSession = ({ cwds, onClose }: { cwds: string[]; onClose: () => void }) => {
+const NewSession = ({ cwds, themes, onClose }: { cwds: string[]; themes: string[]; onClose: () => void }) => {
   const dir = useRef<HTMLInputElement>(null);
   const ask = useRef<HTMLTextAreaElement>(null);
   const [cwd, setCwd] = useSaved('dashboard-new-session-cwd');
+  // 前回のテーマを残すと、無関係なセッションまで同じテーマに入るので、保存しない。
+  const [theme, setTheme] = useState('');
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
   const [busy, setBusy] = useState(false);
   useWaitCursor(busy);
-  // セッションの画面から開いたときは、そのセッションの作業ディレクトリを入れる。開いている間にもう一度開かれたら、入れ直す。
+  // セッションの画面から開いたときは、そのセッションの作業ディレクトリとテーマを入れる。開いている間にもう一度開かれたら、入れ直す。
   // ディレクトリが埋まっていれば、次に書く最初の依頼から入力できるようにする。
   useEffect(() => {
-    const preset = presetCwd;
-    presetCwd = undefined;
-    if (preset) setCwd(preset);
+    const preset = presetOnOpen;
+    presetOnOpen = undefined;
+    const fill = (p: Preset) => {
+      setCwd(p.cwd);
+      setTheme(p.theme);
+    };
+    if (preset) fill(preset);
     (preset || cwd ? ask : dir).current?.focus();
-    presetListeners.add(setCwd);
+    presetListeners.add(fill);
     return () => {
-      presetListeners.delete(setCwd);
+      presetListeners.delete(fill);
     };
   }, []);
   const ready = !!cwd.trim() && !!prompt.trim();
   const start = async () => {
     if (busy || !ready) return;
     setBusy(true);
-    const done = await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort));
+    const done = await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme));
     setBusy(false);
     if (!done) return;
     toast('セッションを起動しました');
@@ -100,6 +107,13 @@ const NewSession = ({ cwds, onClose }: { cwds: string[]; onClose: () => void }) 
         <input ref={dir} class="input mono" list="cwd-options" placeholder="/path/to/repo" value={cwd} onInput={(e) => setCwd(e.currentTarget.value)} />
         <datalist id="cwd-options">
           {cwds.map((c) => <option key={c} value={c} />)}
+        </datalist>
+      </label>
+      <label class="inline-field">
+        <span class="nowrap">テーマ</span>
+        <input class="input" list="new-session-theme-options" placeholder="空のときは、リポジトリ名になります" value={theme} onInput={(e) => setTheme(e.currentTarget.value)} />
+        <datalist id="new-session-theme-options">
+          {themes.map((t) => <option key={t} value={t} />)}
         </datalist>
       </label>
       <MessageInput value={prompt} setValue={setPrompt} placeholder="最初の依頼（Cmd/Ctrl + Enter で起動）" onSubmit={start} inputRef={ask} />
@@ -122,30 +136,31 @@ export const NEW_SESSION_KEY = 'new-session';
 const NEW_SESSION_TAB = { id: NEW_SESSION_KEY };
 const closeNewSession = () => dock(NEW_SESSION_KEY, '', NEW_SESSION_KEY);
 // 入力欄がちょうど収まる大きさ（px）で、画面の上寄りの中ほどに出す。
-const NEW_SESSION_SIZE = { w: 640, h: 290 };
+const NEW_SESSION_SIZE = { w: 640, h: 333 };
 export const NEW_SESSION_TITLE = '新規セッション';
 export const NEW_SESSION_ICON = '/claude-new.svg';
 
-/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd を渡すと、ディレクトリの欄にそれを入れる。 */
-export const openNewSession = (cwd?: string): void => {
-  if (cwd && presetListeners.size > 0) presetListeners.forEach((fn) => fn(cwd));
-  else presetCwd = cwd;
+/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd と theme を渡すと、ディレクトリとテーマの欄にそれぞれ入れる。 */
+export const openNewSession = (cwd?: string, theme = ''): void => {
+  const preset = cwd ? { cwd, theme } : undefined;
+  if (preset && presetListeners.size > 0) presetListeners.forEach((fn) => fn(preset));
+  else presetOnOpen = preset;
   floatUp(NEW_SESSION_KEY, '', NEW_SESSION_TAB, NEW_SESSION_SIZE);
 };
 
-/** アプリ「新規セッション」のアイコン。cwd は、セッションの画面に置いたときの、そのセッションの作業ディレクトリ。 */
-export const NewSessionIcon = ({ cwd }: { cwd?: string }) => (
+/** アプリ「新規セッション」のアイコン。cwd と theme は、セッションの画面に置いたときの、そのセッションの作業ディレクトリとテーマ。 */
+export const NewSessionIcon = ({ cwd, theme }: { cwd?: string; theme?: string }) => (
   <DesktopIcon
     icon={NEW_SESSION_ICON}
     title={NEW_SESSION_TITLE}
     hint={cwd ? `ダブルクリックで、${cwd} で始めるセッションの入力欄を開きます` : 'ダブルクリックで、新しいセッションの入力欄を開きます'}
-    onLaunch={() => openNewSession(cwd)}
+    onLaunch={() => openNewSession(cwd, theme)}
   />
 );
 
 export const NewSessionFloat = ({ f, snapshot }: HomeData & { f: Float }) => (
   <FloatFrame f={f} title={NEW_SESSION_TITLE} icon={NEW_SESSION_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: closeNewSession }]}>
-    <NewSession cwds={recentCwds(snapshot.sessions)} onClose={closeNewSession} />
+    <NewSession cwds={recentCwds(snapshot.sessions)} themes={snapshot.themes} onClose={closeNewSession} />
   </FloatFrame>
 );
 

@@ -91,7 +91,7 @@ export const api = {
   hideDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/hide`, { keys }),
   renameDoc: (id: string, key: string, title: string) => postJson(`${session(id)}/docs/rename`, { key, title }),
   pinDocs: (id: string, keys: string[], pinned: boolean) => postJson(`${session(id)}/docs/pin`, { keys, pinned }),
-  startSession: (cwd: string, prompt: string, model: string, effort: string) => postJson('/api/sessions', { cwd, prompt, model, effort }),
+  startSession: (cwd: string, prompt: string, model: string, effort: string, theme: string) => postJson('/api/sessions', { cwd, prompt, model, effort, theme }),
   message: (id: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/message`, { text }),
   rewind: (id: string, rewindTo: string, text: string) =>

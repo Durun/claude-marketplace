@@ -167,8 +167,8 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
   summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
   diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => launchDiagram(s) },
-  // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリで始める。
-  newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd) },
+  // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリとテーマで始める。
+  newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} theme={s.theme} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd, s.theme) },
   [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: ({ s }) => <ExplorerIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openExplorer(s.cwd) },
   [IE_KEY]: { title: IE_TITLE, icon: IE_ICON, Body: InternetExplorerIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openInternetExplorer() },
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },

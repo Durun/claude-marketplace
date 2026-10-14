@@ -572,6 +572,8 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .widget .selection-bar { bottom: 8px; }
 .new-session { padding: 12px; overflow: auto; }
 .new-session .help { margin: 0; }
+/* ディレクトリとテーマの入力欄の左端をそろえる。6em は「ディレクトリ」の幅。 */
+.new-session .inline-field > .nowrap { min-width: 6em; }
 /* 壁紙のウィンドウ。今の壁紙を、画面に近い横長の比で見せる。 */
 /* エクスプローラー。上にパスの欄、左にすぐ開ける場所、右にフォルダーの中身を並べる。 */
 .explorer { display: grid; flex: 1; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }

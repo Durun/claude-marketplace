@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, type LiveSession } from './claude.ts';
 import { claudeCommand, platform } from './platform.ts';
-import { moveSession, newId, state, touch } from './store.ts';
+import { ensureSession, moveSession, newId, state, touch } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
@@ -57,9 +57,22 @@ const runClaude = (args: string[], cwd: string, env = process.env): Promise<void
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
  * model と effort が空なら Claude Code の設定に従う。
+ * theme を渡すと、起動したセッションに付ける。
  */
-export const startSession = (cwd: string, prompt: string, model?: string, effort?: string): Promise<void> =>
-  runClaude(['--bg', ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : []), '--', prompt], cwd);
+export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string): Promise<void> => {
+  const output = await claudeOutput(['--bg', ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : []), '--', prompt], cwd);
+  // 空のテーマを付けると、リポジトリ名にならず未分類になる。
+  if (!theme) return;
+  // 起動は済んでいるので、テーマを付けられなくても失敗にしない。
+  try {
+    const sessionId = await backgroundedSession(output);
+    if (!sessionId) throw new Error('セッションの id を引けません');
+    ensureSession(sessionId, cwd).theme = theme;
+    touch();
+  } catch (e) {
+    console.error(`起動したセッションにテーマを付けられません: ${(e as Error).message}`);
+  }
+};
 
 /**
  * claude stop は止める指示を出すとすぐに戻り、supervisor が止まったと記録するのは 1、2 秒後になる。
@@ -116,6 +129,12 @@ const listJobs = async (): Promise<Job[]> => {
   const claude = claudeCommand(['agents', '--json', '--all']);
   const { stdout } = await promisify(execFile)(claude.file, claude.args);
   return JSON.parse(stdout) as Job[];
+};
+
+/** claude --bg は「backgrounded · ジョブの id」と書く。そのジョブのセッションの id を返す。 */
+const backgroundedSession = async (output: string): Promise<string | undefined> => {
+  const jobId = /backgrounded\W+(\w+)/.exec(output)?.[1];
+  return jobId ? (await listJobs()).find((j) => j.id === jobId)?.sessionId : undefined;
 };
 
 /**
@@ -311,9 +330,8 @@ export const switchSession = async (sessionId: string, text: string, model?: str
     touch();
     throw e;
   }
-  // claude は「backgrounded · ジョブの id」と書く。複製なら、元とは別のジョブの id になる。
-  const jobId = /backgrounded\W+(\w+)/.exec(output)?.[1];
-  const next = (jobId && (await listJobs()).find((j) => j.id === jobId)?.sessionId) || sessionId;
+  // 複製なら、元とは別のジョブの id になる。
+  const next = (await backgroundedSession(output)) || sessionId;
   if (next === sessionId) return sessionId;
   moveSession(sessionId, next);
   // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになる。

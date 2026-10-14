@@ -198,6 +198,24 @@ test('新しいセッションは依頼を -- の後に置いて claude --bg で
   await assert.rejects(startSession(tmp, 'fail'), /起動できません/);
 });
 
+test('新しいセッションにテーマを渡すと、起動の出力のジョブの id から引いたセッションに付け、引けなくても起動は成功として扱う', async () => {
+  // 偽の claude は、起動したジョブ j20 を agents の一覧に載せる。依頼が lost のときだけ、一覧に無いジョブ j99 を起動したと書く。
+  const bin = path.join(tmp, 'bin-theme');
+  const jobs = [{ id: 'j20', sessionId: 's20', kind: 'background', pid: 1 }];
+  useFakeClaude(
+    bin,
+    `if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost' ? 'j99' : 'j20'));`,
+  );
+
+  await startSession(tmp, '依頼', undefined, undefined, '起動時のテーマ');
+  assert.deepEqual([state.sessions.s20?.cwd, state.sessions.s20?.theme], [tmp, '起動時のテーマ']);
+
+  const before = Object.keys(state.sessions).length;
+  await startSession(tmp, 'lost', undefined, undefined, '付かないテーマ');
+  assert.equal(Object.keys(state.sessions).length, before);
+});
+
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さず、消せなければ理由を返す', async () => {
   // 偽の claude は呼ばれた引数を書き足す。agents は、動いている j3、止まっている j5、端末の s4 を返す。
   // stop は少し後で supervisor の名簿から j3 を消す。rm は、名簿に残っている j3 と、未コミットの変更がある j5 を断る。
