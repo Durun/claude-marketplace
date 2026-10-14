@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofReading, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -125,6 +125,7 @@ export const api = {
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
+  proofread: (before: string, sentence: string) => postJson<ProofReading>('/api/proofread', { before, sentence }),
   /** 画像は JSON にせず、そのまま本文で送る。 */
   wallpaperFile: async (file: File): Promise<void> => {
     const res = await fetch('/api/wallpaper', { method: 'POST', headers: { 'content-type': file.type }, body: file });

@@ -618,6 +618,29 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .notepad-menubar { display: flex; padding: 1px 0; }
 .notepad-text { flex: 1; min-height: 0; margin: 0; padding: 1px 3px; border: 0; border-top: 1px solid #aca899; border-radius: 0; background: #fff; color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; resize: none; outline: none; }
+/* 文章校正。読み手がまだ読んでいない文は灰色にし、引っかかった文に色を、語句に赤い波線を付ける。 */
+.proof { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.proof-bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
+.proof-bar > button { padding: 2px 10px; border: 1px solid #003c74; border-radius: 3px; background: linear-gradient(#fff, #ece9d8); color: #000; font: inherit; }
+.proof-bar > button:disabled { border-color: #c9c7ba; color: #aca899; }
+.proof-body { display: flex; flex: 1; min-height: 0; border-top: 1px solid #aca899; }
+.proof-input, .proof-text { flex: 1; min-height: 0; margin: 0; padding: 4px 6px; border: 0; border-radius: 0; background: #fff; color: #000; font: 14px/1.7 "MS UI Gothic", "Meiryo UI", sans-serif; }
+.proof-input { border-top: 1px solid #aca899; resize: none; outline: none; }
+.proof-text { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.proof-sentence { cursor: pointer; }
+.proof-sentence:not([data-level]) { color: #aca899; }
+.proof-sentence[data-level="partly"] { background: #fff1a6; }
+.proof-sentence[data-level="no"] { background: #ffc8c8; }
+.proof-sentence[data-level="error"] { text-decoration: underline dotted #808080; }
+.proof-sentence[aria-current="true"] { outline: 1px dotted #000; }
+.proof-sentence mark { background: none; color: inherit; text-decoration: underline wavy #e00000; text-decoration-skip-ink: none; }
+.proof-detail { flex: none; width: 260px; overflow: auto; padding: 8px; border-left: 1px solid #aca899; background: #fff; }
+.proof-detail blockquote { margin: 0 0 8px; padding: 4px 6px; border-left: 3px solid #aca899; background: #f6f5ef; white-space: pre-wrap; }
+.proof-detail p, .proof-detail dl { margin: 0; }
+.proof-detail dt { margin-top: 6px; font-weight: bold; }
+.proof-detail dd { margin: 2px 0 0 1.4em; }
+.proof-detail h3 { margin: 10px 0 2px; font-size: inherit; }
+.proof-detail ul { margin: 0; padding-left: 1.4em; }
 /* マインスイーパとソリティアは、スキンによらず Windows XP のものの色で描く。タイトルバーの下から窓の端まで敷き詰める。 */
 .mines { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 6px; margin: -10px -12px -12px; padding: 6px; overflow: auto; background: #c0c0c0; color: #000; }
 .mines-head { display: flex; justify-content: space-between; align-items: center; align-self: stretch; padding: 4px; border: 2px inset #fff; }

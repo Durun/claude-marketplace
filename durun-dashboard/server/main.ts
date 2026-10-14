@@ -30,6 +30,7 @@ import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClau
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
+import { readSentence } from './proofread.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
@@ -60,6 +61,7 @@ const STATIC: Record<string, string> = {
   '/claude-open.svg': 'public/claude-open.svg',
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
+  '/proofread.svg': 'public/proofread.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
@@ -796,6 +798,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
+  [/^\/api\/proofread$/, (_, b) => readSentence(field<string>(b, 'before', 'string'), field<string>(b, 'sentence', 'string'))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];

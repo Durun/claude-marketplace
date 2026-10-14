@@ -413,6 +413,16 @@ export type AssistantMessage = { role: 'human' | 'dolphin'; text: string };
 /** links は、答えに関係するダッシュボードの画面（#/ から始まる）。 */
 export type AssistantReply = { answer: string; links: { label: string; href: string }[] };
 
+/** 文章校正の読み手の答え。yes は分かる、partly は一部分からない、no は分からない。note は読み手としての受け止め。 */
+export type ProofVerdict = { level: 'yes' | 'partly' | 'no'; note: string };
+
+/**
+ * 文章校正の読み手が、いま読んでいる文について答えたこと。
+ * understand は意味が分かるか、role は流れの中で何のための文か分かるか、foresee は次に何が書かれるか見当がつくか。
+ * questions は、文の中で引っかかった語句（quote）と、読み手が抱いた疑問。
+ */
+export type ProofReading = { understand: ProofVerdict; role: ProofVerdict; foresee: ProofVerdict; questions: { quote: string; question: string }[] };
+
 /** 改善要望で、人間が画面上で指した要素。 */
 export type FeedbackTarget = {
   /** body からの CSS セレクタ。クラス名から、描画しているコンポーネントを探せる。 */

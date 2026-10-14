@@ -7,6 +7,7 @@ import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
+import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
 import { useFetch, useWaitCursor } from './hooks.ts';
@@ -171,6 +172,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: ({ s }) => <ExplorerIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openExplorer(s.cwd) },
   [IE_KEY]: { title: IE_TITLE, icon: IE_ICON, Body: InternetExplorerIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openInternetExplorer() },
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },
+  [PROOFREAD_KEY]: { title: PROOFREAD_TITLE, icon: PROOFREAD_ICON, Body: () => <ProofreadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openProofread() },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
   chat: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
