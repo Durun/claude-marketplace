@@ -161,6 +161,7 @@ type DragStart = { x: number; y: number; f: Float; edge?: string };
  * ウィンドウ化のボタンは、最大化していれば前の状態に戻し、ウィンドウなら onDock で元の枠に戻す。元の枠が無いウィンドウでは、最大化している間だけ出す。
  * 最大化のボタンは、最大化している間は出さない。
  * 最大化している間は、動かすことも大きさを変えることもできない。
+ * 最大化している間は、押しても手前に出さない。上に重ねたほかのウィンドウを、後ろに隠さないためである。
  */
 export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; children: ComponentChildren }) => {
   const drag = useRef<DragStart>();
@@ -205,7 +206,7 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
       class={`widget float-window${f.min ? ' is-min' : ''}${f.max ? ' is-max' : ''}`}
       aria-label={title}
       style={`${f.max ? '' : `left: ${f.x}px; top: ${f.y}px; width: ${f.w}px; height: ${f.h}px; `}--z: ${floats.indexOf(f)}; ${controlsVar(all)}; ${iconVar(icon)}`}
-      onPointerDown={() => raise(f)}
+      onPointerDown={() => !f.max && raise(f)}
     >
       <div class="section-head float-head" {...grab()} onDblClick={() => (f.max ? unmaximize(f) : maximize(f))}>
         <h2 class="section-title">{title}</h2>
