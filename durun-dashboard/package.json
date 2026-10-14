@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "highlight.js": "^11.12.0",
+    "lindera": "6.2.0",
     "marked": "^18.0.14",
     "mermaid": "^12.1.0",
     "preact": "^10.29.8",

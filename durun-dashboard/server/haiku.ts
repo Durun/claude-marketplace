@@ -1,9 +1,11 @@
-// ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときだけ sonnet を使う。
+// ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { claudeCommand } from './platform.ts';
 
 const HAIKU_TIMEOUT_MS = 30_000;
+// 長い文章を読ませると、30 秒を超えることがある。
+const SONNET_TIMEOUT_MS = 2 * 60_000;
 // コードを読みながら答えるので、数分かかることがある。
 const READER_TIMEOUT_MS = 10 * 60_000;
 
@@ -15,6 +17,13 @@ const HAIKU_ARGS = [
   '--model', 'haiku', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
   '--system-prompt', '人間が複数の Claude Code のセッションを見渡すダッシュボード（durun-dashboard）の中で、頼まれた文を作る。',
+];
+
+// 文章を読んで判定させる。haiku より確かな sonnet を、ツールを持たせずに動かす。前提知識を持たない読み手にするため、ダッシュボードの説明も渡さない。
+const SONNET_ARGS = [
+  '--model', 'sonnet', '--tools', '',
+  '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
+  '--system-prompt', '頼まれた文章を読み、求められた形で判定する。',
 ];
 
 // 事実を確かめるにはコードを読んで推論する必要があるため、haiku より確かな sonnet に、読むだけのツールを渡す。確認の要る操作は断る。
@@ -61,6 +70,8 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
   });
 
 export const askHaiku = (prompt: string, schema: object): Promise<Record<string, unknown>> => askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS);
+
+export const askSonnet = (prompt: string, schema: object): Promise<Record<string, unknown>> => askClaude(prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>

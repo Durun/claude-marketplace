@@ -30,7 +30,8 @@ import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, mergeClau
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
-import { readSentence } from './proofread.ts';
+import { MAX_SENTENCES, proofread } from './proofread.ts';
+import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, onChange, save, state, touch } from './store.ts';
@@ -770,6 +771,21 @@ const improveSettings = (body: unknown): Partial<ImproveSettings> => {
   return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
 };
 
+/** 文章校正の進み具合を、出来事ごとに 1 行の JSON で流す。画面が読むのをやめたら、残りの文を読ませない。 */
+const proofreadStream = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const body = await readBody(req);
+  const text = field<string>(body, 'text', 'string');
+  const glossary = field<string>(body, 'glossary', 'string');
+  const sentences = parseProof(text);
+  if (!sentences.length) throw new HttpError(400, 'text is required');
+  if (sentences.length > MAX_SENTENCES) throw new HttpError(400, `文が多すぎます。${MAX_SENTENCES} 文までにしてください（${sentences.length} 文あります）`);
+  const stop = new AbortController();
+  res.on('close', () => stop.abort());
+  res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
+  await proofread(text, sentences, glossary, (e) => res.write(`${JSON.stringify(e)}\n`), stop.signal);
+  res.end();
+};
+
 const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/wallpaper\/url$/, (_, b) => setWallpaperUrl(b)],
   [/^\/api\/wallpaper\/reset$/, () => clearWallpaper(DATA_DIR)],
@@ -808,7 +824,6 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
-  [/^\/api\/proofread$/, (_, b) => readSentence(field<string>(b, 'before', 'string'), field<string>(b, 'sentence', 'string'))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];
@@ -913,6 +928,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'GET' && url.pathname === '/wallpaper') return sendWallpaper(req, res);
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/proofread') return proofreadStream(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);

@@ -415,15 +415,37 @@ export type AssistantMessage = { role: 'human' | 'dolphin'; text: string };
 /** links は、答えに関係するダッシュボードの画面（#/ から始まる）。 */
 export type AssistantReply = { answer: string; links: { label: string; href: string }[] };
 
-/** 文章校正の読み手の答え。yes は分かる、partly は一部分からない、no は分からない。note は読み手としての受け止め。 */
-export type ProofVerdict = { level: 'yes' | 'partly' | 'no'; note: string };
+/** 文章校正の評価軸。順に、指す先、疑問の回収、指す先までの距離と係り方、文の役割、前の文とのつながり、語の選び方、1 文の負担。 */
+export type ProofAxis = '参照' | '回収' | '近接' | '骨組み' | '連結' | '語' | '負荷';
+
+/** 文章校正で文に付ける指摘。fail は読み進めを妨げるもの、note は気にしてほしいもの。quote は文の中の語句で、suggestions は言い換えの候補。 */
+export type ProofFinding = { axis: ProofAxis; level: 'fail' | 'note'; quote?: string; message: string; suggestions?: string[] };
 
 /**
- * 文章校正の読み手が、いま読んでいる文について答えたこと。
- * understand は意味が分かるか、role は流れの中で何のための文か分かるか、foresee は次に何が書かれるか見当がつくか。
- * questions は、文の中で引っかかった語句（quote）と、読み手が抱いた疑問。
+ * 文章校正の読み手が、文ごとに答えたこと。指摘のもとになる。
+ * refs は既知として書かれた語句と指す先で、antecedent は指す先の文の番号（1 から）、0 は用語集、-1 は一般常識、-2 は見つからない、-3 はこの後に書かれると示されている。
+ * questions の wait は、この後に説明が続くと読み取れたか。premises は前の文とつなぐのに補った前提。
  */
-export type ProofReading = { understand: ProofVerdict; role: ProofVerdict; foresee: ProofVerdict; questions: { quote: string; question: string }[] };
+export type ProofReading = {
+  refs: { quote: string; antecedent: number }[];
+  questions: { quote: string; question: string; kind: 'definition' | 'detail' | 'reason' | 'background' | 'prediction'; wait: boolean }[];
+  role: { kind: 'frame' | 'fill' | 'shift' | 'unclear'; note: string };
+  link: { relation: 'cause' | 'result' | 'example' | 'contrast' | 'addition' | 'restate' | 'shift' | 'none' | 'first'; marked: boolean };
+  premises: { premise: string; source: 'common' | 'expert' }[];
+  words: { word: string; issue: 'vague' | 'differs'; better: string[] }[];
+  attachments: { quote: string; readings: string[] }[];
+};
+
+/**
+ * 文章校正の進み具合として、サーバーが 1 行に 1 つずつ送る出来事。
+ * plan は文の位置。read はその文を読んだ結果。findings は、区切りや文書全体を見てから足す指摘。
+ */
+export type ProofEvent =
+  | { type: 'plan'; sentences: { start: number; end: number }[]; tools: string[] }
+  | { type: 'read'; i: number; reading: ProofReading; findings: ProofFinding[] }
+  | { type: 'findings'; i: number; findings: ProofFinding[] }
+  | { type: 'error'; i?: number; message: string }
+  | { type: 'done' };
 
 /** 改善要望で、人間が画面上で指した要素。 */
 export type FeedbackTarget = {

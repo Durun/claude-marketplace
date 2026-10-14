@@ -11,6 +11,9 @@ importers:
       highlight.js:
         specifier: ^11.12.0
         version: 11.12.0
+      lindera:
+        specifier: 6.2.0
+        version: 6.2.0
       marked:
         specifier: ^18.0.14
         version: 18.0.14
@@ -697,6 +700,48 @@ packages:
   layout-base@2.0.1:
     resolution: {integrity: sha512-dp3s92+uNI1hWIpPGH3jK2kxE2lMjdXdr+DH8ynZHpd6PUlH6x6cbuXnoMmiNumznqaNO31xu9e79F0uuZ0JFg==}
 
+  lindera-darwin-arm64@6.2.0:
+    resolution: {integrity: sha512-2udNmgOjPpjRpu96YfqeawMqLvFIi8+7yNpg+81ST3zkREUQY9QXF896bDAehAXIJW/CZDNDS6EWMdsWReRYfw==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [arm64]
+    os: [darwin]
+
+  lindera-darwin-x64@6.2.0:
+    resolution: {integrity: sha512-qBAov+HWLrTVU5Hs+HaJtdvb4BUDxYEHjva5FhZxoA+DmG3b5kkqyiMoQIhH8f9zyZiI+6XRPaaViT9tnkQuJA==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [x64]
+    os: [darwin]
+
+  lindera-linux-arm64-gnu@6.2.0:
+    resolution: {integrity: sha512-MqZsVRhFiHbap7FGrVyElWAmvbMOxsNZe2iXX2falFslN1oIZ1g4BTB6Y8R/yFz0CyyU8UPJnjsv0BfQ2SFCCQ==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  lindera-linux-x64-gnu@6.2.0:
+    resolution: {integrity: sha512-dEw+ZrT4bI9vh34gpBwpkayaghTzmxZSIknst+lGtX6GTal9B4xEmYiFH1aJ2k81O/6dn7EufWgWi0n5QEy2eg==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  lindera-win32-arm64-msvc@6.2.0:
+    resolution: {integrity: sha512-GZgiTrwEIzfjRRtqqKIpqhw8j4cU6MN4Oeb7vMfmAPov/mT/2ivDhLGkaS/d/yGR5pKzo/208D/tQdmC14/asA==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [arm64]
+    os: [win32]
+
+  lindera-win32-x64-msvc@6.2.0:
+    resolution: {integrity: sha512-xwGnfUtONYNcnCzcGbiWVZ4eRJfjivsPu6cNYxBLKevImbVpTniZT+jW9xzGhAtM9//u/DtSise5hHyku5Nbag==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    cpu: [x64]
+    os: [win32]
+
+  lindera@6.2.0:
+    resolution: {integrity: sha512-GhF1TqLOv6KrZOIPv/icl2hHX3l8YYEEn0WC0AN9zb2kY4W6Ah5A4wzn/RiJAeG/qWf9depoFzhC0AS7TMAQ8g==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+
   lodash-es@4.18.1:
     resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
 
@@ -1369,6 +1414,33 @@ snapshots:
   layout-base@1.0.2: {}
 
   layout-base@2.0.1: {}
+
+  lindera-darwin-arm64@6.2.0:
+    optional: true
+
+  lindera-darwin-x64@6.2.0:
+    optional: true
+
+  lindera-linux-arm64-gnu@6.2.0:
+    optional: true
+
+  lindera-linux-x64-gnu@6.2.0:
+    optional: true
+
+  lindera-win32-arm64-msvc@6.2.0:
+    optional: true
+
+  lindera-win32-x64-msvc@6.2.0:
+    optional: true
+
+  lindera@6.2.0:
+    optionalDependencies:
+      lindera-darwin-arm64: 6.2.0
+      lindera-darwin-x64: 6.2.0
+      lindera-linux-arm64-gnu: 6.2.0
+      lindera-linux-x64-gnu: 6.2.0
+      lindera-win32-arm64-msvc: 6.2.0
+      lindera-win32-x64-msvc: 6.2.0
 
   lodash-es@4.18.1: {}
 

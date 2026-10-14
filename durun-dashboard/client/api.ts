@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofReading, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ReviewComment, SearchResponse, SessionSummary, SkillInfo,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -126,7 +126,18 @@ export const api = {
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
-  proofread: (before: string, sentence: string) => postJson<ProofReading>('/api/proofread', { before, sentence }),
+  /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。 */
+  proofread: async (text: string, glossary: string, onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {
+    const res = await fetch('/api/proofread', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, glossary }), signal });
+    if (!res.ok || !res.body) throw new Error(await errorText(res));
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let rest = '';
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      const lines = (rest + chunk.value).split('\n');
+      rest = lines.pop() ?? '';
+      for (const line of lines) if (line) onEvent(JSON.parse(line) as ProofEvent);
+    }
+  },
   /** 画像は JSON にせず、そのまま本文で送る。 */
   wallpaperFile: async (file: File): Promise<void> => {
     const res = await fetch('/api/wallpaper', { method: 'POST', headers: { 'content-type': file.type }, body: file });
