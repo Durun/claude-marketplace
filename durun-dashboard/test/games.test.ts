@@ -30,17 +30,17 @@ test('マインスイーパの見えている盤面は、開いたマスを周�
   assert.deepEqual(visibleRows(b), ['2..', '2F2']);
 });
 
-test('マインスイーパのヒントは、開いていないマスだけを Jev に問い、答えをマスの位置に並べる', async () => {
+test('マインスイーパのヒントは、数字だけで決まるマスを規則で決め、残りのマスを Jev に問い、答えの差を広げる', async () => {
   const asked: string[] = [];
+  // Jev には、割合の高い数字に接したマスほど、少しだけ高く答えさせる。
   const jev = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
-      const { state, questions } = JSON.parse(body) as { state: Record<string, unknown>; questions: Record<string, { instructions: string }> };
-      assert.deepEqual(state['盤面'], ['1..', '2F1']);
-      const answers = Object.entries(questions).map(([id, q], n) => {
+      const { questions } = JSON.parse(body) as { questions: Record<string, { instructions: string }> };
+      const answers = Object.entries(questions).map(([id, q]) => {
         asked.push(q.instructions);
-        return [id, { noul: n / 10 }];
+        return [id, { noul: q.instructions.includes('（50%）') ? 0.55 : 0.45 }];
       });
       res.end(JSON.stringify({ answers: Object.fromEntries(answers) }));
     });
@@ -48,11 +48,16 @@ test('マインスイーパのヒントは、開いていないマスだけを J
   await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
   process.env.DURUN_DASHBOARD_FAKE_JEV = `http://127.0.0.1:${(jev.address() as { port: number }).port}/`;
   try {
-    assert.deepEqual(await minesHint(['1..', '2F1'], 2), [null, 0, 0.1, null, null, null]);
-    assert.equal(asked.length, 2);
-    assert.match(asked[0]!, /上から 1 行目、左から 2 列目/);
-    assert.deepEqual(await minesHint(['12', 'F1'], 1), [null, null, null, null]);
-    assert.equal(asked.length, 2);
+    // 左下の 0 の周りは安全と決まる。右の列の 3 マスに、地雷が 1 つある。
+    const [a, b, c, d, e, f, g, h, i] = await minesHint(['01.', '01.', '...'], 1);
+    assert.deepEqual([a, b, d, e, g, h], [null, null, null, null, 0, 0]);
+    assert.equal(asked.length, 3);
+    // 2 つの数字に接する上の 2 マスは、1 つにしか接しない右下より高く、差は Jev の答えより広い。
+    assert.equal(c, f);
+    assert.ok(c! > 1 / 3 && i! < 1 / 3 && c! - i! > 0.3);
+    // 地雷が決まれば、Jev に問わない。
+    assert.deepEqual(await minesHint(['1.', '11'], 1), [null, 1, null, null]);
+    assert.equal(asked.length, 3);
   } finally {
     delete process.env.DURUN_DASHBOARD_FAKE_JEV;
     jev.close();
