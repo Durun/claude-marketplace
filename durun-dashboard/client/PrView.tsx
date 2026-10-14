@@ -62,7 +62,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
       <button class="btn btn-sm" data-icon="refresh" disabled={loading} title="GitHub から読み直します" onClick={reload}>更新</button>
     </div>
     <div class="pr-view-meta muted">
-      <PrChips pr={pr} />
+      <PrChips pr={pr} hideTitle />
       <span class="mono">{pr.headRef} → {pr.baseRef}</span>
       <span>{pr.author} · 更新 <Time at={pr.updatedAt} /></span>
       <span class="mono"><span class="stat-add">+{pr.additions}</span> <span class="stat-del">−{pr.deletions}</span></span>

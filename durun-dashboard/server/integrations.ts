@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, type PrDetail, type PrInfo, type PrPost, type PrThread, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, type PrInfo, type PrPost, type PrThread, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
 
@@ -505,6 +505,20 @@ export const jiraDetail = async (key: string): Promise<JiraDetail> => {
 export const postJiraComment = async (key: string, text: string): Promise<void> => {
   const content = text.split('\n').map((line) => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] }));
   await jiraFetch(`issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body: { type: 'doc', version: 1, content } }) });
+};
+
+/** URL が JIRA の課題の画面なら、その課題のキー。 */
+export const jiraKeyOfUrl = (url: URL): string | undefined => {
+  const prefix = `${JIRA_BASE}/browse/`;
+  const page = `${url.origin}${url.pathname}`.replace(/\/$/, '');
+  const key = JIRA_BASE && page.startsWith(prefix) ? page.slice(prefix.length) : undefined;
+  return key && JIRA_ISSUE_KEY.test(key) ? key : undefined;
+};
+
+/** 課題のキーと題名をつないだ、資料に並べる題名。 */
+export const jiraTitle = async (key: string): Promise<string> => {
+  const { fields } = await jiraFetch<JiraIssueBody>(`issue/${key}?fields=summary`);
+  return [key, fields?.summary].filter(Boolean).join(' ');
 };
 
 const newFile = (header: string): DiffFile => {

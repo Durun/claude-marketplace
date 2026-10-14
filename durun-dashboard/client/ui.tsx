@@ -134,15 +134,19 @@ const ciChip = (c: PrInfo['checks']): { text: string; tone: Tone } | undefined =
   return undefined;
 };
 
-/** JIRA のチップと同じく、PR 番号の右に区切って CI とレビューの状態を並べ、1 つのチップにまとめる。 */
-/** session を渡すと、押したときにそのセッションの「PR」ウィジェットを開く。開く処理は、PR へのリンクの横取りが data-session を読んで行う。 */
-export const PrChips = ({ pr, session }: { pr: PrInfo; session?: string }) => {
+/** JIRA のチップと同じく、PR 番号の右に題名の先頭を添え、区切って CI とレビューの状態を並べ、1 つのチップにまとめる。 */
+/**
+ * session を渡すと、押したときにそのセッションの「PR」ウィジェットを開く。開く処理は、PR へのリンクの横取りが data-session を読んで行う。
+ * hideTitle は、すぐそばに題名を出している画面で、題名を重ねて出さないために渡す。
+ */
+export const PrChips = ({ pr, session, hideTitle }: { pr: PrInfo; session?: string; hideTitle?: boolean }) => {
   const state = prState(pr);
   const subs = [ciChip(pr.checks), REVIEW_CHIP[pr.review]].filter((c) => c !== undefined);
   return (
     <a class={`chip chip-link pr-${state}`} href={pr.url} title={`${PR_STATE_LABEL[state]}: ${pr.title}`} data-session={session} target="_blank" rel="noopener noreferrer">
       <PrIcon state={state} />
       PR #{pr.number}
+      {!hideTitle && pr.title && <span class="chip-title">{pr.title}</span>}
       {subs.map((c) => <span key={c.text} class={`chip-sub chip-sub-${c.tone}`}>{c.text}</span>)}
     </a>
   );
@@ -155,11 +159,13 @@ export const JiraChips = ({ issues, session }: { issues: JiraIssue[]; session?: 
       isHttpUrl(j.url) ? (
         <a key={j.key} class="chip chip-link" href={j.url} title={j.summary} data-attach={j.key} data-session={session} target="_blank" rel="noopener noreferrer">
           {j.key}
+          {j.summary && <span class="chip-title">{j.summary}</span>}
           {j.status && <span class="chip-sub">{j.status}</span>}
         </a>
       ) : (
         <span key={j.key} class="chip chip-link" title={j.summary} data-attach={j.key}>
           {j.key}
+          {j.summary && <span class="chip-title">{j.summary}</span>}
           {j.status && <span class="chip-sub">{j.status}</span>}
         </span>
       ),

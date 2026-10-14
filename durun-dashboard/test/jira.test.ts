@@ -5,7 +5,8 @@ import { test } from 'node:test';
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';
-const { adfText, jiraDetail, postJiraComment, searchJira } = await import('../server/integrations.ts');
+const { adfText, jiraDetail, jiraKeyOfUrl, postJiraComment, searchJira } = await import('../server/integrations.ts');
+const { pageTitleOf } = await import('../server/pageTitle.ts');
 
 test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
@@ -92,4 +93,17 @@ test('postJiraComment は、行ごとに段落にしたコメントを投稿し�
     body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph', content: [] }, { type: 'paragraph', content: [{ type: 'text', text: 'b' }] }] },
   });
   await assert.rejects(postJiraComment('PROJ-1', 'c'), /権限がありません/);
+});
+
+test('pageTitleOf は、資料に足した JIRA の課題の画面に、API から読んだ課題のキーと題名を付け、読めなければ画面の題名も読まない', async (t) => {
+  const called: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    called.push(url);
+    return url.endsWith('/issue/PROJ-1?fields=summary') ? Response.json({ fields: { summary: '直す' } }) : Response.json({ errorMessages: ['権限がありません'] }, { status: 403 });
+  });
+  assert.equal(await pageTitleOf(new URL('https://jira.example/browse/PROJ-1?focusedCommentId=10')), 'PROJ-1 直す');
+  assert.equal(await pageTitleOf(new URL('https://jira.example/browse/PROJ-2')), undefined);
+  assert.deepEqual(called, ['https://jira.example/rest/api/3/issue/PROJ-1?fields=summary', 'https://jira.example/rest/api/3/issue/PROJ-2?fields=summary']);
+  assert.equal(jiraKeyOfUrl(new URL('https://other.example/browse/PROJ-1')), undefined);
+  assert.equal(jiraKeyOfUrl(new URL('https://jira.example/browse/')), undefined);
 });
