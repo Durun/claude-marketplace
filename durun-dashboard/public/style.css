@@ -839,6 +839,14 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .stretched { color: var(--text); text-decoration: none; }
 .stretched::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
 .card-sub { margin: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.card-mid { display: flex; gap: 16px; min-width: 0; }
+.card-mid-main { display: grid; flex: 0 1 auto; align-content: start; gap: 6px; min-width: 0; }
+/* 概要は空いたところにだけ出すので、大きさで行を広げず、入らない行は切る。高さが 1 行分しか無ければ「いま」だけ、狭すぎれば出さない。 */
+.card-summary { flex: 1 1 0; container-type: size; overflow: hidden; color: var(--muted); font-size: 12px; line-height: 18px; }
+.card-summary p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-summary-label { margin-right: 8px; opacity: 0.75; }
+@container (height < 36px) { .card-summary p + p { display: none; } }
+@container (width < 160px) { .card-summary p { display: none; } }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 /* セッションの PR や課題を切り替える番号は、ウィジェットに出しているものに色を付ける。 */
 .chips > .btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }

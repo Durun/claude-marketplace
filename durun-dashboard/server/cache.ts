@@ -20,8 +20,9 @@ type Entry = { value: unknown; at: number; input?: string };
  * input は値を作った材料で、覚えた値の材料と違えば読み直す。
  * wait は、古い値を返さずに、読み直し終えるのを待つ。古い値では役に立たないときに使う。
  * fresh は、人間が「更新」を押したときに渡す。覚えた値が古くなくても読み直し、読み終えるのを待つ。
+ * keep は、覚えた値があれば、材料や時間が変わっても読み直さない。今は作り直さなくてよいときに使う。
  */
-export type Policy = { maxAge?: number; input?: string; wait?: boolean; fresh?: boolean };
+export type Policy = { maxAge?: number; input?: string; wait?: boolean; fresh?: boolean; keep?: boolean };
 
 const readFile = (): Map<string, Entry> => {
   try {
@@ -62,7 +63,7 @@ const bump = (): void => {
 
 const digest = (input: string | undefined): string | undefined => input && createHash('sha1').update(input).digest('base64url');
 
-const isStale = (e: Entry, p: Policy): boolean => !!p.fresh || e.input !== digest(p.input) || Date.now() - e.at > (p.maxAge ?? Infinity);
+const isStale = (e: Entry, p: Policy): boolean => !!p.fresh || (!p.keep && (e.input !== digest(p.input) || Date.now() - e.at > (p.maxAge ?? Infinity)));
 
 /**
  * load を呼んで覚える。同じキーと材料の読み込みが進んでいれば、それを待つ。fresh なら、進んでいる読み込みより後に始めたものを覚える。

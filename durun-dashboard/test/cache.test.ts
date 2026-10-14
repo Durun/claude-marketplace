@@ -95,6 +95,19 @@ test('peekCached は待たずに返し、裏で読めなかったら maxAge が�
   assert.equal(peekCached('peek', { maxAge: 1000 }, failing), 'ok');
 });
 
+test('keep なら、覚えた値があれば材料が変わっても読み直さず、覚えた値が無いときだけ読む', async () => {
+  let n = 0;
+  const load = async () => `v${++n}`;
+  assert.equal(peekCached('keep', { input: 'a', keep: true }, load), undefined);
+  await settle();
+  assert.equal(peekCached('keep', { input: 'b', keep: true }, load), 'v1');
+  await settle();
+  assert.equal(n, 1);
+  assert.equal(peekCached('keep', { input: 'b' }, load), 'v1');
+  await settle();
+  assert.equal(peekCached('keep', { input: 'b' }, load), 'v2');
+});
+
 test('覚えた値はファイルに残り、サーバーを起動し直した後も読み直さずに返す', async () => {
   await cached('saved', {}, async () => ({ a: 1 }));
   saveCache();

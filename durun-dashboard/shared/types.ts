@@ -196,6 +196,8 @@ export type Session = {
   reviewRange?: DiffRange;
   /** Claude が show_branches で並べた、コードの表示の選択肢。先頭のものを開く。 */
   branchViews?: BranchView[];
+  /** 一覧のカードに出す概要。まだ作っていないセッションと、やり取りの無いセッションには無い。 */
+  summary?: SessionSummary;
 };
 
 /**

@@ -10,7 +10,7 @@ import type { Conversation } from '../server/suggest.ts';
 // 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
-const { suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
+const { peekSummary, suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
@@ -59,4 +59,38 @@ test('セッション名の候補は、概要と最初の依頼も材料にし�
 test('概要は、やり取りが進んだら、前の概要に古い印を付けてすぐ返し、裏でまとめ直す', async () => {
   assert.deepEqual(await summarize(conversation('s3', '一つ目')), { doing: '候補を出す', now: '直し終えた' });
   assert.deepEqual(await summarize(conversation('s3', '二つ目')), { doing: '候補を出す', now: '直し終えた', stale: true });
+});
+
+const until = async (ok: () => boolean): Promise<void> => {
+  for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50));
+};
+
+test('一覧の概要は、待たずに返して裏で作り、同時に作るのは 2 つまでにし、作業中は前に作った概要を返す', async () => {
+  // 動いている偽の claude の数を、動いている間だけ置くファイルの数で数える。
+  const runningDir = path.join(tmp, 'running');
+  const countsFile = path.join(tmp, 'counts');
+  fs.mkdirSync(runningDir);
+  useFakeClaude(
+    tmp,
+    `const mine = ${js(runningDir)} + '/' + process.pid;
+fs.writeFileSync(mine, '');
+fs.appendFileSync(${js(countsFile)}, fs.readdirSync(${js(runningDir)}).length + '\\n');
+await new Promise((resolve) => setTimeout(resolve, 300));
+fs.rmSync(mine);
+fs.appendFileSync(${js(callsFile)}, '\\n');
+console.log(${js(JSON.stringify({ structured_output: output }))});`,
+  );
+  const ids = ['p1', 'p2', 'p3'];
+  const peekAll = () => ids.map((id) => peekSummary(conversation(id, '進めました')));
+  assert.deepEqual(peekAll(), [undefined, undefined, undefined]);
+  await until(() => peekAll().every(Boolean));
+  assert.deepEqual(peekSummary(conversation('p1', '進めました')), { doing: '候補を出す', now: '直し終えた' });
+  const counts = fs.readFileSync(countsFile, 'utf8').trim().split('\n').map(Number);
+  assert.equal(counts.length, 3);
+  assert.ok(Math.max(...counts) <= 2);
+
+  const before = calls();
+  assert.deepEqual(peekSummary({ ...conversation('p1', '作業中の発言'), status: 'busy' }), { doing: '候補を出す', now: '直し終えた' });
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(calls(), before);
 });

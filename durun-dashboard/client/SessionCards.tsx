@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { Session, Snapshot, TaskItem } from '../shared/types.ts';
+import type { Session, SessionSummary, Snapshot, TaskItem } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
@@ -55,6 +55,14 @@ const Activity = ({ s }: { s: Session }) => {
   );
 };
 
+/** リポジトリとバッジの右の空いたところに出す概要。1 行しか入らなければ、「いま」を出す。 */
+const CardSummary = ({ summary }: { summary: SessionSummary }) => (
+  <div class="card-summary">
+    <p><span class="card-summary-label">いま</span>{summary.now}</p>
+    <p><span class="card-summary-label">やっていること</span>{summary.doing}</p>
+  </div>
+);
+
 // 合計はキャッシュ読み取りが大半を占め、作業量より大きく見える。カードには出力を出し、内訳はツールチップに回す。
 const totalsTitle = (s: Session): string => {
   const t = s.usage.totals;
@@ -108,14 +116,19 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
       <span class="muted nowrap"><Time at={s.updatedAt} /></span>
       <PinButton s={s} />
     </header>
-    <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
-    {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-    {(s.prs?.length || s.jira.length > 0) && (
-      <div class="chips">
-        {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
-        <JiraChips issues={s.jira} session={s.id} />
+    <div class="card-mid">
+      <div class="card-mid-main">
+        <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
+        {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
+        {(s.prs?.length || s.jira.length > 0) && (
+          <div class="chips">
+            {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
+            <JiraChips issues={s.jira} session={s.id} />
+          </div>
+        )}
       </div>
-    )}
+      {s.summary && <CardSummary summary={s.summary} />}
+    </div>
     <div class="ctx-row">
       <ContextBar usage={s.usage} />
       <span class="muted nowrap" title={totalsTitle(s)}>出力 {fmtTokens(s.usage.totals.output)}</span>

@@ -10,7 +10,7 @@ import { cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraRefreshedAt } from './
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
-import type { Conversation } from './suggest.ts';
+import { type Conversation, peekSummary } from './suggest.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 終了してからこの期間を過ぎたセッションは会話ログを読まない。 */
@@ -136,6 +136,8 @@ const recordBgQuestion = (meta: SessionMeta, log: claude.LogSummary | undefined,
   persist();
 };
 
+const firstPromptOf = (log: claude.LogSummary | undefined): string | undefined => log?.texts.find((t) => t.kind === 'prompt')?.text;
+
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
   if (!meta.transcriptPath) {
     meta.transcriptPath = claude.findTranscript(meta.id);
@@ -151,7 +153,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const jiraKeys = new Set([...meta.jira, ...findJiraKeys([...branches, name, ...prs.map((p) => p.title)])]);
   const repo = repoName(meta.cwd);
   const review = state.attention.find((a) => a.sessionId === meta.id && a.kind === 'review');
-  return {
+  const session: Session = {
     id: meta.id,
     name,
     theme: themeOf(meta),
@@ -188,6 +190,10 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     reviewRange: review?.range,
     branchViews: meta.branchViews,
   };
+  // 概要の材料には画面に出す名前とテーマを渡すので、組み立てたセッションから作る。やり取りが無ければ作れない。
+  // アーカイブしたセッションは数百件たまるので、作らない。
+  const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
+  return summarizable ? { ...session, summary: peekSummary({ ...session, firstPrompt: firstPromptOf(log) }) } : session;
 };
 
 // 会話ログの場所が分からない終了済みセッションは、表示できる中身が無いので一覧から外れる。
@@ -254,7 +260,7 @@ export const conversationOf = (id: string): Conversation | undefined => {
   const s = buildSnapshot().sessions.find((x) => x.id === id);
   if (!s?.lastPrompt && !s?.lastMessage) return undefined;
   const transcript = state.sessions[id]?.transcriptPath;
-  return { ...s, firstPrompt: transcript ? claude.summarizeLog(transcript).texts.find((t) => t.kind === 'prompt')?.text : undefined };
+  return { ...s, firstPrompt: firstPromptOf(transcript ? claude.summarizeLog(transcript) : undefined) };
 };
 
 export const buildSnapshot = (): Snapshot => {
