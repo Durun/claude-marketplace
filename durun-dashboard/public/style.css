@@ -300,9 +300,10 @@ textarea.input { resize: vertical; min-height: 36px; }
 .rate-flyout:popover-open { display: grid; gap: 8px; }
 .rate-empty { max-width: 260px; margin: 0; color: var(--text-2); }
 .rate-item { display: grid; gap: 4px; }
-/* 破線が均等なペース。線と今の位置の印と使用率の数字は使用率の色にし、印と数字の縁取りは背景の色にして線から浮かせる。 */
+/* 破線が均等なペースで、背景の色が違うところは、ペースを数えない土日祝日。線と今の位置の印と使用率の数字は使用率の色にし、印と数字の縁取りは背景の色にして線から浮かせる。 */
 .rate-graph { display: block; max-width: 100%; height: auto; fill: none; }
 .rate-graph-frame { stroke: var(--border); shape-rendering: crispEdges; }
+.rate-graph-off { fill: color-mix(in srgb, var(--text) 7%, transparent); shape-rendering: crispEdges; }
 .rate-graph-pace { stroke: var(--muted); stroke-dasharray: 3 3; }
 .rate-graph-line { stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .rate-graph-dot { fill: var(--c); stroke: var(--surface); paint-order: stroke; }

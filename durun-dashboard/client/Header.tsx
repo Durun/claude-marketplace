@@ -25,8 +25,8 @@ import { openWallpaper } from './Wallpaper.tsx';
 // 使用率の数字を、四角の左上の角から離す距離。
 const VALUE_INSET = 5;
 
-/** 今の枠の使用率の推移。破線の対角線は、枠の始まりで 0%、リセットで 100% になる均等なペース。左上に今の使用率を出す。 */
-const RateGraph = ({ label, limit, shape }: { label: string; limit: RateLimit; shape: RateGraphShape }) => {
+/** 今の枠の使用率の推移。破線は、枠の始まりで 0%、リセットで 100% になる均等なペース。左上に今の使用率を出す。 */
+const RateGraph = ({ label, limit, shape, weekdays }: { label: string; limit: RateLimit; shape: RateGraphShape; weekdays?: boolean }) => {
   const used = Math.round(limit.usedPercent);
   const pace = Math.round(shape.pace);
   const gap = used - pace;
@@ -36,9 +36,10 @@ const RateGraph = ({ label, limit, shape }: { label: string; limit: RateLimit; s
       class="rate-graph" width={GRAPH_WIDTH} height={GRAPH_HEIGHT} viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`} role="img" style={`--c: ${rateColor(limit.usedPercent)}`}
       aria-label={`${label}の使用率の推移。今は ${used}% で、均等なペースの ${pace}% ${versus}`}
     >
-      <title>破線は、枠の始まりで 0%、リセットで 100% になる均等なペース</title>
+      <title>{`破線は、枠の始まりで 0%、リセットで 100% になる均等なペース${weekdays ? '。背景の色が違う土日祝日は、使わない前提で数えない' : ''}`}</title>
+      {shape.off.map((o) => <rect key={o.x} class="rate-graph-off" x={o.x} y={PLOT.top} width={o.width} height={PLOT.bottom - PLOT.top} />)}
       <rect class="rate-graph-frame" x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} />
-      <line class="rate-graph-pace" x1={PLOT.left} y1={PLOT.bottom} x2={PLOT.right} y2={PLOT.top} />
+      <path class="rate-graph-pace" d={shape.pacePath} />
       <path class="rate-graph-line" d={shape.path} />
       <circle class="rate-graph-dot" cx={shape.dot.x} cy={shape.dot.y} r={DOT_RADIUS} stroke-width={RING_STROKE} />
       <text class="rate-graph-value" x={PLOT.left + VALUE_INSET} y={PLOT.top + VALUE_INSET}>{used}%</text>
@@ -46,12 +47,23 @@ const RateGraph = ({ label, limit, shape }: { label: string; limit: RateLimit; s
   );
 };
 
+/** 枠の長さと、均等なペースを平日だけで数えるか。7 日の枠は、土日祝日には使わない前提でペースを見る。 */
+type RateWindow = { label: string; windowMs: number; weekdays?: boolean };
+const FIVE_HOURS: RateWindow = { label: '5 時間', windowMs: FIVE_HOURS_MS };
+const SEVEN_DAYS: RateWindow = { label: '7 日', windowMs: SEVEN_DAYS_MS, weekdays: true };
+
+/** 使用ペース。リセットの時刻が分からない値は、枠の始まりが決まらないので出せない。 */
+const paceIn = (limit: RateLimit, { windowMs, weekdays }: RateWindow, now: number) => {
+  const shape = rateGraphShape(limit, windowMs, now, weekdays);
+  return { shape, pace: shape && paceOf(limit.usedPercent, shape.pace) };
+};
+
 /** バーは使用ペースで、半分が 100%（リセットでちょうど使い切る）。リセットの時刻が分からず、ペースを出せない値は、使用率の数字を出す。 */
-const RateMeter = ({ label, limit, windowMs }: { label: string; limit: RateLimit; windowMs: number }) => {
+const RateMeter = ({ limit, rateWindow }: { limit: RateLimit; rateWindow: RateWindow }) => {
+  const { label, weekdays } = rateWindow;
   const now = useContext(NowContext);
+  const { shape, pace } = paceIn(limit, rateWindow, now);
   const reset = limit.resetsAt ? shortDateTime(toMs(limit.resetsAt), now) : undefined;
-  const shape = rateGraphShape(limit, windowMs, now);
-  const pace = shape && paceOf(limit.usedPercent, shape.pace);
   const title = pace === undefined ? `${label}の使用率` : `${label}の使用ペースは ${Math.round(pace)}%。100% なら、今のペースのままリセットでちょうど使い切る。バーの半分が 100%`;
   return (
     <div class="rate-item">
@@ -60,7 +72,7 @@ const RateMeter = ({ label, limit, windowMs }: { label: string; limit: RateLimit
         {pace === undefined ? <span class="rate-value">{Math.round(limit.usedPercent)}%</span> : <Meter percent={pace / 2} color={paceColor(pace)} label={`${label}の使用ペース（半分が 100%）`} />}
         {reset && <span class="rate-reset">{reset} リセット</span>}
       </div>
-      {shape && <RateGraph label={label} limit={limit} shape={shape} />}
+      {shape && <RateGraph label={label} limit={limit} shape={shape} weekdays={weekdays} />}
     </div>
   );
 };
@@ -69,21 +81,25 @@ const RATE_ID = 'rate-flyout';
 /** 外周は線のリング。内周は線幅を半径の 2 倍にして中心まで塗り、扇形の円グラフにする。半径 5.5 の円で、外周の内側の縁 6.75 との間に隙間を残す。 */
 const RINGS = { outer: { r: 8 }, inner: { r: 2.75, width: 5.5 } } as const;
 
-/** 1 本のリング。pathLength を 100 にして、使用率をそのまま線の長さにする。12 時から時計回りに伸ばす。 */
-const Ring = ({ r, width, limit }: { r: number; width?: number; limit?: RateLimit }) => (
-  <>
-    <circle class="rate-ring-track" cx="10" cy="10" r={r} stroke-width={width} />
-    {limit && (
-      <circle
-        cx="10" cy="10" r={r} stroke-width={width} pathLength={100} transform="rotate(-90 10 10)"
-        style={`stroke: ${rateColor(limit.usedPercent)}`} stroke-dasharray={`${Math.min(100, Math.max(0, limit.usedPercent))} 100`}
-      />
-    )}
-  </>
-);
+/** 1 本のリング。pathLength を 100 にして、使用率をそのまま線の長さにする。12 時から時計回りに伸ばす。色は使用ペースで決め、ペースを出せない値は使用率で決める。 */
+const Ring = ({ r, width, limit, rateWindow }: { r: number; width?: number; limit?: RateLimit; rateWindow: RateWindow }) => {
+  const now = useContext(NowContext);
+  const pace = limit && paceIn(limit, rateWindow, now).pace;
+  return (
+    <>
+      <circle class="rate-ring-track" cx="10" cy="10" r={r} stroke-width={width} />
+      {limit && (
+        <circle
+          cx="10" cy="10" r={r} stroke-width={width} pathLength={100} transform="rotate(-90 10 10)"
+          style={`stroke: ${pace === undefined ? rateColor(limit.usedPercent) : paceColor(pace)}`} stroke-dasharray={`${Math.min(100, Math.max(0, limit.usedPercent))} 100`}
+        />
+      )}
+    </>
+  );
+};
 
 /**
- * 通知領域に常駐する使用制限のアイコン。外周のリングが 5 時間、内側の円グラフが 7 日の使用率で、色はそれぞれの使用率で変わる。マウスを載せるかフォーカスすると内訳を開く。
+ * 通知領域に常駐する使用制限のアイコン。外周のリングが 5 時間、内側の円グラフが 7 日の使用率で、色はそれぞれの使用ペースで変わる。マウスを載せるかフォーカスすると内訳を開く。
  * タスクバーは overflow: hidden なので、内訳は popover にして最前面に出す。
  * 値がまだ無いときも空のリングを残し、内訳で出し方を案内する。消すと、出せることに気づけない。
  */
@@ -97,14 +113,14 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
     <>
       <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
         <svg viewBox="0 0 20 20" aria-hidden="true">
-          <Ring {...RINGS.outer} limit={fiveHour} />
-          <Ring {...RINGS.inner} limit={sevenDay} />
+          <Ring {...RINGS.outer} limit={fiveHour} rateWindow={FIVE_HOURS} />
+          <Ring {...RINGS.inner} limit={sevenDay} rateWindow={SEVEN_DAYS} />
         </svg>
       </button>
       <div id={RATE_ID} class="rate-flyout" popover="manual">
         <b class="rate-head">使用制限</b>
-        {fiveHour && <RateMeter label="5 時間" limit={fiveHour} windowMs={FIVE_HOURS_MS} />}
-        {sevenDay && <RateMeter label="7 日" limit={sevenDay} windowMs={SEVEN_DAYS_MS} />}
+        {fiveHour && <RateMeter limit={fiveHour} rateWindow={FIVE_HOURS} />}
+        {sevenDay && <RateMeter limit={sevenDay} rateWindow={SEVEN_DAYS} />}
         {empty && (
           <p class="rate-empty">
             まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。
