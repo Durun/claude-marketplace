@@ -57,31 +57,36 @@ const pushDown = <B extends Box>(p: B, placed: Box[]): B => {
   return hit ? pushDown({ ...p, y: hit.y + hit.h }, placed) : p;
 };
 
-/** item を置き、重なるウィジェットはその下へ押し出す。押し出した先で重なるものも、上から順に押し出す。配列の順は保つ。free の枠は押し出さず、押し出されもしない。 */
-const place = <B extends Box>(layout: B[], item: B): B[] => {
+/**
+ * item を置き、重なるウィジェットはその下へ押し出す。押し出した先で重なるものも、上から順に押し出す。配列の順は保つ。free の枠は押し出さず、押し出されもしない。
+ * 押し出した枠がグリッドの下端をはみ出すときは置かず、undefined を返す。前からはみ出していて動かさない枠は、そのままにする。
+ */
+const place = <B extends Box>(layout: B[], item: B): B[] | undefined => {
   if (item.free) return layout.map((p) => (p.id === item.id ? item : p));
   const placed: B[] = [item];
   for (const p of readingOrder(layout.filter((q) => q.id !== item.id && !q.free))) placed.push(pushDown(p, placed));
+  const before = new Map(layout.map((p) => [p.id, p.y]));
+  if (placed.some((p) => p.y !== before.get(p.id) && p.y + p.h > ROWS)) return undefined;
   return layout.map((p) => placed.find((q) => q.id === p.id) ?? p);
 };
 
-/** dx 列、dy 行だけ動かす。左右はグリッドからはみ出させず、上は先頭の行で止める。 */
+/** dx 列、dy 行だけ動かす。グリッドからはみ出させず、端で止める。押し出した枠が下端をはみ出すなら、動かさない。 */
 export const moveWidget = <B extends Box>(layout: B[], id: string, dx: number, dy: number): B[] => {
   const p = layout.find((q) => q.id === id);
-  return p ? place(layout, { ...p, x: clamp(p.x + dx, 0, COLS - p.w), y: Math.max(0, p.y + dy) }) : layout;
+  return p ? place(layout, { ...p, x: clamp(p.x + dx, 0, COLS - p.w), y: clamp(p.y + dy, 0, Math.max(0, ROWS - p.h)) }) ?? layout : layout;
 };
 
-/** edge の辺か角（resizeRect と同じ書き方）を dx 列、dy 行だけ動かして、大きさを変える。左右はグリッドからはみ出させない。 */
+/** edge の辺か角（resizeRect と同じ書き方）を dx 列、dy 行だけ動かして、大きさを変える。グリッドからはみ出させない。 */
 export const resizeWidget = <B extends Box>(layout: B[], id: string, dx: number, dy: number, edge = 'se'): B[] => {
   const p = layout.find((q) => q.id === id);
   if (!p) return layout;
   const r = resizeRect(p, edge, dx, dy, { w: MIN_SPAN, h: MIN_SPAN });
   const x = Math.max(0, r.x);
-  return place(layout, { ...p, ...r, x, w: Math.min(r.x + r.w, COLS) - x });
+  return place(layout, { ...p, ...r, x, w: Math.min(r.x + r.w, COLS) - x, h: Math.max(MIN_SPAN, Math.min(r.y + r.h, ROWS) - r.y) }) ?? layout;
 };
 
-/** item を足し、重なるウィジェットは下へ押し出す。 */
-export const addWidget = <B extends Box>(layout: B[], item: B): B[] => place([...layout, item], item);
+/** item を足し、重なるウィジェットは下へ押し出す。押し出した枠が下端をはみ出すなら、足さない。 */
+export const addWidget = <B extends Box>(layout: B[], item: B): B[] => place([...layout, item], item) ?? layout;
 
 /** keep に合うタブだけを残す。ウィジェットが無くなった枠は消す。 */
 export const keepTabs = (layout: Layout, keep: (t: Tab) => boolean): Layout =>
@@ -104,13 +109,15 @@ export const dropTarget = (layout: Layout, tab: Tab, x: number, y: number): Plac
 
 /**
  * tab を (x, y) の升目に置く。そこに枠があれば、タブとして重ねて選ぶ。
- * 空いていれば、size の大きさで id の枠を新しく作り、重なる枠を下へ押し出す。ほかの枠から移すときは、元の枠から外す。
+ * 空いていれば、size の大きさをグリッドに収めて id の枠を新しく作り、重なる枠を下へ押し出す。ほかの枠から移すときは、元の枠から外す。
+ * 押し出した枠が下端をはみ出すときは、置かずに layout をそのまま返す。
  */
 export const dropTab = (layout: Layout, tab: Tab, x: number, y: number, size: Size, id: string): Layout => {
   const rest = keepTabs(layout, (t) => t.id !== tab.id);
   const target = placementAt(rest, x, y);
   if (target) return rest.map((p) => (p === target ? { ...p, tabs: [...p.tabs, tab], active: tab.id } : p));
-  return addWidget(rest, { id, x, y, w: Math.min(size.w, COLS - x), h: size.h, tabs: [tab] });
+  const item = { id, x, y, w: Math.min(size.w, COLS - x), h: Math.min(size.h, ROWS - y), tabs: [tab] };
+  return place([...rest, item], item) ?? layout;
 };
 
 /** from の枠のタブを、すべて to の枠にタブとして重ねる。重ねた後は、from で選んでいたタブを選ぶ。 */

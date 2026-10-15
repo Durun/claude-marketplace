@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLS, addWidget, dropTab, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
+import { COLS, ROWS, addWidget, dropTab, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
 import { uniqueName } from '../client/dashboards.ts';
 
 test('重なったウィジェットを順に下へ押し出し、配列の順と、グリッドに収まる位置と大きさを保つ', () => {
@@ -27,6 +27,27 @@ test('重なったウィジェットを順に下へ押し出し、配列の順�
   ]);
 });
 
+test('ウィジェットはグリッドの下端をはみ出させず、押し出した枠が下端をはみ出すなら動かさない', () => {
+  const layout = [
+    { id: 'a', x: 0, y: 0, w: 10, h: 8 },
+    { id: 'b', x: 0, y: 8, w: 10, h: 12 },
+  ];
+  // 動かすと大きさを変えるのは、下端で止める。
+  assert.deepEqual(moveWidget(layout, 'b', 0, ROWS)[1], { id: 'b', x: 0, y: 12, w: 10, h: 12 });
+  assert.deepEqual(resizeWidget(layout, 'b', 0, ROWS)[1], { id: 'b', x: 0, y: 8, w: 10, h: 16 });
+  // 押し出した b が下端をはみ出すので、a は動かさず、大きさも変えず、足しもしない。
+  assert.equal(moveWidget(layout, 'a', 0, 5), layout);
+  assert.equal(resizeWidget(layout, 'a', 0, 5), layout);
+  assert.equal(addWidget(layout, { id: 'c', x: 0, y: 0, w: 4, h: 6 }), layout);
+  assert.deepEqual(moveWidget(layout, 'a', 0, 4), [
+    { id: 'a', x: 0, y: 4, w: 10, h: 8 },
+    { id: 'b', x: 0, y: 12, w: 10, h: 12 },
+  ]);
+  // 前からはみ出している枠は、動かさなければそのままにする。
+  const over = [...layout, { id: 'c', x: 10, y: 20, w: 4, h: 8 }];
+  assert.deepEqual(moveWidget(over, 'a', 4, 0), [{ ...layout[0]!, x: 4 }, layout[1], over[2]]);
+});
+
 test('置いた升目に枠があればタブとして重ね、空いていれば新しい枠にする。移したタブは元の枠から外し、空になった枠は消す', () => {
   const main = { id: 'main', x: 0, y: 0, w: 10, h: 8, tabs: [{ id: 'chat' }, { id: 'code', settings: { a: '1' } }] };
   const side = { id: 'side', x: 10, y: 0, w: 4, h: 4, tabs: [{ id: 'usage' }] };
@@ -39,6 +60,11 @@ test('置いた升目に枠があればタブとして重ね、空いていれ�
     side,
     { id: 'n', x: 20, y: 2, w: 4, h: 6, tabs: [{ id: 'code', settings: { a: '1' } }] },
   ]);
+  // 下端では、グリッドに収まる高さにして置く。
+  assert.deepEqual(dropTab(layout, { id: 'tasks:1' }, 0, ROWS - 2, size, 'n')[2], { id: 'n', x: 0, y: ROWS - 2, w: 8, h: 2, tabs: [{ id: 'tasks:1' }] });
+  // 押し出した枠が下端をはみ出すなら、元の枠から外さずにそのまま返す。
+  const full = [main, { ...side, y: ROWS - 4 }];
+  assert.equal(dropTab(full, { id: 'code' }, 10, ROWS - 8, size, 'n'), full);
   assert.deepEqual(dropTab(layout, { id: 'usage' }, 0, 0, size, 'n'), [{ ...main, tabs: [...main.tabs, { id: 'usage' }], active: 'usage' }]);
   assert.deepEqual(keepTabs(layout, (t) => t.id !== 'usage'), [main]);
 });

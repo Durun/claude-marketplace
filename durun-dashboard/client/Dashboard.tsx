@@ -86,21 +86,23 @@ type Cell = { x: number; y: number };
 const cellAt = (grid: HTMLElement, e: MouseEvent): Cell => {
   const { col, row } = pitchOf(grid);
   const rect = grid.getBoundingClientRect();
-  return { x: clamp(Math.floor((e.clientX - rect.left) / col), 0, COLS - 1), y: Math.max(0, Math.floor((e.clientY - rect.top) / row)) };
+  return { x: clamp(Math.floor((e.clientX - rect.left) / col), 0, COLS - 1), y: clamp(Math.floor((e.clientY - rect.top) / row), 0, ROWS - 1) };
 };
 
-/** 置く先を示す枠。merge は、そこにある枠へタブとして重ねること。 */
-type Ghost = Size & Cell & { merge: boolean };
+/** 置く先を示す枠。merge は、そこにある枠へタブとして重ねること。full は、押し出す枠がグリッドの下端をはみ出すので置けないこと。 */
+type Ghost = Size & Cell & { merge: boolean; full?: boolean };
 
-/** tab を cell に置くときの置く先。dropTab と同じく、枠があれば重ね、空いていればグリッドに収まる幅で新しく置く。 */
+/** tab を cell に置くときの置く先。dropTab と同じく、枠があれば重ね、空いていればグリッドに収まる大きさで新しく置く。 */
 const ghostOf = (layout: Layout, tab: Tab, cell: Cell, size: Size): Ghost => {
   const target = dropTarget(layout, tab, cell.x, cell.y);
-  return target ? { ...target, merge: true } : { ...cell, w: Math.min(size.w, COLS - cell.x), h: size.h, merge: false };
+  if (target) return { ...target, merge: true };
+  const full = dropTab(layout, tab, cell.x, cell.y, size, "") === layout;
+  return { ...cell, w: Math.min(size.w, COLS - cell.x), h: Math.min(size.h, ROWS - cell.y), merge: false, full };
 };
 
 const DropGhost = ({ ghost }: { ghost: Ghost }) => (
-  <div class="dashboard-ghost" style={area(ghost)} aria-hidden="true">
-    <span>{ghost.merge ? 'タブとして重ねる' : 'ここに置く'}</span>
+  <div class={`dashboard-ghost${ghost.full ? ' is-full' : ''}`} style={area(ghost)} aria-hidden="true">
+    <span>{ghost.merge ? 'タブとして重ねる' : ghost.full ? '下にはみ出すので置けない' : 'ここに置く'}</span>
   </div>
 );
 
@@ -129,7 +131,7 @@ type Drag = { start: Layout; x: number; y: number; col: number; row: number; dx:
 
 /**
  * 辺や角のドラッグで大きさを変える操作。押した位置からの移動量を升目の数に丸め、押したときの配置から置き直す。
- * そのため、重なりから離れると、押し出したウィジェットは元の位置に戻る。
+ * そのため、重なりから離れると、押し出したウィジェットは元の位置に戻る。押し出した枠がグリッドの下端をはみ出す大きさにはせず、最後に収まった大きさで止める。
  */
 const useResize = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: Layout) => void) => {
   const drag = useRef<Drag>();
@@ -146,8 +148,10 @@ const useResize = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: 
       const dx = Math.round((e.pageX - d.x) / d.col);
       const dy = Math.round((e.pageY - d.y) / d.row);
       if (dx === d.dx && dy === d.dy) return;
+      const next = resizeWidget(d.start, id, dx, dy, edge);
+      if (next === d.start) return;
       Object.assign(d, { dx, dy });
-      update(resizeWidget(d.start, id, dx, dy, edge));
+      update(next);
     },
     onLostPointerCapture: () => {
       drag.current = undefined;
@@ -164,6 +168,7 @@ type Move = { start: Layout; p: Placement; tab?: Tab; x: number; y: number; drag
  * 見出しのドラッグで枠を動かす操作。押した位置からの移動量を升目の数に丸め、押したときの配置から置き直す。
  * 指した先がほかの枠なら、動かさずに、離したときにタブとして重ねる。
  * タブを並べた枠でタブを押してドラッグしたときは、そのタブだけを離した場所へ移す。空いているところなら新しい枠にする。
+ * 押し出した枠がグリッドの下端をはみ出す位置には動かさず、最後に収まった位置で止める。
  */
 const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: Layout) => void, sizeOf: (t: Tab) => Size | undefined) => {
   const move = useRef<Move>();
@@ -202,14 +207,16 @@ const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: La
       if (m.tab) {
         const size = sizeOf(m.tab) ?? m.p;
         const own = placementAt([m.p], cell.x, cell.y);
-        m.drop = own ? undefined : dropTab(m.start, m.tab, cell.x, cell.y, size, String(Date.now()));
+        const drop = own ? undefined : dropTab(m.start, m.tab, cell.x, cell.y, size, String(Date.now()));
+        m.drop = drop === m.start ? undefined : drop;
         setGhost(own ? undefined : ghostOf(m.start, m.tab, cell, size));
         return;
       }
       const target = placementAt(m.start.filter((q) => q.id !== m.p.id), cell.x, cell.y);
       m.drop = target && mergeInto(m.start, m.p.id, target.id);
       setGhost(target && { ...target, merge: true });
-      update(target ? m.start : moveWidget(m.start, m.p.id, dx, dy));
+      const next = target ? m.start : moveWidget(m.start, m.p.id, dx, dy);
+      if (target || next !== m.start) update(next);
     },
     onPointerUp: () => {
       if (move.current?.drop) update(move.current.drop);
@@ -258,9 +265,9 @@ const useFreeMove = (grid: RefObject<HTMLElement>, layout: Layout, show: (next: 
         el.setPointerCapture(e.pointerId);
       }
       const { col, row } = pitchOf(grid.current);
-      // ダッシュボードの外へは出さない。下は、ウィジェットが無くても画面の下端まで置けるようにする。
+      // ダッシュボードの外へは出さない。下は、ウィジェットが無くてもグリッドの下端まで置けるようにする。
       const x = clamp(m.p.x + (e.pageX - m.x) / col, 0, (grid.current.clientWidth - el.offsetWidth) / col);
-      const y = clamp(m.p.y + (e.pageY - m.y) / row, 0, Math.max(grid.current.clientHeight / row, ROWS) - el.offsetHeight / row);
+      const y = clamp(m.p.y + (e.pageY - m.y) / row, 0, ROWS - el.offsetHeight / row);
       m.next = layout.map((q) => (q.id === m.p.id ? { ...q, x, y } : q));
       show(m.next);
       over(m, composerAt(el, e.clientX, e.clientY));
@@ -384,14 +391,16 @@ const PlacingLayer = ({ grid, layout, tab, title, size, free, onDrop, onCancel }
     const step = ARROWS[e.key];
     if (!step) return;
     e.preventDefault();
-    setCell((c) => (c ? { x: clamp(c.x + step[0], 0, COLS - 1), y: Math.max(0, c.y + step[1]) } : { x: 0, y: 0 }));
+    setCell((c) => (c ? { x: clamp(c.x + step[0], 0, COLS - 1), y: clamp(c.y + step[1], 0, ROWS - 1) } : { x: 0, y: 0 }));
   };
   // キーボードの Enter で押したときは、矢印キーで選んだ升目に置く。
   const onClick = (e: MouseEvent) => {
     const c = e.detail ? cellOf(e) : cell;
     if (!c) return;
     const id = String(Date.now());
-    onDrop(free ? addWidget(layout, { id, ...c, ...size, tabs: [tab], free }) : dropTab(layout, tab, c.x, c.y, size, id));
+    // アイコンは、下端をはみ出さない高さまで上げて置く。ウィジェットは、押し出す枠が下端をはみ出すなら置かずに待つ。
+    const next = free ? addWidget(layout, { id, ...c, y: Math.min(c.y, ROWS - size.h), ...size, tabs: [tab], free }) : dropTab(layout, tab, c.x, c.y, size, id);
+    if (next !== layout) onDrop(next);
   };
   return (
     <>
