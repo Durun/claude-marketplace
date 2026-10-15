@@ -39,6 +39,8 @@ export const applyEvent = (run: ProofRun, e: ProofEvent): ProofRun => {
       return { ...run, readings: set(run.readings, e.i, e.reading), findings: set(run.findings, e.i, [...(run.findings[e.i] ?? []), ...e.findings]) };
     case 'findings':
       return { ...run, findings: set(run.findings, e.i, [...(run.findings[e.i] ?? []), ...e.findings]) };
+    case 'outline':
+      return { ...run, outline: e.outline };
     case 'usage':
       // 数えていない校正の続きを読んだ分だけを足すと、校正全体の数に見えてしまうので、数えないままにする。
       return run.usage ? { ...run, usage: { ...run.usage, [e.model]: addTokens(run.usage[e.model], e.usage) } } : run;

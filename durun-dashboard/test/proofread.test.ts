@@ -6,12 +6,12 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, mergeClaudeWrites, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
-import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
+import type { ProofEvent, ProofFinding, ProofReading, ProofRole, ReviseNote } from '../shared/types.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
 
 // 修正版は入れてあるプラグインを見て書き方を変えるので、実際の Claude Code の設定ではなく、一時ディレクトリを読ませる。
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-claude-'));
-const { commentFindings, ledgerFinding, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } = await import('../server/proofread.ts');
+const { commentFindings, ledgerFinding, outlineFindings, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } = await import('../server/proofread.ts');
 
 const DOC = `# 方針
 
@@ -108,33 +108,42 @@ test('指摘の付いた語句は、文の中で最初に現れた所に印を�
   ]);
 });
 
-test('文章校正は、読み手の答えを文ごとに流し、区切りで Jev に回収を確かめ、文書全体から用語の揺れを探してから終わり、使ったトークン数をモデルごとに数える', async () => {
+test('文章校正は、読み手の答えを文ごとに流し、区切りで Jev に回収を確かめ、文書全体から用語の揺れと文の役割を調べてから終わり、使ったトークン数をモデルごとに数える', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
-  // 読み手には、文の番号ごとに決めた答えを返す。用語の揺れを探す依頼には、組を 1 つ返す。
+  // 読み手には、文の番号ごとに決めた答えを返す。用語の揺れを探す依頼には組を 1 つ、文の役割を問う依頼には予告と余談を 1 文ずつ含む役割を返す。
   const answers = {
     3: reading({ refs: [{ quote: '焼く', antecedent: -2 }] }),
     6: reading({ refs: [{ quote: 'event-receiver', antecedent: -2 }], questions: [{ quote: '配る', question: '配るとは何をすることか', kind: 'definition', wait: true }] }),
   };
   const variants = { groups: [{ terms: ['公開 HTML', 'HTML'], thing: '配る HTML', use: 'HTML' }] };
+  const outline = {
+    claim: '公開 HTML が焼く値を決め、CDN が配る',
+    sentences: [[0, 'heading'], [0, 'preview'], [0, 'claim'], [3, 'detail'], [3, 'detail'], [5, 'aside']].map(([parent, role], n) => ({ n: n + 1, parent, role })),
+  };
   const usage = { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 4 };
   useFakeClaude(tmp, `const prompt = stdin();
 const k = /<sentence>\\n\\[(\\d+)\\]/.exec(prompt)?.[1];
-const out = prompt.startsWith('次の <text> の文章で') ? ${js(variants)} : ${js(answers)}[k] ?? ${js(reading())};
+const out = prompt.startsWith('次の <text> の文章で') ? ${js(variants)} : prompt.startsWith('<text> の文章を読み、') ? ${js(outline)} : ${js(answers)}[k] ?? ${js(reading())};
 console.log(JSON.stringify({ structured_output: out, usage: ${js(usage)} }));`);
-  // Jev には、「焼くとは」まで読んでいれば焼くの疑問が解けたと答えさせる。
+  // Jev には、「焼くとは」まで読んでいれば焼くの疑問が解けたと答えさせる。主張との関係は、予告の [2] を確かに、余談の [6] をやや関係しないと答えさせる。
   const asked: string[] = [];
+  const judged: Record<string, string>[] = [];
   let jevCalls = 0;
   const jev = http.createServer((req, res) => {
     jevCalls++;
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
-      const { state, questions } = JSON.parse(body) as { state: Record<string, string>; questions: Record<string, { instructions: string }> };
-      const noul = Object.entries(questions).map(([id, q]) => {
+      const { state, questions } = JSON.parse(body) as { state: Record<string, string>; questions: Record<string, { type: string; instructions: string }> };
+      if (state['文']) judged.push(state);
+      const unrelated = state['文']?.includes('決定は') ? 0.9 : state['文']?.includes('なお') ? 0.6 : 0.05;
+      const answer = Object.entries(questions).map(([id, q]) => {
+        if (q.type === 'score') return [id, { type: 'score', probabilities: { 0: unrelated, 1: 0, 2: 1 - unrelated, 3: 0 } }];
+        if (state['文']) return [id, { type: 'noul', noul: 0.9 }];
         asked.push(q.instructions);
         return [id, { type: 'noul', noul: q.instructions.includes('焼く') && state['既読の部分']!.includes('焼くとは') ? 0.9 : 0.1 }];
       });
-      res.end(JSON.stringify({ answers: Object.fromEntries(noul), usage: { input_tokens: 10, output_tokens: 1 } }));
+      res.end(JSON.stringify({ answers: Object.fromEntries(answer), usage: { input_tokens: 10, output_tokens: 1 } }));
     });
   });
   await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
@@ -149,11 +158,19 @@ console.log(JSON.stringify({ structured_output: out, usage: ${js(usage)} }));`);
     assert.equal(events.at(-1)?.type, 'done');
     const findingsOf = (i: number) => events.flatMap((e) => ((e.type === 'findings' || e.type === 'read') && e.i === i ? e.findings : [])).map((f) => [f.axis, f.level, f.quote]);
     assert.deepEqual(findingsOf(2).sort(), [['参照', 'note', '焼く'], ['語', 'fail', '公開 HTML']]);
-    assert.deepEqual(findingsOf(5), [['参照', 'fail', 'event-receiver'], ['回収', 'fail', '配る']]);
+    assert.deepEqual(findingsOf(5).sort(), [['参照', 'fail', 'event-receiver'], ['回収', 'fail', '配る'], ['貢献', 'note', undefined]]);
+    assert.deepEqual(findingsOf(1), [['貢献', 'fail', undefined]]);
     assert.ok(asked.length > 0 && asked.every((q) => q.includes('`既読の部分` または `用語集`')));
-    // sonnet には 6 文の読み手と用語の揺れで 7 回、Jev には区切りごとに問い合わせる。
-    assert.deepEqual(events.reduce(applyEvent, emptyRun(DOC)).usage, {
-      sonnet: { input: 7, output: 14, cacheRead: 21, cacheCreation: 28 },
+    // 見出しは主張を支えるかを測らず、前の文にも含めない。
+    const run = events.reduce(applyEvent, emptyRun(DOC));
+    assert.equal(run.outline?.claim, outline.claim);
+    assert.deepEqual(run.outline?.sentences[0], { role: 'heading', parent: 0 });
+    assert.deepEqual(run.outline?.sentences[2], { role: 'claim', parent: 0, support: 1.9, unrelated: 0.05, fresh: 0.9 });
+    assert.deepEqual(judged.map((s) => s['文']!.slice(0, 3)).sort(), ['[2]', '[3]', '[4]', '[5]', '[6]']);
+    assert.equal(judged.find((s) => s['文']!.startsWith('[2]'))?.['前の文'], '（なし）');
+    // sonnet には 6 文の読み手と用語の揺れと文の役割で 8 回、Jev には区切りごとと、見出しを除く文ごとに問い合わせる。
+    assert.deepEqual(run.usage, {
+      sonnet: { input: 8, output: 16, cacheRead: 24, cacheCreation: 32 },
       Jev: { input: 10 * jevCalls, output: jevCalls, cacheRead: 0, cacheCreation: 0 },
     });
     assert.equal(events.reduce(applyEvent, { ...emptyRun(DOC), usage: undefined }).usage, undefined);
@@ -161,6 +178,42 @@ console.log(JSON.stringify({ structured_output: out, usage: ${js(usage)} }));`);
     delete process.env.DURUN_DASHBOARD_FAKE_JEV;
     jev.close();
   }
+});
+
+test('不要な文は、役割の読み取りと Jev の確率がそろったときだけ指摘し、確率が 0.7 以上なら失敗、0.5 以上なら注記にする', () => {
+  const o = (role: ProofRole, parent: number, unrelated: number, fresh: number) => ({ role, parent, support: 1, unrelated, fresh });
+  const found = outlineFindings({
+    claim: '主張',
+    sentences: [
+      o('aside', 0, 0.9, 0.9),
+      o('preview', 3, 0.6, 0.9),
+      o('restate', 2, 0.1, 0.2),
+      o('summary', 0, 0.1, 0.4),
+      // 役割が要る文としているか、Jev が要る文としていれば指摘しない。測っていない文も指摘しない。
+      o('detail', 1, 0.95, 0.05),
+      o('aside', 0, 0.3, 0.9),
+      o('restate', 2, 0.9, 0.6),
+      { role: 'aside', parent: 0 },
+      null,
+    ],
+  }, parseProof('一。二。三。四。五。六。七。八。九。'), []);
+  assert.deepEqual([...found].map(([i, list]) => [i, list.map((f) => [f.axis, f.level, f.message])]), [
+    [0, [['貢献', 'fail', '主張とも、主張を支える文ともつながらない。消しても主張は伝わる']]],
+    [1, [['貢献', 'note', 'この後に書くことを予告するだけで、中身が無い。消しても主張は伝わる']]],
+    [2, [['貢献', 'fail', '[2] を言い直しただけで、新しい情報が無い。消しても主張は伝わる']]],
+    [3, [['貢献', 'note', '前に書いたことをまとめ直しただけで、新しい情報が無い。消しても主張は伝わる']]],
+  ]);
+});
+
+test('後の文が指している余談と予告は不要と指摘せず、見出しが 3 つ以上ある文書では予告とまとめを指摘しない', () => {
+  const o = (role: ProofRole, unrelated: number, fresh: number) => ({ role, parent: 0, support: 1, unrelated, fresh });
+  const removable = [o('aside', 0.9, 0.9), o('restate', 0.1, 0.1), o('preview', 0.9, 0.9), o('summary', 0.1, 0.1), o('claim', 0, 1)];
+  // [5] が、[1] の余談と [2] の言い直しを指している。言い直しは、同じ中身が前にあるので指摘する。
+  const readings = [undefined, undefined, undefined, undefined, reading({ refs: [{ quote: 'それ', antecedent: 1 }, { quote: 'これ', antecedent: 2 }] })];
+  assert.deepEqual([...outlineFindings({ claim: '主張', sentences: removable }, parseProof('一。二。三。四。五。'), readings).keys()], [1, 2, 3]);
+  const heading = { role: 'heading', parent: 0 } as const;
+  const sectioned = { claim: '主張', sentences: [heading, ...removable, heading, heading] };
+  assert.deepEqual([...outlineFindings(sectioned, parseProof('# 甲\n\n一。二。三。四。五。\n\n## 乙\n\n## 丙\n'), []).keys()], [1, 2]);
 });
 
 test('続きから校正すると、前に読んだ文は読み手に読ませ直さず、前の答えから指摘を作り直す。形の崩れた答えの文は読み直す', async () => {
@@ -254,6 +307,9 @@ test('MCP で校正した Claude には、指摘の付いた文と読めなか�
     '[2] 乙である。\n読めませんでした。答えが返りませんでした',
     '[3] 丙である。\n#2 参照（読み進めを妨げる）：「丙」指す先が書かれていない\n#3 連結（気にしてほしい）：前の文との関係が読み取れない',
   ].join('\n\n'));
+  // 文の役割を読み終えていれば、貢献の指摘の基準にした主張も返す。
+  const outlined = applyEvent(run, { type: 'outline', outline: { claim: '甲は乙である', sentences: [] } });
+  assert.equal(proofReport(outlined).split('\n\n')[1], '文章全体の主張は「甲は乙である」と読みました。');
   const commented = { ...newVersion(run.text), run, comments: { [findingKey(0, a)]: { text: '人間のコメント', ignore: false } } };
   const { ver, missing } = commentFindings(commented, [{ n: 2, text: '前の章で定義済み', ignore: true }, { n: 4, text: '無い指摘', ignore: false }]);
   assert.deepEqual(ver.comments, { [findingKey(0, a)]: { text: '人間のコメント', ignore: false }, [findingKey(2, b)]: { text: '前の章で定義済み', ignore: true } });

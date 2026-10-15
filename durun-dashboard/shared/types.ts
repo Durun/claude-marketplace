@@ -464,8 +464,8 @@ export type AssistantMessage = { role: 'human' | 'dolphin'; text: string };
 /** links は、答えに関係するダッシュボードの画面（#/ から始まる）。 */
 export type AssistantReply = { answer: string; links: { label: string; href: string }[] };
 
-/** 文章校正の評価軸。順に、指す先、疑問の回収、指す先までの距離と係り方、文の役割、前の文とのつながり、語の選び方、1 文の負担。 */
-export type ProofAxis = '参照' | '回収' | '近接' | '骨組み' | '連結' | '語' | '負荷';
+/** 文章校正の評価軸。順に、指す先、疑問の回収、指す先までの距離と係り方、文の役割、前の文とのつながり、文章の主張を支えているか、語の選び方、1 文の負担。 */
+export type ProofAxis = '参照' | '回収' | '近接' | '骨組み' | '連結' | '貢献' | '語' | '負荷';
 
 /** 文章校正で文に付ける指摘。fail は読み進めを妨げるもの、note は気にしてほしいもの。quote は文の中の語句で、suggestions は言い換えの候補。 */
 export type ProofFinding = { axis: ProofAxis; level: 'fail' | 'note'; quote?: string; message: string; suggestions?: string[] };
@@ -485,14 +485,31 @@ export type ProofReading = {
   attachments: { quote: string; readings: string[] }[];
 };
 
+/** 文章全体の中で文が果たす役割。parent の文に対する役割で、claim は文章全体の主張、request は読み手への依頼や問い。 */
+export type ProofRole =
+  | 'claim' | 'reason' | 'detail' | 'example' | 'background' | 'condition' | 'step' | 'contrast' | 'effect' | 'request'
+  | 'preview' | 'summary' | 'restate' | 'aside' | 'heading';
+
+/**
+ * 文章校正で、文章全体を読んで決めた主張と、文ごとの役割。sentences は文ごとで、役割が返らなかった文は null。
+ * parent は、その文が説明したり根拠づけたりしている文の番号（1 から）で、主張を述べた文と見出しは 0。
+ * support は主張との関係で、0 は関係しない、1 は主張を支える文を補う、2 は主張を直接支える、3 は主張そのもの。unrelated は関係しない確率、fresh は前の文に無い情報がある確率。
+ * 見出し、コードブロック、表の行と、確かめられなかった文には、support と unrelated と fresh が無い。
+ */
+export type ProofOutline = {
+  claim: string;
+  sentences: ({ role: ProofRole; parent: number; support?: number; unrelated?: number; fresh?: number } | null)[];
+};
+
 /**
  * 文章校正の進み具合として、サーバーが 1 行に 1 つずつ送る出来事。
- * plan は文の位置。read はその文を読んだ結果。findings は、区切りや文書全体を見てから足す指摘。
+ * plan は文の位置。read はその文を読んだ結果。findings は、区切りや文書全体を見てから足す指摘。outline は、文章全体を読んで決めた主張と文の役割。
  * usage は、モデルに 1 回問い合わせるたびに送る、その問い合わせで使ったトークン数。model は tools と同じ名前にする。
  */
 export type ProofEvent =
   | { type: 'plan'; sentences: { start: number; end: number }[]; tools: string[] }
   | { type: 'read'; i: number; reading: ProofReading; findings: ProofFinding[] }
+  | { type: 'outline'; outline: ProofOutline }
   | { type: 'findings'; i: number; findings: ProofFinding[] }
   | { type: 'usage'; model: string; usage: TokenTotals }
   | { type: 'error'; i?: number; message: string }
@@ -500,11 +517,12 @@ export type ProofEvent =
 
 /**
  * 文章校正の 1 回分。text は校正を始めた時点の文章で、文の位置はこれを指す。readings と errors は文ごとで、まだ読んでいない文は null。notices は全体の失敗。
- * usage はモデルごとに使ったトークン数で、数えていない校正には無い。
+ * outline は、文章全体を読み終えるまで無い。usage はモデルごとに使ったトークン数で、数えていない校正には無い。
  */
 export type ProofRun = {
   text: string; sentences: { start: number; end: number }[]; tools: string[]; done: boolean;
   readings: (ProofReading | null)[]; findings: ProofFinding[][]; errors: (string | null)[]; notices: string[];
+  outline?: ProofOutline;
   usage?: Record<string, TokenTotals>;
 };
 

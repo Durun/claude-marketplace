@@ -1,10 +1,10 @@
-// 文章を前から 1 文ずつ、前提知識を持たない読み手に読ませ、7 つの軸で読み進めやすさを示す「文章校正」。メモ帳と同じく、スキンによらず XP の見た目で描く。
+// 文章を前から 1 文ずつ、前提知識を持たない読み手に読ませ、8 つの軸で読み進めやすさを示す「文章校正」。メモ帳と同じく、スキンによらず XP の見た目で描く。
 // 文章、用語集、校正の結果、人間のコメントと固定した文はファイルにして保存し、止めた校正は後から開いて続けられる。
 // 校正を終えた版から、指摘に沿って書き直した次の版を作れる。良い文を固定しながら版を重ねると、固定した文を残したまま直しを重ねられる。
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, mergeClaudeWrites, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
-import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofReading, ProofRun, ProofVersion, Snapshot, TokenTotals } from '../shared/types.ts';
+import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofOutline, ProofReading, ProofRole, ProofRun, ProofVersion, Snapshot, TokenTotals } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -45,6 +45,7 @@ const AXES: { axis: ProofAxis; hint: string }[] = [
   { axis: '近接', hint: '指す先が近くにあるか。係り方が 1 通りに読めるか' },
   { axis: '骨組み', hint: '文が、先に示された枠に入るか、枠を示すか' },
   { axis: '連結', hint: '前の文との関係が分かるか。つなぐのに専門知識が要らないか' },
+  { axis: '貢献', hint: '文が文章全体の主張を支えているか。主張とつながらない文や、前の文の言い直しが無いか' },
   { axis: '語', hint: '曖昧な一般語、同じものの呼び分け、用語集と違う意味の語が無いか' },
   { axis: '負荷', hint: '1 文の長さ、初めて出る語や述語の数、抱えている未解決の疑問の数' },
 ];
@@ -53,6 +54,10 @@ const RELATION: Record<ProofReading['link']['relation'], string> = {
   cause: '理由', result: '結果', example: '例', contrast: '対比', addition: '補足', restate: '言い換え', shift: '転換', none: '読み取れない', first: '最初の文',
 };
 const QUESTION: Record<ProofReading['questions'][number]['kind'], string> = { definition: '何のことか', detail: '中身', reason: '理由', background: '背景', prediction: 'この先' };
+const OUTLINE_ROLE: Record<ProofRole, string> = {
+  claim: '主張', reason: '根拠', detail: '詳細', example: '例', background: '背景', condition: '条件', step: '手順', contrast: '対比', effect: '効果', request: '依頼',
+  preview: '予告', summary: 'まとめ', restate: '言い直し', aside: '余談', heading: '見出し',
+};
 const antecedentOf = (n: number): string => (n > 0 ? `[${n}]` : n === 0 ? '用語集' : n === -1 ? '一般常識' : n === -3 ? 'この後' : '見つからない');
 
 /** 文に付ける印。見せている指摘のうち、いちばん重いもの。 */
@@ -76,6 +81,29 @@ const ReaderNotes = ({ reading }: { reading: ProofReading }) => (
     </dl>
   </details>
 );
+
+/** 文章全体を読んで決めた、文の役割と主張への貢献。貢献は主張との関係（0〜3）に、前の文に無い情報がある確率を掛けたもの。 */
+const OutlineNotes = ({ outline, i }: { outline: ProofOutline; i: number }) => {
+  const o = outline.sentences[i];
+  if (!o) return null;
+  return (
+    <details open>
+      <summary>文章の中での役割</summary>
+      <dl>
+        <dt>文章全体の主張</dt>
+        <dd>{outline.claim}</dd>
+        <dt>役割</dt>
+        <dd>{o.parent > 0 && `[${o.parent}] の`}{OUTLINE_ROLE[o.role]}</dd>
+        {o.support !== undefined && o.fresh !== undefined && (
+          <>
+            <dt>主張への貢献</dt>
+            <dd>{(o.support * o.fresh).toFixed(1)} / 3（主張との関係 {o.support.toFixed(1)} / 3、前の文に無い情報がある確率 {Math.round(o.fresh * 100)}%）</dd>
+          </>
+        )}
+      </dl>
+    </details>
+  );
+};
 
 type FindingProps = { f: ProofFinding; comment?: ProofComment; ignored: boolean; known: boolean; onComment: (c?: ProofComment) => void; onTerm: (term: string, note: string) => void };
 
@@ -152,6 +180,7 @@ const Detail = ({ ver, run, i, only, glossary, onComment, onTerm }: DetailProps)
           return <FindingItem key={key} f={f} comment={ver.comments[key]} ignored={isIgnored(ver, run, i, f)} known={known.has(f.quote ?? '')} onComment={(c) => onComment(key, c)} onTerm={onTerm} />;
         })}
       </ul>
+      {run.outline && <OutlineNotes outline={run.outline} i={i} />}
       {reading && <ReaderNotes reading={reading} />}
     </div>
   );
