@@ -95,6 +95,10 @@ body {
   font: 14px/1.55 var(--sans);
 }
 
+/* 画面のコードを読み込んで描き始めるまでは、何も無い暗い画面になる。その間は Windows XP の STOP エラーの画面を出し、#app に描き始めたら隠す。文字は、80 桁が画面の幅に収まる大きさにする。 */
+.bsod { position: fixed; inset: 0; margin: 0; padding: 1em; overflow: hidden; background: #0000aa; color: #fff; font: 1.9vw/1.25 "Lucida Console", var(--mono); }
+#app:not(:empty) ~ .bsod { display: none; }
+
 a { color: var(--link); }
 h1, h2, h3 { margin: 0; line-height: 1.4; }
 button, input, textarea { font: inherit; color: inherit; }
