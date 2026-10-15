@@ -7,6 +7,8 @@ type Shortcut = { key: string; shift?: boolean };
 
 export const SEARCH_SHORTCUT: Shortcut = { key: 'k' };
 export const EDIT_SHORTCUT: Shortcut = { key: 'e', shift: true };
+export const OPEN_SHORTCUT: Shortcut = { key: 'o' };
+export const SAVE_SHORTCUT: Shortcut = { key: 's' };
 
 export const shortcutLabel = ({ key, shift }: Shortcut): string =>
   IS_MAC ? `${shift ? '⇧' : ''}⌘${key.toUpperCase()}` : `Ctrl+${shift ? 'Shift+' : ''}${key.toUpperCase()}`;

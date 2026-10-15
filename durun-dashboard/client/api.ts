@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo,
+  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -57,7 +57,9 @@ export const api = {
   diff: (id: string, full: boolean, range?: DiffRange, view?: BranchView) =>
     getJson<DiffResult>(`${session(id)}/diff?${query({ full: full ? '1' : undefined, ...range, branch: view?.branch, base: view?.base })}`),
   file: (id: string, path: string, branch?: string) => getJson<DiffFile>(`${session(id)}/file?${query({ path, branch })}`),
-  localFile: (id: string, path: string) => getJson<{ path: string; content: string }>(`${files(id)}/local-file?${query({ path })}`),
+  localFile: (id: string, path: string) => getJson<{ path: string; content: string; modifiedAt: number }>(`${files(id)}/local-file?${query({ path })}`),
+  /** メモ帳で編集したファイルを上書きする。modifiedAt は読んだときの更新時刻で、その後にほかで書き換えられていたら、上書きせずに changed を返す。 */
+  saveLocalFile: (path: string, content: string, modifiedAt: number) => postJson<TextSaveResult>(`/api/local-file?${query({ path })}`, { content, modifiedAt }),
   resolveFile: (id: string, path: string) => getJson<FileTarget>(`${files(id)}/resolve-file?${query({ path })}`),
   mediaUrl: (id: string, path: string) => `${files(id)}/media?${query({ path })}`,
   localFileEventsUrl: (id: string, path: string) => `${files(id)}/local-file/events?${query({ path })}`,

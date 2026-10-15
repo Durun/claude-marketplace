@@ -5,7 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { baseName, toggled } from '../client/explorerFavorites.ts';
 import { fmtBytes } from '../client/format.ts';
-import { listDir } from '../server/explorer.ts';
+import { listDir, saveText } from '../server/explorer.ts';
 import { platformFor } from '../server/platform.ts';
 
 test('listDir は、フォルダーを先に名前の順で並べ、ファイルには大きさを付け、1 つ上のフォルダーと最上位の場所を添える', (t) => {
@@ -41,6 +41,25 @@ test('listDir は、省くとホームディレクトリを読み、最上位で
   assert.equal(listDir(undefined, p).path, listDir('~', p).path);
   assert.equal(listDir(path.parse(os.homedir()).root, p).parent, undefined);
   assert.throws(() => listDir(path.join(os.tmpdir(), 'explorer-no-such-dir'), p), /ENOENT/);
+});
+
+test('saveText は、読んだときの更新時刻のままなら上書きし、CRLF のファイルは CRLF のまま保つ。ほかで書き換えられていたら上書きしない', (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'notepad-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const crlf = path.join(tmp, 'crlf.txt');
+  const lf = path.join(tmp, 'lf.txt');
+  fs.writeFileSync(crlf, 'a\r\nb');
+  fs.writeFileSync(lf, 'a\nb');
+  const read = new Date('2020-01-01T00:00:00Z');
+  fs.utimesSync(crlf, read, read);
+  const saved = saveText(crlf, 'x\ny', read.getTime());
+  assert.deepEqual(saved, { modifiedAt: fs.statSync(crlf).mtimeMs });
+  assert.equal(fs.readFileSync(crlf, 'utf8'), 'x\r\ny');
+  // 上書きした後の更新時刻は、読んだときのものと違うので、読んだときの更新時刻のままでは上書きしない。
+  assert.deepEqual(saveText(crlf, 'z', read.getTime()), { modifiedAt: saved.modifiedAt, changed: true });
+  assert.equal(fs.readFileSync(crlf, 'utf8'), 'x\r\ny');
+  saveText(lf, 'x\ny', fs.statSync(lf).mtimeMs);
+  assert.equal(fs.readFileSync(lf, 'utf8'), 'x\ny');
 });
 
 test('お気に入りは、登録していなければ末尾に足し、していれば外す。名前には、パスの最後の区切りを出す', () => {

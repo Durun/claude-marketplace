@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -24,7 +24,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
-import { listDir } from './explorer.ts';
+import { listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
@@ -118,7 +118,7 @@ const readBody = async (req: IncomingMessage): Promise<unknown> => {
   }
 };
 
-const field = <T>(body: unknown, key: string, type: 'string' | 'boolean' | 'object'): T => {
+const field = <T>(body: unknown, key: string, type: 'string' | 'number' | 'boolean' | 'object'): T => {
   const v = (body as Record<string, unknown>)[key];
   if (typeof v !== type) throw new HttpError(400, `${key} must be ${type}`);
   return v as T;
@@ -278,11 +278,18 @@ const localPath = (id: string, url: URL): { ref: string; full: string; stat?: fs
 
 const mediaType = (full: string): string | undefined => MEDIA_TYPES[path.extname(full).toLowerCase()];
 
-/** リポジトリの外のファイルを読む。 */
-const localFile = (id: string, url: URL): { path: string; content: string } => {
+/** リポジトリの外のファイルを読む。modifiedAt は、メモ帳で上書きするときに、読んだ後にほかで書き換えられていないかを確かめるのに使う。 */
+const localFile = (id: string, url: URL): { path: string; content: string; modifiedAt: number } => {
   const { ref, full, stat } = localPath(id, url);
   if (!stat || stat.size > MAX_LOCAL_FILE_BYTES) throw new HttpError(404, `「${ref}」を読めません`);
-  return { path: full, content: fs.readFileSync(full, 'utf8') };
+  return { path: platform.displayPath(full), content: fs.readFileSync(full, 'utf8'), modifiedAt: stat.mtimeMs };
+};
+
+/** メモ帳で編集したファイルを上書きする。メモ帳には「名前を付けて保存」が無いので、すでにあるファイルだけを上書きする。 */
+const saveLocalFile = (url: URL, body: unknown): TextSaveResult => {
+  const { ref, full, stat } = localPath('', url);
+  if (!stat) throw new HttpError(404, `「${ref}」に書き込めません`);
+  return saveText(full, field<string>(body, 'content', 'string'), field<number>(body, 'modifiedAt', 'number'));
 };
 
 /** ウィンドウに浮かべたファイルが書き換わるたびに知らせる。保存で置き換えるエディタでも追えるよう、ファイルではなくディレクトリを見る。 */
@@ -957,6 +964,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
+  [/^\/api\/local-file$/, (_, b, url) => saveLocalFile(url, b)],
   // 作るたびに Jev を使うので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],

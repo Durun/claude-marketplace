@@ -359,7 +359,7 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
             }}
           >
             <button class="xp-item" onClick={() => openFile(String(Date.now()))}><span>新規(N)</span></button>
-            <button class="xp-item proof-submenu" popovertarget={menuId('recent')}><span>最近使ったファイル(F)</span></button>
+            <button class="xp-item xp-submenu" popovertarget={menuId('recent')}><span>最近使ったファイル(F)</span></button>
             <div id={menuId('recent')} class="xp-dropdown" popover>
               {recent.map((r) => (
                 <button key={r.id} class="xp-item" role="menuitemcheckbox" aria-checked={r.id === fileId} onClick={() => openFile(r.id)}>
@@ -371,7 +371,7 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
             </div>
             {ver && (
               <>
-                <button class="xp-item proof-submenu" popovertarget={menuId('export')}><span>v{n + 1} をエクスポート(E)</span></button>
+                <button class="xp-item xp-submenu" popovertarget={menuId('export')}><span>v{n + 1} をエクスポート(E)</span></button>
                 <div id={menuId('export')} class="xp-dropdown" popover>
                   <button class="xp-item" onClick={() => copyVersion(ver, n)}><span>クリップボードにコピー(C)</span></button>
                 </div>

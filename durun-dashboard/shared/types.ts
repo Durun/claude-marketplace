@@ -387,6 +387,9 @@ export type ExplorerEntry = { name: string; path: string; dir: boolean; size?: n
  */
 export type ExplorerDir = { path: string; parent?: string; home: string; roots: string[]; entries: ExplorerEntry[]; truncated: boolean };
 
+/** メモ帳でファイルを上書きした結果。modifiedAt はファイルの今の更新時刻。changed は、読んだ後にほかで書き換えられていて、上書きしなかったとき。 */
+export type TextSaveResult = { modifiedAt: number; changed?: boolean };
+
 /** 人間が資料に足したファイル。path は絶対パス。 */
 export type SavedFile = { path: string; at: number };
 
