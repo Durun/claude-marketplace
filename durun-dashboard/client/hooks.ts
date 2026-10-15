@@ -189,3 +189,26 @@ export const usePicked = (kind: string, session: string): string | undefined => 
   }, [key]);
   return pick;
 };
+
+/**
+ * 折りたたんだものの名前を key でブラウザに保存し、開き直しても閉じたままにする。toggle は details の toggle で呼ぶ。
+ * details は開いた状態で描いたときにも toggle を送るので、開閉が変わったときだけ保存する。
+ */
+export const useCollapsed = (key: string): { collapsed: Set<string>; toggle: (name: string, open: boolean) => void } => {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(key) ?? '[]') as string[]);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const toggle = (name: string, open: boolean) => {
+    if (open === !collapsed.has(name)) return;
+    const next = new Set(collapsed);
+    if (open) next.delete(name);
+    else next.add(name);
+    setCollapsed(next);
+    localStorage.setItem(key, JSON.stringify([...next]));
+  };
+  return { collapsed, toggle };
+};

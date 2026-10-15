@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Session, SessionSummary, Snapshot, TaskItem } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
+import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { Chip, ContextBar, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
@@ -207,14 +208,6 @@ const ThemeTitle = ({ theme, count }: { theme: string; count: number }) => {
 // 折りたたんだテーマは、ホームを開き直しても閉じたままにするため、ブラウザに保存する。
 const COLLAPSED_KEY = 'dashboard-collapsed-themes';
 
-const loadCollapsed = (): Set<string> => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as string[]);
-  } catch {
-    return new Set();
-  }
-};
-
 /** ピン留めは付けるだけにして、テーマを残す。ピン留めから出すときは、外してから落とした先のテーマにする。 */
 const moveToGroup = (s: Session, to: string): Promise<unknown> =>
   attempt('セッションの移動', async () => {
@@ -341,23 +334,14 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<s
 
 /** アーカイブしたセッションは並べない。 */
 export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Selection }) => {
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const { collapsed, toggle } = useCollapsed(COLLAPSED_KEY);
   const visible = snapshot.sessions.filter((s) => !s.archived);
   const { groups, carried, dragOf, groupDrag } = useSessionOrder(snapshot, visible, sel.selected);
   if (visible.length === 0) return <Empty>表示できるセッションがありません。</Empty>;
-  // 開いた状態で描いたときにも toggle が届くので、変わったときだけ保存する。
-  const onToggle = (theme: string, open: boolean) => {
-    if (open === !collapsed.has(theme)) return;
-    const next = new Set(collapsed);
-    if (open) next.delete(theme);
-    else next.add(theme);
-    setCollapsed(next);
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
-  };
   return (
     <>
       {groups.map((g) => (
-        <details key={g.theme} class="theme-group" open={!collapsed.has(g.theme)} onToggle={(e) => onToggle(g.theme, e.currentTarget.open)} {...groupDrag(g.theme)}>
+        <details key={g.theme} class="theme-group" open={!collapsed.has(g.theme)} onToggle={(e) => toggle(g.theme, e.currentTarget.open)} {...groupDrag(g.theme)}>
           <summary>
             <h3 class="theme-head">
               <SelectBox ids={g.sessions.map((s) => s.id)} sel={sel} label={`${g.theme || PINNED_TITLE} のセッションをすべて選ぶ`} />

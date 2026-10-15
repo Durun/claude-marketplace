@@ -3,12 +3,13 @@ import { useEffect } from 'preact/hooks';
 import type { InboxPr } from '../shared/types.ts';
 import { api } from './api.ts';
 import type { Control } from './Float.tsx';
-import { useCached } from './hooks.ts';
+import { useCached, useCollapsed } from './hooks.ts';
 import { Empty, Ext, Time } from './ui.tsx';
 
 export const GITHUB_INBOX_TITLE = 'GitHub Inbox';
 // タイトルバーのボタンはウィジェットの外にあるので、イベントで探し直させる。
 const REFRESH_EVENT = 'github-inbox-refresh';
+const COLLAPSED_KEY = 'dashboard-collapsed-github-inbox';
 
 export const githubInboxControls = (): Control[] => [
   { kind: 'refresh', label: 'GitHub の PR を探し直す', onClick: () => dispatchEvent(new Event(REFRESH_EVENT)) },
@@ -29,6 +30,7 @@ const PrRow = ({ pr }: { pr: InboxPr }) => (
 
 export const GithubInbox = () => {
   const { data, error, reload } = useCached(api.githubInbox, []);
+  const { collapsed, toggle } = useCollapsed(COLLAPSED_KEY);
   useEffect(() => {
     addEventListener(REFRESH_EVENT, reload);
     return () => removeEventListener(REFRESH_EVENT, reload);
@@ -47,13 +49,16 @@ export const GithubInbox = () => {
           <Empty>自分に関わる開いた PR はありません。</Empty>
         ) : (
           data.map((s) => (
-            <section key={s.title} class="inbox-section">
-              <h3 class="inbox-section-title">
-                {s.title}
-                <span class="count-pill">{s.prs.length}</span>
-              </h3>
+            <details key={s.title} class="inbox-section" open={!collapsed.has(s.title)} onToggle={(e) => toggle(s.title, e.currentTarget.open)}>
+              <summary>
+                <h3 class="inbox-section-title">
+                  {s.title}
+                  <span class="count-pill">{s.prs.length}</span>
+                  <span class="chevron" aria-hidden="true">{collapsed.has(s.title) ? '▸' : '▾'}</span>
+                </h3>
+              </summary>
               <ul class="jira-list">{s.prs.map((pr) => <PrRow key={pr.url} pr={pr} />)}</ul>
-            </section>
+            </details>
           ))
         )}
       </div>

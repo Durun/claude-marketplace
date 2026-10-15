@@ -854,6 +854,9 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-summary { overflow-wrap: anywhere; }
 .inbox-section + .inbox-section { margin-top: 12px; }
 .inbox-section-title { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+/* 区分は見出しを押すと折りたためる。開閉の印は、テーマの見出しと同じく右端に置く。 */
+.inbox-section > summary { list-style: none; cursor: pointer; }
+.inbox-section-title .chevron { margin-left: auto; }
 
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }
