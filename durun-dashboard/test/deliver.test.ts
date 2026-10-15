@@ -106,7 +106,7 @@ test('再送すると、届けられなかったメッセージだけを、新�
   await close(inbox.server);
 });
 
-test('入力待ちのバックグラウンドのセッションは、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {
+test('入力待ちのバックグラウンドのセッションは、前の発言を既読にし、止めてから前置きを付けずに再開して渡し、失敗したら未配信に戻す', async () => {
   // 偽の claude は、cmux のラッパーを素通しさせる環境変数と、呼ばれた引数を 1 回ごとに書き足す。
   // stop はすぐに戻り、少し後で supervisor の名簿から j2 を消す。再開の --bg は、名簿に j2 が残っていれば複製になるので、それを理由に失敗する。
   const bin = path.join(tmp, 'bin-restart');
@@ -126,8 +126,11 @@ if (args[0] === '--bg') {
   fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's2.json'), JSON.stringify({ pid: process.pid, sessionId: 's2', cwd: tmp, status: 'idle', kind: 'bg', jobId: 'j2' }));
   ensureSession('s2', tmp);
 
+  const sentAt = Date.now();
   const { message, delivery } = sendMessage('s2', '- push して');
   assert.equal(delivery, 'resumed');
+  // 再開したセッションが依頼を読み始めるまでの間に、前の発言を返信待ちとして通知しない。
+  assert.ok((state.sessions.s2?.replySeenAt ?? 0) >= sentAt);
   await new Promise<void>((resolve) => onChange(() => message.error && resolve()));
   const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
   assert.deepEqual(calls, [

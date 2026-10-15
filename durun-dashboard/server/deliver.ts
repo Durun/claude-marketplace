@@ -116,6 +116,10 @@ const waitForStop = (jobId: string): Promise<void> =>
  * flags は switchSession が渡す。claude の出力を返す。
  */
 const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string, flags: string[] = []): Promise<string> => {
+  // 再開したセッションは、渡した依頼を読み始めるまでの数秒、入力待ちに見える。その間に前の発言を返信待ちとして通知し直さないよう、既読にする。
+  const meta = state.sessions[sessionId];
+  if (meta) meta.replySeenAt = Date.now();
+  touch();
   // cmux の端末から起動すると、cmux の claude のラッパーが --settings を足す。
   // フラグを付けて --resume すると、バックグラウンドのセッションは起動したときのオプションを守るために複製を作るので、ラッパーに足させない。
   const env = { ...process.env, CMUX_CLAUDE_HOOKS_DISABLED: '1' };
