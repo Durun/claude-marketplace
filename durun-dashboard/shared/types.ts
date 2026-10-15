@@ -348,7 +348,7 @@ export type Snapshot = {
   notion?: boolean;
   /** Jev のキーを設定してあるか。画面は、設定してあるときだけ、イルカの吹き出しにマインスイーパのヒントを出す。 */
   jev?: boolean;
-  /** Claude が MCP で文章校正のファイルにコメントを書き込んだ時刻を、ファイルの id ごとに持つ。画面が前に受け取ったスナップショットから描き始めるときは無い。 */
+  /** Claude が MCP で文章校正のファイルにコメントか修正版を書き込んだ時刻を、ファイルの id ごとに持つ。画面が前に受け取ったスナップショットから描き始めるときは無い。 */
   proofCommentedAt?: Record<string, number>;
   /** 画面のファイルの更新時刻。変わったら画面が読み込み直す。 */
   assets: { js: number; css: number };

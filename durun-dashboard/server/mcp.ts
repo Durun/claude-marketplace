@@ -2,14 +2,14 @@
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { applyEvent, emptyRun, newVersion, titleOf } from '../shared/proofread.ts';
+import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '../shared/types.ts';
 import { readLiveSessions } from './claude.ts';
 import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
-import { MAX_SENTENCES, commentFindings, proofReport, proofread } from './proofread.ts';
+import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
 import { changed, newId, state, touch, type StoredAttention } from './store.ts';
 
@@ -25,7 +25,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
-- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。`;
+- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。`;
 
 const TOOLS = [
   {
@@ -120,7 +120,7 @@ const TOOLS = [
   {
     name: 'comment_proofread',
     description:
-      'proofread が返した版の指摘に、書き手の事情を踏まえたコメントを返す。コメントは、人間が文章校正アプリで修正版を作るときに、その指摘をどう直すかの指示になる。主要な指摘にコメントを返したら、文章は直さずにターンを終える。',
+      'proofread が返した版の指摘に、書き手の事情を踏まえたコメントを返す。コメントは、文章校正アプリか revise_proofread で修正版を作るときに、その指摘をどう直すかの指示になる。主要な指摘にコメントを返したら、修正版を頼まれていなければ、文章は直さずにターンを終える。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -140,6 +140,19 @@ const TOOLS = [
         },
       },
       required: ['file', 'version', 'comments'],
+    },
+  },
+  {
+    name: 'revise_proofread',
+    description:
+      '文章校正アプリの「修正版を作る」と同じく、proofread が返した版を、無視していない指摘とコメントに沿って opus に書き直させる。書き直した文章を次の版としてアプリのファイルに足し、その文章を返す。人間に修正版を頼まれたときに使う。数分かかることがある。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', description: 'proofread が返したファイルの id' },
+        version: { type: 'integer', description: '書き直す版の番号（v3 なら 3）。校正を終えた版を渡す。' },
+      },
+      required: ['file', 'version'],
     },
   },
 ];
@@ -364,7 +377,32 @@ const commentProofread = (args: ToolArgs): object => {
   writeProofFile({ ...file, versions: file.versions.map((x, n) => (n === k ? next : x)), updatedAt: Date.now() });
   proofCommentedAt[file.id] = Date.now();
   changed();
-  return textResult(`v${k + 1} にコメントを ${comments.length - missing.length} 件残しました。${notFound}人間が文章校正アプリでコメントを読み、修正版を作ります。主要な指摘にコメントを返し終えたら、文章は直さずにターンを終えてください。`);
+  return textResult(`v${k + 1} にコメントを ${comments.length - missing.length} 件残しました。${notFound}主要な指摘にコメントを返し終えたら、人間に修正版を頼まれていれば revise_proofread で作ってください。頼まれていなければ、文章は直さずにターンを終えてください。人間が文章校正アプリでコメントを読み、修正版を作ります。`);
+};
+
+/**
+ * アプリの「修正版を作る」と同じく、指した版を指摘とコメントに沿って書き直し、次の版としてファイルの末尾に足す。
+ * 書き直している間に人間がアプリで足した版を消さないよう、足す直前にファイルを読み直す。開いているアプリには、スナップショットで知らせて取り込ませる。
+ */
+const reviseProofread = async (res: ServerResponse, rpcId: RpcId, params: RpcParams, args: ToolArgs): Promise<void> => {
+  const target = proofVersion(args);
+  if ('error' in target) return send(res, { id: rpcId, result: target.error });
+  const { file, k, ver } = target;
+  const run = ver.run!;
+  const { fixed, notes } = reviseInput(ver, run);
+  const finish = openStream(res, rpcId, params, () => `v${k + 1} の修正版を書いています`);
+  try {
+    const text = await revise(run.text, parseProof(run.text), file.glossary, new Set(fixed), notes);
+    const disk = readProofFile(file.id) ?? file;
+    const versions = [...disk.versions, newVersion(text, k, ver.fixed)];
+    const title = titleOf({ ...disk, versions });
+    writeProofFile({ ...disk, title, versions, updatedAt: Date.now() });
+    proofCommentedAt[file.id] = Date.now();
+    changed();
+    finish(textResult(`v${k + 1} の指摘とコメントに沿って書き直し、文章校正アプリのファイル「${title}」（file: ${file.id}）に v${versions.length} として足しました。人間はアプリでこの版を開けます。書き直した文章は次のとおりです。\n\n${text}`));
+  } catch (e) {
+    finish(textResult(`修正版を作れませんでした。${(e as Error).message}`, true));
+  }
 };
 
 /** from を省いたときは範囲を決めず、画面の既定（分岐点から未コミットの変更まで）に任せる。 */
@@ -400,6 +438,8 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return str(args.file) ? send(res, { id: rpcId, result: versionReport(args) }) : void runProofread(res, rpcId, params, sessionId, args);
     case 'comment_proofread':
       return send(res, { id: rpcId, result: commentProofread(args) });
+    case 'revise_proofread':
+      return void reviseProofread(res, rpcId, params, args);
     default:
       return send(res, { id: rpcId, error: { code: METHOD_NOT_FOUND, message: `Unknown tool: ${String(params.name)}` } });
   }

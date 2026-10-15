@@ -74,17 +74,18 @@ export const reviseInput = (ver: ProofVersion, run: ProofRun): { fixed: number[]
 });
 
 /**
- * Claude が MCP でファイルに書き込んだコメントを、開いているファイル cur に取り込む。base は cur を最後に読み込んだか保存したときの中身、disk は今のファイルの中身。
- * 人間の書きかけの変更を消さないよう、base から disk で変わったコメントだけを重ねる。重ねるものが無ければ cur をそのまま返す。
+ * Claude が MCP でファイルに書き込んだコメントと修正版を、開いているファイル cur に取り込む。base は cur を最後に読み込んだか保存したときの中身、disk は今のファイルの中身。
+ * 人間の書きかけの変更を消さないよう、base から disk で変わったコメントだけを重ね、disk で増えた版を末尾に足す。取り込むものが無ければ cur をそのまま返す。
  */
-export const mergeComments = (cur: ProofFile, base: ProofFile, disk: ProofFile): ProofFile => {
+export const mergeClaudeWrites = (cur: ProofFile, base: ProofFile, disk: ProofFile): ProofFile => {
   const same = (a: ProofComment, b?: ProofComment) => a.text === b?.text && a.ignore === b?.ignore;
   const versions = cur.versions.map((ver, k) => {
     const was = base.versions[k]?.comments ?? {};
     const added = Object.entries(disk.versions[k]?.comments ?? {}).filter(([key, c]) => !same(c, was[key]));
     return added.length ? { ...ver, comments: { ...ver.comments, ...Object.fromEntries(added) } } : ver;
   });
-  return versions.some((ver, k) => ver !== cur.versions[k]) ? { ...cur, versions } : cur;
+  const revised = disk.versions.slice(base.versions.length);
+  return revised.length || versions.some((ver, k) => ver !== cur.versions[k]) ? { ...cur, versions: [...versions, ...revised] } : cur;
 };
 
 /** 用語集の 1 行は「語：説明」か、説明の無い「語」。サーバーの読み方と合わせる。 */
