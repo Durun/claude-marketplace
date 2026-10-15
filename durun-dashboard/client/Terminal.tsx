@@ -1,6 +1,7 @@
 // ダッシュボードを動かしている端末で、screen や tmux のセッションにアタッチする「コマンドプロンプト」。アタッチするコマンドは、サーバーの TERMINAL_ATTACH_COMMAND で決める。
 // ダッシュボードが起動し直して接続が切れたら、つなぎ直してアタッチし直す。端末の中身は screen や tmux に残る。
 import type { FitAddon } from '@xterm/addon-fit';
+import type { Unicode11Addon } from '@xterm/addon-unicode11';
 import type { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'preact/hooks';
 import { api } from './api.ts';
@@ -27,8 +28,12 @@ export const TerminalIcon = ({ cwd }: { cwd?: string }) => (
  * el に描いた端末を、サーバーがアタッチした端末につなぐ。返す関数で切り離す。
  * サーバーは接続ごとに ready で id を渡すので、入力と大きさの変更はその id へ送る。つなぎ直したら描いた中身を消し、アタッチし直した端末の描き直しに任せる。
  */
-const connect = (el: HTMLElement, term: Terminal, fit: FitAddon, cwd?: string): (() => void) => {
+const connect = (el: HTMLElement, term: Terminal, fit: FitAddon, unicode11: Unicode11Addon, cwd?: string): (() => void) => {
   term.loadAddon(fit);
+  // xterm.js は既定で Unicode 6 の文字幅で数え、tmux や claude が Unicode 11 以降で数える ⏺ や絵文字の幅と食い違う。
+  // 食い違うと、その後ろの文字と色が横にずれ、書き直したときに前の色が残るので、Unicode 11 の幅にそろえる。
+  term.loadAddon(unicode11);
+  term.unicode.activeVersion = '11';
   term.open(el);
   fit.fit();
   let id: string | undefined;
@@ -69,10 +74,12 @@ export const TerminalFloat = ({ f }: { f: Float }) => {
     let live = true;
     let stop: (() => void) | undefined;
     // xterm.js は大きいので、コマンドプロンプトを開くときだけ読み込む。
-    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([{ Terminal }, { FitAddon }]) => {
+    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-unicode11')]).then(([{ Terminal }, { FitAddon }, { Unicode11Addon }]) => {
       const host = el.current;
       if (!live || !host) return;
-      stop = connect(host, new Terminal({ fontFamily: getComputedStyle(host).getPropertyValue('--mono').trim(), fontSize: 13 }), new FitAddon(), cwd);
+      // Unicode 11 の文字幅を入れる term.unicode は、提案中の API なので許可する。
+      const term = new Terminal({ fontFamily: getComputedStyle(host).getPropertyValue('--mono').trim(), fontSize: 13, allowProposedApi: true });
+      stop = connect(host, term, new FitAddon(), new Unicode11Addon(), cwd);
     });
     return () => {
       live = false;

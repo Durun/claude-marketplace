@@ -39,8 +39,9 @@ export const streamTerminal = async (res: ServerResponse, cwd: string, command =
     const { spawn } = await import('node-pty');
     const { file, args } = platform.shellCommand(command);
     // ダッシュボードを screen や tmux の中で起動していても、入れ子と見なされずにアタッチできるよう、その印の変数を外す。
+    // 画面の xterm.js は 24 ビットの色を描けるので、COLORTERM で知らせる。知らせないと tmux や claude が色を 256 色に丸める。
     const { TMUX, STY, ...env } = process.env;
-    term = spawn(file, args, { name: 'xterm-256color', cwd, env });
+    term = spawn(file, args, { name: 'xterm-256color', cwd, env: { ...env, COLORTERM: 'truecolor' } });
   } catch (e) {
     return exit(`端末を開けません（${(e as Error).message}）`);
   }
