@@ -93,16 +93,16 @@ const JiraView = ({ issueKey, version }: { issueKey: string; version?: string })
   return issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />;
 };
 
-/** セッションに課題が複数あるときは、上に並べたキーで切り替える。状態が変わったら読み直す。 */
+/** セッションに課題が複数あるときは、上に並べたキーのタブで切り替える。状態が変わったら読み直す。 */
 export const JiraWidget = ({ s }: { s: Session }) => {
   const pick = usePicked(JIRA_WIDGET, s.id);
   const issue = s.jira.find((j) => j.key === pick) ?? s.jira[0];
   return (
     <WidgetPanel title={JIRA_VIEW_TITLE}>
       {s.jira.length > 1 && (
-        <div class="chips">
+        <div class="pick-tabs" role="tablist" aria-label="課題">
           {s.jira.map((j) => (
-            <button key={j.key} class="btn btn-sm" aria-pressed={j === issue} title={j.summary} onClick={() => pickInWidget(JIRA_WIDGET, s.id, j.key)}>{j.key}</button>
+            <button key={j.key} role="tab" aria-selected={j === issue} title={j.summary} onClick={() => pickInWidget(JIRA_WIDGET, s.id, j.key)}>{j.key}</button>
           ))}
         </div>
       )}

@@ -109,12 +109,12 @@ export const usePickedPr = (s: Session): PrInfo | undefined => {
   return prs.find((p) => p.url === pick) ?? prs[0];
 };
 
-/** セッションに PR が複数あるときに上に並べる番号。押すと、ウィジェットで出す PR を切り替える。 */
+/** セッションに PR が複数あるときに上に並べる番号のタブ。押すと、ウィジェットで出す PR を切り替える。 */
 export const PrPicker = ({ s, pr }: { s: Session; pr?: PrInfo }) =>
   s.prs && s.prs.length > 1 ? (
-    <div class="chips">
+    <div class="pick-tabs" role="tablist" aria-label="PR">
       {s.prs.map((p) => (
-        <button key={p.url} class="btn btn-sm" aria-pressed={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
+        <button key={p.url} role="tab" aria-selected={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
       ))}
     </div>
   ) : null;

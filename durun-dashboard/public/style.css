@@ -562,9 +562,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
  */
 .widget-tabs-head { display: flex; align-items: flex-end; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 .widget-tabs { display: flex; flex: 1; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
-.widget-tab { margin-bottom: -1px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-2); font-weight: 500; white-space: nowrap; cursor: pointer; }
-.widget-tab:hover { color: var(--text); }
-.widget-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
+.widget-tab, .pick-tabs > button { margin-bottom: -1px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-2); font-weight: 500; white-space: nowrap; cursor: pointer; }
+.widget-tab:hover, .pick-tabs > button:hover { color: var(--text); }
+.widget-tab[aria-selected="true"], .pick-tabs > button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
+/* セッションの PR や課題を切り替えるタブ。枠のタブと同じ見た目にし、XP のスキンでは校正の版のタブと同じ見た目にする。数は少ないので、収まらなければ折り返す。 */
+.pick-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 .widget-tab-panel:not([hidden]) { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .widget-tab-panel > .section-title { display: none; }
 .section-title { display: flex; align-items: center; margin: 0 0 10px; font-size: 15px; }
@@ -719,9 +721,9 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof-gloss td:last-child { color: #808080; text-align: right; }
 .proof-gloss tr[data-unused] { color: #aca899; }
 .proof-gloss p { margin: 4px 0 0; color: #808080; }
-.proof-tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid #aca899; }
-.proof-tabs > button { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
-.proof-tabs > button[aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
+.proof-tabs, [data-skin="xp"] .pick-tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid #aca899; }
+.proof-tabs > button, [data-skin="xp"] .pick-tabs > button { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
+.proof-tabs > button[aria-selected="true"], [data-skin="xp"] .pick-tabs > button[aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
 .proof-detail blockquote { margin: 0 0 8px; padding: 4px 6px; border-left: 3px solid #aca899; background: #f6f5ef; white-space: pre-wrap; }
 .proof-detail p { margin: 0 0 6px; }
 .proof-findings { display: grid; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
@@ -890,8 +892,6 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 @container (height < 36px) { .card-summary p + p { display: none; } }
 @container (width < 160px) { .card-summary p { display: none; } }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-/* セッションの PR や課題を切り替える番号は、ウィジェットに出しているものに色を付ける。 */
-.chips > .btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .activity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; }
 .task-line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .active-form { max-width: 30ch; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
