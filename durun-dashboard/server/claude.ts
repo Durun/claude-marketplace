@@ -47,6 +47,10 @@ export const listDir = (dir: string): string[] => {
   }
 };
 
+/** 入れてあるプラグインの場所。id は「プラグイン名@マーケットプレイス名」。入っていなければ undefined。 */
+export const pluginDir = (id: string): string | undefined =>
+  readJson<{ plugins: Record<string, { installPath?: string }[]> }>(path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json'))?.plugins?.[id]?.[0]?.installPath;
+
 export type LiveSession = {
   pid: number;
   sessionId: string;

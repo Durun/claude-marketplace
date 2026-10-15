@@ -7,8 +7,11 @@ import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, mergeComments, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { ProofEvent, ProofFinding, ProofReading, ReviseNote } from '../shared/types.ts';
-import { commentFindings, ledgerFinding, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } from '../server/proofread.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
+
+// 修正版は入れてあるプラグインを見て書き方を変えるので、実際の Claude Code の設定ではなく、一時ディレクトリを読ませる。
+process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-claude-'));
+const { commentFindings, ledgerFinding, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } = await import('../server/proofread.ts');
 
 const DOC = `# 方針
 
@@ -194,7 +197,33 @@ test('修正版は、指摘と人間のコメントを渡して文ごとに opus
   assert.ok(prompt.includes('\n\n[2]（固定） 決定は次のとおりである。\n\n1. [3] **パス**'));
   assert.ok(prompt.includes('[3] 参照（読み進めを妨げる）：「焼く」指す先が見つからない\n  人間のコメント：埋め込むと言い換える'));
   assert.ok(prompt.includes('<glossary>\nCDN：配信網\n</glossary>'));
-  assert.match(fs.readFileSync(argsFile, 'utf8'), /--model opus --effort medium /);
+  assert.match(fs.readFileSync(argsFile, 'utf8'), /--safe-mode --tools  --model opus --effort medium /);
+});
+
+test('yomiyasu が入っていれば、修正版はそのスキルを読ませた opus に、指摘の無い文も推敲させる', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-yomiyasu-'));
+  const plugin = path.join(tmp, 'yomiyasu');
+  fs.mkdirSync(plugin);
+  const installed = path.join(process.env.CLAUDE_CONFIG_DIR!, 'plugins', 'installed_plugins.json');
+  fs.mkdirSync(path.dirname(installed), { recursive: true });
+  fs.writeFileSync(installed, JSON.stringify({ plugins: { 'yomiyasu@yomiyasu': [{ scope: 'user', installPath: plugin }] } }));
+  const promptFile = path.join(tmp, 'prompt');
+  const argsFile = path.join(tmp, 'args');
+  const cwdFile = path.join(tmp, 'cwd');
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nfs.writeFileSync(${js(argsFile)}, args.join(' '));\nfs.writeFileSync(${js(cwdFile)}, process.cwd());\nconsole.log(JSON.stringify({ structured_output: { edits: [] } }));`);
+  try {
+    assert.equal(await revise(DOC, parseProof(DOC), '', new Set(), []), DOC);
+  } finally {
+    fs.rmSync(installed);
+  }
+  const prompt = fs.readFileSync(promptFile, 'utf8');
+  assert.ok(prompt.startsWith('/yomiyasu:yomiyasu\n\n'));
+  assert.ok(prompt.includes('\n- 指摘の無い文も、yomiyasu のスキルに沿って推敲する。\n\n<glossary>'));
+  const args = fs.readFileSync(argsFile, 'utf8');
+  assert.ok(args.includes(`--setting-sources  --strict-mcp-config --plugin-dir ${plugin} --tools Read `));
+  assert.ok(!args.includes('--safe-mode'));
+  // スキルが参照するファイルを読めるよう、プラグインの場所で動かす。
+  assert.equal(fs.realpathSync(fs.readFileSync(cwdFile, 'utf8')), fs.realpathSync(plugin));
 });
 
 test('校正の進み具合を版に積み、固定した文の指摘と「コメントして無視」にした指摘を、数と修正版から外す', () => {

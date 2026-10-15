@@ -12,32 +12,34 @@ const READER_TIMEOUT_MS = 10 * 60_000;
 // 長い文章では書き直す文が多く、数分かかることがある。
 const OPUS_TIMEOUT_MS = 10 * 60_000;
 
+const COMMON_ARGS = ['-p', '--no-session-persistence', '--output-format', 'json'];
 // フック、MCP、CLAUDE.md を外す。フックが動くと、このセッションもダッシュボードに記録される。
-const COMMON_ARGS = ['-p', '--safe-mode', '--no-session-persistence', '--output-format', 'json'];
+const SAFE_MODE = '--safe-mode';
 
 // 数秒で返るよう、ツールと思考も外す。
 const HAIKU_ARGS = [
-  '--model', 'haiku', '--tools', '',
+  SAFE_MODE, '--model', 'haiku', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
   '--system-prompt', '人間が複数の Claude Code のセッションを見渡すダッシュボード（durun-dashboard）の中で、頼まれた文を作る。',
 ];
 
 // 文章を読んで判定させる。haiku より確かな sonnet を、ツールを持たせずに動かす。前提知識を持たない読み手にするため、ダッシュボードの説明も渡さない。
 const SONNET_ARGS = [
-  '--model', 'sonnet', '--tools', '',
+  SAFE_MODE, '--model', 'sonnet', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
   '--system-prompt', '頼まれた文章を読み、求められた形で判定する。',
 ];
 
 // 指摘に沿って文章を書き直させる。直し方を考えさせるため、sonnet より確かな opus を、思考を外さずに動かす。時間と消費を抑えるよう、effort は medium にする。
-const OPUS_ARGS = [
-  '--model', 'opus', '--effort', 'medium', '--tools', '',
-  '--system-prompt', '頼まれた文章を、求められた形で書き直す。',
-];
+const OPUS_ARGS = ['--model', 'opus', '--effort', 'medium', '--system-prompt', '頼まれた文章を、求められた形で書き直す。'];
+
+// safe mode はプラグインのスキルも外す。スキルを使わせるときは、代わりに設定ファイルと MCP を読まずに、そのプラグインだけを足す。設定ファイルを読まなければ、フックも CLAUDE.md も外れる。
+// スキルが参照するファイルを読めるよう、Read だけを渡し、プラグインの場所で動かす。ほかの場所のファイルを読むなど、確認の要る操作は断る。
+const pluginArgs = (dir: string): string[] => ['--setting-sources', '', '--strict-mcp-config', '--plugin-dir', dir, '--tools', 'Read', '--permission-prompts', 'none'];
 
 // 事実を確かめるにはコードを読んで推論する必要があるため、haiku より確かな sonnet に、読むだけのツールを渡す。確認の要る操作は断る。
 // 作業ディレクトリと Read が求める絶対パスが分かるよう、Claude Code の既定のシステムプロンプトのまま動かす。
-const READER_ARGS = ['--model', 'sonnet', '--tools', 'Read,Grep,Glob', '--permission-prompts', 'none'];
+const READER_ARGS = [SAFE_MODE, '--model', 'sonnet', '--tools', 'Read,Grep,Glob', '--permission-prompts', 'none'];
 
 /** claude の失敗や、求めた形でない答え。ダッシュボードの不具合ではないので、改善要望にはしない。 */
 export class UpstreamError extends Error {}
@@ -99,8 +101,11 @@ export const askHaiku = (prompt: string, schema: object, onUsage?: OnUsage): Pro
 export const askSonnet = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
   askClaude(prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS, undefined, onUsage);
 
-export const askOpus = (prompt: string, schema: object): Promise<Record<string, unknown>> =>
-  askClaude(prompt, schema, OPUS_ARGS, OPUS_TIMEOUT_MS);
+/** plugin にプラグインの場所を渡すと、そのプラグインのスキルを使えるようにする。 */
+export const askOpus = (prompt: string, schema: object, plugin?: string): Promise<Record<string, unknown>> =>
+  plugin
+    ? askClaude(prompt, schema, [...pluginArgs(plugin), ...OPUS_ARGS], OPUS_TIMEOUT_MS, plugin)
+    : askClaude(prompt, schema, [SAFE_MODE, '--tools', '', ...OPUS_ARGS], OPUS_TIMEOUT_MS);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>
