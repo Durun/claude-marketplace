@@ -221,7 +221,12 @@ const SendModeMenu = ({ mode, onChange }: { mode: SendMode; onChange: (mode: Sen
 
 const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
 const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort で起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
+const STOP_HELP = '作業中でもセッションを止めます。次にメッセージを送ると再開します';
+const NO_STOP_HELP = '端末で開いているセッションは、ここからは止められません';
 const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
+
+/** 動いているセッションだけ止められる。端末で開いているセッションは、ダッシュボードからは止めない。 */
+const isLive = (s: Session): boolean => s.status === 'busy' || s.status === 'idle';
 
 /**
  * 止めて再開できるセッションだけ、モデルと effort を変えられる。
@@ -305,6 +310,14 @@ const MessageForm = ({ s }: { s: Session }) => {
     setBusy(false);
     if (done) toast('compact を始めました');
   };
+  // 止めると作業が途中で切れるので、押し間違いでないかを確かめる。
+  const stop = async () => {
+    if (!confirm('このセッションを止めますか?')) return;
+    setBusy(true);
+    const done = await attempt('停止', () => api.stop(s.id).then(() => true));
+    setBusy(false);
+    if (done) toast('止めました。メッセージを送ると再開します');
+  };
   // 書きかけの文を消さないよう、置き換えるのは空か候補のままのときに限り、それ以外は後ろに足す。
   const pick = (reply: string, replies: string[]) => {
     setText((t) => (!t.trim() || replies.includes(t) ? reply : `${t}\n${reply}`));
@@ -325,6 +338,11 @@ const MessageForm = ({ s }: { s: Session }) => {
         {choice.fields}
         <ContextPie usage={s.usage} />
         <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={compact}>compact</button>
+        {isLive(s) && (
+          <button class="btn btn-danger" disabled={busy || s.kind !== 'bg'} title={s.kind === 'bg' ? STOP_HELP : NO_STOP_HELP} onClick={stop}>
+            停止
+          </button>
+        )}
       </div>
     </>
   );

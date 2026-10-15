@@ -173,6 +173,7 @@ button, input, textarea { font: inherit; color: inherit; }
 /* ゴミ箱ボタンは XP の閉じるボタンに倣い、赤地に白いアイコンで描く。アーカイブ済みは灰色にする。XP スキンの .btn より強くするため、スキンの指定も並べる。 */
 .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--primary); filter: brightness(1.1); }
+.btn-danger:not(:disabled) { border-color: var(--critical); color: var(--critical); }
 
 .input {
   width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius);

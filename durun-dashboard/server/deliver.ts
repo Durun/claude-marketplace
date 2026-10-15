@@ -134,6 +134,18 @@ const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: st
 const resume = (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> =>
   relaunch(sessionId, cwd, text, jobId, rewindTo).then(() => undefined);
 
+/**
+ * 作業中でも、バックグラウンドのセッションを止める。会話ログは残るので、次に送ったメッセージで再開する。
+ * 端末のセッションは人間の端末で動いているので、ダッシュボードからは止めない。
+ */
+export const stopSession = async (sessionId: string): Promise<void> => {
+  const live = readLiveSessions().get(sessionId);
+  if (!live) throw new Error('このセッションは動いていません');
+  if (live.kind !== 'bg' || !live.jobId) throw new Error('端末で開いているセッションは、ダッシュボードからは止められません');
+  await runClaude(['stop', live.jobId], os.homedir());
+  await waitForStop(live.jobId);
+};
+
 type Job = { id?: string; sessionId?: string; kind?: string; pid?: number };
 
 const listJobs = async (): Promise<Job[]> => {
