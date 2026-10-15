@@ -10,7 +10,7 @@ process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'du
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';
-const { adfText, jiraDetail, jiraKeyOfUrl, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
+const { adfText, jiraDetail, jiraKeyOfUrl, jiraRefs, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
 const { pageTitleOf } = await import('../server/pageTitle.ts');
 
 test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
@@ -32,6 +32,26 @@ test('searchJira は、JQL で探した課題を、題名、状態、担当、�
 test('searchJira は、JQL の誤りを JIRA が返した理由で投げる', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({ errorMessages: ['JQL クエリのエラー'] }, { status: 400 }));
   await assert.rejects(searchJira('foo = =', 5), /JQL クエリのエラー/);
+});
+
+test('jiraRefs は、自分が担当者か起票者の課題があるスペースごとに、自分の課題、ほかの課題の順に、それぞれ更新が新しい順で並べる', async (t) => {
+  const mine = 'assignee = currentUser() OR reporter = currentUser()';
+  const found: Record<string, string[]> = {
+    [mine]: ['CATS-3', 'LPO-1', 'CATS-12'],
+    [`project = "CATS" AND (${mine}) ORDER BY updated DESC`]: ['CATS-12', 'CATS-3'],
+    'project = "CATS" ORDER BY updated DESC': ['CATS-120', 'CATS-12'],
+    [`project = "LPO" AND (${mine}) ORDER BY updated DESC`]: ['LPO-1'],
+    'project = "LPO" ORDER BY updated DESC': ['LPO-2', 'LPO-1'],
+  };
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    const q = new URL(url).searchParams;
+    const keys = found[q.get('jql') ?? ''];
+    assert.ok(keys, q.get('jql') ?? '');
+    // スペースを数えるために読む自分の課題は、キーだけを 1 回で返せる上限まで読む。
+    assert.deepEqual([q.get('fields'), q.get('maxResults')], q.get('jql') === mine ? ['key', '5000'] : ['summary,status', '100']);
+    return Response.json({ issues: keys.map((key) => ({ key, fields: { summary: key } })) });
+  });
+  assert.deepEqual((await jiraRefs()).map((j) => j.key), ['CATS-12', 'CATS-3', 'CATS-120', 'LPO-1', 'LPO-2']);
 });
 
 test('adfText は、JIRA の本文の段落、改行、リスト、メンション、リンクを、Markdown として読める文字にする', () => {

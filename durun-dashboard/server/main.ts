@@ -27,7 +27,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -969,6 +969,7 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
+  [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url)))],
   [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url)))],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url)))],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url)))],

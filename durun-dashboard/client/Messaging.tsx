@@ -52,8 +52,8 @@ const COMPLETION_ID = 'completion-menu';
 type CompletionMenuState = { items: Candidate[]; active: number };
 
 /**
- * / か # から始まる語を打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、まだセッションが無ければ出さない。
- * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。
+ * / か # から始まる語か、JIRA のプロジェクトキーとハイフンを打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、まだセッションが無ければ出さない。
+ * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
  */
 const useCompletion = (sessionId: string | undefined, cwd: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
   const [typed, setTyped] = useState<Typed>();
@@ -61,7 +61,9 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, i
   const { data: skills = [] } = useFetch(() => (sessionId ? api.skills(sessionId) : Promise.resolve([])), [sessionId]);
   const wantsRefs = typed?.mark === '#' && !!(sessionId || cwd);
   const { data: refs = [] } = useCached((fresh) => (wantsRefs ? api.repoRefs({ sessionId, cwd }, fresh) : Promise.resolve([])), [sessionId, cwd, wantsRefs]);
-  const items = typed ? candidates(typed, skills, refs) : [];
+  const wantsIssues = !!typed?.mark.endsWith('-');
+  const { data: issues = [] } = useCached((fresh) => (wantsIssues ? api.jiraRefs(fresh) : Promise.resolve([])), [wantsIssues]);
+  const items = typed ? candidates(typed, skills, refs, issues) : [];
   const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {
     const el = input.current;
@@ -72,8 +74,9 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, i
   // 打ちかけの語を選んだ候補に置き換え、続けて書けるよう空白を足す。
   const accept = (picked: Candidate) => {
     const el = input.current;
-    if (!el) return;
-    const head = el.value.slice(0, el.selectionStart).replace(/[/#]\S*$/, `${picked.label} `);
+    if (!el || !typed) return;
+    const before = el.value.slice(0, el.selectionStart);
+    const head = `${before.slice(0, before.length - typed.mark.length - typed.word.length)}${picked.label} `;
     const next = head + el.value.slice(el.selectionEnd);
     el.value = next;
     el.setSelectionRange(head.length, head.length);
@@ -134,7 +137,7 @@ type MessageInputProps = {
   inputRef?: RefObject<HTMLTextAreaElement>;
 };
 
-/** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills と PR・Issue の補完と「なんでも添付」を持つ。 */
+/** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills、PR と Issue、JIRA の課題の補完と「なんでも添付」を持つ。 */
 export const MessageInput = ({ sessionId, cwd, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
   const own = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? own;
@@ -310,7 +313,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   return (
     <>
       <ReplySuggestions s={s} onPick={pick} />
-      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills、# で PR と Issue を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
+      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills、# で PR と Issue、PROJ- で JIRA の課題を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
         <span class="send-split">
           <button class="btn btn-primary" disabled={busy || !text.trim()} title={mode === 'queue' ? QUEUE_HELP : choice.changed ? SWITCH_HELP : undefined} onClick={send}>

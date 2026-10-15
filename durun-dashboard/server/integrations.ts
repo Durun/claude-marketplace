@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -317,7 +317,7 @@ export const mergeClaudePrCache = (file: string): void => {
   changed();
 };
 
-// # の補完に出す PR と Issue は、題名がめったに変わらず、状態は少し遅れても選ぶのに困らないので、間隔を空けて読み直す。
+// 補完に出す PR、Issue、JIRA の課題は、題名がめったに変わらず、状態は少し遅れても選ぶのに困らないので、間隔を空けて読み直す。
 const REFS_MAX_AGE = 10 * 60_000;
 // # の後に何も打っていないときに出す、自分の PR と Issue の件数。
 const MINE_LIMIT = 30;
@@ -431,10 +431,12 @@ type JiraSearchBody = {
   errorMessages?: string[];
 };
 
-/** JQL で課題を探す。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。 */
-export const searchJira = async (jql: string, max: number): Promise<JiraIssue[]> => {
+const SEARCH_FIELDS = 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate';
+
+/** JQL で課題を探す。fields で読む項目を絞れる。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。 */
+export const searchJira = async (jql: string, max: number, fields = SEARCH_FIELDS): Promise<JiraIssue[]> => {
   if (!JIRA_BASE || !JIRA_AUTH) throw new Error('~/.durun-dashboard/.env.local に JIRA_BASE_URL、JIRA_EMAIL、JIRA_API_TOKEN を設定してください');
-  const query = new URLSearchParams({ jql, maxResults: String(max), fields: 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate' });
+  const query = new URLSearchParams({ jql, maxResults: String(max), fields });
   const res = await fetch(`${JIRA_BASE}/rest/api/3/search/jql?${query}`, { headers: { authorization: JIRA_AUTH, accept: 'application/json' } });
   const body = (await res.json().catch(() => ({}))) as JiraSearchBody;
   if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
@@ -456,6 +458,27 @@ export const searchJira = async (jql: string, max: number): Promise<JiraIssue[]>
 
 /** JIRA Issues のウィジェットに並べる課題。 */
 export const jiraList = (jql: string, max: number): Promise<JiraIssue[]> => cached(`jira-search:${max} ${jql}`, { maxAge: JIRA_MAX_AGE }, () => searchJira(jql, max));
+
+const JIRA_MINE = 'assignee = currentUser() OR reporter = currentUser()';
+// JIRA の検索は、キーだけなら 1 回でこの件数まで返す。古い課題しか無いスペースも数えるよう、自分の課題はキーだけをこの件数まで読む。
+const JIRA_KEYS_MAX = 5000;
+
+/**
+ * JIRA のキーの補完に出す課題。自分が担当者か起票者の課題が 1 つ以上あるスペースごとに、自分の課題、ほかの課題の順に、それぞれ更新が新しい順で並べる。
+ * ponytail: スペースごとに、更新が新しい JIRA_MAX_RESULTS 件ずつだけ。古い課題もキーで探したくなったら、打った番号で JIRA を探す。
+ */
+export const jiraRefs = (fresh = false): Promise<JiraIssue[]> =>
+  cached('jira-refs', { maxAge: REFS_MAX_AGE, fresh }, async () => {
+    const spaces = new Set((await searchJira(JIRA_MINE, JIRA_KEYS_MAX, 'key')).map((j) => j.key.replace(/-\d+$/, '')));
+    const lists = await Promise.all(
+      [...spaces].flatMap((space) => [
+        searchJira(`project = "${space}" AND (${JIRA_MINE}) ORDER BY updated DESC`, JIRA_MAX_RESULTS, 'summary,status'),
+        searchJira(`project = "${space}" ORDER BY updated DESC`, JIRA_MAX_RESULTS, 'summary,status'),
+      ]),
+    );
+    // 同じキーは、先に並べた自分の課題の位置に残る。
+    return [...new Map(lists.flat().map((j) => [j.key, j])).values()];
+  });
 
 /** 課題の画面の URL の前に付く部分。設定が無ければ undefined。 */
 export const jiraBase = (): string | undefined => JIRA_BASE && JIRA_AUTH && JIRA_BASE;
@@ -577,7 +600,7 @@ const readJiraDetail = async (key: string): Promise<JiraDetail> => {
 export const transitionJira = async (key: string, id: string): Promise<void> => {
   await jiraFetch(`issue/${key}/transitions`, { method: 'POST', body: JSON.stringify({ transition: { id } }) });
   refreshedAt = Date.now();
-  forgetCached(`jira-issue:${key}`, `jira:${key}`, /^jira-search:/);
+  forgetCached(`jira-issue:${key}`, `jira:${key}`, 'jira-refs', /^jira-search:/);
 };
 
 /** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */
