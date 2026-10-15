@@ -260,9 +260,43 @@ const useModelChoice = (s: Session) => {
   };
 };
 
+// 書きかけのメッセージは、画面を移っても残るようセッションごとにブラウザへ保存する。
+const draftKey = (sessionId: string): string => `message-draft:${sessionId}`;
+
+const loadDraft = (sessionId: string): string => {
+  try {
+    return localStorage.getItem(draftKey(sessionId)) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const saveDraft = (sessionId: string, text: string): void => {
+  try {
+    if (text) localStorage.setItem(draftKey(sessionId), text);
+    else localStorage.removeItem(draftKey(sessionId));
+  } catch {
+    // 保存できなくても、画面上の書きかけはそのまま使える。
+  }
+};
+
+/** 送信欄の文を、セッションごとに保存した書きかけから始める。別のセッションに切り替わったら、そのセッションの書きかけを読み直す。 */
+const useMessageDraft = (sessionId: string): [string, (next: string | ((prev: string) => string)) => void] => {
+  const [draft, setDraft] = useState(() => ({ sessionId, text: loadDraft(sessionId) }));
+  const text = draft.sessionId === sessionId ? draft.text : loadDraft(sessionId);
+  const setText = (next: string | ((prev: string) => string)) =>
+    setDraft((d) => {
+      const prev = d.sessionId === sessionId ? d.text : loadDraft(sessionId);
+      const value = typeof next === 'function' ? next(prev) : next;
+      saveDraft(sessionId, value);
+      return { sessionId, text: value };
+    });
+  return [text, setText];
+};
+
 /** 返答の候補と入力欄。 */
 const MessageForm = ({ s }: { s: Session }) => {
-  const [text, setText] = useState('');
+  const [text, setText] = useMessageDraft(s.id);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const choice = useModelChoice(s);
