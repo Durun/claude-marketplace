@@ -9,6 +9,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession } from './claude.ts';
+import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { ensureSession, moveSession, newId, state, touch } from './store.ts';
 
@@ -39,7 +40,10 @@ const joinTexts = (msgs: OutboxMessage[]): string => msgs.map((m) => m.text).joi
 // 送るたびに Claude のコンテキストに積まれるので、前置きは印と送り手だけにする。
 export const formatMessages = (msgs: OutboxMessage[]): string => `[durun-dashboard] 人間から:\n${joinTexts(msgs)}`;
 
-/** claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。 */
+/**
+ * claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。
+ * claude が断った理由は UpstreamError で返す。ホームのように信頼していない作業ディレクトリで断られるのは、ダッシュボードの不具合ではないため。
+ */
 const claudeOutput = (args: string[], cwd: string, env = process.env): Promise<string> =>
   new Promise((resolve, reject) => {
     const claude = claudeCommand(args, env);
@@ -49,7 +53,7 @@ const claudeOutput = (args: string[], cwd: string, env = process.env): Promise<s
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve(`${stdout}\n${stderr}`) : reject(new Error(stderr.trim() || `exit ${code}`))));
+    child.on('exit', (code) => (code === 0 ? resolve(`${stdout}\n${stderr}`) : reject(new UpstreamError(stderr.trim() || `exit ${code}`))));
   });
 
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);

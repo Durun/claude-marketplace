@@ -14,6 +14,7 @@ process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
+const { UpstreamError } = await import('../server/haiku.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
 // 受信ソケットに認証の要る OS が読む、このプロセスに見立てたセッションの鍵。要らない OS では読まれない。
 fs.writeFileSync(path.join(tmp, 'claude', 'sessions', `${process.pid}.test.key`), JSON.stringify({ peerToken: 'test-token' }));
@@ -241,7 +242,7 @@ test('保留したメッセージは、入力待ちで質問の無いセッシ�
   assert.equal(await received(next), '[durun-dashboard] 人間から:\n二つ目');
 });
 
-test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら理由を返す', async () => {
+test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら claude の失敗として理由を返す', async () => {
   // 受け取った引数を書き出し、依頼が fail なら失敗する偽の claude を置く。
   const bin = path.join(tmp, 'bin');
   const argsFile = path.join(tmp, 'args');
@@ -251,7 +252,7 @@ test('新しいセッションは依頼を -- の後に置いて claude --bg で
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--', '- 箇条書きの依頼']);
   await startSession(tmp, '依頼', 'opus', 'max');
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--model', 'opus', '--effort', 'max', '--', '依頼']);
-  await assert.rejects(startSession(tmp, 'fail'), /起動できません/);
+  await assert.rejects(startSession(tmp, 'fail'), (e) => e instanceof UpstreamError && /起動できません/.test(e.message));
 });
 
 test('新しいセッションにテーマを渡すと、起動の出力のジョブの id から引いたセッションに付け、引けなくても起動は成功として扱う', async () => {
