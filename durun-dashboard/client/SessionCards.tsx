@@ -139,8 +139,9 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
         {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length) && (
           <div class="chips">
-            {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
-            <JiraChips issues={s.jira} session={s.id} />
+            {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
+            {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
+            <JiraChips issues={s.jira} />
             {s.issues?.map((i) => <IssueChip key={i.url} issue={i} />)}
           </div>
         )}
