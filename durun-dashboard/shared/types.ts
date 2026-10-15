@@ -42,7 +42,12 @@ export type PrInfo = {
   review: string;
   checks: { passed: number; failed: number; pending: number };
   baseRef?: string;
+  /** 人間がバッジに登録した PR だけが持つ。PR コメントを分析するとき、このブランチを開いた作業ツリーを探す。 */
+  headRef?: string;
 };
+
+/** GitHub の Issue。# の補完と同じく、予定しないものか重複として閉じたものを Canceled と呼ぶ。 */
+export type IssueInfo = { url: string; number: number; title: string; state: 'Open' | 'Closed' | 'Canceled' };
 
 /** PR そのものを指す URL。サーバーは gh の引数に渡すので、- で始まる値やほかのページを通さない。 */
 export const PR_URL = /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/;
@@ -169,9 +174,11 @@ export type Session = {
   background: BgTask[];
   /** 今のブランチの PR。 */
   pr?: PrInfo;
-  /** これまでに居たブランチの PR。今のブランチの PR を先頭に、最後に居た順に並べる。 */
+  /** これまでに居たブランチの PR と、人間がバッジに登録した PR。今のブランチの PR を先頭に、最後に居た順に並べ、登録した PR を後に続ける。外したバッジは含めない。 */
   prs: PrInfo[];
   jira: JiraIssue[];
+  /** 人間がバッジに登録した GitHub の Issue。前に受け取ったスナップショットには無いことがある。 */
+  issues?: IssueInfo[];
   usage: Usage;
   archived: boolean;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */

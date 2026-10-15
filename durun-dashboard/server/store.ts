@@ -21,6 +21,10 @@ export type SessionMeta = {
   archived: boolean;
   /** 人間がピン留めした */
   pinned?: boolean;
+  /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */
+  badges?: string[];
+  /** 人間が外したバッジの URL。ブランチや set_task から見つけたものも、ここにあれば出さない */
+  hiddenBadges?: string[];
   /** 人間が資料に足したリンク */
   links?: SavedLink[];
   /** 人間がエクスプローラーから資料に足したファイル */

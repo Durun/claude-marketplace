@@ -6,7 +6,7 @@ import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
-import { cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraRefreshedAt } from './integrations.ts';
+import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt } from './integrations.ts';
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
@@ -150,8 +150,15 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const name = displayName(meta, log);
   const pr = cachedPr(meta.cwd, log?.branch);
   const branches = [...(log?.branches ?? [])].reverse();
-  const prs = branches.flatMap((b) => cachedPr(meta.cwd, b) ?? []);
-  const jiraKeys = new Set([...meta.jira, ...findJiraKeys([...branches, name, ...prs.map((p) => p.title)])]);
+  const badges = (meta.badges ?? []).flatMap((u) => badgeOf(new URL(u)) ?? []);
+  const shown = <T extends { url: string }>(items: T[]): T[] => {
+    const hidden = new Set(meta.hiddenBadges);
+    return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url));
+  };
+  const branchPrs = branches.flatMap((b) => cachedPr(meta.cwd, b) ?? []);
+  const prs = shown([...branchPrs, ...badges.flatMap((b) => (b.kind === 'pr' && badgePr(b.url)) || [])]);
+  const badgeJira = badges.flatMap((b) => (b.kind === 'jira' && jiraKeyOfUrl(new URL(b.url))) || []);
+  const jiraKeys = new Set([...meta.jira, ...badgeJira, ...findJiraKeys([...branches, name, ...branchPrs.map((p) => p.title)])]);
   const repo = repoName(meta.cwd);
   const review = state.attention.find((a) => a.sessionId === meta.id && a.kind === 'review');
   const session: Session = {
@@ -175,7 +182,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
     pr,
     prs,
-    jira: [...jiraKeys].map(jiraIssue),
+    jira: shown([...jiraKeys].map(jiraIssue)),
+    issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
     pinned: !!meta.pinned,

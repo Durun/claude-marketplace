@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -92,14 +92,51 @@ type ClaudePrStatus = { title: string; state: PrInfo['state']; checks: PrInfo['c
 /** Claude Code が実行中セッションの PR について書き残した状態。URL ごとに、gh で読んだ状態より優先する。 */
 let claudePrStatuses: Partial<Record<string, ClaudePrStatus>> = {};
 
-/** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
-export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
-  if (!branch || BASE_BRANCH.test(branch)) return undefined;
-  const pr = peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch));
+const withClaudeStatus = (pr: PrInfo | null | undefined): PrInfo | undefined => {
   const s = pr && claudePrStatuses[pr.url];
   if (!pr || !s) return pr ?? undefined;
   return { ...pr, title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review };
 };
+
+/** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
+export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
+  if (!branch || BASE_BRANCH.test(branch)) return undefined;
+  return withClaudeStatus(peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch)));
+};
+
+// バッジに登録した PR と Issue も、すべてのセッションの分を読むので、ブランチの PR と同じ間隔で読み直す。
+const BADGE_POLICY = { maxAge: BRANCH_PR_MAX_AGE };
+
+const readBadgePr = async (url: string): Promise<PrInfo> => {
+  const pr = JSON.parse(await gh(['pr', 'view', url, '--json', `${PR_FIELDS},headRefName`])) as GhPr & { headRefName: string };
+  return { ...toPrInfo(pr), headRef: pr.headRefName };
+};
+
+type GhIssue = Pick<GhRef, 'number' | 'title' | 'state' | 'stateReason'> & { url: string };
+
+const ghIssue = async (url: string): Promise<GhIssue> => JSON.parse(await gh(['issue', 'view', url, '--json', 'url,number,title,state,stateReason'])) as GhIssue;
+
+const toIssue = (url: string, issue: GhIssue): IssueInfo => ({ url, number: issue.number, title: issue.title, state: refState(issue) as IssueInfo['state'] });
+
+const readIssue = async (url: string): Promise<IssueInfo> => toIssue(url, await ghIssue(url));
+
+/**
+ * 人間がバッジに登録しようとした PR と Issue を読み、登録する URL を返す。読めなければ投げ、登録させない。
+ * GitHub は PR の番号の Issue の URL を PR へ送るので、gh が PR の URL を返したら PR として登録する。
+ */
+export const loadBadge = async (kind: 'pr' | 'issue', url: string): Promise<string> => {
+  if (kind === 'issue') {
+    const issue = await ghIssue(url);
+    if (!PR_URL.test(issue.url)) return (await cached(`issue-badge:${url}`, { ...BADGE_POLICY, fresh: true }, async () => toIssue(url, issue))).url;
+    url = issue.url;
+  }
+  await cached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url));
+  return url;
+};
+
+export const badgePr = (url: string): PrInfo | undefined => withClaudeStatus(peekCached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url)));
+
+export const badgeIssue = (url: string): IssueInfo | undefined => peekCached(`issue-badge:${url}`, BADGE_POLICY, () => readIssue(url));
 
 // 解決済みかどうかは REST の API では分からないので、GraphQL で読む。
 // ponytail: スレッドは先頭の 100 件、コメントはスレッドごとに 50 件まで。超える PR が出たら、ページを送って読む。
@@ -341,7 +378,7 @@ export type GhRefs = {
 };
 
 // 予定しないものか重複として閉じた Issue は、やり遂げて閉じたものと分けて Canceled と呼ぶ。
-const refState = ({ state, isDraft, stateReason }: GhRef): RepoRef['state'] => {
+const refState = ({ state, isDraft, stateReason }: Pick<GhRef, 'state' | 'isDraft' | 'stateReason'>): RepoRef['state'] => {
   if (state === 'MERGED') return 'Merged';
   if (state === 'OPEN') return isDraft ? 'Draft' : 'Open';
   return stateReason === 'NOT_PLANNED' || stateReason === 'DUPLICATE' ? 'Canceled' : 'Closed';
@@ -616,6 +653,16 @@ export const jiraKeyOfUrl = (url: URL): string | undefined => {
   const page = `${url.origin}${url.pathname}`.replace(/\/$/, '');
   const key = JIRA_BASE && page.startsWith(prefix) ? page.slice(prefix.length) : undefined;
   return key && JIRA_ISSUE_KEY.test(key) ? key : undefined;
+};
+
+const GITHUB_REF = /^\/([^/]+)\/([^/]+)\/(pull|issues)\/(\d+)(\/|$)/;
+
+/** バッジに登録する URL を、PR、Issue、JIRA の課題そのものを指す形にそろえる。PR の /files のような下のページと、? や # から後は落とす。 */
+export const badgeOf = (u: URL): { kind: 'pr' | 'issue' | 'jira'; url: string } | undefined => {
+  const key = jiraKeyOfUrl(u);
+  if (key) return { kind: 'jira', url: browseUrl(key) };
+  const [, owner, name, kind, num] = (u.protocol === 'https:' && GITHUB_REF.exec(u.pathname)) || [];
+  return num ? { kind: kind === 'pull' ? 'pr' : 'issue', url: `${u.origin}/${owner}/${name}/${kind}/${num}` } : undefined;
 };
 
 /** 課題のキーと題名をつないだ、資料に並べる題名。 */

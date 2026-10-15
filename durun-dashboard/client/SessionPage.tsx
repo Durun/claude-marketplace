@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { Attention, ChatEntry, DocMeta, OutboxMessage, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
@@ -19,7 +20,7 @@ import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, href } from './router.ts';
-import { CopyButton, CopyText, Empty, JiraChips, PrChips, StatusBadge } from './ui.tsx';
+import { CopyButton, CopyText, Empty, IssueChip, JiraChips, PrChips, StatusBadge } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -107,6 +108,43 @@ const archiveControl = ({ s }: { s: Session }): Control[] => [
   },
 ];
 
+/** バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。 */
+const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => (
+  <span class="badge-item">
+    {children}
+    <button class="badge-remove" title="バッジを外す" aria-label="バッジを外す" onClick={() => void attempt('バッジの取り外し', () => api.removeBadge(s.id, url))}>×</button>
+  </span>
+);
+
+/** PR、Issue、JIRA の課題の URL を貼って Enter を押すと、バッジに登録する。 */
+const BadgeInput = ({ s }: { s: Session }) => {
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const add = async (e: Event) => {
+    e.preventDefault();
+    const url = value.trim();
+    if (!url || busy) return;
+    setBusy(true);
+    // PR と Issue は、サーバーが GitHub から読めると確かめてから登録するので、数秒待つことがある。
+    const ok = await attempt('バッジの登録', async () => (await api.addBadge(s.id, url), true));
+    setBusy(false);
+    if (ok) setValue('');
+  };
+  return (
+    <form class="badge-add" onSubmit={add}>
+      <input
+        class="input input-sm"
+        value={value}
+        readOnly={busy}
+        aria-label="バッジに登録する URL"
+        title="PR、Issue、JIRA の課題の URL を貼って Enter を押すと、バッジに登録します。"
+        placeholder={busy ? '登録しています…' : 'PR、Issue、JIRA の URL'}
+        onInput={(e) => setValue(e.currentTarget.value)}
+      />
+    </form>
+  );
+};
+
 /** 名前の行をウィジェットの見出しにする。 */
 const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   <>
@@ -124,8 +162,10 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
       </div>
       <div class="head-row">
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-        {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
-        <JiraChips issues={s.jira} session={s.id} />
+        {s.prs?.map((pr) => <Removable key={pr.url} s={s} url={pr.url}><PrChips pr={pr} session={s.id} /></Removable>)}
+        {s.jira.map((j) => <Removable key={j.key} s={s} url={j.url}><JiraChips issues={[j]} session={s.id} /></Removable>)}
+        {s.issues?.map((i) => <Removable key={i.url} s={s} url={i.url}><IssueChip issue={i} /></Removable>)}
+        <BadgeInput s={s} />
         {s.attachCommand && (
           <span class="attach">
             <code title="ターミナルで開くコマンド">{s.attachCommand}</code>

@@ -4,7 +4,7 @@ import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
-import { Chip, ContextBar, Empty, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
+import { Chip, ContextBar, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -120,10 +120,11 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
       <div class="card-mid-main">
         <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-        {(s.prs?.length || s.jira.length > 0) && (
+        {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length) && (
           <div class="chips">
             {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} session={s.id} />)}
             <JiraChips issues={s.jira} session={s.id} />
+            {s.issues?.map((i) => <IssueChip key={i.url} issue={i} />)}
           </div>
         )}
       </div>

@@ -27,7 +27,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { badgeOf, badgePr, cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { checkLimits, onTranscriptChange } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
@@ -366,9 +366,37 @@ const openPr = (id: string, url?: unknown): { cwd: string; branch: string; pr: P
   const meta = sessionMeta(id);
   const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
   const branch = url ? [...(log?.branches ?? [])].find((b) => cachedPr(meta.cwd, b)?.url === url) : log?.branch;
-  const pr = cachedPr(meta.cwd, branch);
-  if (!branch || pr?.state !== 'OPEN') throw new HttpError(404, `開いている PR がありません: ${id}`);
-  return { cwd: meta.cwd, branch, pr };
+  // セッションが居なかったブランチの PR は、人間がバッジに登録したものから探す。
+  const pr = cachedPr(meta.cwd, branch) ?? (typeof url === 'string' && meta.badges?.includes(url) ? badgePr(url) : undefined);
+  const head = branch ?? pr?.headRef;
+  if (!head || pr?.state !== 'OPEN') throw new HttpError(404, `開いている PR がありません: ${id}`);
+  return { cwd: meta.cwd, branch: head, pr };
+};
+
+const badgeOfBody = (body: unknown): { kind: 'pr' | 'issue' | 'jira'; url: string } => {
+  const raw = field<string>(body, 'url', 'string').trim();
+  const badge = URL.canParse(raw) ? badgeOf(new URL(raw)) : undefined;
+  if (!badge) throw new HttpError(400, 'JIRA の課題、GitHub の PR か Issue の URL ではありません');
+  return badge;
+};
+
+/** PR と Issue は、読めることを確かめてから登録する。外していたバッジは、また出す。 */
+const addBadge = async (id: string, body: unknown): Promise<void> => {
+  const meta = sessionMeta(id);
+  const { kind, url: given } = badgeOfBody(body);
+  const url = kind === 'jira' ? given : await viaGh(kind === 'pr' ? 'PR を読めません' : 'Issue を読めません', () => loadBadge(kind, given));
+  meta.badges = [...(meta.badges ?? []).filter((u) => u !== url), url];
+  meta.hiddenBadges = meta.hiddenBadges?.filter((u) => u !== url);
+  touch();
+};
+
+/** 登録したバッジは登録から消す。ブランチや set_task から見つけたバッジは、見つけ直しても出さないよう覚えておく。 */
+const removeBadge = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const { url } = badgeOfBody(body);
+  meta.badges = meta.badges?.filter((u) => u !== url);
+  meta.hiddenBadges = [...new Set([...(meta.hiddenBadges ?? []), url])];
+  touch();
 };
 
 /** gh や JIRA、Notion の失敗はダッシュボードの不具合ではないので、改善要望にしない。 */
@@ -929,6 +957,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
   [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
   [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/badges$/, ([, id = ''], b) => addBadge(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/badges\/remove$/, ([, id = ''], b) => removeBadge(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],

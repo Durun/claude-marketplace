@@ -10,7 +10,7 @@ process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'du
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';
-const { adfText, jiraDetail, jiraKeyOfUrl, jiraRefs, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
+const { adfText, badgeOf, jiraDetail, jiraKeyOfUrl, jiraRefs, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
 const { pageTitleOf } = await import('../server/pageTitle.ts');
 
 test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
@@ -153,4 +153,14 @@ test('pageTitleOf は、資料に足した JIRA の課題の画面に、API か�
   assert.deepEqual(called, ['https://jira.example/rest/api/3/issue/PROJ-1?fields=summary', 'https://jira.example/rest/api/3/issue/PROJ-2?fields=summary']);
   assert.equal(jiraKeyOfUrl(new URL('https://other.example/browse/PROJ-1')), undefined);
   assert.equal(jiraKeyOfUrl(new URL('https://jira.example/browse/')), undefined);
+});
+
+test('badgeOf は、JIRA の課題、GitHub の PR と Issue の URL を、そのものを指す形にそろえ、ほかの URL は受けない', () => {
+  const of = (url: string) => badgeOf(new URL(url));
+  assert.deepEqual(of('https://jira.example/browse/PROJ-1?focusedCommentId=1'), { kind: 'jira', url: 'https://jira.example/browse/PROJ-1' });
+  assert.deepEqual(of('https://github.com/o/r/pull/12/files#diff-1'), { kind: 'pr', url: 'https://github.com/o/r/pull/12' });
+  assert.deepEqual(of('https://github.com/o/r/issues/3?q=1'), { kind: 'issue', url: 'https://github.com/o/r/issues/3' });
+  assert.equal(of('https://github.com/o/r/pulls'), undefined);
+  assert.equal(of('http://github.com/o/r/pull/12'), undefined);
+  assert.equal(of('https://other.example/browse/PROJ-1'), undefined);
 });

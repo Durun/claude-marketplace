@@ -387,7 +387,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
 /**
  * 会話を引き継いだ別のセッションをバックグラウンドで起動して、依頼を渡す。起動したセッションの id を返す。
  * 元のセッションは止めずに残すので、作業中のセッションと端末で開いているセッションからも分岐できる。
- * テーマと、set_task で付けた JIRA の課題は、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
+ * テーマと、set_task で付けた JIRA の課題と、人間が登録したり外したりしたバッジは、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
  */
 export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
@@ -395,7 +395,7 @@ export const forkSession = async (sessionId: string, text: string, model?: strin
   const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort), '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
-  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira] });
+  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges });
   state.outbox.push({ id: newId(), sessionId: fork, text, createdAt: Date.now(), deliveredAt: Date.now(), via: 'resume' });
   touch();
   return fork;

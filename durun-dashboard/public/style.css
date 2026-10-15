@@ -200,7 +200,10 @@ textarea.input { resize: vertical; min-height: 36px; }
 .chip-link.pr-open { --tone: var(--good); }
 .chip-link.pr-merged { --tone: var(--merged); }
 .chip-link.pr-closed { --tone: var(--critical); }
-.pr-icon { flex: none; color: var(--tone); }
+.chip-link.issue-open { --tone: var(--good); }
+.chip-link.issue-closed { --tone: var(--merged); }
+.chip-link.issue-canceled { --tone: var(--muted); }
+.pr-icon, .issue-icon { flex: none; color: var(--tone); }
 /* 題名は、カードの幅に収まるよう先頭の 10 文字ほどだけを出す。全体はマウスを載せると出る。 */
 .chip-title { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
 .chip-sub { padding-left: 5px; border-left: 1px solid var(--border-strong); color: var(--text-2); }
@@ -899,6 +902,9 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .copy-text { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: copy; }
 .copy-text:hover { color: var(--text); text-decoration: underline; }
 .attach { display: inline-flex; align-items: center; gap: 6px; }
+.badge-item { display: inline-flex; align-items: center; gap: 2px; }
+.badge-remove { padding: 0 4px; border: 0; background: none; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.badge-remove:hover { color: var(--text); }
 .attach code { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); font: 12px var(--mono); }
 
 /*
