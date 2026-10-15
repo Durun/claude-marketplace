@@ -317,31 +317,40 @@ export const mergeClaudePrCache = (file: string): void => {
   changed();
 };
 
-// # の補完に出す PR と Issue は、題名がめったに変わらないので、間隔を空けて読み直す。
+// # の補完に出す PR と Issue は、題名がめったに変わらず、状態は少し遅れても選ぶのに困らないので、間隔を空けて読み直す。
 const REFS_MAX_AGE = 10 * 60_000;
 // # の後に何も打っていないときに出す、自分の PR と Issue の件数。
 const MINE_LIMIT = 30;
 // 打った語で探す、新しい PR と Issue のそれぞれの件数。
 const REFS_LIMIT = 100;
-const REF_FIELDS = 'number title createdAt';
+const REF_FIELDS = 'number title createdAt state';
+const PR_REF_FIELDS = `${REF_FIELDS} isDraft`;
+const ISSUE_REF_FIELDS = `${REF_FIELDS} stateReason`;
 const REFS_QUERY = `query($owner: String!, $name: String!, $mine: String!) {
-  mine: search(query: $mine, type: ISSUE, first: ${MINE_LIMIT}) { nodes { __typename ... on PullRequest { ${REF_FIELDS} } ... on Issue { ${REF_FIELDS} } } }
+  mine: search(query: $mine, type: ISSUE, first: ${MINE_LIMIT}) { nodes { __typename ... on PullRequest { ${PR_REF_FIELDS} } ... on Issue { ${ISSUE_REF_FIELDS} } } }
   repository(owner: $owner, name: $name) {
-    pullRequests(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${REF_FIELDS} } }
-    issues(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${REF_FIELDS} } }
+    pullRequests(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${PR_REF_FIELDS} } }
+    issues(first: ${REFS_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { ${ISSUE_REF_FIELDS} } }
   }
 }`;
 
-type GhRef = { number: number; title: string; createdAt: string };
-type GhRefs = {
+type GhRef = { number: number; title: string; createdAt: string; state: 'OPEN' | 'CLOSED' | 'MERGED'; isDraft?: boolean; stateReason?: string | null };
+export type GhRefs = {
   mine: { nodes: (GhRef & { __typename: 'PullRequest' | 'Issue' })[] };
   repository: { pullRequests: { nodes: GhRef[] }; issues: { nodes: GhRef[] } };
 };
 
-const toRef = (kind: RepoRef['kind'], n: GhRef, mine: boolean): RepoRef => ({ number: n.number, title: n.title, kind, createdAt: Date.parse(n.createdAt), mine });
+// 予定しないものか重複として閉じた Issue は、やり遂げて閉じたものと分けて Canceled と呼ぶ。
+const refState = ({ state, isDraft, stateReason }: GhRef): RepoRef['state'] => {
+  if (state === 'MERGED') return 'Merged';
+  if (state === 'OPEN') return isDraft ? 'Draft' : 'Open';
+  return stateReason === 'NOT_PLANNED' || stateReason === 'DUPLICATE' ? 'Canceled' : 'Closed';
+};
+
+const toRef = (kind: RepoRef['kind'], n: GhRef, mine: boolean): RepoRef => ({ number: n.number, title: n.title, kind, state: refState(n), createdAt: Date.parse(n.createdAt), mine });
 
 /** 新しい順に並べる。自分のものは後に足すので、同じ番号は自分のものとして残る。 */
-const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
+export const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
   const refs = [
     ...repository.pullRequests.nodes.map((n) => toRef('pr', n, false)),
     ...repository.issues.nodes.map((n) => toRef('issue', n, false)),
@@ -355,7 +364,7 @@ const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
  * ponytail: 打った語で探すのは、新しいものから REFS_LIMIT 件ずつだけ。古いものも番号で探したくなったら、GitHub の検索を足す。
  */
 export const repoRefs = (cwd: string, fresh = false): Promise<RepoRef[]> =>
-  cached(`repo-refs:${cwd}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
+  cached(`repo-refs-v2:${cwd}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
     const args = ['graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', 'mine=repo:{owner}/{repo} author:@me sort:created-desc', '-f', `query=${REFS_QUERY}`];
     return toRefs((await ghApi<{ data: GhRefs }>(args, undefined, cwd)).data);
   });

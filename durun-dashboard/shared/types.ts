@@ -420,8 +420,8 @@ export type Delivery = 'mcp' | 'sent' | 'resumed';
 /** メッセージ欄で / から補完する skill。description は説明の書き出し。 */
 export type SkillInfo = { name: string; description: string };
 
-/** メッセージ欄で # から補完する PR と Issue。mine は gh で認証した人が作ったもの。createdAt は epoch ミリ秒。 */
-export type RepoRef = { number: number; title: string; kind: 'pr' | 'issue'; createdAt: number; mine: boolean };
+/** メッセージ欄で # から補完する PR と Issue。state は候補に添える状態で、Draft と Merged は PR だけ、Canceled は Issue だけが持つ。mine は gh で認証した人が作ったもの。createdAt は epoch ミリ秒。 */
+export type RepoRef = { number: number; title: string; kind: 'pr' | 'issue'; state: 'Draft' | 'Open' | 'Merged' | 'Closed' | 'Canceled'; createdAt: number; mine: boolean };
 
 /** 会話の 1 件。prompt は人間の依頼（ダッシュボードから届いたものを含む）、message は Claude の発言。at は epoch ミリ秒。 */
 /** tool は Claude が呼んだツールで、text は名前と入力の要点を 1 行にしたもの、detail は入力の全体。 */

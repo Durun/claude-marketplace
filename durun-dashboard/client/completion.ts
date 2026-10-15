@@ -51,4 +51,4 @@ const matchRefs = (refs: RepoRef[], word: string): RepoRef[] => {
 export const candidates = (typed: Typed, skills: SkillInfo[], refs: RepoRef[]): Candidate[] =>
   typed.mark === '/'
     ? matchSkills(skills, typed.word).map((sk) => ({ label: `/${sk.name}`, desc: sk.description }))
-    : matchRefs(refs, typed.word).map((r) => ({ label: `#${r.number}`, desc: `${r.kind === 'pr' ? 'PR' : 'Issue'} · ${r.title}` }));
+    : matchRefs(refs, typed.word).map((r) => ({ label: `#${r.number}`, desc: `${r.kind === 'pr' ? 'PR' : 'Issue'} ${r.state} · ${r.title}` }));
