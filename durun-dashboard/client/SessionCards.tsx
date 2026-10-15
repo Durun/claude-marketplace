@@ -45,10 +45,14 @@ const TaskLine = ({ tasks }: { tasks: TaskItem[] }) => {
 
 const Activity = ({ s }: { s: Session }) => {
   const running = s.subagents.filter((a) => a.running).length;
+  const tools = s.background.filter((t) => t.status === 'running');
+  const shells = tools.filter((t) => t.kind === 'shell').length;
   return (
     <div class="activity">
       <TaskLine tasks={s.tasks} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
+      {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
+      {tools.length > shells && <Chip tone="info">Monitor {tools.length - shells} 実行中</Chip>}
       {s.pendingMessages > 0 && <Chip tone="warn" title="Claude にまだ届いていないメッセージ">未配信 {s.pendingMessages}</Chip>}
       {s.awaitingReview && <Chip tone="info" title="Claude がレビューを待っています">レビュー待ち</Chip>}
     </div>
