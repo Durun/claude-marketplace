@@ -30,8 +30,8 @@ test('typedAt は、英数字の後ろでなければ、JIRA のプロジェク�
 
 test('candidates は、# の後に何も打っていなければ、自分が作った PR と Issue を、種別と状態を添えて新しい順に出す', () => {
   assert.deepEqual(candidates({ mark: '#', word: '' }, [], REFS, []), [
-    { label: '#12', desc: 'PR Open · ログインの修正' },
-    { label: '#7', desc: 'Issue Closed · ログ画面を足す' },
+    { label: '#12', desc: 'ログインの修正', icon: { kind: 'pr', state: 'Open' } },
+    { label: '#7', desc: 'ログ画面を足す', icon: { kind: 'issue', state: 'Closed' } },
   ]);
 });
 

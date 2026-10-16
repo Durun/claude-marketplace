@@ -10,7 +10,7 @@ import { useCached, useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
 import { href, currentSessionId } from './router.ts';
-import { Choice, ContextPie, Empty, Time, copyText, onSubmitKey } from './ui.tsx';
+import { Choice, ContextPie, Empty, RefIcon, Time, copyText, onSubmitKey } from './ui.tsx';
 
 const STATUS_HELP: Record<SessionStatus, string> = {
   busy: '作業中です。ツール実行の合間に Claude が読みます。',
@@ -118,6 +118,7 @@ const CompletionMenu = ({ menu, onPick }: { menu: CompletionMenuState; onPick: (
             onPick(c);
           }}
         >
+          {c.icon && <RefIcon {...c.icon} />}
           <span class="completion-label">{c.label}</span>
           <span class="completion-desc">{c.desc}</span>
         </li>

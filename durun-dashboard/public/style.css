@@ -200,14 +200,14 @@ textarea.input { resize: vertical; min-height: 36px; }
 .chip-info { --tone: var(--accent); }
 .chip-link { --tone: var(--accent); position: relative; z-index: 1; color: var(--link); }
 .chip-link:hover { text-decoration: underline; }
-/* PR の状態は GitHub と同じ色分けにする。 */
-.chip-link.pr-draft { --tone: var(--muted); }
-.chip-link.pr-open { --tone: var(--good); }
-.chip-link.pr-merged { --tone: var(--merged); }
-.chip-link.pr-closed { --tone: var(--critical); }
-.chip-link.issue-open { --tone: var(--good); }
-.chip-link.issue-closed { --tone: var(--merged); }
-.chip-link.issue-canceled { --tone: var(--muted); }
+/* PR の状態は GitHub と同じ色分けにする。補完の候補のようにチップの外に置くアイコンも同じ色にするため、.chip-link に限らず当てる。 */
+.pr-draft { --tone: var(--muted); }
+.pr-open { --tone: var(--good); }
+.pr-merged { --tone: var(--merged); }
+.pr-closed { --tone: var(--critical); }
+.issue-open { --tone: var(--good); }
+.issue-closed { --tone: var(--merged); }
+.issue-canceled { --tone: var(--muted); }
 .pr-icon, .issue-icon { flex: none; color: var(--tone); }
 /* 題名は、カードの幅に収まるよう先頭の 10 文字ほどだけを出す。全体はマウスを載せると出る。 */
 .chip-title { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
@@ -1004,6 +1004,7 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .completion-option { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 .completion-option:hover { background: var(--surface-2); }
 .completion-option[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.completion-option > svg { align-self: center; }
 .completion-label { flex: none; font: 12.5px var(--mono); }
 .completion-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .outbox { display: grid; gap: 8px; }

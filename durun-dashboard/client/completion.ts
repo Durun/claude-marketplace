@@ -3,8 +3,8 @@ import type { JiraIssue, RepoRef, SkillInfo } from '../shared/types.ts';
 
 /** 打ちかけの語。mark は /、#、JIRA のプロジェクトキーとハイフン（CATS- など）のどれかで、word はその後ろからカーソルまで。 */
 export type Typed = { mark: string; word: string };
-/** 選ぶと、打ちかけの語を label に置き換える。 */
-export type Candidate = { label: string; desc: string };
+/** 選ぶと、打ちかけの語を label に置き換える。icon は PR と Issue の候補だけが持ち、種別と状態をアイコンで示す。 */
+export type Candidate = { label: string; desc: string; icon?: Pick<RepoRef, 'kind' | 'state'> };
 
 // 行の頭か空白の後の / か # から、カーソルまでの語。パスの途中の / や、URL の # では補完しない。
 const TYPED = /(?:^|\s)([/#])(\S*)$/;
@@ -56,6 +56,6 @@ const matchIssues = (issues: JiraIssue[], prefix: string, word: string): JiraIss
 /** refs は新しい順に、issues はスペースごとに自分の課題、ほかの課題の順に、それぞれ更新が新しい順に並べて渡す。 */
 export const candidates = (typed: Typed, skills: SkillInfo[], refs: RepoRef[], issues: JiraIssue[]): Candidate[] => {
   if (typed.mark === '/') return matchSkills(skills, typed.word).map((sk) => ({ label: `/${sk.name}`, desc: sk.description }));
-  if (typed.mark === '#') return matchRefs(refs, typed.word).map((r) => ({ label: `#${r.number}`, desc: `${r.kind === 'pr' ? 'PR' : 'Issue'} ${r.state} · ${r.title}` }));
+  if (typed.mark === '#') return matchRefs(refs, typed.word).map((r) => ({ label: `#${r.number}`, desc: r.title, icon: { kind: r.kind, state: r.state } }));
   return matchIssues(issues, typed.mark.toUpperCase(), typed.word).map((j) => ({ label: j.key, desc: [j.status, j.summary].filter(Boolean).join(' · ') }));
 };

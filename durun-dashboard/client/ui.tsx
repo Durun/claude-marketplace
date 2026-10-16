@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useContext, useRef, useState } from 'preact/hooks';
-import type { IssueInfo, JiraIssue, PrInfo, SessionStatus, Usage } from '../shared/types.ts';
+import type { IssueInfo, JiraIssue, PrInfo, RepoRef, SessionStatus, Usage } from '../shared/types.ts';
 import { fmtInt, relativeTime, totalTokens } from './format.ts';
 import { NowContext, useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
@@ -115,8 +115,8 @@ const PR_ICON_PATH: Record<PrState, string> = {
 const prState = (pr: PrInfo): PrState =>
   pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : pr.isDraft ? 'draft' : 'open';
 
-const PrIcon = ({ state }: { state: PrState }) => (
-  <svg class="pr-icon" viewBox="0 0 16 16" width="12" height="12" role="img" aria-label={PR_STATE_LABEL[state]}>
+const PrIcon = ({ state, label = PR_STATE_LABEL[state] }: { state: PrState; label?: string }) => (
+  <svg class={`pr-icon pr-${state}`} viewBox="0 0 16 16" width="12" height="12" role="img" aria-label={label}>
     <g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
       <circle cx="4" cy="3" r="1.5" />
       <circle cx="4" cy="13" r="1.5" />
@@ -155,8 +155,8 @@ export const PrChips = ({ pr, session, hideTitle }: { pr: PrInfo; session?: stri
 const ISSUE_STATE_LABEL: Record<IssueInfo['state'], string> = { Open: 'オープン', Closed: '完了', Canceled: 'キャンセル' };
 
 // 円は共通。中の形で、オープン（点）、完了（チェック）、キャンセル（斜線）を描き分ける。
-const IssueIcon = ({ state }: { state: IssueInfo['state'] }) => (
-  <svg class="issue-icon" viewBox="0 0 16 16" width="12" height="12" role="img" aria-label={ISSUE_STATE_LABEL[state]}>
+const IssueIcon = ({ state, label = ISSUE_STATE_LABEL[state] }: { state: IssueInfo['state']; label?: string }) => (
+  <svg class={`issue-icon issue-${state.toLowerCase()}`} viewBox="0 0 16 16" width="12" height="12" role="img" aria-label={label}>
     <g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="8" cy="8" r="6.3" />
       {state === 'Open' ? <circle cx="8" cy="8" r="1.2" fill="currentColor" /> : <path d={state === 'Closed' ? 'M5.3 8.2l1.8 1.8 3.6-3.6' : 'M4 12 12 4'} />}
@@ -172,6 +172,17 @@ export const IssueChip = ({ issue }: { issue: IssueInfo }) => (
     {issue.title && <span class="chip-title">{issue.title}</span>}
   </a>
 );
+
+/** 補完の候補のように種別を文字で出さないところで、PR と Issue をバッジと同じアイコンで描く。読み上げには種別も含める。 */
+export const RefIcon = ({ kind, state }: Pick<RepoRef, 'kind' | 'state'>) => {
+  // RepoRef の state は、PR なら小文字にすると PrState に、Issue なら IssueInfo['state'] に収まる。
+  if (kind === 'pr') {
+    const pr = state.toLowerCase() as PrState;
+    return <PrIcon state={pr} label={`PR ${PR_STATE_LABEL[pr]}`} />;
+  }
+  const issue = state as IssueInfo['state'];
+  return <IssueIcon state={issue} label={`Issue ${ISSUE_STATE_LABEL[issue]}`} />;
+};
 
 /** session を渡すと、押したときにそのセッションの「JIRA」ウィジェットでその課題を開く。PrChips と同じく、課題へのリンクの横取りが data-session を読んで開く。 */
 export const JiraChips = ({ issues, session }: { issues: JiraIssue[]; session?: string }) => (
