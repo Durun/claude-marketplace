@@ -12,6 +12,7 @@ import { isFileRef } from './fileRef.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
 import { type CodeLink, Markdown } from './Markdown.tsx';
 import { Composer, MessageInput } from './Messaging.tsx';
+import { ARROW_STEP } from './order.ts';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
@@ -433,7 +434,7 @@ export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntr
     stick.current = fromBottom.current - el.clientHeight < STICK_PX;
   };
   // 表示中の位置より上（dir = -1）か下（dir = 1）で、いちばん近い依頼を欄の上端へ送る。
-  const toPrompt = (dir: 1 | -1) => {
+  const toPrompt = (dir: number) => {
     const el = box.current;
     if (!el) return;
     const top = el.getBoundingClientRect().top;
@@ -441,11 +442,19 @@ export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntr
     const to = dir < 0 ? offsets.findLast((o) => o < -1) : offsets.find((o) => o > 1);
     if (to !== undefined) el.scrollBy({ top: to, behavior: 'smooth' });
   };
+  // チャットを押してから上下の矢印キーを押しても、↑↓ のボタンと同じく依頼へ移る。押したチャットにキーが届くよう、tabIndex でフォーカスできるようにする。
+  // 依頼を書き直す欄では文字のカーソルを動かし、Cmd + ↑ のような修飾キーつきの操作はブラウザのスクロールに任せる。
+  const onKeyDown = (e: KeyboardEvent) => {
+    const dir = ARROW_STEP[e.key];
+    if (!dir || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.target as Element).closest('textarea')) return;
+    e.preventDefault();
+    toPrompt(dir);
+  };
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
   return (
     <>
       <h2 class="section-title">チャット</h2>
-      <div class="widget-body chat" ref={box} onScroll={onScroll}>
+      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown}>
         {entries.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => setStart(Math.max(0, first - CHAT_PAGE))}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
