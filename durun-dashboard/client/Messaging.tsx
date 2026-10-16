@@ -25,6 +25,7 @@ const VIA_LABEL: Record<NonNullable<OutboxMessage['via']>, string> = {
   socket: 'ソケット経由',
   hook: 'フック経由',
   resume: 'セッション再開',
+  reply: 'supervisor 経由',
   mcp: 'MCP 経由',
   manual: '手動',
 };

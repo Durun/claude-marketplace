@@ -2,6 +2,7 @@
 // サーバーのほかのコードは process.platform を見ずに、必ず platform を経由する。
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,6 +41,11 @@ export type Platform = {
    * pid は送り先のセッションの claude のプロセス、sessionsDir は Claude Code がセッションファイルを置く場所。読めなければ例外を投げる。
    */
   inboxToken: (pid: number, sessionsDir: string, files?: Files) => string | undefined;
+  /**
+   * バックグラウンドのセッションを動かす supervisor の制御ソケット。claudeDir は Claude Code の設定の場所。読めなければ例外を投げる。
+   * ponytail: この場所は Claude Code の文書に無い。2.1.301 で確かめた。変わったら接続できない理由が、送信したメッセージに出る。
+   */
+  supervisorSocket: (claudeDir: string, files?: Files) => string;
   /** dir の下に置く、このプロセスが listen できるローカルのソケットの場所。 */
   localSocketPath: (dir: string, name: string) => string;
   /** この端末を tailnet の中から指す名前と IP。Tailscale が入っていないか、つながっていなければ空。 */
@@ -84,6 +90,9 @@ const posix = {
   connectionOwner: async () => undefined,
   // Unix ソケットは OS のユーザーだけが開けるので、Claude Code は認証の行を求めない。
   inboxToken: () => undefined,
+  // Claude Code は、ユーザーごとの /tmp の下を、設定の場所のハッシュで分ける。
+  supervisorSocket: (claudeDir: string) =>
+    path.posix.join('/tmp', `cc-daemon-${process.getuid?.() ?? 0}`, createHash('sha256').update(path.posix.resolve(claudeDir)).digest('hex').slice(0, 8), 'control.sock'),
   localSocketPath: (dir: string, name: string) => path.posix.join(dir, `${name}.sock`),
   tailnetHosts: tailnetHostsVia(['tailscale']),
   displayPath: (file: string) => file,
@@ -143,6 +152,12 @@ const win32: Platform = {
     const { peerToken } = JSON.parse(files.read(path.win32.join(sessionsDir, name))) as { peerToken?: unknown };
     if (typeof peerToken !== 'string' || !peerToken) throw new Error('受信ソケットの鍵の形が変わっていて読めません');
     return peerToken;
+  },
+  // 名前付きパイプの名前は、Claude Code が設定の場所に置く pipe.key の値で分ける。
+  supervisorSocket: (claudeDir, files = realFiles) => {
+    const key = files.read(path.win32.join(claudeDir, 'daemon', 'pipe.key')).trim();
+    if (!/^[a-f0-9]{16}$/.test(key)) throw new Error('supervisor の pipe.key の形が変わっていて読めません');
+    return `\\\\.\\pipe\\cc-daemon-${key}-control`;
   },
   // Windows でプロセス間の接続を listen できるのは、ファイルシステムではなく名前付きパイプの名前空間。
   localSocketPath: (dir, name) => `\\\\.\\pipe\\${path.win32.basename(dir)}-${name}`,

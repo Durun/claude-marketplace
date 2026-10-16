@@ -261,8 +261,8 @@ export type OutboxMessage = {
   text: string;
   createdAt: number;
   deliveredAt?: number;
-  /** hook はフックで差し込んで届けたもの。state.json に残っている記録を表示するために持つ。 */
-  via?: 'socket' | 'resume' | 'mcp' | 'manual' | 'hook';
+  /** hook はフックで差し込んで届けたもの。state.json に残っている記録を表示するために持つ。reply は supervisor に返信を頼んで届けたもの。 */
+  via?: 'socket' | 'resume' | 'reply' | 'mcp' | 'manual' | 'hook';
   /** 届けられなかった理由。未配信に戻っている。 */
   error?: string;
   /** 届けている途中。サーバーが途中で止まると付いたまま残り、次に起動したときに届け直す。 */

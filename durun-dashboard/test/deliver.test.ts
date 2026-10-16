@@ -176,6 +176,74 @@ test('作業中か権限の確認待ちのバックグラウンドのセッシ�
   state.queue = state.queue.filter((m) => m.sessionId !== 'w1');
 });
 
+test('サブエージェントを待っているバックグラウンドのセッションへは、止めずに supervisor に返信を頼んで保留したものも送り、断られたら未配信に戻す', async () => {
+  const callsFile = path.join(tmp, 'calls-reply');
+  useFakeClaude(path.join(tmp, 'bin-reply'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
+  const daemon = path.join(tmp, 'claude', 'daemon');
+  fs.mkdirSync(daemon, { recursive: true });
+  fs.writeFileSync(path.join(daemon, 'control.key'), 'control-key\n');
+  // Windows では、制御ソケットの名前を pipe.key から作る。
+  fs.writeFileSync(path.join(daemon, 'pipe.key'), '0123456789abcdef');
+  const socketPath = platform.supervisorSocket(path.join(tmp, 'claude'));
+  if (platform.name !== 'win32') fs.mkdirSync(path.dirname(socketPath), { recursive: true });
+  const listenSupervisor = async (reply: object): Promise<{ server: net.Server; request: Promise<unknown> }> => {
+    const server = net.createServer();
+    const request = new Promise((resolve) =>
+      server.once('connection', (c) => {
+        let buf = '';
+        c.on('data', (chunk) => {
+          buf += chunk.toString();
+          if (!buf.includes('\n')) return;
+          resolve(JSON.parse(buf.slice(0, buf.indexOf('\n'))));
+          c.end(`${JSON.stringify(reply)}\n`);
+        });
+      }),
+    );
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+    return { server, request };
+  };
+
+  const startedAt = Date.now() - 60_000;
+  const live = (started: number): void =>
+    fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 'r1.json'), JSON.stringify({ pid: process.pid, sessionId: 'r1', cwd: tmp, status: 'busy', kind: 'bg', jobId: 'jr1', startedAt: started }));
+  live(startedAt);
+  ensureSession('r1', tmp);
+  const dir = path.join(tmp, 'claude', 'projects', 'pr');
+  fs.mkdirSync(dir, { recursive: true });
+  const log = (entry: object): void => fs.appendFileSync(path.join(dir, 'r1.jsonl'), `${JSON.stringify(entry)}\n`);
+  const iso = (ms: number): string => new Date(ms).toISOString();
+  log({ type: 'user', timestamp: iso(startedAt + 1000), message: { role: 'user', content: '調べて' } });
+  log({ type: 'assistant', timestamp: iso(startedAt + 2000), message: { content: [{ type: 'text', text: 'サブエージェントに頼みました' }] } });
+
+  // ターンの途中は、ほかの作業中のセッションと同じく保留する。
+  assert.equal(sendMessage('r1', 'ターンの途中に送った').delivery, 'queued');
+  const accepting = await listenSupervisor({ ok: true, op: 'reply' });
+  log({ type: 'system', subtype: 'turn_duration', timestamp: iso(startedAt + 3000) });
+  flushQueue();
+  assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'jr1', text: 'ターンの途中に送った', auth: 'control-key' });
+  await close(accepting.server);
+  const sent = state.outbox.find((m) => m.sessionId === 'r1' && m.text === 'ターンの途中に送った');
+  if (sent?.sending) await new Promise<void>((resolve) => onChange(() => !sent.sending && resolve()));
+  assert.equal(sent?.via, 'reply');
+  assert.ok(sent?.deliveredAt);
+
+  const refusing = await listenSupervisor({ ok: false, error: 'job not found', code: 'ENOJOB' });
+  const { message, delivery } = sendMessage('r1', '断られる');
+  assert.equal(delivery, 'sent');
+  await refusing.request;
+  if (!message.error) await new Promise<void>((resolve) => onChange(() => !!message.error && resolve()));
+  assert.equal(message.error, 'job not found');
+  assert.equal(message.deliveredAt, undefined);
+  await close(refusing.server);
+  assert.equal(fs.existsSync(callsFile), false);
+
+  // 再開したばかりのプロセスは、前のプロセスで終えたターンが会話ログに残っていても、作業中として保留する。
+  live(Date.now());
+  assert.equal(sendMessage('r1', '再開の直後に送った').delivery, 'queued');
+  state.queue = state.queue.filter((m) => m.sessionId !== 'r1');
+  if (platform.name !== 'win32') fs.rmSync(path.dirname(socketPath), { recursive: true, force: true });
+});
+
 test('巻き戻して送るときは、前置きを付けずに -p で渡す', async () => {
   const bin = path.join(tmp, 'bin-rewind');
   const argsFile = path.join(tmp, 'args-rewind');

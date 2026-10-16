@@ -82,6 +82,14 @@ test('Windows では、受信ソケットのトークンを、送り先のセッ
   assert.throws(() => win.inboxToken(123, dir, files({ '123.bbbb.key': JSON.stringify({ token: 'renamed' }) })), /鍵の形が変わって/);
 });
 
+test('supervisor の制御ソケットは、POSIX では設定の場所のハッシュで分けた /tmp の下に、Windows では pipe.key の値で名付けた名前付きパイプにある', () => {
+  for (const name of ['darwin', 'linux']) assert.equal(platformFor(name).supervisorSocket('/home/me/.claude'), `/tmp/cc-daemon-${process.getuid?.() ?? 0}/cb67f5c9/control.sock`);
+  const pipeKey = (key: string): Files => ({ list: () => [], read: (file) => (file === 'C:\\Users\\me\\.claude\\daemon\\pipe.key' ? key : assert.fail(`無いファイルを読んだ: ${file}`)) });
+  const win = platformFor('win32');
+  assert.equal(win.supervisorSocket('C:\\Users\\me\\.claude', pipeKey('0123456789abcdef\n')), '\\\\.\\pipe\\cc-daemon-0123456789abcdef-control');
+  assert.throws(() => win.supervisorSocket('C:\\Users\\me\\.claude', pipeKey('')), /pipe\.key の形が変わって/);
+});
+
 test('macOS では、パスをそのまま使い、PID は headersHelper に任せ、メモリを sysctl と vm_stat から読む', async () => {
   const mac = platformFor('darwin');
   assert.equal(mac.shellPath('/Users/me/.durun-dashboard'), '/Users/me/.durun-dashboard');

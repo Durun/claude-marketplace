@@ -1,5 +1,6 @@
 // 人間から Claude へのメッセージを届ける。
-// MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡し、ほかの動いているセッションには受信ソケットへ送る。
+// MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
+// サブエージェントを待っているバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
 // 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消す。
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -8,13 +9,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession } from './claude.ts';
+import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { ensureSession, moveSession, newId, state, touch } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
+// supervisor に頼むときに名乗る鍵。Claude Code が作り、OS のユーザーだけが読める。
+const CONTROL_KEY = path.join(CLAUDE_DIR, 'daemon', 'control.key');
+const SUPERVISOR_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 15_000;
 // 認証を拒まれた接続は数ミリ秒で閉じられ、受け付けられた接続は開いたままになる。これだけ待てば見分けられる。
 const AUTH_GRACE_MS = 200;
@@ -184,12 +188,54 @@ const awaitingPermission = (sessionId: string): boolean => state.attention.some(
  */
 const restartable = (live: LiveSession): boolean => live.kind === 'bg' && live.status === 'idle' && !!live.jobId && !awaitingPermission(live.sessionId);
 
+const summaryOf = (sessionId: string): LogSummary | undefined => {
+  const transcript = state.sessions[sessionId]?.transcriptPath ?? findTranscript(sessionId);
+  return transcript ? summarizeLog(transcript) : undefined;
+};
+
 /**
- * 作業中か権限の確認待ちのバックグラウンドのセッション。
+ * 本体のターンを終え、裏で動くサブエージェントを待っているセッション。Claude Code はこの間も作業中と記録するので、会話ログで見分ける。
+ * 再開したばかりのセッションの会話ログには、前のプロセスで終えたターンが残っているので、このプロセスが始まった後に終えたターンに限る。
+ */
+const delegating = (live: LiveSession): boolean => live.status === 'busy' && (summaryOf(live.sessionId)?.turnEndedAt ?? 0) > (live.startedAt ?? Infinity);
+
+/**
+ * 作業中か権限の確認待ちのバックグラウンドのセッション。サブエージェントを待っているだけのセッションは除く。
  * 受信ソケットで送ると、Claude Code が別のセッションからの発言として包むので、入力待ちになるまで保留し、flushQueue に再開して渡させる。
  * readyForQueue が送ってよいとする状態とは重ならないので、flushQueue が送ったものをまた保留することはない。
  */
-const mustWait = (live: LiveSession | undefined): boolean => live?.kind === 'bg' && (live.status === 'busy' || awaitingPermission(live.sessionId));
+const mustWait = (live: LiveSession | undefined): boolean => live?.kind === 'bg' && ((live.status === 'busy' && !delegating(live)) || awaitingPermission(live.sessionId));
+
+/**
+ * supervisor の制御ソケットへ 1 行の JSON で、バックグラウンドのジョブへの返信を頼む。Claude Code の agent view が返信に使う経路。
+ * 人間が打った発言として届き、セッションを止めない。Claude が作業中なら、Claude Code が受け付けて順に読む。
+ * ponytail: この頼み方は Claude Code の文書に無い。2.1.301 で確かめた。変わったら断られた理由が、送信したメッセージに出る。
+ */
+const replyToJob = (jobId: string, text: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const request = { proto: 1, op: 'reply', short: jobId, text, auth: fs.readFileSync(CONTROL_KEY, 'utf8').trim() };
+    const socket = net.connect(platform.supervisorSocket(CLAUDE_DIR), () => socket.write(`${JSON.stringify(request)}\n`));
+    let buf = '';
+    socket.setEncoding('utf8');
+    socket.setTimeout(SUPERVISOR_TIMEOUT_MS, () => socket.destroy(new Error('supervisor が応えません')));
+    socket.on('data', (chunk: string) => {
+      buf += chunk;
+      const end = buf.indexOf('\n');
+      if (end < 0) return;
+      socket.end();
+      let res: { ok?: boolean; error?: string } = {};
+      try {
+        res = JSON.parse(buf.slice(0, end)) as typeof res;
+      } catch {
+        // 読めない返事は、断られたものとして下で扱う。
+      }
+      if (res.ok) resolve();
+      else reject(new Error(res.error ?? 'supervisor の返事を読めません'));
+    });
+    // 失敗したときは close より先に error が来るので、reject で決まる。返事を受けた後の close では何も変わらない。
+    socket.on('error', reject);
+    socket.on('close', () => reject(new Error('supervisor が返事をせずに接続を閉じました')));
+  });
 
 /**
  * Claude Code が各セッションに開く受信ソケット（cross-session messaging）へ、1 行の JSON で送る。
@@ -244,15 +290,18 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
     touch();
     return 'queued';
   }
-  // 受信ソケットで送ったものは承認として扱われないので、再開して渡せるセッションには使わない。
-  const viaInbox = !!live && !restartable(live);
+  // 受信ソケットで送ったものは承認として扱われないので、再開して渡せるセッションと、supervisor に返信を頼めるセッションには使わない。
+  // サブエージェントを待っているセッションは、止めるとサブエージェントも止まるので、再開せずに supervisor に返信を頼む。
+  const restart = !live || restartable(live);
+  const job = !restart && live.kind === 'bg' && delegating(live) ? live.jobId : undefined;
   // 続けて送られても二重に届かないよう、送る前に配信済みにする。届け終えるまでは sending を付けておき、途中でサーバーが止まったら次の起動で届け直せるようにする。
   // 巻き戻しは、届け直すともう一度巻き戻すので、sending を付けない。
-  for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via: viaInbox ? 'socket' : 'resume', error: undefined, sending: rewindTo ? undefined : true });
+  const via = restart ? 'resume' : job ? 'reply' : 'socket';
+  for (const m of pending) Object.assign(m, { deliveredAt: Date.now(), via, error: undefined, sending: rewindTo ? undefined : true });
   touch();
   // 鍵を読めないときも、届けられなかったものとして下で未配信に戻す。
   const toInbox = async (to: LiveSession): Promise<void> => postToInbox(to.messagingSocketPath, formatMessages(pending), platform.inboxToken(to.pid, SESSIONS_DIR));
-  const sent = viaInbox ? toInbox(live) : resume(sessionId, cwd, joinTexts(pending), live?.jobId, rewindTo);
+  const sent = restart ? resume(sessionId, cwd, joinTexts(pending), live?.jobId, rewindTo) : job ? replyToJob(job, joinTexts(pending)) : toInbox(live);
   sent.then(
     () => {
       for (const m of pending) m.sending = undefined;
@@ -265,23 +314,22 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
       console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
     },
   );
-  return viaInbox ? 'sent' : 'resumed';
+  return restart ? 'resumed' : 'sent';
 };
 
 const ASK_KINDS = new Set(['ask', 'question', 'permission']);
 
 /**
- * 保留したメッセージを送ってよいか。Claude が入力待ちで、質問や権限の確認で止まっていないときに限る。
+ * 保留したメッセージを送ってよいか。Claude が入力待ちで、質問や権限の確認で止まっていないときに限る。サブエージェントを待っているだけのセッションも、入力待ちとみなす。
  * 質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。
  * 送った直後のセッションは、読み始めるまで入力待ちに見えるので、前に送ったメッセージに Claude が返事をするまでは送らない。
  */
 const readyForQueue = (sessionId: string, live: LiveSession | undefined): boolean => {
-  const meta = state.sessions[sessionId];
-  if (!meta || live?.status !== 'idle' || state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind))) return false;
+  if (!state.sessions[sessionId] || !live || !(live.status === 'idle' || delegating(live))) return false;
+  if (state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind))) return false;
   const sent = state.outbox.filter((m) => m.sessionId === sessionId);
   if (sent.some((m) => !m.deliveredAt || m.sending)) return false;
-  const transcript = meta.transcriptPath ?? findTranscript(sessionId);
-  const log = transcript ? summarizeLog(transcript) : undefined;
+  const log = summaryOf(sessionId);
   if (log?.lastToolUse) return false;
   return !sent.length || (log?.lastMessageAt ?? 0) > Math.max(...sent.map((m) => m.createdAt));
 };

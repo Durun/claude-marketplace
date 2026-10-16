@@ -112,6 +112,8 @@ export type LogSummary = {
   /** 最後に AskUserQuestion で尋ねた質問 */
   lastQuestions?: AskedQuestion[];
   lastActivityAt?: number;
+  /** 本体のターンを終えた時刻。次の依頼や発言が載ったら消す。 */
+  turnEndedAt?: number;
   /** 使用制限で断られて止まったときの、止まった時刻とリセットの時刻（epoch ミリ秒）。続きのやり取りが載ったら消す。 */
   limit?: UsageLimit;
   timeline: [number, number][];
@@ -149,6 +151,8 @@ type ContentBlock = { type?: string; id?: string; tool_use_id?: string; content?
 type RawUsage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
 type LogEntry = {
   type?: string;
+  /** system エントリの種類。turn_duration は、ターンを終えたときに書かれる。 */
+  subtype?: string;
   parentUuid?: string | null;
   isSidechain?: boolean;
   origin?: { kind?: string };
@@ -372,7 +376,9 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   else if (e.type === 'frame-link' && e.frameUrl) s.artifacts.set(e.frameUrl, { url: e.frameUrl, title: e.title ?? '', path: e.path });
   else if (e.type === 'attachment' && e.attachment?.type === 'skill_listing') applySkills(s, e.attachment);
   else if (e.type === 'attachment' && e.attachment?.type === 'queued_command') applyNotifications(s, e.attachment.prompt ?? '');
+  else if (e.type === 'system' && e.subtype === 'turn_duration') s.turnEndedAt = ts;
   if (e.type !== 'user' && e.type !== 'assistant') return;
+  s.turnEndedAt = undefined;
   if (e.cwd) s.cwd = e.cwd;
   if (e.gitBranch && e.gitBranch !== s.branch) {
     s.branches.delete(e.gitBranch);
