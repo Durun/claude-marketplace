@@ -141,6 +141,55 @@ if (args[0] === '--bg') {
   assert.equal(message.deliveredAt, undefined);
 });
 
+test('作業中か権限の確認待ちのバックグラウンドのセッションへは送らずに保留し、入力待ちになったら前置きを付けずに再開して渡す', async () => {
+  const bin = path.join(tmp, 'bin-wait');
+  const callsFile = path.join(tmp, 'calls-wait');
+  const roster = path.join(tmp, 'claude', 'daemon', 'roster.json');
+  fs.mkdirSync(path.dirname(roster), { recursive: true });
+  fs.writeFileSync(roster, '{"workers":{}}');
+  useFakeClaude(bin, `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
+  const live = (status: string): void =>
+    fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 'w1.json'), JSON.stringify({ pid: process.pid, sessionId: 'w1', cwd: tmp, status, kind: 'bg', jobId: 'jw1' }));
+  ensureSession('w1', tmp);
+  const left = (): string[] => state.queue.filter((m) => m.sessionId === 'w1').map((m) => m.text);
+
+  live('busy');
+  assert.equal(sendMessage('w1', '作業中に送った').delivery, 'queued');
+  live('idle');
+  state.attention.push({ id: 'aw', kind: 'permission', sessionId: 'w1', title: '権限', createdAt: Date.now() });
+  assert.equal(sendMessage('w1', '確認待ちに送った').delivery, 'queued');
+  assert.deepEqual(left(), ['作業中に送った', '確認待ちに送った']);
+  assert.equal(state.outbox.some((m) => m.sessionId === 'w1'), false);
+  assert.equal(fs.existsSync(callsFile), false);
+
+  state.attention = state.attention.filter((a) => a.id !== 'aw');
+  flushQueue();
+  assert.deepEqual(left(), ['確認待ちに送った']);
+  const delivered = (): boolean => state.outbox.some((m) => m.sessionId === 'w1' && m.deliveredAt && !m.sending);
+  if (!delivered()) await new Promise<void>((resolve) => onChange(() => delivered() && resolve()));
+  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  assert.deepEqual(calls, [
+    ['stop', 'jw1'],
+    ['--bg', '--resume', 'w1', '--', '作業中に送った'],
+  ]);
+  // 残りは Claude の返事を待って送られる。後のテストが見るキューに残さない。
+  state.queue = state.queue.filter((m) => m.sessionId !== 'w1');
+});
+
+test('巻き戻して送るときは、前置きを付けずに -p で渡す', async () => {
+  const bin = path.join(tmp, 'bin-rewind');
+  const argsFile = path.join(tmp, 'args-rewind');
+  fs.writeFileSync(path.join(tmp, 'claude', 'daemon', 'roster.json'), '{"workers":{}}');
+  useFakeClaude(bin, `if (args[0] === '-p') fs.writeFileSync(${js(argsFile)}, lines(args));`);
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 'r1.json'), JSON.stringify({ pid: process.pid, sessionId: 'r1', cwd: tmp, status: 'idle', kind: 'bg', jobId: 'jr1' }));
+  ensureSession('r1', tmp);
+  const to = '00000000-0000-4000-8000-000000000000';
+
+  assert.equal(sendMessage('r1', '書き直した依頼', to).delivery, 'resumed');
+  await new Promise<void>((resolve) => onChange(() => fs.existsSync(argsFile) && resolve()));
+  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['-p', '--resume', 'r1', '--resume-session-at', to, '--', '書き直した依頼']);
+});
+
 test('届けている途中でサーバーが止まったメッセージは、次に起動したときに届け直す', async () => {
   // 前のサーバーがセッションを止めた後、再開する前に止まった状態。配信済みの記録と sending が残り、セッションはもう動いていない。
   const bin = path.join(tmp, 'bin-interrupted');

@@ -225,13 +225,15 @@ test('summarizeLog は、呼んだツールを名前と入力の要点の 1 行�
   fs.rmSync(dir, { recursive: true });
 });
 
-test('summarizeLog は、人が打った依頼とダッシュボードから届いた依頼を会話に入れ、前置きと閉じタグと注意書きを外す', () => {
+test('summarizeLog は、人が打った依頼と claude -p で渡した依頼とダッシュボードから届いた依頼を会話に入れ、前置きと閉じタグと注意書きを外す', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
   const file = path.join(dir, 's.jsonl');
   const user = (o: object): string => `${JSON.stringify({ type: 'user', ...o })}\n`;
   fs.writeFileSync(
     file,
     user({ origin: { kind: 'human' }, message: { content: '直して' } }) +
+      user({ promptSource: 'sdk', message: { content: '-p で渡した' } }) +
+      user({ promptSource: 'sdk', message: { content: '[durun-dashboard] 人間から:\n前置きつきで -p で渡した' } }) +
       user({ isMeta: true, message: { content: 'Stop hook feedback:\n[durun-dashboard] 改善要望です' } }) +
       user({ origin: { kind: 'peer' }, isMeta: true, message: { content: 'Another Claude session sent a message: <agent-message from="a">[durun-dashboard] 送りました\n---\n続けて</agent-message>\n返信は不要' } }) +
       user({ origin: { kind: 'peer' }, isMeta: true, message: { content: 'Another Claude session sent a message: <agent-message from="b">[Subagent hand-back] 報告</agent-message>' } }) +
@@ -240,8 +242,8 @@ test('summarizeLog は、人が打った依頼とダッシュボードから届�
       user({ message: { content: [{ type: 'tool_result', content: '[durun-dashboard] を含む出力' }] } }),
   );
   const log = summarizeLog(file);
-  assert.deepEqual(log.texts.map((t) => t.text), ['直して', '[durun-dashboard] 改善要望です', '[durun-dashboard] 送りました\n---\n続けて', '[durun-dashboard] 人間から:\nもう一度']);
-  assert.equal(log.lastPrompt, '[durun-dashboard] 人間から:\nもう一度');
+  assert.deepEqual(log.texts.map((t) => t.text), ['直して', '-p で渡した', '前置きつきで -p で渡した', '[durun-dashboard] 改善要望です', '[durun-dashboard] 送りました\n---\n続けて', 'もう一度']);
+  assert.equal(log.lastPrompt, 'もう一度');
   fs.rmSync(dir, { recursive: true });
 });
 
@@ -257,10 +259,11 @@ test('summarizeLog は、巻き戻して送った依頼が来たら、捨てら�
       ask('u1', 'a0', 'A') + say('m1', 'u1', 'a') +
       ask('u2', 'm1', 'B') + say('m2', 'u2', 'b') +
       ask('u3', 'm2', 'C') + say('m3', 'u3', 'c') +
-      ask('u4', 'm1', '[durun-dashboard] 人間から:\nB2') + say('m4', 'u4', 'b2'),
+      // 巻き戻して送る依頼は -p で渡すので、origin を持たない。
+      entry({ type: 'user', uuid: 'u4', parentUuid: 'm1', promptSource: 'sdk', message: { content: 'B2' } }) + say('m4', 'u4', 'b2'),
   );
   const log = summarizeLog(file);
-  assert.deepEqual(log.texts.map((t) => t.text), ['A', 'a', '[durun-dashboard] 人間から:\nB2', 'b2']);
+  assert.deepEqual(log.texts.map((t) => t.text), ['A', 'a', 'B2', 'b2']);
   assert.deepEqual(log.texts.map((t) => t.rewindTo), ['a0', undefined, 'm1', undefined]);
   fs.rmSync(dir, { recursive: true });
 });

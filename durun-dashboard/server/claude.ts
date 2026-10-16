@@ -155,6 +155,8 @@ type LogEntry = {
   parentUuid?: string | null;
   isSidechain?: boolean;
   origin?: { kind?: string };
+  /** claude -p で渡した依頼は sdk になり、origin を持たない。 */
+  promptSource?: string;
   timestamp?: string;
   cwd?: string;
   gitBranch?: string;
@@ -304,20 +306,24 @@ const applyAssistant = (s: LogSummary, e: LogEntry, ts: number | undefined): voi
 
 // ダッシュボードからの依頼は、フックの結果や別のセッションからのメッセージとして届き、origin が human にならない。依頼の文に付く印で見分ける。
 const DASHBOARD_MARK = '[durun-dashboard]';
+// 受信ソケットで送る依頼に付けて、人間が送ったことを Claude に伝える前置き。チャットには出さない。
+export const HUMAN_LABEL = `${DASHBOARD_MARK} 人間から:\n`;
 // Claude Code が、別のセッションから届いたメッセージの後ろに付ける注意書きの書き出し。
 const PEER_NOTE = '\n\nThis came from another Claude session';
 
+const withoutLabel = (text?: string): string | undefined => (text?.startsWith(HUMAN_LABEL) ? text.slice(HUMAN_LABEL.length) : text);
+
 /**
- * 人間の依頼の文。人が打ったものと、ダッシュボードから届いたものに限る。タスク通知やスキルの読み込み、ツールの結果は依頼ではない。
- * ダッシュボードからの依頼は、前に付くフックや別のセッションの前置きと、後ろの閉じタグや注意書きを外す。
+ * 人間の依頼の文。人が打ったものと、claude -p で渡したものと、ダッシュボードから届いたものに限る。タスク通知やスキルの読み込み、ツールの結果は依頼ではない。
+ * どの依頼からも HUMAN_LABEL を外す。ダッシュボードから届いた依頼は、前に付くフックや別のセッションの前置きと、後ろの閉じタグや注意書きも外す。
  */
 const requestText = (e: LogEntry): string | undefined => {
   const content = e.message?.content;
   const text = typeof content === 'string' ? content : (content ?? []).map((b) => (b.type === 'text' ? (b.text ?? '') : '')).join('\n');
   if (!text.trim()) return undefined;
-  if (e.origin?.kind === 'human') return text;
+  if (e.origin?.kind === 'human' || e.promptSource === 'sdk') return withoutLabel(text);
   const at = text.indexOf(DASHBOARD_MARK);
-  return at < 0 ? undefined : text.slice(at).split('</agent-message>')[0]?.split(PEER_NOTE)[0]?.trim();
+  return at < 0 ? undefined : withoutLabel(text.slice(at).split('</agent-message>')[0]?.split(PEER_NOTE)[0]?.trim());
 };
 
 // last-prompt エントリを書かない起動経路もあるので、依頼の user エントリからも拾う。

@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession } from './claude.ts';
+import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { ensureSession, moveSession, newId, state, touch } from './store.ts';
@@ -38,7 +38,7 @@ const joinTexts = (msgs: OutboxMessage[]): string => msgs.map((m) => m.text).joi
 
 // 受信ソケットで送ると別のセッションからの発言として届くので、人間がダッシュボードから送ったことを前置きで示す。
 // 送るたびに Claude のコンテキストに積まれるので、前置きは印と送り手だけにする。
-export const formatMessages = (msgs: OutboxMessage[]): string => `[durun-dashboard] 人間から:\n${joinTexts(msgs)}`;
+export const formatMessages = (msgs: OutboxMessage[]): string => `${HUMAN_LABEL}${joinTexts(msgs)}`;
 
 /**
  * claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。
@@ -176,12 +176,20 @@ export const removeSession = async (sessionId: string): Promise<void> => {
   await runClaude(['rm', job.id], os.homedir());
 };
 
+const awaitingPermission = (sessionId: string): boolean => state.attention.some((a) => a.sessionId === sessionId && a.kind === 'permission');
+
 /**
  * 止めて再開しても作業が途切れない、入力待ちのバックグラウンドのセッション。
  * 端末のセッションはダッシュボードから止められず、作業中や権限の確認待ちに止めると作業が途切れる。
  */
-const restartable = (live: LiveSession): boolean =>
-  live.kind === 'bg' && live.status === 'idle' && !!live.jobId && !state.attention.some((a) => a.sessionId === live.sessionId && a.kind === 'permission');
+const restartable = (live: LiveSession): boolean => live.kind === 'bg' && live.status === 'idle' && !!live.jobId && !awaitingPermission(live.sessionId);
+
+/**
+ * 作業中か権限の確認待ちのバックグラウンドのセッション。
+ * 受信ソケットで送ると、Claude Code が別のセッションからの発言として包むので、入力待ちになるまで保留し、flushQueue に再開して渡させる。
+ * readyForQueue が送ってよいとする状態とは重ならないので、flushQueue が送ったものをまた保留することはない。
+ */
+const mustWait = (live: LiveSession | undefined): boolean => live?.kind === 'bg' && (live.status === 'busy' || awaitingPermission(live.sessionId));
 
 /**
  * Claude Code が各セッションに開く受信ソケット（cross-session messaging）へ、1 行の JSON で送る。
@@ -211,29 +219,32 @@ export const sendMessage = (sessionId: string, text: string, rewindTo?: string):
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
-  // 受信ソケットで送ったものは承認として扱われないので、再開して渡せるセッションには使わない。
-  const viaInbox = !!live && !restartable(live);
-  if (rewindTo && viaInbox) throw new Error('作業中のセッションと端末で開いているセッションは巻き戻せません');
+  if (rewindTo && live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは巻き戻せません');
   const message: OutboxMessage = { id: newId(), sessionId, text, createdAt: Date.now() };
   state.outbox.push(message);
   // 前に届けられなかったものも一緒に送る。
-  // 巻き戻すときは、捨てる分岐に宛てた未配信のものを混ぜない。-p の依頼は人が打った発言として記録されないので、前置きでダッシュボードからの依頼と分かるようにする。
-  deliver(sessionId, meta.cwd, live, rewindTo ? [message] : undelivered(sessionId), rewindTo);
-  return { message, delivery: viaInbox ? 'sent' : 'resumed' };
+  // 巻き戻すときは、捨てる分岐に宛てた未配信のものを混ぜない。
+  return { message, delivery: deliver(sessionId, meta.cwd, live, rewindTo ? [message] : undelivered(sessionId), rewindTo) };
 };
 
 /** 届けられなかったメッセージを、送り直す操作で届け直す。同じセッションの未配信のものもまとめて送る。 */
 export const redeliver = (sessionId: string): Delivery => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
-  const live = readLiveSessions().get(sessionId);
-  deliver(sessionId, meta.cwd, live, undelivered(sessionId));
-  return live && !restartable(live) ? 'sent' : 'resumed';
+  return deliver(sessionId, meta.cwd, readLiveSessions().get(sessionId), undelivered(sessionId));
 };
 
 const undelivered = (sessionId: string): OutboxMessage[] => state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
 
-const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, pending: OutboxMessage[], rewindTo?: string): void => {
+/** 届け方を返す。作業中か権限の確認待ちのバックグラウンドのセッションへは送らず、送信の記録から保留へ移す。 */
+const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, pending: OutboxMessage[], rewindTo?: string): Delivery => {
+  if (mustWait(live)) {
+    state.outbox = state.outbox.filter((m) => !pending.includes(m));
+    state.queue.push(...pending.map(({ id, text, createdAt }) => ({ id, sessionId, text, createdAt })));
+    touch();
+    return 'queued';
+  }
+  // 受信ソケットで送ったものは承認として扱われないので、再開して渡せるセッションには使わない。
   const viaInbox = !!live && !restartable(live);
   // 続けて送られても二重に届かないよう、送る前に配信済みにする。届け終えるまでは sending を付けておき、途中でサーバーが止まったら次の起動で届け直せるようにする。
   // 巻き戻しは、届け直すともう一度巻き戻すので、sending を付けない。
@@ -241,7 +252,7 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
   touch();
   // 鍵を読めないときも、届けられなかったものとして下で未配信に戻す。
   const toInbox = async (to: LiveSession): Promise<void> => postToInbox(to.messagingSocketPath, formatMessages(pending), platform.inboxToken(to.pid, SESSIONS_DIR));
-  const sent = viaInbox ? toInbox(live) : resume(sessionId, cwd, rewindTo ? formatMessages(pending) : joinTexts(pending), live?.jobId, rewindTo);
+  const sent = viaInbox ? toInbox(live) : resume(sessionId, cwd, joinTexts(pending), live?.jobId, rewindTo);
   sent.then(
     () => {
       for (const m of pending) m.sending = undefined;
@@ -254,6 +265,7 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
       console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
     },
   );
+  return viaInbox ? 'sent' : 'resumed';
 };
 
 const ASK_KINDS = new Set(['ask', 'question', 'permission']);

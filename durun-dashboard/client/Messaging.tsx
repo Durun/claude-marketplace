@@ -324,7 +324,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   const [mode, setMode] = useSendMode();
   const queue = async () => {
     const res = await attempt('キューへの追加', () => api.queue(s.id, text));
-    if (res) toast(res.queued ? '保留しました。Claude が入力待ちになったら送ります' : 'Claude が入力待ちなので、すぐに送りました');
+    if (res) toast(res.queued ? DELIVERY_TOAST.queued : 'Claude が入力待ちなので、すぐに送りました');
     return !!res;
   };
   const switchAndSend = async () => {
@@ -451,7 +451,7 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
   );
 };
 
-/** 「キュー」で保留しているメッセージ。Claude が入力待ちになったら、上から 1 つずつ送られる。 */
+/** 「キュー」で保留しているメッセージと、作業中のバックグラウンドのセッションへ送ったメッセージ。Claude が入力待ちになったら、上から 1 つずつ送られる。 */
 const QueuedList = ({ s }: { s: Session }) =>
   s.queued?.length ? (
     <ul class="outbox queued-list" aria-label="保留しているメッセージ">

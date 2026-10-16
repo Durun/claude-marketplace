@@ -261,7 +261,7 @@ export type OutboxMessage = {
   sending?: boolean;
 };
 
-/** 人間が「キュー」で保留したメッセージ。Claude が入力待ちで質問していないときに、古い順に 1 つずつ送る。 */
+/** 人間が「キュー」で保留したメッセージと、作業中のバックグラウンドのセッションへ送ったメッセージ。Claude が入力待ちで質問していないときに、古い順に 1 つずつ送る。 */
 export type QueuedMessage = {
   id: string;
   sessionId: string;
@@ -430,7 +430,8 @@ export type DiffResult = { range: DiffRange; commits: CommitInfo[]; files: DiffF
 
 export type ReviewComment = { path: string; line: number; side: 'old' | 'new'; lineText: string; body: string };
 
-export type Delivery = 'mcp' | 'sent' | 'resumed';
+/** queued は、作業中のバックグラウンドのセッションへ送ったので保留し、入力待ちになったら送るもの。 */
+export type Delivery = 'mcp' | 'sent' | 'resumed' | 'queued';
 
 /** メッセージ欄で / から補完する skill。description は説明の書き出し。 */
 export type SkillInfo = { name: string; description: string };

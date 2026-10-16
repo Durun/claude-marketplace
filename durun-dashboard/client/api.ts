@@ -7,6 +7,7 @@ export const DELIVERY_TOAST: Record<Delivery, string> = {
   mcp: 'Claude に届けました',
   sent: 'セッションに届けました',
   resumed: 'セッションを再開して届けました',
+  queued: '保留しました。Claude が入力待ちになったら送ります',
 };
 
 const errorText = async (res: Response): Promise<string> => {
