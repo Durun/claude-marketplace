@@ -57,11 +57,26 @@ export const DocsPage = ({ snapshot }: { snapshot: Snapshot }) => (
   </Panel>
 );
 
+/** 資料をほかのセッションの資料へ足すときに、ドラッグで運ぶもの。key は、present の資料と校正した文章では id、リンクでは URL、ファイルでは絶対パス。 */
+type DocCopy = { kind: 'doc' | 'proof' | 'link' | 'file'; key: string };
+
 /**
  * セッション概要の資料の 1 行。keys は並べ替えとピン留めと外すときに使う、present の資料の id か、1 行にまとめたリンクの URL。key はそのうち行を表すもの。
  * sub は形式かリンク先のホスト、icon はタイトルの先頭に添える favicon。
  */
-type SideDoc = { key: string; keys: string[]; title: string; href: string; sub: string; icon?: string; at: number; unread?: boolean; pinned?: boolean; external?: boolean; attach?: string; onClick?: (e: MouseEvent) => void };
+type SideDoc = { key: string; keys: string[]; title: string; href: string; sub: string; icon?: string; at: number; unread?: boolean; pinned?: boolean; external?: boolean; attach?: string; copy: DocCopy; onClick?: (e: MouseEvent) => void };
+
+// 資料の行をドラッグしたときに、DocCopy と行の題名を運ぶ種類。ほかのセッションの資料のウィジェットが受け取る。
+const DOC_DRAG_TYPE = 'application/x-durun-doc';
+
+/** ドラッグで運んだ資料を、セッション id の資料に足す。題名を持たないリンクには行の題名を付け、ほかの資料は資料そのものの題名で並べる。 */
+const addDoc = (id: string, json: string): Promise<unknown> => {
+  const { kind, key, title } = JSON.parse(json) as DocCopy & { title: string };
+  if (kind === 'link') return api.addLink(id, key, title);
+  if (kind === 'file') return api.addFile(id, key);
+  if (kind === 'proof') return api.addProof(id, key);
+  return api.shareDoc(id, key);
+};
 
 // present で出した資料はダッシュボードの中で開くので、ダッシュボードの favicon を添える。
 const OWN_ICON = document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href;
@@ -159,7 +174,7 @@ const AddDoc = ({ s, onClose }: { s: Session; onClose: () => void }) => {
 
 /** 元のファイルが分かる artifact は、claude.ai の画面を埋め込めないので、元のファイルをウィンドウに浮かべる。 */
 const linkDoc = (id: string, l: MergedLink, artifact?: Artifact): SideDoc => {
-  const doc = { key: l.url, keys: l.urls, title: l.title, href: l.url, sub: l.host, icon: faviconSrc(l.url), at: l.at, external: true };
+  const doc: SideDoc = { key: l.url, keys: l.urls, title: l.title, href: l.url, sub: l.host, icon: faviconSrc(l.url), at: l.at, external: true, copy: { kind: 'link', key: l.url } };
   const path = artifact?.path;
   if (!path) return doc;
   return {
@@ -194,13 +209,14 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
     setOrder(next);
     void attempt('資料の並べ替え', () => api.orderDocs(s.id, next));
   };
-  const dragOf = ({ key, attach, href }: SideDoc): DragHandlers => ({
-    // 並べ替えのほかに、送信欄へ落とすと添付できるようにする。
+  const dragOf = ({ key, title, attach, href, copy }: SideDoc): DragHandlers => ({
+    // 並べ替えのほかに、送信欄へ落とすと添付し、ほかのセッションの資料へ落とすと足せるようにする。
     onDragStart: (e) => {
       setDragging(key);
       if (!e.dataTransfer) return;
       e.dataTransfer.effectAllowed = 'copyMove';
       e.dataTransfer.setData(ATTACH_DRAG_TYPE, attach ?? href);
+      e.dataTransfer.setData(DOC_DRAG_TYPE, JSON.stringify({ ...copy, title }));
     },
     // ほかの行の上に来たら、その行の位置へ動かして見せる。
     onDragOver: (e) => {
@@ -211,7 +227,7 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
     },
     // リンクを落とした先として開かないよう、既定の動きを止める。
     onDrop: (e) => e.preventDefault(),
-    // 行の上で離したときだけ並べた順を保存し、Esc で止めたときや送信欄へ落としたときは元の順に戻す。
+    // 行の上で離したときだけ並べた順を保存し、Esc で止めたときや、送信欄かほかの資料へ落としたときは元の順に戻す。
     onDragEnd: (e) => {
       setDragging(undefined);
       if (e.dataTransfer?.dropEffect === 'move') save(expand(keys));
@@ -297,6 +313,7 @@ const savedFileDoc = (id: string, f: SavedFile): SideDoc => ({
   icon: OWN_ICON,
   at: f.at,
   attach: f.path,
+  copy: { kind: 'file', key: f.path },
   onClick: (e) => {
     if (!plainClick(e)) return;
     e.preventDefault();
@@ -314,6 +331,7 @@ const proofDoc = (p: SavedProof): SideDoc => ({
   icon: PROOFREAD_ICON,
   at: p.at,
   attach: `文章校正アプリのファイル「${p.title}」（file: ${p.id}）`,
+  copy: { kind: 'proof', key: p.id },
   onClick: (e) => {
     e.preventDefault();
     openProofFile(p.id);
@@ -333,6 +351,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
   icon: OWN_ICON,
   at: f.at,
   attach: f.path ?? f.ref,
+  copy: { kind: 'file', key: f.path ?? f.ref },
   onClick: (e) => {
     if (!plainClick(e)) return;
     e.preventDefault();
@@ -345,7 +364,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * 足したリンクと同じ URL が発言にあれば、足したほうを残す。題名とサイトが同じリンクは 1 件にまとめ、最後に出たリンクを開く。外した資料は並べない。
  * 人間が付け直した題名とピン留めは、まとめたリンクのどれかに付いていればその行に出す。
  * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。claude.ai の artifact へのリンクには、公開したときの題名を付ける。
- * エクスプローラーからファイルをドラッグして落とすと、そのファイルを足す。
+ * エクスプローラーのファイルや、ほかのセッションの資料のウィジェットの行をドラッグして落とすと、その資料を足す。
  */
 export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries: ChatEntry[]; notion: boolean }) => {
   const [adding, setAdding] = useState(false);
@@ -374,7 +393,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
   const { items, dragging, dragOf, list } = useDocOrder(s, [
     ...docs
       .filter((d) => !hidden.has(d.id))
-      .map((d) => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d) })),
+      .map((d): SideDoc => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d), copy: { kind: 'doc', key: d.id } })),
     // 前に開いていたときのデータには、校正した文章が無いことがある。
     ...(s.proofFiles ?? []).map(proofDoc),
     ...mergeLinks(withTitles(shown, titles)).map((l) => linkDoc(s.id, l, artifacts.get(l.url))),
@@ -392,7 +411,8 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
       <div
         class={`widget-body${dropping ? ' is-drop' : ''}`}
         onDragOver={(e) => {
-          if (!e.dataTransfer?.types.includes(FILE_DRAG_TYPE)) return;
+          // このウィジェットの行のドラッグは、並べ替えに使う。
+          if (dragging || !e.dataTransfer?.types.some((t) => t === FILE_DRAG_TYPE || t === DOC_DRAG_TYPE)) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
           setDropping(true);
@@ -401,9 +421,12 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
         onDrop={(e) => {
           setDropping(false);
           const file = e.dataTransfer?.getData(FILE_DRAG_TYPE);
-          if (!file) return;
+          const doc = e.dataTransfer?.getData(DOC_DRAG_TYPE);
+          const add = file ? () => api.addFile(s.id, file) : doc ? () => addDoc(s.id, doc) : undefined;
+          // 行で並べ替えた後の drop もここへ届くので、このウィジェットの行なら足さない。
+          if (dragging || !add) return;
           e.preventDefault();
-          void attempt('資料の追加', () => api.addFile(s.id, file));
+          void attempt('資料の追加', add);
         }}
       >
         {adding && <AddDoc s={s} onClose={() => setAdding(false)} />}

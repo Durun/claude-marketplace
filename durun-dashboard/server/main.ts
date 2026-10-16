@@ -712,6 +712,28 @@ const addFile = (id: string, body: unknown): void => {
   touch();
 };
 
+/** ほかのセッションの資料から足した present の資料。同じ資料を足し直したら時刻を新しくし、外していたものはまた並べる。このセッションの資料は、外していたものをまた並べるだけにする。 */
+const shareDoc = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const docId = field<string>(body, 'id', 'string');
+  const doc = state.docs.find((d) => d.id === docId);
+  if (!doc) throw new HttpError(404, '資料が見つかりません');
+  if (doc.sessionId !== meta.id) meta.sharedDocs = [...(meta.sharedDocs ?? []).filter((d) => d.id !== docId), { id: docId, at: Date.now() }];
+  meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== docId);
+  touch();
+};
+
+/** ほかのセッションの資料から足した、校正した文章。題名はファイルの今の名前にする。同じ文章を足し直したら時刻を新しくし、外していたものはまた並べる。 */
+const addProof = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const proofId = field<string>(body, 'id', 'string');
+  const file = /^[\w-]{1,64}$/.test(proofId) ? readProofFile(proofId) : null;
+  if (!file) throw new HttpError(404, '文章校正アプリのファイルが見つかりません');
+  meta.proofFiles = [...(meta.proofFiles ?? []).filter((p) => p.id !== proofId), { id: proofId, title: file.title, at: Date.now() }];
+  meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== proofId);
+  touch();
+};
+
 /** エクスプローラーで開くフォルダーの中身。読めないフォルダーはダッシュボードの不具合ではないので、理由を添えて 404 にする。 */
 const explore = (url: URL): ExplorerDir => {
   const dir = url.searchParams.get('path') || undefined;
@@ -722,7 +744,7 @@ const explore = (url: URL): ExplorerDir => {
   }
 };
 
-/** 外した資料は、発言にまた出ても並べない。足したリンクとファイルと、Claude が校正した文章は、覚えたものも消す。 */
+/** 外した資料は、発言にまた出ても並べない。足したリンクとファイルとほかのセッションの資料と、Claude が校正した文章は、覚えたものも消す。 */
 const hideDocs = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
   const keys = new Set(strings(body, 'keys'));
@@ -730,6 +752,7 @@ const hideDocs = (id: string, body: unknown): void => {
   meta.links = meta.links?.filter((l) => !keys.has(l.url));
   meta.files = meta.files?.filter((f) => !keys.has(f.path));
   meta.proofFiles = meta.proofFiles?.filter((p) => !keys.has(p.id));
+  meta.sharedDocs = meta.sharedDocs?.filter((d) => !keys.has(d.id));
   meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
   meta.pinnedDocs = meta.pinnedDocs?.filter((k) => !keys.has(k));
   touch();
@@ -962,6 +985,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
   [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
   [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/docs$/, ([, id = ''], b) => shareDoc(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/proofs$/, ([, id = ''], b) => addProof(id, b)],
   [/^\/api\/sessions\/([^/]+)\/badges$/, ([, id = ''], b) => addBadge(id, b)],
   [/^\/api\/sessions\/([^/]+)\/badges\/remove$/, ([, id = ''], b) => removeBadge(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],

@@ -190,7 +190,7 @@ const UsageWidget = ({ s }: { s: Session }) => (
   </WidgetPanel>
 );
 
-/** ウィジェットに渡す、このセッションのデータ。docs は present で出した資料、entries はチャットの発言で、jump はそこへ移る先。 */
+/** ウィジェットに渡す、このセッションのデータ。docs は present で出した資料とほかのセッションから足した資料、entries はチャットの発言で、jump はそこへ移る先。 */
 type SessionData = {
   s: Session;
   themes: string[];
@@ -251,12 +251,17 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
   useWaitCursor(chat.loading && chat.data?.id !== s.id);
   const entries = chat.data?.entries ?? [];
   const [jump, setJump] = useState<Jump>();
+  // ほかのセッションから足した資料は、リンクやファイルと同じく足した時刻で並べる。
+  const shared = new Map((s.sharedDocs ?? []).map((d) => [d.id, d.at]));
   return {
     s,
     themes: snapshot.themes,
     file,
     outbox: snapshot.outbox,
-    docs: snapshot.docs.filter((d) => d.sessionId === s.id),
+    docs: snapshot.docs.flatMap((d) => {
+      const at = shared.get(d.id);
+      return d.sessionId === s.id ? [d] : at === undefined ? [] : [{ ...d, createdAt: at }];
+    }),
     entries,
     asks: asksOf(snapshot.attention, s.id),
     jump,

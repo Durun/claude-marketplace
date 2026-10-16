@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedFile, SavedLink, SavedProof } from '../shared/types.ts';
+import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -31,6 +31,8 @@ export type SessionMeta = {
   files?: SavedFile[];
   /** Claude が MCP の proofread で校正した、文章校正アプリのファイル */
   proofFiles?: SavedProof[];
+  /** 人間がほかのセッションの資料から足した present の資料 */
+  sharedDocs?: SavedDoc[];
   /** 人間が資料のウィジェットで並べ替えた順と、外した資料。present の資料は id、リンクは URL で持つ */
   docOrder?: string[];
   hiddenDocs?: string[];
@@ -185,8 +187,8 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { theme, title, jira, pinned, links, files, proofFiles, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, proofFiles, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews });
+  const { theme, title, jira, pinned, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, replySeenAt, branchViews });
   Object.assign(old, { archived: true, pinned: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;

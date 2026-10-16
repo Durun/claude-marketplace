@@ -190,6 +190,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     links: meta.links ?? [],
     files: meta.files ?? [],
     proofFiles: meta.proofFiles ?? [],
+    sharedDocs: meta.sharedDocs ?? [],
     docOrder: meta.docOrder ?? [],
     hiddenDocs: meta.hiddenDocs ?? [],
     docTitles: meta.docTitles ?? {},
