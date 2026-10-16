@@ -1,7 +1,7 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { Attention, BgTask, ChatEntry, FileWhere, Session, Snapshot, Subagent, TaskItem } from '../shared/types.ts';
+import type { Attention, BgTask, ChatEntry, FileWhere, OutboxMessage, Session, Snapshot, Subagent, TaskItem } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
@@ -398,15 +398,27 @@ const ChatBubble = ({ sessionId, e, codeLink, focused }: ChatBubbleProps) => {
   );
 };
 
+/** Claude がまだ読んでいない、送ったメッセージ。既読を付けず、届けられなかったものには未配信と添える。 */
+const UnreadBubble = ({ m }: { m: OutboxMessage }) => {
+  const now = useContext(NowContext);
+  return (
+    <div class="chat-row is-human">
+      <span class="chat-meta">{!m.deliveredAt && '未配信'}<time title={dateTime(m.createdAt)}>{shortDateTime(m.createdAt, now)}</time></span>
+      <p class="chat-human plain">{m.text}</p>
+    </div>
+  );
+};
+
 /** 送信したメッセージから移る先の発言。同じ発言へもう一度移れるよう、押すたびに作り直す。 */
 export type Jump = { index: number };
 
 /**
  * 一般的な AI チャットと同じく、古い順に並べて一番下から見せ、上の「前の n 件」でさかのぼる。
  * 新しい発言が来たら、一番下を見ているときだけ送る。読み返している位置は動かさない。
+ * unread は Claude がまだ読んでいない送ったメッセージで、会話の後ろに並べる。
  * asks は Claude が人間の操作を待っている質問と権限の確認。質問は送信欄の代わりに、権限の確認は送信欄の上に出す。
  */
-export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntry[]; asks: Attention[]; jump?: Jump }) => {
+export const Chat = ({ s, entries, unread, asks, jump }: { s: Session; entries: ChatEntry[]; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump }) => {
   // 表示の始まりは最初に届いたときに決めて固定し、発言が増えても上の発言を押し出さない。
   const [start, setStart] = useState<number>();
   // 送信したメッセージから移るときは、移る先の発言まで表示を広げる。
@@ -419,7 +431,7 @@ export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntr
   }, [entries.length]);
   useLayoutEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
-  }, [entries.length]);
+  }, [entries.length, unread.length]);
   // 前を読み込んだら、読んでいた発言が同じ位置に残るよう、下からの距離を保つ。
   useLayoutEffect(() => {
     if (box.current && !stick.current) box.current.scrollTop = box.current.scrollHeight - fromBottom.current;
@@ -455,10 +467,11 @@ export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntr
     <>
       <h2 class="section-title">チャット</h2>
       <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown}>
-        {entries.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
+        {entries.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => setStart(Math.max(0, first - CHAT_PAGE))}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
             {entries.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} focused={first + i === jump?.index} />)}
+            {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>
               <button class="btn btn-sm" title="次の依頼へ" aria-label="次の依頼へ" onClick={() => toPrompt(1)}>↓</button>

@@ -4,6 +4,7 @@ import type { Attention, ChatEntry, DocMeta, OutboxMessage, Session, Snapshot } 
 import { api, attempt } from './api.ts';
 import { CodeView } from './CodeView.tsx';
 import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel } from './Dashboard.tsx';
+import { unreadMessages } from './delivery.ts';
 import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
@@ -190,7 +191,10 @@ const UsageWidget = ({ s }: { s: Session }) => (
   </WidgetPanel>
 );
 
-/** ウィジェットに渡す、このセッションのデータ。docs は present で出した資料とほかのセッションから足した資料、entries はチャットの発言で、jump はそこへ移る先。 */
+/**
+ * ウィジェットに渡す、このセッションのデータ。docs は present で出した資料とほかのセッションから足した資料、entries はチャットの発言で、jump はそこへ移る先。
+ * unread は、送ったメッセージのうち Claude がまだ読んでいないもの。
+ */
 type SessionData = {
   s: Session;
   themes: string[];
@@ -198,6 +202,7 @@ type SessionData = {
   outbox: OutboxMessage[];
   docs: DocMeta[];
   entries: ChatEntry[];
+  unread: OutboxMessage[];
   asks: Attention[];
   jump?: Jump;
   onJump: (index: number) => void;
@@ -263,6 +268,8 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
       return d.sessionId === s.id ? [d] : at === undefined ? [] : [{ ...d, createdAt: at }];
     }),
     entries,
+    // このセッションの会話を読み込むまでは、送ったメッセージがどれも会話に無く見えるので、未読を出さない。
+    unread: chat.data?.id === s.id ? unreadMessages(snapshot.outbox, s.id, entries) : [],
     asks: asksOf(snapshot.attention, s.id),
     jump,
     onJump: (index: number) => setJump({ index }),

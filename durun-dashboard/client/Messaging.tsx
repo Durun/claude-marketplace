@@ -5,6 +5,7 @@ import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
 import { type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
+import { chatIndexOf } from './delivery.ts';
 import { dateTime } from './format.ts';
 import { useCached, useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
@@ -526,10 +527,6 @@ const PendingItem = ({ m, remoteUrl }: { m: OutboxMessage; remoteUrl?: string })
     </li>
   );
 };
-
-/** 送ったメッセージが会話に現れた位置。送った後の依頼のうち、文面を含む最初のもの。 */
-const chatIndexOf = (chat: ChatEntry[], m: OutboxMessage): number =>
-  chat.findIndex((e) => e.kind === 'prompt' && (e.at ?? m.createdAt) >= m.createdAt && e.text.includes(m.text.trim()));
 
 /** 会話に現れたメッセージは、どこを押してもチャットのその発言へ移れる。 */
 const DeliveredItem = ({ m, onJump }: { m: OutboxMessage; onJump?: () => void }) => (
