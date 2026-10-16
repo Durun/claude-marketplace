@@ -150,7 +150,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const name = displayName(meta, log);
   const pr = cachedPr(meta.cwd, log?.branch);
   const branches = [...(log?.branches ?? [])].reverse();
-  const badges = (meta.badges ?? []).flatMap((u) => badgeOf(new URL(u)) ?? []);
+  const badges = (meta.badges ?? []).flatMap((u) => badgeOf(u) ?? []);
   const shown = <T extends { url: string }>(items: T[]): T[] => {
     const hidden = new Set(meta.hiddenBadges);
     return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url));

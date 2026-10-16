@@ -114,7 +114,7 @@ const readBadgePr = async (url: string): Promise<PrInfo> => {
 
 type GhIssue = Pick<GhRef, 'number' | 'title' | 'state' | 'stateReason'> & { url: string };
 
-const ghIssue = async (url: string): Promise<GhIssue> => JSON.parse(await gh(['issue', 'view', url, '--json', 'url,number,title,state,stateReason'])) as GhIssue;
+const ghIssue = async (ref: string, cwd?: string): Promise<GhIssue> => JSON.parse(await gh(['issue', 'view', ref, '--json', 'url,number,title,state,stateReason'], undefined, cwd)) as GhIssue;
 
 const toIssue = (url: string, issue: GhIssue): IssueInfo => ({ url, number: issue.number, title: issue.title, state: refState(issue) as IssueInfo['state'] });
 
@@ -123,13 +123,12 @@ const readIssue = async (url: string): Promise<IssueInfo> => toIssue(url, await 
 /**
  * 人間がバッジに登録しようとした PR と Issue を読み、登録する URL を返す。読めなければ投げ、登録させない。
  * GitHub は PR の番号の Issue の URL を PR へ送るので、gh が PR の URL を返したら PR として登録する。
+ * ref は URL か、cwd のリポジトリの #番号。
  */
-export const loadBadge = async (kind: 'pr' | 'issue', url: string): Promise<string> => {
-  if (kind === 'issue') {
-    const issue = await ghIssue(url);
-    if (!PR_URL.test(issue.url)) return (await cached(`issue-badge:${url}`, { ...BADGE_POLICY, fresh: true }, async () => toIssue(url, issue))).url;
-    url = issue.url;
-  }
+export const loadBadge = async (kind: 'pr' | 'issue', ref: string, cwd?: string): Promise<string> => {
+  const issue = kind === 'issue' ? await ghIssue(ref, cwd) : undefined;
+  const url = issue?.url ?? ref;
+  if (issue && !PR_URL.test(url)) return (await cached(`issue-badge:${url}`, { ...BADGE_POLICY, fresh: true }, async () => toIssue(url, issue))).url;
   await cached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url));
   return url;
 };
@@ -657,8 +656,12 @@ export const jiraKeyOfUrl = (url: URL): string | undefined => {
 
 const GITHUB_REF = /^\/([^/]+)\/([^/]+)\/(pull|issues)\/(\d+)(\/|$)/;
 
-/** バッジに登録する URL を、PR、Issue、JIRA の課題そのものを指す形にそろえる。PR の /files のような下のページと、? や # から後は落とす。 */
-export const badgeOf = (u: URL): { kind: 'pr' | 'issue' | 'jira'; url: string } | undefined => {
+/** バッジに登録する URL か課題のキーを、PR、Issue、JIRA の課題そのものを指す URL にそろえる。PR の /files のような下のページと、? や # から後は落とす。 */
+export const badgeOf = (text: string): { kind: 'pr' | 'issue' | 'jira'; url: string } | undefined => {
+  const typed = text.toUpperCase();
+  if (JIRA_BASE && JIRA_ISSUE_KEY.test(typed)) return { kind: 'jira', url: browseUrl(typed) };
+  if (!URL.canParse(text)) return undefined;
+  const u = new URL(text);
   const key = jiraKeyOfUrl(u);
   if (key) return { kind: 'jira', url: browseUrl(key) };
   const [, owner, name, kind, num] = (u.protocol === 'https:' && GITHUB_REF.exec(u.pathname)) || [];

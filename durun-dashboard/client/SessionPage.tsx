@@ -116,7 +116,7 @@ const Removable = ({ s, url, children }: { s: Session; url: string; children: Co
   </span>
 );
 
-/** PR、Issue、JIRA の課題の URL を貼って Enter を押すと、バッジに登録する。 */
+/** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。 */
 const BadgeInput = ({ s }: { s: Session }) => {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -136,9 +136,9 @@ const BadgeInput = ({ s }: { s: Session }) => {
         class="input input-sm"
         value={value}
         readOnly={busy}
-        aria-label="バッジに登録する URL"
-        title="PR、Issue、JIRA の課題の URL を貼って Enter を押すと、バッジに登録します。"
-        placeholder={busy ? '登録しています…' : 'PR、Issue、JIRA の URL'}
+        aria-label="バッジに登録する URL、#番号、課題のキー"
+        title="PR、Issue、JIRA の課題の URL か、このリポジトリの PR や Issue の #番号か、PROJ-123 のような課題のキーを打って Enter を押すと、バッジに登録します。"
+        placeholder={busy ? '登録しています…' : 'URL、#番号、課題のキー'}
         onInput={(e) => setValue(e.currentTarget.value)}
       />
     </form>

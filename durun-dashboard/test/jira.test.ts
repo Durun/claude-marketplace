@@ -155,12 +155,14 @@ test('pageTitleOf は、資料に足した JIRA の課題の画面に、API か�
   assert.equal(jiraKeyOfUrl(new URL('https://jira.example/browse/')), undefined);
 });
 
-test('badgeOf は、JIRA の課題、GitHub の PR と Issue の URL を、そのものを指す形にそろえ、ほかの URL は受けない', () => {
-  const of = (url: string) => badgeOf(new URL(url));
-  assert.deepEqual(of('https://jira.example/browse/PROJ-1?focusedCommentId=1'), { kind: 'jira', url: 'https://jira.example/browse/PROJ-1' });
-  assert.deepEqual(of('https://github.com/o/r/pull/12/files#diff-1'), { kind: 'pr', url: 'https://github.com/o/r/pull/12' });
-  assert.deepEqual(of('https://github.com/o/r/issues/3?q=1'), { kind: 'issue', url: 'https://github.com/o/r/issues/3' });
-  assert.equal(of('https://github.com/o/r/pulls'), undefined);
-  assert.equal(of('http://github.com/o/r/pull/12'), undefined);
-  assert.equal(of('https://other.example/browse/PROJ-1'), undefined);
+test('badgeOf は、JIRA の課題、GitHub の PR と Issue の URL と課題のキーを、そのものを指す URL にそろえ、ほかの URL は受けない', () => {
+  assert.deepEqual(badgeOf('https://jira.example/browse/PROJ-1?focusedCommentId=1'), { kind: 'jira', url: 'https://jira.example/browse/PROJ-1' });
+  assert.deepEqual(badgeOf('PROJ-12'), { kind: 'jira', url: 'https://jira.example/browse/PROJ-12' });
+  assert.deepEqual(badgeOf('proj-12'), { kind: 'jira', url: 'https://jira.example/browse/PROJ-12' });
+  assert.equal(badgeOf('#12'), undefined);
+  assert.deepEqual(badgeOf('https://github.com/o/r/pull/12/files#diff-1'), { kind: 'pr', url: 'https://github.com/o/r/pull/12' });
+  assert.deepEqual(badgeOf('https://github.com/o/r/issues/3?q=1'), { kind: 'issue', url: 'https://github.com/o/r/issues/3' });
+  assert.equal(badgeOf('https://github.com/o/r/pulls'), undefined);
+  assert.equal(badgeOf('http://github.com/o/r/pull/12'), undefined);
+  assert.equal(badgeOf('https://other.example/browse/PROJ-1'), undefined);
 });

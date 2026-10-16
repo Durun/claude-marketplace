@@ -374,17 +374,22 @@ const openPr = (id: string, url?: unknown): { cwd: string; branch: string; pr: P
 };
 
 const badgeOfBody = (body: unknown): { kind: 'pr' | 'issue' | 'jira'; url: string } => {
-  const raw = field<string>(body, 'url', 'string').trim();
-  const badge = URL.canParse(raw) ? badgeOf(new URL(raw)) : undefined;
-  if (!badge) throw new HttpError(400, 'JIRA の課題、GitHub の PR か Issue の URL ではありません');
+  const badge = badgeOf(field<string>(body, 'url', 'string').trim());
+  if (!badge) throw new HttpError(400, 'PR、Issue、JIRA の課題の URL か、#番号か、課題のキーではありません');
   return badge;
 };
 
-/** PR と Issue は、読めることを確かめてから登録する。外していたバッジは、また出す。 */
+/**
+ * PR と Issue は、読めることを確かめてから登録する。外していたバッジは、また出す。
+ * #番号はセッションのリポジトリの PR か Issue を指し、どちらかは読むまで分からないので Issue として読む。
+ */
 const addBadge = async (id: string, body: unknown): Promise<void> => {
   const meta = sessionMeta(id);
-  const { kind, url: given } = badgeOfBody(body);
-  const url = kind === 'jira' ? given : await viaGh(kind === 'pr' ? 'PR を読めません' : 'Issue を読めません', () => loadBadge(kind, given));
+  const text = field<string>(body, 'url', 'string').trim();
+  const numbered = /^#\d+$/.test(text);
+  const { kind, url: given } = numbered ? { kind: 'issue' as const, url: text } : badgeOfBody(body);
+  // URL の PR と Issue は、作業ツリーを消したセッションでも登録できるよう、cwd を渡さずに読む。
+  const url = kind === 'jira' ? given : await viaGh(kind === 'pr' ? 'PR を読めません' : 'Issue を読めません', () => loadBadge(kind, given, numbered ? meta.cwd : undefined));
   meta.badges = [...(meta.badges ?? []).filter((u) => u !== url), url];
   meta.hiddenBadges = meta.hiddenBadges?.filter((u) => u !== url);
   touch();
