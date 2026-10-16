@@ -133,10 +133,28 @@ type State = {
 
 const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], rateWindows: {} });
 
+const DOCS_DIR = path.resolve(DATA_DIR, 'docs');
+const DOC_EXT: Record<DocFormat, string> = { markdown: '.md', html: '.html', mermaid: '.mmd', svg: '.svg', text: '.txt' };
+
+/** 資料の本文をファイルに書き、その絶対パスを返す。資料を添付されたメッセージを受け取った Claude が、そのパスから本文を読めるようにするため。 */
+export const writeDocFile = (id: string, format: DocFormat, content: string): string => {
+  const file = path.join(DOCS_DIR, `${id}${DOC_EXT[format]}`);
+  fs.mkdirSync(DOCS_DIR, { recursive: true });
+  fs.writeFileSync(file, content);
+  return file;
+};
+
 // 壊れたファイルを空の状態で上書きしないよう、読めないときは起動を止める。
+// 本文を state.json に持つ資料は、本文をファイルに書き出し、そのファイルを指す資料にする。
 const load = (): State => {
   if (!fs.existsSync(STATE_FILE)) return empty();
-  return { ...empty(), ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) };
+  const loaded: State = { ...empty(), ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) };
+  for (const doc of loaded.docs) {
+    if (doc.path || doc.content === undefined) continue;
+    doc.path = writeDocFile(doc.id, doc.format, doc.content);
+    delete doc.content;
+  }
+  return loaded;
 };
 
 export const state = load();

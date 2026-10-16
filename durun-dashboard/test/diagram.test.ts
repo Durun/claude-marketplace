@@ -25,7 +25,7 @@ test('図解は、技法カタログを渡して本文だけを書かせ、共�
   assert.ok(prompt.endsWith('<chat>\n人間: 図にして\n</chat>'));
 
   assert.equal(meta.title, 'A<B & C');
-  const html = state.docs.find((d) => d.id === meta.id)?.content ?? '';
+  const html = fs.readFileSync(state.docs.find((d) => d.id === meta.id)?.path ?? '', 'utf8');
   assert.match(html, /^<!doctype html><html lang="ja"><head><meta charset="utf-8">/);
   assert.ok(html.includes('<title>A&lt;B &amp; C</title>'));
   const at = (s: string): number => {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ChatEntry, DocMeta } from '../shared/types.ts';
 import { UpstreamError, askReader, objectSchema } from './haiku.ts';
-import { newId, state, touch } from './store.ts';
+import { newId, state, touch, writeDocFile } from './store.ts';
 
 // 長いセッションでも数分で作り終えるよう、会話は新しい側からこの文字数までを材料にする。
 const MAX_CHAT_CHARS = 60_000;
@@ -56,8 +56,9 @@ export const makeDiagram = async (sessionId: string, cwd: string, entries: ChatE
   const { title, body } = await askReader(dir, prompt, objectSchema({ title: { type: 'string' }, body: { type: 'string' } }));
   if (typeof title !== 'string' || typeof body !== 'string' || !body.trim()) throw new UpstreamError('図解が返りませんでした');
   const name = title.trim() || '図解';
-  const meta: DocMeta = { id: newId(), sessionId, title: name, format: 'html', createdAt: Date.now(), seen: false };
-  state.docs.push({ ...meta, content: diagramPage(name, body) });
+  const id = newId();
+  const meta: DocMeta = { id, sessionId, title: name, format: 'html', path: writeDocFile(id, 'html', diagramPage(name, body)), createdAt: Date.now(), seen: false };
+  state.docs.push(meta);
   touch();
   return meta;
 };

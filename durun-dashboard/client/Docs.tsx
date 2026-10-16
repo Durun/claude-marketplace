@@ -15,7 +15,7 @@ import { ARROW_STEP, arrangeDocs, moveTo } from './order.ts';
 import { PROOFREAD_ICON, PROOFREAD_TITLE, openProofFile } from './Proofread.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, Panel, PinIcon, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, Panel, PinIcon, copyText, onSubmitKey } from './ui.tsx';
 
 const FORMAT_LABEL: Record<DocFormat, string> = {
   markdown: 'Markdown',
@@ -107,6 +107,22 @@ const RenameDoc = ({ title, onDone }: { title: string; onDone: (title?: string) 
   />
 );
 
+const LinkIcon = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <g transform="rotate(-45 8 8)" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="1.5" y="5.5" width="8" height="5" rx="2.5" />
+      <rect x="6.5" y="5.5" width="8" height="5" rx="2.5" />
+    </g>
+  </svg>
+);
+
+/** 添付するときと同じ値をコピーする。ダッシュボードの外で動く Claude Code に貼っても、Claude が同じ資料を読めるようにするため。 */
+const copyLink = async (d: SideDoc): Promise<void> => {
+  const text = d.attach ?? d.href;
+  if (await copyText(text)) toast(`コピーしました: ${text}`);
+  else toast('クリップボードにコピーできませんでした', 'error');
+};
+
 type RowProps = { d: SideDoc; dragging: boolean; drag: DragHandlers; onPin: () => void; onRemove: () => void; onRename: (title: string) => void };
 
 const SideDocRow = ({ d, dragging, drag, onPin, onRemove, onRename }: RowProps) => {
@@ -140,6 +156,9 @@ const SideDocRow = ({ d, dragging, drag, onPin, onRemove, onRename }: RowProps) 
       )}
       <button class="side-doc-action" aria-pressed={d.pinned} title={d.pinned ? 'ピン留めを外す' : 'ピン留めしていちばん上に出す'} aria-label={`${d.title}をピン留め`} onClick={onPin}>
         <PinIcon />
+      </button>
+      <button class="side-doc-action" title="リンクのコピー" aria-label={`${d.title}のリンクをコピー`} onClick={() => copyLink(d)}>
+        <LinkIcon />
       </button>
       <button class="side-doc-action" title="名前を変える" aria-label={`${d.title}の名前を変える`} onClick={() => setRenaming(true)}>
         ✎

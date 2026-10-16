@@ -11,7 +11,7 @@ import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { changed, newId, state, touch, type StoredAttention } from './store.ts';
+import { changed, newId, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
 // Claude Code は無通信が 300 秒続いたツール呼び出しを打ち切る。人間の回答を待つ間は、それより短い間隔で進捗を通知する。
@@ -246,7 +246,7 @@ const present = (req: IncomingMessage, sessionId: string, args: ToolArgs): objec
   if (file && !fs.existsSync(file)) return textResult(`ファイルが見つかりません: ${file}`, true);
   const format = (str(args.format) as DocFormat | undefined) ?? inferFormat(file);
   const id = newId();
-  state.docs.push({ id, sessionId, title, format, path: file, content: file ? undefined : content, createdAt: Date.now(), seen: false });
+  state.docs.push({ id, sessionId, title, format, path: file ?? writeDocFile(id, format, content ?? ''), createdAt: Date.now(), seen: false });
   touch();
   return textResult(`資料「${title}」をダッシュボードに表示しました: http://${req.headers.host}/#/doc/${id}`);
 };
