@@ -433,13 +433,13 @@ export const Chat = ({ s, entries, asks, jump }: { s: Session; entries: ChatEntr
     fromBottom.current = el.scrollHeight - el.scrollTop;
     stick.current = fromBottom.current - el.clientHeight < STICK_PX;
   };
-  // 表示中の位置より上（dir = -1）か下（dir = 1）で、いちばん近い依頼を欄の上端へ送る。
+  // 表示中の位置より上（dir = -1）か下（dir = 1）で、いちばん近い依頼を欄の上端へ送る。最後の依頼より下へ進むときは、最新の発言が見える一番下まで送る。
   const toPrompt = (dir: number) => {
     const el = box.current;
     if (!el) return;
     const top = el.getBoundingClientRect().top;
     const offsets = [...el.querySelectorAll('.chat-row.is-human')].map((r) => r.getBoundingClientRect().top - top);
-    const to = dir < 0 ? offsets.findLast((o) => o < -1) : offsets.find((o) => o > 1);
+    const to = dir < 0 ? offsets.findLast((o) => o < -1) : offsets.find((o) => o > 1) ?? el.scrollHeight;
     if (to !== undefined) el.scrollBy({ top: to, behavior: 'smooth' });
   };
   // チャットを押してから上下の矢印キーを押しても、↑↓ のボタンと同じく依頼へ移る。押したチャットにキーが届くよう、tabIndex でフォーカスできるようにする。
