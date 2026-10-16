@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof } from '../shared/types.ts';
+import type { AskedQuestion, BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -65,6 +65,7 @@ export type StoredAttention = {
   title: string;
   body?: string;
   options?: string[];
+  questions?: AskedQuestion[];
   /** レビュー依頼で、Claude が見てほしいコミットの範囲 */
   range?: DiffRange;
   createdAt: number;

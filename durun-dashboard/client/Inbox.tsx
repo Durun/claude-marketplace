@@ -1,8 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
-import type { Attention, AttentionKind, Session, Snapshot } from '../shared/types.ts';
+import type { AskedQuestion, Attention, AttentionKind, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
+import { toggled } from './explorerFavorites.ts';
+import { askAnswer } from './format.ts';
 import { KIND_LABEL } from './notify.ts';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
@@ -28,9 +30,48 @@ const DismissButton = ({ id }: { id: string }) => {
 
 const Body = ({ text }: { text?: string }) => (text ? <Markdown text={text} /> : null);
 
+type QuestionTabsProps = { questions: AskedQuestion[]; picked: string[][]; tab: number; busy: boolean; setTab: (tab: number) => void; pick: (option: string) => void };
+
+/** 分けた質問を、Claude Code の AskUserQuestion のようにタブで 1 つずつ出す。最後のタブで回答を見直す。 */
+const QuestionTabs = ({ questions, picked, tab, busy, setTab, pick }: QuestionTabsProps) => {
+  const q = questions[tab];
+  const labelOf = (x: AskedQuestion, i: number): string => x.header ?? `質問 ${i + 1}`;
+  return (
+    <>
+      <div class="pick-tabs" role="tablist" aria-label="質問">
+        {questions.map((x, i) => (
+          <button key={i} role="tab" aria-selected={i === tab} onClick={() => setTab(i)}>{picked[i]?.length ? '✓ ' : ''}{labelOf(x, i)}</button>
+        ))}
+        <button role="tab" aria-selected={!q} onClick={() => setTab(questions.length)}>送信</button>
+      </div>
+      {q ? (
+        <>
+          <Markdown text={q.question} />
+          <Actions>
+            {q.options.map((o) => {
+              const on = !!picked[tab]?.includes(o);
+              return <button key={o} class={`btn att-option${on ? ' btn-primary' : ''}`} aria-pressed={on} disabled={busy} onClick={() => pick(o)}>{o}</button>;
+            })}
+            {q.multiSelect && <button class="btn" onClick={() => setTab(tab + 1)}>次へ</button>}
+          </Actions>
+        </>
+      ) : (
+        <div class="md">
+          <ul>{questions.map((x, i) => <li key={i}>{labelOf(x, i)}: {picked[i]?.join('、') || '未回答'}</li>)}</ul>
+        </div>
+      )}
+    </>
+  );
+};
+
 const AskBody = ({ a }: { a: Attention }) => {
   const [text, setText] = useState('');
+  const [picked, setPicked] = useState<string[][]>([]);
+  const [tab, setTab] = useState(0);
   const [busy, setBusy] = useState(false);
+  const questions = a.questions ?? [];
+  // 質問を分けたときは、全部に答えるか自由記述を書けば送れる。
+  const ready = (questions.length > 0 && questions.every((_, i) => picked[i]?.length)) || !!text.trim();
   const send = async (answer: string) => {
     if (busy || !answer.trim()) return;
     setBusy(true);
@@ -40,27 +81,44 @@ const AskBody = ({ a }: { a: Attention }) => {
     setText('');
     toast('回答を送りました');
   };
+  const submit = () => ready && send(questions.length ? askAnswer(questions, picked, text) : text);
+  // 1 つを選ぶ質問は、選ぶと次のタブへ進む。いくつでも選べる質問は、押すたびに選ぶか外す。
+  const pick = (option: string) => {
+    const multi = questions[tab]?.multiSelect;
+    setPicked((p) => questions.map((_, i) => (i !== tab ? (p[i] ?? []) : multi ? toggled(p[i] ?? [], option) : [option])));
+    if (!multi) setTab(tab + 1);
+  };
+  // AskUserQuestion の本文は質問と選択肢を並べたものなので、タブで出すときは重ねて出さない。
+  const body = a.kind === 'question' && questions.length ? undefined : a.body;
   return (
     <>
-      <Body text={a.body !== a.title ? a.body : undefined} />
-      {a.options && a.options.length > 0 && (
-        <Actions>
-          {a.options.map((o) => (
-            <button key={o} class="btn att-option" disabled={busy} onClick={() => send(o)}>{o}</button>
-          ))}
-        </Actions>
+      <Body text={body !== a.title ? body : undefined} />
+      {questions.length > 0 ? (
+        <QuestionTabs questions={questions} picked={picked} tab={tab} busy={busy} setTab={setTab} pick={pick} />
+      ) : (
+        a.options && a.options.length > 0 && (
+          <Actions>
+            {a.options.map((o) => (
+              <button key={o} class="btn att-option" disabled={busy} onClick={() => send(o)}>{o}</button>
+            ))}
+          </Actions>
+        )
       )}
-      <textarea
-        class="input"
-        rows={2}
-        placeholder="自由記述で回答（Cmd/Ctrl + Enter で送信）"
-        value={text}
-        onInput={(e) => setText(e.currentTarget.value)}
-        onKeyDown={(e) => onSubmitKey(e, () => send(text))}
-      />
-      <Actions>
-        <button class="btn btn-primary" disabled={busy || !text.trim()} onClick={() => send(text)}>送信</button>
-      </Actions>
+      {tab === questions.length && (
+        <>
+          <textarea
+            class="input"
+            rows={2}
+            placeholder="自由記述で回答（Cmd/Ctrl + Enter で送信）"
+            value={text}
+            onInput={(e) => setText(e.currentTarget.value)}
+            onKeyDown={(e) => onSubmitKey(e, submit)}
+          />
+          <Actions>
+            <button class="btn btn-primary" disabled={busy || !ready} onClick={submit}>送信</button>
+          </Actions>
+        </>
+      )}
     </>
   );
 };

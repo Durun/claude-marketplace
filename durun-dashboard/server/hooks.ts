@@ -50,7 +50,7 @@ export const sessionIdForPid = (pid: number): string | undefined => pidSessions.
 /** Claude Code の画面で人間の操作を待っている要対応。セッションごとに最後の 1 件だけを持つ。 */
 const isDialog = (a: StoredAttention, sessionId: string): boolean => a.sessionId === sessionId && (a.kind === 'permission' || a.kind === 'question');
 
-type Dialog = Pick<StoredAttention, 'kind' | 'title' | 'body' | 'options'>;
+type Dialog = Pick<StoredAttention, 'kind' | 'title' | 'body' | 'options' | 'questions'>;
 
 const toDialog = (q: ReturnType<typeof questionDialog>): Dialog | undefined => q && { kind: 'question', title: '質問', ...q };
 

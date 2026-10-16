@@ -445,8 +445,9 @@ export const resolveAttention = (attentionId: string, text: string, fallbackPref
 };
 
 export const answerQuestion = (attentionId: string, answer: string): Delivery => {
-  const question = state.attention.find((a) => a.id === attentionId)?.body ?? '';
-  return resolveAttention(attentionId, answer, `質問「${question}」への回答:`);
+  const item = state.attention.find((a) => a.id === attentionId);
+  // 分けた質問への回答には、どの質問への答えかが書いてある。
+  return resolveAttention(attentionId, answer, item?.questions ? '質問への回答:' : `質問「${item?.body ?? ''}」への回答:`);
 };
 
 /** branch は、人間がコードでブランチを表示して付けたコメントのとき。作業ツリーのファイルと取り違えないよう、どのブランチの行かを添える。 */

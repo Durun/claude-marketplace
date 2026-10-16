@@ -214,6 +214,12 @@ export type Session = {
 };
 
 /**
+ * ask_human か AskUserQuestion で Claude が尋ねた質問。選択肢は見出しだけを持つ。
+ * header はタブに出す短い名前で、multiSelect は選択肢をいくつでも選べる質問。
+ */
+export type AskedQuestion = { question: string; header?: string; options: string[]; multiSelect?: boolean };
+
+/**
  * 人間の対応が必要なもの。
  * ask: ask_human の質問、question: Claude Code の AskUserQuestion の質問、review: request_review の依頼、permission: 権限確認ダイアログ、
  * reply: 入力待ちになったセッションの最後の発言、pr: CI 失敗や変更要求、doc: 未読の資料。
@@ -227,6 +233,8 @@ export type Attention = {
   title: string;
   body?: string;
   options?: string[];
+  /** 分けて尋ねた質問。人間は質問ごとに選択肢を選ぶ。 */
+  questions?: AskedQuestion[];
   docId?: string;
   url?: string;
   createdAt: number;

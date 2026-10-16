@@ -31,10 +31,14 @@ test('権限の確認の通知は、AskUserQuestion で止まったときは質�
   handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion' }, 0);
   assert.deepEqual(dialogs(), []);
 
-  // 質問が複数あるときと複数選べるときは、ボタンにせず、質問ごとに選択肢を本文に並べる。
-  fs.appendFileSync(transcript, toolUse('AskUserQuestion', { questions: [question, { question: 'どれを直しますか？', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }] }));
+  // 質問が複数あるときと複数選べるときは、質問をタブに分けて出す。本文には、端末のセッションの画面のために、質問ごとに選択肢を並べる。
+  fs.appendFileSync(transcript, toolUse('AskUserQuestion', { questions: [question, { question: 'どれを直しますか？', header: '直す画面', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }] }));
   handleHook({ ...base, notification_type: 'permission_prompt', message: 'Claude needs your permission' }, 0);
   assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: '今すぐ実装してよいですか？\n- 今すぐ実装する\n- 時期を確認してから\n\nどれを直しますか？\n- A\n- B', options: undefined }]);
+  assert.deepEqual(state.attention[0]?.questions, [
+    { question: '今すぐ実装してよいですか？', header: undefined, options: ['今すぐ実装する', '時期を確認してから'], multiSelect: false },
+    { question: 'どれを直しますか？', header: '直す画面', options: ['A', 'B'], multiSelect: true },
+  ]);
 
   handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion' }, 0);
   fs.appendFileSync(transcript, toolUse('Bash', { command: 'rm -rf build' }));

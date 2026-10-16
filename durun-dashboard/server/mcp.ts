@@ -20,7 +20,7 @@ const METHOD_NOT_FOUND = -32601;
 const INVALID_REQUEST = -32600;
 
 const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セッションを横断して見ているダッシュボードです。
-- 判断や確認が必要になったら ask_human で質問してください。回答が届くまで待ち、そのまま作業を続けられます。選択肢がある質問は options に並べてください。
+- 判断や確認が必要になったら ask_human で質問してください。回答が届くまで待ち、そのまま作業を続けられます。選択肢がある質問は options に並べてください。決めてほしいことが複数あるときは、選択肢を組み合わせず、questions に質問を分けて並べてください。
 - 図解や資料で説明すると伝わりやすいときは present で表示してください。ファイルに書いた資料は path で渡すと、開くたびに最新の内容が表示されます。
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
@@ -34,8 +34,21 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: '人間への質問。背景と、何を決めてほしいかを書く。' },
-        options: { type: 'array', items: { type: 'string' }, description: '選択肢。自由回答だけなら省略する。' },
+        question: { type: 'string', description: '人間への質問。背景と、何を決めてほしいかを書く。questions を渡すときは、どの質問にも共通する背景を書く。' },
+        options: { type: 'array', items: { type: 'string' }, description: '選択肢。自由回答だけなら省略する。questions を渡すときも省略する。' },
+        questions: {
+          type: 'array',
+          description: '決めてほしいことが複数あるときに、1 つずつに分けた質問。人間は質問をタブで 1 つずつ見て、質問ごとに選択肢を選ぶ。選択肢を組み合わせて options に並べず、こちらに分けて渡す。',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: '1 つの決めごとについての短い質問' },
+              header: { type: 'string', description: 'タブに出す短い名前（例: 添付の値）' },
+              options: { type: 'array', items: { type: 'string' }, description: 'この質問の選択肢' },
+            },
+            required: ['question', 'options'],
+          },
+        },
       },
       required: ['question'],
     },
@@ -170,6 +183,9 @@ const textResult = (text: string, isError = false): object => ({ content: [{ typ
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
 const strList = (v: unknown): string[] | undefined => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined);
+// モデルが書いた入力なので、文の無い質問は外す。
+const askQuestions = (v: unknown): StoredAttention['questions'] =>
+  Array.isArray(v) ? v.flatMap((q) => (str(q?.question) ? [{ question: q.question, header: str(q.header), options: strList(q.options) ?? [] }] : [])) : undefined;
 
 /** headersHelper が付けた呼び出し元 claude プロセスの PID から、今のセッションを引く。 */
 const sessionIdOf = (req: IncomingMessage): string | undefined => {
@@ -182,7 +198,7 @@ const sessionIdOf = (req: IncomingMessage): string | undefined => {
  * 同じ質問の再呼び出し（接続が切れた後の再試行など）は、既存の項目に待ち手を付け替える。
  * 新しく尋ねたときは、待ち手のいない前の質問を片付ける。Claude は先へ進んでおり、文面を変えて尋ね直した質問が二重に残る。
  */
-const upsertRequest = (sessionId: string, kind: 'ask' | 'review', body: string | undefined, extra: Pick<StoredAttention, 'options' | 'range'> = {}): StoredAttention => {
+const upsertRequest = (sessionId: string, kind: 'ask' | 'review', body: string | undefined, extra: Pick<StoredAttention, 'options' | 'questions' | 'range'> = {}): StoredAttention => {
   const existing = state.attention.find((a) => a.sessionId === sessionId && a.kind === kind && a.body === body);
   if (existing) return existing;
   dropStaleRequests(sessionId);
@@ -421,7 +437,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'ask_human': {
       const question = str(args.question);
       if (!question) return send(res, { id: rpcId, result: textResult('question を渡してください。', true) });
-      return waitForHuman(req, res, rpcId, params, upsertRequest(sessionId, 'ask', question, { options: strList(args.options) }));
+      return waitForHuman(req, res, rpcId, params, upsertRequest(sessionId, 'ask', question, { options: strList(args.options), questions: askQuestions(args.questions) }));
     }
     case 'request_review':
       return void reviewRange(sessionId, args).then(
