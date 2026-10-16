@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 // 書き足す値を data-attach に持つ要素と、外へのリンク。ダッシュボードの中の画面へのリンクは、Claude が読めないので拾わない。
 const ATTACHABLE = '[data-attach], a[href^="http"]';
 
+/** 資料をドラッグして送信欄へ落としたときに、書き足す値を運ぶ種類。 */
+export const ATTACH_DRAG_TYPE = 'application/x-durun-attach';
+
 /** at の位置に piece を入れ、前の語とは空白で区切り、続けて書けるよう後ろにも空白を足す。入れた後のカーソル位置も返す。 */
 export const insertAt = (value: string, at: number, piece: string): { value: string; caret: number } => {
   const before = value.slice(0, at);

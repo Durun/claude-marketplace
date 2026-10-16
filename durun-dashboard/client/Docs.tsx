@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Artifact, type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
+import { ATTACH_DRAG_TYPE } from './attach.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
 import { buildSrcdoc } from './docFrame.ts';
 import { useSkin } from './skin.ts';
@@ -193,24 +194,28 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
     setOrder(next);
     void attempt('資料の並べ替え', () => api.orderDocs(s.id, next));
   };
-  const dragOf = (key: string): DragHandlers => ({
+  const dragOf = ({ key, attach, href }: SideDoc): DragHandlers => ({
+    // 並べ替えのほかに、送信欄へ落とすと添付できるようにする。
     onDragStart: (e) => {
       setDragging(key);
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'copyMove';
+      e.dataTransfer.setData(ATTACH_DRAG_TYPE, attach ?? href);
     },
     // ほかの行の上に来たら、その行の位置へ動かして見せる。
     onDragOver: (e) => {
       if (!dragging) return;
       e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       if (key !== dragging) setOrder(expand(moveTo(keys, dragging, key)));
     },
     // リンクを落とした先として開かないよう、既定の動きを止める。
     onDrop: (e) => e.preventDefault(),
-    // Esc で止めたときと、並べ替えの外で離したときは、元の順に戻す。
+    // 行の上で離したときだけ並べた順を保存し、Esc で止めたときや送信欄へ落としたときは元の順に戻す。
     onDragEnd: (e) => {
       setDragging(undefined);
-      if (e.dataTransfer?.dropEffect === 'none') setOrder(s.docOrder);
-      else save(expand(keys));
+      if (e.dataTransfer?.dropEffect === 'move') save(expand(keys));
+      else setOrder(s.docOrder);
     },
     onKeyDown: (e) => {
       const step = e.altKey ? ARROW_STEP[e.key] : undefined;
@@ -224,8 +229,7 @@ const useDocOrder = (s: Session, docs: SideDoc[]) => {
   return { items, dragging, dragOf, list };
 };
 
-/** heading は、ファイルの最初の見出し。 */
-type OpenableFile = ChatFile & { heading?: string };
+type OpenableFile = ChatFile & FileTarget;
 
 /** 発言に出た Markdown ファイルのうち、ウィンドウで開けるもの。 */
 const useOpenableFiles = (id: string, files: ChatFile[]): OpenableFile[] => {
@@ -243,7 +247,10 @@ const useOpenableFiles = (id: string, files: ChatFile[]): OpenableFile[] => {
       alive = false;
     };
   }, [id, files]);
-  return files.flatMap((f) => (openable.has(f.ref) ? [{ ...f, heading: openable.get(f.ref)?.heading }] : []));
+  return files.flatMap((f) => {
+    const t = openable.get(f.ref);
+    return t ? [{ ...f, ...t }] : [];
+  });
 };
 
 // ponytail: ページの題名はページを開いている間覚えておく。読めなかったページは、読み込み直すまで尋ね直さない。
@@ -313,7 +320,10 @@ const proofDoc = (p: SavedProof): SideDoc => ({
   },
 });
 
-/** 題名は、ファイル名の後に最初の見出しを付ける。同じ名前のファイルが並んでも、中身で見分けられるようにするため。 */
+/**
+ * 題名は、ファイル名の後に最初の見出しを付ける。同じ名前のファイルが並んでも、中身で見分けられるようにするため。
+ * 添付する値は絶対パスにする。ほかのセッションの送信欄へ添付しても、同じファイルを指せるようにするため。
+ */
 const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
   key: f.ref,
   keys: [f.ref],
@@ -322,7 +332,7 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
   sub: FORMAT_LABEL.markdown,
   icon: OWN_ICON,
   at: f.at,
-  attach: f.ref,
+  attach: f.path ?? f.ref,
   onClick: (e) => {
     if (!plainClick(e)) return;
     e.preventDefault();
@@ -402,7 +412,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
         ) : (
           <ul class="side-docs" ref={list}>
             {items.map((d) => (
-              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d.key)} onPin={() => attempt('ピン留めの切り替え', () => api.pinDocs(s.id, d.keys, !d.pinned))} onRemove={() => attempt('資料を外す', () => api.hideDocs(s.id, d.keys))} onRename={(title) => attempt('資料の名前の変更', () => api.renameDoc(s.id, d.key, title))} />
+              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d)} onPin={() => attempt('ピン留めの切り替え', () => api.pinDocs(s.id, d.keys, !d.pinned))} onRemove={() => attempt('資料を外す', () => api.hideDocs(s.id, d.keys))} onRename={(title) => attempt('資料の名前の変更', () => api.renameDoc(s.id, d.key, title))} />
             ))}
           </ul>
         )}

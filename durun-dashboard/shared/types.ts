@@ -409,8 +409,8 @@ export type Artifact = { url: string; title: string; path?: string };
 /** チャットのファイルパスの開き先。repo はコードの画面、local はウィンドウに浮かべる。 */
 export type FileWhere = 'repo' | 'local';
 
-/** ファイルの開き先。heading は Markdown の最初の見出しで、資料の題名に添える。 */
-export type FileTarget = { where: FileWhere; heading?: string };
+/** ファイルの開き先。heading は Markdown の最初の見出しで、資料の題名に添える。path は、ウィンドウに浮かべるファイルの絶対パス。 */
+export type FileTarget = { where: FileWhere; heading?: string; path?: string };
 
 /** 差分に含めるコミットの範囲。from が最も古いコミット、to が最も新しいコミットで、どちらも含める。 */
 export type DiffRange = { from: string; to: string };

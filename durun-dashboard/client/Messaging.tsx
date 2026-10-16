@@ -2,7 +2,7 @@ import type { RefObject } from 'preact';
 import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
-import { insertAt, useAttachMode } from './attach.ts';
+import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
 import { type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { dateTime } from './format.ts';
@@ -143,16 +143,37 @@ export const MessageInput = ({ sessionId, cwd, value, setValue, placeholder, onS
   const input = inputRef ?? own;
   const completion = useCompletion(sessionId, cwd, input, setValue);
   // 入力欄の外をクリックしてもカーソル位置は残るので、そこへ入れる。
-  const attach = useAttachMode((piece) => {
+  const insert = (piece: string) => {
     const el = input.current;
     if (!el) return;
     const next = insertAt(el.value, el.selectionEnd, piece);
     el.value = next.value;
     el.setSelectionRange(next.caret, next.caret);
     setValue(next.value);
-  });
+  };
+  const attach = useAttachMode(insert);
+  // 資料をドラッグして上に来ている間、落とせることを枠で示す。
+  const [dropping, setDropping] = useState(false);
   return (
-    <div class="composer-field">
+    <div
+      class={`composer-field${dropping ? ' is-drop' : ''}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer?.types.includes(ATTACH_DRAG_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setDropping(true);
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(e) => {
+        setDropping(false);
+        const piece = e.dataTransfer?.getData(ATTACH_DRAG_TYPE);
+        if (!piece) return;
+        // 入力欄が落とした値をそのまま入れないよう止め、添付と同じくカーソル位置へ区切って入れる。
+        e.preventDefault();
+        insert(piece);
+        input.current?.focus();
+      }}
+    >
       <textarea
         ref={input}
         class="input"

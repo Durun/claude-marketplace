@@ -311,10 +311,10 @@ const watchLocalFile = (req: IncomingMessage, res: ServerResponse, id: string, u
  */
 const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
   const { ref, full, stat } = localPath(id, url);
-  if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', heading: firstHeading(fs.readFileSync(full, 'utf8')) };
-  if (stat && mediaType(full)) return { where: 'local' };
+  if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', path: full, heading: firstHeading(fs.readFileSync(full, 'utf8')) };
+  if (stat && mediaType(full)) return { where: 'local', path: full };
   if (id && (await inRepo(sessionMeta(id).cwd, ref))) return { where: 'repo' };
-  if (stat && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local' };
+  if (stat && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', path: full };
   throw new HttpError(404, `「${ref}」を開けません`);
 };
 
