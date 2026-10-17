@@ -14,6 +14,13 @@ test('XP のスキンでは、資料の iframe にスクロールバーの見た
   assert.match(buildSrcdoc({ format: 'svg', content: '<svg></svg>' }, 'xp'), /^<svg><\/svg><style>\s*::-webkit-scrollbar /);
 });
 
+test('XP のスキンでは、markdown の資料を MS ゴシックの文字と昔の IE の表で描き、デフォルトでは描かない', () => {
+  const MS_GOTHIC = /"MS PGothic".*border-spacing: 2px/s;
+  assert.match(buildSrcdoc({ format: 'markdown', content: '# 見出し' }, 'xp'), MS_GOTHIC);
+  assert.doesNotMatch(buildSrcdoc({ format: 'markdown', content: '# 見出し' }), MS_GOTHIC);
+  assert.doesNotMatch(buildSrcdoc({ format: 'html', content: HTML }, 'xp'), MS_GOTHIC);
+});
+
 test('HTML の資料は doctype を先頭に残し、ページ内リンクの扱いとスクロールバーの見た目を末尾に足す', () => {
   const srcdoc = buildSrcdoc({ format: 'html', content: HTML }, 'xp');
   assert.ok(srcdoc.startsWith(HTML));

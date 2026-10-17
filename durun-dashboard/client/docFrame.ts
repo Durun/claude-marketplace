@@ -37,6 +37,34 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 .plain { white-space: pre-wrap; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: none; padding: 0; }
 `;
 
+/**
+ * Windows XP のスキンで、markdown / mermaid / text の資料に重ねる見た目。XP の Internet Explorer で、飾りの無いページを開いたときに寄せる。
+ * 文字は当時の日本語の既定だった MS P ゴシックと MS ゴシックにし、なめらかにせず描く。
+ * 表は border="1" を付けた表に見立て、外枠は浮き出させ、セルはへこませて間を空ける。
+ */
+const XP_TEMPLATE_STYLE = `
+:root { --fg: #000; --bg: #fff; --link: #00f; --err: #f00; }
+body { margin: 8px; padding: 0; font: 16px/1.4 "MS PGothic", "ＭＳ Ｐゴシック", "MS UI Gothic", Osaka, sans-serif; -webkit-font-smoothing: none; font-smooth: never; text-rendering: optimizeSpeed; }
+main { max-width: none; }
+h1, h2, h3, h4 { margin: 0.67em 0; line-height: normal; }
+h1, h2 { border-bottom: 0; padding-bottom: 0; }
+h1 { font-size: 2em; }
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.17em; }
+p, ul, ol, pre, table { margin: 1em 0; }
+a:visited { color: #800080; }
+blockquote { margin: 1em 40px; padding: 0; color: inherit; border: 0; }
+code, pre code, .plain, .err { font: 1em "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; background: none; padding: 0; border-radius: 0; }
+pre { background: none; padding: 0; border-radius: 0; line-height: normal; }
+table { width: max-content; max-width: 100%; border: 1px solid; border-color: #c0c0c0 #808080 #808080 #c0c0c0; border-collapse: separate; border-spacing: 2px; }
+th, td { padding: 1px; border: 1px solid; border-color: #808080 #c0c0c0 #c0c0c0 #808080; vertical-align: top; }
+th { background: none; }
+hr { border: 1px inset; margin: 0.5em 0; }
+.code-block { margin: 1em 0; }
+.code-block button { top: 0; right: 0; padding: 1px 6px; border: 2px outset #fff; border-radius: 0; background: #c0c0c0; color: #000; font: 12px "MS UI Gothic", "MS PGothic", sans-serif; opacity: 0.6; }
+.code-block button:active { border-style: inset; }
+`;
+
 const TEMPLATE_SCRIPT = `
 const data = JSON.parse(document.getElementById('doc-data').textContent);
 const out = document.getElementById('out');
@@ -197,7 +225,7 @@ export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<
   return [
     '<!doctype html><html lang="ja"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<style>${TEMPLATE_STYLE}</style>${skinStyle}</head><body><main id="out"></main>`,
+    `<style>${TEMPLATE_STYLE}</style>${skin === 'xp' ? `<style>${XP_TEMPLATE_STYLE}</style>` : ''}${skinStyle}</head><body><main id="out"></main>`,
     `<script type="application/json" id="doc-data">${data}</script>`,
     '<script src="/vendor/marked.js"></script>',
     '<script src="/vendor/mermaid.js"></script>',
