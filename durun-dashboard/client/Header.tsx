@@ -14,6 +14,7 @@ import { setLightMode, useLightMode } from './lightMode.ts';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
+import { setRateWeekdays, useRateWeekdays } from './rateWeekdays.ts';
 import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, type RateGraphShape, paceOf, rateGraphShape } from './rateGraph.ts';
 import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
@@ -21,6 +22,7 @@ import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
+import { XpDropdown } from './XpMenu.tsx';
 
 // 使用率の数字を、四角の左上の角から離す距離。
 const VALUE_INSET = 5;
@@ -47,10 +49,10 @@ const RateGraph = ({ label, limit, shape, weekdays }: { label: string; limit: Ra
   );
 };
 
-/** 枠の長さと、均等なペースを平日だけで数えるか。7 日の枠は、土日祝日には使わない前提でペースを見る。 */
+/** 枠の長さと、均等なペースを平日だけで数えるか。7 日の枠を平日だけで数えるかは、使用制限のアイコンのメニューで切り替える。 */
 type RateWindow = { label: string; windowMs: number; weekdays?: boolean };
 const FIVE_HOURS: RateWindow = { label: '5 時間', windowMs: FIVE_HOURS_MS };
-const SEVEN_DAYS: RateWindow = { label: '7 日', windowMs: SEVEN_DAYS_MS, weekdays: true };
+const SEVEN_DAYS: RateWindow = { label: '7 日', windowMs: SEVEN_DAYS_MS };
 
 /** 使用ペース。リセットの時刻が分からない値は、枠の始まりが決まらないので出せない。 */
 const paceIn = (limit: RateLimit, { windowMs, weekdays }: RateWindow, now: number) => {
@@ -78,6 +80,7 @@ const RateMeter = ({ limit, rateWindow }: { limit: RateLimit; rateWindow: RateWi
 };
 
 const RATE_ID = 'rate-flyout';
+const RATE_MENU_ID = 'rate-menu';
 /** 外周は線のリング。内周は線幅を半径の 2 倍にして中心まで塗り、扇形の円グラフにする。半径 5.5 の円で、外周の内側の縁 6.75 との間に隙間を残す。 */
 const RINGS = { outer: { r: 8 }, inner: { r: 2.75, width: 5.5 } } as const;
 
@@ -100,33 +103,37 @@ const Ring = ({ r, width, limit, rateWindow }: { r: number; width?: number; limi
 
 /**
  * 通知領域に常駐する使用制限のアイコン。外周のリングが 5 時間、内側の円グラフが 7 日の使用率で、色はそれぞれの使用ペースで変わる。マウスを載せるかフォーカスすると内訳を開く。
+ * 押すと、XP のアプリのメニューと同じ形で、ペースの数え方を切り替えるメニューを開く。内訳と重ならないよう、内訳は閉じる。
  * タスクバーは overflow: hidden なので、内訳は popover にして最前面に出す。
  * 値がまだ無いときも空のリングを残し、内訳で出し方を案内する。消すと、出せることに気づけない。
  */
 const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: RateLimit }) => {
   const empty = !fiveHour && !sevenDay;
+  const weekdays = useRateWeekdays();
+  const sevenDays = { ...SEVEN_DAYS, weekdays };
   const flyout = () => document.getElementById(RATE_ID);
   const show = () => flyout()?.showPopover();
   const hide = () => flyout()?.hidePopover();
   const summary = [fiveHour && `5 時間 ${Math.round(fiveHour.usedPercent)}%`, sevenDay && `7 日 ${Math.round(sevenDay.usedPercent)}%`].filter(Boolean).join('、');
   return (
     <>
-      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
+      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide} onClick={hide} popovertarget={RATE_MENU_ID}>
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <Ring {...RINGS.outer} limit={fiveHour} rateWindow={FIVE_HOURS} />
-          <Ring {...RINGS.inner} limit={sevenDay} rateWindow={SEVEN_DAYS} />
+          <Ring {...RINGS.inner} limit={sevenDay} rateWindow={sevenDays} />
         </svg>
       </button>
       <div id={RATE_ID} class="rate-flyout" popover="manual">
         <b class="rate-head">使用制限</b>
         {fiveHour && <RateMeter limit={fiveHour} rateWindow={FIVE_HOURS} />}
-        {sevenDay && <RateMeter limit={sevenDay} rateWindow={SEVEN_DAYS} />}
+        {sevenDay && <RateMeter limit={sevenDay} rateWindow={sevenDays} />}
         {empty && (
           <p class="rate-empty">
             まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。
           </p>
         )}
       </div>
+      <XpDropdown id={RATE_MENU_ID} items={[{ label: '7 日のペースで土日祝日を除く(W)', checked: weekdays, onClick: () => setRateWeekdays(!weekdays) }]} />
     </>
   );
 };
