@@ -63,12 +63,12 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
       const abort = new AbortController();
       listening = abort;
       channel.onmessage = (e: MessageEvent<EventsMessage>) => receive(e.data);
-      const lead = () =>
+      const lead = (share: boolean) =>
         new Promise<void>((release) => {
           const source = new EventSource(url);
           const relay = (m: EventsMessage) => {
             receive(m);
-            channel.postMessage(m);
+            if (share) channel.postMessage(m);
           };
           source.onopen = () => relay({ kind: 'open' });
           source.onmessage = (e: MessageEvent<string>) => relay({ kind: 'data', data: e.data });
@@ -78,8 +78,13 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
             release();
           });
         });
+      // localhost 以外を http で開くと、型では常にある Web Locks が無い。そのときはタブごとに SSE を張り、ほかのタブには配らない。
+      if (!navigator.locks) {
+        void lead(false);
+        return;
+      }
       // 順番待ちの間に止めると AbortError で終わる。止めたのはこのタブなので、知らせることはない。
-      navigator.locks.request(url, { signal: abort.signal }, lead).catch(() => {});
+      navigator.locks.request(url, { signal: abort.signal }, () => lead(true)).catch(() => {});
     };
     const close = () => {
       listening?.abort();
