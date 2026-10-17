@@ -5,7 +5,7 @@ import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
 import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
-import { type Fling, glide, pushSample, releaseVelocity, type Sample, windUp } from './fling.ts';
+import { type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { currentSessionId } from './router.ts';
 import { onSubmitKey } from './ui.tsx';
@@ -25,14 +25,24 @@ const LOOP_R = 50;
 const CARRY_ON = 240;
 // 尾を振る速さの上限。飛んでいる間の速さにそのまま比例させると、尾が速すぎて震えて見える。
 const MAX_STROKE = 4;
+// 飛ばして壁に当たったとき、口先から壁に突き刺さる確率と、刺さるのに要る当たったときの速さ（px/s）。軽く当てただけでは刺さらない。
+const STICK_CHANCE = 0.01;
+const STICK_SPEED = 600;
+// 刺さっている間に尾を打つ速さと、抜け出そうとして体をよじる角度（rad）と速さ（回/s）。
+const STUCK_STROKE = 3.5;
+const STUCK_WRIGGLE = 0.08;
+const STUCK_WRIGGLE_HZ = 2.3;
 
 type Turn = AssistantMessage & { links?: AssistantReply['links'] };
 
+/** 突き刺さった壁と、壁に沿った位置（px）。左右の壁なら y、上下の壁なら x。 */
+type Stuck = { wall: Wall; at: number };
+
 /**
  * 位置と速さ（px、px/s）と向きと、している技とその進み具合（0〜1）。毎フレーム変わるので、描き直しを起こさない ref に持つ。
- * fling は、勢いよく離されて慣性で飛んでいる間の速さと減速の強さ。
+ * fling は、勢いよく離されて慣性で飛んでいる間の速さと減速の強さ。stuck は、壁に突き刺さっている間の刺さった場所。
  */
-type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Fling };
+type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: number; restUntil: number; speed: number; yaw: number; pitch: number; trick?: 'flip' | 'roll'; trickT: number; fling?: Fling; stuck?: Stuck };
 
 /** windUp は、引っぱったまま振り回して勢いをつけた道のり（px）。 */
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
@@ -89,7 +99,12 @@ const swim = (m: Motion, dt: number, now: number, held: boolean): void => {
 const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   const maxX = innerWidth - W;
   const maxY = innerHeight - H;
-  const next = glide(m.x, m.y, fling, dt, { maxX, maxY });
+  const { wall, ...next } = glide(m.x, m.y, fling, dt, { maxX, maxY });
+  if (wall && Math.hypot(fling.vx, fling.vy) >= STICK_SPEED && Math.random() < STICK_CHANCE) {
+    m.fling = undefined;
+    m.stuck = { wall, at: wall === 'left' || wall === 'right' ? next.y : next.x };
+    return;
+  }
   Object.assign(m, next);
   m.fling = { vx: next.vx, vy: next.vy, drag: fling.drag };
   // 真上や真下へ飛ぶときは、いま向いている側のまま頭を上げ下げする。
@@ -103,6 +118,24 @@ const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   m.fling = undefined;
   const ahead = speed > 0 ? CARRY_ON / speed : 0;
   Object.assign(m, { speed, restUntil: now, tx: clamp(m.x + next.vx * ahead, 0, maxX), ty: clamp(m.y + next.vy * ahead, 0, maxY) });
+};
+
+/**
+ * 壁に口先から突き刺さり、背びれのあたりまで埋まったまま、尾を打って体をよじる。
+ * 背びれは体の真ん中にあるので、canvas の真ん中を壁の位置に合わせる。壁の向こうへはみ出した頭は画面の外なので見えない。
+ */
+const wriggle = (m: Motion, stuck: Stuck, now: number): void => {
+  const along = (max: number) => clamp(stuck.at, 0, max);
+  const twist = STUCK_WRIGGLE * Math.sin((2 * Math.PI * STUCK_WRIGGLE_HZ * now) / 1000);
+  // 上下の壁では、刺さる前に向いていた側のまま頭を上げ下げする。
+  const side = m.yaw < -Math.PI / 2 ? -Math.PI : 0;
+  const pose = {
+    left: { x: -W / 2, y: along(innerHeight - H), yaw: -Math.PI, pitch: twist },
+    right: { x: innerWidth - W / 2, y: along(innerHeight - H), yaw: 0, pitch: twist },
+    top: { x: along(innerWidth - W), y: -H / 2, yaw: side, pitch: Math.PI / 2 + twist },
+    bottom: { x: along(innerWidth - W), y: innerHeight - H / 2, yaw: side, pitch: -Math.PI / 2 + twist },
+  }[stuck.wall];
+  Object.assign(m, pose, { vx: 0, vy: 0, speed: 0, trick: undefined });
 };
 
 /**
@@ -148,13 +181,16 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
     last = now;
     const dragging = !!live.drag?.moved;
     const stopped = live.hover || live.open || live.thinking;
-    play(m, dt, !stopped && !dragging && !m.fling);
-    if (m.fling) fly(m, m.fling, dt, now);
-    else if (!dragging) swim(m, dt, now, stopped);
+    if (m.stuck) wriggle(m, m.stuck, now);
+    else {
+      play(m, dt, !stopped && !dragging && !m.fling);
+      if (m.fling) fly(m, m.fling, dt, now);
+      else if (!dragging) swim(m, dt, now, stopped);
+    }
     box.style.transform = `translate(${m.x}px, ${m.y}px)`;
     if (chat.current) placeChat(chat.current, m);
     const moving = Math.min(MAX_STROKE, 0.6 + Math.hypot(m.vx, m.vy) / SPEED);
-    const stroke: Pose['stroke'] = m.fling ? moving : live.thinking || dragging ? 2.5 : stopped ? 0.4 : moving;
+    const stroke: Pose['stroke'] = m.stuck ? STUCK_STROKE : m.fling ? moving : live.thinking || dragging ? 2.5 : stopped ? 0.4 : moving;
     view.draw(dt, { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke });
     frame = requestAnimationFrame(loop);
   };
@@ -165,7 +201,10 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
   };
 };
 
-/** 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。勢いよく離せば、その速さで飛ばす。離す前に長く振り回すほど、遠くまで飛ぶ。 */
+/**
+ * 押して離せば吹き出しを開け閉めし、引っぱればイルカを動かす。勢いよく離せば、その速さで飛ばす。離す前に長く振り回すほど、遠くまで飛ぶ。
+ * 飛ばして壁に当てると、まれに壁に突き刺さり、引っぱるまで抜けない。
+ */
 const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
   onPointerDown: (e: PointerEvent) => {
     // 飛んでいる途中でつかまれたら、そこで止める。
@@ -177,6 +216,8 @@ const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
     const d = live.drag;
     if (!d || (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_THRESHOLD)) return;
     d.moved = true;
+    // 壁に刺さっていたら、引っぱると抜ける。
+    m.stuck = undefined;
     const sample = { t: performance.now(), x: e.clientX, y: e.clientY };
     d.windUp = windUp(d.windUp, d.samples.at(-1), sample);
     d.samples = pushSample(d.samples, sample);

@@ -46,6 +46,12 @@ test('飛ばしたものは、進む向きを保ったまま減速し、端に�
   const hit = glide(990, 300, { vx: 1500, vy: 0, drag: 2.2 }, 1 / 60, bounds);
   assert.equal(hit.x, 1000);
   assert.ok(hit.vx < 0 && Math.abs(hit.vx) < 1500 / 2);
+  assert.equal(hit.wall, 'right');
+  // 当たった端を返す。左右と上下の角に同時に当たったら、左右の端を返す。端に当たらなければ返さない。
+  assert.equal(glide(10, 300, { vx: -1500, vy: 0, drag: 2.2 }, 1 / 60, bounds).wall, 'left');
+  assert.equal(glide(500, 590, { vx: 0, vy: 1500, drag: 2.2 }, 1 / 60, bounds).wall, 'bottom');
+  assert.equal(glide(10, 10, { vx: -1500, vy: -1500, drag: 2.2 }, 1 / 60, bounds).wall, 'left');
+  assert.equal(glide(500, 300, { vx: 1500, vy: 0, drag: 2.2 }, 1 / 60, bounds).wall, undefined);
 
   // どれだけ速くても、止まるまで画面の中にいる。
   state = { x: 500, y: 300, vx: -3500, vy: 3500, drag: 2.2 };
