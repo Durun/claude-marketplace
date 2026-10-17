@@ -26,17 +26,29 @@ const CARRY_ON = 240;
 // 尾を振る速さの上限。飛んでいる間の速さにそのまま比例させると、尾が速すぎて震えて見える。
 const MAX_STROKE = 4;
 // 飛ばして壁に当たったとき、口先から壁に突き刺さる確率と、刺さるのに要る当たったときの速さ（px/s）。軽く当てただけでは刺さらない。
-const STICK_CHANCE = 0.01;
-const STICK_SPEED = 600;
+const STICK_CHANCE = 0.1;
+const STICK_SPEED = 300;
+// 口先が壁へ向いている度合い（壁に垂直なら 1）がこれより小さければ刺さらない。横腹や尾から当たったときは跳ね返る。
+const STICK_FACING = 0.5;
+// 壁にめり込んでいく速さの下限（px/s）。めり込むほど遅くなるが、止まりきらずに奥まで届かせる。
+const SINK_MIN_SPEED = 40;
 // 刺さっている間に尾を打つ速さと、抜け出そうとして体をよじる角度（rad）と速さ（回/s）。
-const STUCK_STROKE = 3.5;
+const STUCK_STROKE = 5.25;
 const STUCK_WRIGGLE = 0.08;
 const STUCK_WRIGGLE_HZ = 2.3;
+// 刺さっている間、壁から出ている半身の真ん中が、体の真ん中から尾の側へ離れている道のり（px）。吹き出しの尾をここへ向ける。
+const STUCK_SHOWN = 24;
+// 吹き出しの尾を、吹き出しの角からこれより内側に置く。角の丸みにかかると、尾が浮いて見える。
+const TAIL_INSET = 16;
 
 type Turn = AssistantMessage & { links?: AssistantReply['links'] };
 
-/** 突き刺さった壁と、壁に沿った位置（px）。左右の壁なら y、上下の壁なら x。 */
-type Stuck = { wall: Wall; at: number };
+/**
+ * 突き刺さった壁と、刺さった向き。at は、刺さりきったときの壁に沿った位置（px）で、左右の壁なら y、上下の壁なら x。
+ * ux, uy は口先の向き（画面上の単位ベクトル）。depth は当たってから刺さりきるまでに進む道のり（px）、left はその残り、speed は当たったときの速さ。
+ * since は刺さりきった時刻で、めり込んでいる途中は無い。
+ */
+type Stuck = { wall: Wall; at: number; yaw: number; pitch: number; ux: number; uy: number; depth: number; left: number; speed: number; since?: number };
 
 /**
  * 位置と速さ（px、px/s）と向きと、している技とその進み具合（0〜1）。毎フレーム変わるので、描き直しを起こさない ref に持つ。
@@ -100,9 +112,10 @@ const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   const maxX = innerWidth - W;
   const maxY = innerHeight - H;
   const { wall, ...next } = glide(m.x, m.y, fling, dt, { maxX, maxY });
-  if (wall && Math.hypot(fling.vx, fling.vy) >= STICK_SPEED && Math.random() < STICK_CHANCE) {
-    m.fling = undefined;
-    m.stuck = { wall, at: wall === 'left' || wall === 'right' ? next.y : next.x };
+  const speed0 = Math.hypot(fling.vx, fling.vy);
+  const stuck = wall && speed0 >= STICK_SPEED && Math.random() < STICK_CHANCE ? stickInto(m, wall, speed0) : undefined;
+  if (stuck) {
+    Object.assign(m, { fling: undefined, stuck });
     return;
   }
   Object.assign(m, next);
@@ -120,22 +133,44 @@ const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   Object.assign(m, { speed, restUntil: now, tx: clamp(m.x + next.vx * ahead, 0, maxX), ty: clamp(m.y + next.vy * ahead, 0, maxY) });
 };
 
+// 各々の壁へ入っていく向き。
+const INTO: Record<Wall, [number, number]> = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+
+/** 刺さりきったときの位置。背びれは体の真ん中にあるので、canvas の真ん中を壁の線に重ねる。壁の向こうへはみ出した頭は画面の外なので見えない。 */
+const sunkAt = ({ wall, at }: Stuck): { x: number; y: number } =>
+  ({ left: { x: -W / 2, y: at }, right: { x: innerWidth - W / 2, y: at }, top: { x: at, y: -H / 2 }, bottom: { x: at, y: innerHeight - H / 2 } })[wall];
+
 /**
- * 壁に口先から突き刺さり、背びれのあたりまで埋まったまま、尾を打って体をよじる。
- * 背びれは体の真ん中にあるので、canvas の真ん中を壁の位置に合わせる。壁の向こうへはみ出した頭は画面の外なので見えない。
+ * 壁に当たったイルカを、当たったときの向きのまま、口先の向きへ背びれが壁の線に届くまでめり込ませる刺さり方。
+ * 口先が壁へ向いていないか、刺さりきる場所が画面の外になるなら刺さらない。
  */
-const wriggle = (m: Motion, stuck: Stuck, now: number): void => {
-  const along = (max: number) => clamp(stuck.at, 0, max);
-  const twist = STUCK_WRIGGLE * Math.sin((2 * Math.PI * STUCK_WRIGGLE_HZ * now) / 1000);
-  // 上下の壁では、刺さる前に向いていた側のまま頭を上げ下げする。
-  const side = m.yaw < -Math.PI / 2 ? -Math.PI : 0;
-  const pose = {
-    left: { x: -W / 2, y: along(innerHeight - H), yaw: -Math.PI, pitch: twist },
-    right: { x: innerWidth - W / 2, y: along(innerHeight - H), yaw: 0, pitch: twist },
-    top: { x: along(innerWidth - W), y: -H / 2, yaw: side, pitch: Math.PI / 2 + twist },
-    bottom: { x: along(innerWidth - W), y: innerHeight - H / 2, yaw: side, pitch: -Math.PI / 2 + twist },
-  }[stuck.wall];
-  Object.assign(m, pose, { vx: 0, vy: 0, speed: 0, trick: undefined });
+const stickInto = (m: Motion, wall: Wall, speed: number): Stuck | undefined => {
+  const ux = Math.cos(m.yaw) * Math.cos(m.pitch);
+  const uy = -Math.sin(m.pitch);
+  const [nx, ny] = INTO[wall];
+  const facing = ux * nx + uy * ny;
+  if (facing < STICK_FACING) return undefined;
+  const gap = { left: m.x + W / 2, right: innerWidth - m.x - W / 2, top: m.y + H / 2, bottom: innerHeight - m.y - H / 2 }[wall];
+  const depth = Math.max(0, gap) / facing;
+  const side = wall === 'left' || wall === 'right';
+  const at = side ? m.y + uy * depth : m.x + ux * depth;
+  if (at < (side ? -H / 2 : -W / 2) || at > (side ? innerHeight - H / 2 : innerWidth - W / 2)) return undefined;
+  return { wall, at, yaw: m.yaw, pitch: m.pitch, ux, uy, depth, left: depth, speed };
+};
+
+/**
+ * 壁にめり込み、刺さりきったら、背びれのあたりまで埋まったまま尾を打って体をよじる。
+ * めり込む間は、当たった速さから一定に減速して、刺さりきるところで止まる。
+ */
+const wriggle = (m: Motion, stuck: Stuck, dt: number, now: number): void => {
+  if (stuck.left > 0) {
+    const v = Math.max(SINK_MIN_SPEED, stuck.speed * Math.sqrt(stuck.left / stuck.depth));
+    stuck.left = Math.max(0, stuck.left - v * dt);
+    if (stuck.left === 0) stuck.since = now;
+  }
+  const end = sunkAt(stuck);
+  const twist = stuck.since === undefined ? 0 : STUCK_WRIGGLE * Math.sin((2 * Math.PI * STUCK_WRIGGLE_HZ * (now - stuck.since)) / 1000);
+  Object.assign(m, { x: end.x - stuck.ux * stuck.left, y: end.y - stuck.uy * stuck.left, yaw: stuck.yaw, pitch: stuck.pitch + twist, vx: 0, vy: 0, speed: 0, trick: undefined });
 };
 
 /**
@@ -153,12 +188,15 @@ const play = (m: Motion, dt: number, free: boolean): void => {
   }
 };
 
-/** 吹き出しを、イルカの上（入らなければ下）に、画面からはみ出さないよう置く。尾はイルカを指す。 */
+/**
+ * 吹き出しを、イルカの上（入らなければ下）に、画面からはみ出さないよう置く。尾はイルカを指す。
+ * 壁に刺さっている間は、体の真ん中が壁の線にあり頭は画面の外なので、壁から出ている半身を指す。
+ */
 const placeChat = (chat: HTMLElement, m: Motion): void => {
-  const center = m.x + W / 2;
+  const center = clamp(m.x + W / 2 - (m.stuck ? m.stuck.ux * STUCK_SHOWN : 0), MARGIN, innerWidth - MARGIN);
   const left = clamp(center - chat.offsetWidth / 2, MARGIN, innerWidth - MARGIN - chat.offsetWidth);
   chat.style.left = `${left - m.x}px`;
-  chat.style.setProperty('--tail', `${center - left}px`);
+  chat.style.setProperty('--tail', `${clamp(center - left, TAIL_INSET, chat.offsetWidth - TAIL_INSET)}px`);
   chat.classList.toggle('is-below', m.y < chat.offsetHeight + MARGIN * 2);
 };
 
@@ -181,7 +219,7 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
     last = now;
     const dragging = !!live.drag?.moved;
     const stopped = live.hover || live.open || live.thinking;
-    if (m.stuck) wriggle(m, m.stuck, now);
+    if (m.stuck) wriggle(m, m.stuck, dt, now);
     else {
       play(m, dt, !stopped && !dragging && !m.fling);
       if (m.fling) fly(m, m.fling, dt, now);
