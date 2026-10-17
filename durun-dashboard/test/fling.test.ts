@@ -52,6 +52,10 @@ test('飛ばしたものは、進む向きを保ったまま減速し、端に�
   assert.equal(glide(500, 590, { vx: 0, vy: 1500, drag: 2.2 }, 1 / 60, bounds).wall, 'bottom');
   assert.equal(glide(10, 10, { vx: -1500, vy: -1500, drag: 2.2 }, 1 / 60, bounds).wall, 'left');
   assert.equal(glide(500, 300, { vx: 1500, vy: 0, drag: 2.2 }, 1 / 60, bounds).wall, undefined);
+  // 動ける範囲の下限を渡せば、0 より手前の負の位置まで進んでから跳ね返る。
+  const below = glide(-20, 300, { vx: -1500, vy: 0, drag: 2.2 }, 1 / 60, { ...bounds, minX: -30 });
+  assert.equal(below.x, -30);
+  assert.equal(below.wall, 'left');
 
   // どれだけ速くても、止まるまで画面の中にいる。
   state = { x: 500, y: 300, vx: -3500, vy: 3500, drag: 2.2 };

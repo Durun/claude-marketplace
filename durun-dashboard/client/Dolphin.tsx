@@ -5,7 +5,7 @@ import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
 import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
-import { type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
+import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
 import { currentSessionId } from './router.ts';
 import { onSubmitKey } from './ui.tsx';
@@ -41,6 +41,10 @@ const STUCK_SHOWN = 24;
 // 吹き出しの尾を、吹き出しの角からこれより内側に置く。角の丸みにかかると、尾が浮いて見える。
 const TAIL_INSET = 16;
 
+// 画面に映る体の、真ん中から口先か尾までの長さと、背から腹までの厚みの半分（px）。canvas は体より大きいので、壁に当たるかは体の大きさで決める。
+const BODY_HALF_LENGTH = 46;
+const BODY_HALF_THICKNESS = 19;
+
 type Turn = AssistantMessage & { links?: AssistantReply['links'] };
 
 /**
@@ -68,6 +72,17 @@ const clamp = (v: number, min: number, max: number): number => Math.min(Math.max
 const spin = (m: Motion, trick: Motion['trick']): number => {
   if (m.trick !== trick) return 0;
   return trick === 'flip' ? 2 * Math.PI * m.trickT : Math.PI * (1 - Math.cos(Math.PI * m.trickT));
+};
+
+/**
+ * canvas の左上の位置が動ける範囲。体が画面の端に触れるところまで動ける。canvas の余白は画面の外へはみ出してよい。
+ * 体の向きで、画面に映る体の幅と高さが変わる。正面を向いていても厚みの分は幅があるとみなす。
+ */
+const reach = (m: Motion): Required<Bounds> => {
+  const p = m.pitch + spin(m, 'flip');
+  const ex = Math.max(BODY_HALF_THICKNESS, BODY_HALF_LENGTH * Math.abs(Math.cos(m.yaw) * Math.cos(p)) + BODY_HALF_THICKNESS * Math.abs(Math.sin(p)));
+  const ey = BODY_HALF_LENGTH * Math.abs(Math.sin(p)) + BODY_HALF_THICKNESS * Math.abs(Math.cos(p));
+  return { minX: ex - W / 2, minY: ey - H / 2, maxX: innerWidth - W / 2 - ex, maxY: innerHeight - H / 2 - ey };
 };
 
 /**
@@ -100,8 +115,9 @@ const swim = (m: Motion, dt: number, now: number, held: boolean): void => {
   const speed = m.trick === 'flip' ? (2 * Math.PI * LOOP_R) / TRICK_S : m.speed;
   m.vx = speed * Math.cos(m.yaw) * Math.cos(p);
   m.vy = -speed * Math.sin(p);
-  m.x = clamp(m.x + m.vx * dt, 0, maxX);
-  m.y = clamp(m.y + m.vy * dt, 0, maxY);
+  const b = reach(m);
+  m.x = clamp(m.x + m.vx * dt, b.minX, b.maxX);
+  m.y = clamp(m.y + m.vy * dt, b.minY, b.maxY);
 };
 
 /**
@@ -111,7 +127,7 @@ const swim = (m: Motion, dt: number, now: number, held: boolean): void => {
 const fly = (m: Motion, fling: Fling, dt: number, now: number): void => {
   const maxX = innerWidth - W;
   const maxY = innerHeight - H;
-  const { wall, ...next } = glide(m.x, m.y, fling, dt, { maxX, maxY });
+  const { wall, ...next } = glide(m.x, m.y, fling, dt, reach(m));
   const speed0 = Math.hypot(fling.vx, fling.vy);
   const stuck = wall && speed0 >= STICK_SPEED && Math.random() < STICK_CHANCE ? stickInto(m, wall, speed0) : undefined;
   if (stuck) {
@@ -259,8 +275,9 @@ const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
     const sample = { t: performance.now(), x: e.clientX, y: e.clientY };
     d.windUp = windUp(d.windUp, d.samples.at(-1), sample);
     d.samples = pushSample(d.samples, sample);
-    const x = clamp(e.clientX - d.dx, 0, innerWidth - W);
-    const y = clamp(e.clientY - d.dy, 0, innerHeight - H);
+    const b = reach(m);
+    const x = clamp(e.clientX - d.dx, b.minX, b.maxX);
+    const y = clamp(e.clientY - d.dy, b.minY, b.maxY);
     // 引っぱる向きに体を向けるため、動いた量を速さとして残す。
     Object.assign(m, { vx: (x - m.x) * 30, vy: (y - m.y) * 30, x, y, tx: x, ty: y, restUntil: performance.now() + 1500 });
   },

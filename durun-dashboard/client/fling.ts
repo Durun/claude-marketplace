@@ -9,7 +9,8 @@ export type Velocity = { vx: number; vy: number };
 /** 飛んでいる間の速さと、減速の強さ（1/s）。止まるまでに進む距離は 速さ ÷ drag になる。 */
 export type Fling = Velocity & { drag: number };
 
-export type Bounds = { maxX: number; maxY: number };
+/** 動ける範囲。minX と minY は省くと 0。 */
+export type Bounds = { minX?: number; minY?: number; maxX: number; maxY: number };
 
 /** 画面のどの端か。 */
 export type Wall = 'left' | 'right' | 'top' | 'bottom';
@@ -67,21 +68,21 @@ export const releaseVelocity = (samples: Sample[], now: number, windUpPx = 0): F
 };
 
 /** dt 秒ぶん滑らせた位置と速さ。端に当たったら、弾みを弱めて跳ね返し、当たった端を wall に返す。 */
-export const glide = (x: number, y: number, v: Fling, dt: number, { maxX, maxY }: Bounds): { x: number; y: number; wall?: Wall } & Velocity => {
+export const glide = (x: number, y: number, v: Fling, dt: number, { minX = 0, minY = 0, maxX, maxY }: Bounds): { x: number; y: number; wall?: Wall } & Velocity => {
   const decay = Math.exp(-v.drag * dt);
   let vx = v.vx * decay;
   let vy = v.vy * decay;
   let nx = x + vx * dt;
   let ny = y + vy * dt;
   let wall: Wall | undefined;
-  if (nx < 0 || nx > maxX) {
-    wall = nx < 0 ? 'left' : 'right';
-    nx = nx < 0 ? 0 : maxX;
+  if (nx < minX || nx > maxX) {
+    wall = nx < minX ? 'left' : 'right';
+    nx = nx < minX ? minX : maxX;
     vx = -vx * BOUNCE;
   }
-  if (ny < 0 || ny > maxY) {
-    wall ??= ny < 0 ? 'top' : 'bottom';
-    ny = ny < 0 ? 0 : maxY;
+  if (ny < minY || ny > maxY) {
+    wall ??= ny < minY ? 'top' : 'bottom';
+    ny = ny < minY ? minY : maxY;
     vy = -vy * BOUNCE;
   }
   return { x: nx, y: ny, vx, vy, ...(wall && { wall }) };
