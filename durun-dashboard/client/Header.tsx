@@ -114,10 +114,12 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
   const flyout = () => document.getElementById(RATE_ID);
   const show = () => flyout()?.showPopover();
   const hide = () => flyout()?.hidePopover();
+  // メニューの項目を押すと、メニューを閉じる処理の中でフォーカスがアイコンに戻る。その場で開くと popover の操作が重なって例外になるので、閉じ終えてから開く。
+  const showLater = () => queueMicrotask(show);
   const summary = [fiveHour && `5 時間 ${Math.round(fiveHour.usedPercent)}%`, sevenDay && `7 日 ${Math.round(sevenDay.usedPercent)}%`].filter(Boolean).join('、');
   return (
     <>
-      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide} onClick={hide} popovertarget={RATE_MENU_ID}>
+      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={showLater} onBlur={hide} onClick={hide} popovertarget={RATE_MENU_ID}>
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <Ring {...RINGS.outer} limit={fiveHour} rateWindow={FIVE_HOURS} />
           <Ring {...RINGS.inner} limit={sevenDay} rateWindow={sevenDays} />
