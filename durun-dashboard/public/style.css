@@ -1224,7 +1224,8 @@ table.data { width: 100%; border-collapse: collapse; }
 .dolphin { position: fixed; left: 0; top: 0; z-index: 80; width: 160px; height: 120px; }
 .dolphin-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .dolphin-canvas:active { cursor: grabbing; }
-.dolphin-chat { --tail: 50%; position: absolute; bottom: calc(100% + 6px); display: grid; gap: 8px; width: min(340px, calc(100vw - 16px)); padding: 10px 12px 12px; border-color: var(--border-strong); }
+/* 回答の表とコードは、折り返すと読みにくいので、収まる幅まで吹き出しを広げる。 */
+.dolphin-chat { --tail: 50%; position: absolute; bottom: calc(100% + 6px); display: grid; gap: 8px; width: max-content; min-width: min(340px, calc(100vw - 16px)); max-width: min(720px, calc(100vw - 16px)); padding: 10px 12px 12px; border-color: var(--border-strong); }
 .dolphin-chat.is-below { top: calc(100% + 6px); bottom: auto; }
 /* 吹き出しの尾。枠の色の三角に、1px ずらした地の色の三角を重ねて、枠線だけを残す。 */
 .dolphin-chat::before, .dolphin-chat::after { content: ""; position: absolute; left: var(--tail); border: 8px solid transparent; transform: translateX(-50%); }
@@ -1235,11 +1236,14 @@ table.data { width: 100%; border-collapse: collapse; }
 /* 閉じるボタンは角に寄せ、見出しの行の高さを文字に合わせる。 */
 .dolphin-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .dolphin-chat-head .dolphin-close { margin: -4px -6px -4px 0; }
-.dolphin-log { display: grid; gap: 8px; max-height: min(50vh, 360px); overflow: auto; font-size: 13px; }
+.dolphin-log { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-height: min(50vh, 360px); overflow: auto; font-size: 13px; }
 .dolphin-log:empty { display: none; }
 .dolphin-say { margin: 0; }
 .dolphin-say .actions { margin-top: 6px; }
-.dolphin-you { justify-self: end; max-width: 85%; padding: 6px 10px; border-radius: var(--radius); background: var(--surface-2); }
+/* 文と質問とリンクは、吹き出しの幅で折り返す。吹き出しの幅は、表とコードの幅だけで決める。 */
+.dolphin-chat :is(.md > :not(table, .code-block), .dolphin-say .actions, .dolphin-you) { contain: inline-size; }
+.dolphin-you { display: flex; justify-content: end; }
+.dolphin-you > p { max-width: 85%; padding: 6px 10px; border-radius: var(--radius); background: var(--surface-2); }
 
 .chart { position: relative; width: 100%; min-height: 260px; }
 .chart svg { display: block; touch-action: pan-y; }

@@ -332,7 +332,7 @@ const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatP
         <button class="dolphin-close" aria-label="閉じる" onClick={onClose}>×</button>
       </header>
       <div class="dolphin-log" ref={log}>
-        {turns.map((t, i) => (t.role === 'human' ? <p key={i} class="dolphin-you plain">{t.text}</p> : <DolphinSays key={i} turn={t} />))}
+        {turns.map((t, i) => (t.role === 'human' ? <div key={i} class="dolphin-you"><p class="plain">{t.text}</p></div> : <DolphinSays key={i} turn={t} />))}
         {thinking && <p class="dolphin-say muted">考えています…</p>}
       </div>
       <textarea
