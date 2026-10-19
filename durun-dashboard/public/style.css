@@ -945,6 +945,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .summary dt { color: var(--muted); font-size: 12.5px; }
 .summary dd { margin: 0; overflow-wrap: anywhere; }
 .summary.is-loading { opacity: 0.6; }
+/* 図解の指示のプルダウンは、長い指示があってもボタンを次の行へ押し出さないよう、ボタンの左の空きに収める。 */
+.diagram-notes { flex: 1; min-width: 0; }
 /* 概要が長くてもボタンが隠れないよう、概要の側だけをスクロールさせる。 */
 
 .tasks, .subagents, .outbox, .doc-list, .side-docs, .file-list, .barlist { margin: 0; padding: 0; list-style: none; }

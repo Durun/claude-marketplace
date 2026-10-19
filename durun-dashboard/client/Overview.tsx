@@ -7,7 +7,7 @@ import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
-import { dateTime, fmtTokens, shortDateTime } from './format.ts';
+import { dateTime, fmtTokens, shortDateTime, truncate } from './format.ts';
 import { isFileRef } from './fileRef.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
 import { type CodeLink, Markdown } from './Markdown.tsx';
@@ -224,13 +224,43 @@ export const launchDiagram = (s: Session): void => {
   floatUp(DIAGRAM_PROMPT_KEY, s.id, { id: DIAGRAM_PROMPT_KEY }, PROMPT_SIZE);
 };
 
+const NOTES_KEY = 'diagram-notes';
+const MAX_NOTES = 10;
+// 長い指示でプルダウンの一覧が画面いっぱいに広がらないよう、先頭のこの文字数だけを出す。
+const NOTE_LABEL_MAX = 40;
+
+/** 最近の図解の指示を新しい順に返す。どのセッションの図解でも使い回せるよう、ブラウザに保存する。 */
+const recentNotes = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(NOTES_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
+const rememberNote = (note: string): void => {
+  try {
+    localStorage.setItem(NOTES_KEY, JSON.stringify([note, ...recentNotes().filter((n) => n !== note)].slice(0, MAX_NOTES)));
+  } catch {
+    // 保存できなくても、図解は作れる。
+  }
+};
+
 const DiagramPrompt = ({ s }: { s: Session }) => {
   const [note, setNote] = useState('');
+  const [recent] = useState(recentNotes);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const start = () => {
     closePrompt(s.id);
-    void makeDiagram(s, note.trim());
+    const text = note.trim();
+    if (text) rememberNote(text);
+    void makeDiagram(s, text);
+  };
+  // 選んだ指示に書き足してから始められるよう、入力欄にフォーカスを移す。
+  const pick = (picked: string) => {
+    setNote(picked);
+    ref.current?.focus();
   };
   return (
     <div class="stack">
@@ -244,7 +274,15 @@ const DiagramPrompt = ({ s }: { s: Session }) => {
         onKeyDown={(e) => onSubmitKey(e, start)}
       />
       <div class="actions">
-        <span class="spacer" />
+        {/* 入力欄を書き換えた後まで、前に選んだ指示が選ばれたままに見えないよう、選ぶたびに見出しの項目へ戻す。 */}
+        {recent.length > 0 ? (
+          <select class="input diagram-notes" aria-label="最近の指示" value="" onChange={(e) => pick(e.currentTarget.value)}>
+            <option value="" disabled>最近の指示から選ぶ</option>
+            {recent.map((n) => <option key={n} value={n}>{truncate(n, NOTE_LABEL_MAX)}</option>)}
+          </select>
+        ) : (
+          <span class="spacer" />
+        )}
         <button class="btn" onClick={() => closePrompt(s.id)}>キャンセル</button>
         <button class="btn btn-primary" onClick={start}>OK</button>
       </div>
