@@ -314,6 +314,8 @@ textarea.input { resize: vertical; min-height: 36px; }
 }
 .rate-flyout:popover-open { display: grid; gap: 8px; }
 .rate-empty { max-width: 260px; margin: 0; color: var(--text-2); }
+/* 内訳の幅は中身で決まるので、幅を持たないスケルトンには幅を与える。 */
+.rate-flyout .skeleton { width: 200px; padding: 0; }
 .rate-item { display: grid; gap: 4px; }
 /* 破線が均等なペースで、背景の色が違うところは、ペースを数えない土日祝日。線と今の位置の印と使用率の数字は使用率の色にし、印と数字の縁取りは背景の色にして線から浮かせる。 */
 .rate-graph { display: block; max-width: 100%; height: auto; fill: none; }

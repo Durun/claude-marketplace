@@ -22,6 +22,12 @@ const CACHE_KEY = 'snapshot';
 /** SSE を張っているタブが、ほかのタブに配るもの。 */
 type EventsMessage = { kind: 'open' } | { kind: 'error' } | { kind: 'data'; data: string };
 
+// useSnapshot がサーバーから取り直す関数。useSnapshot を使っている間だけある。
+let loadSnapshot: (() => void) | undefined;
+
+/** SSE が変化を送るのを待たずに、サーバーにスナップショットを作らせて受け取る。 */
+export const reloadSnapshot = (): void => loadSnapshot?.();
+
 const cachedSnapshot = (): Snapshot | null => {
   try {
     return JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Snapshot | null;
@@ -46,6 +52,7 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
     const accept = (next: Snapshot) => setFresh((current) => (current && current.now > next.now ? current : next));
     // SSE は変化があるまで何も送らないことがある。最初と再接続のたびに取得して、古い表示を残さない。
     const load = () => getJson<Snapshot>('/api/snapshot').then(accept).catch(() => setConnected(false));
+    loadSnapshot = load;
     load();
     const url = light ? '/api/events?light' : '/api/events';
     // ブラウザは同じホストへの接続を 6 本までしか張らないので、タブごとに SSE を握ると会話ログなどの取得が空きを待たされる。
@@ -108,6 +115,7 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
     };
     addEventListener('pagehide', save);
     return () => {
+      loadSnapshot = undefined;
       close();
       channel.close();
       document.removeEventListener('visibilitychange', onVisibility);

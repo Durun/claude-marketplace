@@ -13,7 +13,7 @@ import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProo
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
-import { useFetch, useWaitCursor } from './hooks.ts';
+import { reloadSnapshot, useFetch, useWaitCursor } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
 import { OutboxList, asksOf } from './Messaging.tsx';
 import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
@@ -21,7 +21,7 @@ import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, href } from './router.ts';
-import { CopyButton, CopyText, Empty, IssueChip, JiraChips, PrChips, StatusBadge } from './ui.tsx';
+import { CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -303,8 +303,17 @@ const SessionDashboard = ({ s, tab, file, snapshot, editing, onEditDone }: Dashb
   );
 };
 
+/**
+ * 開いたときのスナップショットに無いセッションも、前に開いていたときのデータや分岐した直後のデータに、まだ載っていないだけのことがある。
+ * そのため、開いてからスナップショットを取り直し、開いた後に作られたものにも無ければ、見つからないと出す。届くまではスケルトンを出す。
+ */
 export const SessionPage = ({ id, ...props }: Omit<DashboardProps, 's'> & { id: string }) => {
   const s = props.snapshot.sessions.find((x) => x.id === id);
+  const [openedAt] = useState(props.snapshot.now);
+  useEffect(() => {
+    if (!s) reloadSnapshot();
+  }, []);
+  if (!s && props.snapshot.now <= openedAt) return <Loading />;
   if (!s) {
     return (
       <div class="card panel">

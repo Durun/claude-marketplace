@@ -20,7 +20,7 @@ import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
-import { Empty, Meter, Time, paceColor, rateColor } from './ui.tsx';
+import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 import { XpDropdown } from './XpMenu.tsx';
 
@@ -106,8 +106,9 @@ const Ring = ({ r, width, limit, rateWindow }: { r: number; width?: number; limi
  * 押すと、XP のアプリのメニューと同じ形で、ペースの数え方を切り替えるメニューを開く。内訳と重ならないよう、内訳は閉じる。
  * タスクバーは overflow: hidden なので、内訳は popover にして最前面に出す。
  * 値がまだ無いときも空のリングを残し、内訳で出し方を案内する。消すと、出せることに気づけない。
+ * loading は、スナップショットがまだ届いていないこと。値が無いとは限らないので、案内の代わりにスケルトンを出す。
  */
-const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: RateLimit }) => {
+const RateTray = ({ fiveHour, sevenDay, loading }: { fiveHour?: RateLimit; sevenDay?: RateLimit; loading: boolean }) => {
   const empty = !fiveHour && !sevenDay;
   const weekdays = useRateWeekdays();
   const sevenDays = { ...SEVEN_DAYS, weekdays };
@@ -119,7 +120,7 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
   const summary = [fiveHour && `5 時間 ${Math.round(fiveHour.usedPercent)}%`, sevenDay && `7 日 ${Math.round(sevenDay.usedPercent)}%`].filter(Boolean).join('、');
   return (
     <>
-      <button class="rate-tray" aria-label={`使用制限: ${empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={showLater} onBlur={hide} onClick={hide} popovertarget={RATE_MENU_ID}>
+      <button class="rate-tray" aria-label={`使用制限: ${loading ? '読み込み中' : empty ? 'まだ値がありません' : summary}`} onPointerEnter={show} onPointerLeave={hide} onFocus={showLater} onBlur={hide} onClick={hide} popovertarget={RATE_MENU_ID}>
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <Ring {...RINGS.outer} limit={fiveHour} rateWindow={FIVE_HOURS} />
           <Ring {...RINGS.inner} limit={sevenDay} rateWindow={sevenDays} />
@@ -129,7 +130,7 @@ const RateTray = ({ fiveHour, sevenDay }: { fiveHour?: RateLimit; sevenDay?: Rat
         <b class="rate-head">使用制限</b>
         {fiveHour && <RateMeter limit={fiveHour} rateWindow={FIVE_HOURS} />}
         {sevenDay && <RateMeter limit={sevenDay} rateWindow={sevenDays} />}
-        {empty && (
+        {loading ? <Loading /> : empty && (
           <p class="rate-empty">
             まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。
           </p>
@@ -478,10 +479,13 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />
-      <div class="counts">
-        <StatusCount status="busy" label="作業中" snapshot={snapshot} live={live} />
-        <StatusCount status="idle" label="入力待ち" snapshot={snapshot} live={live} />
-      </div>
+      {/* スナップショットが届くまでは件数が分からないので、0 件と出さないよう件数ごと出さない。 */}
+      {snapshot && (
+        <div class="counts">
+          <StatusCount status="busy" label="作業中" snapshot={snapshot} live={live} />
+          <StatusCount status="idle" label="入力待ち" snapshot={snapshot} live={live} />
+        </div>
+      )}
       <div class="topbar-end">
         {!connected && <span class="chip chip-bad">サーバーに接続できません</span>}
         {stale && (
@@ -492,7 +496,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
         <NotifyButton />
         <StatusCount status="idle" label="入力待ち" snapshot={snapshot} live={live} tray />
         <FeedbackTray improve={snapshot?.improve} onClick={onFeedback} />
-        <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} />
+        <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} loading={!snapshot} />
         <MemoryTray />
         <TaskbarClock />
       </div>
