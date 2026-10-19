@@ -315,6 +315,16 @@ const PEER_NOTE = '\n\nThis came from another Claude session';
 
 const withoutLabel = (text?: string): string | undefined => (text?.startsWith(HUMAN_LABEL) ? text.slice(HUMAN_LABEL.length) : text);
 
+const tagText = (text: string, tag: string): string | undefined => text.split(`<${tag}>`)[1]?.split(`</${tag}>`)[0]?.trim();
+
+/** スラッシュコマンドの依頼は <command-name> などのタグで包まれて記録されるので、人間が打ったとおりの「/名前 引数」に戻す。 */
+const asTyped = (text: string): string => {
+  const name = text.trimStart().startsWith('<command-') ? tagText(text, 'command-name') : undefined;
+  if (!name) return text;
+  const args = tagText(text, 'command-args');
+  return args ? `${name} ${args}` : name;
+};
+
 /**
  * 人間の依頼の文。人が打ったものと、claude -p で渡したものと、ダッシュボードから届いたものに限る。タスク通知やスキルの読み込み、ツールの結果は依頼ではない。
  * どの依頼からも HUMAN_LABEL を外す。ダッシュボードから届いた依頼は、前に付くフックや別のセッションの前置きと、後ろの閉じタグや注意書きも外す。
@@ -323,7 +333,7 @@ const requestText = (e: LogEntry): string | undefined => {
   const content = e.message?.content;
   const text = typeof content === 'string' ? content : (content ?? []).map((b) => (b.type === 'text' ? (b.text ?? '') : '')).join('\n');
   if (!text.trim()) return undefined;
-  if (e.origin?.kind === 'human' || e.promptSource === 'sdk') return withoutLabel(text);
+  if (e.origin?.kind === 'human' || e.promptSource === 'sdk') return withoutLabel(asTyped(text));
   const at = text.indexOf(DASHBOARD_MARK);
   return at < 0 ? undefined : withoutLabel(text.slice(at).split('</agent-message>')[0]?.split(PEER_NOTE)[0]?.trim());
 };

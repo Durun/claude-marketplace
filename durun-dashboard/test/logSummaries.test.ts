@@ -22,3 +22,9 @@ test('書き出した会話ログの要約は、起動し直した後に続き�
   const restarted = await import(new URL('../server/claude.ts?restarted', import.meta.url).href);
   assert.deepEqual(restarted.summarizeLog(file).texts.map((t: { text: string }) => t.text), ['一つ目', '三つ目']);
 });
+
+test('スラッシュコマンドの依頼は、タグを外して打ったとおりの「/名前 引数」で見せる', () => {
+  const file = path.join(tmp, 'command.jsonl');
+  fs.writeFileSync(file, prompt('<command-message>imozuru</command-message>\n<command-name>/imozuru</command-name>\n<command-args>対位法の使い方</command-args>') + prompt('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>'));
+  assert.deepEqual(summarizeLog(file).texts.map((t) => t.text), ['/imozuru 対位法の使い方', '/clear']);
+});
