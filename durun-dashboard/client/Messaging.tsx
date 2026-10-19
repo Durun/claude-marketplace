@@ -1,7 +1,8 @@
 import type { RefObject } from 'preact';
-import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
+import { AppIcon } from './apps.tsx';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
 import { type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -318,10 +319,30 @@ const useMessageDraft = (sessionId: string): [string, (next: string | ((prev: st
   return [text, setText];
 };
 
+/** compact の確認。XP の警告のメッセージボックスに倣う。「はい」で閉じたときだけ ok を真にし、× と Esc は「いいえ」と同じに扱う。 */
+const CompactConfirm = ({ onClose }: { onClose: (ok: boolean) => void }) => {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => dialog.current?.showModal(), []);
+  return (
+    <dialog ref={dialog} class="xp-confirm" role="alertdialog" aria-label="compact の確認" onClose={(e) => onClose(e.currentTarget.returnValue === 'yes')}>
+      <form method="dialog">
+        <h3 class="xp-confirm-title">compact の確認</h3>
+        <button class="xp-confirm-close" aria-label="閉じる" />
+        <p class="xp-confirm-text"><AppIcon icon="⚠️" size={32} />このセッションの会話を compact しますか?</p>
+        <div class="xp-confirm-actions">
+          <button value="yes" autofocus>はい(<u>Y</u>)</button>
+          <button>いいえ(<u>N</u>)</button>
+        </div>
+      </form>
+    </dialog>
+  );
+};
+
 /** 返答の候補と入力欄。 */
 const MessageForm = ({ s }: { s: Session }) => {
   const [text, setText] = useMessageDraft(s.id);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const choice = useModelChoice(s);
   const [mode, setMode] = useSendMode();
@@ -360,9 +381,10 @@ const MessageForm = ({ s }: { s: Session }) => {
     // このセッションの画面を開いていれば、分岐したセッションの画面へ移る。
     if (currentSessionId() === s.id) location.hash = href.session(res.sessionId);
   };
-  // compact した会話は戻せないので、押し間違いでないかを確かめる。
-  const compact = async () => {
-    if (!confirm('このセッションの会話を compact しますか?')) return;
+  // compact した会話は戻せないので、押し間違いでないかを確かめてから始める。
+  const compact = async (ok: boolean) => {
+    setConfirming(false);
+    if (!ok) return;
     setBusy(true);
     const done = await attempt('compact', () => api.compact(s.id).then(() => true));
     setBusy(false);
@@ -395,13 +417,14 @@ const MessageForm = ({ s }: { s: Session }) => {
         <button class="btn" disabled={busy || !text.trim()} title={FORK_HELP} onClick={fork}>分岐</button>
         {choice.fields}
         <ContextPie usage={s.usage} />
-        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={compact}>compact</button>
+        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={() => setConfirming(true)}>compact</button>
         {isLive(s) && (
           <button class="btn btn-danger" disabled={busy || s.kind !== 'bg'} title={s.kind === 'bg' ? STOP_HELP : NO_STOP_HELP} onClick={stop}>
             停止
           </button>
         )}
       </div>
+      {confirming && <CompactConfirm onClose={compact} />}
     </>
   );
 };
