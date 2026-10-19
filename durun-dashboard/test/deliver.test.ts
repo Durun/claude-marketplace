@@ -141,7 +141,7 @@ if (args[0] === '--bg') {
   assert.equal(message.deliveredAt, undefined);
 });
 
-test('作業中か権限の確認待ちのバックグラウンドのセッションへは送らずに保留し、入力待ちになったら前置きを付けずに再開して渡す', async () => {
+test('権限の確認待ちのバックグラウンドのセッションへは送らずに保留し、入力待ちになったら前置きを付けずに再開して渡す', async () => {
   const bin = path.join(tmp, 'bin-wait');
   const callsFile = path.join(tmp, 'calls-wait');
   const roster = path.join(tmp, 'claude', 'daemon', 'roster.json');
@@ -154,29 +154,29 @@ test('作業中か権限の確認待ちのバックグラウンドのセッシ�
   const left = (): string[] => state.queue.filter((m) => m.sessionId === 'w1').map((m) => m.text);
 
   live('busy');
-  assert.equal(sendMessage('w1', '作業中に送った').delivery, 'queued');
-  live('idle');
   state.attention.push({ id: 'aw', kind: 'permission', sessionId: 'w1', title: '権限', createdAt: Date.now() });
   assert.equal(sendMessage('w1', '確認待ちに送った').delivery, 'queued');
-  assert.deepEqual(left(), ['作業中に送った', '確認待ちに送った']);
+  assert.equal(sendMessage('w1', '続けて送った').delivery, 'queued');
+  assert.deepEqual(left(), ['確認待ちに送った', '続けて送った']);
   assert.equal(state.outbox.some((m) => m.sessionId === 'w1'), false);
   assert.equal(fs.existsSync(callsFile), false);
 
+  live('idle');
   state.attention = state.attention.filter((a) => a.id !== 'aw');
   flushQueue();
-  assert.deepEqual(left(), ['確認待ちに送った']);
+  assert.deepEqual(left(), ['続けて送った']);
   const delivered = (): boolean => state.outbox.some((m) => m.sessionId === 'w1' && m.deliveredAt && !m.sending);
   if (!delivered()) await new Promise<void>((resolve) => onChange(() => delivered() && resolve()));
   const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
   assert.deepEqual(calls, [
     ['stop', 'jw1'],
-    ['--bg', '--resume', 'w1', '--', '作業中に送った'],
+    ['--bg', '--resume', 'w1', '--', '確認待ちに送った'],
   ]);
   // 残りは Claude の返事を待って送られる。後のテストが見るキューに残さない。
   state.queue = state.queue.filter((m) => m.sessionId !== 'w1');
 });
 
-test('サブエージェントを待っているバックグラウンドのセッションへは、止めずに supervisor に返信を頼んで保留したものも送り、断られたら未配信に戻す', async () => {
+test('作業中のバックグラウンドのセッションへは、ターンの途中でも保留せず、止めずに supervisor に返信を頼んで渡し、断られたら未配信に戻す。サブエージェントを待っている間は、保留したものも送る', async () => {
   const callsFile = path.join(tmp, 'calls-reply');
   useFakeClaude(path.join(tmp, 'bin-reply'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
   const daemon = path.join(tmp, 'claude', 'daemon');
@@ -215,17 +215,29 @@ test('サブエージェントを待っているバックグラウンドのセ�
   log({ type: 'user', timestamp: iso(startedAt + 1000), message: { role: 'user', content: '調べて' } });
   log({ type: 'assistant', timestamp: iso(startedAt + 2000), message: { content: [{ type: 'text', text: 'サブエージェントに頼みました' }] } });
 
-  // ターンの途中は、ほかの作業中のセッションと同じく保留する。
-  assert.equal(sendMessage('r1', 'ターンの途中に送った').delivery, 'queued');
-  const accepting = await listenSupervisor({ ok: true, op: 'reply' });
-  log({ type: 'system', subtype: 'turn_duration', timestamp: iso(startedAt + 3000) });
+  const reply = async (text: string, send: () => void): Promise<OutboxMessage | undefined> => {
+    const accepting = await listenSupervisor({ ok: true, op: 'reply' });
+    send();
+    assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'jr1', text, auth: 'control-key' });
+    await close(accepting.server);
+    const sent = state.outbox.find((m) => m.sessionId === 'r1' && m.text === text);
+    if (sent?.sending) await new Promise<void>((resolve) => onChange(() => !sent.sending && resolve()));
+    assert.equal(sent?.via, 'reply');
+    assert.ok(sent?.deliveredAt);
+    return sent;
+  };
+  const sent = await reply('ターンの途中に送った', () => assert.equal(sendMessage('r1', 'ターンの途中に送った').delivery, 'sent'));
+
+  // 本体のターンを終えたら、「キュー」で保留したものを送る。再開したばかりのプロセスには、前のプロセスで終えたターンが会話ログに残っていても送らない。
+  const endedAt = (sent?.createdAt ?? 0) + 1;
+  log({ type: 'assistant', timestamp: iso(endedAt), message: { content: [{ type: 'text', text: '受け取りました' }] } });
+  log({ type: 'system', subtype: 'turn_duration', timestamp: iso(endedAt) });
+  state.queue.push({ id: 'qr1', sessionId: 'r1', text: '保留した', createdAt: Date.now() });
+  live(endedAt + 1);
   flushQueue();
-  assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'jr1', text: 'ターンの途中に送った', auth: 'control-key' });
-  await close(accepting.server);
-  const sent = state.outbox.find((m) => m.sessionId === 'r1' && m.text === 'ターンの途中に送った');
-  if (sent?.sending) await new Promise<void>((resolve) => onChange(() => !sent.sending && resolve()));
-  assert.equal(sent?.via, 'reply');
-  assert.ok(sent?.deliveredAt);
+  assert.deepEqual(state.queue.filter((m) => m.sessionId === 'r1').map((m) => m.text), ['保留した']);
+  live(startedAt);
+  await reply('保留した', flushQueue);
 
   const refusing = await listenSupervisor({ ok: false, error: 'job not found', code: 'ENOJOB' });
   const { message, delivery } = sendMessage('r1', '断られる');
@@ -236,11 +248,6 @@ test('サブエージェントを待っているバックグラウンドのセ�
   assert.equal(message.deliveredAt, undefined);
   await close(refusing.server);
   assert.equal(fs.existsSync(callsFile), false);
-
-  // 再開したばかりのプロセスは、前のプロセスで終えたターンが会話ログに残っていても、作業中として保留する。
-  live(Date.now());
-  assert.equal(sendMessage('r1', '再開の直後に送った').delivery, 'queued');
-  state.queue = state.queue.filter((m) => m.sessionId !== 'r1');
   if (platform.name !== 'win32') fs.rmSync(path.dirname(socketPath), { recursive: true, force: true });
 });
 

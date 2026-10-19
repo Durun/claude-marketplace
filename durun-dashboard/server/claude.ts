@@ -165,7 +165,8 @@ type LogEntry = {
   lastPrompt?: string;
   totalCostUSD?: number;
   message?: { id?: string; model?: string; usage?: RawUsage; content?: ContentBlock[] | string };
-  attachment?: SkillListing & { prompt?: string };
+  /** queued_command は、作業中に届いた依頼とタスク通知。誰から届いたかを origin に持つ。 */
+  attachment?: SkillListing & { prompt?: string; origin?: { kind?: string } };
   /** shell は backgroundTaskId、Monitor は taskId に、動かしたタスクの id を持つ。 */
   toolUseResult?: { backgroundTaskId?: string; taskId?: string };
   /** frame-link エントリが持つ、公開した artifact の URL と題名と元のファイル。 */
@@ -375,8 +376,11 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   else if (e.type === 'cost-state') s.costUsd = e.totalCostUSD;
   else if (e.type === 'frame-link' && e.frameUrl) s.artifacts.set(e.frameUrl, { url: e.frameUrl, title: e.title ?? '', path: e.path });
   else if (e.type === 'attachment' && e.attachment?.type === 'skill_listing') applySkills(s, e.attachment);
-  else if (e.type === 'attachment' && e.attachment?.type === 'queued_command') applyNotifications(s, e.attachment.prompt ?? '');
-  else if (e.type === 'system' && e.subtype === 'turn_duration') s.turnEndedAt = ts;
+  else if (e.type === 'attachment' && e.attachment?.type === 'queued_command') {
+    applyNotifications(s, e.attachment.prompt ?? '');
+    // 作業中に届いた依頼は、user のエントリにならず、ターンの途中に差し込まれた記録だけが残る。ターンの途中へは巻き戻させないので、親を渡さない。
+    applyRequest(s, { origin: e.attachment.origin, message: { content: e.attachment.prompt } }, ts);
+  } else if (e.type === 'system' && e.subtype === 'turn_duration') s.turnEndedAt = ts;
   if (e.type !== 'user' && e.type !== 'assistant') return;
   s.turnEndedAt = undefined;
   if (e.cwd) s.cwd = e.cwd;

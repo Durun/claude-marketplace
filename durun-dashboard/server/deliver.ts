@@ -1,6 +1,6 @@
 // 人間から Claude へのメッセージを届ける。
 // MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
-// サブエージェントを待っているバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
+// 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
 // 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消す。
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -200,11 +200,11 @@ const summaryOf = (sessionId: string): LogSummary | undefined => {
 const delegating = (live: LiveSession): boolean => live.status === 'busy' && (summaryOf(live.sessionId)?.turnEndedAt ?? 0) > (live.startedAt ?? Infinity);
 
 /**
- * 作業中か権限の確認待ちのバックグラウンドのセッション。サブエージェントを待っているだけのセッションは除く。
- * 受信ソケットで送ると、Claude Code が別のセッションからの発言として包むので、入力待ちになるまで保留し、flushQueue に再開して渡させる。
+ * 権限の確認待ちのバックグラウンドのセッション。入力待ちになるまで保留し、flushQueue に再開して渡させる。
+ * 受信ソケットで送ると、Claude Code が別のセッションからの発言として包む。supervisor に返信を頼むと、Claude Code は確認や質問で止まっているジョブへの返信を、その答えとして使うことがある。
  * readyForQueue が送ってよいとする状態とは重ならないので、flushQueue が送ったものをまた保留することはない。
  */
-const mustWait = (live: LiveSession | undefined): boolean => live?.kind === 'bg' && ((live.status === 'busy' && !delegating(live)) || awaitingPermission(live.sessionId));
+const mustWait = (live: LiveSession | undefined): boolean => live?.kind === 'bg' && awaitingPermission(live.sessionId);
 
 /**
  * supervisor の制御ソケットへ 1 行の JSON で、バックグラウンドのジョブへの返信を頼む。Claude Code の agent view が返信に使う経路。
@@ -282,7 +282,7 @@ export const redeliver = (sessionId: string): Delivery => {
 
 const undelivered = (sessionId: string): OutboxMessage[] => state.outbox.filter((m) => m.sessionId === sessionId && !m.deliveredAt);
 
-/** 届け方を返す。作業中か権限の確認待ちのバックグラウンドのセッションへは送らず、送信の記録から保留へ移す。 */
+/** 届け方を返す。権限の確認待ちのバックグラウンドのセッションへは送らず、送信の記録から保留へ移す。 */
 const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, pending: OutboxMessage[], rewindTo?: string): Delivery => {
   if (mustWait(live)) {
     state.outbox = state.outbox.filter((m) => !pending.includes(m));
@@ -291,9 +291,9 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
     return 'queued';
   }
   // 受信ソケットで送ったものは承認として扱われないので、再開して渡せるセッションと、supervisor に返信を頼めるセッションには使わない。
-  // サブエージェントを待っているセッションは、止めるとサブエージェントも止まるので、再開せずに supervisor に返信を頼む。
+  // 作業中のセッションは、止めると作業もサブエージェントも途切れるので、再開せずに supervisor に返信を頼む。
   const restart = !live || restartable(live);
-  const job = !restart && live.kind === 'bg' && delegating(live) ? live.jobId : undefined;
+  const job = !restart && live.kind === 'bg' ? live.jobId : undefined;
   // 続けて送られても二重に届かないよう、送る前に配信済みにする。届け終えるまでは sending を付けておき、途中でサーバーが止まったら次の起動で届け直せるようにする。
   // 巻き戻しは、届け直すともう一度巻き戻すので、sending を付けない。
   const via = restart ? 'resume' : job ? 'reply' : 'socket';

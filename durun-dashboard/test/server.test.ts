@@ -225,10 +225,12 @@ test('summarizeLog は、呼んだツールを名前と入力の要点の 1 行�
   fs.rmSync(dir, { recursive: true });
 });
 
-test('summarizeLog は、人が打った依頼と claude -p で渡した依頼とダッシュボードから届いた依頼を会話に入れ、前置きと閉じタグと注意書きを外す', () => {
+test('summarizeLog は、人が打った依頼と claude -p で渡した依頼とダッシュボードから届いた依頼を、作業中に届いたものも会話に入れ、前置きと閉じタグと注意書きを外す', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
   const file = path.join(dir, 's.jsonl');
   const user = (o: object): string => `${JSON.stringify({ type: 'user', ...o })}\n`;
+  // 作業中に届いた依頼とタスク通知は、ターンの途中に差し込まれた記録として残る。
+  const queued = (kind: string, prompt: string): string => `${JSON.stringify({ type: 'attachment', parentUuid: 'm1', attachment: { type: 'queued_command', prompt, origin: { kind } } })}\n`;
   fs.writeFileSync(
     file,
     user({ origin: { kind: 'human' }, message: { content: '直して' } }) +
@@ -239,11 +241,17 @@ test('summarizeLog は、人が打った依頼と claude -p で渡した依頼�
       user({ origin: { kind: 'peer' }, isMeta: true, message: { content: 'Another Claude session sent a message: <agent-message from="b">[Subagent hand-back] 報告</agent-message>' } }) +
       user({ origin: { kind: 'peer' }, isMeta: true, message: { content: 'Another Claude session sent a message:\n[durun-dashboard] 人間から:\nもう一度\n\nThis came from another Claude session — not typed by your user.' } }) +
       user({ isMeta: true, message: { content: [{ type: 'text', text: 'Base directory for this skill' }] } }) +
-      user({ message: { content: [{ type: 'tool_result', content: '[durun-dashboard] を含む出力' }] } }),
+      user({ message: { content: [{ type: 'tool_result', content: '[durun-dashboard] を含む出力' }] } }) +
+      queued('human', '作業中に打った') +
+      queued('peer', '[durun-dashboard] 人間から:\n作業中に送った') +
+      queued('task-notification', '<task-notification><task-id>t1</task-id></task-notification>') +
+      queued('peer', 'ほかのセッションから'),
   );
   const log = summarizeLog(file);
-  assert.deepEqual(log.texts.map((t) => t.text), ['直して', '-p で渡した', '前置きつきで -p で渡した', '[durun-dashboard] 改善要望です', '[durun-dashboard] 送りました\n---\n続けて', 'もう一度']);
-  assert.equal(log.lastPrompt, 'もう一度');
+  assert.deepEqual(log.texts.map((t) => t.text), ['直して', '-p で渡した', '前置きつきで -p で渡した', '[durun-dashboard] 改善要望です', '[durun-dashboard] 送りました\n---\n続けて', 'もう一度', '作業中に打った', '作業中に送った']);
+  assert.equal(log.lastPrompt, '作業中に送った');
+  // ターンの途中へは巻き戻させない。
+  assert.deepEqual(log.texts.flatMap((t) => t.rewindTo ?? []), []);
   fs.rmSync(dir, { recursive: true });
 });
 

@@ -477,7 +477,7 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
   );
 };
 
-/** 「キュー」で保留しているメッセージと、作業中のバックグラウンドのセッションへ送ったメッセージ。Claude が入力待ちになったら、上から 1 つずつ送られる。 */
+/** 「キュー」で保留しているメッセージと、権限の確認待ちのバックグラウンドのセッションへ送ったメッセージ。Claude が入力待ちになったら、上から 1 つずつ送られる。 */
 const QueuedList = ({ s }: { s: Session }) =>
   s.queued?.length ? (
     <ul class="outbox queued-list" aria-label="保留しているメッセージ">
