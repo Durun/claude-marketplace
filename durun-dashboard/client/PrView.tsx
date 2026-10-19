@@ -125,7 +125,7 @@ export const PrWidget = ({ s }: { s: Session }) => {
   return (
     <WidgetPanel title={PR_TITLE}>
       <PrPicker s={s} pr={pr} />
-      {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
+      {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} /> : s.prsPending ? <Loading /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
     </WidgetPanel>
   );
 };

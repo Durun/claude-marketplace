@@ -98,11 +98,17 @@ const withClaudeStatus = (pr: PrInfo | null | undefined): PrInfo | undefined => 
   return { ...pr, title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review };
 };
 
+const peekBranchPr = (cwd: string, branch: string): PrInfo | null | undefined =>
+  peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch));
+
 /** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
 export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
   if (!branch || BASE_BRANCH.test(branch)) return undefined;
-  return withClaudeStatus(peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch)));
+  return withClaudeStatus(peekBranchPr(cwd, branch));
 };
+
+/** ブランチの PR を、まだ一度も読み終えていないか。findPr は PR が無くても null を返して覚えるので、覚えた値が無ければ読んでいる途中である。 */
+export const prPending = (cwd: string, branch: string): boolean => !BASE_BRANCH.test(branch) && peekBranchPr(cwd, branch) === undefined;
 
 // バッジに登録した PR と Issue も、すべてのセッションの分を読むので、ブランチの PR と同じ間隔で読み直す。
 const BADGE_POLICY = { maxAge: BRANCH_PR_MAX_AGE };

@@ -6,7 +6,7 @@ import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
-import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt } from './integrations.ts';
+import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
@@ -182,6 +182,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
     pr,
     prs,
+    prsPending: branches.some((b) => prPending(meta.cwd, b)),
     jira: shown([...jiraKeys].map(jiraIssue)),
     issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url)) || [])),
     usage: buildUsage(meta.id, log, subs),

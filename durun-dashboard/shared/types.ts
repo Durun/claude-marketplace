@@ -176,6 +176,8 @@ export type Session = {
   pr?: PrInfo;
   /** これまでに居たブランチの PR と、人間がバッジに登録した PR。今のブランチの PR を先頭に、最後に居た順に並べ、登録した PR を後に続ける。外したバッジは含めない。 */
   prs: PrInfo[];
+  /** PR があるかを gh でまだ読み終えていないブランチがあり、prs に足りない PR があるかもしれない。前に受け取ったスナップショットには無いことがある。 */
+  prsPending?: boolean;
   jira: JiraIssue[];
   /** 人間がバッジに登録した GitHub の Issue。前に受け取ったスナップショットには無いことがある。 */
   issues?: IssueInfo[];

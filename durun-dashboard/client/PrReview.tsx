@@ -130,7 +130,7 @@ const PrThreads = ({ s, outbox, picked }: Props & { picked?: PrInfo }) => {
       <div class="widget-body">
         <PrPicker s={s} pr={picked} />
         {!picked ? (
-          <Empty>このセッションのブランチには PR がありません。</Empty>
+          s.prsPending ? <Loading /> : <Empty>このセッションのブランチには PR がありません。</Empty>
         ) : !pr ? (
           <Empty>PR #{picked.number} は{picked.state === 'MERGED' ? 'マージ済みです' : '閉じています'}。</Empty>
         ) : threads.error ? (
