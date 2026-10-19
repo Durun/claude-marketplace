@@ -541,8 +541,8 @@ const DeliveredItem = ({ m, onJump }: { m: OutboxMessage; onJump?: () => void })
   </li>
 );
 
-/** entries はチャットの発言。 */
-type OutboxListProps = { s: Session; outbox: OutboxMessage[]; entries: ChatEntry[]; onJump: (index: number) => void };
+/** entries はチャットの発言で、会話ログを読み終えるまでは無い。 */
+type OutboxListProps = { s: Session; outbox: OutboxMessage[]; entries?: ChatEntry[]; onJump: (index: number) => void };
 
 export const OutboxList = ({ s, outbox, entries, onJump }: OutboxListProps) => {
   const mine = outbox.filter((m) => m.sessionId === s.id).sort((a, b) => b.createdAt - a.createdAt);
@@ -554,7 +554,7 @@ export const OutboxList = ({ s, outbox, entries, onJump }: OutboxListProps) => {
       <ul class="outbox">
         {pending.map((m) => <PendingItem key={m.id} m={m} remoteUrl={s.remoteUrl} />)}
         {delivered.slice(0, DELIVERED_LIMIT).map((m) => {
-          const index = chatIndexOf(entries, m);
+          const index = chatIndexOf(entries ?? [], m);
           return <DeliveredItem key={m.id} m={m} onJump={index < 0 ? undefined : () => onJump(index)} />;
         })}
       </ul>

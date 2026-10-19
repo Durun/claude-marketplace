@@ -48,10 +48,17 @@ export const PinIcon = () => (
   </svg>
 );
 
-/** 中身を読み込んでいる間に出す。出ている間は、カーソルを砂時計にする。 */
-export const Loading = () => {
+// 帯の幅（%）。chat は、依頼（右）と応答（左）の吹き出しを交互に並べる。
+const SKELETON = { text: [90, 75, 85, 60], chat: [45, 80, 35, 70] };
+
+/** 中身を読み込んでいる間に、中身の代わりに灰色の帯を並べる。出ている間は、カーソルを砂時計にする。 */
+export const Loading = ({ kind = 'text' }: { kind?: keyof typeof SKELETON }) => {
   useWaitCursor(true);
-  return <Empty>読み込み中…</Empty>;
+  return (
+    <div class={`skeleton skeleton-${kind}`} role="status" aria-label="読み込み中">
+      {SKELETON[kind].map((w, i) => <span key={i} style={`--w: ${w}%`} />)}
+    </div>
+  );
 };
 
 type ChoiceProps = {

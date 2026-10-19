@@ -9,7 +9,7 @@ import { Markdown, MarkdownPreview } from './Markdown.tsx';
 import { PrPicker, usePickedPr } from './PrView.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Time, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, Time, onSubmitKey } from './ui.tsx';
 
 export const PR_REVIEW_TITLE = 'PR コメント';
 const PREVIEW_CHARS = 300;
@@ -136,7 +136,7 @@ const PrThreads = ({ s, outbox, picked }: Props & { picked?: PrInfo }) => {
         ) : threads.error ? (
           <Empty>レビューコメントを読めませんでした（{threads.error}）</Empty>
         ) : !threads.data ? (
-          <Empty>読み込んでいます…</Empty>
+          <Loading />
         ) : list.length === 0 ? (
           <Empty>未解決のレビューコメントはありません。</Empty>
         ) : (

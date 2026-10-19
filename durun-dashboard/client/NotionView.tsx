@@ -3,7 +3,7 @@ import { api } from './api.ts';
 import { type Float, FloatFrame, NOTION_ICON, dock } from './Float.tsx';
 import { useCached } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
-import { Empty, Time } from './ui.tsx';
+import { Empty, Loading, Time } from './ui.tsx';
 
 /** ウィンドウに浮かべたページの保存キー。タブの id に、ハイフンの無い 32 桁のページの ID を入れる。 */
 export const NOTION_KEY = 'notion';
@@ -36,7 +36,7 @@ export const NotionFloat = ({ f }: { f: Float }) => {
         ) : fetched.error ? (
           <Empty>ページを読めませんでした（{fetched.error}）。<OpenInNotion url={`https://www.notion.so/${f.tab.id}`}>Notion で開く</OpenInNotion></Empty>
         ) : (
-          <Empty>読み込んでいます…</Empty>
+          <Loading />
         )}
       </div>
     </FloatFrame>

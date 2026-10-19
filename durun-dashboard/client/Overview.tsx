@@ -51,7 +51,7 @@ const SubagentChat = ({ sessionId, a }: { sessionId: string; a: Subagent }) => {
   const { data, error } = useFetch(() => api.subagentChat(sessionId, a.id), [sessionId, a.id, a.outputTokens]);
   const codeLink = useMemo(() => fileLink(sessionId), [sessionId]);
   if (error) return <Empty>会話を読み込めません: {error}</Empty>;
-  if (!data) return <Loading />;
+  if (!data) return <Loading kind="chat" />;
   if (data.length === 0) return <Empty>まだやり取りがありません。</Empty>;
   return (
     <div class="chat subagent-chat">
@@ -453,23 +453,25 @@ export type Jump = { index: number };
 /**
  * 一般的な AI チャットと同じく、古い順に並べて一番下から見せ、上の「前の n 件」でさかのぼる。
  * 新しい発言が来たら、一番下を見ているときだけ送る。読み返している位置は動かさない。
+ * entries は会話ログを読み終えるまで無いので、その間は吹き出しの形の帯を出す。読めなければ chatError を出す。
  * unread は Claude がまだ読んでいない送ったメッセージで、会話の後ろに並べる。
  * asks は Claude が人間の操作を待っている質問と権限の確認。質問は送信欄の代わりに、権限の確認は送信欄の上に出す。
  */
-export const Chat = ({ s, entries, unread, asks, jump }: { s: Session; entries: ChatEntry[]; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump }) => {
+export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session; entries?: ChatEntry[]; chatError?: string; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump }) => {
+  const list = entries ?? [];
   // 表示の始まりは最初に届いたときに決めて固定し、発言が増えても上の発言を押し出さない。
   const [start, setStart] = useState<number>();
   // 送信したメッセージから移るときは、移る先の発言まで表示を広げる。
-  const first = Math.min(start ?? Math.max(0, entries.length - CHAT_PAGE), jump?.index ?? entries.length, entries.length);
+  const first = Math.min(start ?? Math.max(0, list.length - CHAT_PAGE), jump?.index ?? list.length, list.length);
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const fromBottom = useRef(0);
   useEffect(() => {
-    if (start === undefined && entries.length) setStart(first);
-  }, [entries.length]);
+    if (start === undefined && list.length) setStart(first);
+  }, [list.length]);
   useLayoutEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
-  }, [entries.length, unread.length]);
+  }, [list.length, unread.length]);
   // 前を読み込んだら、読んでいた発言が同じ位置に残るよう、下からの距離を保つ。
   useLayoutEffect(() => {
     if (box.current && !stick.current) box.current.scrollTop = box.current.scrollHeight - fromBottom.current;
@@ -505,10 +507,11 @@ export const Chat = ({ s, entries, unread, asks, jump }: { s: Session; entries: 
     <>
       <h2 class="section-title">チャット</h2>
       <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown}>
-        {entries.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
+        {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
+          : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => setStart(Math.max(0, first - CHAT_PAGE))}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {entries.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} focused={first + i === jump?.index} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} focused={first + i === jump?.index} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>

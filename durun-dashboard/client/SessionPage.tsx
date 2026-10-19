@@ -193,7 +193,7 @@ const UsageWidget = ({ s }: { s: Session }) => (
 
 /**
  * ウィジェットに渡す、このセッションのデータ。docs は present で出した資料とほかのセッションから足した資料、entries はチャットの発言で、jump はそこへ移る先。
- * unread は、送ったメッセージのうち Claude がまだ読んでいないもの。
+ * entries は会話ログを読み終えるまで無く、読めなければ chatError に理由が入る。unread は、送ったメッセージのうち Claude がまだ読んでいないもの。
  */
 type SessionData = {
   s: Session;
@@ -201,7 +201,8 @@ type SessionData = {
   file?: string;
   outbox: OutboxMessage[];
   docs: DocMeta[];
-  entries: ChatEntry[];
+  entries?: ChatEntry[];
+  chatError?: string;
   unread: OutboxMessage[];
   asks: Attention[];
   jump?: Jump;
@@ -254,7 +255,7 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
   const chat = useFetch(() => api.chat(s.id).then((entries) => ({ id: s.id, entries })), [s.id, s.updatedAt]);
   // 開いた直後と別のセッションへ移った直後だけ砂時計にする。会話が動くたびの取り直しでは出さない。
   useWaitCursor(chat.loading && chat.data?.id !== s.id);
-  const entries = chat.data?.entries ?? [];
+  const entries = chat.data?.id === s.id ? chat.data.entries : undefined;
   const [jump, setJump] = useState<Jump>();
   // ほかのセッションから足した資料は、リンクやファイルと同じく足した時刻で並べる。
   const shared = new Map((s.sharedDocs ?? []).map((d) => [d.id, d.at]));
@@ -268,8 +269,9 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
       return d.sessionId === s.id ? [d] : at === undefined ? [] : [{ ...d, createdAt: at }];
     }),
     entries,
+    chatError: chat.error,
     // このセッションの会話を読み込むまでは、送ったメッセージがどれも会話に無く見えるので、未読を出さない。
-    unread: chat.data?.id === s.id ? unreadMessages(snapshot.outbox, s.id, entries) : [],
+    unread: entries ? unreadMessages(snapshot.outbox, s.id, entries) : [],
     asks: asksOf(snapshot.attention, s.id),
     jump,
     onJump: (index: number) => setJump({ index }),

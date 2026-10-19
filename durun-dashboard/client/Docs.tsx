@@ -384,16 +384,17 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * 人間が付け直した題名とピン留めは、まとめたリンクのどれかに付いていればその行に出す。
  * Notion のページへのリンクは、題名を付けずに足したものと、発言に URL だけを書いたものに、ページの題名を付ける。claude.ai の artifact へのリンクには、公開したときの題名を付ける。
  * エクスプローラーのファイルや、ほかのセッションの資料のウィジェットの行をドラッグして落とすと、その資料を足す。
+ * 発言に出たものは、会話ログを読み終えて entries が届くまで分からないので、それまでは件数も、資料が無いことも出さない。
  */
-export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries: ChatEntry[]; notion: boolean }) => {
+export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries?: ChatEntry[]; notion: boolean }) => {
   const [adding, setAdding] = useState(false);
   // エクスプローラーのファイルをドラッグして上に来ている間、落とせることを枠で示す。
   const [dropping, setDropping] = useState(false);
   // 前に開いていたときのデータには、足したファイルが無いことがある。
   const savedFiles = s.files ?? [];
   const savedPaths = new Set(savedFiles.map((f) => f.path));
-  const links = useMemo(() => chatLinks(entries, location.port), [entries]);
-  const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries), [entries]));
+  const links = useMemo(() => chatLinks(entries ?? [], location.port), [entries]);
+  const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries ?? []), [entries]));
   const saved = new Set(s.links.map((l) => l.url));
   const hidden = new Set(s.hiddenDocs);
   const added = s.links.map((l) => ({ url: l.url, title: l.title || titleOf(new URL(l.url)), host: new URL(l.url).host, at: l.at }));
@@ -423,7 +424,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
     <>
       <div class="section-head">
         <h2 class="section-title">
-          資料<span class="count-pill">{items.length}</span>
+          資料{entries && <span class="count-pill">{items.length}</span>}
         </h2>
         <button class="btn btn-sm" data-icon="add" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>追加</button>
       </div>
@@ -450,7 +451,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
       >
         {adding && <AddDoc s={s} onClose={() => setAdding(false)} />}
         {items.length === 0 ? (
-          <Empty>資料はありません。</Empty>
+          entries ? <Empty>資料はありません。</Empty> : <Loading />
         ) : (
           <ul class="side-docs" ref={list}>
             {items.map((d) => (

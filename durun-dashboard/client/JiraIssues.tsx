@@ -7,7 +7,7 @@ import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
-import { Chip, Empty, Ext, Time, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, Time, onSubmitKey } from './ui.tsx';
 
 export const JIRA_TITLE = 'JIRA Issues';
 const DEFAULT_JQL = 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC';
@@ -149,7 +149,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
         {error ? (
           <Empty>課題を探せませんでした（{error}）</Empty>
         ) : !data ? (
-          <Empty>探しています…</Empty>
+          <Loading />
         ) : data.length === 0 ? (
           <Empty>条件に合う課題はありません。</Empty>
         ) : (

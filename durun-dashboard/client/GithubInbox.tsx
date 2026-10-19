@@ -4,7 +4,7 @@ import type { InboxPr } from '../shared/types.ts';
 import { api } from './api.ts';
 import type { Control } from './Float.tsx';
 import { useCached, useCollapsed } from './hooks.ts';
-import { Empty, Ext, Time } from './ui.tsx';
+import { Empty, Ext, Loading, Time } from './ui.tsx';
 
 export const GITHUB_INBOX_TITLE = 'GitHub Inbox';
 // タイトルバーのボタンはウィジェットの外にあるので、イベントで探し直させる。
@@ -44,7 +44,7 @@ export const GithubInbox = () => {
         {error ? (
           <Empty>PR を探せませんでした（{error}）</Empty>
         ) : !data ? (
-          <Empty>探しています…</Empty>
+          <Loading />
         ) : data.length === 0 ? (
           <Empty>自分に関わる開いた PR はありません。</Empty>
         ) : (

@@ -13,7 +13,7 @@ import { highlightLine, languageOf } from './highlight.ts';
 import { useFetch } from './hooks.ts';
 import { currentSessionId } from './router.ts';
 import { TYPE_AHEAD_RESET_MS, nextMatch } from './typeAhead.ts';
-import { Empty } from './ui.tsx';
+import { Empty, Loading } from './ui.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「explorer:開いた時刻」にし、いくつも開けるようにする。 */
 export const EXPLORER_KEY = 'explorer';
@@ -72,7 +72,7 @@ const MAX_PREVIEW_LINES = 2000;
 const TextPreview = ({ path }: { path: string }) => {
   const file = useFetch(() => api.localFile('', path), [path]);
   if (file.error) return <p class="error-note">{file.error}</p>;
-  if (!file.data) return <Empty>読み込んでいます…</Empty>;
+  if (!file.data) return <Loading />;
   // UTF-8 として読んだ中身に NUL が混じるものは、テキストではないとみなす。
   if (file.data.content.includes('\0')) return <Empty>このファイルは中身を表示できません。</Empty>;
   const lines = file.data.content.split('\n');
@@ -213,7 +213,7 @@ export const ExplorerFloat = ({ f }: { f: Float }) => {
           <div class="explorer-list-wrap">
             {fetched.error && <p class="error-note">{fetched.error}</p>}
             {!dir ? (
-              !fetched.error && <Empty>読み込んでいます…</Empty>
+              !fetched.error && <Loading />
             ) : dir.entries.length === 0 ? (
               <Empty>このフォルダーは空です。</Empty>
             ) : (

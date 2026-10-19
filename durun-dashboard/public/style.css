@@ -110,6 +110,13 @@ button, input, textarea { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 .help { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
 .empty { margin: 0; padding: 10px 0; color: var(--muted); font-size: 13px; }
+/* 読み込み中に、中身の代わりに並べる帯。幅は --w で、ゆっくり明滅させる。 */
+.skeleton { display: flex; flex-direction: column; gap: 10px; padding: 10px 0; }
+.skeleton > span { width: var(--w); height: 12px; border-radius: 4px; background: var(--border); animation: pulse 1.6s ease-in-out infinite; }
+.skeleton-chat { gap: 14px; }
+.skeleton-chat > span { height: 56px; border-radius: var(--radius); }
+.skeleton-chat > span:nth-child(odd) { align-self: flex-end; height: 34px; }
+@media (prefers-reduced-motion: reduce) { .skeleton > span { animation: none; } }
 .plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
 .scroll-y { max-height: 320px; overflow: auto; }
 /* Claude の発言の Markdown。パネルに収まるよう、見出しは本文と同じ大きさにして余白を詰める。 */
