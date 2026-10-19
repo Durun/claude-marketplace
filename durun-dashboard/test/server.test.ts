@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { summarizeLog } from '../server/claude.ts';
+import { borrowSkills, summarizeLog } from '../server/claude.ts';
 import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, parseDiff, repoFile, resolveRange } from '../server/integrations.ts';
 import { toMemoryStatus } from '../server/memory.ts';
@@ -324,4 +324,18 @@ test('toMemoryStatus は、sysctl と vm_stat の出力から、メモリプレ�
     cached: (254559 + 22385) * page,
     swapUsed: 476.12 * 1024 * 1024,
   });
+});
+
+test('borrowSkills は、一覧を持つセッションのうち、同じディレクトリで最近動いたものを、無ければほかのディレクトリで最近動いたものを返す', () => {
+  const list = (name: string) => new Map([[name, '']]);
+  const sources = [
+    { cwd: '/repo', skills: list('old'), at: 1 },
+    { cwd: '/repo', skills: list('new'), at: 2 },
+    { cwd: '/repo', skills: new Map<string, string>(), at: 9 },
+    { cwd: '/other', skills: list('other'), at: 3 },
+  ];
+  assert.deepEqual([...borrowSkills('/repo/', sources).keys()], ['new']);
+  assert.deepEqual([...borrowSkills('/elsewhere', sources).keys()], ['other']);
+  assert.deepEqual([...borrowSkills(undefined, sources).keys()], ['other']);
+  assert.deepEqual([...borrowSkills('/repo', []).keys()], []);
 });

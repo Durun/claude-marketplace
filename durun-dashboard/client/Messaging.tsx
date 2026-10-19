@@ -55,13 +55,14 @@ const COMPLETION_ID = 'completion-menu';
 type CompletionMenuState = { items: Candidate[]; active: number };
 
 /**
- * / か # から始まる語か、JIRA のプロジェクトキーとハイフンを打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、まだセッションが無ければ出さない。
+ * / か # から始まる語か、JIRA のプロジェクトキーとハイフンを打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、欄を開いたときに読む。
+ * まだ一覧が無い新規セッションや、セッションが無い欄では、cwd で動いたセッションのものを借りる。
  * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
  */
 const useCompletion = (sessionId: string | undefined, cwd: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
   const [typed, setTyped] = useState<Typed>();
   const [active, setActive] = useState(0);
-  const { data: skills = [] } = useFetch(() => (sessionId ? api.skills(sessionId) : Promise.resolve([])), [sessionId]);
+  const { data: skills = [] } = useFetch(() => api.skills({ sessionId, cwd }), [sessionId, cwd]);
   const wantsRefs = typed?.mark === '#' && !!(sessionId || cwd);
   const { data: refs = [] } = useCached((fresh) => (wantsRefs ? api.repoRefs({ sessionId, cwd }, fresh) : Promise.resolve([])), [sessionId, cwd, wantsRefs]);
   const wantsIssues = !!typed?.mark.endsWith('-');

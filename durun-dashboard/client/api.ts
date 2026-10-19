@@ -72,7 +72,9 @@ export const api = {
   chat: (id: string) => getJson<ChatEntry[]>(`${session(id)}/chat`),
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),
   bgOutput: (id: string, taskId: string) => getJson<{ output?: string }>(`${session(id)}/background/${seg(taskId)}/output`),
-  skills: (id: string) => getJson<SkillInfo[]>(`${session(id)}/skills`),
+  /** / の補完に出す skills。セッションが無ければ、cwd で動いたセッションのものを借りる。 */
+  skills: ({ sessionId, cwd }: { sessionId?: string; cwd?: string }) =>
+    getJson<SkillInfo[]>(sessionId ? `${session(sessionId)}/skills` : `/api/skills?${query({ cwd })}`),
   /** # の補完に出す PR と Issue。セッションが無ければ、cwd のリポジトリから探す。 */
   repoRefs: (target: { sessionId?: string; cwd?: string }, fresh?: boolean) => postJson<RepoRef[]>('/api/github/refs', { ...target, fresh }),
   // fresh は、人間が「更新」を押したときに付け、サーバーに覚えた値を使わず読み直させる。

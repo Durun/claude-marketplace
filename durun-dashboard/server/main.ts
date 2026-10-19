@@ -13,7 +13,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
-import { CLAUDE_DIR, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
+import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
@@ -529,10 +529,20 @@ const bgOutputOf = (id: string, taskId: string): { output?: string } => {
   }
 };
 
-/** Claude Code がこのセッションに見せた skills。会話ログに無いセッションでは空になる。 */
-const skillsOf = (id: string): SkillInfo[] => {
-  const meta = sessionMeta(id);
-  const skills = meta.transcriptPath ? summarizeLog(meta.transcriptPath).skills : new Map<string, string>();
+/**
+ * / の補完に出す skills。セッションの欄では Claude Code がそのセッションに見せたものを、新規セッションの欄では入力したディレクトリのものを出す。
+ * 一覧がまだ無ければ、アーカイブしていないほかのセッションから借りる。アーカイブしたものまで会話ログを読むと遅いので見ない。
+ */
+const skillsOf = (target: { sessionId?: string; cwd?: string }): SkillInfo[] => {
+  const meta = target.sessionId ? sessionMeta(target.sessionId) : undefined;
+  const own = meta?.transcriptPath ? summarizeLog(meta.transcriptPath).skills : new Map<string, string>();
+  const sources = () =>
+    Object.values(state.sessions).flatMap((m) => {
+      if (m.archived || !m.transcriptPath) return [];
+      const log = summarizeLog(m.transcriptPath);
+      return [{ cwd: m.cwd, skills: log.skills, at: log.lastActivityAt ?? 0 }];
+    });
+  const skills = own.size ? own : borrowSkills(meta?.cwd ?? target.cwd, sources());
   return [...skills].map(([name, description]) => ({ name, description }));
 };
 
@@ -1062,7 +1072,8 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/chat$/, ([, id = '']) => chatOf(id)],
   [/^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)\/chat$/, ([, id = '', agentId = '']) => subagentChatOf(id, agentId)],
   [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
-  [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf(id)],
+  [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf({ sessionId: id })],
+  [/^\/api\/skills$/, (_, __, url) => skillsOf({ cwd: url.searchParams.get('cwd') || undefined })],
   [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url))],
   [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr, wantsFresh(url)))],
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],

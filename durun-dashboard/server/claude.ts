@@ -364,6 +364,19 @@ const applySkills = (s: LogSummary, listing: SkillListing): void => {
   }
 };
 
+/** skills の一覧を借りる元。at は会話ログが最後に動いた時刻。 */
+export type SkillSource = { cwd: string; skills: Map<string, string>; at: number };
+
+/**
+ * 新規セッションの欄や、まだ最初の依頼を送っていないセッションには、Claude Code がまだ一覧を見せていない。
+ * そのときは同じディレクトリのセッションのうち最近動いたものから、無ければほかのディレクトリのものから借りる。
+ */
+export const borrowSkills = (cwd: string | undefined, sources: SkillSource[]): Map<string, string> => {
+  const listed = sources.filter((s) => s.skills.size).sort((a, b) => b.at - a.at);
+  const here = cwd && path.resolve(cwd);
+  return (listed.find((s) => path.resolve(s.cwd) === here) ?? listed[0])?.skills ?? new Map();
+};
+
 export type UsageLimit = { at: number; resetsAt: number };
 
 const limitOf = (e: LogEntry, ts: number | undefined): UsageLimit | undefined => {
