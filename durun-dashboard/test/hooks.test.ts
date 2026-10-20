@@ -96,6 +96,27 @@ test('バックグラウンドのセッションが AskUserQuestion で入力待
   fs.rmSync(path.join(sessionsDir, `${process.pid}.json`));
 });
 
+test('画面で答えたバックグラウンドのセッションは、再開して答えが会話ログに載るまで質問で止まって見えても、質問を記録し直さない', async () => {
+  const { buildSnapshot } = await import('../server/snapshot.ts');
+  state.attention = [];
+  const transcript = path.join(tmp, 'answered.jsonl');
+  const asked = { type: 'assistant', timestamp: new Date(Date.now() - 60_000).toISOString(), message: { content: [{ type: 'tool_use', name: 'AskUserQuestion', input: { questions: [{ question: 'どこで撮りますか？', options: [{ label: 'stg' }] }] } }] } };
+  fs.writeFileSync(transcript, `${JSON.stringify(asked)}\n`);
+  const live = path.join(tmp, 'claude', 'sessions', 'answered.json');
+  fs.writeFileSync(live, JSON.stringify({ pid: process.pid, sessionId: 'answered', cwd: tmp, kind: 'bg', status: 'idle' }));
+  const meta = ensureSession('answered', tmp);
+  meta.transcriptPath = transcript;
+  buildSnapshot();
+  assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: 'どこで撮りますか？', options: ['stg'] }]);
+
+  // 答えると質問を片付け、再開して答えを渡す。再開するときに、人間が返事をした時刻を残す。
+  state.attention = [];
+  meta.replySeenAt = Date.now();
+  buildSnapshot();
+  assert.deepEqual(dialogs(), []);
+  fs.rmSync(live);
+});
+
 test('worktree に入って会話ログが別のディレクトリへ移ったら、移った先を探し、移る前の場所を渡すフックが来ても戻さない', async (t) => {
   const { buildSnapshot } = await import('../server/snapshot.ts');
   const live = path.join(tmp, 'claude', 'sessions', 'moved.json');

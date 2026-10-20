@@ -126,9 +126,11 @@ export const stoppedStatus = (archived: boolean, log: Pick<claude.LogSummary, 'l
  * バックグラウンドのセッションは、AskUserQuestion で止まっても通知のフックを送らない。
  * そのため、入力待ちで最後のツールが AskUserQuestion なら、会話ログから質問を記録する。記録した質問は、端末のセッションと同じく次のフックで片付く。
  * 会話ログに書かれる前に届いた通知は権限の確認として記録されているので、質問に置き換える。
+ * 人間が答えると、ダッシュボードはセッションを止めて再開する。答えが会話ログに載るまでの数秒は質問で止まったままに見えるので、答えた後に尋ねた質問だけを記録する。
  */
 const recordBgQuestion = (meta: SessionMeta, log: claude.LogSummary | undefined, live: claude.LiveSession | undefined): void => {
   if (meta.kind !== 'bg' || live?.status !== 'idle' || log?.lastToolUse !== claude.ASK_TOOL) return;
+  if (meta.replySeenAt > (log.lastQuestionsAt ?? Infinity)) return;
   if (state.attention.some((a) => a.sessionId === meta.id && a.kind === 'question')) return;
   const q = claude.questionDialog(log.lastQuestions ?? []);
   if (!q) return;

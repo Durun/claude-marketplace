@@ -133,8 +133,9 @@ export type LogSummary = {
   lastMessageAt?: number;
   /** 最後の assistant エントリが呼んだツール。文章だけで終わっていれば undefined。 */
   lastToolUse?: string;
-  /** 最後に AskUserQuestion で尋ねた質問 */
+  /** 最後に AskUserQuestion で尋ねた質問と、尋ねた時刻 */
   lastQuestions?: AskedQuestion[];
+  lastQuestionsAt?: number;
   lastActivityAt?: number;
   /** 本体のターンを終えた時刻。次の依頼や発言が載ったら消す。 */
   turnEndedAt?: number;
@@ -315,7 +316,7 @@ const applyAssistant = (s: LogSummary, e: LogEntry, ts: number | undefined): voi
   const tool = blocks.findLast((b) => b.type === 'tool_use');
   if (tool) s.lastToolUse = tool.name;
   else if (blocks.some((b) => b.type === 'text' && b.text?.trim())) s.lastToolUse = undefined;
-  if (tool?.name === ASK_TOOL) s.lastQuestions = toQuestions(tool.input?.questions);
+  if (tool?.name === ASK_TOOL) Object.assign(s, { lastQuestions: toQuestions(tool.input?.questions), lastQuestionsAt: ts });
   for (const b of blocks) {
     if (b.type === 'text' && b.text?.trim()) {
       s.lastMessage = b.text;
