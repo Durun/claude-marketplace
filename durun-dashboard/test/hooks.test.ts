@@ -96,6 +96,24 @@ test('バックグラウンドのセッションが AskUserQuestion で入力待
   fs.rmSync(path.join(sessionsDir, `${process.pid}.json`));
 });
 
+test('worktree に入って会話ログが別のディレクトリへ移ったら、移った先を探し、移る前の場所を渡すフックが来ても戻さない', async (t) => {
+  const { buildSnapshot } = await import('../server/snapshot.ts');
+  const live = path.join(tmp, 'claude', 'sessions', 'moved.json');
+  fs.mkdirSync(path.dirname(live), { recursive: true });
+  fs.writeFileSync(live, JSON.stringify({ pid: process.pid, sessionId: 'moved', cwd: tmp, kind: 'bg', status: 'busy' }));
+  t.after(() => fs.rmSync(live));
+  const hook = { session_id: 'moved', cwd: tmp, transcript_path: path.join(tmp, 'claude', 'projects', '-repo', 'moved.jsonl'), hook_event_name: 'PostToolUse', tool_name: 'Edit' };
+  handleHook(hook, 0);
+
+  const moved = path.join(tmp, 'claude', 'projects', '-repo--claude-worktrees-a', 'moved.jsonl');
+  fs.mkdirSync(path.dirname(moved), { recursive: true });
+  fs.writeFileSync(moved, '');
+  buildSnapshot();
+  assert.equal(state.sessions.moved?.transcriptPath, moved);
+  handleHook(hook, 0);
+  assert.equal(state.sessions.moved?.transcriptPath, moved);
+});
+
 test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', async () => {
   // 偽の claude は、概要と名前のどちらを頼まれても同じ答えを返す。
   const answer = JSON.stringify({ structured_output: { title: 'ログインの修正', doing: 'ログインを直す', now: '直し終えた' } });

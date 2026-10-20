@@ -140,9 +140,13 @@ const recordBgQuestion = (meta: SessionMeta, log: claude.LogSummary | undefined,
 const firstPromptOf = (log: claude.LogSummary | undefined): string | undefined => log?.texts.find((t) => t.kind === 'prompt')?.text;
 
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
-  if (!meta.transcriptPath) {
-    meta.transcriptPath = claude.findTranscript(meta.id);
-    if (meta.transcriptPath) persist();
+  // Claude Code は、worktree に入ったセッションの会話ログを、その worktree のディレクトリへ移すことがある。覚えた場所に無ければ探し直す。
+  if (!meta.transcriptPath || !fs.existsSync(meta.transcriptPath)) {
+    const found = claude.findTranscript(meta.id);
+    if (found) {
+      meta.transcriptPath = found;
+      persist();
+    }
   }
   const log = meta.transcriptPath ? claude.summarizeLog(meta.transcriptPath) : undefined;
   const subs = meta.transcriptPath ? claude.readSubagents(meta.transcriptPath) : [];

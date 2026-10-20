@@ -1,5 +1,6 @@
 // Claude Code のフックを受ける。要対応を記録し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決める。
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests } from './deliver.ts';
@@ -104,7 +105,8 @@ const refreshPrFor = (meta: SessionMeta): void => {
 };
 
 const observe = (meta: SessionMeta, event: string | undefined, input: HookInput): void => {
-  if (input.transcript_path && meta.transcriptPath !== input.transcript_path) {
+  // worktree に入って会話ログが移った後も、フックは移る前の場所を渡すことがある。覚えた場所があれば、会話ログの無い場所には置き換えない。
+  if (input.transcript_path && meta.transcriptPath !== input.transcript_path && (!meta.transcriptPath || fs.existsSync(input.transcript_path))) {
     meta.transcriptPath = input.transcript_path;
     touch();
   }
