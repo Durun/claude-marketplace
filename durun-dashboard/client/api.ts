@@ -95,10 +95,11 @@ export const api = {
   renameTheme: (from: string, to: string) => postJson('/api/themes/rename', { from, to }),
   title: (id: string, title: string) => postJson(`${session(id)}/title`, { title }),
   suggestTitle: (id: string) => postJson<{ title: string }>(`${session(id)}/title-suggestion`),
-  /** アーカイブは、Claude Code のセッションを消せなくても済んでいるので、消せなかったことだけを知らせる。 */
-  archive: async (id: string, archived: boolean): Promise<void> => {
-    const { removeError } = await postJson<{ removeError?: string }>(`${session(id)}/archive`, { archived });
+  /** アーカイブは、Claude Code のセッションを消せなくても済んでいるので、消せなかったことだけを知らせる。作業中でアーカイブ待ちにしたら true を返す。 */
+  archive: async (id: string, archived: boolean): Promise<boolean> => {
+    const { removeError, deferred } = await postJson<{ removeError?: string; deferred?: boolean }>(`${session(id)}/archive`, { archived });
     if (removeError) toast(`Claude Code のセッションは消せませんでした（${removeError}）`, 'error');
+    return !!deferred;
   },
   orderSessions: (ids: string[]) => postJson('/api/sessions/order', { ids }),
   pin: (id: string, pinned: boolean) => postJson(`${session(id)}/pin`, { pinned }),

@@ -191,6 +191,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
+    archiveWhenIdle: meta.archiveWhenIdle,
     pinned: !!meta.pinned,
     links: meta.links ?? [],
     files: meta.files ?? [],

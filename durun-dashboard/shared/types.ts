@@ -192,6 +192,8 @@ export type Session = {
   issues?: IssueInfo[];
   usage: Usage;
   archived: boolean;
+  /** 人間が作業中にアーカイブした。入力待ちか停止になったら、サーバーがアーカイブする。 */
+  archiveWhenIdle?: boolean;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   links: SavedLink[];

@@ -19,6 +19,8 @@ export type SessionMeta = {
   title?: string;
   jira: string[];
   archived: boolean;
+  /** 人間が作業中にアーカイブした。入力待ちか停止になったら、アーカイブする */
+  archiveWhenIdle?: boolean;
   /** 人間がピン留めした */
   pinned?: boolean;
   /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */

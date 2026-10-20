@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
+const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -430,6 +430,45 @@ if (args[0] === 'rm' && args[1] === 'j5') fail('未コミットの変更があ�
   await removeSession('s4');
   assert.deepEqual(calls(), [['agents', '--json', '--all']]);
   await assert.rejects(removeSession('s5'), /未コミットの変更があります/);
+});
+
+test('作業中にアーカイブしたセッションは、止めずにアーカイブ待ちにし、入力待ちになったら止めて claude rm する。アーカイブ待ちの間は、保留したメッセージを送らない', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。agents は a1 のジョブ ja を返し、stop は少し後で supervisor の名簿から ja を消す。
+  const bin = path.join(tmp, 'bin-archive');
+  const callsFile = path.join(tmp, 'calls-archive');
+  const roster = path.join(tmp, 'claude', 'daemon', 'roster.json');
+  fs.mkdirSync(path.dirname(roster), { recursive: true });
+  fs.writeFileSync(roster, JSON.stringify({ workers: { ja: {} } }));
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify([{ id: 'ja', sessionId: 'a1', kind: 'background', pid: 1 }]))});
+if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});`,
+  );
+  const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const live = (status: string): void =>
+    fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 'a1.json'), JSON.stringify({ pid: process.pid, sessionId: 'a1', cwd: tmp, status, kind: 'bg', jobId: 'ja' }));
+  const meta = Object.assign(ensureSession('a1', tmp), { kind: 'bg', jobId: 'ja' });
+  state.queue.push({ id: 'ka', sessionId: 'a1', text: '保留', createdAt: Date.now() });
+  const queued = (): string[] => state.queue.filter((m) => m.sessionId === 'a1').map((m) => m.text);
+
+  live('busy');
+  assert.equal(await archiveSession(meta), true);
+  flushArchives();
+  assert.equal(meta.archived, false);
+  assert.ok(!fs.existsSync(callsFile));
+
+  live('idle');
+  flushQueue();
+  assert.deepEqual(queued(), ['保留']);
+  const removed = new Promise<void>((resolve) => onChange(() => meta.jobId === undefined && resolve()));
+  flushArchives();
+  assert.equal(meta.archived, true);
+  assert.equal(meta.archiveWhenIdle, undefined);
+  await removed;
+  assert.deepEqual(calls(), [['agents', '--json', '--all'], ['stop', 'ja'], ['rm', 'ja']]);
+  flushQueue();
+  assert.deepEqual(queued(), ['保留']);
 });
 
 test('モデルと effort を変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {

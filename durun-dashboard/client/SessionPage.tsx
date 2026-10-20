@@ -23,7 +23,7 @@ import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, currentSessionId, href } from './router.ts';
-import { CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
+import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -101,15 +101,17 @@ const NameEditor = ({ s }: { s: Session }) => {
   );
 };
 
-/** アーカイブの切り替えは、タイトルバー右端のボタンの枠に並べる。 */
-const archiveControl = ({ s }: { s: Session }): Control[] => [
-  {
-    kind: 'archive',
-    label: s.archived ? 'アーカイブを解除' : 'アーカイブする',
-    pressed: s.archived,
-    onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !s.archived)),
-  },
-];
+const archiveLabel = (s: Session): string => {
+  if (s.archived) return 'アーカイブを解除';
+  if (s.archiveWhenIdle) return 'アーカイブ待ちをやめる';
+  return s.status === 'busy' ? '作業が終わったらアーカイブする' : 'アーカイブする';
+};
+
+/** アーカイブの切り替えは、タイトルバー右端のボタンの枠に並べる。アーカイブ待ちの間も押した状態にし、押すとアーカイブ待ちをやめる。 */
+const archiveControl = ({ s }: { s: Session }): Control[] => {
+  const on = s.archived || !!s.archiveWhenIdle;
+  return [{ kind: 'archive', label: archiveLabel(s), pressed: on, onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !on)) }];
+};
 
 /** バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。 */
 const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => (
@@ -154,6 +156,7 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
     <div class="head-row session-title">
       <NameEditor key={s.id} s={s} />
       <StatusBadge status={s.status} />
+      {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
     </div>
     <div class="widget-body session-head">
       <div class="head-row">

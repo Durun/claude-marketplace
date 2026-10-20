@@ -2,6 +2,7 @@
 // MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
 // 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
 // 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消す。
+// 作業中にアーカイブしたセッションは、止めずに入力待ちか停止になるのを待ってからアーカイブする。
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -12,7 +13,7 @@ import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts'
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
-import { ensureSession, moveSession, newId, state, touch } from './store.ts';
+import { ensureSession, moveSession, newId, state, touch, type SessionMeta } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
@@ -180,6 +181,41 @@ export const removeSession = async (sessionId: string): Promise<void> => {
   await runClaude(['rm', job.id], os.homedir());
 };
 
+/**
+ * アーカイブし、バックグラウンドのセッションは Claude Code の一覧からも消す。消したセッションには claude attach できないので、そのコマンドも出さない。
+ * 消せなくてもアーカイブは保ち、消せなかった理由で reject する。
+ */
+const archive = async (meta: SessionMeta): Promise<void> => {
+  Object.assign(meta, { archived: true, archiveWhenIdle: undefined });
+  touch();
+  await removeSession(meta.id);
+  meta.jobId = undefined;
+  touch();
+};
+
+/** 作業中のセッションは、止めずにアーカイブ待ちにして true を返す。入力待ちか停止になったら、flushArchives がアーカイブする。 */
+export const archiveSession = async (meta: SessionMeta): Promise<boolean> => {
+  if (readLiveSessions().get(meta.id)?.status !== 'busy') {
+    await archive(meta);
+    return false;
+  }
+  meta.archiveWhenIdle = true;
+  touch();
+  return true;
+};
+
+/** アーカイブ待ちのセッションのうち、入力待ちか停止になったものをアーカイブする。状態が変わるたびに呼ぶ。 */
+export const flushArchives = (): void => {
+  const pending = Object.values(state.sessions).filter((m) => m.archiveWhenIdle);
+  if (!pending.length) return;
+  const live = readLiveSessions();
+  for (const meta of pending) {
+    // アーカイブで状態が変わるとここがまた呼ばれるので、そこでアーカイブしたものは飛ばす。
+    if (!meta.archiveWhenIdle || live.get(meta.id)?.status === 'busy') continue;
+    archive(meta).catch((e: Error) => console.error(`${meta.id} を一覧から消せません: ${e.message}`));
+  }
+};
+
 const awaitingPermission = (sessionId: string): boolean => state.attention.some((a) => a.sessionId === sessionId && a.kind === 'permission');
 
 /**
@@ -323,9 +359,11 @@ const ASK_KINDS = new Set(['ask', 'question', 'permission']);
  * 保留したメッセージを送ってよいか。Claude が入力待ちで、質問や権限の確認で止まっていないときに限る。サブエージェントを待っているだけのセッションも、入力待ちとみなす。
  * 質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。
  * 送った直後のセッションは、読み始めるまで入力待ちに見えるので、前に送ったメッセージに Claude が返事をするまでは送らない。
+ * アーカイブしたセッションと、アーカイブ待ちのセッションへは送らない。アーカイブ待ちのセッションは、入力待ちになるとすぐにアーカイブして止めるため。
  */
 const readyForQueue = (sessionId: string, live: LiveSession | undefined): boolean => {
-  if (!state.sessions[sessionId] || !live || !(live.status === 'idle' || delegating(live))) return false;
+  const meta = state.sessions[sessionId];
+  if (!meta || meta.archived || meta.archiveWhenIdle || !live || !(live.status === 'idle' || delegating(live))) return false;
   if (state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind))) return false;
   const sent = state.outbox.filter((m) => m.sessionId === sessionId);
   if (sent.some((m) => !m.deliveredAt || m.sending)) return false;

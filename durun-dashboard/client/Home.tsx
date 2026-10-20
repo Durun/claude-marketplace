@@ -25,10 +25,12 @@ const SelectionBar = ({ ids, onClear }: { ids: string[]; onClear: () => void }) 
   const [busy, setBusy] = useState(false);
   const archive = async () => {
     setBusy(true);
-    const done = await attempt('アーカイブ', () => Promise.all(ids.map((id) => api.archive(id, true))));
+    const deferred = await attempt('アーカイブ', () => Promise.all(ids.map((id) => api.archive(id, true))));
     setBusy(false);
-    if (!done) return;
-    toast(`${ids.length} 件をアーカイブしました`);
+    if (!deferred) return;
+    const later = deferred.filter(Boolean).length;
+    const now = ids.length - later;
+    toast([now > 0 && `${now} 件をアーカイブしました`, later > 0 && `作業中の ${later} 件は、作業が終わったらアーカイブします`].filter(Boolean).join('。'));
     onClear();
   };
   return (

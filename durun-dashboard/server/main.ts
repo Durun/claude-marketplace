@@ -14,7 +14,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, compactSession, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, sendMessage, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -640,22 +640,21 @@ const setTitle = (id: string, body: unknown): void => {
 };
 
 /**
- * アーカイブしたら、バックグラウンドのセッションを Claude Code の一覧からも消す。消したセッションには claude attach できないので、そのコマンドも出さない。
- * 消せなくてもアーカイブは保ち、消せなかった理由を返す。
+ * 作業中のセッションはアーカイブ待ちにして、deferred を返す。Claude Code の一覧から消せなくてもアーカイブは保ち、消せなかった理由を返す。
+ * アーカイブを解除すると、アーカイブ待ちもやめる。
  */
-const setArchived = async (id: string, body: unknown): Promise<{ removeError?: string }> => {
+const setArchived = async (id: string, body: unknown): Promise<{ removeError?: string; deferred?: boolean }> => {
   const meta = sessionMeta(id);
-  meta.archived = field<boolean>(body, 'archived', 'boolean');
-  touch();
-  if (!meta.archived) return {};
+  if (!field<boolean>(body, 'archived', 'boolean')) {
+    Object.assign(meta, { archived: false, archiveWhenIdle: undefined });
+    touch();
+    return {};
+  }
   try {
-    await removeSession(id);
+    return { deferred: await archiveSession(meta) };
   } catch (e) {
     return { removeError: (e as Error).message };
   }
-  meta.jobId = undefined;
-  touch();
-  return {};
 };
 
 const setPinned = (id: string, body: unknown): void => {
@@ -1258,11 +1257,14 @@ fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
 onChange(scheduleBroadcast);
 // 保留したメッセージは、セッションが入力待ちになったときと、質問への回答や前のメッセージの配信で状態が変わったときに送る。
 onChange(flushQueue);
+// アーカイブ待ちのセッションは、入力待ちか停止になったときにアーカイブする。作業中かどうかはセッションのファイルに出る。
+onChange(flushArchives);
 // 使用率の推移は statusline が変わるたびに記録する。起動時にも記録し、次の更新まで推移が空にならないようにする。
 recordRateLimits();
 watch(SESSIONS_DIR, false, () => {
   scheduleBroadcast();
   flushQueue();
+  flushArchives();
 });
 watch(STATUSLINE_DIR, false, () => {
   recordRateLimits();
@@ -1280,6 +1282,7 @@ watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(
 ensureImprover();
 redeliverInterrupted();
 flushQueue();
+flushArchives();
 checkLimits();
 
 // 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。

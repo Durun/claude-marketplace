@@ -68,6 +68,7 @@ const Activity = ({ s }: { s: Session }) => {
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}
       {s.pendingMessages > 0 && <Chip tone="warn" title="Claude にまだ届いていないメッセージ">未配信 {s.pendingMessages}</Chip>}
       {s.awaitingReview && <Chip tone="info" title="Claude がレビューを待っています">レビュー待ち</Chip>}
+      {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
     </div>
   );
 };
