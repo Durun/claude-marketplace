@@ -451,7 +451,7 @@ const UnreadBubble = ({ m }: { m: OutboxMessage }) => {
 export type Jump = { index: number };
 
 /**
- * 一般的な AI チャットと同じく、古い順に並べて一番下から見せ、上の「前の n 件」でさかのぼる。
+ * 一般的な AI チャットと同じく、古い順に並べて一番下から見せ、上端に近づいたら前の発言を読み込んでさかのぼる。
  * 新しい発言が来たら、一番下を見ているときだけ送る。読み返している位置は動かさない。
  * entries は会話ログを読み終えるまで無いので、その間は吹き出しの形の帯を出す。読めなければ chatError を出す。
  * unread は Claude がまだ読んでいない送ったメッセージで、会話の後ろに並べる。
@@ -466,6 +466,8 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const fromBottom = useRef(0);
+  // 前の依頼へ送るために前の発言を読み込んだときに立て、読み込み終えたら送り直す。
+  const retry = useRef(false);
   useEffect(() => {
     if (start === undefined && list.length) setStart(first);
   }, [list.length]);
@@ -474,16 +476,23 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   }, [list.length, unread.length]);
   // 前を読み込んだら、読んでいた発言が同じ位置に残るよう、下からの距離を保つ。
   useLayoutEffect(() => {
-    if (box.current && !stick.current) box.current.scrollTop = box.current.scrollHeight - fromBottom.current;
+    if (box.current) box.current.scrollTop = box.current.scrollHeight - fromBottom.current;
+    if (!retry.current) return;
+    retry.current = false;
+    toPrompt(-1);
   }, [first]);
   useLayoutEffect(() => {
     if (jump) box.current?.querySelector('.is-focused')?.scrollIntoView({ block: 'center' });
   }, [jump]);
+  // 上端まで 1 画面を切ったら前の発言を読み込み、上端で止まらずにさかのぼれるようにする。
+  const nearTop = (el: HTMLElement, scrollTop: number) => first > 0 && scrollTop < el.clientHeight;
+  const loadBefore = (index: number) => setStart(Math.max(0, index - CHAT_PAGE));
   const onScroll = () => {
     const el = box.current;
     if (!el) return;
     fromBottom.current = el.scrollHeight - el.scrollTop;
     stick.current = fromBottom.current - el.clientHeight < STICK_PX;
+    if (nearTop(el, el.scrollTop)) loadBefore(first);
   };
   // 表示中の位置より上（dir = -1）か下（dir = 1）で、いちばん近い依頼を欄の上端へ送る。最後の依頼より下へ進むときは、最新の発言が見える一番下まで送る。
   const toPrompt = (dir: number) => {
@@ -492,6 +501,15 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     const top = el.getBoundingClientRect().top;
     const offsets = [...el.querySelectorAll('.chat-row.is-human')].map((r) => r.getBoundingClientRect().top - top);
     const to = dir < 0 ? offsets.findLast((o) => o < -1) : offsets.find((o) => o > 1) ?? el.scrollHeight;
+    // 前の依頼をまだ読み込んでいないときや、送った先で前の発言の読み込みが始まるときは、先に読み込んでから送り直す。
+    // 送っている途中で読み込むと、読んでいた位置を保つスクロールで送るのが止まる。
+    if (dir < 0 && (to === undefined || nearTop(el, el.scrollTop + to))) {
+      const prev = to === undefined ? list.findLastIndex((e, i) => i < first && e.kind === 'prompt') : first;
+      if (prev < 0) return;
+      retry.current = true;
+      loadBefore(prev);
+      return;
+    }
     if (to !== undefined) el.scrollBy({ top: to, behavior: 'smooth' });
   };
   // チャットを押してから上下の矢印キーを押しても、↑↓ のボタンと同じく依頼へ移る。押したチャットにキーが届くよう、tabIndex でフォーカスできるようにする。
@@ -510,7 +528,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
         {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
-            {first > 0 && <button class="btn btn-sm chat-more" onClick={() => setStart(Math.max(0, first - CHAT_PAGE))}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
+            {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
             {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} focused={first + i === jump?.index} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
