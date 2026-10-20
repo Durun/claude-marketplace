@@ -1,5 +1,5 @@
 import { Marked, type MarkedToken, type Token } from 'marked';
-import { type ComponentType, createContext } from 'preact';
+import { type ComponentChildren, type ComponentType, createContext } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import { bareUrls } from './chatLinks.ts';
 import { headLines } from './format.ts';
@@ -21,6 +21,15 @@ const CodeSpan = ({ text }: { text: string }) => {
   return Link ? <Link text={text} /> : <code>{text}</code>;
 };
 
+/** 地の文を描き直す関数。用語に印を付けるときに渡す。 */
+export type MarkText = (text: string) => ComponentChildren;
+const MarkTextContext = createContext<MarkText | undefined>(undefined);
+
+const PlainText = ({ text }: { text: string }) => {
+  const mark = useContext(MarkTextContext);
+  return <>{mark ? mark(text) : text}</>;
+};
+
 const Inline = ({ tokens = [] }: { tokens?: Token[] }) => <>{tokens.map((t, i) => <InlineToken key={i} t={t as MarkedToken} />)}</>;
 
 const InlineToken = ({ t }: { t: MarkedToken }) => {
@@ -30,11 +39,12 @@ const InlineToken = ({ t }: { t: MarkedToken }) => {
     case 'del': return <del><Inline tokens={t.tokens} /></del>;
     case 'codespan': return <CodeSpan text={t.text} />;
     case 'br': return <br />;
-    case 'link': return <Ext href={t.href}><Inline tokens={t.tokens} /></Ext>;
+    // リンクの文には印を付けない。印の下線とリンクの下線が重なって見分けられないため。
+    case 'link': return <Ext href={t.href}><MarkTextContext.Provider value={undefined}><Inline tokens={t.tokens} /></MarkTextContext.Provider></Ext>;
     // 外部の画像を勝手に読み込まないよう、リンクとして出す。
     case 'image': return <Ext href={t.href}>{t.text || t.href}</Ext>;
     case 'checkbox': return <input type="checkbox" checked={t.checked} disabled />;
-    case 'text': return t.tokens ? <Inline tokens={t.tokens} /> : <>{t.text}</>;
+    case 'text': return t.tokens ? <Inline tokens={t.tokens} /> : <PlainText text={t.text} />;
     case 'escape': return <>{t.text}</>;
     default: return <>{t.raw}</>;
   }
@@ -74,9 +84,11 @@ const Block = ({ t }: { t: MarkedToken }) => {
   }
 };
 
-export const Markdown = ({ text, codeLink }: { text: string; codeLink?: CodeLink }) => (
+export const Markdown = ({ text, codeLink, markText }: { text: string; codeLink?: CodeLink; markText?: MarkText }) => (
   <CodeLinkContext.Provider value={codeLink}>
-    <div class="md"><Blocks tokens={md.lexer(text)} /></div>
+    <MarkTextContext.Provider value={markText}>
+      <div class="md"><Blocks tokens={md.lexer(text)} /></div>
+    </MarkTextContext.Provider>
   </CodeLinkContext.Provider>
 );
 

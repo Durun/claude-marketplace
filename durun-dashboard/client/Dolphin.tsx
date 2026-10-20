@@ -1,6 +1,6 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AssistantMessage, AssistantReply } from '../shared/types.ts';
+import type { AssistantMessage, AssistantReply, GlossaryTerm } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
 import { useFloats } from './Float.tsx';
@@ -63,8 +63,16 @@ type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: nu
 /** windUp は、引っぱったまま振り回して勢いをつけた道のり（px）。 */
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
+/** 説明している用語と、マウスを載せている要素。 */
+type Explained = { term: GlossaryTerm; at: Element };
+
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
-type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag };
+type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag; explained?: Explained };
+
+const explainers = new Set<(e?: Explained) => void>();
+
+/** 用語にマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
+export const explainTerm = (e?: Explained): void => explainers.forEach((fn) => fn(e));
 
 const clamp = (v: number, min: number, max: number): number => Math.min(Math.max(v, min), Math.max(min, max));
 
@@ -208,16 +216,16 @@ const play = (m: Motion, dt: number, free: boolean): void => {
  * 吹き出しを、イルカの上（入らなければ下）に、画面からはみ出さないよう置く。尾はイルカを指す。
  * 壁に刺さっている間は、体の真ん中が壁の線にあり頭は画面の外なので、壁から出ている半身を指す。
  */
-const placeChat = (chat: HTMLElement, m: Motion): void => {
+const placeBubble = (bubble: HTMLElement, m: Motion): void => {
   const center = clamp(m.x + W / 2 - (m.stuck ? m.stuck.ux * STUCK_SHOWN : 0), MARGIN, innerWidth - MARGIN);
-  const left = clamp(center - chat.offsetWidth / 2, MARGIN, innerWidth - MARGIN - chat.offsetWidth);
-  chat.style.left = `${left - m.x}px`;
-  chat.style.setProperty('--tail', `${clamp(center - left, TAIL_INSET, chat.offsetWidth - TAIL_INSET)}px`);
-  chat.classList.toggle('is-below', m.y < chat.offsetHeight + MARGIN * 2);
+  const left = clamp(center - bubble.offsetWidth / 2, MARGIN, innerWidth - MARGIN - bubble.offsetWidth);
+  bubble.style.left = `${left - m.x}px`;
+  bubble.style.setProperty('--tail', `${clamp(center - left, TAIL_INSET, bubble.offsetWidth - TAIL_INSET)}px`);
+  bubble.classList.toggle('is-below', m.y < bubble.offsetHeight + MARGIN * 2);
 };
 
 /** 毎フレーム、泳がせて向きを変え、イルカと吹き出しを動かして描く。止める関数を返す。 */
-const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: HTMLElement, chat: RefObject<HTMLElement>, m: Motion, live: Live): (() => void) => {
+const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: HTMLElement, bubbles: RefObject<HTMLElement>[], m: Motion, live: Live): (() => void) => {
   let view: ReturnType<typeof createDolphin>;
   try {
     view = create(canvas, W, H);
@@ -234,7 +242,9 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dragging = !!live.drag?.moved;
-    const stopped = live.hover || live.open || live.thinking;
+    // 語が消えたときや、スクロールで語が動いたときは mouseleave が来ないことがあるので、マウスが語から外れたかを毎フレーム確かめる。
+    if (live.explained && !live.explained.at.matches(':hover')) explainTerm();
+    const stopped = live.hover || live.open || live.thinking || !!live.explained;
     if (m.stuck) wriggle(m, m.stuck, dt, now);
     else {
       play(m, dt, !stopped && !dragging && !m.fling);
@@ -242,7 +252,7 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
       else if (!dragging) swim(m, dt, now, stopped);
     }
     box.style.transform = `translate(${m.x}px, ${m.y}px)`;
-    if (chat.current) placeChat(chat.current, m);
+    for (const b of bubbles) if (b.current) placeBubble(b.current, m);
     const moving = Math.min(MAX_STROKE, 0.6 + Math.hypot(m.vx, m.vy) / SPEED);
     const stroke: Pose['stroke'] = m.stuck ? STUCK_STROKE : m.fling ? moving : live.thinking || dragging ? 2.5 : stopped ? 0.4 : moving;
     view.draw(dt, { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke });
@@ -353,7 +363,7 @@ const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatP
 };
 
 /**
- * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。
+ * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。チャットの用語にマウスを載せると、止まって別の吹き出しで説明する。
  * jev は Jev を使えるか。使えてマインスイーパを開いていれば、吹き出しからヒントを出せる。
  */
 export const Dolphin = ({ jev }: { jev?: boolean }) => {
@@ -363,16 +373,22 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const chat = useRef<HTMLElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const [explained, setExplained] = useState<Explained>();
   const motion = useRef<Motion>({ x: innerWidth - W - 16, y: innerHeight - H - 52, vx: 0, vy: 0, tx: 0, ty: 0, restUntil: 0, speed: 0, yaw: 0, pitch: 0, trickT: 0 });
   const live = useRef<Live>({ hover: false, open, thinking });
-  Object.assign(live.current, { open, thinking });
+  Object.assign(live.current, { open, thinking, explained });
+  useEffect(() => {
+    explainers.add(setExplained);
+    return () => void explainers.delete(setExplained);
+  }, []);
   useEffect(() => {
     let stop: (() => void) | undefined;
     let gone = false;
     // 3D の描画は大きいので、最初の画面を出した後で読み込む。読み込めなければ、描けないのでイルカを出さない。
     import('./dolphin3d.ts').then(
       ({ createDolphin }) => {
-        if (!gone && canvas.current && box.current) stop = animate(createDolphin, canvas.current, box.current, chat, motion.current, live.current);
+        if (!gone && canvas.current && box.current) stop = animate(createDolphin, canvas.current, box.current, [chat, tip], motion.current, live.current);
       },
       () => {
         if (box.current) box.current.hidden = true;
@@ -407,6 +423,12 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   return (
     <div class="dolphin" ref={box}>
       {open && <DolphinChat turns={turns} thinking={thinking} onAsk={ask} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
+      {explained && (
+        <div class="card dolphin-chat dolphin-term" ref={tip} role="tooltip">
+          <strong>{explained.term.term}</strong>
+          <p class="dolphin-say">{explained.term.description}</p>
+        </div>
+      )}
       <canvas
         ref={canvas}
         class="dolphin-canvas"

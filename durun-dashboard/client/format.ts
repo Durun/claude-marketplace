@@ -1,4 +1,4 @@
-import type { TokenTotals } from '../shared/types.ts';
+import type { GlossaryTerm, TokenTotals } from '../shared/types.ts';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -86,4 +86,29 @@ export const headLines = (text: string, max: number): string => {
   const end = text.lastIndexOf('\n', max);
   const cut = end > 0 ? end : text.indexOf('\n');
   return cut > 0 ? text.slice(0, cut) : text;
+};
+
+export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 文の切れ端。term があれば、用語集の語。 */
+export type TermPiece = { text: string; term?: GlossaryTerm };
+
+/**
+ * 文を、用語集の語とそれ以外に分ける関数を作る。同じ語は何度出てもすべて拾う。大文字と小文字は区別せず、長い語から当てる。
+ * 英数字で始まるか終わる語は、前後に英数字が続くところでは当てない。RAPID の中の API のような、別の語の一部を拾わないため。
+ */
+export const termSplitter = (terms: GlossaryTerm[]): ((text: string) => TermPiece[]) => {
+  // 語が無いと区切りが空の文字列に当たり、1 文字ずつに分かれてしまう。
+  if (terms.length === 0) return (text) => [{ text }];
+  const byKey = new Map(terms.map((t) => [t.term.toLowerCase(), t]));
+  const words = [...byKey.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((k) => `${/^\w/.test(k) ? '(?<!\\w)' : ''}${escapeRegExp(k)}${/\w$/.test(k) ? '(?!\\w)' : ''}`);
+  const re = new RegExp(`(${words.join('|')})`, 'i');
+  // 区切りをキャプチャすると、split の結果は当たらない部分と当たった部分が交互に並ぶ。
+  return (text) =>
+    text.split(re).flatMap((part, i) => {
+      const term = i % 2 ? byKey.get(part.toLowerCase()) : undefined;
+      return !part ? [] : term ? [{ text: part, term }] : [{ text: part }];
+    });
 };

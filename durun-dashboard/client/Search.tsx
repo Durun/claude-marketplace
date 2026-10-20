@@ -1,14 +1,12 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { SearchHit, SearchResult, Session, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
-import { dateTime } from './format.ts';
+import { dateTime, escapeRegExp } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { href } from './router.ts';
 import { CopyButton, Empty, Panel } from './ui.tsx';
 
 const HIT_LABEL: Record<SearchHit['kind'], string> = { title: '題名', prompt: '依頼', message: '発言' };
-
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** 検索語を mark で囲む。サーバーと同じく、大文字と小文字は区別しない。 */
 const Highlight = ({ text, terms }: { text: string; terms: string[] }) => {

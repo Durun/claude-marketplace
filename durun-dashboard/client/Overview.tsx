@@ -10,7 +10,8 @@ import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
 import { dateTime, fmtTokens, shortDateTime, truncate } from './format.ts';
 import { isFileRef } from './fileRef.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
-import { type CodeLink, Markdown } from './Markdown.tsx';
+import { useTermMarks } from './Glossary.tsx';
+import { type CodeLink, Markdown, type MarkText } from './Markdown.tsx';
 import { Composer, MessageInput } from './Messaging.tsx';
 import { ARROW_STEP } from './order.ts';
 import { href } from './router.ts';
@@ -407,9 +408,9 @@ const PromptEditor = ({ sessionId, e, onClose }: { sessionId: string; e: ChatEnt
   );
 };
 
-type ChatBubbleProps = { sessionId: string; e: ChatEntry; codeLink: CodeLink; focused: boolean };
+type ChatBubbleProps = { sessionId: string; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean };
 
-const ChatBubble = ({ sessionId, e, codeLink, focused }: ChatBubbleProps) => {
+const ChatBubble = ({ sessionId, e, codeLink, markText, focused }: ChatBubbleProps) => {
   const [editing, setEditing] = useState(false);
   const now = useContext(NowContext);
   const time = e.at ? <time title={dateTime(e.at)}>{shortDateTime(e.at, now)}</time> : null;
@@ -426,12 +427,12 @@ const ChatBubble = ({ sessionId, e, codeLink, focused }: ChatBubbleProps) => {
       {e.rewindTo && <button class="chat-rewind" title="書き直して、ここまで巻き戻して送る" aria-label="依頼を書き直す" onClick={() => setEditing(true)}>✎</button>}
       {/* チャットは会話ログから作るので、並んでいる依頼はどれも Claude が受け取って読んだもの。 */}
       <span class="chat-meta">既読{time}</span>
-      <p class={`chat-human plain${focused ? ' is-focused' : ''}`}>{e.text}</p>
+      <p class={`chat-human plain${focused ? ' is-focused' : ''}`}>{markText ? markText(e.text) : e.text}</p>
     </div>
   ) : (
     <div class="chat-row">
       <span class="chat-meta">{time}</span>
-      <div class="card chat-claude"><Markdown text={e.text} codeLink={codeLink} /></div>
+      <div class="card chat-claude"><Markdown text={e.text} codeLink={codeLink} markText={markText} /></div>
     </div>
   );
 };
@@ -521,6 +522,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     toPrompt(dir);
   };
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
+  const markText = useTermMarks(s);
   return (
     <>
       <h2 class="section-title">チャット</h2>
@@ -529,7 +531,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} focused={first + i === jump?.index} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>
