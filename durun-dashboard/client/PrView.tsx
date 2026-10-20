@@ -8,7 +8,7 @@ import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
 import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Loading, Time, onSubmitKey, PrChips } from './ui.tsx';
+import { Chip, Empty, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
 
 export const PR_TITLE = 'PR';
 /** セッション内の「PR」ウィジェットの種類の名前。 */
@@ -109,12 +109,12 @@ export const usePickedPr = (s: Session): PrInfo | undefined => {
   return prs.find((p) => p.url === pick) ?? prs[0];
 };
 
-/** セッションに PR が複数あるときに上に並べる番号のタブ。押すと、ウィジェットで出す PR を切り替える。 */
+/** セッションに PR が複数あるときに上に並べる、状態のアイコンを添えた番号のタブ。押すと、ウィジェットで出す PR を切り替える。 */
 export const PrPicker = ({ s, pr }: { s: Session; pr?: PrInfo }) =>
   s.prs && s.prs.length > 1 ? (
     <div class="pick-tabs" role="tablist" aria-label="PR">
       {s.prs.map((p) => (
-        <button key={p.url} role="tab" aria-selected={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}>#{p.number}</button>
+        <button key={p.url} role="tab" aria-selected={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}><PrIcon state={prState(p)} />#{p.number}</button>
       ))}
     </div>
   ) : null;

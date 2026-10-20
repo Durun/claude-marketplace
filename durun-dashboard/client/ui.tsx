@@ -119,10 +119,10 @@ const PR_ICON_PATH: Record<PrState, string> = {
   closed: 'M10 2.5l4 4M14 2.5l-4 4',
 };
 
-const prState = (pr: PrInfo): PrState =>
+export const prState = (pr: PrInfo): PrState =>
   pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : pr.isDraft ? 'draft' : 'open';
 
-const PrIcon = ({ state, label = PR_STATE_LABEL[state] }: { state: PrState; label?: string }) => (
+export const PrIcon = ({ state, label = PR_STATE_LABEL[state] }: { state: PrState; label?: string }) => (
   <svg class={`pr-icon pr-${state}`} viewBox="0 0 16 16" width="12" height="12" role="img" aria-label={label}>
     <g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
       <circle cx="4" cy="3" r="1.5" />
