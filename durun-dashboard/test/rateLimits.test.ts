@@ -13,7 +13,7 @@ fs.writeFileSync(
   path.join(dataDir, 'state.json'),
   JSON.stringify({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] }),
 );
-const { STATUSLINE_DIR, advanceRateWindow, readRateLimits, recordRateLimits } = await import('../server/claude.ts');
+const { STATUSLINE_DIR, advanceRateWindow, readRateLimits, readStatusline, recordRateLimits } = await import('../server/claude.ts');
 const { onChange, state } = await import('../server/store.ts');
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -79,4 +79,25 @@ test('recordRateLimits は statusline の入力から使用率の推移を記録
   assert.equal(readRateLimits()?.fiveHour?.points, undefined);
   recordRateLimits();
   assert.deepEqual([percents('fiveHour'), percents('sevenDay'), changes], [[1], [3], 3]);
+});
+
+test('readStatusline は、更新時刻と大きさが前に読んだときと同じなら読み直さず、書かれたばかりの入力は毎回読み直す', () => {
+  const write = (used: number, mtime: Date): void => {
+    const file = path.join(STATUSLINE_DIR, 's2.json');
+    fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ context_window: { used_percentage: used } }));
+    fs.utimesSync(file, mtime, mtime);
+  };
+  const old = new Date(Date.now() - 60_000);
+  write(10, old);
+  assert.equal(readStatusline('s2')?.usedPercent, 10);
+  // 中身を変えても、更新時刻と大きさが同じなら前に読んだ値を返す。
+  write(20, old);
+  assert.equal(readStatusline('s2')?.usedPercent, 10);
+  // 更新時刻の刻みが粗く、書き直しても時刻が変わらないファイルシステムを再現する。
+  const recent = new Date();
+  write(30, recent);
+  assert.equal(readStatusline('s2')?.usedPercent, 30);
+  write(40, recent);
+  assert.equal(readStatusline('s2')?.usedPercent, 40);
 });

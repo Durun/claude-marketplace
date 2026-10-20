@@ -266,14 +266,16 @@ const isListed = (m: SessionMeta): boolean =>
   state.outbox.some((o) => o.sessionId === m.id);
 
 /**
- * 概要、候補、名前の材料。画面に出している名前とテーマを渡すため、スナップショットのセッションから作る。
+ * 概要、候補、名前の材料。画面に出している名前とテーマを渡すため、スナップショットと同じ組み立て方で作る。
+ * スナップショット全体を組み立てるとすべてのセッションのファイルを読むので、このセッションだけを組み立てる。
  * 作業の全体が分かるよう、最初の依頼も会話ログから読んで渡す。やり取りが無ければ作れない。
  */
 export const conversationOf = (id: string): Conversation | undefined => {
-  const s = buildSnapshot().sessions.find((x) => x.id === id);
-  if (!s?.lastPrompt && !s?.lastMessage) return undefined;
-  const transcript = state.sessions[id]?.transcriptPath;
-  return { ...s, firstPrompt: firstPromptOf(transcript ? claude.summarizeLog(transcript) : undefined) };
+  const meta = state.sessions[id];
+  if (!meta) return undefined;
+  const s = buildSession(meta, claude.readLiveSessions().get(id));
+  if (!s.lastPrompt && !s.lastMessage) return undefined;
+  return { ...s, firstPrompt: firstPromptOf(meta.transcriptPath ? claude.summarizeLog(meta.transcriptPath) : undefined) };
 };
 
 export const buildSnapshot = (): Snapshot => {

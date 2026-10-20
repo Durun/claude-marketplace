@@ -39,6 +39,30 @@ const mtimeOf = (file: string): number | undefined => {
   }
 };
 
+const jsonCache = new Map<string, { mtimeMs: number; size: number; value: unknown }>();
+// 更新時刻の刻みが粗いファイルシステムでは、続けて書き直しても更新時刻が変わらないことがある。書かれたばかりのファイルは覚えず、次も読み直す。
+const SETTLED_MS = 2000;
+
+/**
+ * スナップショットを配るたびに、すべてのセッションの statusline やタスクなどのファイルを読み直す。
+ * ファイルを開くのは stat より桁違いに遅いことがあるので、更新時刻と大きさが変わっていなければ前に読んだ値を返す。返した値は共有するので書き換えない。
+ */
+const readJsonCached = <T>(file: string): Partial<T> | undefined => {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(file);
+  } catch {
+    jsonCache.delete(file);
+    return undefined;
+  }
+  const hit = jsonCache.get(file);
+  if (hit?.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.value as Partial<T>;
+  const value = readJson<T>(file);
+  if (value && Date.now() - stat.mtimeMs > SETTLED_MS) jsonCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, value });
+  else jsonCache.delete(file);
+  return value;
+};
+
 export const listDir = (dir: string): string[] => {
   try {
     return fs.readdirSync(dir);
@@ -81,7 +105,7 @@ export const isAlive = (pid: number): boolean => {
 export const readLiveSessions = (): Map<string, LiveSession> => {
   const live = new Map<string, LiveSession>();
   for (const f of listDir(SESSIONS_DIR).filter((name) => name.endsWith('.json'))) {
-    const raw = readJson<LiveSession & { status: string }>(path.join(SESSIONS_DIR, f));
+    const raw = readJsonCached<LiveSession & { status: string }>(path.join(SESSIONS_DIR, f));
     if (!raw?.sessionId || !raw.pid || !raw.cwd || !isAlive(raw.pid)) continue;
     const prev = live.get(raw.sessionId);
     if (prev && (prev.updatedAt ?? 0) > (raw.updatedAt ?? 0)) continue;
@@ -511,7 +535,7 @@ export const readSubagents = (transcript: string): SubagentLog[] => {
   return listDir(dir)
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => {
-      const meta = readJson<{ agentType: string; description: string; model: string }>(path.join(dir, f.replace(/\.jsonl$/, '.meta.json')));
+      const meta = readJsonCached<{ agentType: string; description: string; model: string }>(path.join(dir, f.replace(/\.jsonl$/, '.meta.json')));
       return {
         id: f.replace(/^agent-/, '').replace(/\.jsonl$/, ''),
         type: meta?.agentType ?? 'agent',
@@ -528,7 +552,7 @@ export const readTasks = (sessionId: string): TaskItem[] => {
   const dir = path.join(TASKS_DIR, sessionId);
   return listDir(dir)
     .filter((f) => f.endsWith('.json'))
-    .map((f) => readJson<TaskItem>(path.join(dir, f)))
+    .map((f) => readJsonCached<TaskItem>(path.join(dir, f)))
     .filter((t): t is Partial<TaskItem> & { id: string; subject: string } => !!t?.id && !!t.subject && TASK_STATUSES.has(t.status ?? ''))
     .map((t) => ({ id: t.id, subject: t.subject, activeForm: t.activeForm, status: t.status ?? 'pending', blockedBy: t.blockedBy ?? [] }))
     .sort((a, b) => Number(a.id) - Number(b.id));
@@ -548,7 +572,7 @@ export type StatuslineInfo = { mtime: number; usedPercent?: number; windowSize?:
 export const readStatusline = (sessionId: string): StatuslineInfo | undefined => {
   const file = path.join(STATUSLINE_DIR, `${sessionId}.json`);
   const mtime = mtimeOf(file);
-  const raw = readJson<RawStatusline>(file);
+  const raw = readJsonCached<RawStatusline>(file);
   if (!raw || mtime === undefined) return undefined;
   const cw = raw.context_window;
   return { mtime, usedPercent: cw?.used_percentage, windowSize: cw?.context_window_size, model: raw.model?.id, effort: raw.effort?.level };
@@ -576,7 +600,7 @@ export const readRateLimits = (): RateLimits | undefined => {
   const now = Date.now();
   const all = listDir(STATUSLINE_DIR)
     .filter((f) => f.endsWith('.json') && now - (mtimeOf(path.join(STATUSLINE_DIR, f)) ?? 0) < RATE_LIMIT_MAX_AGE_MS)
-    .map((f) => readJson<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
+    .map((f) => readJsonCached<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
   const fiveHour = withPoints(newestLimit(all.map((l) => l?.five_hour), now), state.rateWindows.fiveHour);
   const sevenDay = withPoints(newestLimit(all.map((l) => l?.seven_day), now), state.rateWindows.sevenDay);
   return fiveHour || sevenDay ? { fiveHour, sevenDay, updatedAt: now } : undefined;
@@ -594,7 +618,6 @@ export const advanceRateWindow = (prev: RateWindow | undefined, limit: RateLimit
   return limit.usedPercent === last ? current : { ...current, points: [...current.points, [now, limit.usedPercent]] };
 };
 
-// ponytail: statusline が変わるたびに全セッションの入力を読み直す。セッションが増えて重くなったら、変わったファイルだけを読む。
 /** statusline から読んだ今の使用率を、今の枠の推移に記録する。変わったときだけ保存して、画面へ配る。 */
 export const recordRateLimits = (): void => {
   const limits = readRateLimits();
