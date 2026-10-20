@@ -1,7 +1,9 @@
 // セッションのやり取りから、概要と、人間が Claude に送る返答の候補と、セッション名の候補と、用語集を haiku に作らせる。
-import type { ChatEntry, Glossary, GlossaryTerm, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem } from '../shared/types.ts';
+// 入力待ちのセッションが何を待っているかは、Jev があれば Jev に、無ければ haiku に分類させる。
+import type { ChatEntry, Glossary, GlossaryTerm, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem, WaitingFor } from '../shared/types.ts';
 import { cached, peekCached, refreshing } from './cache.ts';
 import { UpstreamError, askHaiku, objectSchema } from './haiku.ts';
+import { type ChoiceQuestion, askChoice, hasJev } from './jev.ts';
 
 const MAX_REPLIES = 3;
 // 一覧のカードの概要と、用語集を同時に作る数。起動した直後や、長いセッションの用語集を開いた直後に、claude -p を一度にいくつも動かさないようにする。
@@ -104,6 +106,60 @@ const oneOfFew = <T,>(load: () => Promise<T>) => async (): Promise<T> => {
 export const peekSummary = (c: Conversation): SessionSummary | undefined => {
   const prompt = summaryPrompt(c);
   return peekCached(summaryKey(c.id), { input: prompt, keep: c.status === 'busy' }, oneOfFew(loadSummary(prompt)));
+};
+
+/** 何を待っているかの材料。lastMessage は、画面に出すために切る前の全文を渡す。 */
+export type Waiting = Pick<Session, 'id' | 'lastMessage' | 'lastMessageAt' | 'background' | 'subagents'>;
+
+const WAITING_INSTRUCTIONS = 'Claude Code のセッションで、Claude は応答を返し終えて止まっています。`last_message` は Claude の最後の発言、`running` は、Claude が起動して、いまも動いているコマンドとサブエージェントです。Claude が作業を続けるために、誰を待っているかを選んでください。見張るためのコマンドは、見張っている相手で判断します。';
+
+const WAITING_CRITERIA: Record<WaitingFor, string> = {
+  human: '人間。質問や確認をしている、案を示して選んでもらおうとしている、作業を終えて報告し、次の依頼を待っている。',
+  work: 'Claude 自身。Claude が起動したテスト、ビルド、調べもの、サブエージェントが作業を進めていて、それが終わるのを待っている。',
+  event: '人間でも Claude でもない相手。CI、デプロイ、レビュー、ほかの人、Devin などのほかのエージェント、決まった時刻を待っている。それらを見張るコマンドだけが動いているときも、こちら。',
+};
+
+/** 動いている処理が無ければ、自分の作業の終わりは待てないので、実行中を選ばせない。 */
+const waitingQuestion = (running: boolean): ChoiceQuestion => ({
+  instructions: WAITING_INSTRUCTIONS,
+  criteria: Object.fromEntries(Object.entries(WAITING_CRITERIA).filter(([k]) => running || k !== 'work')),
+});
+
+/** 何を待っているかが分かるよう、shell と Monitor にはコマンドも添える。 */
+const runningOf = (s: Waiting): string =>
+  [
+    ...s.background.filter((t) => t.status === 'running').map((t) => `${t.kind === 'shell' ? 'shell' : 'Monitor'}: ${t.description}\n${t.command}`),
+    ...s.subagents.filter((a) => a.running).map((a) => `サブエージェント: ${a.description}`),
+  ].join('\n\n');
+
+const chooseByHaiku = (material: Record<string, string>, question: ChoiceQuestion) => async (): Promise<string> => {
+  const kinds = Object.keys(question.criteria);
+  const criteria = Object.entries(question.criteria).map(([k, text]) => `- ${k}: ${text}`).join('\n');
+  const { waiting } = await askHaiku(promptOf(`${question.instructions}\n${criteria}`, material), objectSchema({ waiting: { type: 'string', enum: kinds } }));
+  if (typeof waiting !== 'string' || !kinds.includes(waiting)) throw new UpstreamError('分類が返りませんでした');
+  return waiting;
+};
+
+/**
+ * 入力待ちのセッションが何を待っているか。覚えた分類をすぐ返し、無いか古ければ裏で分類する。
+ * 新しい発言を分類し終えるまでは undefined を返す。前の発言の分類で、要対応に出したり外したりしないため。
+ * 分類できなければ、人間を待っているとみなす。人間への質問を知らせ損ねないため。
+ */
+export const peekWaiting = (s: Waiting): WaitingFor | undefined => {
+  const running = runningOf(s);
+  const question = waitingQuestion(running !== '');
+  // 待っているものは、発言の終わりに書くことが多いので、長い発言は終わりを渡す。
+  const material = { last_message: (s.lastMessage ?? '').slice(-MAX_BLOCK_CHARS), running: running.slice(0, MAX_BLOCK_CHARS) || '（なし）' };
+  const choose = hasJev() ? () => askChoice(material, question) : oneOfFew(chooseByHaiku(material, question));
+  const load = async () => {
+    const waitingFor = await choose().catch((e: Error) => {
+      console.error(`${s.id} が何を待っているかを分類できません: ${e.message.split('\n')[0]}`);
+      return 'human';
+    });
+    return { at: s.lastMessageAt, waitingFor: waitingFor as WaitingFor };
+  };
+  const v = peekCached(`waiting:${s.id}`, { input: JSON.stringify([question, material]) }, load);
+  return v && v.at === s.lastMessageAt ? v.waitingFor : undefined;
 };
 
 /** 返答の候補や名前は、概要を作れなくても作る。 */

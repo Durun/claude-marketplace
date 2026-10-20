@@ -46,25 +46,15 @@ const TaskLine = ({ tasks }: { tasks: TaskItem[] }) => {
 
 const runningTools = (s: Session, kind: BgTask['kind']): number => s.background.filter((t) => t.kind === kind && t.status === 'running').length;
 
-/** メインエージェントが待っていても、shell が終われば Claude に知らせが届いて作業を続けるので、入力待ちとは分けて、動いている shell の数を出す。 */
-const CardStatus = ({ s }: { s: Session }) => {
-  const shells = runningTools(s, 'shell');
-  if (s.status !== 'idle' || shells === 0) return <StatusBadge status={s.status} />;
-  return (
-    <span class="badge badge-busy">
-      <i class="dot" aria-hidden="true" />
-      shell実行中 {shells}
-    </span>
-  );
-};
-
 const Activity = ({ s }: { s: Session }) => {
   const running = s.subagents.filter((a) => a.running).length;
+  const shells = runningTools(s, 'shell');
   const monitors = runningTools(s, 'monitor');
   return (
     <div class="activity">
       <TaskLine tasks={s.tasks} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
+      {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}
       {s.pendingMessages > 0 && <Chip tone="warn" title="Claude にまだ届いていないメッセージ">未配信 {s.pendingMessages}</Chip>}
       {s.awaitingReview && <Chip tone="info" title="Claude がレビューを待っています">レビュー待ち</Chip>}
@@ -129,7 +119,7 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
   <article class={`card session-card is-${s.status}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
     <header class="card-head">
       <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
-      <CardStatus s={s} />
+      <StatusBadge status={s.status} waitingFor={s.waitingFor} />
       <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
       <span class="muted nowrap"><Time at={s.updatedAt} /></span>
       <PinButton s={s} />

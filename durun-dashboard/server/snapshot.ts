@@ -11,7 +11,7 @@ import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
-import { type Conversation, peekSummary } from './suggest.ts';
+import { type Conversation, peekSummary, peekWaiting } from './suggest.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 終了してからこの期間を過ぎたセッションは会話ログを読まない。 */
@@ -214,7 +214,12 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   // 概要の材料には画面に出す名前とテーマを渡すので、組み立てたセッションから作る。やり取りが無ければ作れない。
   // アーカイブしたセッションは数百件たまるので、作らない。
   const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
-  return summarizable ? { ...session, summary: peekSummary({ ...session, firstPrompt: firstPromptOf(log) }) } : session;
+  if (summarizable) session.summary = peekSummary({ ...session, firstPrompt: firstPromptOf(log) });
+  // 質問や権限の確認に答えていないセッションと、発言の無いセッションは、人間を待っている。
+  if (session.status === 'idle' && !session.archived) {
+    session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
+  }
+  return session;
 };
 
 // 会話ログの場所が分からない終了済みセッションは、表示できる中身が無いので一覧から外れる。
@@ -249,8 +254,9 @@ const deriveAttention = (sessions: Session[]): Attention[] => {
     const meta = state.sessions[s.id];
     const waiting = state.attention.some((a) => a.sessionId === s.id);
     const unseen = (s.lastMessageAt ?? 0) > (meta?.replySeenAt ?? 0);
-    if (s.status === 'idle' && s.lastMessage && unseen && !waiting && !s.archived) {
-      items.push({ id: `reply:${s.id}`, kind: 'reply', sessionId: s.id, title: '入力待ち', body: s.lastMessage, createdAt: s.lastMessageAt ?? s.updatedAt });
+    // 実行中や待機中のセッションは、人間の回答を待っていないので知らせない。
+    if (s.waitingFor === 'human' && s.lastMessage && unseen && !waiting) {
+      items.push({ id: `reply:${s.id}`, kind: 'reply', sessionId: s.id, title: '回答待ち', body: s.lastMessage, createdAt: s.lastMessageAt ?? s.updatedAt });
     }
     items.push(...prAttention(s, dismissed));
   }

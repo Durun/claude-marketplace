@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useContext, useRef, useState } from 'preact/hooks';
-import type { IssueInfo, JiraIssue, PrInfo, RepoRef, SessionStatus, Usage } from '../shared/types.ts';
+import type { IssueInfo, JiraIssue, PrInfo, RepoRef, SessionStatus, Usage, WaitingFor } from '../shared/types.ts';
 import { fmtInt, relativeTime, totalTokens } from './format.ts';
 import { NowContext, useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
@@ -8,17 +8,27 @@ import { toast } from './toast.tsx';
 type Tone = 'ok' | 'bad' | 'warn' | 'info' | 'muted';
 
 const STATUS_LABEL: Record<SessionStatus, string> = { busy: '作業中', idle: '入力待ち', done: '完了', interrupted: '中断', ended: '終了' };
+/** 入力待ちのセッションの見出しと色。実行中は、作業中と同じ色にする。 */
+const WAITING_BADGE: Record<WaitingFor, { label: string; tone: string }> = {
+  human: { label: '回答待ち', tone: 'idle' },
+  work: { label: '実行中', tone: 'busy' },
+  event: { label: '待機中', tone: 'standby' },
+};
 
 export const Chip = ({ tone = 'muted', title, children }: { tone?: Tone; title?: string; children: ComponentChildren }) => (
   <span class={`chip chip-${tone}`} title={title}>{children}</span>
 );
 
-export const StatusBadge = ({ status }: { status: SessionStatus }) => (
-  <span class={`badge badge-${status}`}>
-    <i class="dot" aria-hidden="true" />
-    {STATUS_LABEL[status]}
-  </span>
-);
+/** 入力待ちのセッションは、何を待っているかを分類し終えていれば、それを出す。 */
+export const StatusBadge = ({ status, waitingFor }: { status: SessionStatus; waitingFor?: WaitingFor }) => {
+  const waiting = waitingFor && WAITING_BADGE[waitingFor];
+  return (
+    <span class={`badge badge-${waiting?.tone ?? status}`}>
+      <i class="dot" aria-hidden="true" />
+      {waiting?.label ?? STATUS_LABEL[status]}
+    </span>
+  );
+};
 
 export const Time = ({ at }: { at: number }) => {
   const now = useContext(NowContext);

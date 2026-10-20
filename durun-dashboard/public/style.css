@@ -233,6 +233,7 @@ textarea.input { resize: vertical; min-height: 36px; }
 }
 .badge-busy { --tone: var(--busy); }
 .badge-idle { --tone: var(--idle); }
+.badge-standby { --tone: var(--muted); }
 .badge-done { --tone: var(--done); }
 .badge-interrupted { --tone: var(--interrupted); }
 .badge-ended { --tone: var(--ended); }

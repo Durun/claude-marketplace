@@ -3,6 +3,12 @@
 /** 止まったセッションは、Claude が応答を返し終えていれば done、返す前なら interrupted。アーカイブすると ended になる。 */
 export type SessionStatus = 'busy' | 'idle' | 'done' | 'interrupted' | 'ended';
 
+/**
+ * 入力待ちのセッションが待っているもの。human は人間の回答（回答待ち）、work は自分で動かしたコマンドやサブエージェント（実行中）、
+ * event は CI やほかの人の返事などの外の出来事（待機中）。
+ */
+export type WaitingFor = 'human' | 'work' | 'event';
+
 /** セッション内で Claude が TaskCreate で作ったタスク。 */
 export type TaskItem = {
   id: string;
@@ -227,6 +233,8 @@ export type Session = {
   branchViews?: BranchView[];
   /** 一覧のカードに出す概要。まだ作っていないセッションと、やり取りの無いセッションには無い。 */
   summary?: SessionSummary;
+  /** アーカイブしていない入力待ちのセッションだけが持つ。最後の発言を分類し終えるまでは無い。 */
+  waitingFor?: WaitingFor;
   /** 「キュー」で保留しているメッセージ。古い順に並べる。前に受け取ったスナップショットには無いことがある。 */
   queued?: QueuedMessage[];
 };
@@ -240,7 +248,7 @@ export type AskedQuestion = { question: string; header?: string; options: string
 /**
  * 人間の対応が必要なもの。
  * ask: ask_human の質問、question: Claude Code の AskUserQuestion の質問、review: request_review の依頼、permission: 権限確認ダイアログ、
- * reply: 入力待ちになったセッションの最後の発言、pr: CI 失敗や変更要求、doc: 未読の資料。
+ * reply: 回答待ちになったセッションの最後の発言、pr: CI 失敗や変更要求、doc: 未読の資料。
  */
 export type AttentionKind = 'ask' | 'question' | 'review' | 'permission' | 'reply' | 'pr' | 'doc';
 

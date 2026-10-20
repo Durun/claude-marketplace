@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
-import type { Conversation } from '../server/suggest.ts';
-import type { ChatEntry } from '../shared/types.ts';
+import type { Conversation, Waiting } from '../server/suggest.ts';
+import type { BgTask, ChatEntry } from '../shared/types.ts';
 
 // 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
 // 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
-const { explainTerm, peekSummary, sessionGlossary, suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
+// 本物の Jev に問い合わせないよう、キーを外す。Jev を使うテストは、偽の Jev を立てる。
+delete process.env.TYPESAFE_AI_API_KEY;
+const { explainTerm, peekSummary, peekWaiting, sessionGlossary, suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
@@ -163,4 +167,51 @@ test('説明を書かずに足した語は、語が出てくるあたりのや�
   const entries = [prompt(`${FILLER}${FILLER}`), message('ここで ＧＫＥ を使います'), message(FILLER)];
   assert.equal(await explainTerm('GKE', entries), 'GKE が出てくる');
   assert.equal(await explainTerm('dind', entries), 'dind は出てこない');
+});
+
+const waiting = (id: string, lastMessage: string, lastMessageAt: number, background: BgTask[] = []): Waiting => ({ id, lastMessage, lastMessageAt, background, subagents: [] });
+
+test('何を待っているかは、Jev があれば発言の終わりと動いている処理を渡して選ばせ、新しい発言は分類し終えるまで分からないものとする', async () => {
+  const asked: { state: Record<string, string>; questions: Record<string, { type: string; criteria: Record<string, string> }> }[] = [];
+  const jev = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      asked.push(JSON.parse(body));
+      res.end(JSON.stringify({ answers: { q0: { type: 'choice', choice: 'event', probabilities: { human: 0.2, work: 0.1, event: 0.7 } } } }));
+    });
+  });
+  await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
+  process.env.DURUN_DASHBOARD_FAKE_JEV = `http://127.0.0.1:${(jev.address() as AddressInfo).port}/`;
+  try {
+    const watcher: BgTask = { id: 't1', kind: 'monitor', description: 'Devin の報告を待つ', command: 'gh pr view 1 --comments', status: 'running' };
+    const s = waiting('w1', `${FILLER}\nDevin の報告を待っています。`, 1, [watcher]);
+    assert.equal(peekWaiting(s), undefined);
+    await until(() => !!peekWaiting(s));
+    assert.equal(peekWaiting(s), 'event');
+    const { state, questions } = asked[0]!;
+    assert.equal(questions.q0?.type, 'choice');
+    assert.deepEqual(Object.keys(questions.q0?.criteria ?? {}), ['human', 'work', 'event']);
+    assert.equal(state.last_message, `${FILLER}\nDevin の報告を待っています。`.slice(-4000));
+    assert.equal(state.running, 'Monitor: Devin の報告を待つ\ngh pr view 1 --comments');
+
+    const next = { ...s, lastMessage: '直しました。', lastMessageAt: 2 };
+    assert.equal(peekWaiting(next), undefined);
+    await until(() => !!peekWaiting(next));
+    assert.equal(asked.length, 2);
+  } finally {
+    delete process.env.DURUN_DASHBOARD_FAKE_JEV;
+    jev.close();
+  }
+});
+
+test('Jev が無ければ haiku に選ばせ、動いている処理が無ければ実行中を選ばせず、選べなければ人間を待っているとみなす', async () => {
+  // 実行中を選べるときだけ実行中と答え、選べなければ選択肢に無い答えを返す。
+  useFakeClaude(tmp, `console.log(JSON.stringify({ structured_output: { waiting: stdin().includes('- work:') ? 'work' : 'unknown' } }));`);
+  const shell: BgTask = { id: 't2', kind: 'shell', description: 'テスト', command: 'pnpm test', status: 'running' };
+  const testing = waiting('h1', 'テストを走らせています。終わったら続けます。', 1, [shell]);
+  const stopped = waiting('h2', 'テストが終わったら続けます。', 1);
+  await until(() => !!peekWaiting(testing) && !!peekWaiting(stopped));
+  assert.equal(peekWaiting(testing), 'work');
+  assert.equal(peekWaiting(stopped), 'human');
 });

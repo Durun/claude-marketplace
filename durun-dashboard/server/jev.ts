@@ -1,4 +1,4 @@
-// TypeSafe の判定モデル Jev に、二値の問い（Noul）と段階の問い（Score）をまとめて投げる。数百ミリ秒で、問いごとの確率を返す。
+// TypeSafe の判定モデル Jev に、二値の問い（Noul）と段階の問い（Score）と選ぶ問い（Choice）をまとめて投げる。数百ミリ秒で、問いごとの確率を返す。
 // キーは ~/.durun-dashboard/.env.local の TYPESAFE_AI_API_KEY から、起動時に環境変数として読む。無いときは呼び出し側が haiku で代える。
 import { type OnUsage, type RawUsage, UpstreamError, tokensOf } from './haiku.ts';
 
@@ -9,11 +9,16 @@ const TIMEOUT_MS = 60_000;
 export type NoulQuestion = { instructions: string; criteria: { true: string; false: string } };
 /** criteria は段階の説明で、低い段階から並べる。 */
 export type ScoreQuestion = { instructions: string; criteria: string[] };
-export type JevQuestion = ({ type: 'noul' } & NoulQuestion) | ({ type: 'score' } & ScoreQuestion);
+/** criteria は、選択肢の名前ごとの説明。 */
+export type ChoiceQuestion = { instructions: string; criteria: Record<string, string> };
+export type JevQuestion = ({ type: 'noul' } & NoulQuestion) | ({ type: 'score' } & ScoreQuestion) | ({ type: 'choice' } & ChoiceQuestion);
 
 export const hasJev = (): boolean => !!process.env.TYPESAFE_AI_API_KEY || !!process.env.DURUN_DASHBOARD_FAKE_JEV;
 
-/** state を前提に、問いごとの確率を問いと同じ順で返す。Noul は「はい」の確率を 1 つ、Score は段階ごとの確率を低い段階から並べる。 */
+/**
+ * state を前提に、問いごとの確率を問いと同じ順で返す。
+ * Noul は「はい」の確率を 1 つ、Score は段階ごとの確率を低い段階から、Choice は選択肢ごとの確率を criteria の順に並べる。
+ */
 export const askJev = async (state: Record<string, unknown>, questions: JevQuestion[], onUsage?: OnUsage): Promise<number[][]> => {
   const res = await fetch(endpoint(), {
     method: 'POST',
@@ -28,7 +33,10 @@ export const askJev = async (state: Record<string, unknown>, questions: JevQuest
   if (usage) onUsage?.(tokensOf(usage));
   return questions.map((q, n) => {
     const a = answers?.[`q${n}`];
-    const ps = q.type === 'noul' ? [a?.noul] : q.criteria.map((_, k) => a?.probabilities?.[k]);
+    const ps =
+      q.type === 'noul' ? [a?.noul]
+      : q.type === 'score' ? q.criteria.map((_, k) => a?.probabilities?.[k])
+      : Object.keys(q.criteria).map((k) => a?.probabilities?.[k]);
     if (!ps.every((p) => typeof p === 'number')) throw new UpstreamError('Jev の答えが欠けています');
     return ps as number[];
   });
@@ -37,3 +45,9 @@ export const askJev = async (state: Record<string, unknown>, questions: JevQuest
 /** state を前提に、問いごとの「はい」の確率を、問いと同じ順で返す。 */
 export const askNoul = async (state: Record<string, unknown>, questions: NoulQuestion[], onUsage?: OnUsage): Promise<number[]> =>
   (await askJev(state, questions.map((q) => ({ type: 'noul', ...q })), onUsage)).map(([p]) => p!);
+
+/** state を前提に、criteria の選択肢のうち、最も確からしいものの名前を返す。 */
+export const askChoice = async (state: Record<string, unknown>, question: ChoiceQuestion, onUsage?: OnUsage): Promise<string> => {
+  const [ps = []] = await askJev(state, [{ type: 'choice', ...question }], onUsage);
+  return Object.keys(question.criteria)[ps.indexOf(Math.max(...ps))]!;
+};

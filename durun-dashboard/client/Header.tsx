@@ -143,7 +143,7 @@ const RateTray = ({ fiveHour, sevenDay, loading }: { fiveHour?: RateLimit; seven
 
 const LAST_MESSAGE_CHARS = 400;
 
-/** 件数から開く一覧の 1 つのセッション。最後の発言と要対応を見ながら、その場で回答や返信を送れる。入力待ちの要対応は最後の発言と同じなので、発言だけを出す。 */
+/** 件数から開く一覧の 1 つのセッション。最後の発言と要対応を見ながら、その場で回答や返信を送れる。回答待ちの要対応は最後の発言と同じなので、発言だけを出す。 */
 const QuickSession = ({ s, attention }: { s: Session; attention: Attention[] }) => {
   const asks = asksOf(attention, s.id);
   return (
@@ -163,12 +163,12 @@ const QuickSession = ({ s, attention }: { s: Session; attention: Attention[] }) 
 type StatusCountProps = { status: 'busy' | 'idle'; label: string; snapshot: Snapshot | null; live: Session[]; tray?: boolean };
 
 /**
- * 作業中と入力待ちの件数。押すと、その状態のセッションの一覧を popover で開く。
+ * 作業中と回答待ちの件数。押すと、その状態のセッションの一覧を popover で開く。入力待ちのうち、実行中と待機中のセッションは数えない。
  * 開いている間は開いたときのセッションを並べ続け、状態が変わっても書きかけの返信を消さない。返答の候補を作らせないよう、閉じている間は描かない。
  */
 const StatusCount = ({ status, label, snapshot, live, tray }: StatusCountProps) => {
   const [ids, setIds] = useState<string[]>([]);
-  const sessions = live.filter((s) => s.status === status);
+  const sessions = live.filter((s) => s.status === status && (status === 'busy' || s.waitingFor === 'human'));
   const id = tray ? `count-${status}-tray` : `count-${status}`;
   // リンクは popovertarget で閉じられないので、押したら閉じてから移る。
   const closeOnLink = (e: MouseEvent) => {
@@ -483,7 +483,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
       {snapshot && (
         <div class="counts">
           <StatusCount status="busy" label="作業中" snapshot={snapshot} live={live} />
-          <StatusCount status="idle" label="入力待ち" snapshot={snapshot} live={live} />
+          <StatusCount status="idle" label="回答待ち" snapshot={snapshot} live={live} />
         </div>
       )}
       <div class="topbar-end">
@@ -494,7 +494,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
           </button>
         )}
         <NotifyButton />
-        <StatusCount status="idle" label="入力待ち" snapshot={snapshot} live={live} tray />
+        <StatusCount status="idle" label="回答待ち" snapshot={snapshot} live={live} tray />
         <FeedbackTray improve={snapshot?.improve} onClick={onFeedback} />
         <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} loading={!snapshot} />
         <MemoryTray />

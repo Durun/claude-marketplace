@@ -128,7 +128,7 @@ const MainAgent = ({ s }: { s: Session }) => {
   const active = s.tasks.find((t) => t.status === 'in_progress');
   return (
     <div class="subagent agent-main">
-      <StatusBadge status={s.status} />
+      <StatusBadge status={s.status} waitingFor={s.waitingFor} />
       <span class="subagent-desc">{active ? active.activeForm ?? active.subject : s.name}</span>
       <span class="subagent-meta">
         {s.usage.model && <Chip>{s.usage.model}</Chip>}

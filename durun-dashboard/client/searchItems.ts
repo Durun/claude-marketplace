@@ -1,12 +1,12 @@
 // 検索窓（Cmd/Ctrl + K）に並べる候補。画面にあるデータはその場で語に当たるものに絞り、会話ログはサーバーの検索の結果から作る。
-import type { SearchResponse, SessionStatus, Snapshot } from '../shared/types.ts';
+import type { SearchResponse, SessionStatus, Snapshot, WaitingFor } from '../shared/types.ts';
 import { dateTime } from './format.ts';
 import { KIND_LABEL } from './notify.ts';
 import { attentionHref, href } from './router.ts';
 
 const MAX_PER_GROUP = 5;
 
-export type SearchItem = { key: string; label: string; sub?: string; href: string; status?: SessionStatus };
+export type SearchItem = { key: string; label: string; sub?: string; href: string; status?: SessionStatus; waitingFor?: WaitingFor };
 /** note は、見出しの横に出す進み具合や失敗の理由。 */
 export type SearchGroup = { title: string; items: SearchItem[]; note?: string };
 
@@ -38,7 +38,7 @@ export const localGroups = (snapshot: Snapshot | null, q: string): SearchGroup[]
       items: sessions
         .filter((s) => hit(s.name, s.theme, s.repo, s.branch, s.cwd, s.pr && `#${s.pr.number} ${s.pr.title}`, ...s.jira.map((j) => `${j.key} ${j.summary ?? ''}`)))
         .toSorted((a, b) => b.updatedAt - a.updatedAt)
-        .map((s) => ({ key: `session:${s.id}`, label: s.name, sub: joined(s.repo, s.branch), href: href.session(s.id), status: s.status })),
+        .map((s) => ({ key: `session:${s.id}`, label: s.name, sub: joined(s.repo, s.branch), href: href.session(s.id), status: s.status, waitingFor: s.waitingFor })),
     },
     {
       title: '要対応',

@@ -81,7 +81,7 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
                 // フォーカスは入力欄に残し、Tab で候補へ移らないようにする。
                 <a key={it.key} id={`quick-${i}`} class="quick-item" role="option" aria-selected={i === current} tabIndex={-1} href={it.href} onMouseMove={() => setActive(i)} onClick={onClose}>
                   <span class="quick-label">{it.label}</span>
-                  {it.status && <StatusBadge status={it.status} />}
+                  {it.status && <StatusBadge status={it.status} waitingFor={it.waitingFor} />}
                   {it.sub && <span class="quick-sub">{it.sub}</span>}
                 </a>
               );

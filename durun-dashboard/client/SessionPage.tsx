@@ -155,7 +155,7 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   <>
     <div class="head-row session-title">
       <NameEditor key={s.id} s={s} />
-      <StatusBadge status={s.status} />
+      <StatusBadge status={s.status} waitingFor={s.waitingFor} />
       {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
     </div>
     <div class="widget-body session-head">
