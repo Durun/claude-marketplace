@@ -7,6 +7,7 @@ import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel }
 import { unreadMessages } from './delivery.ts';
 import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
+import { Glossary } from './Glossary.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
@@ -229,6 +230,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   // 保存した配置が id で参照するので、shell と Monitor を並べるようにしても id は subagents のまま残す。
   subagents: { title: 'エージェント', icon: '🤖', Body: AgentList, size: { w: 6, h: 6 }, sketch: 'list' },
   docs: { title: '資料', icon: '📄', Body: SessionDocs, size: { w: 6, h: 10 }, sketch: 'list' },
+  glossary: { title: '用語集', icon: '📖', Body: Glossary, size: { w: 6, h: 10 }, sketch: 'list' },
   code: { title: 'コード', icon: '💻', Body: CodeWidget, size: { w: COLS, h: ROWS }, sketch: 'code' },
   [PR_WIDGET]: { title: PR_TITLE, icon: GITHUB_ICON, Body: PrWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
   [JIRA_WIDGET]: { title: JIRA_VIEW_TITLE, icon: JIRA_ICON, Body: JiraWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },

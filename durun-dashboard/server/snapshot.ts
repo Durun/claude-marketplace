@@ -200,6 +200,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     hiddenDocs: meta.hiddenDocs ?? [],
     docTitles: meta.docTitles ?? {},
     pinnedDocs: meta.pinnedDocs ?? [],
+    terms: meta.terms ?? [],
+    hiddenTerms: meta.hiddenTerms ?? [],
     artifacts: [...(log?.artifacts.values() ?? [])],
     pendingMessages: state.outbox.filter((m) => m.sessionId === meta.id && !m.deliveredAt).length,
     queued: state.queue.filter((m) => m.sessionId === meta.id),

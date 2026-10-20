@@ -151,6 +151,15 @@ export type Usage = {
 /** 人間がセッションの資料に足したリンク。題名が空なら、画面が URL から付ける。at は足した時刻。 */
 export type SavedLink = { url: string; title: string; at: number };
 
+/** 用語集の 1 語。description は、その語が何かを書いた 1 文。 */
+export type GlossaryTerm = { term: string; description: string };
+
+/** 人間がセッションの用語集に足した語。説明を書かずに足すと、haiku がやり取りから書いた説明が入る。at は足した時刻。 */
+export type SavedTerm = GlossaryTerm & { at: number };
+
+/** セッションの用語集。error は、やり取りの一部から用語を拾えなかった理由。 */
+export type Glossary = { terms: GlossaryTerm[]; error?: string };
+
 export type Session = {
   id: string;
   name: string;
@@ -199,6 +208,9 @@ export type Session = {
   docTitles: Record<string, string>;
   /** 人間が資料のウィジェットでピン留めした資料。ほかの資料より上に出す。キーは docOrder と同じ。 */
   pinnedDocs: string[];
+  /** 人間が用語集に足した語と、外した語。外した語は比べるときの形で持つ。前に受け取ったスナップショットには無いことがある。 */
+  terms?: SavedTerm[];
+  hiddenTerms?: string[];
   /** このセッションが claude.ai に公開した artifact。 */
   artifacts: Artifact[];
   /** 未配信の人間から Claude へのメッセージ数 */

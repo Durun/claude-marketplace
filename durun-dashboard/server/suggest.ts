@@ -1,11 +1,11 @@
-// セッションのやり取りから、概要と、人間が Claude に送る返答の候補と、セッション名の候補を haiku に作らせる。
-import type { Session, SessionStatus, SessionSummary, TaskItem } from '../shared/types.ts';
+// セッションのやり取りから、概要と、人間が Claude に送る返答の候補と、セッション名の候補と、用語集を haiku に作らせる。
+import type { ChatEntry, Glossary, GlossaryTerm, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem } from '../shared/types.ts';
 import { cached, peekCached, refreshing } from './cache.ts';
 import { UpstreamError, askHaiku, objectSchema } from './haiku.ts';
 
 const MAX_REPLIES = 3;
-// 一覧のカードの概要を同時に作る数。起動した直後などに、一覧のセッションの数だけ claude -p を一度に動かさないようにする。
-const MAX_LIST_SUMMARIES = 2;
+// 一覧のカードの概要と、用語集を同時に作る数。起動した直後や、長いセッションの用語集を開いた直後に、claude -p を一度にいくつも動かさないようにする。
+const MAX_CONCURRENT = 2;
 // 長い依頼を貼り付けたセッションでも数秒で返るよう、材料は 1 つあたりこの文字数までにする。
 const MAX_BLOCK_CHARS = 4000;
 
@@ -25,6 +25,17 @@ const REPLY_INSTRUCTIONS = `Claude が最後にした発言に対して、人間
 const TITLE_INSTRUCTIONS = `この Claude Code のセッションに付ける名前を 1 つ考えてください。
 - 何の作業かが一覧で見分けられる名詞句にする。
 - 20 文字以内で書く。`;
+
+// 長いセッションでも用語集が長くなりすぎないよう、やり取りの区切りごとに拾う語はこの数までにする。
+const MAX_TERMS_PER_CHUNK = 10;
+
+const GLOSSARY_INSTRUCTIONS = `<conversation> は、Claude Code のセッションで人間と Claude が交わしたやり取りの一部です。読み手が意味を調べたくなりそうな専門用語を拾い、用語集を作ってください。
+- 拾うのは、技術用語、略語、製品やサービスの名前と、このやり取りの中で特別な意味で使われている語。${MAX_TERMS_PER_CHUNK} 語までにする。
+- 一般的な語と、ファイル名やコードの識別子は拾わない。
+- description には、その語が何かを 1 文、60 文字以内で書く。このやり取りの中での意味があれば、それを書く。`;
+
+const TERM_INSTRUCTIONS = `<term> の語を、Claude Code のセッションの用語集に載せます。<conversation> は、そのセッションで人間と Claude が交わしたやり取りの一部です。
+- description には、その語が何かを 1 文、60 文字以内で書く。このやり取りの中での意味があれば、それを書き、無ければ一般的な意味を書く。`;
 
 const STATUS_TEXT: Record<SessionStatus, string> = {
   busy: '作業中',
@@ -70,19 +81,19 @@ export const summarize = async (c: Conversation): Promise<SessionSummary> => {
   return refreshing(key, prompt) ? { ...summary, stale: true } : summary;
 };
 
-let listSummaries = 0;
-const listWaiters: (() => void)[] = [];
+let running = 0;
+const waiters: (() => void)[] = [];
 
 /** 枠が空くまで待ってから load を動かす。終えたら、待っている次の読み込みに枠を渡す。 */
 const oneOfFew = <T,>(load: () => Promise<T>) => async (): Promise<T> => {
-  if (listSummaries < MAX_LIST_SUMMARIES) listSummaries++;
-  else await new Promise<void>((resolve) => listWaiters.push(resolve));
+  if (running < MAX_CONCURRENT) running++;
+  else await new Promise<void>((resolve) => waiters.push(resolve));
   try {
     return await load();
   } finally {
-    const next = listWaiters.shift();
+    const next = waiters.shift();
     if (next) next();
-    else listSummaries--;
+    else running--;
   }
 };
 
@@ -122,4 +133,59 @@ export const suggestTitle = async (c: Conversation): Promise<string> => {
   const { title } = await askHaiku(prompt, objectSchema({ title: { type: 'string' } }));
   if (typeof title !== 'string' || !title.trim()) throw new UpstreamError('名前が返りませんでした');
   return title.trim();
+};
+
+/** 用語集の材料にする、人間の依頼と Claude の発言。ツールの呼び出しは入れない。 */
+const transcriptOf = (entries: ChatEntry[]): string =>
+  entries.flatMap((e) => (e.kind === 'tool' ? [] : [`${e.kind === 'prompt' ? '人間' : 'Claude'}: ${e.text}`])).join('\n\n');
+
+/** 用語を比べるときの形。全角と半角、大文字と小文字だけが違う語は、同じ語とみなす。 */
+export const termKey = (term: string): string => term.normalize('NFKC').trim().toLowerCase();
+
+const TERMS_SCHEMA = objectSchema({ terms: { type: 'array', items: objectSchema({ term: { type: 'string' }, description: { type: 'string' } }) } });
+
+const loadTerms = (chunk: string) => async (): Promise<GlossaryTerm[]> => {
+  const { terms } = await askHaiku(promptOf(GLOSSARY_INSTRUCTIONS, { conversation: chunk }), TERMS_SCHEMA);
+  if (!Array.isArray(terms)) throw new UpstreamError('用語が返りませんでした');
+  return terms
+    .flatMap((t: Partial<GlossaryTerm>) => (typeof t?.term === 'string' && typeof t.description === 'string' ? [{ term: t.term.trim(), description: t.description.trim() }] : []))
+    .filter((t) => t.term && t.description)
+    .slice(0, MAX_TERMS_PER_CHUNK);
+};
+
+/**
+ * やり取りを材料の文字数ずつに区切り、区切りごとに拾った語を覚える。会話が伸びても前の区切りは変わらないので、拾い直すのは伸びた最後の区切りだけで済む。
+ * 作業中は最後の区切りが発言のたびに伸び、そのたびに拾い直すと haiku を動かし続けるので、止まるまで前に拾った語を返す。
+ * 人間が足した語を足した新しい順に、拾った語を出てきた新しい順に並べ、同じ語は先に並べたほうを残す。外した語は並べない。
+ * 拾えなかった区切りがあっても、拾えた語は返し、理由を error に添える。
+ */
+export const sessionGlossary = async (id: string, entries: ChatEntry[], busy: boolean, saved: SavedTerm[], hidden: string[]): Promise<Glossary> => {
+  const text = transcriptOf(entries);
+  const chunks = Array.from({ length: Math.ceil(text.length / MAX_BLOCK_CHARS) }, (_, i) => text.slice(i * MAX_BLOCK_CHARS, (i + 1) * MAX_BLOCK_CHARS));
+  const results = await Promise.allSettled(
+    chunks.map((chunk, i) => cached(`glossary:${id}:${i}`, { input: chunk, keep: busy && i === chunks.length - 1 }, oneOfFew(loadTerms(chunk)))),
+  );
+  const picked = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])).reverse();
+  const seen = new Set(hidden);
+  const terms = [...[...saved].reverse(), ...picked].flatMap(({ term, description }) => {
+    const key = termKey(term);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ term, description }];
+  });
+  const failed = results.find((r) => r.status === 'rejected');
+  return failed ? { terms, error: (failed.reason as Error).message } : { terms };
+};
+
+/**
+ * 人間が説明を書かずに足した語の説明。語が最初に出てくるあたりのやり取りを材料にし、出てこなければ最後のやり取りを渡す。
+ * 足した語に説明を残すので、ここでは覚えない。
+ */
+export const explainTerm = async (term: string, entries: ChatEntry[]): Promise<string> => {
+  const text = transcriptOf(entries);
+  const at = termKey(text).indexOf(termKey(term));
+  const around = at < 0 ? text.slice(-MAX_BLOCK_CHARS) : text.slice(Math.max(0, at - MAX_BLOCK_CHARS / 2), at + MAX_BLOCK_CHARS / 2);
+  const { description } = await askHaiku(promptOf(TERM_INSTRUCTIONS, { term, conversation: around }), objectSchema({ description: { type: 'string' } }));
+  if (typeof description !== 'string' || !description.trim()) throw new UpstreamError('説明が返りませんでした');
+  return description.trim();
 };

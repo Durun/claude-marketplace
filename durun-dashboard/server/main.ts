@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -13,7 +13,7 @@ import { allowRequest } from './access.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
-import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
+import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
 import { answerQuestion, compactSession, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, removeSession, resolveAttention, sendMessage, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
@@ -38,7 +38,7 @@ import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
-import { type Conversation, suggestReplies, suggestTitle, summarize, summaryText } from './suggest.ts';
+import { type Conversation, explainTerm, sessionGlossary, suggestReplies, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
 import { MINES_ROW, minesHint } from './minesweeper.ts';
 import { fetchRetro } from './retro.ts';
@@ -754,6 +754,35 @@ const explore = (url: URL): ExplorerDir => {
   }
 };
 
+// 用語集に並べる語句の長さの上限。文章を貼り付けたものは断る。
+const MAX_TERM_CHARS = 100;
+
+/** 用語集に足す語。説明が空なら、haiku にやり取りから書かせてから足す。同じ語を足し直したら、説明と時刻を新しくし、外していた語はまた並べる。 */
+const addTerm = async (id: string, body: unknown): Promise<void> => {
+  const meta = sessionMeta(id);
+  const term = field<string>(body, 'term', 'string').trim();
+  if (!term || term.length > MAX_TERM_CHARS) throw new HttpError(400, `term must be 1 to ${MAX_TERM_CHARS} characters`);
+  const description = field<string>(body, 'description', 'string').trim() || (await explainTerm(term, chatOf(id)));
+  const key = termKey(term);
+  meta.terms = [...(meta.terms ?? []).filter((t) => termKey(t.term) !== key), { term, description, at: Date.now() }];
+  meta.hiddenTerms = meta.hiddenTerms?.filter((k) => k !== key);
+  touch();
+};
+
+/** 外した語は、やり取りから拾い直しても並べない。人間が足した語は、覚えたものも消す。 */
+const hideTerm = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const key = termKey(field<string>(body, 'term', 'string'));
+  meta.terms = meta.terms?.filter((t) => termKey(t.term) !== key);
+  meta.hiddenTerms = [...new Set([...(meta.hiddenTerms ?? []), key])];
+  touch();
+};
+
+const glossaryOf = (id: string): Promise<Glossary> => {
+  const meta = sessionMeta(id);
+  return sessionGlossary(meta.id, chatOf(id), readLiveSessions().get(meta.id)?.status === 'busy', meta.terms ?? [], meta.hiddenTerms ?? []);
+};
+
 /** 外した資料は、発言にまた出ても並べない。足したリンクとファイルとほかのセッションの資料と、Claude が校正した文章は、覚えたものも消す。 */
 const hideDocs = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
@@ -1003,6 +1032,8 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/pin$/, ([, id = ''], b) => pinDocs(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/terms$/, ([, id = ''], b) => addTerm(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/terms\/hide$/, ([, id = ''], b) => hideTerm(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/queue$/, ([, id = ''], b) => queueMessage(id, b)],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
@@ -1017,6 +1048,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id)],
   [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) })],
   [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id))],
+  [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id)],
   [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b)],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
