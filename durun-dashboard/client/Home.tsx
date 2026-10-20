@@ -4,6 +4,7 @@ import { api, attempt } from './api.ts';
 import { HOME_KEY, layoutKeyOf, useDashboards } from './dashboards.ts';
 import { Dashboard, type EditProps, type Widget, type WidgetProps, WidgetPanel } from './Dashboard.tsx';
 import { DesktopIcon } from './apps.tsx';
+import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
@@ -215,6 +216,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },
   [PROOFREAD_KEY]: { title: PROOFREAD_TITLE, icon: PROOFREAD_ICON, Body: () => <ProofreadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openProofread() },
   [TERMINAL_KEY]: { title: TERMINAL_TITLE, icon: TERMINAL_ICON, Body: () => <TerminalIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTerminal() },
+  [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },
 };
 

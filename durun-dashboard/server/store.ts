@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof, SavedTerm } from '../shared/types.ts';
+import type { AskedQuestion, Bookmark, BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof, SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -44,6 +44,8 @@ export type SessionMeta = {
   terms?: SavedTerm[];
   /** 人間が用語集から外した語。termKey の形で持ち、やり取りから拾い直しても出さない */
   hiddenTerms?: string[];
+  /** 人間がチャットでブックマークした発言 */
+  bookmarks?: Bookmark[];
   firstSeen: number;
   /** この時刻までの Claude の発言は人間が確認済み */
   replySeenAt: number;

@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -68,6 +68,7 @@ const STATIC: Record<string, string> = {
   '/claude-open.svg': 'public/claude-open.svg',
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
+  '/bookmark.svg': 'public/bookmark.svg',
   '/proofread.svg': 'public/proofread.svg',
   '/terminal.svg': 'public/terminal.svg',
   '/ie.svg': 'public/ie.svg',
@@ -778,6 +779,20 @@ const hideTerm = (id: string, body: unknown): void => {
   touch();
 };
 
+// ブックマークに持つ本文の長さ。一覧で発言を見分けられるだけの先頭を持つ。
+const BOOKMARK_TEXT_CHARS = 200;
+
+/** チャットの発言をブックマークに足すか、外す。発言は種類と時刻で見分け、本文は一覧に出す先頭だけを持つ。 */
+const setBookmark = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const kind = field<string>(body, 'kind', 'string');
+  if (kind !== 'prompt' && kind !== 'message') throw new HttpError(400, 'kind must be prompt or message');
+  const at = field<number>(body, 'at', 'number');
+  const rest = (meta.bookmarks ?? []).filter((b) => bookmarkKey(b) !== bookmarkKey({ kind, at }));
+  meta.bookmarks = field<boolean>(body, 'on', 'boolean') ? [...rest, { kind, at, text: field<string>(body, 'text', 'string').slice(0, BOOKMARK_TEXT_CHARS), createdAt: Date.now() }] : rest;
+  touch();
+};
+
 const glossaryOf = (id: string): Promise<Glossary> => {
   const meta = sessionMeta(id);
   return sessionGlossary(meta.id, chatOf(id), readLiveSessions().get(meta.id)?.status === 'busy', meta.terms ?? [], meta.hiddenTerms ?? []);
@@ -1034,6 +1049,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/docs\/pin$/, ([, id = ''], b) => pinDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/terms$/, ([, id = ''], b) => addTerm(id, b)],
   [/^\/api\/sessions\/([^/]+)\/terms\/hide$/, ([, id = ''], b) => hideTerm(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/bookmarks$/, ([, id = ''], b) => setBookmark(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/queue$/, ([, id = ''], b) => queueMessage(id, b)],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],

@@ -1,7 +1,7 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { Attention, BgTask, ChatEntry, FileWhere, OutboxMessage, Session, Snapshot, Subagent, TaskItem } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, type FileWhere, type OutboxMessage, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
@@ -408,9 +408,23 @@ const PromptEditor = ({ sessionId, e, onClose }: { sessionId: string; e: ChatEnt
   );
 };
 
-type ChatBubbleProps = { sessionId: string; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean };
+/** 押すたびに、表示している状態の逆を送る。 */
+const BookmarkButton = ({ sessionId, mark, on }: { sessionId: string; mark: Pick<Bookmark, 'kind' | 'at' | 'text'>; on: boolean }) => (
+  <button
+    class="chat-bookmark"
+    aria-pressed={on}
+    aria-label="ブックマーク"
+    title={on ? 'ブックマークから外す' : 'ブックマークする。アプリ「ブックマーク」から、この発言へ戻れます'}
+    onClick={() => attempt('ブックマークの切り替え', () => api.bookmark(sessionId, mark, !on))}
+  >
+    {on ? '★' : '☆'}
+  </button>
+);
 
-const ChatBubble = ({ sessionId, e, codeLink, markText, focused }: ChatBubbleProps) => {
+/** ブックマークから移れるのはセッションのチャットの発言だけなので、bookmarked を渡さないサブエージェントの会話には、ブックマークのボタンを出さない。 */
+type ChatBubbleProps = { sessionId: string; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean };
+
+const ChatBubble = ({ sessionId, e, codeLink, markText, focused, bookmarked }: ChatBubbleProps) => {
   const [editing, setEditing] = useState(false);
   const now = useContext(NowContext);
   const time = e.at ? <time title={dateTime(e.at)}>{shortDateTime(e.at, now)}</time> : null;
@@ -422,17 +436,21 @@ const ChatBubble = ({ sessionId, e, codeLink, markText, focused }: ChatBubblePro
     </details>
   );
   if (e.kind === 'prompt' && editing) return <PromptEditor sessionId={sessionId} e={e} onClose={() => setEditing(false)} />;
+  // 発言は種類と時刻で見分けるので、時刻の無い発言はブックマークできない。
+  const star = bookmarked !== undefined && e.at !== undefined && <BookmarkButton sessionId={sessionId} mark={{ kind: e.kind, at: e.at, text: e.text }} on={bookmarked} />;
+  // 依頼の ☆ は、短い依頼の行を高くしないよう、時刻の列に積まずに ✎ と並べる。
   return e.kind === 'prompt' ? (
     <div class="chat-row is-human">
       {e.rewindTo && <button class="chat-rewind" title="書き直して、ここまで巻き戻して送る" aria-label="依頼を書き直す" onClick={() => setEditing(true)}>✎</button>}
+      {star}
       {/* チャットは会話ログから作るので、並んでいる依頼はどれも Claude が受け取って読んだもの。 */}
       <span class="chat-meta">既読{time}</span>
       <p class={`chat-human plain${focused ? ' is-focused' : ''}`}>{markText ? markText(e.text) : e.text}</p>
     </div>
   ) : (
     <div class="chat-row">
-      <span class="chat-meta">{time}</span>
-      <div class="card chat-claude"><Markdown text={e.text} codeLink={codeLink} markText={markText} /></div>
+      <span class="chat-meta">{star}{time}</span>
+      <div class={`card chat-claude${focused ? ' is-focused' : ''}`}><Markdown text={e.text} codeLink={codeLink} markText={markText} /></div>
     </div>
   );
 };
@@ -448,7 +466,7 @@ const UnreadBubble = ({ m }: { m: OutboxMessage }) => {
   );
 };
 
-/** 送信したメッセージから移る先の発言。同じ発言へもう一度移れるよう、押すたびに作り直す。 */
+/** 送信したメッセージとブックマークから移る先の発言。同じ発言へもう一度移れるよう、押すたびに作り直す。 */
 export type Jump = { index: number };
 
 /**
@@ -523,6 +541,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   };
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
   const markText = useTermMarks(s);
+  const marked = new Set(s.bookmarks?.map(bookmarkKey));
   return (
     <>
       <h2 class="section-title">チャット</h2>
@@ -531,7 +550,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>

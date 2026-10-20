@@ -159,3 +159,17 @@ test('EnterWorktree は、ほかのセッションがいない worktree なら�
   assert.equal(enter('wt-c', repo, {})?.permissionDecision, 'allow');
   assert.equal(enter('wt-c', tmp, { name: 'x' }), undefined);
 });
+
+test('ブックマークした発言のあるセッションは、アーカイブして会話ログが止まってから日がたっても、ブックマークから開けるよう一覧から外さない', async () => {
+  const { buildSnapshot } = await import('../server/snapshot.ts');
+  const transcript = path.join(tmp, 'old.jsonl');
+  fs.writeFileSync(transcript, '');
+  // 一覧から外れる 14 日より前に止まったことにする。
+  const longAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  fs.utimesSync(transcript, longAgo, longAgo);
+  const meta = Object.assign(ensureSession('old', tmp), { kind: 'bg', archived: true, transcriptPath: transcript });
+  const listed = () => buildSnapshot().sessions.find((s) => s.id === 'old');
+  assert.equal(listed(), undefined);
+  meta.bookmarks = [{ kind: 'message', at: 1, text: '直しました。', createdAt: 2 }];
+  assert.deepEqual(listed()?.bookmarks, meta.bookmarks);
+});

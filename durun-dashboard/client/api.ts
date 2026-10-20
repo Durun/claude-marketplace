@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
+  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -115,6 +115,8 @@ export const api = {
   /** 説明が空なら、サーバーが haiku にやり取りから書かせてから足すので、数秒待つ。 */
   addTerm: (id: string, term: string, description: string) => postJson(`${session(id)}/terms`, { term, description }),
   hideTerm: (id: string, term: string) => postJson(`${session(id)}/terms/hide`, { term }),
+  /** on が真ならブックマークに足し、偽なら外す。 */
+  bookmark: (id: string, { kind, at, text }: Pick<Bookmark, 'kind' | 'at' | 'text'>, on: boolean) => postJson(`${session(id)}/bookmarks`, { kind, at, text, on }),
   startSession: (cwd: string, prompt: string, model: string, effort: string, theme: string) => postJson('/api/sessions', { cwd, prompt, model, effort, theme }),
   message: (id: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/message`, { text }),

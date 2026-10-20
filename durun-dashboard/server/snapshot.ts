@@ -202,6 +202,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     pinnedDocs: meta.pinnedDocs ?? [],
     terms: meta.terms ?? [],
     hiddenTerms: meta.hiddenTerms ?? [],
+    bookmarks: meta.bookmarks ?? [],
     artifacts: [...(log?.artifacts.values() ?? [])],
     pendingMessages: state.outbox.filter((m) => m.sessionId === meta.id && !m.deliveredAt).length,
     queued: state.queue.filter((m) => m.sessionId === meta.id),
@@ -289,8 +290,9 @@ export const buildSnapshot = (): Snapshot => {
   const live = claude.readLiveSessions();
   // ダッシュボードが補助に動かす claude -p は、一覧に出さないので、状態に記録しない。
   for (const l of live.values()) if (!isHelperSession(l.sessionId)) rememberLive(ensureSession(l.sessionId, l.cwd), l);
+  // ブックマークした発言のあるセッションは、ブックマークから開けるよう、日がたっても外さない。
   const sessions = Object.values(state.sessions)
-    .filter((m) => isListed(m) && (live.has(m.id) || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS))
+    .filter((m) => isListed(m) && (live.has(m.id) || !!m.bookmarks?.length || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS))
     .map((m) => buildSession(m, live.get(m.id)));
   const themes = [...new Set(sessions.flatMap((s) => [s.theme, s.repo]))].sort((a, b) => a.localeCompare(b, 'ja'));
   return {

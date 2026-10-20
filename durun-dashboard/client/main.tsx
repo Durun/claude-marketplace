@@ -2,6 +2,7 @@ import { type ComponentType, render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { JIRA_ISSUE_KEY, PR_URL, type Snapshot, notionPageId } from '../shared/types.ts';
 import { api } from './api.ts';
+import { BOOKMARKS_KEY, BookmarksFloat } from './Bookmarks.tsx';
 import { showWidget } from './Dashboard.tsx';
 import { DOC_KEY, DocFloat, DocViewer, DocsPage, FILE_KEY, FileFloat, openDocFloat, plainClick } from './Docs.tsx';
 import { Dolphin } from './Dolphin.tsx';
@@ -26,7 +27,7 @@ import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
 import { type Route, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
 import { useSessionToasts } from './sessionEffects.ts';
-import { SESSION_KEY, SessionFloat, SessionPage } from './SessionPage.tsx';
+import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
 import { Toasts } from './toast.tsx';
@@ -51,8 +52,11 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
   }
 };
 
+// Bookmarks.tsx から SessionPage.tsx を読むと読み込みが循環し、ウィジェットの表を組む時点でアプリの定義が欠ける。そのため、押した発言を開く関数はここで渡す。
+const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
+
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 

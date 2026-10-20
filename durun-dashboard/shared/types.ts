@@ -211,6 +211,8 @@ export type Session = {
   /** 人間が用語集に足した語と、外した語。外した語は比べるときの形で持つ。前に受け取ったスナップショットには無いことがある。 */
   terms?: SavedTerm[];
   hiddenTerms?: string[];
+  /** 人間がチャットでブックマークした発言。前に受け取ったスナップショットには無いことがある。 */
+  bookmarks?: Bookmark[];
   /** このセッションが claude.ai に公開した artifact。 */
   artifacts: Artifact[];
   /** 未配信の人間から Claude へのメッセージ数 */
@@ -465,6 +467,12 @@ export type RepoRef = { number: number; title: string; kind: 'pr' | 'issue'; sta
 /** tool は Claude が呼んだツールで、text は名前と入力の要点を 1 行にしたもの、detail は入力の全体。 */
 /** rewindTo は、依頼を書き直して送るときに巻き戻す先の、会話ログのエントリの uuid。依頼の直前のエントリを指す。 */
 export type ChatEntry = { kind: 'prompt' | 'message' | 'tool'; text: string; at?: number; detail?: string; rewindTo?: string };
+
+/** 人間がチャットでブックマークした発言。at は発言の時刻、text は一覧に出す本文の先頭、createdAt はブックマークした時刻。 */
+export type Bookmark = { kind: 'prompt' | 'message'; at: number; text: string; createdAt: number };
+
+/** 会話の中の発言をブックマークと照らし合わせる鍵。発言の時刻はミリ秒まで持つので、種類と合わせれば発言を見分けられる。 */
+export const bookmarkKey = (e: { kind: string; at?: number }): string => `${e.kind}:${e.at}`;
 
 /** 過去のセッションの検索で当たった箇所。text は、当たった語の前後を切り出したもの。 */
 export type SearchHit = { kind: 'title' | 'prompt' | 'message'; text: string; at?: number };

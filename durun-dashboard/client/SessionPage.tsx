@@ -1,9 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { Attention, ChatEntry, DocMeta, OutboxMessage, Session, Snapshot } from '../shared/types.ts';
+import { type Attention, type ChatEntry, type DocMeta, type OutboxMessage, type Session, type Snapshot, bookmarkKey } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
 import { CodeView } from './CodeView.tsx';
-import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel } from './Dashboard.tsx';
+import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel, showWidget } from './Dashboard.tsx';
 import { unreadMessages } from './delivery.ts';
 import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
@@ -14,14 +15,14 @@ import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProo
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
-import { reloadSnapshot, useFetch, useWaitCursor } from './hooks.ts';
+import { pickInWidget, reloadSnapshot, useFetch, usePicked, useWaitCursor } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
 import { OutboxList, asksOf } from './Messaging.tsx';
 import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
 import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
-import { type SessionTab, href } from './router.ts';
+import { type SessionTab, currentSessionId, href } from './router.ts';
 import { CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
@@ -212,6 +213,8 @@ type SessionData = {
   notion: boolean;
 };
 
+const CHAT_WIDGET = 'chat';
+
 const WIDGETS: Record<string, Widget<SessionData>> = {
   head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
   summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
@@ -223,8 +226,9 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },
   [PROOFREAD_KEY]: { title: PROOFREAD_TITLE, icon: PROOFREAD_ICON, Body: () => <ProofreadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openProofread() },
   [TERMINAL_KEY]: { title: TERMINAL_TITLE, icon: TERMINAL_ICON, Body: ({ s }) => <TerminalIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openTerminal(s.cwd) },
+  [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
-  chat: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
+  [CHAT_WIDGET]: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
   tasks: { title: 'タスク', icon: '✅', Body: TaskList, size: { w: 6, h: 8 }, sketch: 'list' },
   // 保存した配置が id で参照するので、shell と Monitor を並べるようにしても id は subagents のまま残す。
@@ -252,6 +256,13 @@ type DashboardProps = EditProps & { s: Session; tab: SessionTab; file?: string; 
 
 export const SESSION_KEY = 'session-dashboard';
 
+/** セッションの画面のチャットを出し、bookmarkKey が key の発言へ移る。画面をまだ描いていなければ、描いて会話を読み込んでから移る。 */
+export const openChatAt = (sessionId: string, key: string): void => {
+  if (currentSessionId() !== sessionId) location.hash = href.session(sessionId);
+  showWidget(SESSION_KEY, sessionId, CHAT_WIDGET);
+  pickInWidget(CHAT_WIDGET, sessionId, key);
+};
+
 const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionData => {
   // ツールの呼び出しだけでも発言が増えるので、会話ログが動くたびに取り直す。
   const chat = useFetch(() => api.chat(s.id).then((entries) => ({ id: s.id, entries })), [s.id, s.updatedAt]);
@@ -259,6 +270,14 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
   useWaitCursor(chat.loading && chat.data?.id !== s.id);
   const entries = chat.data?.id === s.id ? chat.data.entries : undefined;
   const [jump, setJump] = useState<Jump>();
+  // ブックマークから頼まれた発言へは、会話を読み込んでから移る。移ったら頼まれたことを忘れ、同じ発言へもう一度移れるようにする。
+  const picked = usePicked(CHAT_WIDGET, s.id);
+  useEffect(() => {
+    if (!picked || !entries) return;
+    pickInWidget(CHAT_WIDGET, s.id, '');
+    const index = entries.findIndex((e) => bookmarkKey(e) === picked);
+    if (index >= 0) setJump({ index });
+  }, [picked, entries]);
   // ほかのセッションから足した資料は、リンクやファイルと同じく足した時刻で並べる。
   const shared = new Map((s.sharedDocs ?? []).map((d) => [d.id, d.at]));
   return {
