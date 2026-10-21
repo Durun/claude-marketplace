@@ -871,6 +871,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-settings { margin-bottom: 12px; }
 .jira-jql { display: grid; gap: 4px; color: var(--text-2); font-size: 12.5px; }
 .jira-max { width: 80px; }
+/* 絞り込みの欄は、フォーカスがあるか語が入っている間だけ見せる。display: none ではフォーカスを移せず打った文字を受けられないので、見えない大きさにして置く。 */
+.jira-filter:placeholder-shown:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; clip-path: inset(50%); }
 .jira-fields { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 12.5px; }
 .jira-fields legend { float: left; margin-right: 4px; padding: 0; }
 .jira-list { display: grid; margin: 0; padding: 0; list-style: none; }

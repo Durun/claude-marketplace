@@ -1,5 +1,5 @@
 // ダッシュボードの「JIRA Issues」ウィジェット。設定した JQL で JIRA の課題を探して並べる。
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { JIRA_MAX_RESULTS, type JiraIssue } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
@@ -7,6 +7,7 @@ import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
+import { matcher } from './searchItems.ts';
 import { Chip, Empty, Ext, Loading, Time, onSubmitKey } from './ui.tsx';
 
 export const JIRA_TITLE = 'JIRA Issues';
@@ -127,24 +128,69 @@ export const jiraControls = (): Control[] => [
   { kind: 'refresh', label: 'JIRA の課題の情報を取り直す', onClick: () => void attempt('JIRA の更新', api.refreshJira) },
 ];
 
+/**
+ * 枠の中にフォーカスがあるときに文字を打つと、絞り込みの欄にフォーカスを移し、打った文字から欄に入れる。
+ * 見出しや一覧の空いたところを押しただけでは枠のどこにもフォーカスが入らないので、押したら欄に移す。欄で打ち始めれば、日本語入力も 1 文字目から変換できる。
+ * ダッシュボードの編集中は、矢印キーで枠を動かせるよう、フォーカスを移さない。
+ */
+const useFilterFocus = () => {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const input = ref.current;
+      const target = e.target as Element;
+      // 空白は、ボタンを押したり一覧をスクロールしたりするのに残す。
+      if (e.key?.length !== 1 || e.key === ' ' || e.ctrlKey || e.metaKey || e.altKey) return;
+      // 同じ枠に重ねたほかのタブを選んでいる間は、欄が隠れているので何もしない。
+      if (!input?.checkVisibility() || !input.closest('.widget')?.contains(target) || target.closest('input, textarea, .is-editing')) return;
+      input.focus();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
+  const onClick = (e: MouseEvent) => {
+    if (!(e.target as Element).closest('a, button, input, form, .is-editing')) ref.current?.focus();
+  };
+  return { ref, onClick };
+};
+
+/** JQL で探した課題を、絞り込みの欄に打った語でさらに絞る。空白で区切ると、すべての語を含む課題だけを残す。Esc で語を消して欄を閉じる。 */
 export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) => {
   const [editing, setEditing] = useState(false);
+  const [query, setQuery] = useState('');
+  const filter = useFilterFocus();
   const jql = settings.jql || DEFAULT_JQL;
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
   const { data, error } = useCached(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
+  const hit = matcher(query);
+  const shown = data?.filter((i) => hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
   return (
     <>
-      <div class="section-head">
+      <div class="section-head" onClick={filter.onClick}>
         <h2 class="section-title">
           {settings.title || JIRA_TITLE}
-          {data && !error && <span class="count-pill">{data.length}</span>}
+          {data && !error && <span class="count-pill">{shown.length}</span>}
         </h2>
         <div class="actions">
+          <input
+            ref={filter.ref}
+            class="input input-sm jira-filter"
+            type="search"
+            placeholder="絞り込み"
+            aria-label="表示中の課題を絞り込む"
+            value={query}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape' || e.isComposing) return;
+              setQuery('');
+              e.currentTarget.blur();
+            }}
+          />
           <button class="btn btn-sm" data-icon="settings" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>設定</button>
         </div>
       </div>
-      <div class="widget-body">
+      <div class="widget-body" onClick={filter.onClick}>
         {editing && <JiraSettings settings={settings} onSave={onSettings} onClose={() => setEditing(false)} />}
         {error ? (
           <Empty>課題を探せませんでした（{error}）</Empty>
@@ -152,8 +198,10 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
           <Loading />
         ) : data.length === 0 ? (
           <Empty>条件に合う課題はありません。</Empty>
+        ) : shown.length === 0 ? (
+          <Empty>絞り込みに合う課題はありません。</Empty>
         ) : (
-          <ul class="jira-list">{data.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>
+          <ul class="jira-list">{shown.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>
         )}
       </div>
     </>

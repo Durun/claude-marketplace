@@ -11,7 +11,7 @@ export type SearchItem = { key: string; label: string; sub?: string; href: strin
 export type SearchGroup = { title: string; items: SearchItem[]; note?: string };
 
 /** 会話ログの検索と同じく、空白で区切った語をすべて含むものに絞る。大文字と小文字は区別しない。 */
-const matcher = (q: string) => {
+export const matcher = (q: string) => {
   const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
   return (...texts: (string | undefined)[]): boolean => {
     const text = texts.join('\n').toLowerCase();
