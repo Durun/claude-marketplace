@@ -141,6 +141,8 @@ export type LogSummary = {
   turnEndedAt?: number;
   /** 使用制限で断られて止まったときの、止まった時刻とリセットの時刻（epoch ミリ秒）。続きのやり取りが載ったら消す。 */
   limit?: UsageLimit;
+  /** スリープや通信の途切れで API に届かず止まった時刻。続きのやり取りが載ったら消す。 */
+  offlineAt?: number;
   timeline: [number, number][];
   editedFiles: Set<string>;
   /** 人間の依頼と Claude の発言。会話の表示と、過去のセッションの検索に使う。 */
@@ -199,6 +201,8 @@ type LogEntry = {
   /** 使用制限で断られたときに、Claude Code が合成した発言に添える理由と、リセットの時刻（epoch 秒）。 */
   apiError?: string;
   apiErrorParams?: { rate_limit_info?: { resetsAt?: number } };
+  /** API のエラーで止まったときに、Claude Code が合成した発言に付ける。 */
+  isApiErrorMessage?: boolean;
   title?: string;
   path?: string;
 };
@@ -409,6 +413,15 @@ const limitOf = (e: LogEntry, ts: number | undefined): UsageLimit | undefined =>
   return e.apiError === 'usage_limit_reached' && resetsAt && ts ? { at: ts, resetsAt: resetsAt * 1000 } : undefined;
 };
 
+// 応答の途中でスリープしたか接続が切れたとき、API に届かないとき、応答が来ないときに、Claude Code が合成する発言の書き出し。
+const OFFLINE_ERROR = /^(API Error: (Your computer went to sleep|Connection (lost|error)|Can't reach the API server)|Request timed out)/;
+
+const offlineOf = (e: LogEntry, ts: number | undefined): number | undefined => {
+  const content = e.message?.content;
+  const text = Array.isArray(content) ? content.find((b) => b.type === 'text')?.text : undefined;
+  return e.isApiErrorMessage && text && OFFLINE_ERROR.test(text) ? ts : undefined;
+};
+
 const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void => {
   if (!line) return;
   let e: LogEntry;
@@ -439,6 +452,7 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   }
   if (ts) s.lastActivityAt = ts;
   s.limit = limitOf(e, ts);
+  s.offlineAt = offlineOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
   else {
     applyBgResult(s, e);

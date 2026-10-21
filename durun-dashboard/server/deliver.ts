@@ -446,14 +446,14 @@ export const compactSession = (sessionId: string, cwd: string): Promise<void> =>
   return resume(sessionId, cwd, '/compact', live?.jobId);
 };
 
-/** 使用制限が明けたときに渡す依頼。人間が続きを頼むときと同じ言い方にし、制限で止まったことには触れない。 */
+/** 使用制限が明けたときと、通信が戻ったときに渡す依頼。人間が続きを頼むときと同じ言い方にし、止まったことには触れない。 */
 export const CONTINUE_PROMPT = '続けて';
 
 /**
- * 使用制限で止まったセッションに、続きを頼む。人間からの発言ではないので、前置きを付けない。
+ * 使用制限か通信の途切れで止まったセッションに、続きを頼む。人間からの発言ではないので、前置きを付けない。
  * 動いていないセッションは、人間が閉じたものなので起こさない。
  */
-export const continueAfterLimit = async (sessionId: string, cwd: string): Promise<void> => {
+export const continueStopped = async (sessionId: string, cwd: string): Promise<void> => {
   const live = readLiveSessions().get(sessionId);
   if (!live) return;
   if (restartable(live)) return resume(sessionId, cwd, CONTINUE_PROMPT, live.jobId);

@@ -218,8 +218,10 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
   if (summarizable) session.summary = peekSummary({ ...session, firstPrompt: firstPromptOf(log) });
   // 質問や権限の確認に答えていないセッションと、発言の無いセッションは、人間を待っている。
+  // 通信の途切れで止まったセッションは、通信が戻れば limitResume.ts が続けさせるので、それまでは通信を待っている。
   if (session.status === 'idle' && !session.archived) {
-    session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
+    if (log?.offlineAt && meta.limitResumedAt !== log.offlineAt) session.waitingFor = 'event';
+    else session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
   }
   return session;
 };
