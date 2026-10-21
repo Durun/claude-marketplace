@@ -144,6 +144,7 @@ const chooseByHaiku = (material: Record<string, string>, question: ChoiceQuestio
  * 入力待ちのセッションが何を待っているか。覚えた分類をすぐ返し、無いか古ければ裏で分類する。
  * 新しい発言を分類し終えるまでは undefined を返す。前の発言の分類で、要対応に出したり外したりしないため。
  * 分類できなければ、人間を待っているとみなす。人間への質問を知らせ損ねないため。
+ * そうみなした分類は覚えず、cache.ts が間を空けて分類し直す。通信が一時的に途切れただけで、次の発言まで回答待ちに出し続けないため。
  */
 export const peekWaiting = (s: Waiting): WaitingFor | undefined => {
   const running = runningOf(s);
@@ -151,15 +152,14 @@ export const peekWaiting = (s: Waiting): WaitingFor | undefined => {
   // 待っているものは、発言の終わりに書くことが多いので、長い発言は終わりを渡す。
   const material = { last_message: (s.lastMessage ?? '').slice(-MAX_BLOCK_CHARS), running: running.slice(0, MAX_BLOCK_CHARS) || '（なし）' };
   const choose = hasJev() ? () => askChoice(material, question) : oneOfFew(chooseByHaiku(material, question));
-  const load = async () => {
-    const waitingFor = await choose().catch((e: Error) => {
-      console.error(`${s.id} が何を待っているかを分類できません: ${e.message.split('\n')[0]}`);
-      return 'human';
-    });
-    return { at: s.lastMessageAt, waitingFor: waitingFor as WaitingFor };
-  };
-  const v = peekCached(`waiting:${s.id}`, { input: JSON.stringify([question, material]) }, load);
-  return v && v.at === s.lastMessageAt ? v.waitingFor : undefined;
+  const load = async () => ({ at: s.lastMessageAt, waitingFor: (await choose()) as WaitingFor });
+  const key = `waiting:${s.id}`;
+  // 覚えた分類を発言の時刻で見分けるので、同じ文面の発言が続いても分類し直す。
+  const input = JSON.stringify([question, material, s.lastMessageAt]);
+  const v = peekCached(key, { input }, load);
+  if (v && v.at === s.lastMessageAt) return v.waitingFor;
+  // 分類している最中でないのは、分類できずに、分類し直すまで間を空けているとき。
+  return refreshing(key, input) ? undefined : 'human';
 };
 
 /** 返答の候補や名前は、概要を作れなくても作る。 */

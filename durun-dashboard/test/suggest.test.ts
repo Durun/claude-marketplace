@@ -199,13 +199,19 @@ test('何を待っているかは、Jev があれば発言の終わりと動い�
     assert.equal(peekWaiting(next), undefined);
     await until(() => !!peekWaiting(next));
     assert.equal(asked.length, 2);
+
+    const again = { ...next, lastMessageAt: 3 };
+    assert.equal(peekWaiting(again), undefined);
+    await until(() => !!peekWaiting(again));
+    assert.equal(asked.length, 3);
   } finally {
     delete process.env.DURUN_DASHBOARD_FAKE_JEV;
     jev.close();
   }
 });
 
-test('Jev が無ければ haiku に選ばせ、動いている処理が無ければ実行中を選ばせず、選べなければ人間を待っているとみなす', async () => {
+test('Jev が無ければ haiku に選ばせ、動いている処理が無ければ実行中を選ばせず、選べなければ人間を待っているとみなして、間を空けて選び直す', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   // 実行中を選べるときだけ実行中と答え、選べなければ選択肢に無い答えを返す。
   useFakeClaude(tmp, `console.log(JSON.stringify({ structured_output: { waiting: stdin().includes('- work:') ? 'work' : 'unknown' } }));`);
   const shell: BgTask = { id: 't2', kind: 'shell', description: 'テスト', command: 'pnpm test', status: 'running' };
@@ -214,4 +220,9 @@ test('Jev が無ければ haiku に選ばせ、動いている処理が無けれ
   await until(() => !!peekWaiting(testing) && !!peekWaiting(stopped));
   assert.equal(peekWaiting(testing), 'work');
   assert.equal(peekWaiting(stopped), 'human');
+
+  useFakeClaude(tmp, `console.log(JSON.stringify({ structured_output: { waiting: 'event' } }));`);
+  t.mock.timers.tick(60_000);
+  await until(() => peekWaiting(stopped) === 'event');
+  assert.equal(peekWaiting(stopped), 'event');
 });
