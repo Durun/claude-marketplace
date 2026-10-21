@@ -437,9 +437,9 @@ const JIRA_MAX_AGE = 30_000;
 /** API トークンが無いときはリンクだけ返す。 */
 export const jiraIssue = (key: string): JiraIssue => {
   const badge = JIRA_AUTH
-    ? peekCached(`jira-issue:${key}`, { maxAge: JIRA_BADGE_MAX_AGE }, async () => {
+    ? peekCached(`jira-issue-v2:${key}`, { maxAge: JIRA_BADGE_MAX_AGE }, async () => {
         const { fields } = await jiraFetch<JiraIssueBody>(`issue/${encodeURIComponent(key)}?fields=summary,status`);
-        return { summary: fields?.summary, status: fields?.status?.name };
+        return { summary: fields?.summary, status: fields?.status?.name, statusCategory: fields?.status?.statusCategory?.key };
       })
     : undefined;
   return { key, url: browseUrl(key), ...badge };
@@ -642,7 +642,7 @@ const readJiraDetail = async (key: string): Promise<JiraDetail> => {
 export const transitionJira = async (key: string, id: string): Promise<void> => {
   await jiraFetch(`issue/${key}/transitions`, { method: 'POST', body: JSON.stringify({ transition: { id } }) });
   refreshedAt = Date.now();
-  forgetCached(`jira-issue:${key}`, `jira:${key}`, 'jira-refs', /^jira-search:/);
+  forgetCached(`jira-issue-v2:${key}`, `jira:${key}`, 'jira-refs', /^jira-search:/);
 };
 
 /** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */
