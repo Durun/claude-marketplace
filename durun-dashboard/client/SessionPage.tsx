@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Attention, type ChatEntry, type DocMeta, type OutboxMessage, type Session, type Snapshot, bookmarkKey } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
@@ -183,12 +183,23 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   </>
 );
 
-/** file は、コードの画面へのリンクで開いたファイル。 */
-const CodeWidget = ({ s, file }: { s: Session; file?: string }) => (
-  <WidgetPanel title="コード">
-    <CodeView s={s} focus={file} />
-  </WidgetPanel>
-);
+/**
+ * file は、コードの画面へのリンクで開いたファイル。
+ * タブを並べた枠は選んでいないタブも隠して描くが、差分を読むと git を何度も動かし、大きな表も描くので、初めて表に出るまでは描かない。
+ */
+const CodeWidget = ({ s, file }: { s: Session; file?: string }) => {
+  const [shown, setShown] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown || !ref.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setShown(true);
+    });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [shown]);
+  return <WidgetPanel title="コード">{shown ? <CodeView s={s} focus={file} /> : <div ref={ref} />}</WidgetPanel>;
+};
 
 const UsageWidget = ({ s }: { s: Session }) => (
   <WidgetPanel title="使用量">
