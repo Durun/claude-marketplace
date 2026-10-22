@@ -320,16 +320,19 @@ const useMessageDraft = (sessionId: string): [string, (next: string | ((prev: st
   return [text, setText];
 };
 
-/** compact の確認。XP の警告のメッセージボックスに倣う。「はい」で閉じたときだけ ok を真にし、× と Esc は「いいえ」と同じに扱う。 */
-const CompactConfirm = ({ onClose }: { onClose: (ok: boolean) => void }) => {
+/**
+ * 押し間違いでないかの確認。XP の警告のメッセージボックスに倣う。「はい」で閉じたときだけ ok を真にし、× と Esc は「いいえ」と同じに扱う。
+ * ブラウザの confirm は答えるまで画面ごと止まるので、ページの中のダイアログで尋ねる。
+ */
+const XpConfirm = ({ title, text, onClose }: { title: string; text: string; onClose: (ok: boolean) => void }) => {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => dialog.current?.showModal(), []);
   return (
-    <dialog ref={dialog} class="xp-confirm" role="alertdialog" aria-label="compact の確認" onClose={(e) => onClose(e.currentTarget.returnValue === 'yes')}>
+    <dialog ref={dialog} class="xp-confirm" role="alertdialog" aria-label={title} onClose={(e) => onClose(e.currentTarget.returnValue === 'yes')}>
       <form method="dialog">
-        <h3 class="xp-confirm-title">compact の確認</h3>
+        <h3 class="xp-confirm-title">{title}</h3>
         <button class="xp-confirm-close" aria-label="閉じる" />
-        <p class="xp-confirm-text"><AppIcon icon="⚠️" size={32} />このセッションの会話を compact しますか?</p>
+        <p class="xp-confirm-text"><AppIcon icon="⚠️" size={32} />{text}</p>
         <div class="xp-confirm-actions">
           <button value="yes" autofocus>はい(<u>Y</u>)</button>
           <button>いいえ(<u>N</u>)</button>
@@ -343,7 +346,7 @@ const CompactConfirm = ({ onClose }: { onClose: (ok: boolean) => void }) => {
 const MessageForm = ({ s }: { s: Session }) => {
   const [text, setText] = useMessageDraft(s.id);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'compact' | 'stop'>();
   const input = useRef<HTMLTextAreaElement>(null);
   const choice = useModelChoice(s);
   const [mode, setMode] = useSendMode();
@@ -384,7 +387,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   };
   // compact した会話は戻せないので、押し間違いでないかを確かめてから始める。
   const compact = async (ok: boolean) => {
-    setConfirming(false);
+    setConfirming(undefined);
     if (!ok) return;
     setBusy(true);
     const done = await attempt('compact', () => api.compact(s.id).then(() => true));
@@ -392,8 +395,9 @@ const MessageForm = ({ s }: { s: Session }) => {
     if (done) toast('compact を始めました');
   };
   // 止めると作業が途中で切れるので、押し間違いでないかを確かめる。
-  const stop = async () => {
-    if (!confirm('このセッションを止めますか?')) return;
+  const stop = async (ok: boolean) => {
+    setConfirming(undefined);
+    if (!ok) return;
     setBusy(true);
     const done = await attempt('停止', () => api.stop(s.id).then(() => true));
     setBusy(false);
@@ -418,14 +422,15 @@ const MessageForm = ({ s }: { s: Session }) => {
         <button class="btn" disabled={busy || !text.trim()} title={FORK_HELP} onClick={fork}>分岐</button>
         {choice.fields}
         <ContextPie usage={s.usage} />
-        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={() => setConfirming(true)}>compact</button>
+        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={() => setConfirming('compact')}>compact</button>
         {isLive(s) && (
-          <button class="btn btn-danger" disabled={busy || s.kind !== 'bg'} title={s.kind === 'bg' ? STOP_HELP : NO_STOP_HELP} onClick={stop}>
+          <button class="btn btn-danger" disabled={busy || s.kind !== 'bg'} title={s.kind === 'bg' ? STOP_HELP : NO_STOP_HELP} onClick={() => setConfirming('stop')}>
             停止
           </button>
         )}
       </div>
-      {confirming && <CompactConfirm onClose={compact} />}
+      {confirming === 'compact' && <XpConfirm title="compact の確認" text="このセッションの会話を compact しますか?" onClose={compact} />}
+      {confirming === 'stop' && <XpConfirm title="停止の確認" text="このセッションを止めますか?" onClose={stop} />}
     </>
   );
 };
