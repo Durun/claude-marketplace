@@ -101,3 +101,23 @@ test('readStatusline は、更新時刻と大きさが前に読んだときと�
   write(40, recent);
   assert.equal(readStatusline('s2')?.usedPercent, 40);
 });
+
+test('週の制限をリセットした後は、止まったセッションに残る前の使用率ではなく、今の 5 時間の枠で読んだ使用率を出し、5 時間の枠がどれも終われば記録した最後の値を出す', () => {
+  fs.rmSync(STATUSLINE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
+  state.rateWindows = {};
+  const write = (name: string, rateLimits: object): void => fs.writeFileSync(path.join(STATUSLINE_DIR, `${name}.json`), JSON.stringify({ rate_limits: rateLimits }));
+  const now = Math.floor(Date.now() / 1000);
+  const week = { resets_at: now + 5 * 86400 };
+  // リセットの前に止まったセッションと、リセットの後に API を呼んだセッション。週の枠のリセット時刻は変わらない。
+  write('before', { five_hour: { used_percentage: 44, resets_at: now + 3600 }, seven_day: { ...week, used_percentage: 69 } });
+  write('after', { five_hour: { used_percentage: 1, resets_at: now + 4 * 3600 }, seven_day: { ...week, used_percentage: 2 } });
+  recordRateLimits();
+  assert.equal(readRateLimits()?.sevenDay?.usedPercent, 2);
+
+  // 5 時間の枠が終わると、Claude Code は statusline から 5 時間の枠を外して描き直す。
+  write('before', { five_hour: { used_percentage: 44, resets_at: now - 3600 }, seven_day: { ...week, used_percentage: 69 } });
+  write('after', { seven_day: { ...week, used_percentage: 2 } });
+  const limits = readRateLimits();
+  assert.deepEqual([limits?.fiveHour, limits?.sevenDay?.usedPercent], [undefined, 2]);
+});

@@ -616,15 +616,30 @@ const newestLimit = (limits: (RawLimit | undefined)[], now: number): RateLimit |
 const withPoints = (limit: RateLimit | undefined, recorded: RateWindow | undefined): RateLimit | undefined =>
   recorded && limit?.resetsAt === recorded.resetsAt ? { ...limit, points: recorded.points } : limit;
 
-/** レート制限はアカウント単位なので、全セッションの statusline から最新の値を選ぶ。 */
+/** 記録した推移の最後の使用率。枠が終わっていれば無い。 */
+const lastRecorded = (recorded: RateWindow | undefined, now: number): RateLimit | undefined =>
+  recorded && recorded.resetsAt > now ? { usedPercent: recorded.points.at(-1)?.[1] ?? 0, resetsAt: recorded.resetsAt } : undefined;
+
+/**
+ * レート制限はアカウント単位なので、全セッションの statusline から最新の値を選ぶ。
+ * 週の制限をリセットしても週の枠のリセット時刻は変わらず、止まったセッションには前の高い使用率が残る。
+ * リセットでは 5 時間の枠が始まり直すので、週の使用率は、今の 5 時間の枠で API を呼んだセッションの値から選ぶ。
+ * 5 時間の枠がどれも終わっていれば、その後に API を呼んだセッションは無いので、記録した最後の値を使う。
+ */
 export const readRateLimits = (): RateLimits | undefined => {
   const now = Date.now();
   const all = listDir(STATUSLINE_DIR)
     .filter((f) => f.endsWith('.json') && now - (mtimeOf(path.join(STATUSLINE_DIR, f)) ?? 0) < RATE_LIMIT_MAX_AGE_MS)
     .map((f) => readJsonCached<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
-  const fiveHour = withPoints(newestLimit(all.map((l) => l?.five_hour), now), state.rateWindows.fiveHour);
-  const sevenDay = withPoints(newestLimit(all.map((l) => l?.seven_day), now), state.rateWindows.sevenDay);
-  return fiveHour || sevenDay ? { fiveHour, sevenDay, updatedAt: now } : undefined;
+  const fiveHour = newestLimit(all.map((l) => l?.five_hour), now);
+  const fiveHourEnd = fiveHour?.resetsAt;
+  const sevenDay =
+    fiveHourEnd === undefined
+      ? lastRecorded(state.rateWindows.sevenDay, now)
+      : newestLimit(all.filter((l) => (l?.five_hour?.resets_at ?? 0) * 1000 === fiveHourEnd).map((l) => l?.seven_day), now);
+  return fiveHour || sevenDay
+    ? { fiveHour: withPoints(fiveHour, state.rateWindows.fiveHour), sevenDay: withPoints(sevenDay, state.rateWindows.sevenDay), updatedAt: now }
+    : undefined;
 };
 
 /**
