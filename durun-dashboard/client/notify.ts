@@ -16,8 +16,22 @@ export const KIND_LABEL: Record<AttentionKind, string> = {
   doc: '資料',
 };
 
-export const notificationPermission = (): NotificationPermission | 'unsupported' =>
-  typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+// Notification.permission は読むたびにブラウザーへ同期で問い合わせ、マシンが混んでいると画面を数百ミリ秒止める。
+// 最初に 1 回だけ読み、その後は Permissions API が知らせる変化で覚え直す。
+let permission: NotificationPermission | 'unsupported' | undefined;
+
+export const notificationPermission = (): NotificationPermission | 'unsupported' => {
+  if (permission) return permission;
+  if (typeof Notification === 'undefined') return (permission = 'unsupported');
+  navigator.permissions
+    ?.query({ name: 'notifications' })
+    .then((status) => {
+      status.onchange = () => (permission = status.state === 'prompt' ? 'default' : status.state);
+    })
+    // Permissions API で通知の許可を尋ねられないブラウザーでは、最初に読んだ値を使い続ける。
+    .catch(() => {});
+  return (permission = Notification.permission);
+};
 
 const show = (a: Attention, sessionName: string) => {
   try {
