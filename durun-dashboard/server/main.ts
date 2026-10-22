@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
@@ -20,7 +21,7 @@ import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
 import { OLD_GOOGLE_HOME, fetchGoogle, fetchLucky } from './google.ts';
-import { recordError } from './errors.ts';
+import { recordError, recordSlow } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
@@ -865,12 +866,13 @@ const focusOf = async (body: unknown): Promise<Focus | undefined> => {
 
 const MAX_CLIENT_ERROR_CHARS = 4000;
 
-/** 画面で起きた例外。改善要望の材料になるので、長すぎるものは切る。 */
+/** 画面で起きた例外と、画面が固まった処理。固まった処理には、固まっていた時間が ms に付く。改善要望の材料になるので、長すぎるものは切る。 */
 const clientError = (body: unknown): void => {
-  const { message, stack, url } = (body ?? {}) as Record<string, unknown>;
+  const { message, stack, url, ms } = (body ?? {}) as Record<string, unknown>;
   if (typeof message !== 'string' || !message.trim()) throw new HttpError(400, 'message is required');
   const text = (v: unknown): string | undefined => (typeof v === 'string' ? v.slice(0, MAX_CLIENT_ERROR_CHARS) : undefined);
-  recordError('client', message.slice(0, MAX_CLIENT_ERROR_CHARS), text(stack), text(url));
+  if (typeof ms === 'number') recordSlow('client', message.slice(0, MAX_CLIENT_ERROR_CHARS), ms, text(url), text(stack));
+  else recordError('client', message.slice(0, MAX_CLIENT_ERROR_CHARS), text(stack), text(url));
 };
 
 const toComments = (body: unknown): ReviewComment[] =>
@@ -1023,10 +1025,24 @@ const proofFileOf = (id: string, body: unknown): ProofFile => {
   return { id, title: field<string>(body, 'title', 'string'), glossary: field<string>(body, 'glossary', 'string'), versions: versions as ProofVersion[], updatedAt: Date.now() };
 };
 
-const POST_ROUTES: [RegExp, Handler][] = [
+// API が返るまでの見込み。超えたら、遅い処理として改善要望にする。
+// ダッシュボードの中で済む処理は、待たされたと感じさせないよう 1 秒で見込む。外部を待つ API は、待つ相手に合わせて見込む。
+const OWN_MS = 1000;
+// gh、JIRA、Notion、Jev の API。
+const WEB_API_MS = 5000;
+// claude でセッションを起動し、止め、再開する。止まるのを待つだけで十数秒かかることがある。
+const CLAUDE_MS = 20_000;
+const HAIKU_MS = 15_000;
+// コードや長い文章を読ませて書かせる。数分かかることがある。
+const READER_MS = 5 * 60_000;
+
+/** 経路、処理、返るまでの見込み（ミリ秒）。見込みを省くと OWN_MS。 */
+type Route = [RegExp, Handler, number?];
+
+const POST_ROUTES: Route[] = [
   [/^\/api\/wallpaper\/url$/, (_, b) => setWallpaperUrl(b)],
   [/^\/api\/wallpaper\/reset$/, () => clearWallpaper(DATA_DIR)],
-  [/^\/api\/sessions$/, (_, b) => newSession(b)],
+  [/^\/api\/sessions$/, (_, b) => newSession(b), CLAUDE_MS],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
   [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
@@ -1037,73 +1053,73 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs$/, ([, id = ''], b) => shareDoc(id, b)],
   [/^\/api\/sessions\/([^/]+)\/proofs$/, ([, id = ''], b) => addProof(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/badges$/, ([, id = ''], b) => addBadge(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/badges$/, ([, id = ''], b) => addBadge(id, b), WEB_API_MS],
   [/^\/api\/sessions\/([^/]+)\/badges\/remove$/, ([, id = ''], b) => removeBadge(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/pin$/, ([, id = ''], b) => pinDocs(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/terms$/, ([, id = ''], b) => addTerm(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/terms$/, ([, id = ''], b) => addTerm(id, b), HAIKU_MS],
   [/^\/api\/sessions\/([^/]+)\/terms\/hide$/, ([, id = ''], b) => hideTerm(id, b)],
   [/^\/api\/sessions\/([^/]+)\/bookmarks$/, ([, id = ''], b) => setBookmark(id, b)],
   [/^\/api\/sessions\/([^/]+)\/message$/, ([, id = ''], b) => sendMessage(sessionMeta(id).id, field<string>(b, 'text', 'string'))],
   [/^\/api\/sessions\/([^/]+)\/queue$/, ([, id = ''], b) => queueMessage(id, b)],
   [/^\/api\/sessions\/([^/]+)\/rewind$/, ([, id = ''], b) => rewind(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/fork$/, ([, id = ''], b) => fork(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd)],
-  [/^\/api\/sessions\/([^/]+)\/stop$/, ([, id = '']) => stopSession(sessionMeta(id).id)],
-  [/^\/api\/sessions\/([^/]+)\/offline$/, ([, id = ''], b) => answerOffline(sessionMeta(id).id, field<boolean>(b, 'resume', 'boolean'))],
+  [/^\/api\/sessions\/([^/]+)\/switch$/, ([, id = ''], b) => switchModel(id, b), CLAUDE_MS],
+  [/^\/api\/sessions\/([^/]+)\/fork$/, ([, id = ''], b) => fork(id, b), CLAUDE_MS],
+  [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd), CLAUDE_MS],
+  [/^\/api\/sessions\/([^/]+)\/stop$/, ([, id = '']) => stopSession(sessionMeta(id).id), CLAUDE_MS],
+  [/^\/api\/sessions\/([^/]+)\/offline$/, ([, id = ''], b) => answerOffline(sessionMeta(id).id, field<boolean>(b, 'resume', 'boolean')), CLAUDE_MS],
   [/^\/api\/sessions\/([^/]+)\/review$/, ([, id = ''], b) => review(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b)],
-  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], b) => setViewed(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b), WEB_API_MS],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], b) => setViewed(id, b), WEB_API_MS],
   // 候補や概要や PR の分析は作るたびに API を使うので、他のサイトから GET で起こされないよう POST で受ける。
-  [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id)],
-  [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) })],
-  [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id))],
-  [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id)],
-  [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string'))],
-  [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) }), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id)), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string')), READER_MS],
+  [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b), READER_MS],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
-  [/^\/api\/pr\/comment$/, (_, b) => commentPr(b)],
+  [/^\/api\/pr\/comment$/, (_, b) => commentPr(b), WEB_API_MS],
   // 渡されたディレクトリで gh を動かすので、他のサイトから GET で起こされないよう POST で受ける。
-  [/^\/api\/github\/refs$/, (_, b) => githubRefs(b)],
+  [/^\/api\/github\/refs$/, (_, b) => githubRefs(b), WEB_API_MS],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
-  [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b)],
-  [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b)],
+  [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b), WEB_API_MS],
+  [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b), WEB_API_MS],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
-  [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b)],
+  [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b), READER_MS],
   [/^\/api\/terminal\/([\w-]+)\/input$/, ([, id = ''], b) => terminalInput(id, b)],
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
   [/^\/api\/errors$/, (_, b) => clientError(b)],
   [/^\/api\/local-file$/, (_, b, url) => saveLocalFile(url, b)],
   // 作るたびに Jev を使うので、他のサイトから GET で起こされないよう POST で受ける。
-  [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b)],
-  [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
+  [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b), WEB_API_MS],
+  [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];
 
-const GET_ROUTES: [RegExp, Handler][] = [
+const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
-  [/^\/api\/jira$/, (_, __, url) => jiraSearch(url)],
-  [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url)))],
-  [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url)))],
-  [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url)))],
-  [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url)))],
-  [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) }))],
+  [/^\/api\/jira$/, (_, __, url) => jiraSearch(url), WEB_API_MS],
+  [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) })), WEB_API_MS],
   [/^\/api\/pr$/, (_, __, url) => {
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr, wantsFresh(url)));
-  }],
+  }, WEB_API_MS],
   [/^\/api\/memory$/, () => platform.readMemory()],
   [/^\/api\/proofread\/files$/, () => recentProofFiles()],
   // 無いファイルは、画面が新しく書き始めるので null を返す。読めないファイルと見分けるため、404 にはしない。
@@ -1121,8 +1137,8 @@ const GET_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/background\/([^/]+)\/output$/, ([, id = '', taskId = '']) => bgOutputOf(id, taskId)],
   [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf({ sessionId: id })],
   [/^\/api\/skills$/, (_, __, url) => skillsOf({ cwd: url.searchParams.get('cwd') || undefined })],
-  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url))],
-  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr, wantsFresh(url)))],
+  [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url)), WEB_API_MS],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
 ];
 
@@ -1220,13 +1236,25 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png|html)$/.exec(url.pathname);
   if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');
   if (req.method === 'GET' && (await serveStatic(req, res, url.pathname))) return;
-  for (const [pattern, handler] of routes) {
+  for (const [pattern, handler, expectedMs = OWN_MS] of routes) {
     const m = pattern.exec(url.pathname);
     if (!m) continue;
     const body = req.method === 'POST' ? await readBody(req) : undefined;
-    const result = await handler(m.map((s) => decodeURIComponent(s)), body, url, req);
-    if (result === undefined) return void res.writeHead(204).end();
-    return json(req, res, result);
+    const started = performance.now();
+    const elu = performance.eventLoopUtilization();
+    try {
+      const result = await handler(m.map((s) => decodeURIComponent(s)), body, url, req);
+      if (result === undefined) return void res.writeHead(204).end();
+      return json(req, res, result);
+    } finally {
+      const ms = performance.now() - started;
+      if (ms > expectedMs) {
+        // 外部を待っていたのか、ほかの処理でサーバーが塞がっていたのかを見分けられるよう、JavaScript を動かしていた時間を添える。
+        const busy = `サーバーが JavaScript を動かしていた時間: ${(performance.eventLoopUtilization(elu).active / 1000).toFixed(1)} 秒（ほかの API や裏の処理も含む）。残りは、外部のコマンドや API、ファイルを待っていた時間。`;
+        // 同じ API は経路でまとめる。経路の正規表現は、区切りの \/ を / に戻して読みやすくする。
+        recordSlow('server', `${req.method} ${pattern.source.replaceAll('\\/', '/')} の応答（見込み ${expectedMs / 1000} 秒）`, ms, `${req.method} ${url.pathname}`, busy);
+      }
+    }
   }
   throw new HttpError(404, 'not found');
 };

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 // 実際の状態や要望に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-errors-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
-const { recordError } = await import('../server/errors.ts');
+const { recordError, recordSlow } = await import('../server/errors.ts');
 const { state } = await import('../server/store.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
@@ -37,4 +37,18 @@ test('同じエラーは 1 件の要望にまとめ、未対応のエラーの�
   finish(refiled);
   recordError('server', 'unknown session: 2', stack(97));
   assert.equal(pending().length, 2);
+});
+
+test('遅い処理は、同じ処理を 1 件の要望にまとめて最長の時間を数え、未対応の要望はエラーとは別に 3 件までにする', () => {
+  const before = pending();
+  recordSlow('server', 'GET ^/api/x$ の応答（見込み 1 秒）', 1500, 'GET /api/x');
+  recordSlow('server', 'GET ^/api/x$ の応答（見込み 1 秒）', 3200, 'GET /api/x');
+  const [slow = ''] = pending().filter((f) => !before.includes(f));
+  assert.match(JSON.parse(fs.readFileSync(path.join(feedbackDir, slow), 'utf8')).text, /見込みより時間のかかった処理.*サーバー（GET \/api\/x）.*遅い処理: GET \^\/api\/x\$ の応答.*1 回（最長 1\.5 秒/s);
+  assert.deepEqual(Object.values(state.errors).filter((e) => e.item === slow).map((e) => [e.count, e.slowestMs]), [[2, 3200]]);
+
+  for (const name of ['a', 'b', 'c']) recordSlow('client', `home の画面を固めた「${name}」の処理`, 600);
+  assert.equal(pending().length - before.length, 3);
+  recordError('client', 'TypeError: d is undefined');
+  assert.equal(pending().length - before.length, 4);
 });

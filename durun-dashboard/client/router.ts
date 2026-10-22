@@ -36,6 +36,12 @@ export const currentSessionId = (): string => {
   return route.page === 'session' ? route.id : '';
 };
 
+/** 開いている画面の種類。id と検索語は含めないので、同じ種類の画面で起きたことをまとめられる。 */
+export const currentPage = (): string => {
+  const route = parseHash(location.hash);
+  return route.page === 'session' ? `session/${route.tab}` : route.page;
+};
+
 export const href = {
   home: (): string => '#/',
   docs: (): string => '#/docs',

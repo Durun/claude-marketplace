@@ -109,6 +109,8 @@ export type ErrorRecord = {
   stack?: string;
   /** サーバーなら API の経路、画面なら URL */
   where?: string;
+  /** 遅い処理なら、かかった時間の最長（ミリ秒） */
+  slowestMs?: number;
   count: number;
   firstAt: number;
   lastAt: number;

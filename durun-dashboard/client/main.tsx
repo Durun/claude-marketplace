@@ -26,7 +26,7 @@ import { OfflineDialog } from './OfflineDialog.tsx';
 import { PROOFREAD_KEY, ProofreadFloat } from './Proofread.tsx';
 import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
-import { type Route, href, useRoute } from './router.ts';
+import { type Route, currentPage, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
 import { useRemoveFailureToasts, useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
@@ -190,6 +190,28 @@ addEventListener('error', (e) => {
   reportError(e.error ?? e.message);
 });
 addEventListener('unhandledrejection', (e) => reportError(e.reason));
+
+// 画面が見込みより長く固まったら、固まっていた間に動いたスクリプトを添えてサーバーへ送り、改善要望にしてもらう。
+// 例外と同じく、同じ種類の画面で同じきっかけのものは 1 回だけ送る。long-animation-frame を出さないブラウザでは計測しない。
+const FREEZE_MS = 500;
+/** long-animation-frame の記録のうち、使うところ。TypeScript の DOM の型にはまだ無い。 */
+type LongAnimationFrame = PerformanceEntry & {
+  scripts: { invoker: string; sourceFunctionName: string; sourceURL: string; sourceCharPosition: number; duration: number }[];
+};
+if (PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
+  new PerformanceObserver((list) => {
+    for (const frame of list.getEntries() as LongAnimationFrame[]) {
+      if (frame.duration <= FREEZE_MS) continue;
+      const scripts = frame.scripts.toSorted((a, b) => b.duration - a.duration);
+      // スクリプトが動いていなければ、スタイルの計算やレイアウトなどの描画で固まっている。
+      const message = `${currentPage()} の画面を固めた「${scripts[0]?.invoker || '描画'}」の処理（見込み ${FREEZE_MS / 1000} 秒）`;
+      if (reported.has(message)) continue;
+      reported.add(message);
+      const detail = scripts.map((s) => `${s.invoker}: ${s.sourceFunctionName || '無名の関数'}（${s.sourceURL.split('/').pop()}:${s.sourceCharPosition}）${Math.round(s.duration)} ms`);
+      api.reportSlow(message, frame.duration, detail.join('\n')).catch(() => {});
+    }
+  }).observe({ type: 'long-animation-frame', buffered: true });
+}
 
 const root = document.getElementById('app');
 if (root) render(<App />, root);

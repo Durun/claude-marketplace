@@ -192,6 +192,8 @@ export const api = {
   wallpaperUrl: (url: string) => postJson('/api/wallpaper/url', { url }),
   resetWallpaper: () => postJson('/api/wallpaper/reset'),
   reportError: (message: string, stack: string | undefined) => postJson('/api/errors', { message, stack, url: location.href }),
+  /** 画面が固まった処理。detail は、固まっていた間に動いたスクリプトの内訳。 */
+  reportSlow: (message: string, ms: number, detail: string) => postJson('/api/errors', { message, ms, stack: detail, url: location.href }),
 };
 
 /** 失敗をトーストで知らせる。成功なら結果を、失敗なら undefined を返す。 */
