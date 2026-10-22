@@ -731,8 +731,19 @@ export const parseDiff = (text: string): DiffFile[] => {
 const git = async (cwd: string, args: string[]): Promise<string> =>
   (await run('git', ['-c', 'core.quotePath=false', ...args], { cwd, maxBuffer: MAX_BUFFER })).stdout;
 
-/** cwd を含むリポジトリの直下。 */
-const repoRoot = async (cwd: string): Promise<string> => (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
+// マシンが混んでいると、git を起動するだけで数秒かかることがある。リポジトリの直下は作業ディレクトリごとに変わらないので、一度聞いたら覚える。
+const roots = new Map<string, Promise<string>>();
+
+/** cwd を含むリポジトリの直下。聞けなかったときは覚えず、次に聞き直す。 */
+const repoRoot = (cwd: string): Promise<string> => {
+  let root = roots.get(cwd);
+  if (!root) {
+    root = git(cwd, ['rev-parse', '--show-toplevel']).then((out) => out.trim());
+    roots.set(cwd, root);
+    root.catch(() => roots.delete(cwd));
+  }
+  return root;
+};
 
 /** 作業ツリーの直下。onBranch が false なら、求めたブランチを開いた worktree が無く、dir は別のコードを開いている。 */
 export type Tree = { dir: string; onBranch: boolean };
@@ -796,9 +807,9 @@ const parseCommits = (out: string): CommitInfo[] =>
 /** 先端を git に渡せる参照にする。未コミットの変更は HEAD の上に載っているので、HEAD から数える。 */
 const headOf = (tip: string): string => (tip === WORKTREE ? 'HEAD' : tip);
 
-/** 範囲を選ぶ候補。先端から first-parent でさかのぼった最近のコミットに、入っていない範囲の端を古い側に足す。 */
-const listCommits = async (root: string, tip: string, range: DiffRange): Promise<CommitInfo[]> => {
-  const commits = parseCommits(await git(root, ['log', '--first-parent', `-n${COMMIT_LIMIT}`, COMMIT_FORMAT, headOf(tip)]));
+/** 範囲を選ぶ候補。先端から first-parent でさかのぼった最近のコミット recent に、入っていない範囲の端を古い側に足す。 */
+const listCommits = async (root: string, recent: string, range: DiffRange): Promise<CommitInfo[]> => {
+  const commits = parseCommits(recent);
   for (const end of [range.to, range.from]) {
     if (end !== WORKTREE && !commits.some((c) => c.sha === end)) commits.push(...parseCommits(await git(root, ['log', '-1', COMMIT_FORMAT, end])));
   }
@@ -811,12 +822,15 @@ const branchBases = async (root: string, baseRef: string | undefined, view: Bran
   return [view ? undefined : baseRef, 'HEAD', 'main', 'master'].filter((r): r is string => !!r).map((r) => `origin/${r}`);
 };
 
-/** 範囲を渡されないときの差分の比較元と、範囲の始まり。分岐点が無ければ、作業ツリーは未コミットの変更だけに、ブランチは先端のコミットだけにする。 */
-const defaultStart = async (root: string, tip: string, bases: string[]): Promise<{ base: string; from: string }> => {
+/**
+ * 範囲を渡されないときの差分の比較元と、範囲の始まり。分岐点が無ければ、作業ツリーは未コミットの変更だけに、ブランチは先端のコミットだけにする。
+ * 範囲の始まりは、差分を読む git と同時に数えられるよう、数え終えるのを待たずに返す。
+ */
+const defaultStart = async (root: string, tip: string, bases: string[]): Promise<{ base: string; from: string | Promise<string> }> => {
   const point = await findBranchPoint(root, headOf(tip), bases);
   if (!point) return tip === WORKTREE ? { base: 'HEAD', from: WORKTREE } : { base: await parentOf(root, tip), from: tip };
-  const branch = (await git(root, ['rev-list', '--first-parent', `${point}..${headOf(tip)}`])).trim().split('\n');
-  return { base: point, from: branch.at(-1) || tip };
+  const from = git(root, ['rev-list', '--first-parent', `${point}..${headOf(tip)}`]).then((out) => out.trim().split('\n').at(-1) || tip);
+  return { base: point, from };
 };
 
 /** ファイルの中身を、まるごと 1 つの hunk にする。新規ファイルは追加の行に、差分に無いファイルは文脈の行にする。中身を渡されない大きなファイルとバイナリは、中身を出さない。 */
@@ -859,13 +873,15 @@ export const gitDiff = async (cwd: string, baseRef: string | undefined, full: bo
   const from = want.from && (await end(want.from));
   const start = from ? { from, base: from === WORKTREE ? 'HEAD' : await parentOf(root, from) } : await defaultStart(root, tip, await branchBases(root, baseRef, view));
   const ends = to === WORKTREE ? [start.base] : [start.base, to];
-  const range = { from: start.from, to };
-  // 差分、未追跡のファイル、コミットの一覧は互いの結果を使わないので、git を同時に動かして待つ時間を縮める。
-  const [raw, untracked, commits] = await Promise.all([
+  // 差分、未追跡のファイル、範囲の始まり、最近のコミットは互いの結果を使わないので、git を同時に動かして待つ時間を縮める。
+  const [raw, untracked, rangeFrom, recent] = await Promise.all([
     git(root, ['diff', '--no-color', '--no-ext-diff', '--find-renames', `-U${full ? FULL_CONTEXT_LINES : 3}`, ...ends]),
     to === WORKTREE ? untrackedFiles(root) : [],
-    listCommits(root, tip, range),
+    start.from,
+    git(root, ['log', '--first-parent', `-n${COMMIT_LIMIT}`, COMMIT_FORMAT, headOf(tip)]),
   ]);
+  const range = { from: rangeFrom, to };
+  const commits = await listCommits(root, recent, range);
   let text = raw;
   const truncated = text.length > MAX_DIFF_CHARS;
   if (truncated) {
