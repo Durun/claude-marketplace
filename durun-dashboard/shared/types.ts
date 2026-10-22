@@ -365,6 +365,17 @@ export type ImproveState = ImproveSettings & {
   error?: string;
 };
 
+/** Claude が authenticate で求め、人間に確かめている認証。 */
+export type AuthRequest = {
+  id: string;
+  /** 何の認証か（例: Google Cloud の認証、MCP サーバー「notion」の認証） */
+  title: string;
+  /** 人間が OK を押すと動かす、認証のコマンド */
+  command: string;
+  /** 認証を求めたセッション。求めた順。 */
+  sessionIds: string[];
+};
+
 export type Snapshot = {
   now: number;
   sessions: Session[];
@@ -378,6 +389,8 @@ export type Snapshot = {
   improve: ImproveState;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに続けさせる。前に受け取ったスナップショットには無いことがある。 */
   autoContinue?: boolean;
+  /** 人間に確かめている認証。求めた順。前に受け取ったスナップショットには無いことがある。 */
+  auth?: AuthRequest[];
   /** 人間が「更新」で JIRA の情報を取り直させた時刻。JIRA の一覧のウィジェットは、変わったら探し直す。 */
   jiraRefreshedAt: number;
   /** サーバーが外部の情報源から裏で読み直した値が変わるたびに増える。画面は、変わったらサーバーのキャッシュを通す API を取り直す。前に受け取ったスナップショットには無いことがある。 */

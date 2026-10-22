@@ -2,6 +2,7 @@ import { type ComponentType, render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { JIRA_ISSUE_KEY, PR_URL, type Snapshot, notionPageId } from '../shared/types.ts';
 import { api } from './api.ts';
+import { AuthDialog } from './AuthDialog.tsx';
 import { BOOKMARKS_KEY, BookmarksFloat } from './Bookmarks.tsx';
 import { showWidget } from './Dashboard.tsx';
 import { DOC_KEY, DocFloat, DocViewer, DocsPage, FILE_KEY, FileFloat, openDocFloat, plainClick } from './Docs.tsx';
@@ -160,8 +161,9 @@ const App = () => {
           {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
         </main>
         {snapshot && <Floats snapshot={snapshot} />}
-        {/* 前に受け取ったスナップショットから描くと、もう答えた停止を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
+        {/* 前に受け取ったスナップショットから描くと、もう答えた停止や認証を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
         <OfflineDialog snapshot={fresh} />
+        <AuthDialog snapshot={fresh} />
         <Toasts />
         <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
         {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}

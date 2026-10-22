@@ -1,9 +1,10 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '../shared/types.ts';
+import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
 import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { sessionIdForPid } from './hooks.ts';
@@ -25,6 +26,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
+- Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。`;
 
 const TOOLS = [
@@ -113,6 +115,18 @@ const TOOLS = [
         title: { type: 'string', description: 'このセッションの作業名' },
         jira: { type: 'array', items: { type: 'string' }, description: '関連する JIRA の課題キー（例: PROJ-1102）' },
       },
+    },
+  },
+  {
+    name: 'authenticate',
+    description: 'Google Cloud か MCP サーバーの認証を人間に頼み、認証が終わるまで待つ。認証済みなら、尋ねずにすぐ返る。人間が OK を押すと、ダッシュボードがブラウザでの認証を始める。結果は文字列で返る。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: { type: 'string', enum: ['gcloud', 'mcp'], description: 'gcloud は Google Cloud（gcloud の CLI）。mcp は MCP サーバー（Slack、Notion など）。' },
+        server: { type: 'string', description: 'provider が mcp のときに、認証する MCP サーバーの名前。認証が要ると知らされた名前（例: notion、claude.ai Slack）をそのまま渡す。' },
+      },
+      required: ['provider'],
     },
   },
   {
@@ -450,6 +464,15 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void showBranches(req, sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
+    case 'authenticate': {
+      const provider = authProvider(args.provider, str(args.server), state.sessions[sessionId]?.cwd);
+      if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud か mcp を渡してください。mcp のときは、server に MCP サーバーの名前も渡してください。', true) });
+      const finish = openStream(res, rpcId, params, () => '人間の確認と認証を待っています');
+      return void requestAuth(provider, sessionId).then(
+        (text) => finish(textResult(text)),
+        (e: Error) => finish(textResult(`${provider.title}ができませんでした。${e.message}`, true)),
+      );
+    }
     case 'proofread':
       return str(args.file) ? send(res, { id: rpcId, result: versionReport(args) }) : void runProofread(res, rpcId, params, sessionId, args);
     case 'comment_proofread':

@@ -112,6 +112,28 @@ JIRA の課題の画面では、本文とコメントの見出し、表、タス
 課題の画面でステータスを押すと、今のステータスから移せるステータスを並べ、選ぶとそのステータスへ移す。
 Claude へのメッセージを届けられなかったときは、どの画面を開いていても、理由（作業ディレクトリが信頼されていない、など）をトーストで知らせ、通知を許可していれば通知も出す。理由は、送信したメッセージの一覧にも残る。
 
+## Claude が求めた認証
+
+Claude は、Google Cloud や MCP サーバー（Slack、Notion など）の認証が要るときに、MCP の `authenticate` で人間に頼む。
+認証が切れていなければ、尋ねずに認証済みと返す。
+切れていれば、Windows XP の情報のメッセージボックスに倣ったダイアログで、認証を求めたセッションと、OK で動かすコマンドを出す。
+OK を押すと、ダッシュボードを動かしている端末でコマンドを動かし、ブラウザでの認証が終わると、Claude に結果を返す。
+キャンセルか × を押すと、認証せずに却下を返す。
+同じ相手の認証を複数のセッションが求めても、ダイアログは 1 つだけ出し、1 回の答えと認証の結果を、求めたすべてのセッションに返す。
+ダイアログはモーダルにしないので、出ている間もほかの操作ができる。
+認証を求めている相手が複数あるときは、古いものから 1 つずつ尋ねる。
+
+| 相手 | 認証済みとみなすとき | 認証のコマンド |
+|---|---|---|
+| Google Cloud | `gcloud auth print-access-token` が成功する | `gcloud auth login` |
+| MCP サーバー | `claude mcp get <名前>` の Status が Connected | `claude mcp login <名前>` |
+
+Google Cloud の 2 つのコマンドは、`GCLOUD_CHECK_COMMAND` と `GCLOUD_LOGIN_COMMAND` で差し替えられる。
+MCP サーバーは、Claude が渡した名前で認証する。
+プロジェクトに限って登録した MCP サーバーも認証できるよう、コマンドは認証を求めたセッションの作業ディレクトリで動かす。
+登録されていない名前は、尋ねずに失敗を返す。
+認証のコマンドが 5 分たっても終わらなければ、止めて失敗を返す。
+
 ## 改善要望の自動実装
 
 改善要望のフォームで「自動で実装する」を ON にすると、ダッシュボードが `claude -p` のセッションを 1 つ起動し、たまっている要望をまとめて渡す。
@@ -133,7 +155,7 @@ Claude へのメッセージを届けられなかったときは、どの画面�
 プラグイン durun-dashboard が登録するもの。
 
 - フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion と EnterWorktree だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
-- MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`、`proofread`、`comment_proofread`、`revise_proofread`。新しく起動したセッションから使える。
+- MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`、`authenticate`、`proofread`、`comment_proofread`、`revise_proofread`。新しく起動したセッションから使える。
 
 `pnpm install-statusline` が登録するもの（任意）。
 
@@ -216,6 +238,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 | `NOTION_TOKEN` | Notion のページをダッシュボードで読むときに設定する。Notion の[インテグレーション](https://www.notion.so/profile/integrations)のトークンで、読みたいページをそのインテグレーションに共有しておく |
 | `CHROME_PATH` | 資料を PDF と PNG に書き出す Chrome。既定は macOS と Windows の標準の場所 |
 | `TERMINAL_ATTACH_COMMAND` | アプリ「コマンドプロンプト」が、screen や tmux のセッションにアタッチするコマンド。シェル（Windows では cmd.exe）で動かす。例えば `tmux new-session -A -s "$(basename "$PWD")"` は、作業ディレクトリの名前のセッションにアタッチし、無ければ作る |
+| `GCLOUD_LOGIN_COMMAND`、`GCLOUD_CHECK_COMMAND` | Claude が Google Cloud の認証を求めたときに、OK で動かすコマンドと、認証済みかを確かめるコマンド。既定は `gcloud auth login` と `gcloud auth print-access-token`。確かめのコマンドが成功すれば、尋ねずに認証済みと返す |
 | `TYPESAFE_AI_API_KEY` | 文章校正で、疑問が説明の区切りで解けたかと、文が主張を支えているかを、TypeSafe の Jev に確かめさせるときに設定する。入力待ちのセッションが何を待っているかも、Jev に分けさせる。無ければ haiku で代える |
 
 ## 開発

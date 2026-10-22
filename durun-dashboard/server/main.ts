@@ -10,6 +10,7 @@ import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
+import { answerAuth } from './auth.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
@@ -1089,6 +1090,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
+  [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];
 

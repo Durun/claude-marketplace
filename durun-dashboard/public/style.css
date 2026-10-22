@@ -707,13 +707,13 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .xp-confirm-actions > button { min-width: 75px; }
 .xp-confirm-actions > button:focus { outline: 1px solid #5a7edc; outline-offset: -3px; }
 /*
- * スリープや通信の途切れで止まったセッションの確認。XP の情報のメッセージボックスに倣い、i を描いた吹き出しを添える。
+ * 止まったセッションの再開や、Claude が求めた認証の確認。XP の情報のメッセージボックスに倣い、i を描いた吹き出しを添える。
  * ほかの操作をふさがないようモーダルにしないので、ウィンドウより手前に重ねる。
  */
-.offline-dialog { position: fixed; inset: 0; z-index: 85; max-width: min(440px, calc(100vw - 32px)); margin: auto; }
-.offline-dialog .xp-confirm-title { cursor: move; user-select: none; touch-action: none; }
-.offline-dialog-list { max-height: 40vh; margin: 0; padding: 0 24px 0 72px; overflow: auto; }
-.offline-dialog-list a { color: #00f; }
+.xp-info-window { position: fixed; inset: 0; z-index: 85; max-width: min(440px, calc(100vw - 32px)); margin: auto; }
+.xp-info-window .xp-confirm-title { cursor: move; user-select: none; touch-action: none; }
+.xp-info-list { max-height: 40vh; margin: 0; padding: 0 24px 0 72px; overflow: auto; }
+.xp-info-list a { color: #00f; }
 .xp-info-icon { flex: none; width: 32px; height: 32px; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><radialGradient id='g' cx='.35' cy='.3' r='.85'><stop offset='0' stop-color='%23fff'/><stop offset='1' stop-color='%23b9cbe8'/></radialGradient></defs><path d='M16 2.5C8.5 2.5 2.5 7.6 2.5 14c0 3.9 2.2 7.3 5.6 9.4L6 29.5l7.3-4.1c.9.2 1.8.3 2.7.3 7.5 0 13.5-5.1 13.5-11.7S23.5 2.5 16 2.5z' fill='url(%23g)' stroke='%235c7bb5'/><circle cx='16' cy='8.6' r='2.3' fill='%231b5fcc'/><path d='M13.2 12.3h4.4v8.9h1.6v2.1h-6v-2.1h1.6v-6.8h-1.6z' fill='%231b5fcc'/></svg>") center / contain no-repeat; }
 /* コマンドプロンプト。xterm.js が描く端末を、ウィンドウの余白なしで敷き詰める。端末の大きさは、この枠に収まる行と桁の数で決める。xterm.js は自分の要素に terminal のクラスを付けるので、枠には別の名前を使う。 */
 .terminal-host { flex: 1; min-height: 0; margin: -10px -12px -12px; background: #000; }

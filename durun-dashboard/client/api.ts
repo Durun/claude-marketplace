@@ -138,6 +138,8 @@ export const api = {
   stop: (id: string) => postJson<void>(`${session(id)}/stop`),
   /** スリープや通信の途切れで止まったセッションを続けるか、確認のダイアログで答える。 */
   answerOffline: (id: string, resume: boolean) => postJson<void>(`${session(id)}/offline`, { resume }),
+  /** Claude が求めた認証を進めるか、確認のダイアログで答える。 */
+  answerAuth: (id: string, ok: boolean) => postJson<void>(`/api/auth/${seg(id)}`, { ok }),
   diagram: (id: string, note: string) => postJson<DocMeta>(`${session(id)}/diagram`, { note }),
   exportDoc: async (id: string, format: 'pdf' | 'png' | 'html'): Promise<Blob> => {
     const res = await fetch(`/api/docs/${seg(id)}/export/${format}`, { method: 'POST' });
