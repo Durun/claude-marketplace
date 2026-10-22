@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofFile, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -35,7 +35,7 @@ import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
 import { recentProofFiles, readProofFile, writeProofFile } from './proofFiles.ts';
-import { MAX_SENTENCES, priorReadings, proofread, revise } from './proofread.ts';
+import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from './proofread.ts';
 import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
@@ -975,17 +975,21 @@ const proofSentences = (text: string): ReturnType<typeof parseProof> => {
   return sentences;
 };
 
-/** 文章校正の進み具合を、出来事ごとに 1 行の JSON で流す。画面が読むのをやめたら、残りの文を読ませない。続きから校正するときは、前に読んだ文の答えを readings で受ける。 */
+/** 文章校正の実行の種類。mode を送らない画面は明確化を求めている。 */
+const proofMode = (body: unknown): ProofMode => ((body as { mode?: unknown }).mode === 'summarize' ? 'summarize' : 'clarify');
+
+/** 文章校正の進み具合を、出来事ごとに 1 行の JSON で流す。画面が読むのをやめたら、残りの文を読ませない。続きから明確化するときは、前に読んだ文の答えを readings で受ける。 */
 const proofreadStream = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
   const body = await readBody(req);
   const text = field<string>(body, 'text', 'string');
   const glossary = field<string>(body, 'glossary', 'string');
   const sentences = proofSentences(text);
-  const prior = priorReadings((body as { readings?: unknown }).readings, sentences.length);
   const stop = new AbortController();
   res.on('close', () => stop.abort());
   res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
-  await proofread(text, sentences, glossary, (e) => res.write(`${JSON.stringify(e)}\n`), stop.signal, prior);
+  const emit = (e: ProofEvent) => res.write(`${JSON.stringify(e)}\n`);
+  if (proofMode(body) === 'summarize') await summarizeProof(text, sentences, glossary, emit, stop.signal);
+  else await proofread(text, sentences, glossary, emit, stop.signal, priorReadings((body as { readings?: unknown }).readings, sentences.length));
   res.end();
 };
 
@@ -1011,7 +1015,7 @@ const reviseProof = async (body: unknown): Promise<{ text: string }> => {
   const notes = field<unknown[]>(body, 'notes', 'object');
   if (!Array.isArray(fixed) || !Array.isArray(notes)) throw new HttpError(400, 'fixed and notes must be arrays');
   const valid = notes.filter((n): n is ReviseNote => Number.isInteger((n as ReviseNote)?.i) && typeof (n as ReviseNote).message === 'string');
-  return { text: await revise(text, proofSentences(text), field<string>(body, 'glossary', 'string'), new Set(fixed.filter(Number.isInteger) as number[]), valid) };
+  return { text: await revise(text, proofSentences(text), field<string>(body, 'glossary', 'string'), new Set(fixed.filter(Number.isInteger) as number[]), valid, proofMode(body)) };
 };
 
 /** 文章校正のファイルは画面が組み立てたものを残す。開き直したときに画面が壊れないよう、骨組みだけを確かめる。 */

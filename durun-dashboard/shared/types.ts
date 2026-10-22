@@ -560,10 +560,11 @@ export type ProofRole =
  * parent は、その文が説明したり根拠づけたりしている文の番号（1 から）で、主張を述べた文と見出しは 0。
  * support は主張との関係で、0 は関係しない、1 は主張を支える文を補う、2 は主張を直接支える、3 は主張そのもの。unrelated は関係しない確率、fresh は前の文に無い情報がある確率。
  * 見出し、コードブロック、表の行と、確かめられなかった文には、support と unrelated と fresh が無い。
+ * contribution は要約で役割から決めた寄与度（0〜3）で、要約した結果にだけある。
  */
 export type ProofOutline = {
   claim: string;
-  sentences: ({ role: ProofRole; parent: number; support?: number; unrelated?: number; fresh?: number } | null)[];
+  sentences: ({ role: ProofRole; parent: number; support?: number; unrelated?: number; fresh?: number; contribution?: number } | null)[];
 };
 
 /**
@@ -591,15 +592,18 @@ export type ProofRun = {
   usage?: Record<string, TokenTotals>;
 };
 
+/** 文章校正の実行の種類。clarify は明確化で、初めて読む人が前から読み進められるかを調べる。summarize は要約で、文ごとに文章への寄与度を調べる。 */
+export type ProofMode = 'clarify' | 'summarize';
+
 /** 人間が指摘に付けたコメント。ignore なら、その指摘を数に入れず、修正版でも直さない。 */
 export type ProofComment = { text: string; ignore: boolean };
 
 /**
- * 文章校正の版。text は編集中の文章で、run は最後に校正した結果。from は、どの版の指摘から作ったか。
+ * 文章校正の版。text は編集中の文章で、run は最後に明確化した結果、summary は最後に要約した結果。from は、どの版の指摘から作ったか。
  * fixed は人間が固定した文の本文で、その文の指摘は数に入れず、修正版でも一字も変えない。修正版にも引き継ぐ。
  * comments のキーは、指摘を見分ける文字列。
  */
-export type ProofVersion = { text: string; from?: number; run?: ProofRun; fixed: string[]; comments: Record<string, ProofComment> };
+export type ProofVersion = { text: string; from?: number; run?: ProofRun; summary?: ProofRun; fixed: string[]; comments: Record<string, ProofComment> };
 
 /** 文章校正のファイル。版を重ねて文章を直す過程を残す。title は「最近使ったファイル」に出す名前。 */
 export type ProofFile = { id: string; title: string; glossary: string; versions: ProofVersion[]; updatedAt: number };

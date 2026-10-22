@@ -1,8 +1,9 @@
-// 文章校正。文章を前から 1 文ずつ、前提知識を持たない読み手（sonnet）に読ませ、8 つの軸で読み進めやすさを評価する。
+// 文章校正の明確化。文章を前から 1 文ずつ、前提知識を持たない読み手（sonnet）に読ませ、8 つの軸で読み進めやすさを評価する。
 // 読み手の答えに、区切りでの回収の確認（Jev）、指す先までの距離（コード）、1 文の負担（形態素解析）を組み合わせて指摘にする。軸と根拠は README にある。
 // AI が書いた文章は、書き手だけが持つ文脈を前提にしがちで、初めて読む人は「何のこと？」と止まる。それを文ごとに見つける。
+// 要約は、読み手を使わず、文ごとの役割から文章への寄与度を決めて、削れる文を示す。
 import { findingKey, sentenceText } from '../shared/proofread.ts';
-import type { ProofEvent, ProofFinding, ProofOutline, ProofReading, ProofRole, ProofRun, ProofVersion, ReviseNote } from '../shared/types.ts';
+import type { ProofEvent, ProofFinding, ProofMode, ProofOutline, ProofReading, ProofRole, ProofRun, ProofVersion, ReviseNote } from '../shared/types.ts';
 import { pluginDir } from './claude.ts';
 import { type OnUsage, UpstreamError, askHaiku, askOpus, askSonnet, objectSchema } from './haiku.ts';
 import { type NoulQuestion, type ScoreQuestion, askJev, askNoul, hasJev } from './jev.ts';
@@ -406,6 +407,30 @@ export const outlineFindings = (outline: ProofOutline, sentences: ProofSentence[
   return out;
 };
 
+// 要約で、役割から決める寄与度。主張は 3、主張を直接支える文は 2、それを補う文は 1 にする。
+// 主張との関係を Jev だけで測ると、関連チケットの欄や依頼のように、主張を支えないが文書に要る文まで低くなるため、役割を先に見る。
+const CONTRIBUTION: Partial<Record<ProofRole, number>> = {
+  claim: 3, reason: 2, background: 2, condition: 2, step: 2, contrast: 2, effect: 2, request: 2, detail: 1, example: 1,
+};
+
+/** 消しても主張が伝わる役割の文は、Jev がその文を要るとみる確率を寄与度にする（0〜1）。見出しと、Jev に確かめられなかった文には無い。 */
+const contributionOf = (o: NonNullable<ProofOutline['sentences'][number]>): number | undefined => {
+  const kind = REMOVABLE[o.role];
+  if (!kind) return CONTRIBUTION[o.role];
+  return o.unrelated === undefined || o.fresh === undefined ? undefined : 1 - kind.odds(o.unrelated, o.fresh);
+};
+
+/** 要約の指摘。寄与度が 0.5 未満の文（役割の読み取りも Jev も要らないとみた文）を失敗、1 未満の文（役割の読み取りだけが要らないとみた文）を注記にする。 */
+const summaryFindings = (outline: ProofOutline): Map<number, ProofFinding[]> => {
+  const out = new Map<number, ProofFinding[]>();
+  outline.sentences.forEach((o, i) => {
+    const kind = o && REMOVABLE[o.role];
+    if (!kind || o.contribution === undefined || o.contribution >= 1) return;
+    append(out, i, { axis: '貢献', level: o.contribution < 0.5 ? 'fail' : 'note', message: `${kind.message(o.parent)}。消しても主張は伝わる` });
+  });
+  return out;
+};
+
 /** 続きから校正するときに画面が送る、前に読んだ文の答え。文の数が合わなければ、初めから読む。形の崩れた答えの文は読み直す。 */
 export const priorReadings = (list: unknown, count: number): (ProofReading | null)[] => {
   if (!Array.isArray(list) || list.length !== count) return [];
@@ -501,21 +526,47 @@ export const proofread = async (
   emit({ type: 'done' });
 };
 
-const REVISER = `<text> は、初めて読む人が前から読み進められるかを校正した文章で、各文の前に [番号] が付いています。<findings> は、読み手が引っかかった箇所への指摘で、[番号] は指摘を受けた文です。<glossary> は読み手が知っている用語集です。
+/** 要約。文章全体から文ごとの役割と寄与度を調べ、寄与度の低い文に指摘を付ける。1 文ずつの読み手は動かさない。進み具合は proofread と同じく emit に渡す。 */
+export const summarizeProof = async (text: string, sentences: ProofSentence[], glossary: string, emit: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {
+  const track: Track = (model) => (usage) => emit({ type: 'usage', model, usage });
+  emit({ type: 'plan', sentences: sentences.map(({ start, end }) => ({ start, end })), tools: ['sonnet', hasJev() ? 'Jev' : 'haiku'] });
+  try {
+    const found = await outlineOf(text, sentences, glossary, track, signal);
+    if (signal.aborted) return;
+    const outline = { ...found, sentences: found.sentences.map((o) => o && { ...o, contribution: contributionOf(o) }) };
+    emit({ type: 'outline', outline });
+    summaryFindings(outline).forEach((findings, i) => emit({ type: 'findings', i, findings }));
+    emit({ type: 'done' });
+  } catch (e) {
+    emit({ type: 'error', message: `文の役割を調べられませんでした（${(e as Error).message}）` });
+  }
+};
+
+// 何を調べた文章で、指摘をどう直すか。要約の修正版では説明を足させず、指摘を受けた文を消すかまとめさせる。
+const REVISE_TASK: Record<ProofMode, string> = {
+  clarify: `<text> は、初めて読む人が前から読み進められるかを校正した文章で、各文の前に [番号] が付いています。<findings> は、読み手が引っかかった箇所への指摘で、[番号] は指摘を受けた文です。<glossary> は読み手が知っている用語集です。
 指摘が解消するように、文章を書き直してください。
 - edits には、書き直す文の番号 n と、その文と置き換える文章 text を挙げる。書き直さない文は挙げない。
-- text では、文を分けたり、説明の文を足したりしてよい。文を消すときは空にする。[番号] は書かない。
-- 番号の後に（固定）と付いた文は、人間がこのまま残すと決めた文なので、書き直さない。
+- text では、文を分けたり、説明の文を足したりしてよい。文を消すときは空にする。[番号] は書かない。`,
+  summarize: `<text> は、各文が文章にどれだけ寄与しているかを調べた文章で、各文の前に [番号] が付いています。<findings> は、寄与度の低い文への指摘で、[番号] は指摘を受けた文です。<glossary> は読み手が知っている用語集です。
+指摘を受けた文を消すか前後の文にまとめて、文章を短くしてください。
+- edits には、書き直す文の番号 n と、その文と置き換える文章 text を挙げる。書き直さない文は挙げない。
+- 文を消すときは text を空にする。[番号] は書かない。`,
+};
+const REVISER = `- 番号の後に（固定）と付いた文は、人間がこのまま残すと決めた文なので、書き直さない。
 - 人間のコメントが付いた指摘は、コメントに従って直す。
 - 用語集にある語は、説明を足さずに使ってよい。
 - 書き手の主張と事実は変えない。文章に書かれていない事実を足さない。`;
 // AI が書いた日本語を推敲するスキル yomiyasu のプラグイン。入っていれば、修正版をこのスキルで書かせ、指摘の無い文も推敲させる。
 const YOMIYASU = 'yomiyasu@yomiyasu';
 const REVISER_SCHEMA = objectSchema({ edits: listOf({ n: { type: 'integer' }, text: STR }) });
-const LEVEL_NOTE: Record<ProofFinding['level'], string> = { fail: '読み進めを妨げる', note: '気にしてほしい' };
+const LEVEL_NOTE: Record<ProofMode, Record<ProofFinding['level'], string>> = {
+  clarify: { fail: '読み進めを妨げる', note: '気にしてほしい' },
+  summarize: { fail: '寄与度が低い', note: '寄与度がやや低い' },
+};
 
-const noteLine = (n: ReviseNote, label = `[${n.i + 1}]`): string => [
-  `${label} ${n.axis}（${LEVEL_NOTE[n.level]}）：${n.quote ? `「${n.quote}」` : ''}${n.message}`,
+const noteLine = (n: ReviseNote, mode: ProofMode, label = `[${n.i + 1}]`): string => [
+  `${label} ${n.axis}（${LEVEL_NOTE[mode][n.level]}）：${n.quote ? `「${n.quote}」` : ''}${n.message}`,
   n.suggestions?.length && `  言い換えの候補：${n.suggestions.join('、')}`,
   n.comment?.trim() && `  人間のコメント：${n.comment.trim()}`,
 ].filter(Boolean).join('\n');
@@ -531,16 +582,16 @@ export const applyEdits = (text: string, sentences: ProofSentence[], edits: Map<
   return out + text.slice(pos);
 };
 
-/** 指摘に沿って書き直した文章を返す。文ごとに置き換えさせ、固定した文は、答えに含まれていても元のまま残す。 */
-export const revise = async (text: string, sentences: ProofSentence[], glossary: string, fixed: Set<number>, notes: ReviseNote[]): Promise<string> => {
+/** 指摘に沿って書き直した文章を返す。文ごとに置き換えさせ、固定した文は、答えに含まれていても元のまま残す。mode は、指摘を出した実行の種類。 */
+export const revise = async (text: string, sentences: ProofSentence[], glossary: string, fixed: Set<number>, notes: ReviseNote[], mode: ProofMode = 'clarify'): Promise<string> => {
   const yomiyasu = pluginDir(YOMIYASU);
   const prompt = [
     // スキルをスラッシュコマンドで呼ぶと、使うかどうかをモデルに任せずに、スキルの本文を読ませられる。
     yomiyasu && '/yomiyasu:yomiyasu',
-    `${REVISER}\n${yomiyasu ? '- 指摘の無い文も、yomiyasu のスキルに沿って推敲する。' : '- 指摘の無い文は、前後を直して合わなくなったときだけ書き直す。'}`,
+    `${REVISE_TASK[mode]}\n${REVISER}\n${yomiyasu ? '- 指摘の無い文も、yomiyasu のスキルに沿って推敲する。' : '- 指摘の無い文は、前後を直して合わなくなったときだけ書き直す。'}`,
     `<glossary>\n${glossary.trim() || '（なし）'}\n</glossary>`,
     `<text>\n${numbered(text, sentences, sentences.length, (n) => (fixed.has(n) ? '（固定）' : ''))}\n</text>`,
-    `<findings>\n${notes.map((n) => noteLine(n)).join('\n') || '（なし）'}\n</findings>`,
+    `<findings>\n${notes.map((n) => noteLine(n, mode)).join('\n') || '（なし）'}\n</findings>`,
   ].filter(Boolean).join('\n\n');
   const out = await askOpus(prompt, REVISER_SCHEMA, yomiyasu);
   const edits = listIn(out.edits).filter((e) => Number.isInteger(e.n) && typeof e.text === 'string' && !fixed.has((e.n as number) - 1));
@@ -555,7 +606,7 @@ export const proofReport = (run: ProofRun): string => {
   const list = numberedFindings(run);
   const count = (level: ProofFinding['level']) => list.filter(({ f }) => f.level === level).length;
   const blocks = run.sentences.flatMap((_, i) => {
-    const notes = list.flatMap((x, k) => (x.i === i ? [noteLine({ ...x.f, i }, `#${k + 1}`)] : []));
+    const notes = list.flatMap((x, k) => (x.i === i ? [noteLine({ ...x.f, i }, 'clarify', `#${k + 1}`)] : []));
     const error = run.errors[i];
     return notes.length || error ? [[`[${i + 1}] ${sentenceText(run, i)}`, ...notes, ...(error ? [`読めませんでした。${error}`] : [])].join('\n')] : [];
   });

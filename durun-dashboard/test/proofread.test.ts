@@ -11,7 +11,7 @@ import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts'
 
 // 修正版は入れてあるプラグインを見て書き方を変えるので、実際の Claude Code の設定ではなく、一時ディレクトリを読ませる。
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-claude-'));
-const { commentFindings, ledgerFinding, outlineFindings, priorReadings, proofReport, proofread, readFindings, revise, wordFindings } = await import('../server/proofread.ts');
+const { commentFindings, ledgerFinding, outlineFindings, priorReadings, proofReport, proofread, readFindings, revise, summarizeProof, wordFindings } = await import('../server/proofread.ts');
 
 const DOC = `# 方針
 
@@ -216,6 +216,56 @@ test('後の文が指している余談と予告は不要と指摘せず、見�
   assert.deepEqual([...outlineFindings(sectioned, parseProof('# 甲\n\n一。二。三。四。五。\n\n## 乙\n\n## 丙\n'), []).keys()], [1, 2]);
 });
 
+test('要約は、読み手を動かさずに文の役割から寄与度を決め、余談、予告、まとめ、言い直しの文を、Jev も要らないとみれば赤、役割の読み取りだけなら黄にする', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-summarize-'));
+  const text = '# 方針\n\n甲は乙である。つまり甲は乙だ。ところで天気が良い。以下で理由を述べる。乙は丙だからである。なお丙は丁でもある。\n';
+  const roles = [[0, 'heading'], [0, 'claim'], [2, 'restate'], [0, 'aside'], [0, 'preview'], [2, 'reason'], [6, 'aside']];
+  const outline = { claim: '甲は乙である', sentences: roles.map(([parent, role], n) => ({ n: n + 1, parent, role })) };
+  const usage = { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  useFakeClaude(tmp, `console.log(JSON.stringify({ structured_output: stdin().startsWith('<text> の文章を読み、') ? ${js(outline)} : {}, usage: ${js(usage)} }));`);
+  // Jev は、言い直しには前の文に無い情報がほぼ無い、予告は主張とほぼ関係しない、最初の余談はやや関係する、最後の余談は確かに関係すると答える。
+  const odds: Record<string, { unrelated: number; fresh: number }> = { つまり: { unrelated: 0, fresh: 0.1 }, ところで: { unrelated: 0.3, fresh: 1 }, 以下で: { unrelated: 0.9, fresh: 1 }, なお: { unrelated: 0, fresh: 1 } };
+  const jev = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const { state, questions } = JSON.parse(body) as { state: Record<string, string>; questions: Record<string, { type: string }> };
+      const { unrelated, fresh } = Object.entries(odds).find(([word]) => state['文']!.includes(word))?.[1] ?? { unrelated: 0, fresh: 1 };
+      const answer = Object.entries(questions).map(([id, q]) => [id, q.type === 'score' ? { type: 'score', probabilities: { 0: unrelated, 1: 0, 2: 1 - unrelated, 3: 0 } } : { type: 'noul', noul: fresh }]);
+      res.end(JSON.stringify({ answers: Object.fromEntries(answer), usage: { input_tokens: 10, output_tokens: 1 } }));
+    });
+  });
+  await new Promise<void>((resolve) => jev.listen(0, '127.0.0.1', resolve));
+  process.env.DURUN_DASHBOARD_FAKE_JEV = `http://127.0.0.1:${(jev.address() as { port: number }).port}/`;
+  try {
+    const events: ProofEvent[] = [];
+    await summarizeProof(text, parseProof(text), '', (e) => events.push(e), new AbortController().signal);
+    assert.deepEqual(events[0], { type: 'plan', sentences: parseProof(text).map(({ start, end }) => ({ start, end })), tools: ['sonnet', 'Jev'] });
+    assert.equal(events.at(-1)?.type, 'done');
+    const run = events.reduce(applyEvent, emptyRun(text));
+    // sonnet には文の役割だけを 1 回問い合わせる。
+    assert.equal(run.usage?.sonnet?.input, 1);
+    assert.deepEqual(run.outline?.sentences.map((o) => o?.contribution?.toFixed(1)), [undefined, '3.0', '0.1', '0.7', '0.1', '2.0', '1.0']);
+    assert.deepEqual(run.findings.map((list) => list.map((f) => [f.axis, f.level, f.message])), [
+      [],
+      [],
+      [['貢献', 'fail', '[2] を言い直しただけで、新しい情報が無い。消しても主張は伝わる']],
+      [['貢献', 'note', '主張とも、主張を支える文ともつながらない。消しても主張は伝わる']],
+      [['貢献', 'fail', 'この後に書くことを予告するだけで、中身が無い。消しても主張は伝わる']],
+      [],
+      [],
+    ]);
+    // 役割を読めなければ、終わったことにせず、やり直せるようにする。
+    useFakeClaude(tmp, 'console.log(JSON.stringify({ structured_output: {} }));');
+    const failed: ProofEvent[] = [];
+    await summarizeProof(text, parseProof(text), '', (e) => failed.push(e), new AbortController().signal);
+    assert.deepEqual(failed.slice(1), [{ type: 'error', message: '文の役割を調べられませんでした（文章の主張が返りませんでした）' }]);
+  } finally {
+    delete process.env.DURUN_DASHBOARD_FAKE_JEV;
+    jev.close();
+  }
+});
+
 test('続きから校正すると、前に読んだ文は読み手に読ませ直さず、前の答えから指摘を作り直す。形の崩れた答えの文は読み直す', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
   const asked = path.join(tmp, 'asked');
@@ -251,6 +301,19 @@ test('修正版は、指摘と人間のコメントを渡して文ごとに opus
   assert.ok(prompt.includes('[3] 参照（読み進めを妨げる）：「焼く」指す先が見つからない\n  人間のコメント：埋め込むと言い換える'));
   assert.ok(prompt.includes('<glossary>\nCDN：配信網\n</glossary>'));
   assert.match(fs.readFileSync(argsFile, 'utf8'), /--safe-mode --tools  --model opus --effort medium /);
+});
+
+test('要約の修正版は、説明を足させず、寄与度の低い文を消すか前後の文にまとめて短くさせる', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-revise-'));
+  const promptFile = path.join(tmp, 'prompt');
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nconsole.log(JSON.stringify({ structured_output: { edits: [{ n: 4, text: '' }] } }));`);
+  const notes: ReviseNote[] = [{ i: 3, axis: '貢献', level: 'note', message: '主張とも、主張を支える文ともつながらない。消しても主張は伝わる' }];
+  const text = await revise(DOC, parseProof(DOC), '', new Set(), notes, 'summarize');
+  assert.equal(text, DOC.replace('焼くとは、HTML に値を埋め込むことである。', ''));
+  const prompt = fs.readFileSync(promptFile, 'utf8');
+  assert.ok(prompt.includes('指摘を受けた文を消すか前後の文にまとめて、文章を短くしてください。'));
+  assert.ok(!prompt.includes('説明の文を足したりしてよい'));
+  assert.ok(prompt.includes('[4] 貢献（寄与度がやや低い）：主張とも、主張を支える文ともつながらない。消しても主張は伝わる'));
 });
 
 test('yomiyasu が入っていれば、修正版はそのスキルを読ませた opus に、指摘の無い文も推敲させる', async () => {

@@ -1,10 +1,11 @@
-// 文章を前から 1 文ずつ、前提知識を持たない読み手に読ませ、8 つの軸で読み進めやすさを示す「文章校正」。メモ帳と同じく、スキンによらず XP の見た目で描く。
-// 文章、用語集、校正の結果、人間のコメントと固定した文はファイルにして保存し、止めた校正は後から開いて続けられる。
-// 校正を終えた版から、指摘に沿って書き直した次の版を作れる。良い文を固定しながら版を重ねると、固定した文を残したまま直しを重ねられる。
+// 文章を調べて直す「文章校正」。メモ帳と同じく、スキンによらず XP の見た目で描く。
+// 明確化は、文章を前から 1 文ずつ、前提知識を持たない読み手に読ませ、8 つの軸で読み進めやすさを示す。要約は、文ごとの役割から文章への寄与度を決め、削れる文を示す。
+// 文章、用語集、結果、人間のコメントと固定した文はファイルにして保存し、止めた明確化は後から開いて続けられる。
+// 結果を出した版から、指摘に沿って書き直した次の版を作れる。良い文を固定しながら版を重ねると、固定した文を残したまま直しを重ねられる。
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isFixed, isIgnored, mergeClaudeWrites, newFile, newVersion, piecesOf, reviseInput, sentenceText, titleOf } from '../shared/proofread.ts';
-import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofOutline, ProofReading, ProofRole, ProofRun, ProofVersion, Snapshot, TokenTotals } from '../shared/types.ts';
+import type { ProofAxis, ProofComment, ProofFile, ProofFileMeta, ProofFinding, ProofMode, ProofOutline, ProofReading, ProofRole, ProofRun, ProofVersion, Snapshot, TokenTotals } from '../shared/types.ts';
 import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
@@ -33,11 +34,27 @@ export const ProofreadIcon = () => (
   <DesktopIcon
     icon={PROOFREAD_ICON}
     title={PROOFREAD_TITLE}
-    hint="初めて読む人が、文章を前から読み進められるかを調べます。ダブルクリックで開きます。送信欄へドラッグすると、メッセージに添付して Claude に使わせます"
+    hint="初めて読む人が文章を前から読み進められるかと、文ごとの文章への寄与度を調べます。ダブルクリックで開きます。送信欄へドラッグすると、メッセージに添付して Claude に使わせます"
     attach="文章校正アプリ（durun-dashboard の proofread ツール）"
     onLaunch={openProofread}
   />
 );
+
+const MODES: Record<ProofMode, { label: string; hint: string; revise: string }> = {
+  clarify: {
+    label: '明確化',
+    hint: '初めて読む人が、文章を前から読み進められるかを文ごとに調べます',
+    revise: '無視していない指摘とコメントに沿って書き直し、次の版を作ります。固定した文は変えません',
+  },
+  summarize: {
+    label: '要約',
+    hint: '文ごとに役割を読んで文章への寄与度を決め、寄与度の低い文を赤と黄で示します',
+    revise: '赤と黄の文のうち、無視していない文を消すか前後の文にまとめて、次の版を作ります。固定した文は変えません',
+  },
+};
+// 版の中で、実行の種類ごとに結果を置く所。
+const SLOT = { clarify: 'run', summarize: 'summary' } as const;
+const OTHER: Record<ProofMode, ProofMode> = { clarify: 'summarize', summarize: 'clarify' };
 
 const AXES: { axis: ProofAxis; hint: string }[] = [
   { axis: '参照', hint: '既知のように書いた語句の指す先が、そこまでの本文か用語集で分かるか' },
@@ -82,7 +99,10 @@ const ReaderNotes = ({ reading }: { reading: ProofReading }) => (
   </details>
 );
 
-/** 文章全体を読んで決めた、文の役割と主張への貢献。貢献は主張との関係（0〜3）に、前の文に無い情報がある確率を掛けたもの。 */
+/**
+ * 文章全体を読んで決めた、文の役割と主張への貢献。貢献は主張との関係（0〜3）に、前の文に無い情報がある確率を掛けたもの。
+ * 要約した結果では、貢献の代わりに、役割から決めた寄与度を出す。
+ */
 const OutlineNotes = ({ outline, i }: { outline: ProofOutline; i: number }) => {
   const o = outline.sentences[i];
   if (!o) return null;
@@ -94,7 +114,12 @@ const OutlineNotes = ({ outline, i }: { outline: ProofOutline; i: number }) => {
         <dd>{outline.claim}</dd>
         <dt>役割</dt>
         <dd>{o.parent > 0 && `[${o.parent}] の`}{OUTLINE_ROLE[o.role]}</dd>
-        {o.support !== undefined && o.fresh !== undefined && (
+        {o.contribution !== undefined ? (
+          <>
+            <dt>寄与度</dt>
+            <dd>{o.contribution.toFixed(1)} / 3</dd>
+          </>
+        ) : o.support !== undefined && o.fresh !== undefined && (
           <>
             <dt>主張への貢献</dt>
             <dd>{(o.support * o.fresh).toFixed(1)} / 3（主張との関係 {o.support.toFixed(1)} / 3、前の文に無い情報がある確率 {Math.round(o.fresh * 100)}%）</dd>
@@ -160,9 +185,11 @@ const FindingItem = ({ f, comment, ignored, known, onComment, onTerm }: FindingP
   );
 };
 
-type DetailProps = { ver: ProofVersion; run: ProofRun; i: number; only?: ProofAxis; glossary: string; onComment: (key: string, c?: ProofComment) => void; onTerm: (term: string, note: string) => void };
+type DetailProps = {
+  ver: ProofVersion; run: ProofRun; read: boolean; i: number; only?: ProofAxis; glossary: string; onComment: (key: string, c?: ProofComment) => void; onTerm: (term: string, note: string) => void;
+};
 
-const Detail = ({ ver, run, i, only, glossary, onComment, onTerm }: DetailProps) => {
+const Detail = ({ ver, run, read, i, only, glossary, onComment, onTerm }: DetailProps) => {
   if (!run.sentences[i]) return <div class="proof-detail" />;
   const reading = run.readings[i];
   const findings = (run.findings[i] ?? []).filter((x) => !only || x.axis === only);
@@ -172,8 +199,8 @@ const Detail = ({ ver, run, i, only, glossary, onComment, onTerm }: DetailProps)
       <blockquote>[{i + 1}] {sentenceText(run, i)}</blockquote>
       {isFixed(ver, run, i) && <p>固定した文です。指摘は数に入れず、修正版でも変えません。</p>}
       {run.errors[i] && <p>読めませんでした。{run.errors[i]}</p>}
-      {!reading && !run.errors[i] && <p>まだ読んでいません。</p>}
-      {reading && !findings.length && <p>指摘はありません。</p>}
+      {!read && !run.errors[i] && <p>まだ読んでいません。</p>}
+      {read && !findings.length && <p>指摘はありません。</p>}
       <ul class="proof-findings">
         {AXES.flatMap(({ axis }) => findings.filter((f) => f.axis === axis)).map((f) => {
           const key = findingKey(i, f);
@@ -247,12 +274,14 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
   const [failed, setFailed] = useState<string>();
   const [v, setV] = useState(0);
   const [editing, setEditing] = useState(false);
-  // 校正している版の番号。
-  const [running, setRunning] = useState<number>();
+  // 校正している版の番号と、実行の種類。
+  const [running, setRunning] = useState<{ n: number; mode: ProofMode }>();
   const [revising, setRevising] = useState(false);
   const [picked, setPicked] = useState(0);
   // 見せる軸。空なら全部を見せる。
   const [only, setOnly] = useState<ProofAxis>();
+  // 見たい結果の種類。版にその結果が無ければ、もう一方の結果を見せる。
+  const [view, setView] = useState<ProofMode>('clarify');
   const [recent, setRecent] = useState<ProofFileMeta[]>([]);
   const [showUsage, setShowUsage] = useState(() => localStorage.getItem(USAGE_KEY) === 'on');
   const stop = useRef<AbortController | null>(null);
@@ -331,36 +360,40 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
     }
   };
 
-  /** resume なら、前に止めた校正の続きから読む。読み終えた文は読み直さず、指摘だけを作り直す。 */
-  const start = (n: number, resume: boolean) => {
+  /** 版の文章を mode で調べ、その種類の前の結果と置き換える。resume なら、前に止めた明確化の続きから読む。読み終えた文は読み直さず、指摘だけを作り直す。 */
+  const start = (n: number, mode: ProofMode, resume: boolean) => {
     if (!file) return;
+    const slot = SLOT[mode];
     const ver = file.versions[n]!;
-    const text = resume && ver.run ? ver.run.text : ver.text;
+    const prev = ver[slot];
+    const text = resume && prev ? prev.text : ver.text;
     stop.current?.abort();
     const ctrl = new AbortController();
     stop.current = ctrl;
     // 読んでいる途中で別のファイルを開いたら、届いた結果をそのファイルに書かない。
     const onRun = (fn: (run: ProofRun) => ProofRun) =>
-      setFile((cur) => (cur?.id === file.id ? { ...cur, versions: cur.versions.map((x, k) => (k === n && x.run ? { ...x, run: fn(x.run) } : x)) } : cur));
-    // 続きから校正するときは、前に読んだ分の消費トークンに足していく。
+      setFile((cur) => (cur?.id === file.id ? { ...cur, versions: cur.versions.map((x, k) => (k === n && x[slot] ? { ...x, [slot]: fn(x[slot]) } : x)) } : cur));
+    // 続きから明確化するときは、前に読んだ分の消費トークンに足していく。
     const fresh = emptyRun(text);
-    changeVersion(n, (x) => ({ ...x, run: resume ? { ...fresh, usage: x.run?.usage } : fresh }));
-    setRunning(n);
+    changeVersion(n, (x) => ({ ...x, [slot]: resume ? { ...fresh, usage: x[slot]?.usage } : fresh }));
+    setView(mode);
+    setRunning({ n, mode });
     setEditing(false);
     setPicked(0);
-    api.proofread(text, file.glossary, resume ? (ver.run?.readings ?? []) : [], (e) => onRun((r) => applyEvent(r, e)), ctrl.signal)
+    api.proofread(mode, text, file.glossary, resume ? (prev?.readings ?? []) : [], (e) => onRun((r) => applyEvent(r, e)), ctrl.signal)
       .catch((e: Error) => !ctrl.signal.aborted && onRun((r) => ({ ...r, notices: [...r.notices, e.message] })))
       .finally(() => stop.current === ctrl && setRunning(undefined));
   };
 
-  const makeVersion = async (n: number) => {
+  const makeVersion = async (n: number, mode: ProofMode) => {
     const ver = file?.versions[n];
-    if (!file || !ver?.run) return;
-    const { fixed, notes } = reviseInput(ver, ver.run);
+    const run = ver?.[SLOT[mode]];
+    if (!file || !ver || !run) return;
+    const { fixed, notes } = reviseInput(ver, run);
     const at = file.versions.length;
     setRevising(true);
     try {
-      const { text } = await api.reviseProof(ver.run.text, file.glossary, fixed, notes);
+      const { text } = await api.reviseProof(run.text, file.glossary, fixed, notes, mode);
       setFile((cur) => (cur?.id === file.id ? { ...cur, versions: [...cur.versions, newVersion(text, n, ver.fixed)] } : cur));
       if (latest.current?.id === file.id) select(at);
     } catch (e) {
@@ -374,6 +407,8 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
   const menuId = (name: string) => `proofread-${f.tab.id}-${name}`;
   const n = file ? Math.min(v, file.versions.length - 1) : 0;
   const ver = file?.versions[n];
+  const mode = !ver || ver[SLOT[view]] || !ver[SLOT[OTHER[view]]] ? view : OTHER[view];
+  const run = ver?.[SLOT[mode]];
   const frame = (title: string, body: ComponentChildren) => (
     <FloatFrame f={f} title={`${title} - ${PROOFREAD_TITLE}`} icon={PROOFREAD_ICON} controls={[close]}>
       <div class="proof">
@@ -418,18 +453,17 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
           />
         </nav>
         {body}
-        {showUsage && ver && <UsageBar run={ver.run} />}
+        {showUsage && ver && <UsageBar run={run} />}
       </div>
     </FloatFrame>
   );
 
   if (!file || !ver) return frame('無題', <p class="proof-notice">{failed ? `ファイルを開けませんでした（${failed}）` : '開いています'}</p>);
-  const run = ver.run;
   const tabs = (
     <div class="proof-tabs" role="tablist" aria-label="版">
       {file.versions.map((x, k) => (
         <button key={k} role="tab" aria-selected={k === n} title={x.from === undefined ? '元の文章' : `v${x.from + 1} の指摘から作った版`} onClick={() => select(k)}>
-          v{k + 1}{running === k ? '（校正中）' : ''}
+          v{k + 1}{running?.n === k ? '（校正中）' : ''}
         </button>
       ))}
     </div>
@@ -442,7 +476,9 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
       <>
         {tabs}
         <div class="proof-bar">
-          <button disabled={!ver.text.trim()} onClick={() => start(n, false)}>校正</button>
+          {(['clarify', 'summarize'] as const).map((m) => (
+            <button key={m} disabled={!ver.text.trim()} title={MODES[m].hint} onClick={() => start(n, m, false)}>{MODES[m].label}</button>
+          ))}
           {run && <button onClick={() => setEditing(false)}>結果を見る</button>}
           {copy}
           {fixed > 0 && <span>固定した文が {fixed} 文あります。修正版でも変えません。</span>}
@@ -451,7 +487,7 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
           <textarea
             class="proof-input"
             aria-label="校正する文章"
-            placeholder="初めて読む人が前から読み進められるかを調べる文章を貼り付けて、「校正」を押してください"
+            placeholder={'調べる文章を貼り付けてください。\n「明確化」は、初めて読む人が前から読み進められるかを調べます。\n「要約」は、文ごとに文章への寄与度を調べ、削れる文を示します。'}
             spellcheck={false}
             value={ver.text}
             onInput={(e) => {
@@ -474,39 +510,52 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
     ));
   }
 
-  const shown = (i: number) => (run.findings[i] ?? []).filter((x) => !isIgnored(ver, run, i, x) && (!only || x.axis === only));
+  // 要約には軸が無いので、明確化で選んだ軸で絞らない。
+  const onlyAxis = mode === 'clarify' ? only : undefined;
+  const shown = (i: number) => (run.findings[i] ?? []).filter((x) => !isIgnored(ver, run, i, x) && (!onlyAxis || x.axis === onlyAxis));
+  // 要約は 1 文ずつ読まず、文章全体の役割を一度に受け取る。
+  const isRead = (i: number) => (mode === 'summarize' ? !!run.outline : !!run.readings[i]);
   const read = run.readings.filter(Boolean).length;
-  const status = running === n
-    ? (!run.sentences.length ? '準備しています（初回は形態素解析の辞書を取得します）' : `読んでいます（${read} / ${run.sentences.length} 文）`)
+  const busy = running?.n === n && running.mode === mode;
+  const status = busy
+    ? mode === 'summarize' ? '文の役割と寄与度を調べています'
+    : !run.sentences.length ? '準備しています（初回は形態素解析の辞書を取得します）' : `読んでいます（${read} / ${run.sentences.length} 文）`
     : revising ? '修正版を作っています'
-    : run.done ? `読み終えました（${run.tools.join('、')}）` : `途中で止まっています（${read} / ${run.sentences.length} 文）`;
+    : run.done ? `読み終えました（${run.tools.join('、')}）`
+    : mode === 'summarize' ? '途中で止まっています' : `途中で止まっています（${read} / ${run.sentences.length} 文）`;
   const terms = glossaryEntries(file.glossary).map((t) => ({ quote: t.term, note: t.note || '用語集にある語', fail: false }));
+  const other = OTHER[mode];
   return frame(titleOf(file) || '無題', (
     <>
       {tabs}
       <div class="proof-bar">
-        {running === n ? (
+        {busy ? (
           <button onClick={() => stop.current?.abort()}>中断</button>
         ) : run.done ? (
-          <button disabled={revising} title="無視していない指摘とコメントに沿って書き直し、次の版を作ります。固定した文は変えません" onClick={() => makeVersion(n)}>修正版を作る</button>
+          <button disabled={revising} title={MODES[mode].revise} onClick={() => makeVersion(n, mode)}>修正版を作る</button>
+        ) : mode === 'summarize' ? (
+          <button onClick={() => start(n, mode, false)}>要約し直す</button>
         ) : (
-          <button onClick={() => start(n, true)}>続きから校正</button>
+          <button onClick={() => start(n, mode, true)}>続きから明確化</button>
         )}
         <button onClick={() => setEditing(true)}>編集</button>
         {copy}
+        {ver[SLOT[other]] && <button onClick={() => setView(other)}>{MODES[other].label}の結果</button>}
         <span>{status}</span>
       </div>
-      <div class="proof-axes" role="group" aria-label="見せる軸">
-        {AXES.map(({ axis, hint }) => {
-          const all = run.findings.flatMap((list, i) => list.filter((x) => x.axis === axis && !isIgnored(ver, run, i, x)));
-          const fails = all.filter((x) => x.level === 'fail').length;
-          return (
-            <button key={axis} title={hint} aria-pressed={only === axis} onClick={() => setOnly(only === axis ? undefined : axis)}>
-              {axis} <span class="proof-count">×{fails} △{all.length - fails}</span>
-            </button>
-          );
-        })}
-      </div>
+      {mode === 'clarify' && (
+        <div class="proof-axes" role="group" aria-label="見せる軸">
+          {AXES.map(({ axis, hint }) => {
+            const all = run.findings.flatMap((list, i) => list.filter((x) => x.axis === axis && !isIgnored(ver, run, i, x)));
+            const fails = all.filter((x) => x.level === 'fail').length;
+            return (
+              <button key={axis} title={hint} aria-pressed={only === axis} onClick={() => setOnly(only === axis ? undefined : axis)}>
+                {axis} <span class="proof-count">×{fails} △{all.length - fails}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {run.notices.map((notice, k) => <p key={k} class="proof-notice">{notice}</p>)}
       <div class="proof-body">
         <div class="proof-text">
@@ -530,7 +579,7 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
                 />
                 <span
                   class="proof-sentence"
-                  data-level={fixed ? 'fixed' : run.errors[i] ? 'error' : run.readings[i] ? levelOf(findings) : undefined}
+                  data-level={fixed ? 'fixed' : run.errors[i] ? 'error' : isRead(i) ? levelOf(findings) : undefined}
                   aria-current={i === picked}
                   role="button"
                   tabIndex={0}
@@ -555,8 +604,9 @@ export const ProofreadFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
           <Detail
             ver={ver}
             run={run}
+            read={isRead(picked)}
             i={picked}
-            only={only}
+            only={onlyAxis}
             glossary={file.glossary}
             onComment={(key, comment) =>
               changeVersion(n, (x) => {
