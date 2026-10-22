@@ -28,7 +28,7 @@ import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
 import { type Route, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
-import { useSessionToasts } from './sessionEffects.ts';
+import { useRemoveFailureToasts, useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
@@ -144,6 +144,7 @@ const App = () => {
   useAttentionEffects(fresh);
   useSessionToasts(fresh);
   useDeliveryFailureEffects(fresh);
+  useRemoveFailureToasts(fresh);
   useLinks(route, snapshot);
   return (
     <NowContext.Provider value={now}>

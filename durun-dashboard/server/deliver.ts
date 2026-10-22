@@ -183,20 +183,20 @@ export const removeSession = async (sessionId: string): Promise<void> => {
 
 /**
  * アーカイブし、バックグラウンドのセッションは Claude Code の一覧からも消す。消したセッションには claude attach できないので、そのコマンドも出さない。
- * 消せなくてもアーカイブは保ち、消せなかった理由で reject する。
+ * 消すには claude を何度も動かして数秒かかるので、終わるのを待たずに返る。消せなくてもアーカイブは保ち、消せなかった理由を removeError に残す。
  */
-const archive = async (meta: SessionMeta): Promise<void> => {
-  Object.assign(meta, { archived: true, archiveWhenIdle: undefined });
+const archive = (meta: SessionMeta): void => {
+  Object.assign(meta, { archived: true, archiveWhenIdle: undefined, removeError: undefined });
   touch();
-  await removeSession(meta.id);
-  meta.jobId = undefined;
-  touch();
+  removeSession(meta.id)
+    .then(() => (meta.jobId = undefined), (e: Error) => (meta.removeError = e.message))
+    .finally(touch);
 };
 
 /** 作業中のセッションは、止めずにアーカイブ待ちにして true を返す。入力待ちか停止になったら、flushArchives がアーカイブする。 */
-export const archiveSession = async (meta: SessionMeta): Promise<boolean> => {
+export const archiveSession = (meta: SessionMeta): boolean => {
   if (readLiveSessions().get(meta.id)?.status !== 'busy') {
-    await archive(meta);
+    archive(meta);
     return false;
   }
   meta.archiveWhenIdle = true;
@@ -212,7 +212,7 @@ export const flushArchives = (): void => {
   for (const meta of pending) {
     // アーカイブで状態が変わるとここがまた呼ばれるので、そこでアーカイブしたものは飛ばす。
     if (!meta.archiveWhenIdle || live.get(meta.id)?.status === 'busy') continue;
-    archive(meta).catch((e: Error) => console.error(`${meta.id} を一覧から消せません: ${e.message}`));
+    archive(meta);
   }
 };
 

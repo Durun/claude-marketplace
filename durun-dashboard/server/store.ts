@@ -21,6 +21,8 @@ export type SessionMeta = {
   archived: boolean;
   /** 人間が作業中にアーカイブした。入力待ちか停止になったら、アーカイブする */
   archiveWhenIdle?: boolean;
+  /** アーカイブしたが、Claude Code の一覧から消せなかった理由 */
+  removeError?: string;
   /** 人間がピン留めした */
   pinned?: boolean;
   /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */

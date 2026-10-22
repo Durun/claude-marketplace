@@ -195,6 +195,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
+    removeError: meta.removeError,
     pinned: !!meta.pinned,
     links: meta.links ?? [],
     files: meta.files ?? [],

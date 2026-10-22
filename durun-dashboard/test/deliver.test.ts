@@ -400,7 +400,7 @@ if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost'
   assert.equal(Object.keys(state.sessions).length, before);
 });
 
-test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さず、消せなければ理由を返す', async () => {
+test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {
   // 偽の claude は呼ばれた引数を書き足す。agents は、動いている j3、止まっている j5、端末の s4 を返す。
   // stop は少し後で supervisor の名簿から j3 を消す。rm は、名簿に残っている j3 と、未コミットの変更がある j5 を断る。
   const bin = path.join(tmp, 'bin-remove');
@@ -430,6 +430,14 @@ if (args[0] === 'rm' && args[1] === 'j5') fail('未コミットの変更があ�
   await removeSession('s4');
   assert.deepEqual(calls(), [['agents', '--json', '--all']]);
   await assert.rejects(removeSession('s5'), /未コミットの変更があります/);
+
+  const meta = Object.assign(ensureSession('s5', tmp), { kind: 'bg', jobId: 'j5' });
+  const failed = new Promise<void>((resolve) => onChange(() => meta.removeError !== undefined && resolve()));
+  assert.equal(archiveSession(meta), false);
+  assert.equal(meta.archived, true);
+  await failed;
+  assert.match(meta.removeError ?? '', /未コミットの変更があります/);
+  assert.equal(meta.jobId, 'j5');
 });
 
 test('作業中にアーカイブしたセッションは、止めずにアーカイブ待ちにし、入力待ちになったら止めて claude rm する。アーカイブ待ちの間は、保留したメッセージを送らない', async () => {
@@ -453,7 +461,7 @@ if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});`,
   const queued = (): string[] => state.queue.filter((m) => m.sessionId === 'a1').map((m) => m.text);
 
   live('busy');
-  assert.equal(await archiveSession(meta), true);
+  assert.equal(archiveSession(meta), true);
   flushArchives();
   assert.equal(meta.archived, false);
   assert.ok(!fs.existsSync(callsFile));

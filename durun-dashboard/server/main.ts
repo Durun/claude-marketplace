@@ -641,21 +641,17 @@ const setTitle = (id: string, body: unknown): void => {
 };
 
 /**
- * 作業中のセッションはアーカイブ待ちにして、deferred を返す。Claude Code の一覧から消せなくてもアーカイブは保ち、消せなかった理由を返す。
+ * 作業中のセッションはアーカイブ待ちにして、deferred を返す。Claude Code の一覧から消し終わるのは待たない。
  * アーカイブを解除すると、アーカイブ待ちもやめる。
  */
-const setArchived = async (id: string, body: unknown): Promise<{ removeError?: string; deferred?: boolean }> => {
+const setArchived = (id: string, body: unknown): { deferred?: boolean } => {
   const meta = sessionMeta(id);
   if (!field<boolean>(body, 'archived', 'boolean')) {
     Object.assign(meta, { archived: false, archiveWhenIdle: undefined });
     touch();
     return {};
   }
-  try {
-    return { deferred: await archiveSession(meta) };
-  } catch (e) {
-    return { removeError: (e as Error).message };
-  }
+  return { deferred: archiveSession(meta) };
 };
 
 const setPinned = (id: string, body: unknown): void => {

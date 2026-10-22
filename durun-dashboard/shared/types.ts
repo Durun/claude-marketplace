@@ -200,6 +200,8 @@ export type Session = {
   archived: boolean;
   /** 人間が作業中にアーカイブした。入力待ちか停止になったら、サーバーがアーカイブする。 */
   archiveWhenIdle?: boolean;
+  /** アーカイブしたが、Claude Code の一覧から消せなかった理由。 */
+  removeError?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   links: SavedLink[];
