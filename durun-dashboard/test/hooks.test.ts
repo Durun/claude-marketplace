@@ -36,8 +36,8 @@ test('権限の確認の通知は、AskUserQuestion で止まったときは質�
   handleHook({ ...base, notification_type: 'permission_prompt', message: 'Claude needs your permission' }, 0);
   assert.deepEqual(dialogs(), [{ kind: 'question', title: '質問', body: '今すぐ実装してよいですか？\n- 今すぐ実装する\n- 時期を確認してから\n\nどれを直しますか？\n- A\n- B', options: undefined }]);
   assert.deepEqual(state.attention[0]?.questions, [
-    { question: '今すぐ実装してよいですか？', header: undefined, options: ['今すぐ実装する', '時期を確認してから'], multiSelect: false },
-    { question: 'どれを直しますか？', header: '直す画面', options: ['A', 'B'], multiSelect: true },
+    { question: '今すぐ実装してよいですか？', header: undefined, options: ['今すぐ実装する', '時期を確認してから'], descriptions: ['', ''], multiSelect: false },
+    { question: 'どれを直しますか？', header: '直す画面', options: ['A', 'B'], descriptions: ['', ''], multiSelect: true },
   ]);
 
   handleHook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion' }, 0);
@@ -56,6 +56,8 @@ test('AskUserQuestion の質問は、会話ログにまだ書かれていなく�
 
   handleHook({ ...base, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions } }, 0);
   assert.deepEqual(dialogs(), asked);
+  // 選択肢の説明は、選択肢と同じ順に並べ、説明の無い選択肢は空にする。
+  assert.deepEqual(state.attention[0]?.descriptions, ['出だしだけ', '']);
   handleHook({ ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission' }, 0);
   assert.deepEqual(dialogs(), asked);
 

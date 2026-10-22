@@ -244,10 +244,11 @@ export type Session = {
 };
 
 /**
- * ask_human か AskUserQuestion で Claude が尋ねた質問。選択肢は見出しだけを持つ。
+ * ask_human か AskUserQuestion で Claude が尋ねた質問。
  * header はタブに出す短い名前で、multiSelect は選択肢をいくつでも選べる質問。
+ * descriptions は AskUserQuestion の選択肢に添えた説明で、options と同じ順に並ぶ。説明の無い選択肢は空文字にする。
  */
-export type AskedQuestion = { question: string; header?: string; options: string[]; multiSelect?: boolean };
+export type AskedQuestion = { question: string; header?: string; options: string[]; descriptions?: string[]; multiSelect?: boolean };
 
 /**
  * 人間の対応が必要なもの。
@@ -263,6 +264,8 @@ export type Attention = {
   title: string;
   body?: string;
   options?: string[];
+  /** options に添えた説明。AskUserQuestion の質問だけが持ち、options と同じ順に並ぶ。 */
+  descriptions?: string[];
   /** 分けて尋ねた質問。人間は質問ごとに選択肢を選ぶ。 */
   questions?: AskedQuestion[];
   docId?: string;

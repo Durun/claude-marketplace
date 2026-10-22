@@ -173,7 +173,7 @@ export type BgTaskLog = {
 
 export const ASK_TOOL = 'AskUserQuestion';
 
-type RawQuestion = { question?: unknown; header?: unknown; multiSelect?: unknown; options?: { label?: unknown }[] };
+type RawQuestion = { question?: unknown; header?: unknown; multiSelect?: unknown; options?: { label?: unknown; description?: unknown }[] };
 type ContentBlock = { type?: string; id?: string; tool_use_id?: string; content?: unknown; text?: string; name?: string; input?: { file_path?: unknown; notebook_path?: unknown; questions?: RawQuestion[]; [key: string]: unknown } };
 type RawUsage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
 type LogEntry = {
@@ -249,18 +249,24 @@ const applyUsage = (s: LogSummary, id: string, u: RawUsage, ts: number | undefin
 export const toQuestions = (raw: unknown): AskedQuestion[] =>
   (Array.isArray(raw) ? (raw as RawQuestion[]) : []).flatMap((q) => {
     if (typeof q?.question !== 'string') return [];
-    const options = (Array.isArray(q.options) ? q.options : []).flatMap((o) => (typeof o?.label === 'string' ? [o.label] : []));
-    return [{ question: q.question, header: typeof q.header === 'string' ? q.header : undefined, options, multiSelect: q.multiSelect === true }];
+    const options = (Array.isArray(q.options) ? q.options : []).flatMap((o) => (typeof o?.label === 'string' ? [{ label: o.label, description: typeof o.description === 'string' ? o.description : '' }] : []));
+    return [{
+      question: q.question,
+      header: typeof q.header === 'string' ? q.header : undefined,
+      options: options.map((o) => o.label),
+      descriptions: options.map((o) => o.description),
+      multiSelect: q.multiSelect === true,
+    }];
   });
 
 /**
  * 要対応に出す質問の本文と選択肢。質問が 1 つで、選択肢から 1 つを選ぶときは、選択肢をボタンにする。
  * ほかは質問をタブに分けて出す。本文には、端末のセッションの画面と通知に出すために、質問ごとに選択肢を並べる。
  */
-export const questionDialog = (questions: AskedQuestion[]): { body: string; options?: string[]; questions?: AskedQuestion[] } | undefined => {
+export const questionDialog = (questions: AskedQuestion[]): { body: string; options?: string[]; descriptions?: string[]; questions?: AskedQuestion[] } | undefined => {
   const [first] = questions;
   if (!first) return undefined;
-  if (questions.length === 1 && !first.multiSelect) return { body: first.question, options: first.options };
+  if (questions.length === 1 && !first.multiSelect) return { body: first.question, options: first.options, descriptions: first.descriptions };
   return { body: questions.map((q) => [q.question, ...q.options.map((o) => `- ${o}`)].join('\n')).join('\n\n'), questions };
 };
 

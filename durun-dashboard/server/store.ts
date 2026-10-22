@@ -75,6 +75,7 @@ export type StoredAttention = {
   title: string;
   body?: string;
   options?: string[];
+  descriptions?: string[];
   questions?: AskedQuestion[];
   /** レビュー依頼で、Claude が見てほしいコミットの範囲 */
   range?: DiffRange;

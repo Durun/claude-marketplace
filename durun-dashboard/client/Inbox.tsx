@@ -30,6 +30,14 @@ const DismissButton = ({ id }: { id: string }) => {
 
 const Body = ({ text }: { text?: string }) => (text ? <Markdown text={text} /> : null);
 
+/** AskUserQuestion の選択肢は、Claude Code の画面と同じく、見出しの下に説明を添える。 */
+const OptionLabel = ({ label, description }: { label: string; description?: string }) => (
+  <>
+    {label}
+    {description && <small class="att-option-desc">{description}</small>}
+  </>
+);
+
 type QuestionTabsProps = { questions: AskedQuestion[]; picked: string[][]; tab: number; busy: boolean; setTab: (tab: number) => void; pick: (option: string) => void };
 
 /** 分けた質問を、Claude Code の AskUserQuestion のようにタブで 1 つずつ出す。最後のタブで回答を見直す。 */
@@ -48,9 +56,13 @@ const QuestionTabs = ({ questions, picked, tab, busy, setTab, pick }: QuestionTa
         <>
           <Markdown text={q.question} />
           <Actions>
-            {q.options.map((o) => {
+            {q.options.map((o, i) => {
               const on = !!picked[tab]?.includes(o);
-              return <button key={o} class={`btn att-option${on ? ' btn-primary' : ''}`} aria-pressed={on} disabled={busy} onClick={() => pick(o)}>{o}</button>;
+              return (
+                <button key={o} class={`btn att-option${on ? ' btn-primary' : ''}`} aria-pressed={on} disabled={busy} onClick={() => pick(o)}>
+                  <OptionLabel label={o} description={q.descriptions?.[i]} />
+                </button>
+              );
             })}
             {q.multiSelect && <button class="btn" onClick={() => setTab(tab + 1)}>次へ</button>}
           </Actions>
@@ -98,8 +110,10 @@ const AskBody = ({ a }: { a: Attention }) => {
       ) : (
         a.options && a.options.length > 0 && (
           <Actions>
-            {a.options.map((o) => (
-              <button key={o} class="btn att-option" disabled={busy} onClick={() => send(o)}>{o}</button>
+            {a.options.map((o, i) => (
+              <button key={o} class="btn att-option" disabled={busy} onClick={() => send(o)}>
+                <OptionLabel label={o} description={a.descriptions?.[i]} />
+              </button>
             ))}
           </Actions>
         )

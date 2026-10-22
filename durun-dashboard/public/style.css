@@ -913,6 +913,9 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .att-title { margin: 0; font-size: 14px; word-break: break-word; }
 /* 選択肢と返答の候補は文になることがあるので、カードの幅で折り返す。1 行のときは他のボタンと同じ高さになる。 */
 .att-option, .reply-option { height: auto; padding-block: 5px; line-height: 1.4; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+/* 説明を添えた選択肢は、説明を読めるよう 1 つずつ行を分け、説明を見出しの下に小さく出す。 */
+.att-option:has(> .att-option-desc) { flex-basis: 100%; flex-direction: column; align-items: flex-start; gap: 2px; }
+.att-option-desc { font-size: 12px; opacity: 0.75; }
 
 .session-card { position: relative; display: grid; gap: 6px; padding: 10px 12px; }
 .session-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
