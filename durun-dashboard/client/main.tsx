@@ -193,24 +193,27 @@ addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 // 画面が見込みより長く固まったら、固まっていた間に動いたスクリプトを添えてサーバーへ送り、改善要望にしてもらう。
 // 例外と同じく、同じ種類の画面で同じきっかけのものは 1 回だけ送る。long-animation-frame を出さないブラウザでは計測しない。
+// 固まった時間は、長いタスクと描画が入力を待たせた時間で測る。フレームの長さには、読み込みの途中で CSS などが届くのを待っていた間も入るため。
+// このスクリプトが動き出す前のフレームは、ページを読み込んでいる途中のものなので、さかのぼって数えない。
 const FREEZE_MS = 500;
 /** long-animation-frame の記録のうち、使うところ。TypeScript の DOM の型にはまだ無い。 */
 type LongAnimationFrame = PerformanceEntry & {
+  blockingDuration: number;
   scripts: { invoker: string; sourceFunctionName: string; sourceURL: string; sourceCharPosition: number; duration: number }[];
 };
 if (PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
   new PerformanceObserver((list) => {
     for (const frame of list.getEntries() as LongAnimationFrame[]) {
-      if (frame.duration <= FREEZE_MS) continue;
+      if (frame.blockingDuration <= FREEZE_MS) continue;
       const scripts = frame.scripts.toSorted((a, b) => b.duration - a.duration);
       // スクリプトが動いていなければ、スタイルの計算やレイアウトなどの描画で固まっている。
       const message = `${currentPage()} の画面を固めた「${scripts[0]?.invoker || '描画'}」の処理（見込み ${FREEZE_MS / 1000} 秒）`;
       if (reported.has(message)) continue;
       reported.add(message);
       const detail = scripts.map((s) => `${s.invoker}: ${s.sourceFunctionName || '無名の関数'}（${s.sourceURL.split('/').pop()}:${s.sourceCharPosition}）${Math.round(s.duration)} ms`);
-      api.reportSlow(message, frame.duration, detail.join('\n')).catch(() => {});
+      api.reportSlow(message, frame.blockingDuration, detail.join('\n')).catch(() => {});
     }
-  }).observe({ type: 'long-animation-frame', buffered: true });
+  }).observe({ type: 'long-animation-frame' });
 }
 
 const root = document.getElementById('app');
