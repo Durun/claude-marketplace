@@ -1237,8 +1237,9 @@ const server = http.createServer(async (req, res) => {
   if (!(await allowRequest(req.headers.host, req.headers.origin, PORT))) return void res.writeHead(403).end('forbidden');
   route(req, res).catch((e: unknown) => {
     // 入力の誤り（4xx）と claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
+    // 送り手が本文を送り終える前に切ったリクエストも集めない。フックの curl は、送っている途中でも 2 秒で打ち切る。
     const status = e instanceof HttpError ? e.status : e instanceof UpstreamError ? 502 : 500;
-    if (status === 500) {
+    if (status === 500 && e !== req.errored) {
       console.error(e);
       recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);
     }
