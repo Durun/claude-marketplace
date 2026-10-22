@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
-import { cached, forgetCached, peekCached } from './cache.ts';
+import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
 
@@ -87,15 +87,21 @@ export const refreshPr = async (cwd: string, branch: string): Promise<void> => {
   if (!BASE_BRANCH.test(branch)) await cached(branchKey(cwd, branch), { fresh: true }, () => findPr(cwd, branch));
 };
 
-type ClaudePrStatus = { title: string; state: PrInfo['state']; checks: PrInfo['checks']; review: string };
+/** Claude Code は、下書きの PR を状態の DRAFT で書く。 */
+type ClaudePrStatus = { title: string; state: PrInfo['state'] | 'DRAFT'; checks: PrInfo['checks']; review: string | null };
 
-/** Claude Code が実行中セッションの PR について書き残した状態。URL ごとに、gh で読んだ状態より優先する。 */
-let claudePrStatuses: Partial<Record<string, ClaudePrStatus>> = {};
+/**
+ * Claude Code が実行中セッションの PR について書き残した状態と、その状態を初めて読んだときのファイルの更新時刻。
+ * Claude Code は古くなった状態も書き直さずに残すことがあるので、URL ごとに、gh で読んだ状態より新しいときだけ優先する。
+ */
+let claudePrStatuses: Partial<Record<string, { status: ClaudePrStatus; at: number }>> = {};
 
-const withClaudeStatus = (pr: PrInfo | null | undefined): PrInfo | undefined => {
-  const s = pr && claudePrStatuses[pr.url];
-  if (!pr || !s) return pr ?? undefined;
-  return { ...pr, title: s.title, state: s.state, checks: s.checks, review: s.review ?? pr.review };
+/** key は、pr を gh で読んで覚えたキー。 */
+const withClaudeStatus = (key: string, pr: PrInfo | null | undefined): PrInfo | undefined => {
+  const c = pr && claudePrStatuses[pr.url];
+  if (!pr || !c || c.at < (cachedAt(key) ?? 0)) return pr ?? undefined;
+  const s = c.status;
+  return { ...pr, title: s.title, state: s.state === 'DRAFT' ? 'OPEN' : s.state, isDraft: s.state === 'DRAFT', checks: s.checks, review: s.review ?? pr.review };
 };
 
 const peekBranchPr = (cwd: string, branch: string): PrInfo | null | undefined =>
@@ -104,7 +110,7 @@ const peekBranchPr = (cwd: string, branch: string): PrInfo | null | undefined =>
 /** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
 export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
   if (!branch || BASE_BRANCH.test(branch)) return undefined;
-  return withClaudeStatus(peekBranchPr(cwd, branch));
+  return withClaudeStatus(branchKey(cwd, branch), peekBranchPr(cwd, branch));
 };
 
 /** ブランチの PR を、まだ一度も読み終えていないか。findPr は PR が無くても null を返して覚えるので、覚えた値が無ければ読んでいる途中である。 */
@@ -139,7 +145,7 @@ export const loadBadge = async (kind: 'pr' | 'issue', ref: string, cwd?: string)
   return url;
 };
 
-export const badgePr = (url: string): PrInfo | undefined => withClaudeStatus(peekCached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url)));
+export const badgePr = (url: string): PrInfo | undefined => withClaudeStatus(`pr-badge:${url}`, peekCached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url)));
 
 export const badgeIssue = (url: string): IssueInfo | undefined => peekCached(`issue-badge:${url}`, BADGE_POLICY, () => readIssue(url));
 
@@ -351,11 +357,20 @@ export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewC
   return { url: res.html_url };
 };
 
-/** Claude Code が実行中セッションの PR 状態を定期更新しているキャッシュを取り込む。自前で GitHub を見に行かずに済む。 */
+/**
+ * Claude Code が実行中セッションの PR 状態を定期更新しているキャッシュを取り込む。自前で GitHub を見に行かずに済む。
+ * ファイルには PR ごとの時刻が無いので、前に読んだときから変わった PR だけを、ファイルを書いた時刻の状態とみなす。
+ */
 export const mergeClaudePrCache = (file: string): void => {
+  const at = fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs;
   const statuses = readJson<Record<string, ClaudePrStatus>>(file);
-  if (!statuses) return;
-  claudePrStatuses = statuses;
+  if (at === undefined || !statuses) return;
+  const before = claudePrStatuses;
+  claudePrStatuses = {};
+  for (const [url, status] of Object.entries(statuses)) {
+    const prev = before[url];
+    if (status) claudePrStatuses[url] = { status, at: prev && JSON.stringify(prev.status) === JSON.stringify(status) ? prev.at : at };
+  }
   changed();
 };
 

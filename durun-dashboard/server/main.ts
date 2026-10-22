@@ -1314,6 +1314,8 @@ watch(PROJECTS_DIR, true, (file) => {
 });
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
+// 起動したときにも読む。次に書かれるまで待つと、前から残っていた状態まで、そのとき書かれたものとみなしてしまう。
+mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
 redeliverInterrupted();

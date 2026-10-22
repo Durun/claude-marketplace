@@ -128,6 +128,9 @@ export const peekCached = <T,>(key: string, p: Policy, load: () => Promise<T>): 
   return e?.value as T | undefined;
 };
 
+/** key の値を読んだ時刻。覚えた値が無ければ undefined。 */
+export const cachedAt = (key: string): number | undefined => entries.get(key)?.at;
+
 /** 外部に書き込んだ後に、その値を忘れる。文字列は同じキー、正規表現は合うキーを忘れ、次に読むときは読み終えるのを待たせる。 */
 export const forgetCached = (...keys: (string | RegExp)[]): void => {
   const match = (key: string): boolean => keys.some((k) => (typeof k === 'string' ? k === key : k.test(key)));
