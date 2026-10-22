@@ -1,5 +1,6 @@
 import { withBase } from '../shared/html.ts';
 import type { Doc } from '../shared/types.ts';
+import { safeDecode } from './router.ts';
 import type { Skin } from './skin.ts';
 
 // markdown / mermaid / text を描画する固定のテンプレート。資料の内容は JSON として渡し、HTML としては解釈させない。
@@ -152,6 +153,15 @@ const renderMarkdown = async () => {
   out.querySelectorAll('pre').forEach(addCopyButton);
 };
 
+// ファイルへのリンクは iframe の中では開けないので、ダッシュボードに開かせる。スキームの付いた URL とページ内リンクはそのままにし、C: のようなドライブ名はスキームとみなさない。
+document.addEventListener('click', (e) => {
+  const link = e.target.closest && e.target.closest('a[href]');
+  const href = link && link.getAttribute('href');
+  if (!href || /^(?:[a-z][a-z\\d+.-]+:|#|\\/\\/)/i.test(href)) return;
+  e.preventDefault();
+  parent.postMessage({ openFile: href }, '*');
+});
+
 if (data.format === 'text') {
   const pre = document.createElement('pre');
   pre.className = 'plain';
@@ -231,4 +241,10 @@ export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<
     '<script src="/vendor/mermaid.js"></script>',
     `<script>${TEMPLATE_SCRIPT}</script></body></html>`,
   ].join('');
+};
+
+/** 資料の中のリンクが指すファイル。相対パスは base のファイルがあるディレクトリから辿る。marked が URL の形に直した文字は戻し、ページ内の場所（#）は外す。 */
+export const linkPath = (base: string, href: string): string => {
+  const path = safeDecode(href.replace(/#.*$/, ''));
+  return /^(?:[/\\]|~\/|[a-z]:)/i.test(path) ? path : base.replace(/[^/\\]*$/, '') + path;
 };

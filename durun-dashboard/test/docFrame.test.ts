@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildSrcdoc } from '../client/docFrame.ts';
+import { buildSrcdoc, linkPath } from '../client/docFrame.ts';
 import { docAsset, inlineAssets } from '../server/docAssets.ts';
 import { withBase } from '../shared/html.ts';
 
@@ -63,4 +63,18 @@ test('inlineAssets は、相対パスで埋め込んだ音声を data URL にし
   const data = `data:audio/ogg;base64,${Buffer.from('ogg').toString('base64')}`;
   assert.equal(inlineAssets(html, path.join(dir, 'doc.html')), html.replace('assets/a%20b.ogg?v=1', data));
   fs.rmSync(dir, { recursive: true });
+});
+
+test('linkPath は、相対パスのリンクを資料のファイルがあるディレクトリから辿り、絶対パスはそのまま返す', () => {
+  assert.equal(linkPath('/home/me/memory/MEMORY.md', 'feedback.md'), '/home/me/memory/feedback.md');
+  // marked が URL の形に直した文字は戻し、ページ内の場所は外す。% だけの名前は戻せないので、そのまま使う。
+  assert.equal(linkPath('/home/me/memory/MEMORY.md', 'sub/%E3%83%A1%E3%83%A2%20a.md#%E8%A6%8B'), '/home/me/memory/sub/メモ a.md');
+  assert.equal(linkPath('/home/me/memory/MEMORY.md', '100%.md'), '/home/me/memory/100%.md');
+  assert.equal(linkPath('/home/me/a.md', '/work/b.md'), '/work/b.md');
+  assert.equal(linkPath('/home/me/a.md', '~/notes/b.md'), '~/notes/b.md');
+  assert.equal(linkPath('C:/notes/a.md', 'C:/work/b.md'), 'C:/work/b.md');
+  assert.equal(linkPath('C:\\notes\\a.md', 'b.md'), 'C:\\notes\\b.md');
+  // セッションの作業ディレクトリからの相対パスで開いたファイルは、辿った先も作業ディレクトリからの相対パスにする。
+  assert.equal(linkPath('docs/guide.md', '../README.md'), 'docs/../README.md');
+  assert.equal(linkPath('README.md', 'docs/guide.md'), 'docs/guide.md');
 });

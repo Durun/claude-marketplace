@@ -1,10 +1,10 @@
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Artifact, type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE } from './attach.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
-import { buildSrcdoc } from './docFrame.ts';
+import { buildSrcdoc, linkPath } from './docFrame.ts';
 import { useSkin } from './skin.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { baseName } from './explorerFavorites.ts';
@@ -556,11 +556,29 @@ const DocHead = ({ doc, session, onReload, loading }: { doc: Doc; session?: Sess
   </header>
 );
 
+/**
+ * 資料の中のファイルへのリンクを、チャットのファイルパスを押したときと同じ開き方で開く。相対パスは base のファイルがあるディレクトリから辿る。
+ * 資料の iframe は別オリジンなので、押されたリンクを postMessage で受け取る。返す ref は、その iframe に付ける。
+ */
+const useFileLinks = (sessionId: string, base: string): RefObject<HTMLIFrameElement> => {
+  const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const link: unknown = e.source === frame.current?.contentWindow ? e.data?.openFile : undefined;
+      if (typeof link === 'string') void openFile(sessionId, linkPath(base, link));
+    };
+    addEventListener('message', onMessage);
+    return () => removeEventListener('message', onMessage);
+  }, [sessionId, base]);
+  return frame;
+};
+
 export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) => {
   const fetched = useFetch(() => api.doc(id), [id]);
   const skin = useSkin();
   const doc = fetched.data;
   useMarkSeen(doc, snapshot.docs.find((d) => d.id === id));
+  const frame = useFileLinks(doc?.sessionId ?? '', doc?.path ?? '');
   if (fetched.error && !doc) {
     return <div class="card panel error-note">資料を取得できませんでした（{fetched.error}）</div>;
   }
@@ -576,6 +594,7 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
       />
       {fetched.error && <p class="card panel error-note">再読み込みできませんでした（{fetched.error}）</p>}
       <iframe
+        ref={frame}
         class={`doc-frame ${raw ? 'is-raw' : ''}`}
         title={doc.title}
         sandbox="allow-scripts"
@@ -600,13 +619,14 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const doc = fetched.data;
   const listed = snapshot.docs.find((d) => d.id === f.tab.id);
   useMarkSeen(doc, listed);
+  const frame = useFileLinks(doc?.sessionId ?? '', doc?.path ?? '');
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (
     <FloatFrame f={f} title={listed?.title ?? doc?.title ?? '資料'} icon={f.tab.settings?.icon ?? '📄'} controls={[close]}>
       {fetched.error && <p class="card panel error-note">資料を取得できませんでした（{fetched.error}）</p>}
       {doc && <Downloads doc={doc} />}
       {doc && (
-        <iframe class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc, skin)} />
+        <iframe ref={frame} class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc, skin)} />
       )}
     </FloatFrame>
   );
@@ -652,6 +672,7 @@ const formatOf = (path: string): DocFormat =>
 const TextFile = ({ f }: { f: Float }) => {
   const file = useFetch(() => api.localFile(f.scope, f.tab.id), [f.scope, f.tab.id]);
   const skin = useSkin();
+  const frame = useFileLinks(f.scope, f.tab.id);
   useEffect(() => {
     const source = new EventSource(api.localFileEventsUrl(f.scope, f.tab.id));
     source.onmessage = file.reload;
@@ -662,7 +683,7 @@ const TextFile = ({ f }: { f: Float }) => {
     <>
       {file.error && <p class="card panel error-note">ファイルを読めませんでした（{file.error}）</p>}
       {file.data && (
-        <iframe class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content }, skin)} />
+        <iframe ref={frame} class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content }, skin)} />
       )}
     </>
   );
