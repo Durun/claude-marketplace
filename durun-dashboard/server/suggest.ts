@@ -209,19 +209,33 @@ const loadTerms = (chunk: string) => async (): Promise<GlossaryTerm[]> => {
     .slice(0, MAX_TERMS_PER_CHUNK);
 };
 
+/** 区切りを拾えなかった理由。裏で拾うので、次に用語集を返すときに添える。拾えたら消す。 */
+const termErrors = new Map<string, string>();
+
+const noteError = (key: string, load: () => Promise<GlossaryTerm[]>) => (): Promise<GlossaryTerm[]> =>
+  load().then(
+    (terms) => (termErrors.delete(key), terms),
+    (e: unknown) => {
+      termErrors.set(key, (e as Error).message);
+      throw e;
+    },
+  );
+
 /**
  * やり取りを材料の文字数ずつに区切り、区切りごとに拾った語を覚える。会話が伸びても前の区切りは変わらないので、拾い直すのは伸びた最後の区切りだけで済む。
  * 作業中は最後の区切りが発言のたびに伸び、そのたびに拾い直すと haiku を動かし続けるので、止まるまで前に拾った語を返す。
+ * まだ拾っていない区切りは、haiku の順番を待つと数十秒かかることがあるので、待たずに裏で拾い、pending を付けて返す。拾い終えたら、cache.ts が画面に取り直させる。
  * 人間が足した語を足した新しい順に、拾った語を出てきた新しい順に並べ、同じ語は先に並べたほうを残す。外した語は並べない。
  * 拾えなかった区切りがあっても、拾えた語は返し、理由を error に添える。
  */
-export const sessionGlossary = async (id: string, entries: ChatEntry[], busy: boolean, saved: SavedTerm[], hidden: string[]): Promise<Glossary> => {
+export const sessionGlossary = (id: string, entries: ChatEntry[], busy: boolean, saved: SavedTerm[], hidden: string[]): Glossary => {
   const text = transcriptOf(entries);
   const chunks = Array.from({ length: Math.ceil(text.length / MAX_BLOCK_CHARS) }, (_, i) => text.slice(i * MAX_BLOCK_CHARS, (i + 1) * MAX_BLOCK_CHARS));
-  const results = await Promise.allSettled(
-    chunks.map((chunk, i) => cached(`glossary:${id}:${i}`, { input: chunk, keep: busy && i === chunks.length - 1 }, oneOfFew(loadTerms(chunk)))),
-  );
-  const picked = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])).reverse();
+  const parts = chunks.map((chunk, i) => {
+    const key = `glossary:${id}:${i}`;
+    return { key, chunk, terms: peekCached(key, { input: chunk, keep: busy && i === chunks.length - 1 }, oneOfFew(noteError(key, loadTerms(chunk)))) };
+  });
+  const picked = parts.flatMap((p) => p.terms ?? []).reverse();
   const seen = new Set(hidden);
   const terms = [...[...saved].reverse(), ...picked].flatMap(({ term, description }) => {
     const key = termKey(term);
@@ -229,8 +243,11 @@ export const sessionGlossary = async (id: string, entries: ChatEntry[], busy: bo
     seen.add(key);
     return [{ term, description }];
   });
-  const failed = results.find((r) => r.status === 'rejected');
-  return failed ? { terms, error: (failed.reason as Error).message } : { terms };
+  // 語の無い区切りのうち、拾っている最中でないものは、拾えずに拾い直すまで間を空けている。
+  const pending = parts.some((p) => !p.terms && refreshing(p.key, p.chunk));
+  const failed = parts.find((p) => !p.terms && !refreshing(p.key, p.chunk));
+  const error = failed && termErrors.get(failed.key);
+  return { terms, ...(pending ? { pending } : {}), ...(error ? { error } : {}) };
 };
 
 /**

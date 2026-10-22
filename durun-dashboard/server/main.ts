@@ -790,7 +790,7 @@ const setBookmark = (id: string, body: unknown): void => {
   touch();
 };
 
-const glossaryOf = (id: string): Promise<Glossary> => {
+const glossaryOf = (id: string): Glossary => {
   const meta = sessionMeta(id);
   return sessionGlossary(meta.id, chatOf(id), readLiveSessions().get(meta.id)?.status === 'busy', meta.terms ?? [], meta.hiddenTerms ?? []);
 };
@@ -1081,7 +1081,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id), HAIKU_MS],
   [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) }), HAIKU_MS],
   [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id)), HAIKU_MS],
-  [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id)],
   [/^\/api\/sessions\/([^/]+)\/diagram$/, ([, id = ''], b) => makeDiagram(sessionMeta(id).id, sessionMeta(id).cwd, chatOf(id), field<string>(b, 'note', 'string')), READER_MS],
   [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b), READER_MS],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],

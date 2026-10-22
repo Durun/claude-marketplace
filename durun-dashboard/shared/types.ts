@@ -163,8 +163,8 @@ export type GlossaryTerm = { term: string; description: string };
 /** 人間がセッションの用語集に足した語。説明を書かずに足すと、haiku がやり取りから書いた説明が入る。at は足した時刻。 */
 export type SavedTerm = GlossaryTerm & { at: number };
 
-/** セッションの用語集。error は、やり取りの一部から用語を拾えなかった理由。 */
-export type Glossary = { terms: GlossaryTerm[]; error?: string };
+/** セッションの用語集。pending は、まだ拾っていないやり取りから、裏で用語を拾っている印。error は、やり取りの一部から用語を拾えなかった理由。 */
+export type Glossary = { terms: GlossaryTerm[]; pending?: boolean; error?: string };
 
 export type Session = {
   id: string;

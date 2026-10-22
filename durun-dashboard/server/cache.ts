@@ -82,8 +82,8 @@ const reload = <T,>(key: string, p: Policy, load: () => Promise<T>): Promise<T> 
       entries.set(key, { value, at: Date.now(), input });
       failedAt.delete(key);
       scheduleSave();
-      if (!before) changed();
-      else if (before.input !== input || JSON.stringify(before.value) !== JSON.stringify(value)) bump();
+      // 無い値を待たずに返した画面にも、届いた値を取り直させる。
+      if (!before || before.input !== input || JSON.stringify(before.value) !== JSON.stringify(value)) bump();
       return value;
     },
     (e: unknown) => {
@@ -97,10 +97,16 @@ const reload = <T,>(key: string, p: Policy, load: () => Promise<T>): Promise<T> 
   return task;
 };
 
-/** 裏で読み直す。失敗したら、maxAge か RETRY_MS が過ぎるまで試さない。スナップショットを作るたびに外部へ問い合わせが積もらないようにする。 */
+/**
+ * 裏で読み直す。失敗したら、maxAge か RETRY_MS が過ぎるまで試さない。スナップショットを作るたびに外部へ問い合わせが積もらないようにする。
+ * 読めなかったことも画面に知らせ、読み込み中と見せていた表示を改めさせる。
+ */
 const refreshLater = (key: string, p: Policy, load: () => Promise<unknown>): void => {
   if (Date.now() - (failedAt.get(key) ?? -Infinity) < (p.maxAge ?? RETRY_MS)) return;
-  reload(key, p, load).catch((e: unknown) => console.error(`${key} を読み直せません: ${(e as Error).message?.split('\n')[0]}`));
+  reload(key, p, load).catch((e: unknown) => {
+    console.error(`${key} を読み直せません: ${(e as Error).message?.split('\n')[0]}`);
+    bump();
+  });
 };
 
 /**
@@ -134,5 +140,5 @@ export const forgetCached = (...keys: (string | RegExp)[]): void => {
 /** key を、材料 input で読み直している最中か。返した値が古いことを、画面に添えるのに使う。 */
 export const refreshing = (key: string, input?: string): boolean => running.has(`${key}\0${digest(input) ?? ''}`);
 
-/** 裏で読み直した値が変わるたびに増える。画面はこれが変わったら取り直す。 */
+/** 覚えた値が増えたか変わったときと、裏で読めなかったときに増える。画面はこれが変わったら取り直す。 */
 export const cacheVersion = (): number => version;

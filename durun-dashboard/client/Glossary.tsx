@@ -61,7 +61,7 @@ const AddTerm = ({ s, onClose }: { s: Session; onClose: () => void }) => {
 
 /**
  * セッションの用語集のウィジェット。やり取りから haiku が拾った専門用語と、人間が「追加」で足した語を、説明を添えて並べる。
- * 拾い直す間は、前の用語集を薄く出しておく。
+ * 拾い直す間と、まだ拾っていないやり取りを裏で拾っている間は、それまでの用語集を薄く出しておく。
  */
 export const Glossary = ({ s }: { s: Session }) => {
   const [adding, setAdding] = useState(false);
@@ -77,12 +77,12 @@ export const Glossary = ({ s }: { s: Session }) => {
       <div class="widget-body">
         {adding && <AddTerm s={s} onClose={() => setAdding(false)} />}
         {data?.error && <p class="help">やり取りから用語を拾えなかったところがあります（{data.error}）</p>}
-        {!data ? (
+        {!data || (data.pending && data.terms.length === 0) ? (
           <Empty>{error ? `用語を拾えませんでした（${error}）` : '用語を拾っています…'}</Empty>
         ) : data.terms.length === 0 ? (
           <Empty>用語はまだありません。</Empty>
         ) : (
-          <dl class={`glossary${loading ? ' is-loading' : ''}`}>
+          <dl class={`glossary${loading || data.pending ? ' is-loading' : ''}`}>
             {data.terms.map((t) => (
               <div key={t.term} class="glossary-item">
                 <dt>

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Conversation, Waiting } from '../server/suggest.ts';
-import type { BgTask, ChatEntry } from '../shared/types.ts';
+import type { BgTask, ChatEntry, Glossary } from '../shared/types.ts';
 
 // 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
 // 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
@@ -120,6 +120,16 @@ const message = (text: string): ChatEntry => ({ kind: 'message', text });
 // 材料の 1 区切り（4000 字）より長くして、次の発言を次の区切りに入れる。
 const FILLER = 'あ'.repeat(4100);
 
+/** まだ拾っていない区切りを裏で拾い終えるまで、用語集を読み直す。 */
+const settled = async (read: () => Glossary): Promise<Glossary> => {
+  let glossary = read();
+  for (let i = 0; i < 100 && glossary.pending; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    glossary = read();
+  }
+  return glossary;
+};
+
 test('用語集は、やり取りを区切って拾った語を新しい順に、人間が足した語より後に並べ、同じ語と外した語は除き、同じやり取りは拾い直さない', async () => {
   useGlossaryClaude();
   const before = calls();
@@ -133,15 +143,20 @@ test('用語集は、やり取りを区切って拾った語を新しい順に�
       { term: 'gamma', description: 'gamma の説明' },
     ],
   };
-  assert.deepEqual(await sessionGlossary('g1', entries, false, saved, ['beta']), expected);
+  const read = () => sessionGlossary('g1', entries, false, saved, ['beta']);
+  // まだ拾っていない区切りは待たずに裏で拾い、拾い終えるまでは足した語だけを返す。
+  assert.deepEqual(read(), { terms: expected.terms.slice(0, 2), pending: true });
+  assert.deepEqual(await settled(read), expected);
   assert.equal(calls() - before, 2);
-  assert.deepEqual(await sessionGlossary('g1', entries, false, saved, ['beta']), expected);
+  assert.deepEqual(read(), expected);
   assert.equal(calls() - before, 2);
 });
 
-test('用語集は、作業中は伸びた最後の区切りを拾い直さず、止まったら拾い直す。拾えなかった区切りがあれば、拾えた語に理由を添える', async () => {
+test('用語集は、作業中は伸びた最後の区切りを拾い直さず、止まったら拾い直す。拾えなかった区切りがあれば、拾えた語に理由を添える', async (t) => {
+  // 裏で拾えなかった区切りは、cache.ts が console.error に書く。
+  t.mock.method(console, 'error', () => {});
   useGlossaryClaude();
-  const termsOf = async (entries: ChatEntry[], busy: boolean): Promise<string[]> => (await sessionGlossary('g2', entries, busy, [], [])).terms.map((t) => t.term);
+  const termsOf = async (entries: ChatEntry[], busy: boolean): Promise<string[]> => (await settled(() => sessionGlossary('g2', entries, busy, [], []))).terms.map((g) => g.term);
   const entries = [message(`TERM:alpha${FILLER}`), message('TERM:beta')];
   await termsOf(entries, false);
   const before = calls();
@@ -159,7 +174,7 @@ test('用語集は、作業中は伸びた最後の区切りを拾い直さず�
   assert.equal(calls(), before + 1);
 
   const failing = [message(`TERM:delta${FILLER}`), message('FAIL')];
-  assert.deepEqual(await sessionGlossary('g3', failing, false, [], []), { terms: [{ term: 'delta', description: 'delta の説明' }], error: 'usage limit reached' });
+  assert.deepEqual(await settled(() => sessionGlossary('g3', failing, false, [], [])), { terms: [{ term: 'delta', description: 'delta の説明' }], error: 'usage limit reached' });
 });
 
 test('説明を書かずに足した語は、語が出てくるあたりのやり取りを材料に説明を書かせる', async () => {
