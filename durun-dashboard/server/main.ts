@@ -32,6 +32,7 @@ import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
+import { latestMemory } from './memory.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
 import { recentProofFiles, readProofFile, writeProofFile } from './proofFiles.ts';
@@ -1110,6 +1111,8 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];
 
+const memoryNow = latestMemory(() => platform.readMemory());
+
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
@@ -1124,7 +1127,7 @@ const GET_ROUTES: Route[] = [
     const pr = prUrlOf(url.searchParams.get('url'));
     return viaGh('PR を読めません', () => prDetail(pr, wantsFresh(url)));
   }, WEB_API_MS],
-  [/^\/api\/memory$/, () => platform.readMemory()],
+  [/^\/api\/memory$/, () => memoryNow()],
   [/^\/api\/proofread\/files$/, () => recentProofFiles()],
   // 無いファイルは、画面が新しく書き始めるので null を返す。読めないファイルと見分けるため、404 にはしない。
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = '']) => readProofFile(id)],

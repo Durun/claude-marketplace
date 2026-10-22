@@ -1,6 +1,6 @@
 // macOS の sysctl と vm_stat の出力から、メモリプレッシャーと、アクティビティモニタのメモリの欄と同じ内訳を求める。
 // Windows は、物理メモリの合計と空きから、タスクマネージャーと同じ使用率を求める。
-import type { MemoryPressure, MemoryUsage } from '../shared/types.ts';
+import type { MemoryPressure, MemoryStatus, MemoryUsage } from '../shared/types.ts';
 
 const MIB = 1024 * 1024;
 // kern.memorystatus_vm_pressure_level は 1 が正常、2 が警告、4 が危険。
@@ -42,4 +42,28 @@ export const toMemoryUsage = (total: number, available: number): MemoryUsage => 
   const used = total - available;
   const percent = total > 0 ? (used / total) * 100 : 0;
   return { kind: 'usage', level: percent >= USAGE_CRITICAL_PERCENT ? 'critical' : percent >= USAGE_WARN_PERCENT ? 'warn' : 'normal', percent, total, used, available };
+};
+
+/**
+ * 前に読んだ値をすぐ返し、読み直しは裏で進める。sysctl と vm_stat の起動は、マシンが混んでいると数十秒かかるため。
+ * 読めた値がまだ無ければ、読み終えるのを待つ。読めなかったら前の値を捨て、次は読み終えるのを待って、読めないことを画面に返す。
+ */
+export const latestMemory = (read: () => Promise<MemoryStatus | null>): (() => Promise<MemoryStatus | null>) => {
+  let last: MemoryStatus | null | undefined;
+  let reading: Promise<MemoryStatus | null> | undefined;
+  return () => {
+    reading ??= read()
+      .then(
+        (m) => (last = m),
+        (e: unknown) => {
+          last = undefined;
+          throw e;
+        },
+      )
+      .finally(() => (reading = undefined));
+    if (last === undefined) return reading;
+    // 裏で読めなかったことは、次に呼ばれたときに待って返すので、ここでは捨てる。
+    reading.catch(() => {});
+    return Promise.resolve(last);
+  };
 };

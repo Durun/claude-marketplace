@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import { borrowSkills, summarizeLog } from '../server/claude.ts';
 import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, parseDiff, repoFile, resolveRange } from '../server/integrations.ts';
-import { toMemoryStatus } from '../server/memory.ts';
-import { type BranchView, WORKTREE } from '../shared/types.ts';
+import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
+import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
 import { renameTheme, stoppedStatus } from '../server/snapshot.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
@@ -324,6 +324,32 @@ test('toMemoryStatus は、sysctl と vm_stat の出力から、メモリプレ�
     cached: (254559 + 22385) * page,
     swapUsed: 476.12 * 1024 * 1024,
   });
+});
+
+test('latestMemory は、前に読んだ値をすぐ返して裏で読み直し、読めた値がまだ無いときと読めなかった後は、読み終えるのを待つ', async () => {
+  const reads: { resolve: (m: MemoryStatus) => void; reject: (e: Error) => void }[] = [];
+  const memory = latestMemory(() => new Promise((resolve, reject) => reads.push({ resolve, reject })));
+  const settled = () => new Promise((r) => setImmediate(r));
+  const used = (percent: number) => toMemoryUsage(100, 100 - percent);
+
+  // 同時に呼んでも、読むのは 1 回にまとめる。
+  const first = Promise.all([memory(), memory()]);
+  reads[0]?.resolve(used(10));
+  assert.deepEqual(await first, [used(10), used(10)]);
+
+  // 次からは前の値をすぐ返し、裏で読み直した値はその次に返す。
+  assert.deepEqual(await memory(), used(10));
+  reads[1]?.resolve(used(20));
+  await settled();
+  assert.deepEqual(await memory(), used(20));
+
+  // 裏で読めなかったら、次は読み終えるのを待って、読めないことを返す。
+  reads[2]?.reject(new Error('sysctl を動かせません'));
+  await settled();
+  const failed = memory();
+  reads[3]?.reject(new Error('sysctl を動かせません'));
+  await assert.rejects(failed, /sysctl/);
+  assert.equal(reads.length, 4);
 });
 
 test('borrowSkills は、一覧を持つセッションのうち、同じディレクトリで最近動いたものを、無ければほかのディレクトリで最近動いたものを返す', () => {
