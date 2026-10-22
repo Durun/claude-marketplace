@@ -859,16 +859,22 @@ export const gitDiff = async (cwd: string, baseRef: string | undefined, full: bo
   const from = want.from && (await end(want.from));
   const start = from ? { from, base: from === WORKTREE ? 'HEAD' : await parentOf(root, from) } : await defaultStart(root, tip, await branchBases(root, baseRef, view));
   const ends = to === WORKTREE ? [start.base] : [start.base, to];
-  let text = await git(root, ['diff', '--no-color', '--no-ext-diff', '--find-renames', `-U${full ? FULL_CONTEXT_LINES : 3}`, ...ends]);
+  const range = { from: start.from, to };
+  // 差分、未追跡のファイル、コミットの一覧は互いの結果を使わないので、git を同時に動かして待つ時間を縮める。
+  const [raw, untracked, commits] = await Promise.all([
+    git(root, ['diff', '--no-color', '--no-ext-diff', '--find-renames', `-U${full ? FULL_CONTEXT_LINES : 3}`, ...ends]),
+    to === WORKTREE ? untrackedFiles(root) : [],
+    listCommits(root, tip, range),
+  ]);
+  let text = raw;
   const truncated = text.length > MAX_DIFF_CHARS;
   if (truncated) {
     const cut = text.lastIndexOf('\ndiff --git ', MAX_DIFF_CHARS);
     text = text.slice(0, cut > 0 ? cut : MAX_DIFF_CHARS);
   }
-  const files = [...parseDiff(text), ...(to === WORKTREE ? await untrackedFiles(root) : [])];
+  const files = [...parseDiff(text), ...untracked];
   for (const f of files) f.editedBySession = edited.has(path.join(root, f.path));
-  const range = { from: start.from, to };
-  return { range, commits: await listCommits(root, tip, range), files, truncated };
+  return { range, commits, files, truncated };
 };
 
 /** ブランチのファイルを読む。作業ツリーに無いファイルも指せるよう、パスは実在を確かめずに、リポジトリの直下からの位置にする。 */
