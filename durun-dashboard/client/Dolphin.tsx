@@ -400,7 +400,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     };
   }, []);
 
-  const mines = useFloats().find((f) => f.key === MINESWEEPER_KEY);
+  const mines = useFloats((list) => list.find((f) => f.key === MINESWEEPER_KEY));
   const toggle = () => setOpen((o) => !o);
   const ask = async (text: string) => {
     const next: Turn[] = [...turns, { role: 'human', text }];

@@ -1,4 +1,5 @@
 import { type ComponentType, render } from 'preact';
+import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { JIRA_ISSUE_KEY, PR_URL, type Snapshot, notionPageId } from '../shared/types.ts';
 import { api } from './api.ts';
@@ -62,6 +63,12 @@ const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = 
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 
+/** 1 つのウィンドウを動かしたりメモ帳に打ったりするたびに、ほかのウィンドウまで描き直さないよう、自分の f かスナップショットが変わったときだけ描き直す。 */
+const FloatOf = memo(({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
+  const Window = FLOATS[f.key];
+  return Window ? <Window f={f} snapshot={snapshot} /> : null;
+});
+
 /**
  * ウィンドウに浮かべたウィジェットは、どの画面にも出す。
  * 手前に出したときに要素を並べ替えると中のスクロールの位置が戻るので、要素は決まった順に並べ、重なりの順は z-index で決める。
@@ -69,10 +76,7 @@ const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 const Floats = ({ snapshot }: { snapshot: Snapshot }) =>
   useFloats()
     .toSorted((a, b) => floatId(a).localeCompare(floatId(b)))
-    .map((f) => {
-      const Window = FLOATS[f.key];
-      return Window && <Window key={floatId(f)} f={f} snapshot={snapshot} />;
-    });
+    .map((f) => <FloatOf key={floatId(f)} f={f} snapshot={snapshot} />);
 
 /**
  * PR と JIRA の課題へのリンクを押したら、外のサイトではなくダッシュボードで開く。

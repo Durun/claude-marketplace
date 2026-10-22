@@ -44,15 +44,23 @@ const setFloats = (next: Float[]): void => {
   listeners.forEach((fn) => fn(next));
 };
 
-export const useFloats = (): Float[] => {
-  const [list, setList] = useState(floats);
+/**
+ * 浮かべたウィジェットの一覧。select を渡すと一覧から選んだ値を返し、その値が変わったときだけ描き直す。
+ * 一覧はウィンドウを動かしたりメモ帳に打ったりするたびに変わるので、浮かべているかだけを見る画面は、比べられる値を選んで描き直しを減らす。
+ */
+export const useFloats = <T = Float[],>(select: (list: Float[]) => T = (list) => list as T): T => {
+  const value = select(floats);
+  const [, rerender] = useState(0);
+  const latest = useRef({ select, value });
+  latest.current = { select, value };
   useEffect(() => {
-    listeners.add(setList);
+    const changed = (list: Float[]) => !Object.is(latest.current.select(list), latest.current.value) && rerender((n) => n + 1);
+    listeners.add(changed);
     return () => {
-      listeners.delete(setList);
+      listeners.delete(changed);
     };
   }, []);
-  return list;
+  return value;
 };
 
 const same = (f: Float, key: string, scope: string, tabId: string): boolean => f.key === key && f.scope === scope && f.tab.id === tabId;
@@ -170,6 +178,9 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
   const drag = useRef<DragStart>();
   const [taskbar, setTaskbar] = useState<Element | null>(null);
   useEffect(() => setTaskbar(document.querySelector('.taskbar-windows')), []);
+  // 重なりの順と、いちばん手前のウィンドウかは、ほかのウィンドウを手前に出したり最小化したりしても変わるので、一覧から選んで描き直す。
+  const z = useFloats((list) => list.indexOf(f));
+  const active = useFloats((list) => list.findLast((x) => !x.min) === f);
   const restore: Control[] = f.max
     ? [{ kind: 'restore', label: f.max === 'dock' ? '枠に戻す' : '元の大きさに戻す', onClick: () => unmaximize(f) }]
     : onDock ? [{ kind: 'restore', label: '枠に固定', onClick: onDock }] : [];
@@ -208,7 +219,7 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
     <section
       class={`widget float-window${f.min ? ' is-min' : ''}${f.max ? ' is-max' : ''}`}
       aria-label={title}
-      style={`${f.max ? '' : `left: ${f.x}px; top: ${f.y}px; width: ${f.w}px; height: ${f.h}px; `}--z: ${floats.indexOf(f)}; ${controlsVar(all)}; ${iconVar(icon)}`}
+      style={`${f.max ? '' : `left: ${f.x}px; top: ${f.y}px; width: ${f.w}px; height: ${f.h}px; `}--z: ${z}; ${controlsVar(all)}; ${iconVar(icon)}`}
       onPointerDown={() => !f.max && raise(f)}
     >
       <div class="section-head float-head" {...grab()} onDblClick={() => (f.max ? unmaximize(f) : maximize(f))}>
@@ -218,7 +229,7 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
       <WindowControls controls={all} />
       {!f.max && EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
       {taskbar && createPortal(
-        <button class="taskbar-window" title={title} style={iconVar(icon)} aria-pressed={isActive(f)} onClick={() => toggleTask(f)}>{title}</button>,
+        <button class="taskbar-window" title={title} style={iconVar(icon)} aria-pressed={active} onClick={() => toggleTask(f)}>{title}</button>,
         taskbar,
       )}
     </section>

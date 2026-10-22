@@ -3,7 +3,7 @@ import type { ComponentChildren, ComponentType, JSX, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AppIcon, setApps } from './apps.tsx';
 import { attachIcon, composerAt } from './attach.ts';
-import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, isFloating, useFloats, dockedControls } from './Float.tsx';
+import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, useFloats, dockedControls } from './Float.tsx';
 import {
   COLS,
   ROWS,
@@ -570,8 +570,9 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
   };
   const remove = (id: string) => update(keepTabs(layout, (t) => t.id !== id));
   const placingWidget = placing && widgets[kindOf(placing.id)];
-  const floats = useFloats();
-  const floating = (t: Tab) => isFloating(floats, storageKey, scope, t.id);
+  // ウィンドウを動かしたりメモ帳に打ったりするたびに、ダッシュボード全体を描き直さないよう、浮かべているタブの id だけを見る。
+  const floatingIds = useFloats((list) => list.filter((f) => f.key === storageKey && f.scope === scope).map((f) => f.tab.id).join('\n'));
+  const floating = (t: Tab) => floatingIds.split('\n').includes(t.id);
   // 配置に無いか浮かべているウィジェットはウィンドウで手前に出し、枠にあればそのタブを選んで枠まで送る。
   useEffect(() => {
     const take = () => {
@@ -588,7 +589,7 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, lay
     return () => {
       requestListeners.delete(take);
     };
-  }, [storageKey, scope, layout, floats]);
+  }, [storageKey, scope, layout, floatingIds]);
   const toggleWindow = (t: Tab, from: DOMRect, max?: boolean) => (floating(t) ? dock(storageKey, scope, t.id) : floatOut(storageKey, scope, t, from, max ? 'dock' : undefined));
   return (
     <>

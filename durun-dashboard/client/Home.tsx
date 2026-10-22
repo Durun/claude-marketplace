@@ -179,7 +179,7 @@ const InboxWidget = ({ snapshot }: HomeWidgetProps) => (
 );
 
 const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
-  const creating = isFloating(useFloats(), NEW_SESSION_KEY, '', NEW_SESSION_KEY);
+  const creating = useFloats((list) => isFloating(list, NEW_SESSION_KEY, '', NEW_SESSION_KEY));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // 一覧から消えたセッションは、選んだ数にも操作の対象にも入れない。
   const ids = snapshot.sessions.filter((s) => selected.has(s.id)).map((s) => s.id);
