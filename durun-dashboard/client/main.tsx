@@ -21,6 +21,7 @@ import { JIRA_KEY, JIRA_WIDGET, JiraFloat } from './JiraView.tsx';
 import { IE_KEY, InternetExplorerFloat } from './InternetExplorer.tsx';
 import { MINESWEEPER_KEY, MinesweeperFloat, SOLITAIRE_KEY, SolitaireFloat } from './Games.tsx';
 import { NOTEPAD_KEY, NotepadFloat } from './Notepad.tsx';
+import { OfflineDialog } from './OfflineDialog.tsx';
 import { PROOFREAD_KEY, ProofreadFloat } from './Proofread.tsx';
 import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
@@ -159,6 +160,8 @@ const App = () => {
           {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
         </main>
         {snapshot && <Floats snapshot={snapshot} />}
+        {/* 前に受け取ったスナップショットから描くと、もう答えた停止を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
+        <OfflineDialog snapshot={fresh} />
         <Toasts />
         <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
         {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}

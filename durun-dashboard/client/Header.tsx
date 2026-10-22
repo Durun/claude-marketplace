@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from 'preact/hooks';
 import type { Attention, DocMeta, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
-import { api } from './api.ts';
+import { api, attempt } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, openExplorer } from './Explorer.tsx';
@@ -212,7 +212,7 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) => {
+const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: DocMeta[]; autoContinue: boolean }) => {
   const light = useLightMode();
   const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
@@ -339,13 +339,16 @@ const AppMenu = ({ onSearch, onEdit, docs }: MenuProps & { docs: DocMeta[] }) =>
             </button>
           </div>
         </div>
-        {/* XP の「ログオフ」「終了オプション」の位置に、画面全体の切り替えを置く。 */}
+        {/* XP の「ログオフ」「終了オプション」の位置に、画面全体の切り替えと、自動継続モードを置く。 */}
         <div class="app-menu-foot">
           <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>
             <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" /></svg>全画面
           </button>
           <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>
             <svg class="app-menu-foot-icon is-red" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10zM3 13l6-6" /></svg>軽量モード
+          </button>
+          <button class="app-menu-item" aria-pressed={autoContinue} title="スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに、API に届くようになったら続けさせる" onClick={() => void attempt('自動継続モードの切り替え', () => api.autoContinue(!autoContinue))}>
+            <svg class="app-menu-foot-icon is-green" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>自動継続モード
           </button>
         </div>
       </div>
@@ -475,7 +478,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
   const stale = useLiveReload(assets);
   return (
     <header class="topbar">
-      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} />
+      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} />
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />

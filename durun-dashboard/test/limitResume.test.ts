@@ -12,7 +12,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-limit-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { summarizeLog } = await import('../server/claude.ts');
-const { checkLimit, onTranscriptChange } = await import('../server/limitResume.ts');
+const { answerOffline, checkLimit, onTranscriptChange, setAutoContinue } = await import('../server/limitResume.ts');
 const { ensureImprover, improveState, nextImprovement } = await import('../server/improve.ts');
 const { ensureSession, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
@@ -144,7 +144,36 @@ test('summarizeLog は、通信の途切れで止まった合成の発言から�
   assert.equal(summarizeLog(file).offlineAt, undefined);
 });
 
-test('通信の途切れで止まったセッションには、API に届くようになってから「続けて」とだけ 1 度送る', async (t) => {
+test('自動継続モードでなければ、通信の途切れで止まったセッションには送らず、確認のダイアログで OK を押したら「続けて」とだけ 1 度送る。× で閉じたら送らず、同じ停止ではもう尋ねない', async (t) => {
+  const socketPath = platform.localSocketPath(tmp, 'ask');
+  fs.writeFileSync(path.join(sessionsDir, 'ask.json'), JSON.stringify({ pid: process.pid, sessionId: 'ask', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
+  const { server, received } = await listen(socketPath);
+  const auth = platform.inboxToken(process.pid, sessionsDir) ? [{ type: 'auth', token: 'test-token' }] : [];
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(path.join(sessionsDir, 'ask.json'));
+  });
+
+  const file = transcriptOf('ask', [offline(Date.now() - 2 * MINUTE)]);
+  checkLimit('ask');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(received, []);
+
+  await answerOffline('ask', true);
+  await until(() => received.length > 0);
+  assert.deepEqual(received, [[...auth, { type: 'user', message: { role: 'user', content: '続けて' } }]]);
+  // 続きの依頼が会話ログに載る前に、ほかの画面の OK を押されても、2 度は送らない。
+  await answerOffline('ask', true);
+
+  // 続けた後に、また止まった。× で閉じたら送らず、その後に OK を押されても送らない。
+  fs.appendFileSync(file, `${prompt(Date.now() - MINUTE, '続けて')}\n${offline(Date.now())}\n`);
+  await answerOffline('ask', false);
+  await answerOffline('ask', true);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(received.length, 1);
+});
+
+test('自動継続モードなら、通信の途切れで止まったセッションに、API に届くようになってから「続けて」とだけ 1 度送る。止まった後にモードを入れたときも送る', async (t) => {
   const socketPath = platform.localSocketPath(tmp, 'away');
   fs.writeFileSync(path.join(sessionsDir, 'away.json'), JSON.stringify({ pid: process.pid, sessionId: 'away', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   const { server, received } = await listen(socketPath);
@@ -156,23 +185,37 @@ test('通信の途切れで止まったセッションには、API に届くよ�
   process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(api.address() as net.AddressInfo).port}`;
   // 失敗しても、サーバーを閉じてテストを終わらせる。
   t.after(async () => {
+    state.autoContinue = undefined;
     delete process.env.ANTHROPIC_BASE_URL;
     api.closeAllConnections();
     await Promise.all([new Promise((resolve) => api.close(resolve)), new Promise((resolve) => server.close(resolve))]);
     fs.rmSync(path.join(sessionsDir, 'away.json'));
   });
 
-  transcriptOf('away', [offline(Date.now() - MINUTE)]);
+  const continued = [...auth, { type: 'user', message: { role: 'user', content: '続けて' } }];
+  online = true;
+  const file = transcriptOf('away', [offline(Date.now() - 2 * MINUTE)]);
+  // 自動継続モードを入れるまでは、API に届いても送らない。
   checkLimit('away');
   await new Promise((r) => setTimeout(r, 300));
   assert.deepEqual(received, []);
+  setAutoContinue(true);
+  await until(() => received.length > 0);
+  assert.deepEqual(received, [continued]);
+
+  // 続けた後に、また止まった。届かない間は送らない。
+  fs.appendFileSync(file, `${prompt(Date.now() - MINUTE, '続けて')}\n${offline(Date.now())}\n`);
+  online = false;
+  checkLimit('away');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(received.length, 1);
 
   // 確かめ直したときに届けば送る。
   online = true;
   checkLimit('away');
-  await until(() => received.length > 0);
-  assert.deepEqual(received, [[...auth, { type: 'user', message: { role: 'user', content: '続けて' } }]]);
+  await until(() => received.length > 1);
+  assert.deepEqual(received, [continued, continued]);
   checkLimit('away');
   await new Promise((r) => setTimeout(r, 300));
-  assert.equal(received.length, 1);
+  assert.equal(received.length, 2);
 });

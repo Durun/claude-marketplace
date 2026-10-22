@@ -136,6 +136,8 @@ export const api = {
   glossary: (id: string) => postJson<Glossary>(`${session(id)}/glossary`),
   compact: (id: string) => postJson<void>(`${session(id)}/compact`),
   stop: (id: string) => postJson<void>(`${session(id)}/stop`),
+  /** スリープや通信の途切れで止まったセッションを続けるか、確認のダイアログで答える。 */
+  answerOffline: (id: string, resume: boolean) => postJson<void>(`${session(id)}/offline`, { resume }),
   diagram: (id: string, note: string) => postJson<DocMeta>(`${session(id)}/diagram`, { note }),
   exportDoc: async (id: string, format: 'pdf' | 'png' | 'html'): Promise<Blob> => {
     const res = await fetch(`/api/docs/${seg(id)}/export/${format}`, { method: 'POST' });
@@ -163,6 +165,7 @@ export const api = {
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
+  autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
   /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。readings に答えがある文は読み直さない。 */
   proofread: async (text: string, glossary: string, readings: (ProofReading | null)[], onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {

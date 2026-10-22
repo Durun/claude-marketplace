@@ -62,7 +62,7 @@ export type SessionMeta = {
   startedAt?: number;
   /** 改善要望を実装するためにダッシュボードが起動したセッション */
   improver?: boolean;
-  /** 使用制限か通信の途切れで止まったのを続けさせたときの、止まった時刻。同じもので 2 度続けさせないために残す。 */
+  /** 使用制限か通信の途切れで止まったのを続けさせたか、続けないと人間が答えたときの、止まった時刻。同じもので 2 度続けさせず、2 度尋ねないために残す。 */
   limitResumedAt?: number;
 };
 
@@ -130,6 +130,8 @@ type State = {
   dismissed: string[];
   /** 改善要望の自動実装。model と effort は空なら Claude Code の設定に従う。error があれば待機する。 */
   improve: ImproveSettings & { run?: ImproveRun; error?: string };
+  /** 自動継続モード。スリープや通信の途切れで止まったセッションを、人間に尋ねずに続けさせる。 */
+  autoContinue?: boolean;
   /** エラーをまとめる鍵ごとの記録 */
   errors: Record<string, ErrorRecord>;
   /** PR のレビュースレッドに添えた分析。古いものから消す。 */

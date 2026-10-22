@@ -218,10 +218,12 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
   if (summarizable) session.summary = peekSummary({ ...session, firstPrompt: firstPromptOf(log) });
   // 質問や権限の確認に答えていないセッションと、発言の無いセッションは、人間を待っている。
-  // 通信の途切れで止まったセッションは、通信が戻れば limitResume.ts が続けさせるので、それまでは通信を待っている。
+  // スリープや通信の途切れで止まったセッションは、確認のダイアログへの人間の答えか、自動継続モードなら通信が戻るのを待っている。答えはダイアログで尋ねるので、要対応には出さない。
   if (session.status === 'idle' && !session.archived) {
-    if (log?.offlineAt && meta.limitResumedAt !== log.offlineAt) session.waitingFor = 'event';
-    else session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
+    if (log?.offlineAt && meta.limitResumedAt !== log.offlineAt) {
+      session.offline = true;
+      session.waitingFor = 'event';
+    } else session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
   }
   return session;
 };
@@ -316,6 +318,7 @@ export const buildSnapshot = (): Snapshot => {
     themes,
     sessionOrder: state.sessionOrder,
     improve: improveState(),
+    autoContinue: !!state.autoContinue,
     jiraRefreshedAt: jiraRefreshedAt(),
     cacheVersion: cacheVersion(),
     jiraBase: jiraBase(),

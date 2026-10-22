@@ -28,7 +28,7 @@ import { listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
-import { checkLimits, onTranscriptChange } from './limitResume.ts';
+import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { platform } from './platform.ts';
 import { notesFor } from './prReview.ts';
@@ -1056,6 +1056,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/sessions\/([^/]+)\/fork$/, ([, id = ''], b) => fork(id, b)],
   [/^\/api\/sessions\/([^/]+)\/compact$/, ([, id = '']) => compactSession(sessionMeta(id).id, sessionMeta(id).cwd)],
   [/^\/api\/sessions\/([^/]+)\/stop$/, ([, id = '']) => stopSession(sessionMeta(id).id)],
+  [/^\/api\/sessions\/([^/]+)\/offline$/, ([, id = ''], b) => answerOffline(sessionMeta(id).id, field<boolean>(b, 'resume', 'boolean'))],
   [/^\/api\/sessions\/([^/]+)\/review$/, ([, id = ''], b) => review(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], b) => setViewed(id, b)],
@@ -1087,6 +1088,7 @@ const POST_ROUTES: [RegExp, Handler][] = [
   [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b)],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b))],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
+  [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/hook$/, (_, b, __, req) => handleHook(b as HookInput, Number(req.headers['x-claude-pid']) || 0)],
 ];
 
