@@ -17,7 +17,7 @@ type Group = { theme: string; sessions: Session[] };
 /** セッションが入るまとまり。ピン留めしたセッションは、テーマから外して一覧の先頭にまとめる。 */
 const groupOf = (s: Session): string => (s.pinned ? PINNED : s.theme.trim() || UNCLASSIFIED);
 
-/** テーマの並びは snapshot.themes に従う。ピン留めは最初、未分類は最後に置く。 */
+/** テーマの並びは themeOrder に従う。ピン留めは最初、未分類は最後に置く。 */
 const groupSessions = (sessions: Session[], themeOrder: string[], order: string[], placeOf: (s: Session) => string): Group[] => {
   const groups = new Map<string, Session[]>();
   for (const s of sessions) groups.set(placeOf(s), [...(groups.get(placeOf(s)) ?? []), s]);
@@ -228,7 +228,7 @@ const moveToGroup = (s: Session, to: string): Promise<unknown> =>
  * 未分類はテーマが空のセッションに画面が付けた名前で、空のテーマを送るとリポジトリ名に戻るので、ほかのまとまりからは移せない。
  * 選んだカードをほかのまとまりへ移すと、選んだほかのセッションも一緒に移す。ドラッグの間に動かして見せるのは、ドラッグしたカードだけにする。
  */
-const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<string>) => {
+const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<string>, themes: string[]) => {
   const [order, setOrder] = useState(snapshot.sessionOrder);
   useEffect(() => setOrder(snapshot.sessionOrder), [snapshot.sessionOrder.join('\n')]);
   const [dragging, setDragging] = useState<Session>();
@@ -243,7 +243,7 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<s
   }, [snapshot]);
   const placeOf = (s: Session): string => (moved?.ids.includes(s.id) ? moved.group : groupOf(s));
   const carried = !dragging ? [] : selected.has(dragging.id) ? visible.filter((v) => selected.has(v.id)) : [dragging];
-  const groups = groupSessions(visible, snapshot.themes, order, placeOf);
+  const groups = groupSessions(visible, themes, order, placeOf);
   const ids = groups.flatMap((g) => g.sessions.map((s) => s.id));
   // キーボードで動かしたカードは、並べ直すときに DOM から外れてフォーカスを失うので、動かした先でフォーカスし直す。
   const refocus = useRef<string>();
@@ -336,17 +336,61 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<s
   return { groups, carried: new Set(carried.map((s) => s.id)), dragOf, groupDrag };
 };
 
+/**
+ * テーマの並べ替え。見出しをほかのテーマの見出しの上へ運ぶとその位置へ動かして見せ、一覧のどこで離しても見せた順で保存する。
+ * 並べた順は、サーバーから届くまでの間も手元の状態で出す。ピン留めと未分類はテーマではないので、動かさない。
+ */
+const useThemeOrder = (themes: string[]) => {
+  const [order, setOrder] = useState(themes);
+  useEffect(() => setOrder(themes), [themes.join('\n')]);
+  const [dragging, setDragging] = useState<string>();
+  const headDrag = (theme: string) => ({
+    draggable: true,
+    // 名前を変えている間は、入力欄の中でマウスを引いて文字を選べるよう、ドラッグを始めない。
+    onDragStart: (e: DragEvent) => {
+      if ((e.currentTarget as Element).querySelector('.name-input')) return e.preventDefault();
+      setDragging(theme);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    },
+    // まとまりの高さはまちまちなので、まとまりの上で動かすと、動かした先でまた入れ替わる。見出しの上に来たときだけ動かす。
+    onDragOver: () => {
+      if (dragging && dragging !== theme) setOrder(moveTo(order, dragging, theme));
+    },
+    // 見出しは並べ直しても DOM から外れないので、カードと違って dragend が届く。Esc で止めたときと、一覧の外で離したときは、元に戻す。
+    onDragEnd: (e: DragEvent) => {
+      setDragging(undefined);
+      if (e.dataTransfer?.dropEffect === 'none') setOrder(themes);
+    },
+  });
+  // Chrome は、ポインタの下の要素が変わった回には dragover を送らず、dragenter で落とせるかを決めるので、どちらでも受け付ける。
+  const accept = (e: DragEvent) => {
+    if (dragging) e.preventDefault();
+  };
+  const listDrop = {
+    onDragEnter: accept,
+    onDragOver: accept,
+    onDrop: (e: DragEvent) => {
+      if (!dragging) return;
+      e.preventDefault();
+      setDragging(undefined);
+      void attempt('テーマの並べ替え', () => api.orderThemes(order));
+    },
+  };
+  return { themes: order, dragging, headDrag, listDrop };
+};
+
 /** アーカイブしたセッションは並べない。 */
 export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Selection }) => {
   const { collapsed, toggle } = useCollapsed(COLLAPSED_KEY);
   const visible = snapshot.sessions.filter((s) => !s.archived);
-  const { groups, carried, dragOf, groupDrag } = useSessionOrder(snapshot, visible, sel.selected);
+  const { themes, dragging: draggedTheme, headDrag, listDrop } = useThemeOrder(snapshot.themes);
+  const { groups, carried, dragOf, groupDrag } = useSessionOrder(snapshot, visible, sel.selected, themes);
   if (visible.length === 0) return <Empty>表示できるセッションがありません。</Empty>;
   return (
-    <>
+    <div class={`theme-list${draggedTheme ? ' is-sorting' : ''}`} {...listDrop}>
       {groups.map((g) => (
-        <details key={g.theme} class="theme-group" open={!collapsed.has(g.theme)} onToggle={(e) => toggle(g.theme, e.currentTarget.open)} {...groupDrag(g.theme)}>
-          <summary>
+        <details key={g.theme} class={`theme-group${g.theme === draggedTheme ? ' is-dragging' : ''}`} open={!collapsed.has(g.theme)} onToggle={(e) => toggle(g.theme, e.currentTarget.open)} {...groupDrag(g.theme)}>
+          <summary {...(g.theme !== PINNED && g.theme !== UNCLASSIFIED ? headDrag(g.theme) : {})}>
             <h3 class="theme-head">
               <SelectBox ids={g.sessions.map((s) => s.id)} sel={sel} label={`${g.theme || PINNED_TITLE} のセッションをすべて選ぶ`} />
               <ThemeTitle theme={g.theme} count={g.sessions.length} />
@@ -358,6 +402,6 @@ export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Select
           </div>
         </details>
       ))}
-    </>
+    </div>
   );
 };

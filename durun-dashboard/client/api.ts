@@ -93,6 +93,7 @@ export const api = {
   memory: () => getJson<MemoryStatus | null>('/api/memory'),
   theme: (id: string, theme: string) => postJson(`${session(id)}/theme`, { theme }),
   renameTheme: (from: string, to: string) => postJson('/api/themes/rename', { from, to }),
+  orderThemes: (themes: string[]) => postJson('/api/themes/order', { themes }),
   title: (id: string, title: string) => postJson(`${session(id)}/title`, { title }),
   suggestTitle: (id: string) => postJson<{ title: string }>(`${session(id)}/title-suggestion`),
   /** 作業中でアーカイブ待ちにしたら true を返す。Claude Code の一覧から消し終わるのは待たず、消せなかったときは useRemoveFailureToasts が知らせる。 */

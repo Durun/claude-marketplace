@@ -590,6 +590,9 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .section-head .section-title { margin: 0; }
 .theme-group { margin-bottom: 18px; }
+.theme-group.is-dragging { opacity: 0.4; }
+/* テーマを並べ替える間は、スクロールアンカーを止める。止めないと、上へ運んだテーマを入れた先の見出しがポインタの下に残り、次の dragover で入れ替え直す。 */
+.theme-list.is-sorting { overflow-anchor: none; }
 /* テーマは見出しを押すと折りたためる。開閉の印は、差分のファイルの見出しと同じく右端に置く。 */
 .theme-group > summary { list-style: none; cursor: pointer; }
 .theme-head { display: flex; align-items: center; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-2); }

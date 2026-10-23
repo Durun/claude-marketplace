@@ -9,7 +9,7 @@ import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, parseDiff, repoFile, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
-import { renameTheme, stoppedStatus } from '../server/snapshot.ts';
+import { arrangeThemes, renameTheme, stoppedStatus } from '../server/snapshot.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-skills-')), 'log.jsonl');
@@ -297,6 +297,11 @@ test('renameTheme は、リポジトリ名がテーマになっているセッ�
   const sessions = [meta('/w/some-repository'), meta('/w/some-repository/.worktrees/x'), meta('/w/other', ' some-repository '), meta('/w/some-repository', 'engage'), meta('/w/other')];
   renameTheme(sessions, 'some-repository', 'サンプル');
   assert.deepEqual(sessions.map((s) => s.theme), ['サンプル', 'サンプル', 'サンプル', 'engage', undefined]);
+});
+
+test('arrangeThemes は並べ替えた順に従い、並べ替えた後に現れたテーマを前に、名前の順で置く', () => {
+  assert.deepEqual(arrangeThemes(['c', 'a', 'b'], []), ['a', 'b', 'c']);
+  assert.deepEqual(arrangeThemes(['d', 'c', 'a', 'b'], ['c', 'a']), ['b', 'd', 'c', 'a']);
 });
 
 test('toMemoryStatus は、sysctl と vm_stat の出力から、メモリプレッシャーの段階と、アクティビティモニタと同じ内訳を求める', () => {

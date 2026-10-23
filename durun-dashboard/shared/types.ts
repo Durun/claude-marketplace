@@ -390,6 +390,7 @@ export type Snapshot = {
   docs: DocMeta[];
   outbox: OutboxMessage[];
   rateLimits?: RateLimits;
+  /** テーマの名前。人間がホームで並べ替えた順で、並べ替えた後に現れたテーマは、並べ替えたものより前に名前の順で入る。 */
   themes: string[];
   /** 人間がホームで並べ替えたセッションの順。並べ替えた後に現れたセッションは入っていない。 */
   sessionOrder: string[];

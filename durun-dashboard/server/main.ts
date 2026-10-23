@@ -639,11 +639,13 @@ const setTheme = (id: string, body: unknown): void => {
   touch();
 };
 
-/** アーカイブしたセッションも、一覧に出なくなったセッションも、まとめて新しい名前へ移す。 */
+/** アーカイブしたセッションも、一覧に出なくなったセッションも、まとめて新しい名前へ移す。並べ替えたテーマは、並べた位置に残す。 */
 const setThemeName = (body: unknown): void => {
+  const from = field<string>(body, 'from', 'string');
   const to = field<string>(body, 'to', 'string').trim();
   if (!to) throw new HttpError(400, 'to is required');
-  renameTheme(Object.values(state.sessions), field<string>(body, 'from', 'string'), to);
+  renameTheme(Object.values(state.sessions), from, to);
+  state.themeOrder = state.themeOrder.map((t) => (t === from ? to : t));
   touch();
 };
 
@@ -694,6 +696,11 @@ const addLink = (id: string, body: unknown): void => {
 /** 消えたセッションの id は残さない。 */
 const orderSessions = (body: unknown): void => {
   state.sessionOrder = strings(body, 'ids').filter((id) => id in state.sessions);
+  touch();
+};
+
+const orderThemes = (body: unknown): void => {
+  state.themeOrder = strings(body, 'themes');
   touch();
 };
 
@@ -1064,6 +1071,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
   [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
+  [/^\/api\/themes\/order$/, (_, b) => orderThemes(b)],
   [/^\/api\/sessions\/([^/]+)\/title$/, ([, id = ''], b) => setTitle(id, b)],
   [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],

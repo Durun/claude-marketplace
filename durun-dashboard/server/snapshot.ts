@@ -37,6 +37,12 @@ export const renameTheme = (sessions: SessionMeta[], from: string, to: string): 
   for (const meta of sessions) if (themeOf(meta).trim() === from) meta.theme = to;
 };
 
+/** 人間が並べ替えた順に従う。並べ替えた後に現れたテーマは、並べ替えたものより前に、名前の順で置く。 */
+export const arrangeThemes = (themes: string[], order: string[]): string[] => {
+  const rank = new Map(order.map((t, i) => [t, i]));
+  return themes.toSorted((a, b) => (rank.get(a) ?? -1) - (rank.get(b) ?? -1) || a.localeCompare(b, 'ja'));
+};
+
 // ponytail: statusline が無いときの上限はモデル名からの推定。現行は Haiku だけが 200K で、他は 1M。
 const defaultWindow = (model: string | undefined): number => (model?.includes('haiku') ? HAIKU_WINDOW : DEFAULT_WINDOW);
 
@@ -331,7 +337,8 @@ export const buildSnapshot = (): Snapshot => {
   // ダッシュボードが補助に動かす claude -p は、一覧に出さないので、状態に記録しない。
   for (const l of live.values()) if (!isHelperSession(l.sessionId)) rememberLive(ensureSession(l.sessionId, l.cwd), l);
   const sessions = listedSessions(live, now).map((m) => buildSession(m, live.get(m.id)));
-  const themes = [...new Set(sessions.flatMap((s) => [s.theme, s.repo]))].sort((a, b) => a.localeCompare(b, 'ja'));
+  // 画面はテーマの前後の空白を除いてまとめるので、並べ替えた順と突き合わせられるよう、ここでも除く。
+  const themes = arrangeThemes([...new Set(sessions.flatMap((s) => [s.theme.trim(), s.repo]))], state.themeOrder);
   return {
     now,
     sessions,

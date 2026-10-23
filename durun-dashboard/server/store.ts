@@ -145,11 +145,13 @@ type State = {
   prNotes: Record<string, PrThreadNote>;
   /** 人間がホームで並べ替えたセッションの順 */
   sessionOrder: string[];
+  /** 人間がホームで並べ替えたテーマの順 */
+  themeOrder: string[];
   /** 5 時間と 7 日の使用制限それぞれの、今の枠の使用率の推移 */
   rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
 };
 
-const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], rateWindows: {} });
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
 
 const DOCS_DIR = path.resolve(DATA_DIR, 'docs');
 const DOC_EXT: Record<DocFormat, string> = { markdown: '.md', html: '.html', mermaid: '.mmd', svg: '.svg', text: '.txt' };
