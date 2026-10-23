@@ -746,19 +746,23 @@ export const parseDiff = (text: string): DiffFile[] => {
 const git = async (cwd: string, args: string[]): Promise<string> =>
   (await run('git', ['-c', 'core.quotePath=false', ...args], { cwd, maxBuffer: MAX_BUFFER })).stdout;
 
-// マシンが混んでいると、git を起動するだけで数秒かかることがある。リポジトリの直下は作業ディレクトリごとに変わらないので、一度聞いたら覚える。
+// マシンが混んでいると、git を起動するだけで数秒かかることがある。答えの変わりにくい問いは、一度聞いたら覚える。
 const roots = new Map<string, Promise<string>>();
+const listed = new Map<string, Promise<string[]>>();
 
-/** cwd を含むリポジトリの直下。聞けなかったときは覚えず、次に聞き直す。 */
-const repoRoot = (cwd: string): Promise<string> => {
-  let root = roots.get(cwd);
-  if (!root) {
-    root = git(cwd, ['rev-parse', '--show-toplevel']).then((out) => out.trim());
-    roots.set(cwd, root);
-    root.catch(() => roots.delete(cwd));
+/** answers に覚えた key の答え。無ければ ask で聞いて覚える。聞けなかったときは覚えず、次に聞き直す。 */
+const askOnce = <T,>(answers: Map<string, Promise<T>>, key: string, ask: () => Promise<T>): Promise<T> => {
+  let answer = answers.get(key);
+  if (!answer) {
+    answer = ask();
+    answers.set(key, answer);
+    answer.catch(() => answers.delete(key));
   }
-  return root;
+  return answer;
 };
+
+/** cwd を含むリポジトリの直下。作業ディレクトリごとに変わらない。 */
+const repoRoot = (cwd: string): Promise<string> => askOnce(roots, cwd, () => git(cwd, ['rev-parse', '--show-toplevel']).then((out) => out.trim()));
 
 /** 作業ツリーの直下。onBranch が false なら、求めたブランチを開いた worktree が無く、dir は別のコードを開いている。 */
 export type Tree = { dir: string; onBranch: boolean };
@@ -940,7 +944,10 @@ const repoPath = async (root: string, cwd: string, name: string): Promise<string
     .flatMap((full) => (fs.existsSync(full) ? [path.relative(root, fs.realpathSync(full))] : []))
     .filter((p) => p && !p.startsWith('..') && !path.isAbsolute(p));
   if (!candidates.length) return undefined;
-  const known = (await git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', ...candidates])).split('\0');
+  // チャットのファイルパスは、画面を読み込み直すたびに開き先を問い合わせるので、同じファイルを git に聞き直さない。
+  // ponytail: git が無視するかはめったに変わらないので、サーバーを起動し直すまで覚える。.gitignore の書き換えをすぐ映したくなったら、覚える時間に上限を設ける。
+  const known = await askOnce(listed, [root, ...candidates].join('\0'), () =>
+    git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', ...candidates]).then((out) => out.split('\0')));
   return candidates.find((p) => known.includes(p));
 };
 

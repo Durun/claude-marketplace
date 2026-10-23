@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { borrowSkills, summarizeLog } from '../server/claude.ts';
 import { formatReview } from '../server/deliver.ts';
-import { countChecks, gitDiff, parseDiff, repoFile, resolveRange } from '../server/integrations.ts';
+import { countChecks, gitDiff, inRepo, parseDiff, repoFile, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
 import { arrangeThemes, renameTheme, stoppedStatus } from '../server/snapshot.ts';
@@ -159,6 +159,19 @@ test('gitDiff はコミットの範囲の差分を返し、repoFile は差分に
   // ブランチのファイルは、作業ツリーに無くても、作業ツリーと中身が違っても、そのブランチから読む。
   assert.deepEqual(texts(await Promise.all(['c.ts', 'a.ts'].map((ref) => repoFile(dir, ref, 'feat'))).then((files) => files.flatMap((f) => f ?? []))), [['c.ts', ['ctx:c2']], ['a.ts', ['ctx:one']]]);
   assert.deepEqual(await Promise.all(['../a.ts', 'missing.ts'].map((ref) => repoFile(dir, ref, 'feat'))), [undefined, undefined]);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('inRepo は git が無視しないファイルに限って真にし、一度聞いたファイルは git に聞き直さずに答える', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-git-'));
+  execFileSync('git', ['init', '-q'], { cwd: dir });
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n');
+  fs.writeFileSync(path.join(dir, 'a.ts'), 'a\n');
+  fs.writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+  assert.deepEqual(await Promise.all(['a.ts:3', '.env', 'missing.ts'].map((ref) => inRepo(dir, ref))), [true, false, false]);
+  // git がリポジトリを見つけられなくなっても、覚えた答えを返す。
+  fs.renameSync(path.join(dir, '.git'), path.join(dir, 'moved.git'));
+  assert.equal(await inRepo(dir, 'a.ts'), true);
   fs.rmSync(dir, { recursive: true });
 });
 
