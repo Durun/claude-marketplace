@@ -1,12 +1,13 @@
 // GitHub の PR を、本文・変更したファイル・会話とともに読み、会話にコメントを投稿する。
 // セッションの PR はセッション内の「PR」ウィジェットで、ほかの PR はウィンドウに浮かべて開く。
 import { useState } from 'preact/hooks';
-import type { PrDetail, PrInfo, Session } from '../shared/types.ts';
+import type { PrDetail, PrInfo, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
 import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
+import { href } from './router.ts';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
 
@@ -94,12 +95,29 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
   </div>
 );
 
-/** 開いたときと「更新」を押したとき、version が変わったときに GitHub から読み直す。 */
-const PrView = ({ url, version }: { url: string; version?: string }) => {
+/** PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。 */
+export const RelatedSessions = ({ sessions }: { sessions: Session[] }) =>
+  sessions.length ? (
+    <div class="pr-view-meta related-sessions">
+      <span class="muted">関連セッション</span>
+      {sessions.map((s) => <a key={s.id} href={href.session(s.id)}>{s.name}</a>)}
+    </div>
+  ) : null;
+
+/** 開いたときと「更新」を押したとき、version が変わったときに GitHub から読み直す。related は、この PR をバッジにしているセッション。 */
+const PrView = ({ url, version, related }: { url: string; version?: string; related: Session[] }) => {
   const pr = useCached((fresh) => api.prDetail(url, fresh), [url, version]);
-  if (pr.data) return <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} />;
-  return pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />;
+  return (
+    <>
+      <RelatedSessions sessions={related} />
+      {pr.data ? <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} /> : pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />}
+    </>
+  );
 };
+
+/** url の PR をバッジにしているセッション。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
+const prSessions = (sessions: Session[], url: string, here?: string): Session[] =>
+  sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url));
 
 /** 「PR」と「PR コメント」のウィジェットで出している、セッションの PR。選んだ PR は 2 つのウィジェットで共通にする。 */
 export const usePickedPr = (s: Session): PrInfo | undefined => {
@@ -120,24 +138,24 @@ export const PrPicker = ({ s, pr }: { s: Session; pr?: PrInfo }) =>
   ) : null;
 
 /** PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
-export const PrWidget = ({ s }: { s: Session }) => {
+export const PrWidget = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const pr = usePickedPr(s);
   return (
     <WidgetPanel title={PR_TITLE}>
       <PrPicker s={s} pr={pr} />
-      {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} /> : s.prsPending ? <Loading /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
+      {pr ? <PrView key={pr.url} url={pr.url} version={JSON.stringify(pr)} related={prSessions(sessions, pr.url, s.id)} /> : s.prsPending ? <Loading /> : <Empty>このセッションのブランチには PR がありません。</Empty>}
     </WidgetPanel>
   );
 };
 
 /** URL の owner/repo#番号 を見出しにする。 */
-export const PrFloat = ({ f }: { f: Float }) => {
+export const PrFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const [, repo, num] = /^https:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(f.tab.id) ?? [];
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (
     <FloatFrame f={f} title={`${repo}#${num}`} icon={GITHUB_ICON} controls={[close]}>
       <div class="widget-body">
-        <PrView url={f.tab.id} />
+        <PrView url={f.tab.id} related={prSessions(snapshot.sessions, f.tab.id)} />
       </div>
     </FloatFrame>
   );

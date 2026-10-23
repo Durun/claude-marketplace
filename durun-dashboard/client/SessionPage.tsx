@@ -227,6 +227,8 @@ type SessionData = {
   notion: boolean;
   /** スナップショットをサーバーが作った時刻。 */
   snapshotAt: number;
+  /** 一覧に出しているすべてのセッション。PR と課題の画面に、同じものをバッジにしているセッションを並べる。 */
+  sessions: Session[];
 };
 
 const CHAT_WIDGET = 'chat';
@@ -314,6 +316,7 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
     onJump: (index: number) => setJump({ index }),
     notion: !!snapshot.notion,
     snapshotAt: snapshot.now,
+    sessions: snapshot.sessions,
   };
 };
 

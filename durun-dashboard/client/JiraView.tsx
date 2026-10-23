@@ -1,14 +1,14 @@
 // JIRA の課題を、本文とコメントとともに読み、コメントを投稿する。
 // セッションの課題はセッション内の「JIRA」ウィジェットで、ほかの課題はウィンドウに浮かべて開く。
 import { useId, useState } from 'preact/hooks';
-import type { JiraDetail, JiraTransition, Session } from '../shared/types.ts';
+import type { JiraDetail, JiraTransition, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
 import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
-import { CommentForm } from './PrView.tsx';
+import { CommentForm, RelatedSessions } from './PrView.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time } from './ui.tsx';
 
@@ -86,15 +86,23 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
   </div>
 );
 
-/** 開いたときと「更新」を押したとき、version が変わったときに JIRA から読み直す。 */
-const JiraView = ({ issueKey, version }: { issueKey: string; version?: string }) => {
+/** 開いたときと「更新」を押したとき、version が変わったときに JIRA から読み直す。related は、この課題をバッジにしているセッション。 */
+const JiraView = ({ issueKey, version, related }: { issueKey: string; version?: string; related: Session[] }) => {
   const issue = useCached((fresh) => api.jiraIssue(issueKey, fresh), [issueKey, version]);
-  if (issue.data) return <Detail issue={issue.data} loading={issue.loading} reload={issue.reload} />;
-  return issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />;
+  return (
+    <>
+      <RelatedSessions sessions={related} />
+      {issue.data ? <Detail issue={issue.data} loading={issue.loading} reload={issue.reload} /> : issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />}
+    </>
+  );
 };
 
+/** key の課題をバッジにしているセッション。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
+const jiraSessions = (sessions: Session[], key: string, here?: string): Session[] =>
+  sessions.filter((s) => s.id !== here && s.jira.some((j) => j.key === key));
+
 /** セッションに課題が複数あるときは、上に並べたキーのタブで切り替える。キーの左には、ステータスのチップと同じ色の丸を出す。状態が変わったら読み直す。 */
-export const JiraWidget = ({ s }: { s: Session }) => {
+export const JiraWidget = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const pick = usePicked(JIRA_WIDGET, s.id);
   const issue = s.jira.find((j) => j.key === pick) ?? s.jira[0];
   return (
@@ -109,17 +117,17 @@ export const JiraWidget = ({ s }: { s: Session }) => {
           ))}
         </div>
       )}
-      {issue ? <JiraView key={issue.key} issueKey={issue.key} version={issue.status} /> : <Empty>このセッションに関係する JIRA の課題はありません。</Empty>}
+      {issue ? <JiraView key={issue.key} issueKey={issue.key} version={issue.status} related={jiraSessions(sessions, issue.key, s.id)} /> : <Empty>このセッションに関係する JIRA の課題はありません。</Empty>}
     </WidgetPanel>
   );
 };
 
-export const JiraFloat = ({ f }: { f: Float }) => {
+export const JiraFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   return (
     <FloatFrame f={f} title={f.tab.id} icon={JIRA_ICON} controls={[close]}>
       <div class="widget-body">
-        <JiraView issueKey={f.tab.id} />
+        <JiraView issueKey={f.tab.id} related={jiraSessions(snapshot.sessions, f.tab.id)} />
       </div>
     </FloatFrame>
   );
