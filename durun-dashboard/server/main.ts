@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, sendMessage, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, sendMessage, sendQueued, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -625,10 +625,15 @@ const queueMessage = (id: string, body: unknown): { queued: boolean } => {
   return { queued: state.queue.includes(message) };
 };
 
-/** edit で書き直しを始め、save で書き直した文に置き換えて書き直しを終える。cancel で保留をやめる。 */
-const updateQueue = (id: string, action: 'edit' | 'save' | 'cancel', body: unknown): void => {
+const findQueued = (id: string): QueuedMessage => {
   const message = state.queue.find((m) => m.id === id);
   if (!message) throw new HttpError(404, `no queued message: ${id}`);
+  return message;
+};
+
+/** edit で書き直しを始め、save で書き直した文に置き換えて書き直しを終える。cancel で保留をやめる。 */
+const updateQueue = (id: string, action: 'edit' | 'save' | 'cancel', body: unknown): void => {
+  const message = findQueued(id);
   if (action === 'cancel') state.queue = state.queue.filter((m) => m !== message);
   else Object.assign(message, action === 'edit' ? { editing: true } : { editing: undefined, text: queueText(body) });
   touch();
@@ -1112,6 +1117,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
+  [/^\/api\/queue\/([^/]+)\/send$/, ([, id = '']) => ({ delivery: sendQueued(findQueued(id)) })],
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b), WEB_API_MS],
   // 渡されたディレクトリで gh を動かすので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/github\/refs$/, (_, b) => githubRefs(b), WEB_API_MS],

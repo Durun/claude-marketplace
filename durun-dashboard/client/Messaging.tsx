@@ -454,6 +454,12 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
     setBusy(false);
     return !!done;
   };
+  // 権限の確認待ちのバックグラウンドのセッションへは、サーバーが送らずに保留のまま残す。
+  const sendNow = () =>
+    run('メッセージの送信', async () => {
+      const { delivery } = await api.sendQueued(m.id);
+      toast(delivery === 'queued' ? '権限の確認を待っているので、Claude が入力待ちになったら送ります' : DELIVERY_TOAST[delivery]);
+    });
   const edit = async () => {
     if (await run('書き直しの開始', () => api.editQueued(m.id))) setDraft(m.text);
   };
@@ -478,6 +484,7 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
       <div class="outbox-meta">
         <span class="muted">{m.editing ? '書き直し中のため送りません' : '保留中'} · <Time at={m.createdAt} /></span>
         <span class="spacer" />
+        <button class="btn btn-sm btn-primary" disabled={busy} onClick={sendNow}>今すぐ送信</button>
         <button class="btn btn-sm" disabled={busy} onClick={edit}>編集</button>
         <button class="btn btn-sm" disabled={busy} onClick={() => run('取り消し', () => api.cancelQueued(m.id))}>取り消し</button>
       </div>

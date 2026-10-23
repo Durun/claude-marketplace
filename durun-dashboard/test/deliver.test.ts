@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
+const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -395,6 +395,36 @@ test('保留したメッセージは、入力待ちで質問の無いセッシ�
   flushQueue();
   assert.deepEqual(left(), []);
   assert.equal(await received(next), '[durun-dashboard] 人間から:\n二つ目');
+});
+
+test('保留したメッセージを今すぐ送ると、先頭でなくても、Claude が作業中でも送信と同じく届けて保留から外し、権限の確認待ちのバックグラウンドのセッションへは送らずに順番を変えずに残す', async () => {
+  const socketPath = platform.localSocketPath(tmp, 'now');
+  const live = (id: string, extra: object): void =>
+    fs.writeFileSync(path.join(tmp, 'claude', 'sessions', `${id}.json`), JSON.stringify({ pid: process.pid, sessionId: id, cwd: tmp, status: 'busy', ...extra }));
+  const queued = (id: string, sessionId: string): QueuedMessage => ({ id, sessionId, text: id, createdAt: Date.now() });
+  const left = (sessionId: string): string[] => state.queue.filter((m) => m.sessionId === sessionId).map((m) => m.text);
+
+  live('n1', { messagingSocketPath: socketPath });
+  ensureSession('n1', tmp);
+  const second = queued('n1-2', 'n1');
+  state.queue.push(queued('n1-1', 'n1'), second);
+  const inbox = await listenInbox(socketPath);
+  assert.equal(sendQueued(second), 'sent');
+  assert.deepEqual(left('n1'), ['n1-1']);
+  assert.equal((await inbox.lines).at(-1)?.message?.content, '[durun-dashboard] 人間から:\nn1-2');
+  await close(inbox.server);
+
+  live('p1', { kind: 'bg', jobId: 'jp1' });
+  ensureSession('p1', tmp);
+  state.attention.push({ id: 'ap', kind: 'permission', sessionId: 'p1', title: '権限', createdAt: Date.now() });
+  const waiting = queued('p1-1', 'p1');
+  state.queue.push(waiting, queued('p1-2', 'p1'));
+  assert.equal(sendQueued(waiting), 'queued');
+  assert.deepEqual(left('p1'), ['p1-1', 'p1-2']);
+  assert.equal(state.outbox.some((m) => m.sessionId === 'p1'), false);
+  // 後のテストが見るキューと要対応に残さない。
+  state.attention = state.attention.filter((a) => a.id !== 'ap');
+  state.queue = state.queue.filter((m) => m.sessionId !== 'n1' && m.sessionId !== 'p1');
 });
 
 test('新しいセッションは依頼を -- の後に置いて claude --bg で起動し、選んだモデルと effort を渡し、失敗したら claude の失敗として理由を返す', async () => {

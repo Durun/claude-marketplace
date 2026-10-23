@@ -160,6 +160,7 @@ export const api = {
   editQueued: (queuedId: string) => postJson(`/api/queue/${seg(queuedId)}/edit`),
   saveQueued: (queuedId: string, text: string) => postJson(`/api/queue/${seg(queuedId)}/save`, { text }),
   cancelQueued: (queuedId: string) => postJson(`/api/queue/${seg(queuedId)}/cancel`),
+  sendQueued: (queuedId: string) => postJson<{ delivery: Delivery }>(`/api/queue/${seg(queuedId)}/send`),
   refreshJira: () => postJson('/api/jira/refresh'),
   jiraComment: (key: string, body: string) => postJson(`/api/jira/issues/${seg(key)}/comment`, { body }),
   jiraTransition: (key: string, id: string) => postJson(`/api/jira/issues/${seg(key)}/transitions`, { id }),

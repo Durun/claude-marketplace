@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
+import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
@@ -415,6 +415,19 @@ export const flushQueue = (): void => {
     state.queue = state.queue.filter((m) => m !== head);
     touch();
   }
+};
+
+/**
+ * 保留したメッセージを、Claude が入力待ちになるのを待たずに、送信と同じ経路で送る。
+ * 権限の確認待ちのバックグラウンドのセッションでは、送っても保留の最後に戻って順番だけが変わるので、そのまま残して queued を返す。
+ */
+export const sendQueued = (message: QueuedMessage): Delivery => {
+  if (mustWait(readLiveSessions().get(message.sessionId))) return 'queued';
+  // flushQueue と同じく、送ってから外す。
+  const { delivery } = sendMessage(message.sessionId, message.text);
+  state.queue = state.queue.filter((m) => m !== message);
+  touch();
+  return delivery;
 };
 
 type LogEntry = { timestamp?: string; content?: unknown; message?: { content?: unknown } };
