@@ -97,13 +97,28 @@ const reload = <T,>(key: string, p: Policy, load: () => Promise<T>): Promise<T> 
   return task;
 };
 
+// 裏の読み直しは、イベントループを 1 周するごとに 1 つずつ始める。
+// gh などのコマンドは起動し終えるまでサーバーを止めるので、まとめて古くなった値を一度に読み直し始めると、すべて起動し終えるまでスナップショットを返せないため。
+const starts: (() => void)[] = [];
+
+const startNext = (): void => {
+  starts.shift()?.();
+  if (starts.length) setImmediate(startNext);
+};
+
+/** 順番が来てから load を始める。 */
+const later = <T,>(load: () => Promise<T>) => (): Promise<T> =>
+  new Promise<void>((resolve) => {
+    if (starts.push(resolve) === 1) setImmediate(startNext);
+  }).then(load);
+
 /**
  * 裏で読み直す。失敗したら、maxAge か RETRY_MS が過ぎるまで試さない。スナップショットを作るたびに外部へ問い合わせが積もらないようにする。
  * 読めなかったことも画面に知らせ、読み込み中と見せていた表示を改めさせる。
  */
 const refreshLater = (key: string, p: Policy, load: () => Promise<unknown>): void => {
   if (Date.now() - (failedAt.get(key) ?? -Infinity) < (p.maxAge ?? RETRY_MS)) return;
-  reload(key, p, load).catch((e: unknown) => {
+  reload(key, p, later(load)).catch((e: unknown) => {
     console.error(`${key} を読み直せません: ${(e as Error).message?.split('\n')[0]}`);
     bump();
   });

@@ -8,8 +8,13 @@ import { test } from 'node:test';
 process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-cache-'));
 const { cacheVersion, cached, forgetCached, peekCached, saveCache } = await import('../server/cache.ts');
 
-/** 裏で進む読み込みの続きを、先に動かし終える。 */
-const settle = () => new Promise((resolve) => setImmediate(resolve));
+/** イベントループを 1 周させる。 */
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+/** 裏で進む読み込みの続きを、先に動かし終える。裏の読み直しは 1 周に 1 つずつ始まるので、前のテストで順番を待つものが残っていても始め終えるよう、何周か回す。 */
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await turn();
+};
 
 /** 呼ばれた順に、後から値を決められる読み込み。 */
 const deferred = () => {
@@ -36,12 +41,14 @@ test('cached は、古くなった値をすぐ返して裏で読み直し、値�
 
   t.mock.timers.tick(2000);
   assert.equal(await cached('old', { maxAge: 1000 }, load), 'a');
+  await settle();
   resolvers[1]?.('a');
   await settle();
   assert.equal(cacheVersion(), version);
 
   t.mock.timers.tick(2000);
   assert.equal(await cached('old', { maxAge: 1000 }, load), 'a');
+  await settle();
   resolvers[2]?.('b');
   await settle();
   assert.equal(cacheVersion(), version + 1);
@@ -110,6 +117,22 @@ test('peekCached が待たずに返した値は、裏で読み終えたときも
   );
   await settle();
   assert.equal(cacheVersion(), version + 2);
+});
+
+test('裏の読み直しは、peekCached を呼んだ処理の中では始めず、イベントループを 1 周するごとに 1 つずつ始める', async () => {
+  const started: string[] = [];
+  const load = (v: string) => async () => {
+    started.push(v);
+    return v;
+  };
+  await settle();
+  peekCached('turn-a', {}, load('a'));
+  peekCached('turn-b', {}, load('b'));
+  assert.deepEqual(started, []);
+  await turn();
+  assert.deepEqual(started, ['a']);
+  await turn();
+  assert.deepEqual(started, ['a', 'b']);
 });
 
 test('keep なら、覚えた値があれば材料が変わっても読み直さず、覚えた値が無いときだけ読む', async () => {

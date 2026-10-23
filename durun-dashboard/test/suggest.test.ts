@@ -64,6 +64,8 @@ test('セッション名の候補は、概要と最初の依頼も材料にし�
 test('概要は、やり取りが進んだら、前の概要に古い印を付けてすぐ返し、裏でまとめ直す', async () => {
   assert.deepEqual(await summarize(conversation('s3', '一つ目')), { doing: '候補を出す', now: '直し終えた' });
   assert.deepEqual(await summarize(conversation('s3', '二つ目')), { doing: '候補を出す', now: '直し終えた', stale: true });
+  // 裏でまとめ直す claude は次の周に起動する。次のテストが偽の claude を置き換える前に起動させる。
+  await new Promise((r) => setImmediate(r));
 });
 
 const until = async (ok: () => boolean): Promise<void> => {
