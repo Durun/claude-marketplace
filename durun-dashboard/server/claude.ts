@@ -438,7 +438,8 @@ const offlineOf = (e: LogEntry, ts: number | undefined): number | undefined => {
 };
 
 const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void => {
-  if (!line) return;
+  // API への要求の記録は、要約に使わないうえに会話ログの大きな割合を占めるので、JSON として読まずに飛ばす。
+  if (!line || line.startsWith('{"type":"api-request')) return;
   let e: LogEntry;
   try {
     e = JSON.parse(line) as LogEntry;

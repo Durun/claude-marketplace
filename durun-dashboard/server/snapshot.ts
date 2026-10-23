@@ -288,6 +288,30 @@ const isListed = (m: SessionMeta): boolean =>
   state.attention.some((a) => a.sessionId === m.id) ||
   state.outbox.some((o) => o.sessionId === m.id);
 
+/** 一覧に出すセッション。ブックマークした発言のあるセッションは、ブックマークから開けるよう、日がたっても外さない。 */
+const listedSessions = (live: Map<string, claude.LiveSession>, now: number): SessionMeta[] =>
+  Object.values(state.sessions).filter((m) => isListed(m) && (live.has(m.id) || !!m.bookmarks?.length || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS));
+
+/**
+ * 一覧に出すセッションの会話ログを、1 つ読むごとにほかの要求へ順番を譲りながら要約しておく。起動した直後に呼ぶ。
+ * 要約の作り方を変えた後は、会話ログを頭から読み直す。スナップショットを組み立てるときにまとめて読むと、読み終えるまでサーバーが止まるため。
+ */
+export const warmLogs = async (): Promise<void> => {
+  const yieldToRequests = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+  try {
+    for (const m of listedSessions(claude.readLiveSessions(), Date.now())) {
+      if (!m.transcriptPath) continue;
+      claude.summarizeLog(m.transcriptPath);
+      await yieldToRequests();
+      claude.readSubagents(m.transcriptPath);
+      await yieldToRequests();
+    }
+  } catch (e) {
+    // 残りの会話ログは、スナップショットを組み立てるときに読む。
+    console.error(`会話ログを要約できません: ${(e as Error).message}`);
+  }
+};
+
 /**
  * 概要、候補、名前の材料。画面に出している名前とテーマを渡すため、スナップショットと同じ組み立て方で作る。
  * スナップショット全体を組み立てるとすべてのセッションのファイルを読むので、このセッションだけを組み立てる。
@@ -306,10 +330,7 @@ export const buildSnapshot = (): Snapshot => {
   const live = claude.readLiveSessions();
   // ダッシュボードが補助に動かす claude -p は、一覧に出さないので、状態に記録しない。
   for (const l of live.values()) if (!isHelperSession(l.sessionId)) rememberLive(ensureSession(l.sessionId, l.cwd), l);
-  // ブックマークした発言のあるセッションは、ブックマークから開けるよう、日がたっても外さない。
-  const sessions = Object.values(state.sessions)
-    .filter((m) => isListed(m) && (live.has(m.id) || !!m.bookmarks?.length || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS))
-    .map((m) => buildSession(m, live.get(m.id)));
+  const sessions = listedSessions(live, now).map((m) => buildSession(m, live.get(m.id)));
   const themes = [...new Set(sessions.flatMap((s) => [s.theme, s.repo]))].sort((a, b) => a.localeCompare(b, 'ja'));
   return {
     now,

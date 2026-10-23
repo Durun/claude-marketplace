@@ -196,3 +196,21 @@ test('ブックマークした発言のあるセッションは、アーカイ�
   meta.bookmarks = [{ kind: 'message', at: 1, text: '直しました。', createdAt: 2 }];
   assert.deepEqual(listed()?.bookmarks, meta.bookmarks);
 });
+
+test('起動した直後は、一覧に出すセッションの会話ログを、ほかの要求へ順番を譲りながら要約しておく', async () => {
+  const { warmLogs } = await import('../server/snapshot.ts');
+  const { summarizeLog } = await import('../server/claude.ts');
+  const message = (text: string): string => `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } })}\n`;
+  const transcript = path.join(tmp, 'warm.jsonl');
+  fs.writeFileSync(transcript, message('一つ目'));
+  Object.assign(ensureSession('warm', tmp), { kind: 'bg', transcriptPath: transcript });
+
+  const order: string[] = [];
+  const warmed = warmLogs().then(() => order.push('要約'));
+  setImmediate(() => order.push('ほかの要求'));
+  await warmed;
+  assert.deepEqual(order, ['ほかの要求', '要約']);
+  // 要約したところまでは読み直さないので、同じ長さのまま書き換えても、前に読んだ発言のまま。
+  fs.writeFileSync(transcript, message('二つ目'));
+  assert.equal(summarizeLog(transcript).lastMessage, '一つ目');
+});

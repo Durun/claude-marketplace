@@ -39,7 +39,7 @@ import { recentProofFiles, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from './proofread.ts';
 import { parseProof } from './proofText.ts';
 import { searchSessions } from './search.ts';
-import { buildSnapshot, conversationOf, renameTheme } from './snapshot.ts';
+import { buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, sessionGlossary, suggestReplies, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
@@ -144,6 +144,9 @@ const sessionMeta = (id: string) => {
 const clients = new Map<ServerResponse, { send: (text: string) => void; interval: number }>();
 const broadcastTimers = new Map<number, NodeJS.Timeout>();
 
+// 起動した直後に、会話ログの要約を裏で作る。作り終えるまでは、スナップショットを組み立てずに待たせ、画面にも配り始めない。
+const logsReady = warmLogs();
+
 const snapshotEvent = (): string => `data: ${JSON.stringify(buildSnapshot())}\n\n`;
 
 const broadcast = (interval: number): void => {
@@ -164,9 +167,16 @@ const openEvents = (req: IncomingMessage, res: ServerResponse, url: URL): void =
   const encoding = pickEncoding(req.headers['accept-encoding']);
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', ...(encoding && { 'content-encoding': encoding }) });
   const send = compressedStream(res, encoding);
-  send(snapshotEvent());
-  clients.set(res, { send, interval: url.searchParams.has('light') ? LIGHT_BROADCAST_INTERVAL_MS : BROADCAST_INTERVAL_MS });
-  req.on('close', () => clients.delete(res));
+  let closed = false;
+  req.on('close', () => {
+    closed = true;
+    clients.delete(res);
+  });
+  void logsReady.then(() => {
+    if (closed) return;
+    send(snapshotEvent());
+    clients.set(res, { send, interval: url.searchParams.has('light') ? LIGHT_BROADCAST_INTERVAL_MS : BROADCAST_INTERVAL_MS });
+  });
 };
 
 /**
@@ -1104,7 +1114,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/local-file$/, (_, b, url) => saveLocalFile(url, b)],
   // 作るたびに Jev を使うので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b), WEB_API_MS],
-  [/^\/api\/assistant$/, async (_, b) => askDolphin(buildSnapshot(), toMessages(b), await focusOf(b)), HAIKU_MS],
+  [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
@@ -1243,6 +1253,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   const exported = req.method === 'POST' && /^\/api\/docs\/([^/]+)\/export\/(pdf|png|html)$/.exec(url.pathname);
   if (exported) return sendExport(res, decodeURIComponent(exported[1] ?? ''), exported[2] ?? '');
   if (req.method === 'GET' && (await serveStatic(req, res, url.pathname))) return;
+  // 要約を作っている間もサーバーはほかの要求に応え、画面は前に受け取ったスナップショットを出しているので、待った時間は応答の見込みに数えない。
+  if (req.method === 'GET' && url.pathname === '/api/snapshot') await logsReady;
   for (const [pattern, handler, expectedMs = OWN_MS] of routes) {
     const m = pattern.exec(url.pathname);
     if (!m) continue;
