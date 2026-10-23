@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
-import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
+import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { ensureSession, moveSession, newId, state, touch, type SessionMeta } from './store.ts';
@@ -24,6 +24,7 @@ const STOP_TIMEOUT_MS = 15_000;
 // 認証を拒まれた接続は数ミリ秒で閉じられ、受け付けられた接続は開いたままになる。これだけ待てば見分けられる。
 const AUTH_GRACE_MS = 200;
 const ROSTER_POLL_MS = 500;
+const EXIT_POLL_MS = 200;
 
 type Waiter = (text: string) => void;
 const waiters = new Map<string, Waiter>();
@@ -48,11 +49,13 @@ export const formatMessages = (msgs: OutboxMessage[]): string => `${HUMAN_LABEL}
 /**
  * claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。
  * claude が断った理由は UpstreamError で返す。ホームのように信頼していない作業ディレクトリで断られるのは、ダッシュボードの不具合ではないため。
+ * started には、起動した claude の pid を渡す。
  */
-const claudeOutput = (args: string[], cwd: string, env = process.env): Promise<string> =>
+const claudeOutput = (args: string[], cwd: string, env = process.env, started?: (pid: number) => void): Promise<string> =>
   new Promise((resolve, reject) => {
     const claude = claudeCommand(args, env);
     const child = spawn(claude.file, claude.args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (child.pid) started?.(child.pid);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
@@ -118,6 +121,7 @@ const waitForStop = (jobId: string): Promise<void> =>
  * 動いているバックグラウンドのセッションは先に止める。止めたセッションは、起動したときのオプション（--model や --settings）で起こし直される。
  * rewindTo を渡すと、そのエントリまで巻き戻して送る。--bg は --resume-session-at を無視するので、このターンだけ -p で動かす。
  * -p では権限の確認に答えられず、確認の要るツールは拒否される。次のメッセージからは、巻き戻した分岐の続きを --bg で再開する。
+ * -p のセッションは端末のセッションと同じに見えるので、stopSession が止められるよう pid を覚える。
  * flags は switchSession が渡す。claude の出力を返す。
  */
 const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string, flags: string[] = []): Promise<string> => {
@@ -132,20 +136,37 @@ const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: st
     await runClaude(['stop', jobId], cwd, env);
     await waitForStop(jobId);
   }
-  const args = rewindTo ? ['-p', '--resume', sessionId, '--resume-session-at', rewindTo, '--', text] : ['--bg', '--resume', sessionId, ...flags, '--', text];
-  return claudeOutput(args, cwd, env);
+  if (!rewindTo) return claudeOutput(['--bg', '--resume', sessionId, ...flags, '--', text], cwd, env);
+  return claudeOutput(['-p', '--resume', sessionId, '--resume-session-at', rewindTo, '--', text], cwd, env, (pid) => {
+    if (meta) meta.printPid = pid;
+    touch();
+  });
 };
 
 const resume = (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> =>
   relaunch(sessionId, cwd, text, jobId, rewindTo).then(() => undefined);
 
+/** 巻き戻して送ったターンの claude -p を、端末で Ctrl+C を押したときと同じ SIGINT で止め、終わるのを待つ。 */
+const interrupt = (pid: number): Promise<void> =>
+  new Promise((resolve, reject) => {
+    process.kill(pid, 'SIGINT');
+    const deadline = Date.now() + STOP_TIMEOUT_MS;
+    const poll = setInterval(() => {
+      if (isAlive(pid) && Date.now() < deadline) return;
+      clearInterval(poll);
+      if (isAlive(pid)) reject(new Error('セッションを止められません'));
+      else resolve();
+    }, EXIT_POLL_MS);
+  });
+
 /**
- * 作業中でも、バックグラウンドのセッションを止める。会話ログは残るので、次に送ったメッセージで再開する。
+ * 作業中でも、バックグラウンドのセッションと、巻き戻して送ったターンを止める。会話ログは残るので、次に送ったメッセージで再開する。
  * 端末のセッションは人間の端末で動いているので、ダッシュボードからは止めない。
  */
 export const stopSession = async (sessionId: string): Promise<void> => {
   const live = readLiveSessions().get(sessionId);
   if (!live) throw new Error('このセッションは動いていません');
+  if (live.pid === state.sessions[sessionId]?.printPid) return interrupt(live.pid);
   if (live.kind !== 'bg' || !live.jobId) throw new Error('端末で開いているセッションは、ダッシュボードからは止められません');
   await runClaude(['stop', live.jobId], os.homedir());
   await waitForStop(live.jobId);
@@ -344,8 +365,12 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
       touch();
     },
     // 届けられなかったら未配信に戻し、理由を残す。
+    // 巻き戻しの -p はターンを終えるまで動くので、止めたときや途中で失敗したときも、依頼が会話ログに載っていれば届いている。
     (e: Error) => {
-      for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: e.message, sending: undefined });
+      const done = rewindTo ? arrived(sessionId, pending) : new Set<OutboxMessage>();
+      const lost = pending.filter((m) => !done.has(m));
+      if (!lost.length) return;
+      for (const m of lost) Object.assign(m, { deliveredAt: undefined, via: undefined, error: e.message, sending: undefined });
       touch();
       console.error(`${sessionId} にメッセージを届けられません: ${e.message}`);
     },

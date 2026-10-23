@@ -177,6 +177,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     branch: log?.branch,
     status: live?.status ?? stoppedStatus(meta.archived, log),
     kind: meta.kind,
+    stoppable: live?.kind === 'bg' || (!!live && live.pid === meta.printPid),
     remoteUrl: meta.remoteUrl,
     attachCommand: meta.kind === 'bg' && meta.jobId ? `claude attach ${meta.jobId}` : undefined,
     startedAt: meta.startedAt,

@@ -64,6 +64,8 @@ export type SessionMeta = {
   startedAt?: number;
   /** 改善要望を実装するためにダッシュボードが起動したセッション */
   improver?: boolean;
+  /** 巻き戻して送ったターンを動かす claude -p の pid。端末のセッションと同じに見えるが、ダッシュボードが起動したものなので止められる。 */
+  printPid?: number;
   /** 使用制限か通信の途切れで止まったのを続けさせたか、続けないと人間が答えたときの、止まった時刻。同じもので 2 度続けさせず、2 度尋ねないために残す。 */
   limitResumedAt?: number;
 };

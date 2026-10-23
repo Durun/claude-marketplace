@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, switchSession } = await import('../server/deliver.ts');
+const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -263,6 +263,34 @@ test('巻き戻して送るときは、前置きを付けずに -p で渡す', a
   assert.equal(sendMessage('r1', '書き直した依頼', to).delivery, 'resumed');
   await new Promise<void>((resolve) => onChange(() => fs.existsSync(argsFile) && resolve()));
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['-p', '--resume', 'r1', '--resume-session-at', to, '--', '書き直した依頼']);
+});
+
+test('巻き戻して送ったターンの -p は、端末のセッションに見えても止められ、止めても依頼が会話ログに載っていれば届いたままにする。載る前に失敗したら未配信に戻す', async () => {
+  // 偽の claude の -p は、本物と同じく依頼を会話ログに載せ、端末のセッションと同じ形でセッションのファイルを書いて、止められるまで動き続ける。
+  const bin = path.join(tmp, 'bin-rewind-stop');
+  const sessionFile = path.join(tmp, 'claude', 'sessions', 'r2.json');
+  const transcript = path.join(tmp, 'claude', 'projects', 'p-r2', 'r2.jsonl');
+  fs.mkdirSync(path.dirname(transcript), { recursive: true });
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(transcript)}, JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: args.at(-1) } }) + '\\n');
+fs.writeFileSync(${js(sessionFile)}, JSON.stringify({ pid: process.pid, sessionId: 'r2', cwd: ${js(tmp)}, status: 'busy', kind: 'interactive', entrypoint: 'sdk-cli' }));
+setInterval(() => {}, 1000);`,
+  );
+  ensureSession('r2', tmp);
+  const to = '00000000-0000-4000-8000-000000000000';
+
+  const { message } = sendMessage('r2', '書き直して止める依頼', to);
+  while (!fs.existsSync(sessionFile)) await new Promise((resolve) => setTimeout(resolve, 20));
+  await stopSession('r2');
+  assert.ok(message.deliveredAt);
+  assert.equal(message.error, undefined);
+
+  useFakeClaude(bin, `console.error('巻き戻せません'); process.exitCode = 1;`);
+  const failed = sendMessage('r2', '会話ログに載らない依頼', to).message;
+  await new Promise<void>((resolve) => onChange(() => failed.error !== undefined && resolve()));
+  assert.equal(failed.deliveredAt, undefined);
+  assert.equal(failed.error, '巻き戻せません');
 });
 
 test('届けている途中でサーバーが止まったメッセージは、次に起動したときに届け直す', async () => {

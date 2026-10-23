@@ -175,6 +175,8 @@ export type Session = {
   branch?: string;
   status: SessionStatus;
   kind?: string;
+  /** ダッシュボードから止められる。動いているバックグラウンドのセッションと、巻き戻して送ったターンを動かしている claude -p。前に受け取ったスナップショットには無いことがある。 */
+  stoppable?: boolean;
   /** claude.ai/code でこのセッションを開く URL（Remote Control） */
   remoteUrl?: string;
   /** バックグラウンドセッションをターミナルで開くコマンド */

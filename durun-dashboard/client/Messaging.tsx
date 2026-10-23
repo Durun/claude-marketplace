@@ -424,7 +424,7 @@ const MessageForm = ({ s }: { s: Session }) => {
         <ContextPie usage={s.usage} />
         <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={() => setConfirming('compact')}>compact</button>
         {isLive(s) && (
-          <button class="btn btn-danger" disabled={busy || s.kind !== 'bg'} title={s.kind === 'bg' ? STOP_HELP : NO_STOP_HELP} onClick={() => setConfirming('stop')}>
+          <button class="btn btn-danger" disabled={busy || !s.stoppable} title={s.stoppable ? STOP_HELP : NO_STOP_HELP} onClick={() => setConfirming('stop')}>
             停止
           </button>
         )}
