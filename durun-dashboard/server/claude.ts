@@ -147,8 +147,8 @@ export type LogSummary = {
   editedFiles: Set<string>;
   /** 人間の依頼と Claude の発言。会話の表示と、過去のセッションの検索に使う。 */
   texts: ChatEntry[];
-  /** 依頼の親のエントリの uuid と、その依頼を積む前の texts の数。巻き戻して送った依頼から、捨てられた分岐の発言を外すのに使う。 */
-  textCount: Map<string, number>;
+  /** 依頼の親のエントリの uuid と、その依頼を積む前の texts の数と最後の応答。巻き戻して送った依頼から、捨てられた分岐の発言を外すのに使う。 */
+  checkpoints: Map<string, LastReply & { texts: number }>;
   /** Claude Code がこのセッションに見せた skills の名前と説明 */
   skills: Map<string, string>;
   /** バックグラウンドで動かした shell と Monitor。キーはタスクの id。 */
@@ -158,6 +158,12 @@ export type LogSummary = {
   /** claude.ai に公開した artifact。キーは URL で、同じ URL に公開し直したら新しいほうを残す。 */
   artifacts: Map<string, Artifact>;
 };
+
+/** Claude の最後の応答から拾う値。 */
+type LastReply = Pick<LogSummary, 'lastMessage' | 'lastMessageAt' | 'lastToolUse' | 'lastQuestions' | 'lastQuestionsAt'>;
+
+/** ファイルに残した要約では、undefined の値がキーごと消える。戻すときに消えたキーも上書きするよう、キーをそろえて返す。 */
+const lastReplyOf = ({ lastMessage, lastMessageAt, lastToolUse, lastQuestions, lastQuestionsAt }: LastReply): LastReply => ({ lastMessage, lastMessageAt, lastToolUse, lastQuestions, lastQuestionsAt });
 
 export type BgTaskLog = {
   id: string;
@@ -218,7 +224,7 @@ const emptySummary = (): LogSummary => ({
   timeline: [],
   editedFiles: new Set(),
   texts: [],
-  textCount: new Map(),
+  checkpoints: new Map(),
   skills: new Map(),
   bgTasks: new Map(),
   pendingBg: new Map(),
@@ -379,9 +385,12 @@ const applyRequest = (s: LogSummary, e: LogEntry, ts: number | undefined): void 
   if (!text) return;
   // 巻き戻して送った依頼は、書き直す前の依頼と同じ親につながる。そこより後の発言は、捨てられた分岐のもの。
   if (e.parentUuid) {
-    const kept = s.textCount.get(e.parentUuid);
-    if (kept === undefined) s.textCount.set(e.parentUuid, s.texts.length);
-    else s.texts.length = Math.min(kept, s.texts.length);
+    const kept = s.checkpoints.get(e.parentUuid);
+    if (!kept) s.checkpoints.set(e.parentUuid, { texts: s.texts.length, ...lastReplyOf(s) });
+    else {
+      s.texts.length = Math.min(kept.texts, s.texts.length);
+      Object.assign(s, lastReplyOf(kept));
+    }
   }
   s.lastPrompt = text;
   s.texts.push({ kind: 'prompt', text, at: ts, rewindTo: e.parentUuid ?? undefined });
