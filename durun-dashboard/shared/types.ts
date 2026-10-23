@@ -372,13 +372,15 @@ export type ImproveState = ImproveSettings & {
   error?: string;
 };
 
-/** Claude が authenticate で求め、人間に確かめている認証。 */
+/** Claude が authenticate で求め、人間に確かめている認証。command か url のどちらかを持つ。 */
 export type AuthRequest = {
   id: string;
-  /** 何の認証か（例: Google Cloud の認証、MCP サーバー「notion」の認証） */
+  /** 何の認証か（例: Google Cloud の認証、MCP サーバー「notion」の認証、example.com のブラウザ認証） */
   title: string;
   /** 人間が OK を押すと動かす、認証のコマンド */
-  command: string;
+  command?: string;
+  /** ブラウザ認証で、人間が「進む」を押すとブラウザで開くログイン画面の URL */
+  url?: string;
   /** 認証を求めたセッション。求めた順。 */
   sessionIds: string[];
 };

@@ -90,3 +90,17 @@ test('MCP サーバーは、claude mcp get の Status で確かめて claude mcp
   assert.equal(authProvider('mcp', undefined, tmp), undefined);
   assert.equal(authProvider('slack', 'notion', tmp), undefined);
 });
+
+test('ブラウザは、確かめずにログイン画面の URL を添えて尋ね、同じ URL を求めたセッションだけをまとめ、http と https 以外の URL は受け付けない', async () => {
+  const browser = (url: string | undefined) => authProvider('browser', undefined, tmp, url);
+  const login = 'https://example.com/login?state=1';
+  const results = [requestAuth(browser(login)!, 's1'), requestAuth(browser(login)!, 's2'), requestAuth(browser('https://example.com/login?state=2')!, 's3')];
+  await until(() => authRequests().length > 1);
+  const [first, second] = authRequests();
+  assert.deepEqual(first, { id: first?.id, title: 'example.com のブラウザ認証', url: login, sessionIds: ['s1', 's2'] });
+  assert.deepEqual(second?.sessionIds, ['s3']);
+  answerAuth(first!.id, true);
+  answerAuth(second!.id, false);
+  assert.deepEqual(await Promise.all(results), ['example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を、人間が却下しました。']);
+  for (const url of [undefined, 'example.com/login', 'javascript:alert(1)', 'file:///etc/passwd']) assert.equal(browser(url), undefined);
+});

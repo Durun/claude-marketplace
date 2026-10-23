@@ -706,7 +706,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .xp-confirm-title { margin: 0; padding: 4px 32px 4px 8px; border-radius: 5px 5px 0 0; background: linear-gradient(#0997ff, #0053ee 8%, #0050ee 40%, #06f 88%, #06f 93%, #005bff 95%, #003dd7 96%, #003dd7); color: #fff; text-shadow: 1px 1px #0f1089; font: 700 13px/21px "Trebuchet MS", sans-serif; }
 .xp-confirm-close { position: absolute; top: 4px; right: 5px; width: 21px; height: 21px; padding: 0; border: 1px solid #fff; border-radius: 3px; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'><path d='M3 3l7 7M10 3l-7 7' stroke='%23fff' stroke-width='2'/></svg>") center / 13px no-repeat, linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
 .xp-confirm-close:hover { filter: brightness(1.15); }
-.xp-confirm-text { display: flex; align-items: center; gap: 12px; margin: 0; padding: 14px 24px 6px 12px; }
+.xp-confirm-text { display: flex; align-items: center; gap: 12px; margin: 0; padding: 14px 24px 6px 12px; overflow-wrap: anywhere; }
 .xp-confirm-actions { display: flex; justify-content: center; gap: 6px; padding: 10px 12px 12px; }
 .xp-confirm-actions > button { min-width: 75px; }
 .xp-confirm-actions > button:focus { outline: 1px solid #5a7edc; outline-offset: -3px; }
@@ -727,7 +727,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; color-scheme: light; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
 .proof-bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
 .proof-bar > button, .proof-axes > button, .notepad-open button, .xp-confirm-actions > button { padding: 2px 10px; border: 1px solid #003c74; border-radius: 3px; background: linear-gradient(#fff, #ece9d8); color: #000; font: inherit; }
-.proof-bar > button:disabled, .notepad-open button:disabled { border-color: #c9c7ba; color: #aca899; }
+.proof-bar > button:disabled, .notepad-open button:disabled, .xp-confirm-actions > button:disabled { border-color: #c9c7ba; color: #aca899; }
 .proof-axes { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 4px; }
 .proof-axes > button[aria-pressed="true"] { background: #316ac5; color: #fff; }
 .proof-count { color: inherit; opacity: .75; }

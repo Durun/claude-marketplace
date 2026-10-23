@@ -1,4 +1,4 @@
-// Claude が求めた認証を、人間に確かめてから進める。相手は Google Cloud と、ログインの要る MCP サーバー（Slack、Notion など）。
+// Claude が求めた認証を、人間に確かめてから進める。相手は Google Cloud と、ログインの要る MCP サーバー（Slack、Notion など）と、ブラウザでログインする Web サービス。
 // 同じ相手の認証を複数のセッションが求めても、人間に尋ねるのは 1 回にし、答えと認証の結果を、求めたすべてのセッションに返す。
 import { exec, execFile } from 'node:child_process';
 import type { AuthRequest } from '../shared/types.ts';
@@ -12,8 +12,8 @@ const LOGIN_TIMEOUT_MS = 5 * 60_000;
 // 認証の失敗を伝えるときに添える、コマンドの出力の末尾の行数
 const ERROR_LINES = 3;
 
-/** 認証する相手。title は「〜の認証」。command は、人間に見せる認証のコマンド。check は、認証済みなら true を返す。 */
-export type AuthProvider = { key: string; title: string; command: string; check: () => Promise<boolean>; login: () => Promise<void> };
+/** 認証する相手。title は「〜の認証」。人間に見せるのは、OK で動かす認証の command か、「進む」で開くログイン画面の url。check は、認証済みなら true を返す。 */
+export type AuthProvider = { key: string; title: string; command?: string; url?: string; check: () => Promise<boolean>; login: () => Promise<void> };
 
 /** 文字列はシェルで動かす行。 */
 type Command = string | { file: string; args: string[] };
@@ -55,9 +55,19 @@ const mcpServer = (name: string, cwd: string | undefined): AuthProvider => ({
   login: () => login(claudeCommand(['mcp', 'login', name]), cwd),
 });
 
-/** authenticate に渡された相手。分からなければ undefined。 */
-export const authProvider = (provider: unknown, server: string | undefined, cwd: string | undefined): AuthProvider | undefined => {
+/**
+ * ログインできたかはダッシュボードから確かめられないので、毎回尋ね、人間が「認証した」と答えたら終える。
+ * OAuth の URL は求めるたびに state が変わり、別々のログインになるので、同じ URL を求めたセッションだけをまとめる。
+ */
+const browser = (url: URL): AuthProvider => ({ key: `browser:${url.href}`, title: `${url.host} のブラウザ認証`, url: url.href, check: async () => false, login: async () => {} });
+
+/** authenticate に渡された相手。分からなければ undefined。ログイン画面の URL は画面が window.open で開くので、http と https に限る。 */
+export const authProvider = (provider: unknown, server: string | undefined, cwd: string | undefined, url?: string): AuthProvider | undefined => {
   if (provider === 'gcloud') return gcloud(cwd);
+  if (provider === 'browser') {
+    const page = URL.parse(url ?? '');
+    return page?.protocol === 'http:' || page?.protocol === 'https:' ? browser(page) : undefined;
+  }
   return provider === 'mcp' && server ? mcpServer(server, cwd) : undefined;
 };
 
@@ -79,7 +89,8 @@ const settle = async (provider: AuthProvider, request: { asking: boolean }, answ
 export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<string> => {
   let flow = flows.get(provider.key);
   if (!flow) {
-    const request: Flow['request'] = { id: newId(), title: provider.title, command: provider.command, sessionIds: [], asking: false };
+    const { title, command, url } = provider;
+    const request: Flow['request'] = { id: newId(), title, ...(url ? { url } : { command }), sessionIds: [], asking: false };
     let decide: (ok: boolean) => void = () => {};
     const answer = new Promise<boolean>((resolve) => (decide = resolve));
     flow = { request, decide, result: settle(provider, request, answer).finally(() => flows.delete(provider.key)) };

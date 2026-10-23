@@ -27,6 +27,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
+- Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。`;
 
 const TOOLS = [
@@ -119,12 +120,14 @@ const TOOLS = [
   },
   {
     name: 'authenticate',
-    description: 'Google Cloud か MCP サーバーの認証を人間に頼み、認証が終わるまで待つ。認証済みなら、尋ねずにすぐ返る。人間が OK を押すと、ダッシュボードがブラウザでの認証を始める。結果は文字列で返る。',
+    description:
+      'Google Cloud か MCP サーバーの認証、または Web サービスへのブラウザでのログインを人間に頼み、終わるまで待つ。Google Cloud と MCP サーバーは、認証済みなら尋ねずにすぐ返り、人間が OK を押すと、ダッシュボードがブラウザでの認証を始める。ブラウザでのログインは毎回尋ね、人間がダッシュボードからログイン画面を開いてログインし、「認証した」を押すと返る。結果は文字列で返る。',
     inputSchema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['gcloud', 'mcp'], description: 'gcloud は Google Cloud（gcloud の CLI）。mcp は MCP サーバー（Slack、Notion など）。' },
+        provider: { type: 'string', enum: ['gcloud', 'mcp', 'browser'], description: 'gcloud は Google Cloud（gcloud の CLI）。mcp は MCP サーバー（Slack、Notion など）。browser は、ブラウザでログインする Web サービス。' },
         server: { type: 'string', description: 'provider が mcp のときに、認証する MCP サーバーの名前。認証が要ると知らされた名前（例: notion、claude.ai Slack）をそのまま渡す。' },
+        url: { type: 'string', description: 'provider が browser のときに、人間に開いてもらうログイン画面の URL。http か https に限る。' },
       },
       required: ['provider'],
     },
@@ -465,8 +468,8 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'authenticate': {
-      const provider = authProvider(args.provider, str(args.server), state.sessions[sessionId]?.cwd);
-      if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud か mcp を渡してください。mcp のときは、server に MCP サーバーの名前も渡してください。', true) });
+      const provider = authProvider(args.provider, str(args.server), state.sessions[sessionId]?.cwd, str(args.url));
+      if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud、mcp、browser のどれかを渡してください。mcp のときは server に MCP サーバーの名前も、browser のときは url にログイン画面の http か https の URL も渡してください。', true) });
       const finish = openStream(res, rpcId, params, () => '人間の確認と認証を待っています');
       return void requestAuth(provider, sessionId).then(
         (text) => finish(textResult(text)),
