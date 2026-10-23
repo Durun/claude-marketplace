@@ -384,9 +384,14 @@ export type AuthRequest = {
   command?: string;
   /** ブラウザ認証で、人間が「進む」を押すとブラウザで開くログイン画面の URL */
   url?: string;
+  /** ダッシュボードから前回ログインした時刻。Claude のログインで、ダッシュボードからログインしたことがあるときだけ持つ。 */
+  lastLoginAt?: number;
   /** 認証を求めたセッション。求めた順。 */
   sessionIds: string[];
 };
+
+/** ダッシュボードからの Claude のログイン。at は前回ログインした時刻で、まだログインしていなければ無い。running はログインしている最中で、error は前回ログインし直せなかった理由。 */
+export type ClaudeLogin = { at?: number; running: boolean; error?: string };
 
 export type Snapshot = {
   now: number;
@@ -404,6 +409,8 @@ export type Snapshot = {
   autoContinue?: boolean;
   /** 人間に確かめている認証。求めた順。前に受け取ったスナップショットには無いことがある。 */
   auth?: AuthRequest[];
+  /** 通知領域に出す、ダッシュボードからの Claude のログイン。前に受け取ったスナップショットには無いことがある。 */
+  claudeLogin?: ClaudeLogin;
   /** 人間が「更新」で JIRA の情報を取り直させた時刻。JIRA の一覧のウィジェットは、変わったら探し直す。 */
   jiraRefreshedAt: number;
   /** サーバーが外部の情報源から裏で読み直した値が変わるたびに増える。画面は、変わったらサーバーのキャッシュを通す API を取り直す。前に受け取ったスナップショットには無いことがある。 */

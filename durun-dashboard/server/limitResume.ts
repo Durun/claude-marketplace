@@ -49,13 +49,13 @@ const loggedInSince = (at: number): boolean =>
 const awaitLogin = (sessionId: string, at: number): void => {
   if (awaitingLogin.has(sessionId)) return;
   awaitingLogin.add(sessionId);
-  requestAuth(claudeLogin, sessionId)
+  requestAuth(claudeLogin(Date.now()), sessionId)
     .finally(() => awaitingLogin.delete(sessionId))
     .then(
       ({ ok }) => {
         const meta = state.sessions[sessionId];
-        if (ok) state.claudeLoginAt = Date.now();
-        else if (meta) meta.limitResumedAt = at;
+        if (ok || !meta) return;
+        meta.limitResumedAt = at;
         touch();
       },
       (e: Error) => console.error(`Claude にログインし直せません: ${e.message}`),

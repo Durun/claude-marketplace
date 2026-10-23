@@ -41,6 +41,13 @@ export const relativeTime = (at: number, now: number): string => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
+/** 時間の長さを、日と時間か、時間か、分で書く。1 分に満たなければ 1 分とする。 */
+export const fmtSpan = (ms: number): string => {
+  const hours = Math.floor(ms / HOUR);
+  if (hours >= 24) return `${Math.floor(hours / 24)} 日${hours % 24 ? ` ${hours % 24} 時間` : ''}`;
+  return hours ? `${hours} 時間` : `${Math.max(1, Math.floor(ms / MINUTE))} 分`;
+};
+
 const KILO = 1e3;
 const MEGA = 1e6;
 const SIGNIFICANT_DIGITS = 3;

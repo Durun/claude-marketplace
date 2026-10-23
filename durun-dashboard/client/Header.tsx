@@ -11,6 +11,7 @@ import { NowContext } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, openInternetExplorer } from './InternetExplorer.tsx';
 import { setLightMode, useLightMode } from './lightMode.ts';
+import { LoginTray } from './LoginTray.tsx';
 import { MarkdownPreview } from './Markdown.tsx';
 import { ReplyArea, asksOf } from './Messaging.tsx';
 import { notificationPermission } from './notify.ts';
@@ -499,6 +500,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
         <NotifyButton />
         <StatusCount status="idle" label="回答待ち" snapshot={snapshot} live={live} tray />
         <FeedbackTray improve={snapshot?.improve} onClick={onFeedback} />
+        <LoginTray login={snapshot?.claudeLogin} />
         <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} loading={!snapshot} />
         <MemoryTray />
         <TaskbarClock />

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usage } from '../shared/types.ts';
-import { authRequests } from './auth.ts';
+import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
 import { isHelperSession } from './haiku.ts';
@@ -354,6 +354,7 @@ export const buildSnapshot = (): Snapshot => {
     improve: improveState(),
     autoContinue: !!state.autoContinue,
     auth: authRequests(),
+    claudeLogin: claudeLoginState(),
     jiraRefreshedAt: jiraRefreshedAt(),
     cacheVersion: cacheVersion(),
     jiraBase: jiraBase(),

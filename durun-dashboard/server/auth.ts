@@ -1,10 +1,10 @@
 // Claude が求めた認証を、人間に確かめてから進める。相手は Google Cloud と、ログインの要る MCP サーバー（Slack、Notion など）と、ブラウザでログインする Web サービス。
-// Claude のログインが切れて止まったセッションのために、ダッシュボードも Claude のログインを求める。
+// Claude のログインが切れて止まったセッションのために、ダッシュボードも Claude のログインを求める。人間は、通知領域のボタンからもログインし直せる。
 // 同じ相手の認証を複数のセッションが求めても、人間に尋ねるのは 1 回にし、答えと認証の結果を、求めたすべてのセッションに返す。
 import { exec, execFile } from 'node:child_process';
-import type { AuthRequest } from '../shared/types.ts';
+import type { AuthRequest, ClaudeLogin } from '../shared/types.ts';
 import { claudeCommand } from './platform.ts';
-import { changed, newId } from './store.ts';
+import { changed, newId, state, touch } from './store.ts';
 
 // claude mcp get は、MCP サーバーにつないで確かめるので数秒かかる。
 const CHECK_TIMEOUT_MS = 60_000;
@@ -13,8 +13,11 @@ const LOGIN_TIMEOUT_MS = 5 * 60_000;
 // 認証の失敗を伝えるときに添える、コマンドの出力の末尾の行数
 const ERROR_LINES = 3;
 
-/** 認証する相手。title は「〜の認証」。人間に見せるのは、OK で動かす認証の command か、「進む」で開くログイン画面の url。check は、認証済みなら true を返す。 */
-export type AuthProvider = { key: string; title: string; command?: string; url?: string; check: () => Promise<boolean>; login: () => Promise<void> };
+/**
+ * 認証する相手。title は「〜の認証」。人間に見せるのは、OK で動かす認証の command か、「進む」で開くログイン画面の url。check は、認証済みなら true を返す。
+ * lastLoginAt は、ダッシュボードから前回ログインした時刻で、ダッシュボードが覚えている相手だけが持つ。
+ */
+export type AuthProvider = { key: string; title: string; command?: string; url?: string; lastLoginAt?: number; check: () => Promise<boolean>; login: () => Promise<void> };
 
 /** 文字列はシェルで動かす行。 */
 type Command = string | { file: string; args: string[] };
@@ -72,14 +75,53 @@ export const authProvider = (provider: unknown, server: string | undefined, cwd:
   return provider === 'mcp' && server ? mcpServer(server, cwd) : undefined;
 };
 
-/** Claude のログイン。ログインが切れたことは会話ログで分かってから求めるので、確かめずに尋ねる。 */
-export const claudeLogin: AuthProvider = {
-  key: 'claude',
+const CLAUDE_KEY = 'claude';
+// 動いている claude auth login。ダイアログと通知領域のボタンから続けて頼まれても、1 回だけ動かす。
+let claudeLoggingIn: Promise<void> | undefined;
+// 前回ログインし直せなかった理由。ログインし直せたら消す。
+let claudeLoginError: string | undefined;
+
+/** Claude にログインし直す。ログインし終えたら時刻を覚え、Claude のログインを尋ねているダイアログがあれば、ログインし終えたとして閉じる。 */
+export const loginClaude = (): Promise<void> => {
+  if (claudeLoggingIn) return claudeLoggingIn;
+  claudeLoggingIn = login(claudeCommand(['auth', 'login']), undefined)
+    .then(
+      () => {
+        state.claudeLoginAt = Date.now();
+        claudeLoginError = undefined;
+        const flow = flows.get(CLAUDE_KEY);
+        if (flow?.request.asking) answerAuth(flow.request.id, true);
+      },
+      (e: Error) => {
+        claudeLoginError = e.message;
+        throw e;
+      },
+    )
+    .finally(() => {
+      claudeLoggingIn = undefined;
+      touch();
+    });
+  changed();
+  return claudeLoggingIn;
+};
+
+/**
+ * Claude のログイン。ログインが切れたことは会話ログで分かってから求めるので、確かめずに尋ねる。
+ * since は求め始めた時刻。尋ねている間に人間が通知領域のボタンからログインし直していれば、もうログインしない。
+ */
+export const claudeLogin = (since: number): AuthProvider => ({
+  key: CLAUDE_KEY,
   title: 'Claude のログイン',
   command: 'claude auth login',
+  lastLoginAt: state.claudeLoginAt,
   check: async () => false,
-  login: () => login(claudeCommand(['auth', 'login']), undefined),
-};
+  login: async () => {
+    if ((state.claudeLoginAt ?? 0) <= since) await loginClaude();
+  },
+});
+
+/** 通知領域に出す、ダッシュボードからの Claude のログイン。 */
+export const claudeLoginState = (): ClaudeLogin => ({ at: state.claudeLoginAt, running: !!claudeLoggingIn, error: claudeLoginError });
 
 /** ok は、認証済みになったか。text は、Claude に返す結果。 */
 export type AuthResult = { ok: boolean; text: string };
@@ -102,8 +144,8 @@ const settle = async (provider: AuthProvider, request: { asking: boolean }, answ
 export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<AuthResult> => {
   let flow = flows.get(provider.key);
   if (!flow) {
-    const { title, command, url } = provider;
-    const request: Flow['request'] = { id: newId(), title, ...(url ? { url } : { command }), sessionIds: [], asking: false };
+    const { title, command, url, lastLoginAt } = provider;
+    const request: Flow['request'] = { id: newId(), title, ...(url ? { url } : { command }), ...(lastLoginAt ? { lastLoginAt } : {}), sessionIds: [], asking: false };
     let decide: (ok: boolean) => void = () => {};
     const answer = new Promise<boolean>((resolve) => (decide = resolve));
     flow = { request, decide, result: settle(provider, request, answer).finally(() => flows.delete(provider.key)) };

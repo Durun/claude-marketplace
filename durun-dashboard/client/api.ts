@@ -138,6 +138,8 @@ export const api = {
   answerOffline: (id: string, resume: boolean) => postJson<void>(`${session(id)}/offline`, { resume }),
   /** Claude が求めた認証を進めるか、確認のダイアログで答える。 */
   answerAuth: (id: string, ok: boolean) => postJson<void>(`/api/auth/${seg(id)}`, { ok }),
+  /** Claude にログインし直す。ブラウザでのログインは待たずに返り、終わったかはスナップショットの claudeLogin で分かる。 */
+  claudeLogin: () => postJson<void>('/api/claude/login'),
   diagram: (id: string, note: string) => postJson<DocMeta>(`${session(id)}/diagram`, { note }),
   exportDoc: async (id: string, format: 'pdf' | 'png' | 'html'): Promise<Blob> => {
     const res = await fetch(`/api/docs/${seg(id)}/export/${format}`, { method: 'POST' });

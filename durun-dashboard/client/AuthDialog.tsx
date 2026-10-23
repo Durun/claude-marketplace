@@ -1,8 +1,10 @@
 // Claude が求めた認証を、進めてよいか尋ねる。同じ相手の認証を求めたセッションは、1 つのウィンドウにまとめて並べる。
 // ブラウザ認証は、「進む」でログイン画面を開き、人間がログインを終えて「認証した」を押したら、Claude に返す。
+// Claude のログインには、ダッシュボードから前回ログインした時刻を添え、ログインが何日もったかを人間がタイマーに使えるようにする。
 import { useState } from 'preact/hooks';
 import type { Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { dateTime, fmtSpan } from './format.ts';
 import { href } from './router.ts';
 import { XpInfoWindow } from './XpInfoWindow.tsx';
 
@@ -14,7 +16,7 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
   if (!snapshot || !request) return null;
   const answer = (ok: boolean) => void attempt('認証への答え', () => api.answerAuth(request.id, ok));
   const sessions = snapshot.sessions.filter((s) => request.sessionIds.includes(s.id));
-  const { url } = request;
+  const { url, lastLoginAt } = request;
   const open = () => {
     window.open(url, '_blank', 'noopener');
     setOpened(request.id);
@@ -25,7 +27,8 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
         <i class="xp-info-icon" aria-hidden="true" />
         <span>
           次のセッションが、{request.title}を求めています。<br />
-          {url ? <>「進む」を押すと、ブラウザで <code>{url}</code> を開きます。ログインを終えたら、「認証した」を押してください。</> : <>OK を押すと、<code>{request.command}</code> で認証します。</>}
+          {lastLoginAt && <>前回のログインは {dateTime(lastLoginAt)}（{fmtSpan(snapshot.now - lastLoginAt)}前）です。<br /></>}
+          {url ?<>「進む」を押すと、ブラウザで <code>{url}</code> を開きます。ログインを終えたら、「認証した」を押してください。</> : <>OK を押すと、<code>{request.command}</code> で認証します。</>}
         </span>
       </p>
       <ul class="xp-info-list">

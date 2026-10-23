@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { askAnswer, headLines, termSplitter } from '../client/format.ts';
+import { askAnswer, fmtSpan, headLines, termSplitter } from '../client/format.ts';
 
 test('headLines は、収まるところまでの行を返し、1 行目が収まらなければ 1 行目を丸ごと返す', () => {
   assert.equal(headLines('短い', 10), '短い');
@@ -43,4 +43,14 @@ test('termSplitter は、英数字の語の途中にある綴りと、記号を�
     { text: 'Node.js', term: node },
     { text: ' は拾う' },
   ]);
+});
+
+test('fmtSpan は、1 日以上なら日と時間で、1 時間以上なら時間で、それより短ければ分で書き、端数を切り捨てる', () => {
+  const minute = 60_000;
+  const hour = 60 * minute;
+  assert.equal(fmtSpan(7 * 24 * hour + 20 * hour + 59 * minute), '7 日 20 時間');
+  assert.equal(fmtSpan(2 * 24 * hour + 30 * minute), '2 日');
+  assert.equal(fmtSpan(5 * hour + 59 * minute), '5 時間');
+  assert.equal(fmtSpan(45 * minute + 30_000), '45 分');
+  assert.equal(fmtSpan(10_000), '1 分');
 });

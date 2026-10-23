@@ -8,7 +8,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-auth-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
-const { answerAuth, authProvider, authRequests, requestAuth } = await import('../server/auth.ts');
+const { answerAuth, authProvider, authRequests, claudeLogin, claudeLoginState, loginClaude, requestAuth } = await import('../server/auth.ts');
 
 const until = async (ok: () => boolean): Promise<void> => {
   for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50));
@@ -103,4 +103,40 @@ test('ブラウザは、確かめずにログイン画面の URL を添えて尋
   answerAuth(second!.id, false);
   assert.deepEqual((await Promise.all(results)).map((r) => r.text), ['example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を、人間が却下しました。']);
   for (const url of [undefined, 'example.com/login', 'javascript:alert(1)', 'file:///etc/passwd']) assert.equal(browser(url), undefined);
+});
+
+test('Claude には続けて頼まれても 1 回だけ claude auth login でログインし直し、終えたら時刻を覚えて、Claude のログインを尋ねているダイアログを閉じる。失敗したら理由を残す', async () => {
+  const log = path.join(tmp, 'claude-login.log');
+  const fail = path.join(tmp, 'claude-login.fail');
+  useFakeClaude(tmp, `
+    fs.appendFileSync(${js(log)}, args.join(' ') + '\\n');
+    if (fs.existsSync(${js(fail)})) {
+      console.log('login failed');
+      process.exitCode = 1;
+    }
+  `);
+  const logins = (): number => fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length;
+  const asked = requestAuth(claudeLogin(Date.now()), 's1');
+  await until(() => authRequests().length > 0);
+  // 尋ねている間に、通知領域のボタンからログインし直した。
+  await Promise.all([loginClaude(), loginClaude()]);
+  assert.deepEqual(await asked, { ok: true, text: 'Claude のログインを終えました。' });
+  assert.equal(logins(), 1);
+  assert.deepEqual(authRequests(), []);
+  const { at } = claudeLoginState();
+  assert.ok(at && Date.now() - at < 5000);
+
+  fs.writeFileSync(fail, '');
+  await assert.rejects(loginClaude(), /login failed/);
+  assert.deepEqual(claudeLoginState(), { at, running: false, error: 'login failed' });
+
+  // 次に尋ねるときは、前回ログインした時刻を添え、OK ならログインし直す。
+  const again = requestAuth(claudeLogin(Date.now()), 's2');
+  await until(() => authRequests().length > 0);
+  assert.equal(authRequests()[0]?.lastLoginAt, at);
+  fs.rmSync(fail);
+  answerAuth(authRequests()[0]!.id, true);
+  assert.deepEqual(await again, { ok: true, text: 'Claude のログインを終えました。' });
+  assert.equal(logins(), 3);
+  assert.equal(claudeLoginState().error, undefined);
 });
