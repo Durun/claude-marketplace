@@ -137,8 +137,10 @@ type State = {
   dismissed: string[];
   /** 改善要望の自動実装。model と effort は空なら Claude Code の設定に従う。error があれば待機する。 */
   improve: ImproveSettings & { run?: ImproveRun; error?: string };
-  /** 自動継続モード。スリープや通信の途切れで止まったセッションを、人間に尋ねずに続けさせる。 */
+  /** 自動継続モード。スリープや通信の途切れで止まったセッションを、人間に尋ねずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。 */
   autoContinue?: boolean;
+  /** 人間がダッシュボードから Claude にログインし直した時刻。これより前にログインが切れて止まったセッションは、もうログインを尋ねない。 */
+  claudeLoginAt?: number;
   /** エラーをまとめる鍵ごとの記録 */
   errors: Record<string, ErrorRecord>;
   /** PR のレビュースレッドに添えた分析。古いものから消す。 */

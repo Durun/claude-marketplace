@@ -13,6 +13,7 @@ process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { summarizeLog } = await import('../server/claude.ts');
 const { answerOffline, checkLimit, onTranscriptChange, setAutoContinue } = await import('../server/limitResume.ts');
+const { answerAuth, authRequests } = await import('../server/auth.ts');
 const { ensureImprover, improveState, nextImprovement } = await import('../server/improve.ts');
 const { ensureSession, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
@@ -218,4 +219,147 @@ test('自動継続モードなら、通信の途切れで止まったセッシ�
   checkLimit('away');
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(received.length, 2);
+});
+
+/** Claude Code が、Claude のログインが切れて API に断られたときに会話ログへ残す合成の発言。 */
+const loginExpired = (at: number): string => JSON.stringify({
+  type: 'assistant', timestamp: new Date(at).toISOString(),
+  message: { id: `synthetic-${at}`, model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text: 'Login expired · Please run /login' }], usage: { input_tokens: 0, output_tokens: 0 } },
+  error: 'authentication_failed', isApiErrorMessage: true,
+});
+
+test('summarizeLog は、ログインが切れた合成の発言から止まった時刻を拾い、続きのやり取りが載ったら消す。Claude が同じ文を書いても拾わない', () => {
+  const at = Date.parse('2026-10-23T06:43:58.820Z');
+  const file = path.join(tmp, 'login.jsonl');
+  fs.writeFileSync(file, `${loginExpired(at)}\n`);
+  assert.equal(summarizeLog(file).loginExpiredAt, at);
+  fs.appendFileSync(file, `${prompt(at + MINUTE, '続けて')}\n`);
+  assert.equal(summarizeLog(file).loginExpiredAt, undefined);
+  const quoted = { type: 'assistant', timestamp: new Date(at + 2 * MINUTE).toISOString(), message: { role: 'assistant', content: [{ type: 'text', text: 'Login expired · Please run /login と出て止まりました。' }] } };
+  fs.appendFileSync(file, `${JSON.stringify(quoted)}\n`);
+  assert.equal(summarizeLog(file).loginExpiredAt, undefined);
+});
+
+test('自動継続モードなら、ログインが切れて止まったセッションのために Claude のログインを 1 回だけ尋ね、OK なら claude auth login でログインし直してから「続けて」とだけ 1 度送る', async (t) => {
+  const socketPath = platform.localSocketPath(tmp, 'expired');
+  fs.writeFileSync(path.join(sessionsDir, 'expired.json'), JSON.stringify({ pid: process.pid, sessionId: 'expired', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
+  const { server, received } = await listen(socketPath);
+  const auth = platform.inboxToken(process.pid, sessionsDir) ? [{ type: 'auth', token: 'test-token' }] : [];
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const argsFile = path.join(bin, 'args');
+  useFakeClaude(bin, `fs.appendFileSync(${js(argsFile)}, lines([args.join(' ')]));`);
+  t.after(async () => {
+    state.autoContinue = undefined;
+    state.claudeLoginAt = undefined;
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(path.join(sessionsDir, 'expired.json'));
+  });
+
+  setAutoContinue(true);
+  transcriptOf('expired', [loginExpired(Date.now() - MINUTE)]);
+  onTranscriptChange(path.join('proj', 'expired.jsonl'));
+  await until(() => authRequests().length > 0);
+  const [request] = authRequests();
+  assert.deepEqual(request, { id: request?.id, title: 'Claude のログイン', command: 'claude auth login', sessionIds: ['expired'] });
+  answerAuth(request!.id, true);
+  await until(() => received.length > 0);
+  assert.equal(fs.readFileSync(argsFile, 'utf8'), 'auth login\n');
+  assert.deepEqual(received, [[...auth, { type: 'user', message: { role: 'user', content: '続けて' } }]]);
+
+  // 続きの依頼が会話ログに載る前に呼ばれても、同じ停止ではもう尋ねない。
+  checkLimit('expired');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(authRequests(), []);
+  assert.equal(received.length, 1);
+});
+
+test('自動継続モードでなければ、Claude にログインし直しても送らない。ログインに失敗したらまた尋ね、却下したらログインせず、同じ停止ではもう尋ねない', async (t) => {
+  const socketPath = platform.localSocketPath(tmp, 'relogin');
+  fs.writeFileSync(path.join(sessionsDir, 'relogin.json'), JSON.stringify({ pid: process.pid, sessionId: 'relogin', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
+  const { server, received } = await listen(socketPath);
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const argsFile = path.join(bin, 'args');
+  const failFile = path.join(bin, 'fail');
+  useFakeClaude(bin, `
+    fs.appendFileSync(${js(argsFile)}, lines([args.join(' ')]));
+    if (fs.existsSync(${js(failFile)})) {
+      console.log('login failed');
+      process.exitCode = 1;
+    }
+  `);
+  t.after(async () => {
+    state.claudeLoginAt = undefined;
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(path.join(sessionsDir, 'relogin.json'));
+  });
+  const logins = (): number => (fs.existsSync(argsFile) ? fs.readFileSync(argsFile, 'utf8').split('\n').filter(Boolean).length : 0);
+
+  // 1 回目のログインは失敗し、また尋ねる。
+  fs.writeFileSync(failFile, '');
+  const file = transcriptOf('relogin', [loginExpired(Date.now() - 2 * MINUTE)]);
+  checkLimit('relogin');
+  await until(() => authRequests().length > 0);
+  const first = authRequests()[0]!.id;
+  answerAuth(first, true);
+  await until(() => authRequests().some((r) => r.id !== first));
+  assert.equal(logins(), 1);
+
+  // ログインし直せても、自動継続モードでなければ送らない。
+  fs.rmSync(failFile);
+  answerAuth(authRequests()[0]!.id, true);
+  await until(() => logins() === 2);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(authRequests(), []);
+
+  // 人間が続けて、またログインが切れた。却下したらログインせず、同じ停止ではもう尋ねない。
+  fs.appendFileSync(file, `${prompt(Date.now() - MINUTE, '続けて')}\n${loginExpired(Date.now())}\n`);
+  checkLimit('relogin');
+  await until(() => authRequests().length > 0);
+  answerAuth(authRequests()[0]!.id, false);
+  await new Promise((r) => setTimeout(r, 300));
+  checkLimit('relogin');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(authRequests(), []);
+  assert.equal(logins(), 2);
+  assert.deepEqual(received, []);
+});
+
+/** API が応答した発言。使ったトークンが 0 でない。 */
+const answered = (at: number): string => JSON.stringify({
+  type: 'assistant', timestamp: new Date(at).toISOString(),
+  message: { id: `msg-${at}`, model: 'claude-test', role: 'assistant', content: [{ type: 'text', text: '終わりました。' }], usage: { input_tokens: 10, output_tokens: 5 } },
+});
+
+test('ログインが切れた後に、動いているほかのセッションに API が応答していれば、ログインは戻っているので尋ねず、自動継続モードのときだけ「続けて」とだけ 1 度送る', async (t) => {
+  const socketPath = platform.localSocketPath(tmp, 'stale');
+  fs.writeFileSync(path.join(sessionsDir, 'stale.json'), JSON.stringify({ pid: process.pid, sessionId: 'stale', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
+  fs.writeFileSync(path.join(sessionsDir, 'other.json'), JSON.stringify({ pid: process.pid, sessionId: 'other', cwd: tmp, status: 'idle' }));
+  const { server, received } = await listen(socketPath);
+  const auth = platform.inboxToken(process.pid, sessionsDir) ? [{ type: 'auth', token: 'test-token' }] : [];
+  t.after(async () => {
+    state.autoContinue = undefined;
+    await new Promise((resolve) => server.close(resolve));
+    for (const f of ['stale.json', 'other.json']) fs.rmSync(path.join(sessionsDir, f));
+  });
+
+  const other = transcriptOf('other', [answered(Date.now() - MINUTE)]);
+  const stale = transcriptOf('stale', [loginExpired(Date.now() - 2 * MINUTE)]);
+  checkLimit('stale');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(authRequests(), []);
+  assert.deepEqual(received, []);
+
+  setAutoContinue(true);
+  await until(() => received.length > 0);
+  assert.deepEqual(received, [[...auth, { type: 'user', message: { role: 'user', content: '続けて' } }]]);
+
+  // 続けた後に、また止まり、ほかのセッションも続けて止まった。止まる前の応答と、止まったときの合成の発言は、ログインが戻った印にならないので尋ねる。
+  const at = Date.now();
+  fs.appendFileSync(stale, `${prompt(at, '続けて')}\n${loginExpired(at)}\n`);
+  fs.appendFileSync(other, `${prompt(at, '続けて')}\n${loginExpired(at + 1)}\n`);
+  checkLimit('stale');
+  await until(() => authRequests().length > 0);
+  answerAuth(authRequests()[0]!.id, false);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(received.length, 1);
 });

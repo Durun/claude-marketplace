@@ -472,7 +472,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud、mcp、browser のどれかを渡してください。mcp のときは server に MCP サーバーの名前も、browser のときは url にログイン画面の http か https の URL も渡してください。', true) });
       const finish = openStream(res, rpcId, params, () => '人間の確認と認証を待っています');
       return void requestAuth(provider, sessionId).then(
-        (text) => finish(textResult(text)),
+        ({ text }) => finish(textResult(text)),
         (e: Error) => finish(textResult(`${provider.title}ができませんでした。${e.message}`, true)),
       );
     }

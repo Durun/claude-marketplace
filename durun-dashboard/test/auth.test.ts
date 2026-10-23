@@ -29,7 +29,7 @@ const fake = (authed: boolean) => {
 
 test('認証済みなら、尋ねずに認証済みと返す', async () => {
   const { provider, calls } = fake(true);
-  assert.equal(await requestAuth(provider, 's1'), '偽物の認証は済んでいます。');
+  assert.deepEqual(await requestAuth(provider, 's1'), { ok: true, text: '偽物の認証は済んでいます。' });
   assert.deepEqual(authRequests(), []);
   assert.deepEqual(calls, { check: 1, login: 0 });
 });
@@ -41,7 +41,7 @@ test('同じ相手の認証を複数のセッションが求めても尋ねる�
   const [request] = authRequests();
   assert.deepEqual(request, { id: request?.id, title: '偽物の認証', command: 'fake login', sessionIds: ['s1', 's2'] });
   answerAuth(request!.id, true);
-  assert.deepEqual(await Promise.all(results), Array(3).fill('偽物の認証を終えました。'));
+  assert.deepEqual(await Promise.all(results), Array(3).fill({ ok: true, text: '偽物の認証を終えました。' }));
   assert.deepEqual(calls, { check: 1, login: 1 });
   assert.deepEqual(authRequests(), []);
 });
@@ -51,12 +51,12 @@ test('却下すると、認証せずにすべてに却下を返し、次に求�
   const results = [requestAuth(provider, 's1'), requestAuth(provider, 's2')];
   await until(() => authRequests().length > 0);
   answerAuth(authRequests()[0]!.id, false);
-  assert.deepEqual(await Promise.all(results), Array(2).fill('偽物の認証を、人間が却下しました。'));
+  assert.deepEqual(await Promise.all(results), Array(2).fill({ ok: false, text: '偽物の認証を、人間が却下しました。' }));
   assert.equal(calls.login, 0);
   const again = requestAuth(provider, 's1');
   await until(() => authRequests().length > 0);
   answerAuth(authRequests()[0]!.id, true);
-  assert.equal(await again, '偽物の認証を終えました。');
+  assert.deepEqual(await again, { ok: true, text: '偽物の認証を終えました。' });
 });
 
 test('Google Cloud は、確かめのコマンドが成功すれば認証済みとみなし、認証のコマンドが失敗したら出力を添えて失敗にする', async () => {
@@ -101,6 +101,6 @@ test('ブラウザは、確かめずにログイン画面の URL を添えて尋
   assert.deepEqual(second?.sessionIds, ['s3']);
   answerAuth(first!.id, true);
   answerAuth(second!.id, false);
-  assert.deepEqual(await Promise.all(results), ['example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を、人間が却下しました。']);
+  assert.deepEqual((await Promise.all(results)).map((r) => r.text), ['example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を終えました。', 'example.com のブラウザ認証を、人間が却下しました。']);
   for (const url of [undefined, 'example.com/login', 'javascript:alert(1)', 'file:///etc/passwd']) assert.equal(browser(url), undefined);
 });

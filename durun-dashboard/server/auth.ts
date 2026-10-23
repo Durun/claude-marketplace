@@ -1,4 +1,5 @@
 // Claude が求めた認証を、人間に確かめてから進める。相手は Google Cloud と、ログインの要る MCP サーバー（Slack、Notion など）と、ブラウザでログインする Web サービス。
+// Claude のログインが切れて止まったセッションのために、ダッシュボードも Claude のログインを求める。
 // 同じ相手の認証を複数のセッションが求めても、人間に尋ねるのは 1 回にし、答えと認証の結果を、求めたすべてのセッションに返す。
 import { exec, execFile } from 'node:child_process';
 import type { AuthRequest } from '../shared/types.ts';
@@ -71,22 +72,34 @@ export const authProvider = (provider: unknown, server: string | undefined, cwd:
   return provider === 'mcp' && server ? mcpServer(server, cwd) : undefined;
 };
 
-type Flow = { request: AuthRequest & { asking: boolean }; decide: (ok: boolean) => void; result: Promise<string> };
+/** Claude のログイン。ログインが切れたことは会話ログで分かってから求めるので、確かめずに尋ねる。 */
+export const claudeLogin: AuthProvider = {
+  key: 'claude',
+  title: 'Claude のログイン',
+  command: 'claude auth login',
+  check: async () => false,
+  login: () => login(claudeCommand(['auth', 'login']), undefined),
+};
+
+/** ok は、認証済みになったか。text は、Claude に返す結果。 */
+export type AuthResult = { ok: boolean; text: string };
+
+type Flow = { request: AuthRequest & { asking: boolean }; decide: (ok: boolean) => void; result: Promise<AuthResult> };
 
 // 確かめか認証が進んでいる相手ごとの流れ。終わったら消す。
 const flows = new Map<string, Flow>();
 
-const settle = async (provider: AuthProvider, request: { asking: boolean }, answer: Promise<boolean>): Promise<string> => {
-  if (await provider.check()) return `${provider.title}は済んでいます。`;
+const settle = async (provider: AuthProvider, request: { asking: boolean }, answer: Promise<boolean>): Promise<AuthResult> => {
+  if (await provider.check()) return { ok: true, text: `${provider.title}は済んでいます。` };
   request.asking = true;
   changed();
-  if (!(await answer)) return `${provider.title}を、人間が却下しました。`;
+  if (!(await answer)) return { ok: false, text: `${provider.title}を、人間が却下しました。` };
   await provider.login();
-  return `${provider.title}を終えました。`;
+  return { ok: true, text: `${provider.title}を終えました。` };
 };
 
 /** 認証済みならすぐに返し、切れていれば人間に尋ねて、OK なら認証する。同じ相手の流れが進んでいれば、それに加わって同じ結果を待つ。 */
-export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<string> => {
+export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<AuthResult> => {
   let flow = flows.get(provider.key);
   if (!flow) {
     const { title, command, url } = provider;

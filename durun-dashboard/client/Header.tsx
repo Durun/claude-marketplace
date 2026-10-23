@@ -347,7 +347,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
           <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>
             <svg class="app-menu-foot-icon is-red" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10zM3 13l6-6" /></svg>軽量モード
           </button>
-          <button class="app-menu-item" aria-pressed={autoContinue} title="スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに、API に届くようになったら続けさせる" onClick={() => void attempt('自動継続モードの切り替え', () => api.autoContinue(!autoContinue))}>
+          <button class="app-menu-item" aria-pressed={autoContinue} title="スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに、API に届くようになったら続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる" onClick={() => void attempt('自動継続モードの切り替え', () => api.autoContinue(!autoContinue))}>
             <svg class="app-menu-foot-icon is-green" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>自動継続モード
           </button>
         </div>

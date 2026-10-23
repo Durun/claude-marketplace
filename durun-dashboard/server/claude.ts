@@ -143,6 +143,8 @@ export type LogSummary = {
   limit?: UsageLimit;
   /** スリープや通信の途切れで API に届かず止まった時刻。続きのやり取りが載ったら消す。 */
   offlineAt?: number;
+  /** Claude のログインが切れて API に断られ、止まった時刻。続きのやり取りが載ったら消す。 */
+  loginExpiredAt?: number;
   timeline: [number, number][];
   editedFiles: Set<string>;
   /** 人間の依頼と Claude の発言。会話の表示と、過去のセッションの検索に使う。 */
@@ -209,6 +211,8 @@ type LogEntry = {
   apiErrorParams?: { rate_limit_info?: { resetsAt?: number } };
   /** API のエラーで止まったときに、Claude Code が合成した発言に付ける。 */
   isApiErrorMessage?: boolean;
+  /** 合成した発言に添える、エラーの種類。 */
+  error?: string;
   title?: string;
   path?: string;
 };
@@ -437,6 +441,9 @@ const offlineOf = (e: LogEntry, ts: number | undefined): number | undefined => {
   return e.isApiErrorMessage && text && OFFLINE_ERROR.test(text) ? ts : undefined;
 };
 
+// ログインが切れたときに、Claude Code が合成する発言（Login expired · Please run /login）に添えるエラーの種類。
+const loginExpiredOf = (e: LogEntry, ts: number | undefined): number | undefined => (e.isApiErrorMessage && e.error === 'authentication_failed' ? ts : undefined);
+
 const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void => {
   // API への要求の記録は、要約に使わないうえに会話ログの大きな割合を占めるので、JSON として読まずに飛ばす。
   if (!line || line.startsWith('{"type":"api-request')) return;
@@ -469,6 +476,7 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   if (ts) s.lastActivityAt = ts;
   s.limit = limitOf(e, ts);
   s.offlineAt = offlineOf(e, ts);
+  s.loginExpiredAt = loginExpiredOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
   else {
     applyBgResult(s, e);
