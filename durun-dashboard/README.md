@@ -226,7 +226,7 @@ OK を押すと、並べたセッションに「続けて」とだけ渡して�
 API に届くかを確かめてから渡し、届かなければ 30 秒ごとに確かめ直す。
 通信が戻るのを待っている間は、状態を待機中と出す。
 
-Claude のログインが切れて止まったセッション（最後の発言が「Login expired · Please run /login」）があると、Claude のログインを認証のダイアログで尋ねる。
+Claude のログインが切れて止まったセッション（最後の発言が「Login expired · Please run /login」か「Failed to authenticate: OAuth session expired and could not be refreshed」）があると、Claude のログインを認証のダイアログで尋ねる。
 止まったセッションがいくつあっても、ダイアログは 1 つにまとめる。
 ダッシュボードから前回ログインした時刻を覚えていれば、ダイアログに添える。ログインが何日もったかを、通知領域のタイマーを決めるのに使える。
 OK を押すと、ダッシュボードを動かしている端末で `claude auth login` を動かす。

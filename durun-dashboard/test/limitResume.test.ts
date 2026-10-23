@@ -222,14 +222,18 @@ test('自動継続モードなら、通信の途切れで止まったセッシ�
 });
 
 /** Claude Code が、Claude のログインが切れて API に断られたときに会話ログへ残す合成の発言。 */
-const loginExpired = (at: number): string => JSON.stringify({
+const loginExpired = (at: number, text = 'Login expired · Please run /login'): string => JSON.stringify({
   type: 'assistant', timestamp: new Date(at).toISOString(),
-  message: { id: `synthetic-${at}`, model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text: 'Login expired · Please run /login' }], usage: { input_tokens: 0, output_tokens: 0 } },
+  message: { id: `synthetic-${at}`, model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text }], usage: { input_tokens: 0, output_tokens: 0 } },
   error: 'authentication_failed', isApiErrorMessage: true,
 });
 
 test('summarizeLog は、ログインが切れた合成の発言から止まった時刻を拾い、続きのやり取りが載ったら消す。Claude が同じ文を書いても拾わない', () => {
   const at = Date.parse('2026-10-23T06:43:58.820Z');
+  // ログインが切れたのと同じころに、トークンを更新できなかったセッションは別の文で止まる。
+  const oauth = path.join(tmp, 'oauth.jsonl');
+  fs.writeFileSync(oauth, `${loginExpired(at, 'Failed to authenticate: OAuth session expired and could not be refreshed')}\n`);
+  assert.equal(summarizeLog(oauth).loginExpiredAt, at);
   const file = path.join(tmp, 'login.jsonl');
   fs.writeFileSync(file, `${loginExpired(at)}\n`);
   assert.equal(summarizeLog(file).loginExpiredAt, at);
