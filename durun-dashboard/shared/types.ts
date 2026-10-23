@@ -166,6 +166,9 @@ export type SavedTerm = GlossaryTerm & { at: number };
 /** セッションの用語集。pending は、まだ拾っていないやり取りから、裏で用語を拾っている印。error は、やり取りの一部から用語を拾えなかった理由。 */
 export type Glossary = { terms: GlossaryTerm[]; pending?: boolean; error?: string };
 
+/** 人間が Claude に送る返答の候補。pending は、最後の発言への候補を裏で作っている印。error は、候補を作れなかった理由。 */
+export type Replies = { replies: string[]; pending?: boolean; error?: string };
+
 export type Session = {
   id: string;
   name: string;

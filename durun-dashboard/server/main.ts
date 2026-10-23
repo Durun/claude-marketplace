@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -41,7 +41,7 @@ import { parseProof } from './proofText.ts';
 import { searchSessions, warmSearch } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
-import { type Conversation, explainTerm, sessionGlossary, suggestReplies, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
+import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
 import { MINES_ROW, minesHint } from './minesweeper.ts';
 import { fetchRetro } from './retro.ts';
@@ -861,10 +861,10 @@ const conversation = (id: string): Conversation => {
   return c;
 };
 
-const suggestions = (id: string): Promise<string[]> => {
+const suggestions = (id: string): Replies => {
   const c = conversation(id);
   if (!c.lastMessage) throw new HttpError(404, `no message to reply: ${id}`);
-  return suggestReplies(c);
+  return peekReplies(c);
 };
 
 const isMessage = (m: unknown): m is AssistantMessage => {
@@ -1102,7 +1102,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/pr-review$/, ([, id = ''], b) => postReview(id, b), WEB_API_MS],
   [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], b) => setViewed(id, b), WEB_API_MS],
   // 候補や概要や PR の分析は作るたびに API を使うので、他のサイトから GET で起こされないよう POST で受ける。
-  [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id), HAIKU_MS],
+  [/^\/api\/sessions\/([^/]+)\/suggestions$/, ([, id = '']) => suggestions(id)],
   [/^\/api\/sessions\/([^/]+)\/title-suggestion$/, async ([, id = '']) => ({ title: await suggestTitle(conversation(id)) }), HAIKU_MS],
   [/^\/api\/sessions\/([^/]+)\/summary$/, ([, id = '']) => summarize(conversation(id)), HAIKU_MS],
   [/^\/api\/sessions\/([^/]+)\/glossary$/, ([, id = '']) => glossaryOf(id)],

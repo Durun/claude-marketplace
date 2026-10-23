@@ -1,6 +1,6 @@
 // セッションのやり取りから、概要と、人間が Claude に送る返答の候補と、セッション名の候補と、用語集を haiku に作らせる。
 // 入力待ちのセッションが何を待っているかは、Jev があれば Jev に、無ければ haiku に分類させる。
-import type { ChatEntry, Glossary, GlossaryTerm, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem, WaitingFor } from '../shared/types.ts';
+import type { ChatEntry, Glossary, GlossaryTerm, Replies, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem, WaitingFor } from '../shared/types.ts';
 import { cached, peekCached, refreshing } from './cache.ts';
 import { UpstreamError, askHaiku, objectSchema } from './haiku.ts';
 import { type ChoiceQuestion, askChoice, hasJev } from './jev.ts';
@@ -168,20 +168,41 @@ export const summaryText = async (c: Conversation): Promise<string | undefined> 
   return s && `やっていること: ${s.doing}\nいま: ${s.now}`;
 };
 
+/** 裏で作れなかった理由。次に返すときに添える。作れたら消す。 */
+const loadErrors = new Map<string, string>();
+
+const noteError = <T,>(key: string, load: () => Promise<T>) => (): Promise<T> =>
+  load().then(
+    (value) => (loadErrors.delete(key), value),
+    (e: unknown) => {
+      loadErrors.set(key, (e as Error).message);
+      throw e;
+    },
+  );
+
+const loadReplies = (c: Conversation) => async (): Promise<string[]> => {
+  const prompt = promptOf(REPLY_INSTRUCTIONS, { theme: c.theme, session_name: c.name, summary: await summaryText(c), last_prompt: c.lastPrompt, last_message: c.lastMessage });
+  const { replies: list } = await askHaiku(prompt, objectSchema({ replies: { type: 'array', items: { type: 'string' } } }));
+  if (!Array.isArray(list)) throw new UpstreamError('候補が返りませんでした');
+  return list
+    .filter((r): r is string => typeof r === 'string' && r.trim() !== '')
+    .map((r) => r.trim())
+    .slice(0, MAX_REPLIES);
+};
+
 /**
- * 同じ発言には作り直さない。前の発言への候補は役に立たないので、発言が変わったら作り終えるのを待つ。
+ * 返答の候補。同じ発言には作り直さない。haiku が作り終えるのを待つと数十秒かかることがあるので、待たずに裏で作り、pending を付けて返す。作り終えたら、cache.ts が画面に取り直させる。
+ * 前の発言への候補は役に立たないので、発言が変わったら作り終えるまで返さない。
  * 概要はまとめ直す途中の前のものでも材料として足りるので、概要が変わっただけでは作り直さない。
  */
-export const suggestReplies = (c: Conversation): Promise<string[]> =>
-  cached(`replies:${c.id}`, { input: JSON.stringify([c.theme, c.name, c.lastPrompt, c.lastMessage]), wait: true }, async () => {
-    const prompt = promptOf(REPLY_INSTRUCTIONS, { theme: c.theme, session_name: c.name, summary: await summaryText(c), last_prompt: c.lastPrompt, last_message: c.lastMessage });
-    const { replies: list } = await askHaiku(prompt, objectSchema({ replies: { type: 'array', items: { type: 'string' } } }));
-    if (!Array.isArray(list)) throw new UpstreamError('候補が返りませんでした');
-    return list
-      .filter((r): r is string => typeof r === 'string' && r.trim() !== '')
-      .map((r) => r.trim())
-      .slice(0, MAX_REPLIES);
-  });
+export const peekReplies = (c: Conversation): Replies => {
+  const key = `replies:${c.id}`;
+  const input = JSON.stringify([c.theme, c.name, c.lastPrompt, c.lastMessage]);
+  const replies = peekCached(key, { input, wait: true }, noteError(key, loadReplies(c)));
+  if (replies) return { replies };
+  const error = !refreshing(key, input) && loadErrors.get(key);
+  return { replies: [], ...(error ? { error } : { pending: true }) };
+};
 
 /** 頼まれるたびに作り直す。気に入らない名前が出たら、もう一度頼めるようにするため。 */
 export const suggestTitle = async (c: Conversation): Promise<string> => {
@@ -209,18 +230,6 @@ const loadTerms = (chunk: string) => async (): Promise<GlossaryTerm[]> => {
     .slice(0, MAX_TERMS_PER_CHUNK);
 };
 
-/** 区切りを拾えなかった理由。裏で拾うので、次に用語集を返すときに添える。拾えたら消す。 */
-const termErrors = new Map<string, string>();
-
-const noteError = (key: string, load: () => Promise<GlossaryTerm[]>) => (): Promise<GlossaryTerm[]> =>
-  load().then(
-    (terms) => (termErrors.delete(key), terms),
-    (e: unknown) => {
-      termErrors.set(key, (e as Error).message);
-      throw e;
-    },
-  );
-
 /**
  * やり取りを材料の文字数ずつに区切り、区切りごとに拾った語を覚える。会話が伸びても前の区切りは変わらないので、拾い直すのは伸びた最後の区切りだけで済む。
  * 作業中は最後の区切りが発言のたびに伸び、そのたびに拾い直すと haiku を動かし続けるので、止まるまで前に拾った語を返す。
@@ -246,7 +255,7 @@ export const sessionGlossary = (id: string, entries: ChatEntry[], busy: boolean,
   // 語の無い区切りのうち、拾っている最中でないものは、拾えずに拾い直すまで間を空けている。
   const pending = parts.some((p) => !p.terms && refreshing(p.key, p.chunk));
   const failed = parts.find((p) => !p.terms && !refreshing(p.key, p.chunk));
-  const error = failed && termErrors.get(failed.key);
+  const error = failed && loadErrors.get(failed.key);
   return { terms, ...(pending ? { pending } : {}), ...(error ? { error } : {}) };
 };
 

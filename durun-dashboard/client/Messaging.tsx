@@ -33,13 +33,15 @@ const VIA_LABEL: Record<NonNullable<OutboxMessage['via']>, string> = {
 
 const DELIVERED_LIMIT = 20;
 
-/** 作業中は発言が次々に変わるので、Claude が止まってから作る。 */
+/** 作業中は発言が次々に変わるので、Claude が止まってから作る。サーバーは候補を裏で作るので、作り終えたら取り直して出す。 */
 const ReplySuggestions = ({ s, onPick }: { s: Session; onPick: (reply: string, replies: string[]) => void }) => {
   const ready = s.status !== 'busy' && !!s.lastMessage;
-  const { data: replies = [], loading, error } = useFetch(() => (ready ? api.suggestions(s.id) : Promise.resolve([])), [s.id, s.lastMessageAt, ready]);
+  const { data, loading, error } = useCached(() => (ready ? api.suggestions(s.id) : Promise.resolve(undefined)), [s.id, s.lastMessageAt, ready]);
   if (!ready) return null;
-  if (loading) return <p class="help">返答の候補を作っています…</p>;
-  if (error) return <p class="help">返答の候補を作れませんでした（{error}）</p>;
+  if (loading || data?.pending) return <p class="help">返答の候補を作っています…</p>;
+  const failed = error ?? data?.error;
+  if (failed) return <p class="help">返答の候補を作れませんでした（{failed}）</p>;
+  const replies = data?.replies ?? [];
   return (
     <div class="actions reply-options">
       {replies.map((r) => (

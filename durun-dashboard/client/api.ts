@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
+  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -129,7 +129,7 @@ export const api = {
   /** 会話を引き継いだ別のセッションを起動して送る。分岐したセッションの id が返る。 */
   fork: (id: string, text: string, model: string, effort: string) =>
     postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, model, effort }),
-  suggestions: (id: string) => postJson<string[]>(`${session(id)}/suggestions`),
+  suggestions: (id: string) => postJson<Replies>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   glossary: (id: string) => postJson<Glossary>(`${session(id)}/glossary`),
   compact: (id: string) => postJson<void>(`${session(id)}/compact`),

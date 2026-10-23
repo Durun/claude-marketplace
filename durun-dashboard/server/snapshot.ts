@@ -12,7 +12,7 @@ import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
-import { type Conversation, peekSummary, peekWaiting } from './suggest.ts';
+import { type Conversation, peekReplies, peekSummary, peekWaiting } from './suggest.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 終了してからこの期間を過ぎたセッションは会話ログを読まない。 */
@@ -225,7 +225,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   // 概要の材料には画面に出す名前とテーマを渡すので、組み立てたセッションから作る。やり取りが無ければ作れない。
   // アーカイブしたセッションは数百件たまるので、作らない。
   const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
-  if (summarizable) session.summary = peekSummary({ ...session, firstPrompt: firstPromptOf(log) });
+  const conversation = { ...session, firstPrompt: firstPromptOf(log) };
+  if (summarizable) session.summary = peekSummary(conversation);
   // 質問や権限の確認に答えていないセッションと、発言の無いセッションは、人間を待っている。
   // スリープや通信の途切れで止まったセッションは、確認のダイアログへの人間の答えか、自動継続モードなら通信が戻るのを待っている。答えはダイアログで尋ねるので、要対応には出さない。
   if (session.status === 'idle' && !session.archived) {
@@ -234,6 +235,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
       session.waitingFor = 'event';
     } else session.waitingFor = !log?.lastMessage || state.attention.some((a) => a.sessionId === meta.id) ? 'human' : peekWaiting({ ...session, lastMessage: log.lastMessage });
   }
+  // 人間を待っているセッションは開いて返答することが多いので、開いたらすぐ返答の候補を出せるよう、止まったときに裏で作り始める。
+  if (session.waitingFor === 'human' && session.lastMessage) peekReplies(conversation);
   return session;
 };
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Conversation, Waiting } from '../server/suggest.ts';
-import type { BgTask, ChatEntry, Glossary } from '../shared/types.ts';
+import type { BgTask, ChatEntry } from '../shared/types.ts';
 
 // 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
 // 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
@@ -15,7 +15,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 // 本物の Jev に問い合わせないよう、キーを外す。Jev を使うテストは、偽の Jev を立てる。
 delete process.env.TYPESAFE_AI_API_KEY;
-const { explainTerm, peekSummary, peekWaiting, sessionGlossary, suggestReplies, suggestTitle, summarize } = await import('../server/suggest.ts');
+const { explainTerm, peekReplies, peekSummary, peekWaiting, sessionGlossary, suggestTitle, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
@@ -36,24 +36,47 @@ const conversation = (id: string, lastMessage: string): Conversation => ({
   id, theme: 'テーマ', name: '名前', status: 'idle', tasks: [], firstPrompt: '候補を出して', lastPrompt: '直して', lastMessage,
 });
 
-test('概要は同じやり取りには 1 回だけ作り、返答の候補は概要も材料にして作る', async () => {
+/** 裏で作り終えるまで、返答の候補や用語集を読み直す。 */
+const settled = async <T extends { pending?: boolean }>(read: () => T): Promise<T> => {
+  let value = read();
+  for (let i = 0; i < 100 && value.pending; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    value = read();
+  }
+  return value;
+};
+
+test('概要は同じやり取りには 1 回だけ作り、返答の候補は概要も材料にして裏で作る', async () => {
   const c = conversation('s1', '直しました');
   assert.deepEqual(await summarize(c), { doing: '候補を出す', now: '直し終えた' });
   assert.match(lastPrompt(), /<status>\n入力待ち.*<first_prompt>\n候補を出して\n<\/first_prompt>\n\n<last_prompt>\n直して\n/s);
 
-  assert.deepEqual(await suggestReplies(c), ['進めてください', '直してください']);
-  assert.deepEqual(await suggestReplies(c), ['進めてください', '直してください']);
+  assert.deepEqual(peekReplies(c), { replies: [], pending: true });
+  assert.deepEqual(await settled(() => peekReplies(c)), { replies: ['進めてください', '直してください'] });
+  assert.deepEqual(peekReplies(c), { replies: ['進めてください', '直してください'] });
   assert.equal(calls(), 2);
   assert.match(lastPrompt(), /<summary>\nやっていること: 候補を出す\nいま: 直し終えた\n<\/summary>.*<last_message>\n直しました\n<\/last_message>$/s);
 });
 
-test('概要や候補を作れなければ理由を返し、次に頼まれたときに作り直す', async () => {
+test('概要や候補を作れなければ理由を返し、概要は次に頼まれたときに作り直し、候補はすぐには作り直さない', async (t) => {
+  // 裏で作れなかった候補は、cache.ts が console.error に書く。
+  t.mock.method(console, 'error', () => {});
   const before = calls();
   const c = conversation('s2', '失敗');
   await assert.rejects(summarize(c), /usage limit reached/);
   // 概要が作れなくても候補は作ろうとし、その失敗を返す。
-  await assert.rejects(suggestReplies(c), /usage limit reached/);
+  assert.deepEqual(await settled(() => peekReplies(c)), { replies: [], error: 'usage limit reached' });
+  assert.deepEqual(peekReplies(c), { replies: [], error: 'usage limit reached' });
   assert.equal(calls() - before, 3);
+});
+
+test('返答の候補は、発言が変わったら、前の発言への候補を返さずに作り直す', async () => {
+  await settled(() => peekReplies(conversation('s4', '一つ目')));
+  const next = conversation('s4', '二つ目');
+  assert.deepEqual(peekReplies(next), { replies: [], pending: true });
+  assert.deepEqual(await settled(() => peekReplies(next)), { replies: ['進めてください', '直してください'] });
+  // 材料にした概要も裏でまとめ直すので、次のテストが偽の claude を置き換える前にまとめ終えさせる。
+  for (let i = 0; i < 100 && (await summarize(next)).stale; i++) await new Promise((r) => setTimeout(r, 50));
 });
 
 test('セッション名の候補は、概要と最初の依頼も材料にして作る', async () => {
@@ -121,16 +144,6 @@ const prompt = (text: string): ChatEntry => ({ kind: 'prompt', text });
 const message = (text: string): ChatEntry => ({ kind: 'message', text });
 // 材料の 1 区切り（4000 字）より長くして、次の発言を次の区切りに入れる。
 const FILLER = 'あ'.repeat(4100);
-
-/** まだ拾っていない区切りを裏で拾い終えるまで、用語集を読み直す。 */
-const settled = async (read: () => Glossary): Promise<Glossary> => {
-  let glossary = read();
-  for (let i = 0; i < 100 && glossary.pending; i++) {
-    await new Promise((r) => setTimeout(r, 50));
-    glossary = read();
-  }
-  return glossary;
-};
 
 test('用語集は、やり取りを区切って拾った語を新しい順に、人間が足した語より後に並べ、同じ語と外した語は除き、同じやり取りは拾い直さない', async () => {
   useGlossaryClaude();

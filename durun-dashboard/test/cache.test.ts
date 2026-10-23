@@ -148,6 +148,15 @@ test('keep なら、覚えた値があれば材料が変わっても読み直さ
   assert.equal(peekCached('keep', { input: 'b' }, load), 'v2');
 });
 
+test('peekCached は、wait なら材料が変わった前の値を返さず、読み終えるまで undefined を返す', async () => {
+  assert.equal(peekCached('peek-wait', { input: 'a', wait: true }, async () => 'A'), undefined);
+  await settle();
+  assert.equal(peekCached('peek-wait', { input: 'a', wait: true }, async () => 'A'), 'A');
+  assert.equal(peekCached('peek-wait', { input: 'b', wait: true }, async () => 'B'), undefined);
+  await settle();
+  assert.equal(peekCached('peek-wait', { input: 'b', wait: true }, async () => 'B'), 'B');
+});
+
 test('覚えた値はファイルに残り、サーバーを起動し直した後も読み直さずに返す', async () => {
   await cached('saved', {}, async () => ({ a: 1 }));
   saveCache();

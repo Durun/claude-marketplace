@@ -18,7 +18,7 @@ type Entry = { value: unknown; at: number; input?: string };
 /**
  * maxAge は、これより古い値を読み直す時間（ミリ秒）。無ければ時間では古くならない。
  * input は値を作った材料で、覚えた値の材料と違えば読み直す。
- * wait は、古い値を返さずに、読み直し終えるのを待つ。古い値では役に立たないときに使う。
+ * wait は、古い値を返さずに、読み直し終えるのを待つ。古い値では役に立たないときに使う。peekCached では、読み直し終えるまで値を返さない。
  * fresh は、人間が「更新」を押したときに渡す。覚えた値が古くなくても読み直し、読み終えるのを待つ。
  * keep は、覚えた値があれば、材料や時間が変わっても読み直さない。今は作り直さなくてよいときに使う。
  */
@@ -139,8 +139,9 @@ export const cached = async <T,>(key: string, p: Policy, load: () => Promise<T>)
 /** スナップショットのように待てないところで使う。覚えた値をすぐに返し、無いか古ければ裏で読む。 */
 export const peekCached = <T,>(key: string, p: Policy, load: () => Promise<T>): T | undefined => {
   const e = entries.get(key);
-  if (!e || isStale(e, p)) refreshLater(key, p, load);
-  return e?.value as T | undefined;
+  const stale = !e || isStale(e, p);
+  if (stale) refreshLater(key, p, load);
+  return stale && p.wait ? undefined : (e?.value as T | undefined);
 };
 
 /** key の値を読んだ時刻。覚えた値が無ければ undefined。 */
