@@ -58,11 +58,27 @@ export const searchSessions = async (query: string): Promise<SearchResponse> => 
   const results: SearchResult[] = [];
   if (!terms.length) return { results, total: 0 };
   for (const file of transcripts()) {
-    // 初回はすべての会話ログを読むので数秒かかる。その間もフックに応えられるよう、1 ファイルごとに処理を譲る。
+    // warmSearch が読み終える前は、残りの会話ログを読むので数秒かかる。その間もフックに応えられるよう、1 ファイルごとに処理を譲る。
     await setImmediate();
     const result = searchLog(file, terms);
     if (result) results.push(result);
   }
   results.sort((a, b) => b.updatedAt - a.updatedAt);
   return { results: results.slice(0, MAX_RESULTS), total: results.length };
+};
+
+/**
+ * 起動し直した後の最初の検索を待たせないよう、すべての会話ログを裏で要約しておく。
+ * 古い会話ログの要約はファイルに残さないので、起動し直すたびに頭から読むことになる。
+ */
+export const warmSearch = async (): Promise<void> => {
+  try {
+    for (const file of transcripts()) {
+      await setImmediate();
+      summarizeLog(file);
+    }
+  } catch (e) {
+    // 残りの会話ログは、検索するときに読む。
+    console.error(`会話ログを要約できません: ${(e as Error).message}`);
+  }
 };

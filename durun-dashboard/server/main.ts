@@ -38,7 +38,7 @@ import { notesFor } from './prReview.ts';
 import { recentProofFiles, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from './proofread.ts';
 import { parseProof } from './proofText.ts';
-import { searchSessions } from './search.ts';
+import { searchSessions, warmSearch } from './search.ts';
 import { buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, sessionGlossary, suggestReplies, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
@@ -146,6 +146,8 @@ const broadcastTimers = new Map<number, NodeJS.Timeout>();
 
 // 起動した直後に、会話ログの要約を裏で作る。作り終えるまでは、スナップショットを組み立てずに待たせ、画面にも配り始めない。
 const logsReady = warmLogs();
+// 検索だけが読む会話ログは、スナップショットを待たせないよう、一覧に出る分を読み終えてから読む。
+void logsReady.then(warmSearch);
 
 const snapshotEvent = (): string => `data: ${JSON.stringify(buildSnapshot())}\n\n`;
 
