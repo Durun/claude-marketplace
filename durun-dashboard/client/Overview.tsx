@@ -4,6 +4,7 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import { type Attention, type BgTask, type Bookmark, type ChatEntry, type FileWhere, type OutboxMessage, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
+import { refSplitter } from './chatLinks.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
@@ -17,7 +18,7 @@ import { ARROW_STEP } from './order.ts';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
 
 const TASK_LABEL: Record<TaskItem['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -375,6 +376,18 @@ const fileLink = (id: string): CodeLink => ({ text }) => {
   return <a href={href.file(id, text)} onClick={onClick} data-attach={text}><code>{text}</code></a>;
 };
 
+/**
+ * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。ほかの文は mark で描く。
+ * PR へのリンクは、押すとダッシュボードの中で開く。
+ */
+const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
+  const { data } = useCached((fresh) => api.repoRefs({ sessionId: s.id }, fresh), [s.id]);
+  return useMemo(() => {
+    const split = refSplitter(data ?? []);
+    return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={p.ref.title}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
+  }, [data, mark]);
+};
+
 const CHAT_PAGE = 100;
 // 一番下からこの距離までなら、一番下を見ているとみなす。
 const STICK_PX = 40;
@@ -540,7 +553,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     toPrompt(dir);
   };
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
-  const markText = useTermMarks(s);
+  const markText = useRefMarks(s, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
   return (
     <>

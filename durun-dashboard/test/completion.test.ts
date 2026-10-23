@@ -4,7 +4,7 @@ import type { JiraIssue, RepoRef } from '../shared/types.ts';
 import { candidates, typedAt } from '../client/completion.ts';
 import { type GhRefs, toRefs } from '../server/integrations.ts';
 
-const ref = (number: number, title: string, mine = false, kind: RepoRef['kind'] = 'pr', state: RepoRef['state'] = 'Open'): RepoRef => ({ number, title, kind, state, createdAt: 0, mine });
+const ref = (number: number, title: string, mine = false, kind: RepoRef['kind'] = 'pr', state: RepoRef['state'] = 'Open'): RepoRef => ({ number, title, url: '', kind, state, createdAt: 0, mine });
 // サーバーから新しい順に届く。
 const REFS = [ref(12, 'ログインの修正', true), ref(120, 'Fix login for v3'), ref(7, 'ログ画面を足す', true, 'issue', 'Closed'), ref(3, 'Update README')];
 const labels = (word: string): string[] => candidates({ mark: '#', word }, [], REFS, []).map((c) => c.label);
@@ -37,7 +37,7 @@ test('candidates は、# の後に何も打っていなければ、自分が作�
 
 test('toRefs は、PR の状態を Draft、Open、Merged、Closed に、Issue の状態を Open、Closed、Canceled に分ける', () => {
   type Node = GhRefs['repository']['issues']['nodes'][number];
-  const node = (number: number, state: Node['state'], more: Partial<Node> = {}): Node => ({ number, title: '', createdAt: new Date(number).toISOString(), state, ...more });
+  const node = (number: number, state: Node['state'], more: Partial<Node> = {}): Node => ({ number, title: '', url: '', createdAt: new Date(number).toISOString(), state, ...more });
   const refs = toRefs({
     mine: { nodes: [] },
     repository: {

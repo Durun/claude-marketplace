@@ -380,7 +380,7 @@ const REFS_MAX_AGE = 10 * 60_000;
 const MINE_LIMIT = 30;
 // 打った語で探す、新しい PR と Issue のそれぞれの件数。
 const REFS_LIMIT = 100;
-const REF_FIELDS = 'number title createdAt state';
+const REF_FIELDS = 'number title url createdAt state';
 const PR_REF_FIELDS = `${REF_FIELDS} isDraft`;
 const ISSUE_REF_FIELDS = `${REF_FIELDS} stateReason`;
 const REFS_QUERY = `query($owner: String!, $name: String!, $mine: String!) {
@@ -391,7 +391,7 @@ const REFS_QUERY = `query($owner: String!, $name: String!, $mine: String!) {
   }
 }`;
 
-type GhRef = { number: number; title: string; createdAt: string; state: 'OPEN' | 'CLOSED' | 'MERGED'; isDraft?: boolean; stateReason?: string | null };
+type GhRef = { number: number; title: string; url: string; createdAt: string; state: 'OPEN' | 'CLOSED' | 'MERGED'; isDraft?: boolean; stateReason?: string | null };
 export type GhRefs = {
   mine: { nodes: (GhRef & { __typename: 'PullRequest' | 'Issue' })[] };
   repository: { pullRequests: { nodes: GhRef[] }; issues: { nodes: GhRef[] } };
@@ -404,7 +404,7 @@ const refState = ({ state, isDraft, stateReason }: Pick<GhRef, 'state' | 'isDraf
   return stateReason === 'NOT_PLANNED' || stateReason === 'DUPLICATE' ? 'Canceled' : 'Closed';
 };
 
-const toRef = (kind: RepoRef['kind'], n: GhRef, mine: boolean): RepoRef => ({ number: n.number, title: n.title, kind, state: refState(n), createdAt: Date.parse(n.createdAt), mine });
+const toRef = (kind: RepoRef['kind'], n: GhRef, mine: boolean): RepoRef => ({ number: n.number, title: n.title, url: n.url, kind, state: refState(n), createdAt: Date.parse(n.createdAt), mine });
 
 /** 新しい順に並べる。自分のものは後に足すので、同じ番号は自分のものとして残る。 */
 export const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
@@ -418,10 +418,10 @@ export const toRefs = ({ mine, repository }: GhRefs): RepoRef[] => {
 
 /**
  * cwd のリポジトリの、自分が作った新しい PR と Issue と、誰かが作った新しい PR と Issue。{owner} と {repo} は、gh が cwd のリポジトリに置き換える。
- * ponytail: 打った語で探すのは、新しいものから REFS_LIMIT 件ずつだけ。古いものも番号で探したくなったら、GitHub の検索を足す。
+ * ponytail: 打った語で探すのも、チャットの #番号をリンクにするのも、新しいものから REFS_LIMIT 件ずつだけ。古いものも番号で探したくなったら、GitHub の検索を足す。
  */
 export const repoRefs = (cwd: string, fresh = false): Promise<RepoRef[]> =>
-  cached(`repo-refs-v2:${cwd}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
+  cached(`repo-refs-v3:${cwd}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
     const args = ['graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', 'mine=repo:{owner}/{repo} author:@me sort:created-desc', '-f', `query=${REFS_QUERY}`];
     return toRefs((await ghApi<{ data: GhRefs }>(args, undefined, cwd)).data);
   });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatLinks, chatMarkdownFiles, mergeLinks, withTitles } from '../client/chatLinks.ts';
+import { chatLinks, chatMarkdownFiles, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
 
 test('人間と Claude の発言に出たリンクを、題名を付けて新しい順に 1 件ずつ拾い、ダッシュボード自身とコードの中の URL は除く', () => {
   const links = chatLinks(
@@ -77,4 +77,14 @@ test('Notion のページへのリンクは、URL の題名から ID を外し�
   const titles = new Map(links.map((l) => [l.url, 'ページの題名']));
   assert.deepEqual(withTitles(links, titles).map((l) => l.title), ['ページの題名', 'ページの題名', '手で付けた題名']);
   assert.deepEqual(withTitles(links, new Map()), links);
+});
+
+test('refSplitter は、文の #番号のうち、PR と Issue の一覧にあるものだけを切り出し、英数字か / か # に続く # は番号とみなさない', () => {
+  const pr = { number: 12, title: 'ログインの修正', url: 'https://github.com/o/r/pull/12', kind: 'pr', state: 'Open', createdAt: 0, mine: false } as const;
+  const issue = { ...pr, number: 3, title: '画面が遅い', url: 'https://github.com/o/r/issues/3', kind: 'issue' } as const;
+  const split = refSplitter([pr, issue]);
+  const marked = (text: string): string => split(text).map((p) => (p.ref ? `[${p.text} ${p.ref.title}]` : p.text)).join('');
+  assert.equal(marked('#12 は #3 の修正で、#13 は無い。o/r#12、page#12、##12、#12a、#123 は番号ではない。'), '[#12 ログインの修正] は [#3 画面が遅い] の修正で、#13 は無い。o/r#12、page#12、##12、#12a、#123 は番号ではない。');
+  assert.deepEqual(split('PR #12。'), [{ text: 'PR ' }, { text: '#12', ref: pr }, { text: '。' }]);
+  assert.deepEqual(refSplitter([])('#12'), [{ text: '#12' }]);
 });
