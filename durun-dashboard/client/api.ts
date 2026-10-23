@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
+  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -107,9 +107,9 @@ export const api = {
   addBadge: (id: string, url: string) => postJson(`${session(id)}/badges`, { url }),
   removeBadge: (id: string, url: string) => postJson(`${session(id)}/badges/remove`, { url }),
   orderDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/order`, { keys }),
-  hideDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/hide`, { keys }),
-  renameDoc: (id: string, key: string, title: string) => postJson(`${session(id)}/docs/rename`, { key, title }),
-  pinDocs: (id: string, keys: string[], pinned: boolean) => postJson(`${session(id)}/docs/pin`, { keys, pinned }),
+  hideDocs: (id: string, keys: string[]) => postJson<DocEditResult>(`${session(id)}/docs/hide`, { keys }),
+  renameDoc: (id: string, key: string, title: string) => postJson<DocEditResult>(`${session(id)}/docs/rename`, { key, title }),
+  pinDocs: (id: string, keys: string[], pinned: boolean) => postJson<DocEditResult>(`${session(id)}/docs/pin`, { keys, pinned }),
   /** 説明が空なら、サーバーが haiku にやり取りから書かせてから足すので、数秒待つ。 */
   addTerm: (id: string, term: string, description: string) => postJson(`${session(id)}/terms`, { term, description }),
   hideTerm: (id: string, term: string) => postJson(`${session(id)}/terms/hide`, { term }),

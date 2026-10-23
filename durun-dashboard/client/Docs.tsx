@@ -1,9 +1,10 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Artifact, type ChatEntry, type Doc, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
+import { type Artifact, type ChatEntry, type Doc, type DocEditResult, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE } from './attach.ts';
 import { type ChatFile, type MergedLink, chatLinks, chatMarkdownFiles, mergeLinks, titleOf, withTitles } from './chatLinks.ts';
+import { type DocEdit, pendingEdits, withDocEdits } from './docEdits.ts';
 import { buildSrcdoc, linkPath } from './docFrame.ts';
 import { useSkin } from './skin.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
@@ -207,6 +208,27 @@ const linkDoc = (id: string, l: MergedLink, artifact?: Artifact): SideDoc => {
   };
 };
 
+const EDIT_LABEL: Record<DocEdit['kind'], string> = { hide: '資料を外す', pin: 'ピン留めの切り替え', rename: '資料の名前の変更' };
+
+const sendEdit = (id: string, e: DocEdit): Promise<DocEditResult> =>
+  e.kind === 'hide' ? api.hideDocs(id, e.keys) : e.kind === 'pin' ? api.pinDocs(id, e.keys, e.pinned) : api.renameDoc(id, e.key, e.title);
+
+/**
+ * 資料を外す、ピン留めを切り替える、名前を変える操作は、押したらすぐに済ませた状態で出す。サーバーから届くスナップショットは、配る間隔と描き直しのぶん遅れるため。
+ * snapshotAt は届いたスナップショットを作った時刻で、それより前にサーバーが済ませた操作は、届いた状態に任せる。操作に失敗したら、届いた状態に戻す。
+ */
+const useDocEdits = (s: Session, snapshotAt: number) => {
+  const [edits, setEdits] = useState<DocEdit[]>([]);
+  const edit = async (e: DocEdit) => {
+    setEdits((list) => [...pendingEdits(list, snapshotAt), e]);
+    const res = await attempt(EDIT_LABEL[e.kind], () => sendEdit(s.id, e));
+    setEdits((list) => (res ? list.map((x) => (x === e ? { ...x, at: res.at } : x)) : list.filter((x) => x !== e)));
+  };
+  // 前に開いていたときのデータには、ピン留めした資料が無いことがある。
+  const state = withDocEdits({ hiddenDocs: s.hiddenDocs, pinnedDocs: s.pinnedDocs ?? [], docTitles: s.docTitles }, edits, snapshotAt);
+  return { state, edit };
+};
+
 /** 資料の並べ替え。並べ替えた順は、サーバーから届くまでの間も手元の順で出す。ドラッグの間は、離すまで保存しない。 */
 const useDocOrder = (s: Session, docs: SideDoc[]) => {
   const [order, setOrder] = useState(s.docOrder);
@@ -386,23 +408,23 @@ const fileDoc = (id: string, f: OpenableFile): SideDoc => ({
  * エクスプローラーのファイルや、ほかのセッションの資料のウィジェットの行をドラッグして落とすと、その資料を足す。
  * 発言に出たものは、会話ログを読み終えて entries が届くまで分からないので、それまでは件数も、資料が無いことも出さない。
  */
-export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: DocMeta[]; entries?: ChatEntry[]; notion: boolean }) => {
+export const SessionDocs = ({ s, docs, entries, notion, snapshotAt }: { s: Session; docs: DocMeta[]; entries?: ChatEntry[]; notion: boolean; snapshotAt: number }) => {
   const [adding, setAdding] = useState(false);
   // エクスプローラーのファイルをドラッグして上に来ている間、落とせることを枠で示す。
   const [dropping, setDropping] = useState(false);
+  const { state, edit } = useDocEdits(s, snapshotAt);
   // 前に開いていたときのデータには、足したファイルが無いことがある。
   const savedFiles = s.files ?? [];
   const savedPaths = new Set(savedFiles.map((f) => f.path));
   const links = useMemo(() => chatLinks(entries ?? [], location.port), [entries]);
   const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries ?? []), [entries]));
   const saved = new Set(s.links.map((l) => l.url));
-  const hidden = new Set(s.hiddenDocs);
+  const hidden = new Set(state.hiddenDocs);
   const added = s.links.map((l) => ({ url: l.url, title: l.title || titleOf(new URL(l.url)), host: new URL(l.url).host, at: l.at }));
-  // 前に開いていたときのデータには、ピン留めした資料が無いことがある。
-  const pinned = new Set(s.pinnedDocs ?? []);
+  const pinned = new Set(state.pinnedDocs);
   const customized = (d: SideDoc): SideDoc => ({
     ...d,
-    title: d.keys.map((k) => s.docTitles[k]).find(Boolean) ?? d.title,
+    title: d.keys.map((k) => state.docTitles[k]).find(Boolean) ?? d.title,
     pinned: d.keys.some((k) => pinned.has(k)),
   });
   const shown = [...links.filter((l) => !saved.has(l.url)), ...added].filter((l) => !hidden.has(l.url));
@@ -415,10 +437,11 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
       .filter((d) => !hidden.has(d.id))
       .map((d): SideDoc => ({ key: d.id, keys: [d.id], title: d.title, href: href.doc(d.id), sub: FORMAT_LABEL[d.format], icon: OWN_ICON, at: d.createdAt, unread: !d.seen, attach: docAttach(d), copy: { kind: 'doc', key: d.id } })),
     // 前に開いていたときのデータには、校正した文章が無いことがある。
-    ...(s.proofFiles ?? []).map(proofDoc),
+    // 校正した文章と足したファイルは、外すとサーバーが覚えたものから消す。消したものが届くまでの間も並べないよう、外した資料と比べる。
+    ...(s.proofFiles ?? []).filter((p) => !hidden.has(p.id)).map(proofDoc),
     ...mergeLinks(withTitles(shown, titles)).map((l) => linkDoc(s.id, l, artifacts.get(l.url))),
     ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref)).map((f) => fileDoc(s.id, f)),
-    ...savedFiles.map((f) => savedFileDoc(s.id, f)),
+    ...savedFiles.filter((f) => !hidden.has(f.path)).map((f) => savedFileDoc(s.id, f)),
   ].map(customized));
   return (
     <>
@@ -455,7 +478,7 @@ export const SessionDocs = ({ s, docs, entries, notion }: { s: Session; docs: Do
         ) : (
           <ul class="side-docs" ref={list}>
             {items.map((d) => (
-              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d)} onPin={() => attempt('ピン留めの切り替え', () => api.pinDocs(s.id, d.keys, !d.pinned))} onRemove={() => attempt('資料を外す', () => api.hideDocs(s.id, d.keys))} onRename={(title) => attempt('資料の名前の変更', () => api.renameDoc(s.id, d.key, title))} />
+              <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d)} onPin={() => edit({ kind: 'pin', keys: d.keys, pinned: !d.pinned })} onRemove={() => edit({ kind: 'hide', keys: d.keys })} onRename={(title) => edit({ kind: 'rename', key: d.key, title })} />
             ))}
           </ul>
         )}

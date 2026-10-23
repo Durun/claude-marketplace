@@ -457,6 +457,9 @@ export type ExplorerDir = { path: string; parent?: string; home: string; roots: 
 /** メモ帳でファイルを上書きした結果。modifiedAt はファイルの今の更新時刻。changed は、読んだ後にほかで書き換えられていて、上書きしなかったとき。 */
 export type TextSaveResult = { modifiedAt: number; changed?: boolean };
 
+/** 資料のウィジェットで、資料を外したり、ピン留めを切り替えたり、名前を変えたりした結果。at はサーバーが済ませた時刻で、画面は、この時刻より後に作ったスナップショットが届くまで、手元で済ませた状態を出す。 */
+export type DocEditResult = { at: number };
+
 /** 人間が資料に足したファイル。path は絶対パス。 */
 export type SavedFile = { path: string; at: number };
 

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -703,7 +703,7 @@ const orderDocs = (id: string, body: unknown): void => {
 };
 
 /** 題名を空にすると、付け直す前の題名に戻す。 */
-const renameDoc = (id: string, body: unknown): void => {
+const renameDoc = (id: string, body: unknown): DocEditResult => {
   const meta = sessionMeta(id);
   const key = field<string>(body, 'key', 'string');
   const title = field<string>(body, 'title', 'string').trim();
@@ -711,14 +711,16 @@ const renameDoc = (id: string, body: unknown): void => {
   if (!title) delete titles[key];
   meta.docTitles = titles;
   touch();
+  return { at: Date.now() };
 };
 
-const pinDocs = (id: string, body: unknown): void => {
+const pinDocs = (id: string, body: unknown): DocEditResult => {
   const meta = sessionMeta(id);
   const keys = new Set(strings(body, 'keys'));
   const rest = (meta.pinnedDocs ?? []).filter((k) => !keys.has(k));
   meta.pinnedDocs = field<boolean>(body, 'pinned', 'boolean') ? [...rest, ...keys] : rest;
   touch();
+  return { at: Date.now() };
 };
 
 /** エクスプローラーから資料に足すファイル。絶対パスで受け、同じファイルを足し直したら時刻を新しくし、外していたものはまた並べる。 */
@@ -807,7 +809,7 @@ const glossaryOf = (id: string): Glossary => {
 };
 
 /** 外した資料は、発言にまた出ても並べない。足したリンクとファイルとほかのセッションの資料と、Claude が校正した文章は、覚えたものも消す。 */
-const hideDocs = (id: string, body: unknown): void => {
+const hideDocs = (id: string, body: unknown): DocEditResult => {
   const meta = sessionMeta(id);
   const keys = new Set(strings(body, 'keys'));
   meta.hiddenDocs = [...new Set([...(meta.hiddenDocs ?? []), ...keys])];
@@ -818,6 +820,7 @@ const hideDocs = (id: string, body: unknown): void => {
   meta.docOrder = meta.docOrder?.filter((k) => !keys.has(k));
   meta.pinnedDocs = meta.pinnedDocs?.filter((k) => !keys.has(k));
   touch();
+  return { at: Date.now() };
 };
 
 /** 閉じた端末への入力と大きさの変更は、画面がつなぎ直すまでの間に届くので、404 で知らせる。 */

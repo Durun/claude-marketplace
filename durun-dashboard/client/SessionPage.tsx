@@ -225,6 +225,8 @@ type SessionData = {
   onJump: (index: number) => void;
   /** Notion のトークンを設定してあるか。 */
   notion: boolean;
+  /** スナップショットをサーバーが作った時刻。 */
+  snapshotAt: number;
 };
 
 const CHAT_WIDGET = 'chat';
@@ -311,6 +313,7 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
     jump,
     onJump: (index: number) => setJump({ index }),
     notion: !!snapshot.notion,
+    snapshotAt: snapshot.now,
   };
 };
 
