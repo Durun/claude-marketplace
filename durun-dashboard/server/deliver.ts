@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import type { Delivery, OutboxMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
@@ -132,6 +133,8 @@ const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: st
   // cmux の端末から起動すると、cmux の claude のラッパーが --settings を足す。
   // フラグを付けて --resume すると、バックグラウンドのセッションは起動したときのオプションを守るために複製を作るので、ラッパーに足させない。
   const env = { ...process.env, CMUX_CLAUDE_HOOKS_DISABLED: '1' };
+  // claude は起動し終えるまでサーバーを止め、マシンが混むと 1 秒を超える。送信の API を待たせないよう、応答を返してから起動する。
+  await setImmediate();
   if (jobId) {
     await runClaude(['stop', jobId], cwd, env);
     await waitForStop(jobId);
