@@ -275,14 +275,19 @@ const useSessionOrder = (snapshot: Snapshot, visible: Session[], selected: Set<s
   };
   // ほかのまとまりへ移して見せたカードは DOM から外れるので、Chrome は dragend を送らない。
   // ドラッグの間はマウスの移動が届かないので、離さずに終わったドラッグは、次に届いた移動で元に戻す。
-  useEffect(() => {
+  // 離した直後の移動で戻さないよう、離して描き直したときに、描画を待たずに見張りを外す。
+  useLayoutEffect(() => {
     if (!dragging) return;
     window.addEventListener('mousemove', cancel, { once: true });
     return () => window.removeEventListener('mousemove', cancel);
   }, [dragging]);
   // 閉じたまとまりや、カードの無いところに来たら、そのまとまりの最後へ移して見せる。
   // 離したときは、カードの上でもまとまりで確定する。ドラッグを始めたカードは移した先で描き直されて dragend が届かないため。
+  // Chrome は、ポインタの下の要素が変わった回には dragover を送らず、dragenter で落とせるかを決める。移して見せるとポインタの下が変わるので、dragenter でも受け付ける。
   const groupDrag = (group: string) => ({
+    onDragEnter: (e: DragEvent) => {
+      if (dragging && canDrop(group)) e.preventDefault();
+    },
     onDragOver: (e: DragEvent) => {
       if (!dragging || !canDrop(group)) return;
       e.preventDefault();
