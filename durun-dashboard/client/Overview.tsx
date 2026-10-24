@@ -1,17 +1,19 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, type FileWhere, type OutboxMessage, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, type FileWhere, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { refSplitter } from './chatLinks.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
+import { explain } from './Dolphin.tsx';
 import { dateTime, fmtTokens, shortDateTime, truncate } from './format.ts';
 import { isFileRef } from './fileRef.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
 import { useTermMarks } from './Glossary.tsx';
+import { useLightMode } from './lightMode.ts';
 import { type CodeLink, Markdown, type MarkText } from './Markdown.tsx';
 import { Composer, MessageInput } from './Messaging.tsx';
 import { ARROW_STEP } from './order.ts';
@@ -378,14 +380,23 @@ const fileLink = (id: string): CodeLink => ({ text }) => {
 
 /**
  * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。ほかの文は mark で描く。
+ * PR はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
  * PR へのリンクは、押すとダッシュボードの中で開く。
  */
 const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
   const { data } = useCached((fresh) => api.repoRefs({ sessionId: s.id }, fresh), [s.id]);
+  const light = useLightMode();
   return useMemo(() => {
     const split = refSplitter(data ?? []);
-    return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={p.ref.title}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
-  }, [data, mark]);
+    const title = (r: RepoRef) => (r.kind === 'pr' && !light ? undefined : r.title);
+    return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={title(p.ref)}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
+  }, [data, mark, light]);
+};
+
+/** PR へのリンクにマウスを載せたら、イルカが吹き出しで PR を説明する。コメントなど PR の中の場所へのリンクは説明しない。 */
+const explainPrLink = (e: MouseEvent) => {
+  const a = e.target instanceof Element ? e.target.closest('a') : null;
+  if (a && PR_URL.test(a.href)) explain({ pr: a.href, at: a });
 };
 
 const CHAT_PAGE = 100;
@@ -558,7 +569,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   return (
     <>
       <h2 class="section-title">チャット</h2>
-      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown}>
+      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainPrLink}>
         {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>

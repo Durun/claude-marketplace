@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { askAnswer, fmtSpan, headLines, termSplitter } from '../client/format.ts';
+import { askAnswer, firstLines, fmtSpan, headLines, termSplitter } from '../client/format.ts';
 
 test('headLines は、収まるところまでの行を返し、1 行目が収まらなければ 1 行目を丸ごと返す', () => {
   assert.equal(headLines('短い', 10), '短い');
   assert.equal(headLines('- **一つ目**\n- **二つ目の長い行**', 12), '- **一つ目**');
   assert.equal(headLines('**とても長い 1 行目**\n続き', 5), '**とても長い 1 行目**');
   assert.equal(headLines('改行の無いとても長い文', 5), '改行の無いとても長い文');
+});
+
+test('firstLines は、空行を数えずに n 行目までを返し、間の空行は残す', () => {
+  assert.equal(firstLines('\n## 背景\n\n関連 Issue: なし\n\n1 行目\n2 行目', 3), '## 背景\n\n関連 Issue: なし\n\n1 行目');
+  assert.equal(firstLines('一つ目\r\n\r\n二つ目\r\n三つ目', 2), '一つ目\n\n二つ目');
+  assert.equal(firstLines('一つ目\n二つ目\n', 3), '一つ目\n二つ目');
+  assert.equal(firstLines('  \n', 3), '');
 });
 
 test('askAnswer は、選んだ選択肢を質問ごとの行にし、答えていない質問を省いて、自由記述を最後に添える', () => {

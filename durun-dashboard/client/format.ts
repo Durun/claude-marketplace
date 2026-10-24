@@ -95,6 +95,16 @@ export const headLines = (text: string, max: number): string => {
   return cut > 0 ? text.slice(0, cut) : text;
 };
 
+/** Markdown の先頭から、空行を数えずに n 行目までを返す。間の空行は段落の区切りなので残す。 */
+export const firstLines = (text: string, n: number): string => {
+  const lines = text.trim().split(/\r?\n/);
+  let seen = 0;
+  for (const [i, line] of lines.entries()) {
+    if (line.trim() && ++seen === n) return lines.slice(0, i + 1).join('\n');
+  }
+  return lines.join('\n');
+};
+
 export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** 文の切れ端。term があれば、用語集の語。 */

@@ -7,6 +7,7 @@ import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
 import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
+import { PrTip } from './PrView.tsx';
 import { currentSessionId } from './router.ts';
 import { onSubmitKey } from './ui.tsx';
 
@@ -63,16 +64,16 @@ type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: nu
 /** windUp は、引っぱったまま振り回して勢いをつけた道のり（px）。 */
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
-/** 説明している用語と、マウスを載せている要素。 */
-type Explained = { term: GlossaryTerm; at: Element };
+/** 説明しているものと、マウスを載せている要素。説明するのは、用語か、URL で指した PR。 */
+type Explained = { at: Element } & ({ term: GlossaryTerm } | { pr: string });
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
 type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag; explained?: Explained };
 
 const explainers = new Set<(e?: Explained) => void>();
 
-/** 用語にマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
-export const explainTerm = (e?: Explained): void => explainers.forEach((fn) => fn(e));
+/** 用語か PR へのリンクにマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
+export const explain = (e?: Explained): void => explainers.forEach((fn) => fn(e));
 
 const clamp = (v: number, min: number, max: number): number => Math.min(Math.max(v, min), Math.max(min, max));
 
@@ -242,8 +243,8 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dragging = !!live.drag?.moved;
-    // 語が消えたときや、スクロールで語が動いたときは mouseleave が来ないことがあるので、マウスが語から外れたかを毎フレーム確かめる。
-    if (live.explained && !live.explained.at.matches(':hover')) explainTerm();
+    // 語やリンクが消えたときや、スクロールで動いたときは mouseleave が来ないことがあるので、マウスが外れたかを毎フレーム確かめる。
+    if (live.explained && !live.explained.at.matches(':hover')) explain();
     const stopped = live.hover || live.open || live.thinking || !!live.explained;
     if (m.stuck) wriggle(m, m.stuck, dt, now);
     else {
@@ -363,7 +364,7 @@ const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatP
 };
 
 /**
- * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。チャットの用語にマウスを載せると、止まって別の吹き出しで説明する。
+ * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。チャットの用語か PR へのリンクにマウスを載せると、止まって別の吹き出しで説明する。
  * jev は Jev を使えるか。使えてマインスイーパを開いていれば、吹き出しからヒントを出せる。
  */
 export const Dolphin = ({ jev }: { jev?: boolean }) => {
@@ -424,9 +425,16 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     <div class="dolphin" ref={box}>
       {open && <DolphinChat turns={turns} thinking={thinking} onAsk={ask} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
       {explained && (
-        <div class="card dolphin-chat dolphin-term" ref={tip} role="tooltip">
-          <strong>{explained.term.term}</strong>
-          <p class="dolphin-say">{explained.term.description}</p>
+        <div class={`card dolphin-chat ${'pr' in explained ? 'dolphin-pr' : 'dolphin-term'}`} ref={tip} role="tooltip">
+          {'pr' in explained ? (
+            // useCached は読み込み中も前の PR を残すので、PR ごとに作り直す。
+            <PrTip key={explained.pr} url={explained.pr} />
+          ) : (
+            <>
+              <strong>{explained.term.term}</strong>
+              <p class="dolphin-say">{explained.term.description}</p>
+            </>
+          )}
         </div>
       )}
       <canvas

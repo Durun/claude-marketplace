@@ -5,6 +5,7 @@ import type { PrDetail, PrInfo, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
+import { firstLines } from './format.ts';
 import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
@@ -54,6 +55,15 @@ export const CommentForm = ({ target, send, onPosted }: { target: string; send: 
   );
 };
 
+const PrMeta = ({ pr }: { pr: PrDetail }) => (
+  <div class="pr-view-meta muted">
+    <PrChips pr={pr} hideTitle />
+    <span class="mono">{pr.headRef} → {pr.baseRef}</span>
+    <span>{pr.author} · 更新 <Time at={pr.updatedAt} /></span>
+    <span class="mono"><span class="stat-add">+{pr.additions}</span> <span class="stat-del">−{pr.deletions}</span></span>
+  </div>
+);
+
 /** GitHub で開くリンクは、PR へのリンクを横取りする処理に拾わせないよう data-external を付ける。 */
 const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reload: () => void }) => (
   <div class="stack pr-view">
@@ -62,12 +72,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
       <span class="spacer" />
       <button class="btn btn-sm" data-icon="refresh" disabled={loading} title="GitHub から読み直します" onClick={reload}>更新</button>
     </div>
-    <div class="pr-view-meta muted">
-      <PrChips pr={pr} hideTitle />
-      <span class="mono">{pr.headRef} → {pr.baseRef}</span>
-      <span>{pr.author} · 更新 <Time at={pr.updatedAt} /></span>
-      <span class="mono"><span class="stat-add">+{pr.additions}</span> <span class="stat-del">−{pr.deletions}</span></span>
-    </div>
+    <PrMeta pr={pr} />
     {pr.body.trim() ? <Markdown text={pr.body} /> : <Empty>本文はありません。</Empty>}
     <details class="pr-view-files">
       <summary>変更したファイル（{pr.files.length}）</summary>
@@ -111,6 +116,20 @@ const PrView = ({ url, version, related }: { url: string; version?: string; rela
     <>
       <RelatedSessions sessions={related} />
       {pr.data ? <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} /> : pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />}
+    </>
+  );
+};
+
+/** イルカが PR を説明する吹き出しの中身。PR の画面と同じく題名と状態を並べ、本文は最初の 3 行だけを出す。 */
+export const PrTip = ({ url }: { url: string }) => {
+  const pr = useCached((fresh) => api.prDetail(url, fresh), [url]);
+  if (!pr.data) return <span class="muted">{pr.error ? `PR を読めませんでした（${pr.error}）` : 'PR を読んでいます…'}</span>;
+  const body = firstLines(pr.data.body, 3);
+  return (
+    <>
+      <strong class="pr-view-title">{pr.data.title}</strong>
+      <PrMeta pr={pr.data} />
+      {body && <Markdown text={body} />}
     </>
   );
 };

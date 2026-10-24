@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import type { GlossaryTerm, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { explainTerm } from './Dolphin.tsx';
+import { explain } from './Dolphin.tsx';
 import { termSplitter } from './format.ts';
 import { useCached } from './hooks.ts';
 import { useLightMode } from './lightMode.ts';
@@ -16,7 +16,7 @@ const useGlossary = (s: Session, on = true) => {
 
 /** チャットの中の用語。マウスを載せている間、イルカが吹き出しで説明する。 */
 const Term = ({ text, term }: { text: string; term: GlossaryTerm }) => (
-  <span class="chat-term" onMouseEnter={(e) => explainTerm({ term, at: e.currentTarget })}>{text}</span>
+  <span class="chat-term" onMouseEnter={(e) => explain({ term, at: e.currentTarget })}>{text}</span>
 );
 
 /**

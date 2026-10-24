@@ -1327,8 +1327,17 @@ table.data { width: 100%; border-collapse: collapse; }
 .dolphin-chat :is(.md > :not(table, .code-block), .dolphin-say .actions, .dolphin-you) { contain: inline-size; }
 .dolphin-you { display: flex; justify-content: end; }
 .dolphin-you > p { max-width: 85%; padding: 6px 10px; border-radius: var(--radius); background: var(--surface-2); }
-/* 用語の説明は、チャットの吹き出しより狭くする。マウスを素通りさせ、語の上に重なっても語から外れたことにしない。 */
-.dolphin-term { gap: 2px; min-width: 0; max-width: min(360px, calc(100vw - 16px)); font-size: 13px; pointer-events: none; }
+/* 用語と PR の説明は、マウスを素通りさせ、語やリンクの上に重なっても、そこから外れたことにしない。 */
+.dolphin-term, .dolphin-pr { font-size: 13px; pointer-events: none; }
+/* 用語の説明は、チャットの吹き出しより狭くする。 */
+.dolphin-term { gap: 2px; min-width: 0; max-width: min(360px, calc(100vw - 16px)); }
+/* PR の説明は幅を決めて、題名とブランチ名を折り返す。中身に合わせて広げると、長い題名やコードで画面の幅いっぱいまで広がる。 */
+.dolphin-pr { grid-template-columns: minmax(0, 1fr); gap: 6px; width: min(440px, calc(100vw - 16px)); }
+.dolphin-pr .pr-view-meta { overflow-wrap: anywhere; }
+/* 本文は、1 行が長い段落も 3 行で切る。表とコードは折り返さずに、吹き出しの幅で切る。表のセルを折り返すと、列の多い表は 1 文字ずつの幅まで縮む。 */
+.dolphin-pr .md { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.dolphin-pr .md :is(table, pre) { overflow: hidden; }
+.dolphin-pr .md :is(th, td) { white-space: nowrap; }
 
 .chart { position: relative; width: 100%; min-height: 260px; }
 .chart svg { display: block; touch-action: pan-y; }
