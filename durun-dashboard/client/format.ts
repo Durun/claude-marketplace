@@ -71,7 +71,10 @@ export const fmtBytes = (n: number): string => {
   return `${i === 0 ? n : (n / 1024 ** i).toFixed(1).replace(/.0$/, '')} ${BYTE_UNITS[i]}`;
 };
 
-export const fmtInt = (n: number): string => Math.round(n).toLocaleString('ja-JP');
+// Chrome では、ロケールを渡した toLocaleString が、作った書式を使い回すより 30 倍ほど遅い。
+const INT_FORMAT = new Intl.NumberFormat('ja-JP');
+
+export const fmtInt = (n: number): string => INT_FORMAT.format(Math.round(n));
 
 export const totalTokens = (t: TokenTotals): number => t.input + t.output + t.cacheRead + t.cacheCreation;
 

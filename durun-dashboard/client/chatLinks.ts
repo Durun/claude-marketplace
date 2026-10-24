@@ -1,5 +1,5 @@
 // 人間と Claude の発言に出たリンクを、セッションの資料として拾う。発言の #番号は、PR と Issue へのリンクにするために切り出す。
-import { Marked, type MarkedExtension, Tokenizer } from 'marked';
+import { Marked, type MarkedExtension, Tokenizer, type TokensList } from 'marked';
 import { type ChatEntry, type RepoRef, notionPageId } from '../shared/types.ts';
 import { safeDecode } from './router.ts';
 
@@ -7,7 +7,7 @@ import { safeDecode } from './router.ts';
 const URL_HEAD = /^(?:[^()、。，．「」『』（）【】]|\([^()]*\))+/;
 
 /** 発言の表示と、発言から拾うリンクとで、同じところまでを URL とみなすための marked の拡張。 */
-export const bareUrls: MarkedExtension = {
+const bareUrls: MarkedExtension = {
   tokenizer: {
     url(src) {
       const t = Tokenizer.prototype.url.call(this, src);
@@ -18,8 +18,23 @@ export const bareUrls: MarkedExtension = {
   },
 };
 
-// 発言の表示と同じく GFM で読むので、コードの中の URL は拾わない。
-const md = new Marked(bareUrls);
+// 発言の表示と、発言からリンクを拾う処理とで、同じ読み方をする。GFM で読むので、コードの中の URL は拾わない。
+// 発言は 1 文ごとに改行して書かれることが多いので、改行はそのまま改行として扱う。
+const md = new Marked({ breaks: true }, bareUrls);
+// 描き直すたびに同じ発言を読み直さないよう、読んだ結果を覚える。長い会話でもツール以外の発言は数百件なので、それが収まる数にする。
+const LEXED_MAX = 1000;
+const lexed = new Map<string, TokensList>();
+
+/** Markdown を読んだ結果。同じ文には覚えた結果をそのまま返すので、受け取った側は書き換えない。 */
+export const lexMarkdown = (text: string): TokensList => {
+  const tokens = lexed.get(text) ?? md.lexer(text);
+  // Map は入れた順に並ぶので、入れ直して最近使った文を後ろへ回し、あふれたら先頭のいちばん古い文を忘れる。
+  lexed.delete(text);
+  lexed.set(text, tokens);
+  if (lexed.size > LEXED_MAX) lexed.delete(lexed.keys().next().value!);
+  return tokens;
+};
+
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const DOC_EXTENSION = /\.(html?|pdf|md)$/i;
 const GITHUB_ITEM = /^\/([^/]+\/[^/]+)\/(pull|issues|actions\/runs)\/(\d+)/;
@@ -40,7 +55,7 @@ export const chatMarkdownFiles = (entries: ChatEntry[]): ChatFile[] => {
   const files = new Map<string, number>();
   for (const e of entries) {
     if (e.kind === 'tool') continue;
-    md.walkTokens(md.lexer(e.text), (t) => {
+    md.walkTokens(lexMarkdown(e.text), (t) => {
       const ref = t.type === 'codespan' && MD_FILE.exec(t.text)?.[1];
       if (ref) files.set(ref, e.at ?? 0);
     });
@@ -76,7 +91,7 @@ export const chatLinks = (entries: ChatEntry[], ownPort: string): ChatLink[] => 
   const links = new Map<string, ChatLink>();
   for (const e of entries) {
     if (e.kind === 'tool') continue;
-    md.walkTokens(md.lexer(e.text), (t) => {
+    md.walkTokens(lexMarkdown(e.text), (t) => {
       if (t.type !== 'link' || !URL.canParse(t.href)) return;
       const u = new URL(t.href);
       if (!listed(u, ownPort)) return;

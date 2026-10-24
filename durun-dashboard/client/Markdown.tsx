@@ -1,14 +1,12 @@
-import { Marked, type MarkedToken, type Token } from 'marked';
+import type { MarkedToken, Token } from 'marked';
 import { type ComponentChildren, type ComponentType, createContext } from 'preact';
 import { useContext, useState } from 'preact/hooks';
-import { bareUrls } from './chatLinks.ts';
+import { lexMarkdown } from './chatLinks.ts';
 import { headLines } from './format.ts';
 import { CopyButton, Ext } from './ui.tsx';
 
 // Claude の発言は信頼できない内容なので、HTML として解釈させずに Preact の要素へ組み直す。
 // 生の HTML は文字のまま出し、リンクは http(s) のものだけを開けるようにする。
-// 発言は 1 文ごとに改行して書かれることが多いので、改行はそのまま改行として扱う。
-const md = new Marked({ breaks: true }, bareUrls);
 
 type Heading = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 
@@ -87,7 +85,7 @@ const Block = ({ t }: { t: MarkedToken }) => {
 export const Markdown = ({ text, codeLink, markText }: { text: string; codeLink?: CodeLink; markText?: MarkText }) => (
   <CodeLinkContext.Provider value={codeLink}>
     <MarkTextContext.Provider value={markText}>
-      <div class="md"><Blocks tokens={md.lexer(text)} /></div>
+      <div class="md"><Blocks tokens={lexMarkdown(text)} /></div>
     </MarkTextContext.Provider>
   </CodeLinkContext.Provider>
 );

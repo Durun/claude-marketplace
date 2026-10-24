@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatLinks, chatMarkdownFiles, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
+import { chatLinks, chatMarkdownFiles, lexMarkdown, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
 
 test('人間と Claude の発言に出たリンクを、題名を付けて新しい順に 1 件ずつ拾い、ダッシュボード自身とコードの中の URL は除く', () => {
   const links = chatLinks(
@@ -66,6 +66,16 @@ test('発言のインラインのコードに出た Markdown ファイルを、�
     { kind: 'prompt', at: 3, text: '`docs/a.md:10` を直して' },
   ]);
   assert.deepEqual(files, [{ ref: 'docs/a.md', at: 3 }, { ref: '~/b.md', at: 1 }]);
+});
+
+test('lexMarkdown は、同じ文には覚えた結果を返し、覚えた文が 1000 件を超えたら、いちばん長く使っていない文から忘れる', () => {
+  const oldest = lexMarkdown('最初に読んだ文');
+  const kept = lexMarkdown('読み続ける文');
+  for (let i = 0; i < 1000; i++) {
+    lexMarkdown(`埋める文 ${i}`);
+    assert.equal(lexMarkdown('読み続ける文'), kept);
+  }
+  assert.notEqual(lexMarkdown('最初に読んだ文'), oldest);
 });
 
 test('Notion のページへのリンクは、URL の題名から ID を外して題名にし、ページの題名が分かれば、URL から付けた題名だけを差し替える', () => {
