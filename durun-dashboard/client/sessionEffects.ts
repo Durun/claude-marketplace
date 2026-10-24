@@ -29,6 +29,7 @@ const removeKey = (s: Session): string => `${s.id}:${s.removeError}`;
 /**
  * アーカイブしたセッションを Claude Code の一覧から消せなかったときに、どの画面を開いていても理由を知らせる。初回の読み込みでは知らせない。
  * アーカイブの API は消し終わる前に返るので、消せなかったことは後から分かる。
+ * サーバーは消せなかったものを後で消し直すので、同じ理由で消せないままなら知らせ直さない。
  */
 export const useRemoveFailureToasts = (snapshot: Snapshot | null): void => {
   const seen = useRef<Set<string> | null>(null);
@@ -39,7 +40,7 @@ export const useRemoveFailureToasts = (snapshot: Snapshot | null): void => {
     seen.current = new Set(failed.map(removeKey));
     if (!previous) return;
     for (const s of failed) {
-      if (!previous.has(removeKey(s))) toast(`${s.name} を Claude Code の一覧から消せませんでした（${s.removeError}）`, 'error');
+      if (!previous.has(removeKey(s))) toast(`${s.name} を Claude Code の一覧から消せませんでした（${s.removeError}）。後で消し直します`, 'error');
     }
   }, [snapshot]);
 };

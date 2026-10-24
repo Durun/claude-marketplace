@@ -1,7 +1,7 @@
 // 人間から Claude へのメッセージを届ける。
 // MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
 // 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
-// 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消す。
+// 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消し、消せなかったものは後で消し直す。
 // 作業中にアーカイブしたセッションは、止めずに入力待ちか停止になるのを待ってからアーカイブする。
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -50,6 +50,7 @@ export const formatMessages = (msgs: OutboxMessage[]): string => `${HUMAN_LABEL}
 /**
  * claude --bg はセッションを裏で動かしてすぐに終わるので、終了を待てば成功したかが分かる。成功したら、claude の出力を返す。
  * claude が断った理由は UpstreamError で返す。ホームのように信頼していない作業ディレクトリで断られるのは、ダッシュボードの不具合ではないため。
+ * claude rm は消さなかった理由を stdout に書くので、stderr が空なら stdout を理由にする。
  * started には、起動した claude の pid を渡す。
  */
 const claudeOutput = (args: string[], cwd: string, env = process.env, started?: (pid: number) => void): Promise<string> =>
@@ -62,7 +63,7 @@ const claudeOutput = (args: string[], cwd: string, env = process.env, started?: 
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve(`${stdout}\n${stderr}`) : reject(new UpstreamError(stderr.trim() || `exit ${code}`))));
+    child.on('exit', (code) => (code === 0 ? resolve(`${stdout}\n${stderr}`) : reject(new UpstreamError(stderr.trim() || stdout.trim() || `exit ${code}`))));
   });
 
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);
@@ -205,16 +206,31 @@ export const removeSession = async (sessionId: string): Promise<void> => {
   await runClaude(['rm', job.id], os.homedir());
 };
 
+// Claude Code の一覧から消している途中のセッション。アーカイブで消している途中のものを、消し直しで同時に消しにいかない。
+const removing = new Set<string>();
+
+/** 消した結果を残す。消したセッションには claude attach できないので、そのコマンドも出さない。消せなかった理由は removeError に残す。 */
+const recordRemoval = (meta: SessionMeta, removal: Promise<void>): Promise<void> => {
+  removing.add(meta.id);
+  return removal
+    .then(
+      () => void Object.assign(meta, { removeError: undefined, jobId: undefined }),
+      (e: Error) => void (meta.removeError = e.message),
+    )
+    .finally(() => {
+      removing.delete(meta.id);
+      touch();
+    });
+};
+
 /**
- * アーカイブし、バックグラウンドのセッションは Claude Code の一覧からも消す。消したセッションには claude attach できないので、そのコマンドも出さない。
- * 消すには claude を何度も動かして数秒かかるので、終わるのを待たずに返る。消せなくてもアーカイブは保ち、消せなかった理由を removeError に残す。
+ * アーカイブし、バックグラウンドのセッションは Claude Code の一覧からも消す。
+ * 消すには claude を何度も動かして数秒かかるので、終わるのを待たずに返る。消せなくてもアーカイブは保ち、retryRemovals が後で消し直す。
  */
 const archive = (meta: SessionMeta): void => {
   Object.assign(meta, { archived: true, archiveWhenIdle: undefined, removeError: undefined });
   touch();
-  removeSession(meta.id)
-    .then(() => (meta.jobId = undefined), (e: Error) => (meta.removeError = e.message))
-    .finally(touch);
+  recordRemoval(meta, removeSession(meta.id));
 };
 
 /** 作業中のセッションは、止めずにアーカイブ待ちにして true を返す。入力待ちか停止になったら、flushArchives がアーカイブする。 */
@@ -237,6 +253,28 @@ export const flushArchives = (): void => {
     // アーカイブで状態が変わるとここがまた呼ばれるので、そこでアーカイブしたものは飛ばす。
     if (!meta.archiveWhenIdle || live.get(meta.id)?.status === 'busy') continue;
     archive(meta);
+  }
+};
+
+/**
+ * アーカイブしたのに Claude Code の一覧に残るバックグラウンドのセッションを、claude rm で消し直す。消せなければ理由を残す。
+ * 動いているものは、アーカイブした後に人間が送って再開したのかもしれないので、止めずに次の消し直しに回す。
+ */
+export const retryRemovals = async (): Promise<void> => {
+  try {
+    const jobs = await listJobs();
+    const listed = new Set(jobs.map((j) => j.sessionId));
+    // 人間が claude agents などから消したものは、消せたことにする。
+    for (const meta of Object.values(state.sessions)) {
+      if (meta.removeError && !listed.has(meta.id)) await recordRemoval(meta, Promise.resolve());
+    }
+    for (const job of jobs) {
+      const meta = state.sessions[job.sessionId ?? ''];
+      if (!job.id || job.kind !== 'background' || job.pid || !meta?.archived || removing.has(meta.id)) continue;
+      await recordRemoval(meta, runClaude(['rm', job.id], os.homedir()));
+    }
+  } catch (e) {
+    console.error(`アーカイブしたセッションを一覧から消し直せません: ${(e as Error).message}`);
   }
 };
 
@@ -530,8 +568,8 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   const next = (await backgroundedSession(output)) || sessionId;
   if (next === sessionId) return sessionId;
   moveSession(sessionId, next);
-  // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになる。
-  await removeSession(sessionId).catch((e: Error) => console.error(`${sessionId} を一覧から消せません: ${e.message}`));
+  // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになり、後で消し直す。
+  await recordRemoval(meta, removeSession(sessionId));
   return next;
 };
 

@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, sendMessage, sendQueued, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -61,6 +61,9 @@ const LIGHT_BROADCAST_INTERVAL_MS = 3000;
 // これより小さい応答は、縮めても通信量がほとんど変わらない。
 const MIN_COMPRESS_BYTES = 1024;
 const PR_CACHE_FILE = 'gh-pr-status-cache.json';
+// アーカイブしたのに Claude Code の一覧から消せなかったセッションを、消し直す間隔。
+// 消せない理由の多くは作業ツリーに残る未 push の変更で、人間が push したことはダッシュボードから見えないので、間を置いて試す。
+const REMOVE_RETRY_MS = 10 * 60_000;
 
 const STATIC: Record<string, string> = {
   '/': 'public/index.html',
@@ -1354,6 +1357,9 @@ ensureImprover();
 redeliverInterrupted();
 flushQueue();
 flushArchives();
+// 起動したときは、一覧から消している途中でサーバーが止まったものも拾うので、消せなかったものが無くても消し直す。
+retryRemovals();
+setInterval(() => Object.values(state.sessions).some((m) => m.archived && m.removeError) && retryRemovals(), REMOVE_RETRY_MS);
 checkLimits();
 
 // 落ちる前に記録して改善要望にし、これまでどおり止まる。コードが直れば node --watch が起動し直す。

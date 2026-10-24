@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
+const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -496,6 +496,36 @@ if (args[0] === 'rm' && args[1] === 'j5') fail('未コミットの変更があ�
   await failed;
   assert.match(meta.removeError ?? '', /未コミットの変更があります/);
   assert.equal(meta.jobId, 'j5');
+});
+
+test('アーカイブしたのに一覧に残るバックグラウンドのセッションは、止まっていれば claude rm で消し直し、消せなければ claude が stdout に書いた理由を残す。一覧から消えたものは、消せたことにする', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。agents は、止まっている r1 と r2、動いている r3、アーカイブしていない r4 のジョブを返す。
+  // rm は、本物と同じく消さなかった理由を stdout に書いて、r2 のジョブを断る。
+  const bin = path.join(tmp, 'bin-retry');
+  const callsFile = path.join(tmp, 'calls-retry');
+  const jobs = [
+    { id: 'jr1', sessionId: 'r1', kind: 'background' },
+    { id: 'jr2', sessionId: 'r2', kind: 'background' },
+    { id: 'jr3', sessionId: 'r3', kind: 'background', pid: 1 },
+    { id: 'jr4', sessionId: 'r4', kind: 'background' },
+  ];
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === 'rm' && args[1] === 'jr2') { console.log('kept jr2 — its worktree is still at /wt'); process.exitCode = 1; }`,
+  );
+  const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const archived = (id: string, removeError?: string) => Object.assign(ensureSession(id, tmp), { archived: true, kind: 'bg', jobId: `j${id}`, removeError });
+  const [r1, r2, r3, r5] = [archived('r1', 'exit 1'), archived('r2'), archived('r3'), archived('r5', 'exit 1')];
+  ensureSession('r4', tmp);
+
+  await retryRemovals();
+  assert.deepEqual(calls(), [['agents', '--json', '--all'], ['rm', 'jr1'], ['rm', 'jr2']]);
+  assert.deepEqual([r1.removeError, r1.jobId], [undefined, undefined]);
+  assert.equal(r2.removeError, 'kept jr2 — its worktree is still at /wt');
+  assert.deepEqual([r3.removeError, r3.jobId], [undefined, 'jr3']);
+  assert.deepEqual([r5.removeError, r5.jobId], [undefined, undefined]);
 });
 
 test('作業中にアーカイブしたセッションは、止めずにアーカイブ待ちにし、入力待ちになったら止めて claude rm する。アーカイブ待ちの間は、保留したメッセージを送らない', async () => {
