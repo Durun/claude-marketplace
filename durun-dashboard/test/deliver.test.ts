@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { archiveSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
+const { SessionStateError, archiveSession, compactSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -644,4 +644,9 @@ if (args[0] === '--bg') console.log('backgrounded · j12');`,
   const sent = state.outbox.find((m) => m.text === '別の案で');
   assert.equal(sent?.sessionId, 's12');
   assert.ok(sent?.deliveredAt);
+});
+
+test('作業中のセッションは compact せず、セッションの状態で断ったエラーにする', async () => {
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's13.json'), JSON.stringify({ pid: process.pid, sessionId: 's13', cwd: tmp, status: 'busy', kind: 'bg', jobId: 'j13' }));
+  await assert.rejects(async () => compactSession('s13', tmp), SessionStateError);
 });

@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -916,16 +916,11 @@ const toComments = (body: unknown): ReviewComment[] =>
 /** branch は、人間がブランチを表示してコメントを付けたときに送られる。 */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** 過去の依頼を書き直して、その依頼の直前まで会話を巻き戻して送る。巻き戻せないのはセッションの状態によるので 409 にする。 */
+/** 過去の依頼を書き直して、その依頼の直前まで会話を巻き戻して送る。 */
 const rewind = (id: string, body: unknown): ReturnType<typeof sendMessage> => {
   const to = field<string>(body, 'rewindTo', 'string');
   if (!UUID.test(to)) throw new HttpError(400, 'rewindTo must be uuid');
-  const sessionId = sessionMeta(id).id;
-  try {
-    return sendMessage(sessionId, field<string>(body, 'text', 'string'), to);
-  } catch (e) {
-    throw new HttpError(409, (e as Error).message);
-  }
+  return sendMessage(sessionMeta(id).id, field<string>(body, 'text', 'string'), to);
 };
 
 const review = (id: string, body: unknown): { delivery: Delivery } => {
@@ -967,15 +962,10 @@ const launchOf = (body: unknown): { text: string; model: string; effort?: string
   return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS) };
 };
 
-/** モデルと effort を変えて依頼を渡す。変えられないのはセッションの状態によるので 409 にする。 */
+/** モデルと effort を変えて依頼を渡す。 */
 const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
   const { text, model, effort } = launchOf(body);
-  const sessionId = sessionMeta(id).id;
-  try {
-    return { sessionId: await switchSession(sessionId, text, model, effort) };
-  } catch (e) {
-    throw new HttpError(409, (e as Error).message);
-  }
+  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort) };
 };
 
 /** 会話を引き継いだ別のセッションを起動して依頼を渡し、元のセッションは残す。起動できないのは claude の失敗なので 502 にする。 */
@@ -1305,9 +1295,9 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
 const server = http.createServer(async (req, res) => {
   if (!(await allowRequest(req.headers.host, req.headers.origin, PORT))) return void res.writeHead(403).end('forbidden');
   route(req, res).catch((e: unknown) => {
-    // 入力の誤り（4xx）と claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
+    // 入力の誤り（4xx）と、セッションの状態で断った操作（409）と、claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
     // 送り手が本文を送り終える前に切ったリクエストも集めない。フックの curl は、送っている途中でも 2 秒で打ち切る。
-    const status = e instanceof HttpError ? e.status : e instanceof UpstreamError ? 502 : 500;
+    const status = e instanceof HttpError ? e.status : e instanceof SessionStateError ? 409 : e instanceof UpstreamError ? 502 : 500;
     if (status === 500 && e !== req.errored) {
       console.error(e);
       recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);

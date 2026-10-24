@@ -41,6 +41,9 @@ export const unwait = (attentionId: string, waiter: Waiter): void => {
 
 export const isWaiting = (attentionId: string): boolean => waiters.has(attentionId);
 
+/** 今のセッションの状態ではできない操作の失敗。ダッシュボードの不具合ではないので、改善要望にはしない。 */
+export class SessionStateError extends Error {}
+
 const joinTexts = (msgs: OutboxMessage[]): string => msgs.map((m) => m.text).join('\n---\n');
 
 // 受信ソケットで送ると別のセッションからの発言として届くので、人間がダッシュボードから送ったことを前置きで示す。
@@ -169,9 +172,9 @@ const interrupt = (pid: number): Promise<void> =>
  */
 export const stopSession = async (sessionId: string): Promise<void> => {
   const live = readLiveSessions().get(sessionId);
-  if (!live) throw new Error('このセッションは動いていません');
+  if (!live) throw new SessionStateError('このセッションは動いていません');
   if (live.pid === state.sessions[sessionId]?.printPid) return interrupt(live.pid);
-  if (live.kind !== 'bg' || !live.jobId) throw new Error('端末で開いているセッションは、ダッシュボードからは止められません');
+  if (live.kind !== 'bg' || !live.jobId) throw new SessionStateError('端末で開いているセッションは、ダッシュボードからは止められません');
   await runClaude(['stop', live.jobId], os.homedir());
   await waitForStop(live.jobId);
 };
@@ -363,7 +366,7 @@ export const sendMessage = (sessionId: string, text: string, rewindTo?: string):
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
-  if (rewindTo && live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは巻き戻せません');
+  if (rewindTo && live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは巻き戻せません');
   const message: OutboxMessage = { id: newId(), sessionId, text, createdAt: Date.now() };
   state.outbox.push(message);
   // 前に届けられなかったものも一緒に送る。
@@ -521,7 +524,7 @@ export const redeliverInterrupted = (): void => {
  */
 export const compactSession = (sessionId: string, cwd: string): Promise<void> => {
   const live = readLiveSessions().get(sessionId);
-  if (live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは compact できません');
+  if (live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは compact できません');
   return resume(sessionId, cwd, '/compact', live?.jobId);
 };
 
@@ -550,7 +553,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
-  if (live && !restartable(live)) throw new Error('作業中のセッションと端末で開いているセッションは、モデルと effort を変えられません');
+  if (live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは、モデルと effort を変えられません');
   state.outbox.push({ id: newId(), sessionId, text, createdAt: Date.now() });
   const pending = undelivered(sessionId);
   // 届け直すと複製がもう 1 つできるので、巻き戻しと同じく sending を付けない。
