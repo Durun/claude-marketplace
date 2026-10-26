@@ -209,38 +209,18 @@ pre .del { color: var(--ng); }
 .outline-panel a:hover { background: var(--surface); }
 .outline-panel a.current { color: var(--fg); font-weight: 600; }
 
-/* ---- 用語と参照番号のホバー ---- */
+/* ---- 用語のホバー ---- */
 /* 用語のマークアップは base.js が自動で付ける。本文側は無編集でよい。
    下線は点線のみにして、本文の可読性を落とさない（意味色は使わない）。 */
 .term {
   border-bottom: 1px dotted var(--muted);
   cursor: help;
 }
-/* 参照番号（U1・D1 など）のバッジ。本文中の参照も定義箇所の識別子セルもこの見た目に揃える。
-   状態バッジ（.badge）より一段大きく、角丸を浅くして、識別子であることを形で区別する。
-   色は .badge.new（青＝意思決定）と .badge.ng（赤＝未決事項）を書き手または base.js が付ける。 */
-.badge.uid {
-  font-size: .85rem;
-  font-weight: 600;
-  padding: .1rem .45rem;
-  border-radius: .25rem;
-  /* 桁数が違っても幅と字面の中心を揃える。U1 と U12 が並んだときに左右へ振れない */
-  min-width: 1.6em;
-  text-align: center;
-}
-/* 本文中の参照はリンクなので、.term の点線下線を残さずバッジの枠線ひとつにする */
-a.term.ref {
-  text-decoration: none;
-  border-bottom-style: solid;
-  border-bottom-color: currentColor;
-  cursor: pointer;
-}
 /* 吹き出しは文書に1つだけ置き、スクリプトが位置を計算して使い回す。
    用語ごとの ::after だと、行末で折り返した語が1行目の断片を基準に出て画面外へはみ出す。 */
 #tip {
   position: fixed;
   z-index: 10;
-  /* 参照番号は論点・暫定解・確認先を全文で載せるため、用語の説明より広く取る */
   max-width: min(34rem, 84vw);
   padding: .4rem .6rem;
   border: 1px solid var(--border);
@@ -252,13 +232,3 @@ a.term.ref {
   pointer-events: none;
 }
 #tip[hidden] { display: none; }
-/* 参照番号の吹き出しは定義箇所の見た目を縮小して入れるため、テキストの吹き出しより広く高く取る。
-   縮小しても収まらない項目は下端を切り、定義箇所へ飛べば全文が読める状態に留める。 */
-#tip.rich {
-  max-width: min(52rem, 92vw);
-  max-height: 60vh;
-  overflow: hidden;
-  padding: .5rem;
-}
-/* 縮小の中身は本文と同じ字送りで組む。吹き出しの .8rem を継ぐと縮小と二重にかかる */
-.tip-clone { font-size: 1rem; line-height: 1.7; }

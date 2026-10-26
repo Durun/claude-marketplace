@@ -14,7 +14,7 @@ const KIT_DIR = path.join(import.meta.dirname, 'diagram');
 const kit = (file: string): string => fs.readFileSync(path.join(KIT_DIR, file), 'utf8');
 
 const INSTRUCTIONS = `<chat> は、ある Claude Code のセッションの会話ログです。このセッションの作業を、人間が一目で把握できる図解の資料にしてください。
-- 目的、全体の流れ、いまの状況、残っている判断を、図を中心にまとめる。
+- 作業で扱っている仕組み、処理やデータの流れ、構造、変更点を図で示す。意思決定や未決事項をまとめた節は作らない。
 - 図は <guide> の図解技法カタログに沿って描く。<guide> の中のパスは ${KIT_DIR} からの相対パスなので、使う技法の例ファイルをそこから読んで写す。
 - body には資料の <body> の中身だけを書く。doctype、head、共通の CSS と JavaScript は、ダッシュボードが足す。
 - 会話に出てくるファイルは、必要なら作業ディレクトリから読んで確かめてよい。

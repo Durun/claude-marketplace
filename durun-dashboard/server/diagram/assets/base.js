@@ -1,4 +1,4 @@
-// 全文書で走るスクリプト。画面右端の目次と、用語・参照番号のホバーを持つ。
+// 全文書で走るスクリプト。画面右端の目次と、用語のホバーを持つ。
 // どちらも対象が無ければ何もしないので、文書ごとに読み分けなくてよい。
 //
 // ---- 画面右端の目次 ----
@@ -62,10 +62,10 @@
   document.addEventListener('scroll', update, { passive: true });
 })();
 
-// ---- 用語と参照番号のホバー ----
-// 本文中の用語と参照番号をホバー可能な .term へ置き換える。
+// ---- 用語のホバー ----
+// 本文中の用語をホバー可能な .term へ置き換える。
 // 本文へ手作業でマークアップを入れると項目の増減ごとに全文を直すことになるため、実行時に一度だけ自動で付ける。
-// 正本は 2 つある。用語は文書末の用語集テーブル、参照番号は U1・D1 のような id を持つ要素そのものである。
+// 正本は文書末の用語集テーブルである。
 // 対になる見た目は base.css にある。
 (() => {
   const table = document.querySelector('#glossary table');
@@ -82,24 +82,6 @@
     // 長い語を先に当てて「共有リンク」が「リンク」に食われないようにする
     .sort((a, b) => b.term.length - a.term.length);
 
-  // 参照番号（U1=未決事項、D1=意思決定 など）の正本は、その番号を id に持つ項目そのものである。
-  // 別表を作ると本体と説明が二重管理になるため、説明は id を持つ要素の文章から取る。
-  const REF_ID = /^[A-Z]{1,2}\d+$/;
-  const REF_TOKEN = /[A-Z]{1,2}\d+/g;
-  // 意思決定は決まったことなので変更点の青、未決事項は判断待ちなので警告の赤。他の接頭辞は無彩色のバッジ
-  const REF_TONE = { D: 'new', U: 'ng' };
-  // 読み上げと aria-label 用のテキスト。判断材料を削ると定義箇所まで往復させることになるため要約しない
-  const summarize = (el) => {
-    const text = el.textContent.replace(/\s+/g, ' ').trim();
-    // 番号そのもの（「U1」「U1.」）は説明にならないので落とす。表の識別子セルやカードの見出しが該当する
-    return text.replace(new RegExp(`^${el.id}\\s*[.:）)]?\\s*`), '');
-  };
-  const refs = new Map(
-    [...document.querySelectorAll('[id]')]
-      .filter((el) => REF_ID.test(el.id))
-      .map((el) => [el.id, summarize(el)])
-  );
-
   // 識別子や既にリンク・見出しになっている箇所は二重装飾になるので触らない
   const SKIP = new Set(['CODE', 'PRE', 'A', 'SCRIPT', 'STYLE', 'SUMMARY', 'TEXTAREA', 'H1', 'H2', 'H3', 'svg']);
   const isAscii = (s) => /^[\w.-]+$/.test(s);
@@ -107,30 +89,21 @@
 
   const wrap = (node, hit) => {
     const rest = node.splitText(hit.index);
-    const after = rest.splitText(hit.label.length);
-    // 参照番号は定義箇所へ飛べるようにリンクにし、定義箇所の識別子バッジと同じ見た目にする
-    const el = document.createElement(hit.href ? 'a' : 'span');
-    el.className = hit.href ? `term ref badge uid ${REF_TONE[hit.label[0]] ?? ''}` : 'term';
-    if (hit.href) el.href = hit.href;
-    else {
-      el.tabIndex = 0;
-      el.setAttribute('role', 'note');
-    }
+    const after = rest.splitText(hit.term.length);
+    const el = document.createElement('span');
+    el.className = 'term';
+    el.tabIndex = 0;
+    el.setAttribute('role', 'note');
     el.dataset.desc = hit.desc;
-    // 参照番号は吹き出しに定義箇所そのものを縮小して出すため、表示のたびに引ける識別子を持たせる
-    if (hit.href) el.dataset.ref = hit.label;
-    el.setAttribute('aria-label', `${hit.label}: ${hit.desc}`);
+    el.setAttribute('aria-label', `${hit.term}: ${hit.desc}`);
     rest.replaceWith(el);
     el.append(rest);
     return after;
   };
 
-  // 用語は節ごとの初出だけに付ける。参照番号は読み手が出会った場所で必ず引けるよう、出現するたびに付ける
-  const findFirst = (text, owner) => {
+  // 用語は節ごとの初出だけに付ける
+  const findFirst = (text) => {
     let best = null;
-    const keep = (hit) => {
-      if (!best || hit.index < best.index) best = hit;
-    };
     for (const t of terms) {
       if (seen.has(t.term)) continue;
       const i = text.indexOf(t.term);
@@ -140,41 +113,32 @@
         const around = /[\w.-]/;
         if (around.test(text[i - 1] ?? '') || around.test(text[i + t.term.length] ?? '')) continue;
       }
-      keep({ label: t.term, desc: t.desc, index: i, term: t.term });
-    }
-    for (const m of text.matchAll(REF_TOKEN)) {
-      // 定義箇所の見出し語は自分自身へのリンクになるだけなので飛ばす
-      if (m[0] === owner || !refs.has(m[0])) continue;
-      const around = /[\w.-]/;
-      if (around.test(text[m.index - 1] ?? '') || around.test(text[m.index + m[0].length] ?? '')) continue;
-      keep({ label: m[0], desc: refs.get(m[0]), index: m.index, href: `#${m[0]}` });
+      if (!best || i < best.index) best = { ...t, index: i };
     }
     return best;
   };
 
-  const visit = (node, owner) => {
+  const visit = (node) => {
     for (let child = node.firstChild; child; ) {
       const next = child.nextSibling;
       if (child.nodeType === Node.TEXT_NODE) {
         let cursor = child;
-        for (let hit = findFirst(cursor.data, owner); hit; hit = findFirst(cursor.data, owner)) {
-          if (hit.term) seen.add(hit.term);
+        for (let hit = findFirst(cursor.data); hit; hit = findFirst(cursor.data)) {
+          seen.add(hit.term);
           cursor = wrap(cursor, hit);
         }
       } else if (child.nodeType === Node.ELEMENT_NODE) {
         // h2 ごとに初出を数え直す。長い文書で節をまたいで語を追わずに済む
         if (child.nodeName === 'H2') seen.clear();
-        if (!SKIP.has(child.nodeName) && child.id !== 'glossary') {
-          visit(child, REF_ID.test(child.id) ? child.id : owner);
-        }
+        if (!SKIP.has(child.nodeName) && child.id !== 'glossary') visit(child);
       }
       child = next;
     }
   };
 
-  visit(document.body, null);
+  visit(document.body);
 
-  // 用語も参照番号も無い文書では吹き出しを作らない
+  // 用語が無い文書では吹き出しを作らない
   if (!document.querySelector('.term')) return;
 
   // 吹き出しの表示。位置は表示のたびに計算し、画面の左右上下に収める
@@ -186,46 +150,8 @@
 
   const MARGIN = 8;
 
-  // 参照番号の吹き出しは、定義箇所の見た目をそのまま縮小して見せる。
-  // 全文をテキストで出すとカードのバッジや表の列見出しが落ち、読み手が意味を組み直すことになるため。
-  const RICH_ZOOM = 0.8;
-
-  // 表の行は列見出しと組にしないと、どのセルが論点でどれが確認先なのか読めない
-  const rowWithHead = (row) => {
-    const source = row.closest('table');
-    const table = document.createElement('table');
-    table.className = source?.className ?? '';
-    if (source?.tHead) table.append(source.tHead.cloneNode(true));
-    const body = document.createElement('tbody');
-    body.append(row.cloneNode(true));
-    table.append(body);
-    return table;
-  };
-
-  const richClone = (source) => {
-    const clone = source.tagName === 'TR' ? rowWithHead(source) : source.cloneNode(true);
-    // 文書に同じ id が2つあると本文からのリンクの飛び先が定まらない
-    clone.removeAttribute('id');
-    for (const el of clone.querySelectorAll('[id]')) el.removeAttribute('id');
-    // 吹き出しはポインタを通さないが、フォーカスは通ってしまう
-    for (const el of clone.querySelectorAll('[tabindex]')) el.removeAttribute('tabindex');
-    // 定義箇所が持つ外側の余白は吹き出しの中では意味を持たない
-    clone.style.margin = '0';
-
-    const box = document.createElement('div');
-    box.className = 'tip-clone';
-    // 元の幅を与えてから縮小する。吹き出しの幅に任せると折り返しが変わって縮小版にならない
-    box.style.width = `${source.getBoundingClientRect().width}px`;
-    box.style.zoom = RICH_ZOOM;
-    box.append(clone);
-    return box;
-  };
-
   const show = (el, event) => {
-    const source = el.dataset.ref ? document.getElementById(el.dataset.ref) : null;
-    tip.classList.toggle('rich', Boolean(source));
-    if (source) tip.replaceChildren(richClone(source));
-    else tip.textContent = el.dataset.desc;
+    tip.textContent = el.dataset.desc;
     tip.hidden = false;
     // 幅を測る前に左上へ寄せる。狭い場所に置いたまま測ると折り返して高さが変わる
     tip.style.left = `${MARGIN}px`;

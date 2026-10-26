@@ -271,7 +271,7 @@ const DiagramPrompt = ({ s }: { s: Session }) => {
         ref={ref}
         class="input"
         rows={5}
-        placeholder="図解の指示（任意）。例: 設計の判断を中心に描いて（Cmd/Ctrl + Enter で開始）"
+        placeholder="図解の指示（任意）。例: データの流れを中心に描いて（Cmd/Ctrl + Enter で開始）"
         value={note}
         onInput={(e) => setNote(e.currentTarget.value)}
         onKeyDown={(e) => onSubmitKey(e, start)}
