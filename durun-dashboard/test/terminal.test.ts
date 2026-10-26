@@ -45,6 +45,15 @@ test('コマンドプロンプトは、アタッチするコマンドを端末�
   assert.equal(writeTerminal(id, 'x'), false);
 });
 
+test('コマンドプロンプトは、サーバーが受け継いだ COLORTERM を、アタッチするコマンドに渡さない', { timeout: 10_000 }, async () => {
+  process.env.COLORTERM = 'truecolor';
+  const res = fakeResponse();
+  const closed = new Promise((resolve) => res.once('close', resolve));
+  await streamTerminal(res as unknown as ServerResponse, os.tmpdir(), `"${process.execPath}" -e "console.log('colorterm:' + process.env.COLORTERM)"`);
+  await closed;
+  assert.match(dataOf(res.body), /colorterm:undefined/);
+});
+
 test('コマンドプロンプトは、アタッチするコマンドが無いか作業ディレクトリが無ければ、端末を開かずに理由を exit で送る', async () => {
   const unset = fakeResponse();
   await streamTerminal(unset as unknown as ServerResponse, os.tmpdir(), '');
