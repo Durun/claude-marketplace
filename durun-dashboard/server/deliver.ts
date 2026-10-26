@@ -424,21 +424,21 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
 
 const ASK_KINDS = new Set(['ask', 'question', 'permission']);
 
+/** 質問や権限の確認で止まっているセッション。質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。 */
+const awaitingAnswer = (sessionId: string): boolean => state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind)) || !!summaryOf(sessionId)?.lastToolUse;
+
 /**
  * 保留したメッセージを送ってよいか。Claude が入力待ちで、質問や権限の確認で止まっていないときに限る。サブエージェントを待っているだけのセッションも、入力待ちとみなす。
- * 質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。
  * 送った直後のセッションは、読み始めるまで入力待ちに見えるので、前に送ったメッセージに Claude が返事をするまでは送らない。
  * アーカイブしたセッションと、アーカイブ待ちのセッションへは送らない。アーカイブ待ちのセッションは、入力待ちになるとすぐにアーカイブして止めるため。
  */
 const readyForQueue = (sessionId: string, live: LiveSession | undefined): boolean => {
   const meta = state.sessions[sessionId];
   if (!meta || meta.archived || meta.archiveWhenIdle || !live || !(live.status === 'idle' || delegating(live))) return false;
-  if (state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind))) return false;
+  if (awaitingAnswer(sessionId)) return false;
   const sent = state.outbox.filter((m) => m.sessionId === sessionId);
   if (sent.some((m) => !m.deliveredAt || m.sending)) return false;
-  const log = summaryOf(sessionId);
-  if (log?.lastToolUse) return false;
-  return !sent.length || (log?.lastMessageAt ?? 0) > Math.max(...sent.map((m) => m.createdAt));
+  return !sent.length || (summaryOf(sessionId)?.lastMessageAt ?? 0) > Math.max(...sent.map((m) => m.createdAt));
 };
 
 /**
@@ -519,13 +519,18 @@ export const redeliverInterrupted = (): void => {
 };
 
 /**
- * /compact はスラッシュコマンドとして動かすため、再開して渡す。受信ソケットで送ると、Claude は発言として読むだけで compact しない。
- * そのため、作業中のセッションと端末のセッションでは失敗する。
+ * /compact はスラッシュコマンドとして動かす。受信ソケットで送ると、Claude は発言として読むだけで compact しない。
+ * 入力待ちのバックグラウンドのセッションは、止めずに supervisor に返信を頼む。人間が打った発言として届くので、スラッシュコマンドとして動く。止めて再開すると、混んだマシンでは数十秒かかる。
+ * 動いていないセッションは、再開して渡す。
+ * 質問や権限の確認で止まっているセッションは、返信がその答えとして読まれることがあるので断る。作業中のセッションも、この先で質問や権限の確認に止まると同じことが起こりうるので断る。端末のセッションには渡す経路が無い。
  */
 export const compactSession = (sessionId: string, cwd: string): Promise<void> => {
   const live = readLiveSessions().get(sessionId);
-  if (live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは compact できません');
-  return resume(sessionId, cwd, '/compact', live?.jobId);
+  if (!live) return resume(sessionId, cwd, '/compact');
+  if (live.kind !== 'bg' || live.status !== 'idle' || !live.jobId || awaitingAnswer(sessionId)) {
+    throw new SessionStateError('作業中のセッション、質問や権限の確認を待つセッション、端末で開いているセッションは compact できません');
+  }
+  return replyToJob(live.jobId, '/compact');
 };
 
 /** 使用制限が明けたときと、通信が戻ったときに渡す依頼。人間が続きを頼むときと同じ言い方にし、止まったことには触れない。 */

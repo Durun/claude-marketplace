@@ -43,6 +43,38 @@ const listenInbox = async (socketPath: string, rejectAuth = false): Promise<{ se
 
 const close = (server: net.Server): Promise<unknown> => new Promise((resolve) => server.close(resolve));
 
+/**
+ * supervisor の制御ソケットに見立てたサーバーを開く。次の接続に届いた頼みを request で返し、reply を返事にする。
+ * 頼みに添える鍵と、Windows で制御ソケットの名前を作る pipe.key も置く。
+ */
+const listenSupervisor = async (reply: object): Promise<{ server: net.Server; request: Promise<unknown> }> => {
+  const daemon = path.join(tmp, 'claude', 'daemon');
+  fs.mkdirSync(daemon, { recursive: true });
+  fs.writeFileSync(path.join(daemon, 'control.key'), 'control-key\n');
+  fs.writeFileSync(path.join(daemon, 'pipe.key'), '0123456789abcdef');
+  const socketPath = platform.supervisorSocket(path.join(tmp, 'claude'));
+  if (platform.name !== 'win32') fs.mkdirSync(path.dirname(socketPath), { recursive: true });
+  const server = net.createServer();
+  const request = new Promise((resolve) =>
+    server.once('connection', (c) => {
+      let buf = '';
+      c.on('data', (chunk) => {
+        buf += chunk.toString();
+        if (!buf.includes('\n')) return;
+        resolve(JSON.parse(buf.slice(0, buf.indexOf('\n'))));
+        c.end(`${JSON.stringify(reply)}\n`);
+      });
+    }),
+  );
+  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  return { server, request };
+};
+
+/** listenSupervisor が /tmp に作った制御ソケットの置き場所を消す。Windows の名前付きパイプは、閉じれば消える。 */
+const removeSupervisorDir = (): void => {
+  if (platform.name !== 'win32') fs.rmSync(path.dirname(platform.supervisorSocket(path.join(tmp, 'claude'))), { recursive: true, force: true });
+};
+
 test('受信ソケットへは、トークンがあれば認証の行を先に送り、拒まれて閉じられたら届いたことにしない', async () => {
   const socketPath = platform.localSocketPath(tmp, 'direct');
   const message = { type: 'user', message: { role: 'user', content: 'こんにちは' } };
@@ -179,29 +211,6 @@ test('権限の確認待ちのバックグラウンドのセッションへは�
 test('作業中のバックグラウンドのセッションへは、ターンの途中でも保留せず、止めずに supervisor に返信を頼んで渡し、断られたら未配信に戻す。サブエージェントを待っている間は、保留したものも送る', async () => {
   const callsFile = path.join(tmp, 'calls-reply');
   useFakeClaude(path.join(tmp, 'bin-reply'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
-  const daemon = path.join(tmp, 'claude', 'daemon');
-  fs.mkdirSync(daemon, { recursive: true });
-  fs.writeFileSync(path.join(daemon, 'control.key'), 'control-key\n');
-  // Windows では、制御ソケットの名前を pipe.key から作る。
-  fs.writeFileSync(path.join(daemon, 'pipe.key'), '0123456789abcdef');
-  const socketPath = platform.supervisorSocket(path.join(tmp, 'claude'));
-  if (platform.name !== 'win32') fs.mkdirSync(path.dirname(socketPath), { recursive: true });
-  const listenSupervisor = async (reply: object): Promise<{ server: net.Server; request: Promise<unknown> }> => {
-    const server = net.createServer();
-    const request = new Promise((resolve) =>
-      server.once('connection', (c) => {
-        let buf = '';
-        c.on('data', (chunk) => {
-          buf += chunk.toString();
-          if (!buf.includes('\n')) return;
-          resolve(JSON.parse(buf.slice(0, buf.indexOf('\n'))));
-          c.end(`${JSON.stringify(reply)}\n`);
-        });
-      }),
-    );
-    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
-    return { server, request };
-  };
 
   const startedAt = Date.now() - 60_000;
   const live = (started: number): void =>
@@ -248,7 +257,7 @@ test('作業中のバックグラウンドのセッションへは、ターン�
   assert.equal(message.deliveredAt, undefined);
   await close(refusing.server);
   assert.equal(fs.existsSync(callsFile), false);
-  if (platform.name !== 'win32') fs.rmSync(path.dirname(socketPath), { recursive: true, force: true });
+  removeSupervisorDir();
 });
 
 test('巻き戻して送るときは、前置きを付けずに -p で渡す', async () => {
@@ -646,7 +655,17 @@ if (args[0] === '--bg') console.log('backgrounded · j12');`,
   assert.ok(sent?.deliveredAt);
 });
 
-test('作業中のセッションは compact せず、セッションの状態で断ったエラーにする', async () => {
-  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's13.json'), JSON.stringify({ pid: process.pid, sessionId: 's13', cwd: tmp, status: 'busy', kind: 'bg', jobId: 'j13' }));
+test('compact は、入力待ちのバックグラウンドのセッションなら止めずに supervisor に返信を頼んで渡し、作業中のセッションはセッションの状態で断ったエラーにする', async () => {
+  const callsFile = path.join(tmp, 'calls-compact');
+  useFakeClaude(path.join(tmp, 'bin-compact'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
+  const live = (status: string): void => fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's13.json'), JSON.stringify({ pid: process.pid, sessionId: 's13', cwd: tmp, status, kind: 'bg', jobId: 'j13' }));
+  live('busy');
   await assert.rejects(async () => compactSession('s13', tmp), SessionStateError);
+  live('idle');
+  const accepting = await listenSupervisor({ ok: true, op: 'reply' });
+  await compactSession('s13', tmp);
+  assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'j13', text: '/compact', auth: 'control-key' });
+  await close(accepting.server);
+  removeSupervisorDir();
+  assert.equal(fs.existsSync(callsFile), false);
 });
