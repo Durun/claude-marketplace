@@ -1,4 +1,4 @@
-// 発言の中でファイルを指すコード（`client/Home.tsx:32` など）を見分け、コードの画面で開くファイルと行を探す。
+// 発言の中でファイルを指すコード（`client/Home.tsx:32` など）と地の文のパスを見分け、コードの画面で開くファイルと行を探す。
 import { type DiffFile, MEDIA_TYPES } from '../shared/types.ts';
 import { languageOf } from './highlight.ts';
 
@@ -18,6 +18,14 @@ export const isFileRef = (code: string): boolean => {
   const path = code.replace(/:[\d-]+$/, '');
   return FILE_REF.test(code) && !HOST_PREFIX.test(code) && !!(languageOf(path) || mediaTypeOf(path));
 };
+
+// 日本語の文では、パスの後ろに空白を置かずに文を続けるので、パスに使う ASCII の文字が続くところまでをパスとみなす。
+const TEXT_PATH = /([\w./~@+-]+\.\w+(?::\d+(?:-\d+)?)?)/;
+
+/** 地の文を、ファイルを指すパスとそれ以外に分ける。 */
+export const splitFilePaths = (text: string): { text: string; file: boolean }[] =>
+  // 区切りをキャプチャすると、split の結果は当たらない部分と当たった部分が交互に並ぶ。
+  text.split(TEXT_PATH).flatMap((part, i) => (part ? [{ text: part, file: i % 2 === 1 && isFileRef(part) }] : []));
 
 /** 開くファイルと行。index は差分のファイルの並びでの位置。 */
 export type Focus = { index: number; line?: number };

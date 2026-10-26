@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import type { AskedQuestion, Attention, AttentionKind, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { fileLink, filePathMarks } from './Docs.tsx';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
 import { toggled } from './explorerFavorites.ts';
 import { askAnswer } from './format.ts';
@@ -28,7 +29,11 @@ const DismissButton = ({ id }: { id: string }) => {
   return <button class="btn btn-sm" disabled={busy} onClick={click}>既読</button>;
 };
 
-const Body = ({ text }: { text?: string }) => (text ? <Markdown text={text} /> : null);
+/** 文に書いたファイルパスを、インラインのコードでも地の文でも開けるようにする。id はセッションの id。 */
+const Body = ({ id, text }: { id: string; text?: string }) => {
+  const links = useMemo(() => ({ codeLink: fileLink(id), markText: filePathMarks(id) }), [id]);
+  return text ? <Markdown text={text} {...links} /> : null;
+};
 
 /** AskUserQuestion の選択肢は、Claude Code の画面と同じく、見出しの下に説明を添える。 */
 const OptionLabel = ({ label, description }: { label: string; description?: string }) => (
@@ -38,10 +43,10 @@ const OptionLabel = ({ label, description }: { label: string; description?: stri
   </>
 );
 
-type QuestionTabsProps = { questions: AskedQuestion[]; picked: string[][]; tab: number; busy: boolean; setTab: (tab: number) => void; pick: (option: string) => void };
+type QuestionTabsProps = { id: string; questions: AskedQuestion[]; picked: string[][]; tab: number; busy: boolean; setTab: (tab: number) => void; pick: (option: string) => void };
 
 /** 分けた質問を、Claude Code の AskUserQuestion のようにタブで 1 つずつ出す。最後のタブで回答を見直す。 */
-const QuestionTabs = ({ questions, picked, tab, busy, setTab, pick }: QuestionTabsProps) => {
+const QuestionTabs = ({ id, questions, picked, tab, busy, setTab, pick }: QuestionTabsProps) => {
   const q = questions[tab];
   const labelOf = (x: AskedQuestion, i: number): string => x.header ?? `質問 ${i + 1}`;
   return (
@@ -54,7 +59,7 @@ const QuestionTabs = ({ questions, picked, tab, busy, setTab, pick }: QuestionTa
       </div>
       {q ? (
         <>
-          <Markdown text={q.question} />
+          <Body id={id} text={q.question} />
           <Actions>
             {q.options.map((o, i) => {
               const on = !!picked[tab]?.includes(o);
@@ -104,9 +109,9 @@ const AskBody = ({ a }: { a: Attention }) => {
   const body = a.kind === 'question' && questions.length ? undefined : a.body;
   return (
     <>
-      <Body text={body !== a.title ? body : undefined} />
+      <Body id={a.sessionId} text={body !== a.title ? body : undefined} />
       {questions.length > 0 ? (
-        <QuestionTabs questions={questions} picked={picked} tab={tab} busy={busy} setTab={setTab} pick={pick} />
+        <QuestionTabs id={a.sessionId} questions={questions} picked={picked} tab={tab} busy={busy} setTab={setTab} pick={pick} />
       ) : (
         a.options && a.options.length > 0 && (
           <Actions>
@@ -139,7 +144,7 @@ const AskBody = ({ a }: { a: Attention }) => {
 
 const PermissionBody = ({ a, session }: { a: Attention; session?: Session }) => (
   <>
-    <Body text={a.body} />
+    <Body id={a.sessionId} text={a.body} />
     <Actions>
       {session?.remoteUrl && <Ext class="btn btn-primary" href={session.remoteUrl}>claude.ai/code で開く</Ext>}
       <DismissButton id={a.id} />
@@ -173,7 +178,7 @@ const AttentionBody = ({ a, session }: { a: Attention; session?: Session }) => {
     case 'pr':
       return (
         <>
-          <Body text={a.body} />
+          <Body id={a.sessionId} text={a.body} />
           <Actions>
             {a.url && <Ext class="btn" href={a.url}>PR を開く</Ext>}
             <DismissButton id={a.id} />

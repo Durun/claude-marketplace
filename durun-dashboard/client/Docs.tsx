@@ -9,9 +9,10 @@ import { buildSrcdoc, linkPath } from './docFrame.ts';
 import { useSkin } from './skin.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { baseName } from './explorerFavorites.ts';
-import { FILE_DRAG_TYPE, mediaTypeOf } from './fileRef.ts';
+import { FILE_DRAG_TYPE, isFileRef, mediaTypeOf, splitFilePaths } from './fileRef.ts';
 import { dateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
+import type { CodeLink, MarkText } from './Markdown.tsx';
 import { ARROW_STEP, arrangeDocs, moveTo } from './order.ts';
 import { PROOFREAD_ICON, PROOFREAD_TITLE, openProofFile } from './Proofread.tsx';
 import { href } from './router.ts';
@@ -687,6 +688,35 @@ export const openFile = async (sessionId: string, ref: string): Promise<void> =>
   else if (where === 'local') openFileFloat(sessionId, ref);
   else toast(`「${baseName(ref)}」は開けません`, 'error');
 };
+
+/**
+ * ファイルを指す文は、開けると分かったものだけをリンクにする。リポジトリにあるファイルはコードの画面で開き、リポジトリの外のファイルと、画像や動画と Markdown はウィンドウに浮かべる。
+ * 修飾キー付きのクリックは、ブラウザの既定の動きに任せる。
+ */
+const FileLink = ({ id, file, children }: { id: string; file: string; children: ComponentChildren }) => {
+  const [where, setWhere] = useState<FileWhere>();
+  useEffect(() => {
+    let alive = true;
+    if (isFileRef(file)) void whereOf(id, file).then((w) => alive && setWhere(w));
+    return () => {
+      alive = false;
+    };
+  }, [id, file]);
+  if (!where) return <>{children}</>;
+  const onClick = (e: MouseEvent) => {
+    if (where === 'repo' || !plainClick(e)) return;
+    e.preventDefault();
+    openFileFloat(id, file);
+  };
+  return <a href={href.file(id, file)} onClick={onClick} data-attach={file}>{children}</a>;
+};
+
+/** インラインのコードに書いたファイルパスを開けるようにする。呼ぶたびに別の部品を返すので、描くたびには呼ばず、セッションごとに 1 度だけ呼ぶ。 */
+export const fileLink = (id: string): CodeLink => ({ text }) => <FileLink id={id} file={text}><code>{text}</code></FileLink>;
+
+/** 地の文に書いたファイルパスを開けるようにする。 */
+export const filePathMarks = (id: string): MarkText => (text) =>
+  splitFilePaths(text).map((p, i) => (p.file ? <FileLink key={i} id={id} file={p.text}>{p.text}</FileLink> : p.text));
 
 const formatOf = (path: string): DocFormat =>
   /\.md$/i.test(path) ? 'markdown' : /\.html?$/i.test(path) ? 'html' : /\.svg$/i.test(path) ? 'svg' : 'text';

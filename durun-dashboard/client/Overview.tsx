@@ -1,16 +1,15 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, type FileWhere, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { refSplitter } from './chatLinks.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
-import { openDocFloat, openFileFloat, plainClick, whereOf } from './Docs.tsx';
+import { fileLink, openDocFloat } from './Docs.tsx';
 import { explain } from './Dolphin.tsx';
 import { dateTime, fmtTokens, shortDateTime, truncate } from './format.ts';
-import { isFileRef } from './fileRef.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
 import { useTermMarks } from './Glossary.tsx';
 import { useLightMode } from './lightMode.ts';
@@ -354,28 +353,6 @@ export const Summary = ({ s }: { s: Session }) => {
       )}
     </WidgetPanel>
   );
-};
-
-/**
- * ファイルを指すコードは、開けると分かったものだけをリンクにする。リポジトリにあるファイルはコードの画面で開き、リポジトリの外のファイルと、画像や動画と Markdown はウィンドウに浮かべる。
- * 修飾キー付きのクリックは、ブラウザの既定の動きに任せる。
- */
-const fileLink = (id: string): CodeLink => ({ text }) => {
-  const [where, setWhere] = useState<FileWhere>();
-  useEffect(() => {
-    let alive = true;
-    if (isFileRef(text)) void whereOf(id, text).then((w) => alive && setWhere(w));
-    return () => {
-      alive = false;
-    };
-  }, [text]);
-  if (!where) return <code>{text}</code>;
-  const onClick = (e: MouseEvent) => {
-    if (where === 'repo' || !plainClick(e)) return;
-    e.preventDefault();
-    openFileFloat(id, text);
-  };
-  return <a href={href.file(id, text)} onClick={onClick} data-attach={text}><code>{text}</code></a>;
 };
 
 /**
