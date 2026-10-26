@@ -1,7 +1,9 @@
 // ダッシュボード自身で起きた想定外のエラーと、見込みより時間のかかった処理を集め、改善要望として起票する。
 // 大量の記録で改善が埋もれないよう、同じものは 1 件にまとめて数え、未対応の要望はエラーと遅い処理のそれぞれで少数に抑える。
+import os from 'node:os';
 import path from 'node:path';
 import { pendingItems, saveFeedback } from './improve.ts';
+import { platform } from './platform.ts';
 import { persist, state, type ErrorRecord } from './store.ts';
 
 const MAX_PENDING = 3;
@@ -34,6 +36,7 @@ const textOf = (r: ErrorRecord): string => {
     `- 起きた場所: ${SOURCE_LABEL[r.source]}${r.where ? `（${r.where}）` : ''}`,
     `- ${r.slowestMs === undefined ? 'エラー' : '遅い処理'}: ${r.message}`,
     `- 回数: ${r.count} 回（${slowest}最初 ${new Date(r.firstAt).toLocaleString('ja-JP')}、最後 ${new Date(r.lastAt).toLocaleString('ja-JP')}）`,
+    ...(r.slowestLoad === undefined ? [] : [`- 最長だったときのサーバーの負荷: load average ${r.slowestLoad.toFixed(1)}（直近 1 分の平均、CPU ${os.availableParallelism()} 個）`]),
     ...(r.filed > 0 ? [`- 前回の要望（${r.item}）に対応した後も起きています。`] : []),
     ...(r.stack ? ['', r.stack.split('\n').slice(0, STACK_LINES).join('\n')] : []),
   ].join('\n');
@@ -52,7 +55,8 @@ const record = (source: ErrorRecord['source'], message: string, stack: string | 
     const key = keyOf(source, message, stack);
     const r = (state.errors[key] ??= { source, message: message.slice(0, MAX_MESSAGE_CHARS), count: 0, firstAt: now, lastAt: now, filed: 0 });
     Object.assign(r, { stack: stack ?? r.stack, where: where ?? r.where, count: r.count + 1, lastAt: now });
-    if (ms !== undefined) r.slowestMs = Math.max(r.slowestMs ?? 0, ms);
+    // 最長だった回の負荷を添え、マシンが混んでいたせいで遅かったのかを、要望を読んですぐ見分けられるようにする。
+    if (ms !== undefined && ms >= (r.slowestMs ?? 0)) Object.assign(r, { slowestMs: ms, slowestLoad: platform.loadAverage() });
     const pending = new Set(pendingItems());
     // 遅い処理の要望がたまっていてもエラーを起票できるよう、別々に数える。
     const open = Object.values(state.errors).filter((e) => e.item && pending.has(e.item) && (e.slowestMs === undefined) === (ms === undefined)).length;

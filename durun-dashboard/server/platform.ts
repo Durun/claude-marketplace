@@ -56,6 +56,8 @@ export type Platform = {
   fileRoots: (exists?: (dir: string) => boolean) => string[];
   /** 人間が設定に書いたコマンドの行を、シェルで動かすときの起動するファイルと引数。node-pty に渡す。 */
   shellCommand: (line: string) => { file: string; args: string[] | string };
+  /** 直近 1 分の load average。測れない OS では undefined。 */
+  loadAverage: () => number | undefined;
 };
 
 /** tailscale status --json から、この端末の MagicDNS の名前（完全な名前と先頭のラベル）と IP を取り出す。IPv6 は Host ヘッダーと同じく [] で囲む。 */
@@ -98,6 +100,7 @@ const posix = {
   displayPath: (file: string) => file,
   fileRoots: () => ['/'],
   shellCommand: (line: string) => ({ file: '/bin/sh', args: ['-c', line] }),
+  loadAverage: () => os.loadavg()[0],
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -167,6 +170,8 @@ const win32: Platform = {
   // node-pty は配列の引数を引用符でくくり直し、行の中の引用符を崩すので、cmd.exe の引数を 1 つの文字列で渡す。
   // /s を付けた cmd.exe は最初と最後の引用符だけを外し、間の行をそのまま動かす。Node の shell: true と同じ渡し方。
   shellCommand: (line) => ({ file: 'cmd.exe', args: `/d /s /c "${line}"` }),
+  // Node の os.loadavg は、Windows では負荷によらず 0 を返す。
+  loadAverage: () => undefined,
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

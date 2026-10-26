@@ -112,6 +112,11 @@ test('macOS では、パスをそのまま使い、PID は headersHelper に任�
   assert.equal(memory?.swapUsed, 512 * 1024 * 1024);
 });
 
+test('load average は、POSIX では直近 1 分の値を返し、Node が負荷によらず 0 を返す Windows では測れないものとする', () => {
+  for (const name of ['darwin', 'linux']) assert.equal(typeof platformFor(name).loadAverage(), 'number');
+  assert.equal(platformFor('win32').loadAverage(), undefined);
+});
+
 test('ほかの OS では、Chrome の場所とメモリを分からないものとして返す', async () => {
   const linux = platformFor('linux');
   assert.equal(linux.name, 'other');

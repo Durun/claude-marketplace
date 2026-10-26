@@ -9,6 +9,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-errors-')
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const { recordError, recordSlow } = await import('../server/errors.ts');
 const { state } = await import('../server/store.ts');
+const { platform } = await import('../server/platform.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
 const pending = (): string[] => fs.readdirSync(feedbackDir).filter((f) => f.endsWith('.json')).sort();
@@ -44,7 +45,10 @@ test('遅い処理は、同じ処理を 1 件の要望にまとめて最長の�
   recordSlow('server', 'GET ^/api/x$ の応答（見込み 1 秒）', 1500, 'GET /api/x');
   recordSlow('server', 'GET ^/api/x$ の応答（見込み 1 秒）', 3200, 'GET /api/x');
   const [slow = ''] = pending().filter((f) => !before.includes(f));
-  assert.match(JSON.parse(fs.readFileSync(path.join(feedbackDir, slow), 'utf8')).text, /見込みより時間のかかった処理.*サーバー（GET \/api\/x）.*遅い処理: GET \^\/api\/x\$ の応答.*1 回（最長 1\.5 秒/s);
+  const text = JSON.parse(fs.readFileSync(path.join(feedbackDir, slow), 'utf8')).text;
+  assert.match(text, /見込みより時間のかかった処理.*サーバー（GET \/api\/x）.*遅い処理: GET \^\/api\/x\$ の応答.*1 回（最長 1\.5 秒/s);
+  // 負荷を測れる OS では、最長だった回の load average を添える。
+  if (platform.loadAverage() !== undefined) assert.match(text, /最長だったときのサーバーの負荷: load average \d+\.\d（直近 1 分の平均、CPU \d+ 個）/);
   assert.deepEqual(Object.values(state.errors).filter((e) => e.item === slow).map((e) => [e.count, e.slowestMs]), [[2, 3200]]);
 
   for (const name of ['a', 'b', 'c']) recordSlow('client', `home の画面を固めた「${name}」の処理`, 600);

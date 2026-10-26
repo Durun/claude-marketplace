@@ -114,6 +114,8 @@ export type ErrorRecord = {
   where?: string;
   /** 遅い処理なら、かかった時間の最長（ミリ秒） */
   slowestMs?: number;
+  /** 最長だった回のサーバーの、直近 1 分の load average。測れない OS では無い */
+  slowestLoad?: number;
   count: number;
   firstAt: number;
   lastAt: number;
