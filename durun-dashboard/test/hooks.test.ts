@@ -183,6 +183,26 @@ test('EnterWorktree は、ほかのセッションがいない worktree なら�
   assert.equal(enter('wt-c', tmp, { name: 'x' }), undefined);
 });
 
+test('SendUserFile で送ったファイルは、送ったときの説明を題名に添えて未読の資料にし、送り直したら同じ資料を未読に戻して、外していればまた並べる', () => {
+  const base = { session_id: 'sent', cwd: tmp, hook_event_name: 'PostToolUse', tool_name: 'SendUserFile' };
+  const sent = () => state.docs.filter((d) => d.sessionId === 'sent').map(({ title, format, path, seen }) => ({ title, format, path, seen }));
+  handleHook({ ...base, tool_input: { files: [path.join(tmp, 'mock.png'), path.join(tmp, 'demo.mp4'), 'report.md'], caption: '表の 3 案' } }, 0);
+  assert.deepEqual(sent(), [
+    { title: 'mock.png — 表の 3 案', format: 'image', path: path.join(tmp, 'mock.png'), seen: false },
+    { title: 'demo.mp4 — 表の 3 案', format: 'video', path: path.join(tmp, 'demo.mp4'), seen: false },
+    { title: 'report.md — 表の 3 案', format: 'markdown', path: path.join(tmp, 'report.md'), seen: false },
+  ]);
+
+  const [mock] = state.docs.filter((d) => d.sessionId === 'sent');
+  assert.ok(mock);
+  mock.seen = true;
+  const meta = Object.assign(ensureSession('sent', tmp), { hiddenDocs: [mock.id] });
+  handleHook({ ...base, tool_input: { files: [path.join(tmp, 'mock.png')] } }, 0);
+  assert.deepEqual(sent()[0], { title: 'mock.png', format: 'image', path: path.join(tmp, 'mock.png'), seen: false });
+  assert.equal(sent().length, 3);
+  assert.deepEqual(meta.hiddenDocs, []);
+});
+
 test('ブックマークした発言のあるセッションは、アーカイブして会話ログが止まってから日がたっても、ブックマークから開けるよう一覧から外さない', async () => {
   const { buildSnapshot } = await import('../server/snapshot.ts');
   const transcript = path.join(tmp, 'old.jsonl');

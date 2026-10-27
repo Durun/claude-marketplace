@@ -281,7 +281,8 @@ export type Attention = {
   createdAt: number;
 };
 
-export type DocFormat = 'markdown' | 'html' | 'mermaid' | 'svg' | 'text';
+/** image と video は、ファイルを指す資料だけが持つ。本文は読まず、ファイルをそのまま見せる。 */
+export type DocFormat = 'markdown' | 'html' | 'mermaid' | 'svg' | 'text' | 'image' | 'video';
 
 export type DocMeta = {
   id: string;

@@ -12,7 +12,7 @@ import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { changed, newId, state, touch, writeDocFile, type StoredAttention } from './store.ts';
+import { changed, inferFormat, newId, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
 // Claude Code は無通信が 300 秒続いたツール呼び出しを打ち切る。人間の回答を待つ間は、それより短い間隔で進捗を通知する。
@@ -259,15 +259,6 @@ const waitForHuman = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, p
   waitFor(item.id, waiter);
   // 接続が切れても項目は残す。後で人間が答えたら、送信キュー経由で届ける。
   res.on('close', () => unwait(item.id, waiter));
-};
-
-const inferFormat = (file: string | undefined): DocFormat => {
-  const ext = file ? path.extname(file).toLowerCase() : '';
-  if (ext === '.html' || ext === '.htm') return 'html';
-  if (ext === '.mmd' || ext === '.mermaid') return 'mermaid';
-  if (ext === '.svg') return 'svg';
-  if (ext === '.md' || ext === '.markdown' || !ext) return 'markdown';
-  return 'text';
 };
 
 const present = (req: IncomingMessage, sessionId: string, args: ToolArgs): object => {

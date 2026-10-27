@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, Bookmark, BranchView, DiffRange, DocFormat, ImproveSettings, OutboxMessage, PrThreadNote, QueuedMessage, RatePoint, SavedDoc, SavedFile, SavedLink, SavedProof, SavedTerm } from '../shared/types.ts';
+import { type AskedQuestion, type Bookmark, type BranchView, type DiffRange, type DocFormat, type ImproveSettings, MEDIA_TYPES, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -158,7 +158,8 @@ type State = {
 const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
 
 const DOCS_DIR = path.resolve(DATA_DIR, 'docs');
-const DOC_EXT: Record<DocFormat, string> = { markdown: '.md', html: '.html', mermaid: '.mmd', svg: '.svg', text: '.txt' };
+// 画像と動画の資料はファイルを指すだけで、本文を書かない。
+const DOC_EXT: Record<DocFormat, string> = { markdown: '.md', html: '.html', mermaid: '.mmd', svg: '.svg', text: '.txt', image: '', video: '' };
 
 /** 資料の本文をファイルに書き、その絶対パスを返す。資料を添付されたメッセージを受け取った Claude が、そのパスから本文を読めるようにするため。 */
 export const writeDocFile = (id: string, format: DocFormat, content: string): string => {
@@ -166,6 +167,18 @@ export const writeDocFile = (id: string, format: DocFormat, content: string): st
   fs.mkdirSync(DOCS_DIR, { recursive: true });
   fs.writeFileSync(file, content);
   return file;
+};
+
+/** 資料の形式を、ファイルの拡張子から決める。 */
+export const inferFormat = (file: string | undefined): DocFormat => {
+  const ext = file ? path.extname(file).toLowerCase() : '';
+  const media = MEDIA_TYPES[ext];
+  if (media) return media.startsWith('video/') ? 'video' : 'image';
+  if (ext === '.html' || ext === '.htm') return 'html';
+  if (ext === '.mmd' || ext === '.mermaid') return 'mermaid';
+  if (ext === '.svg') return 'svg';
+  if (ext === '.md' || ext === '.markdown' || !ext) return 'markdown';
+  return 'text';
 };
 
 // 壊れたファイルを空の状態で上書きしないよう、読めないときは起動を止める。

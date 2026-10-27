@@ -606,6 +606,8 @@ const readDoc = (id: string): Doc => {
   const doc = state.docs.find((d) => d.id === id);
   if (!doc) throw new HttpError(404, `unknown doc: ${id}`);
   if (!doc.path) return { ...doc, content: doc.content ?? '' };
+  // 画像と動画は、画面がファイルをそのまま読み込む。
+  if (doc.format === 'image' || doc.format === 'video') return { ...doc, content: '' };
   try {
     return { ...doc, content: fs.readFileSync(doc.path, 'utf8') };
   } catch {

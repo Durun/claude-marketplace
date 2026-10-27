@@ -25,6 +25,8 @@ const FORMAT_LABEL: Record<DocFormat, string> = {
   mermaid: 'Mermaid',
   svg: 'SVG',
   text: 'テキスト',
+  image: '画像',
+  video: '動画',
 };
 
 /** present の資料を「なんでも添付」で書き足す値。ダッシュボードの URL は Claude が読めないので、ファイルか題名で指す。 */
@@ -597,6 +599,14 @@ const useFileLinks = (sessionId: string, base: string): RefObject<HTMLIFrameElem
   return frame;
 };
 
+const isMedia = (doc: Doc): boolean => doc.format === 'image' || doc.format === 'video';
+
+/** 画像と動画の資料は、ファイルをそのまま見せる。 */
+const DocMedia = ({ doc }: { doc: Doc }) => {
+  const src = api.mediaUrl(doc.sessionId, doc.path ?? '');
+  return doc.format === 'video' ? <VideoPlayer src={src} name={doc.title} /> : <img class="file-media" src={src} alt={doc.title} />;
+};
+
 export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) => {
   const fetched = useFetch(() => api.doc(id), [id]);
   const skin = useSkin();
@@ -617,14 +627,18 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
         loading={fetched.loading}
       />
       {fetched.error && <p class="card panel error-note">再読み込みできませんでした（{fetched.error}）</p>}
-      <iframe
-        ref={frame}
-        class={`doc-frame ${raw ? 'is-raw' : ''}`}
-        title={doc.title}
-        sandbox="allow-scripts"
-        allow="clipboard-write"
-        srcdoc={buildSrcdoc(doc, skin)}
-      />
+      {isMedia(doc) ? (
+        <DocMedia doc={doc} />
+      ) : (
+        <iframe
+          ref={frame}
+          class={`doc-frame ${raw ? 'is-raw' : ''}`}
+          title={doc.title}
+          sandbox="allow-scripts"
+          allow="clipboard-write"
+          srcdoc={buildSrcdoc(doc, skin)}
+        />
+      )}
       <FeedbackForm doc={doc} />
     </div>
   );
@@ -649,9 +663,11 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
     <FloatFrame f={f} title={listed?.title ?? doc?.title ?? '資料'} icon={f.tab.settings?.icon ?? '📄'} controls={[close]}>
       {fetched.error && <p class="card panel error-note">資料を取得できませんでした（{fetched.error}）</p>}
       {doc && <Downloads doc={doc} />}
-      {doc && (
+      {doc && (isMedia(doc) ? (
+        <DocMedia doc={doc} />
+      ) : (
         <iframe ref={frame} class={`file-frame ${doc.format === 'html' || doc.format === 'svg' ? 'is-raw' : ''}`} title={doc.title} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc(doc, skin)} />
-      )}
+      ))}
     </FloatFrame>
   );
 };

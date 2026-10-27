@@ -1,4 +1,4 @@
-// Claude Code のフックを受ける。要対応を記録し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決める。
+// Claude Code のフックを受ける。要対応を記録し、人間に送ったファイルを資料に足し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決める。
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
 import { conversationOf } from './snapshot.ts';
-import { ensureSession, newId, state, touch, type SessionMeta, type StoredAttention } from './store.ts';
+import { ensureSession, inferFormat, newId, state, touch, type SessionMeta, type StoredAttention } from './store.ts';
 import { suggestTitle } from './suggest.ts';
 
 export type HookInput = {
@@ -22,7 +22,7 @@ export type HookInput = {
   notification_type?: string;
   message?: string;
   tool_name?: string;
-  tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown };
+  tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown; files?: unknown; caption?: unknown };
 };
 
 /** フックへの応答。PreToolUse で、ツールを使ってよいかを Claude Code に返す。 */
@@ -98,6 +98,30 @@ const clearDialogs = (sessionId: string, fromSubagent: boolean): void => {
   if (state.attention.length !== before) touch();
 };
 
+const SEND_USER_FILE = 'SendUserFile';
+
+/**
+ * SendUserFile で人間に送ったファイルを、present の資料と同じく未読の資料にする。題名は、ファイル名の後に送ったときの説明を付ける。
+ * 同じファイルを送り直したら、同じ資料を未読に戻し、外していればまた並べる。
+ */
+const recordSentFiles = (meta: SessionMeta, input: HookInput): void => {
+  const { files, caption } = input.tool_input ?? {};
+  if (!Array.isArray(files)) return;
+  for (const f of files) {
+    if (typeof f !== 'string') continue;
+    const file = path.resolve(input.cwd ?? meta.cwd, f);
+    const title = typeof caption === 'string' && caption ? `${path.basename(file)} — ${caption}` : path.basename(file);
+    const doc = state.docs.find((d) => d.sessionId === meta.id && d.path === file);
+    if (doc) {
+      Object.assign(doc, { title, createdAt: Date.now(), seen: false });
+      meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== doc.id);
+    } else {
+      state.docs.push({ id: newId(), sessionId: meta.id, title, format: inferFormat(file), path: file, createdAt: Date.now(), seen: false });
+    }
+  }
+  touch();
+};
+
 /** stack の PR は、ほかのブランチに居ながらまとめて push や作成をするので、居たことのあるブランチの PR をすべて取り直す。 */
 const refreshPrFor = (meta: SessionMeta): void => {
   if (!meta.transcriptPath) return;
@@ -120,6 +144,7 @@ const observe = (meta: SessionMeta, event: string | undefined, input: HookInput)
     touch();
   }
   if (event === 'PostToolUse' && input.tool_name === 'Bash' && PR_COMMAND.test(String(input.tool_input?.command ?? ''))) refreshPrFor(meta);
+  if (event === 'PostToolUse' && input.tool_name === SEND_USER_FILE) recordSentFiles(meta, input);
 };
 
 /** 応答を返し終える前でも、作業が始まってこの時間が経てば名前を付ける。 */
