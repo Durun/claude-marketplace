@@ -756,7 +756,7 @@ const SKIP_SEC = 10;
  * 動画と、Windows Media Player 12 の再生中の画面に似せた操作バー。操作バーは XP スキンのときだけ CSS で見せ、ブラウザ標準の操作バーと入れ替える。
  * 全画面は動画だけでなく枠ごと広げ、全画面でも操作バーを使えるようにする。
  */
-const VideoPlayer = ({ src, name }: { src: string; name: string }) => {
+export const VideoPlayer = ({ src, name }: { src: string; name: string }) => {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const [state, setState] = useState({ paused: true, time: 0, duration: 0, volume: 1, muted: false });

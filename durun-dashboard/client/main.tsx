@@ -6,6 +6,7 @@ import { api } from './api.ts';
 import { AuthDialog } from './AuthDialog.tsx';
 import { BOOKMARKS_KEY, BookmarksFloat } from './Bookmarks.tsx';
 import { showWidget } from './Dashboard.tsx';
+import { ATTACHMENT_KEY, AttachmentFloat } from './Attachment.tsx';
 import { DOC_KEY, DocFloat, DocViewer, DocsPage, FILE_KEY, FileFloat, openDocFloat, plainClick } from './Docs.tsx';
 import { Dolphin } from './Dolphin.tsx';
 import { EXPLORER_KEY, ExplorerFloat } from './Explorer.tsx';
@@ -59,7 +60,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 

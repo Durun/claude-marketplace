@@ -1,9 +1,11 @@
-import type { MarkedToken, Token } from 'marked';
+import type { MarkedToken, Token, Tokens } from 'marked';
 import { type ComponentChildren, type ComponentType, createContext } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import { imgOf } from '../shared/html.ts';
 import { GITHUB_ATTACHMENT } from '../shared/types.ts';
+import { attachmentSrc, openAttachment } from './Attachment.tsx';
 import { lexMarkdown } from './chatLinks.ts';
+import { plainClick } from './Docs.tsx';
 import { headLines } from './format.ts';
 import { CopyButton, Ext } from './ui.tsx';
 
@@ -30,13 +32,36 @@ const PlainText = ({ text }: { text: string }) => {
   return <>{mark ? mark(text) : text}</>;
 };
 
-/**
- * 外部の画像を勝手に読み込まないよう、リンクとして出す。押すと元の画像を開く。
- * GitHub の添付だけは画像で出す。非公開のリポジトリの添付も読めるよう、サーバーが gh で読んだものを出す。
- */
-const ImageLink = ({ src, alt }: { src: string; alt: string }) => (
-  <Ext href={src}>{GITHUB_ATTACHMENT.test(src) ? <img src={`/api/github/image?${new URLSearchParams({ url: src })}`} alt={alt} loading="lazy" /> : alt || src}</Ext>
-);
+/** GitHub の添付。押すとダッシュボードのウィンドウで開く。修飾キー付きのクリックは、ブラウザで GitHub の元のファイルを開く。 */
+const AttachmentLink = ({ url, title, video, children }: { url: string; title: string; video: boolean; children: ComponentChildren }) => {
+  const onClick = (e: MouseEvent) => {
+    if (!plainClick(e)) return;
+    e.preventDefault();
+    openAttachment(url, title, video);
+  };
+  return <a class={video ? 'md-video' : undefined} href={url} target="_blank" rel="noopener noreferrer" title="押すとウィンドウで開きます" onClick={onClick}>{children}</a>;
+};
+
+/** 外部の画像を勝手に読み込まないよう、リンクとして出す。GitHub の添付だけは画像で出す。 */
+const ImageLink = ({ src, alt }: { src: string; alt: string }) =>
+  GITHUB_ATTACHMENT.test(src) ? (
+    <AttachmentLink url={src} title={alt || '画像'} video={false}><img src={attachmentSrc(src)} alt={alt} loading="lazy" /></AttachmentLink>
+  ) : (
+    <Ext href={src}>{alt || src}</Ext>
+  );
+
+/** 段落に URL だけを書いた添付。GitHub の画面で貼った動画はこの形になる。 */
+const bareAttachment = (t: Tokens.Paragraph): string | undefined => {
+  const [link, ...rest] = t.tokens;
+  return !rest.length && link?.type === 'link' && link.text === link.href && GITHUB_ATTACHMENT.test(link.href) ? link.href : undefined;
+};
+
+/** 動画は最初の場面だけを出し、押したらウィンドウで再生する。動画として読めなければ、画像の添付として出す。 */
+const AttachmentVideo = ({ url }: { url: string }) => {
+  const [image, setImage] = useState(false);
+  if (image) return <ImageLink src={url} alt="" />;
+  return <AttachmentLink url={url} title="動画" video><video src={attachmentSrc(url)} preload="metadata" muted onError={() => setImage(true)} /></AttachmentLink>;
+};
 
 const Inline = ({ tokens = [] }: { tokens?: Token[] }) => <>{tokens.map((t, i) => <InlineToken key={i} t={t as MarkedToken} />)}</>;
 
@@ -72,7 +97,10 @@ const Blocks = ({ tokens }: { tokens: Token[] }) => <>{tokens.map((t, i) => <Blo
 
 const Block = ({ t }: { t: MarkedToken }) => {
   switch (t.type) {
-    case 'paragraph': return <p><Inline tokens={t.tokens} /></p>;
+    case 'paragraph': {
+      const video = bareAttachment(t);
+      return <p>{video ? <AttachmentVideo url={video} /> : <Inline tokens={t.tokens} />}</p>;
+    }
     case 'heading': {
       const H = `h${t.depth}` as Heading;
       return <H><Inline tokens={t.tokens} /></H>;

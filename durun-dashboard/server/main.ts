@@ -211,26 +211,32 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
 // 添付は中身が変わらないので、ブラウザに長く覚えさせる。
 const ATTACHMENT_MAX_AGE_S = 30 * 24 * 60 * 60;
 
+// GitHub の応答から、そのまま画面へ渡すヘッダー。範囲のヘッダーは、動画の再生位置を動かすのに要る。
+const ATTACHMENT_HEADERS = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+
 /**
- * PR に添付した画像を、gh のログインで読んで返す。ほかのサイトの img から非公開の添付を読ませないよう、ダッシュボードの画面からの読み込みに限る。
- * cache.json には覚えず、ブラウザに覚えさせる。cache.json は保存のたびに全体を書き直すので、画像を入れると重くなるため。
+ * PR に添付した画像や動画を、gh のログインで読んで返す。ほかのサイトの img から非公開の添付を読ませないよう、ダッシュボードの画面からの読み込みに限る。
+ * cache.json には覚えず、ブラウザに覚えさせる。cache.json は保存のたびに全体を書き直すので、画像や動画を入れると重くなるため。
  * 取ってきた SVG を直接開かれても中のスクリプトが動かないよう、sandbox で返す。
  */
-const sendGithubImage = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+const sendGithubAttachment = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const fetchSite = req.headers['sec-fetch-site'];
   if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
   const src = url.searchParams.get('url') ?? '';
   if (!GITHUB_ATTACHMENT.test(src)) throw new HttpError(400, 'url must be a GitHub attachment');
-  const image = await viaGh('添付を読めません', () => githubAttachment(src));
-  if (!image.type.startsWith('image/')) throw new HttpError(415, `画像ではありません: ${image.type}`);
-  res
-    .writeHead(200, {
-      'content-type': image.type,
-      'cache-control': `private, max-age=${ATTACHMENT_MAX_AGE_S}`,
-      'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-    })
-    .end(image.body);
+  const range = req.headers.range;
+  const file = await viaGh('添付を読めません', () => githubAttachment(src, range && /^bytes=\d*-\d*$/.test(range) ? range : undefined));
+  res.on('close', file.stop);
+  const type = file.headers.get('content-type') ?? '';
+  if (file.status !== 200 && file.status !== 206) throw new HttpError(502, `添付を読めません（GitHub が ${file.status} を返しました）`);
+  if (!/^(image|video)\//.test(type)) throw new HttpError(415, `画像や動画ではありません: ${type}`);
+  res.writeHead(file.status, {
+    ...Object.fromEntries(ATTACHMENT_HEADERS.flatMap((h) => (file.headers.has(h) ? [[h, file.headers.get(h)]] : []))),
+    'cache-control': `private, max-age=${ATTACHMENT_MAX_AGE_S}`,
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  });
+  file.body.pipe(res);
 };
 
 /** I'm Feeling Lucky は検索結果の 1 件目へ移す。結果が無ければ、Google と同じく結果のページを出す。 */
@@ -1276,7 +1282,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'POST' && url.pathname === '/api/proofread') return proofreadStream(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
-  if (req.method === 'GET' && url.pathname === '/api/github/image') return sendGithubImage(req, res, url);
+  if (req.method === 'GET' && url.pathname === '/api/github/attachment') return sendGithubAttachment(req, res, url);
   // 端末でコマンドを動かすので、ほかのサイトの img などから GET で起こされないよう、ダッシュボードの画面からの接続に限る。
   if (req.method === 'GET' && url.pathname === '/api/terminal') {
     const fetchSite = req.headers['sec-fetch-site'];

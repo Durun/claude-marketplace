@@ -1,7 +1,8 @@
 // 外部の情報源: GitHub の PR（gh）、JIRA、git の差分。
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
@@ -301,16 +302,38 @@ export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
 export const prDetail = (url: string, fresh = false): Promise<PrDetail> =>
   cached(`pr:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
 
-/** gh api --include の出力を、ヘッダーの Content-Type と本文に分ける。ヘッダーは空行で終わる。 */
-export const splitIncluded = (out: Buffer): { type: string; body: Buffer } => {
-  const end = out.indexOf('\r\n\r\n');
-  if (end < 0) throw new Error('gh の出力にヘッダーの終わりがありません');
-  return { type: /^content-type:\s*([^\r\n]*)/im.exec(out.subarray(0, end).toString())?.[1] ?? '', body: out.subarray(end + 4) };
+/** gh api --include が本文の前に出す、状態の行とヘッダー。ヘッダーの名前は小文字にする。 */
+export const parseIncluded = (head: string): { status: number; headers: Map<string, string> } => {
+  const [first = '', ...lines] = head.split(/\r?\n/);
+  const headers = new Map(lines.map((l) => [l.slice(0, l.indexOf(':')).trim().toLowerCase(), l.slice(l.indexOf(':') + 1).trim()]));
+  return { status: Number(/^HTTP\/[\d.]+ (\d+)/.exec(first)?.[1] ?? 0), headers };
 };
 
-/** PR に添付した画像を、gh のログインで読む。非公開のリポジトリの添付は、画面の img からでは GitHub のログインが送られず読めないため。 */
-export const githubAttachment = async (url: string): Promise<{ type: string; body: Buffer }> =>
-  splitIncluded((await run('gh', ['api', '--include', url], { encoding: 'buffer', maxBuffer: MAX_BUFFER })).stdout);
+export type Attachment = ReturnType<typeof parseIncluded> & { body: Readable; stop: () => void };
+
+/**
+ * PR に添付した画像や動画を、gh のログインで読む。非公開のリポジトリの添付は、画面の img や video からでは GitHub のログインが送られず読めないため。
+ * 動画は数十 MB になるので、読み終えるのを待たずに本文を流す。range は動画の再生位置を動かすときにブラウザが求める範囲で、GitHub にそのまま渡す。
+ */
+export const githubAttachment = (url: string, range?: string): Promise<Attachment> =>
+  new Promise((resolve, reject) => {
+    const child = spawn('gh', ['api', '--include', ...(range ? ['-H', `Range: ${range}`] : []), url]);
+    let head = Buffer.alloc(0);
+    let stderr = '';
+    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+    const onData = (chunk: Buffer): void => {
+      head = Buffer.concat([head, chunk]);
+      const end = head.indexOf('\r\n\r\n');
+      if (end < 0) return;
+      child.stdout.off('data', onData).pause();
+      child.stdout.unshift(head.subarray(end + 4));
+      resolve({ ...parseIncluded(head.subarray(0, end).toString()), body: child.stdout, stop: () => child.kill() });
+    };
+    child.stdout.on('data', onData);
+    child.on('error', reject);
+    // ヘッダーを受け取る前に終わったときだけ、失敗として知らせる。受け取った後は、resolve 済みなので何もしない。
+    child.on('close', (code) => reject(new Error(stderr.trim() || `gh が ${code} で終わりました`)));
+  });
 
 /** PR の会話にコメントを投稿し、投稿したコメントの URL を返す。 */
 export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => {

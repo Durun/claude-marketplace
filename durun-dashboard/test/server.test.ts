@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { borrowSkills, summarizeLog } from '../server/claude.ts';
 import { formatReview } from '../server/deliver.ts';
-import { countChecks, gitDiff, inRepo, parseDiff, repoFile, resolveRange, splitIncluded } from '../server/integrations.ts';
+import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
 import { arrangeThemes, renameTheme, stoppedStatus } from '../server/snapshot.ts';
@@ -187,10 +187,11 @@ test('countChecks は CheckRun と StatusContext をまとめて数える', () =
   assert.deepEqual(checks, { passed: 2, failed: 2, pending: 2 });
 });
 
-test('splitIncluded は、gh api --include の出力から Content-Type を読み、空行の後を本文として切り出す', () => {
-  const body = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x0d, 0x0a]);
-  const out = Buffer.concat([Buffer.from('HTTP/1.1 200 OK\nContent-Length: 8\r\nContent-Type: image/png\r\nServer: AmazonS3\r\n\r\n'), body]);
-  assert.deepEqual(splitIncluded(out), { type: 'image/png', body });
+test('parseIncluded は、gh api --include が本文の前に出す状態の番号とヘッダーを読む', () => {
+  const { status, headers } = parseIncluded('HTTP/1.1 206 Partial Content\nContent-Range: bytes 0-99/811866\r\nContent-Type: video/mp4');
+  assert.equal(status, 206);
+  assert.equal(headers.get('content-range'), 'bytes 0-99/811866');
+  assert.equal(headers.get('content-type'), 'video/mp4');
 });
 
 test('summarizeLog は同じ応答の usage を二重に数えず、書きかけの行は次回に読む', () => {
