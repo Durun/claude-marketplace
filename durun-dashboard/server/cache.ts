@@ -56,7 +56,7 @@ const scheduleSave = (): void => {
 };
 
 /** 画面が持っている値が古くなったことを知らせ、取り直させる。 */
-const bump = (): void => {
+export const bump = (): void => {
   version++;
   changed();
 };

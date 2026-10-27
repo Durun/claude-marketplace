@@ -14,7 +14,7 @@ import { allowRequest } from './access.ts';
 import { answerAuth, loginClaude } from './auth.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
-import { saveCache } from './cache.ts';
+import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
 import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -1120,7 +1120,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b), WEB_API_MS],
   // 渡されたディレクトリで gh や git を動かすので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/github\/refs$/, (_, b) => githubRefs(b), WEB_API_MS],
-  [/^\/api\/files$/, (_, b) => fileCandidates(completionCwd(b), field<string>(b, 'q', 'string'))],
+  [/^\/api\/files$/, (_, b) => fileCandidates(completionCwd(b), field<string>(b, 'q', 'string'), bump)],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b), WEB_API_MS],
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b), WEB_API_MS],

@@ -9,6 +9,9 @@ import { fmtBytes } from '../client/format.ts';
 import { fileCandidates, listDir, saveText } from '../server/explorer.ts';
 import { platformFor } from '../server/platform.ts';
 
+/** git に一覧を聞き終えたことを待たないときに、fileCandidates へ渡す。 */
+const ignore = () => {};
+
 test('listDir は、フォルダーを先に名前の順で並べ、ファイルには大きさを付け、1 つ上のフォルダーと最上位の場所を添える', (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'explorer-'));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -80,7 +83,7 @@ test('fmtBytes は、1024 ごとに単位を上げ、KB から上は小数 1 桁
   assert.equal(fmtBytes(5 * 1024 ** 3), '5 GB');
 });
 
-test('fileCandidates は、git のリポジトリでは無視していないファイルから、名前の頭、パスの一部、順に現れる文字の順に、それぞれ短いパスから出す', async (t) => {
+test('fileCandidates は、git のリポジトリでは無視していないファイルから、名前の頭、パスの一部、順に現れる文字の順に、それぞれ短いパスから出す。git の一覧は待たず、聞き終えるまでは覚えた一覧か打ったディレクトリの中から出す', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'files-'));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   for (const file of ['README.md', 'docs/README.md', 'client/Messaging.tsx', 'client/attach.ts', 'node_modules/x/index.js']) {
@@ -91,11 +94,22 @@ test('fileCandidates は、git のリポジトリでは無視していないフ�
   execFileSync('git', ['init', '-q'], { cwd: tmp });
   // 追跡しているファイルと、まだ追加していないファイルの両方を出す。
   execFileSync('git', ['add', 'README.md'], { cwd: tmp });
-  assert.deepEqual(await fileCandidates(tmp, ''), ['README.md', '.gitignore', 'docs/README.md', 'client/attach.ts', 'client/Messaging.tsx']);
-  assert.deepEqual(await fileCandidates(tmp, 'readme'), ['README.md', 'docs/README.md']);
-  assert.deepEqual(await fileCandidates(tmp, 'client/'), ['client/attach.ts', 'client/Messaging.tsx']);
-  assert.deepEqual(await fileCandidates(tmp, 'cmsg'), ['client/Messaging.tsx']);
-  assert.deepEqual(await fileCandidates(tmp, 'index'), []);
+  // git に聞き終えるまでは待たずに、打ったディレクトリの中から答える。
+  let candidates: string[] = [];
+  await new Promise<void>((loaded) => (candidates = fileCandidates(tmp, '', loaded)));
+  assert.deepEqual(candidates, ['.git/', 'client/', 'docs/', 'node_modules/', '.gitignore', 'README.md']);
+  assert.deepEqual(fileCandidates(tmp, '', ignore), ['README.md', '.gitignore', 'docs/README.md', 'client/attach.ts', 'client/Messaging.tsx']);
+  assert.deepEqual(fileCandidates(tmp, 'readme', ignore), ['README.md', 'docs/README.md']);
+  assert.deepEqual(fileCandidates(tmp, 'client/', ignore), ['client/attach.ts', 'client/Messaging.tsx']);
+  assert.deepEqual(fileCandidates(tmp, 'cmsg', ignore), ['client/Messaging.tsx']);
+  assert.deepEqual(fileCandidates(tmp, 'index', ignore), []);
+  // 覚えた一覧が古くなっても、それで答えてから裏で聞き直す。新しいファイルは、聞き直し終えると出る。
+  fs.writeFileSync(path.join(tmp, 'notes.md'), '');
+  const later = Date.now() + 60_000;
+  t.mock.method(Date, 'now', () => later);
+  await new Promise<void>((loaded) => (candidates = fileCandidates(tmp, 'notes', loaded)));
+  assert.deepEqual(candidates, []);
+  assert.deepEqual(fileCandidates(tmp, 'notes', ignore), ['notes.md']);
 });
 
 test('fileCandidates は、git のリポジトリの外と、/ で始まる語では、打ったディレクトリの中だけを、ディレクトリに / を付けて出す', async (t) => {
@@ -104,9 +118,10 @@ test('fileCandidates は、git のリポジトリの外と、/ で始まる語�
   fs.mkdirSync(path.join(tmp, 'repos/app/src'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'repos/app/main.ts'), '');
   fs.writeFileSync(path.join(tmp, 'notes.md'), '');
-  assert.deepEqual(await fileCandidates(tmp, ''), ['repos/', 'notes.md']);
-  assert.deepEqual(await fileCandidates(tmp, 'repos/app/'), ['repos/app/src/', 'repos/app/main.ts']);
-  assert.deepEqual(await fileCandidates(tmp, 'repos/app/ma'), ['repos/app/main.ts']);
-  assert.deepEqual(await fileCandidates(tmp, `${tmp}/no`), [`${tmp}/notes.md`]);
-  assert.deepEqual(await fileCandidates(path.join(tmp, 'missing'), ''), []);
+  await new Promise<void>((loaded) => fileCandidates(tmp, '', loaded));
+  assert.deepEqual(fileCandidates(tmp, '', ignore), ['repos/', 'notes.md']);
+  assert.deepEqual(fileCandidates(tmp, 'repos/app/', ignore), ['repos/app/src/', 'repos/app/main.ts']);
+  assert.deepEqual(fileCandidates(tmp, 'repos/app/ma', ignore), ['repos/app/main.ts']);
+  assert.deepEqual(fileCandidates(tmp, `${tmp}/no`, ignore), [`${tmp}/notes.md`]);
+  assert.deepEqual(fileCandidates(path.join(tmp, 'missing'), '', ignore), []);
 });

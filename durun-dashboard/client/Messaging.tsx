@@ -60,7 +60,7 @@ type CompletionMenuState = { items: Candidate[]; active: number };
  * /、#、@ から始まる語か、JIRA のプロジェクトキーとハイフンを打つと、候補を出す。/ は Claude Code がこのセッションに見せた skills で、欄を開いたときに読む。
  * まだ一覧が無い新規セッションや、セッションが無い欄では、cwd で動いたセッションのものを借りる。
  * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
- * @ はセッションか cwd のファイルで、ファイルが多くても重くならないよう、サーバーに 1 文字ごとに絞らせて、上位だけを受け取る。
+ * @ はセッションか cwd のファイルで、ファイルが多くても重くならないよう、サーバーに 1 文字ごとに絞らせて、上位だけを受け取る。サーバーは git の一覧を待たずに答えるので、一覧が届いたら取り直す。
  */
 const useCompletion = (sessionId: string | undefined, cwd: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
   const [typed, setTyped] = useState<Typed>();
@@ -71,7 +71,7 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, i
   const wantsIssues = !!typed?.mark.endsWith('-');
   const { data: issues = [] } = useCached((fresh) => (wantsIssues ? api.jiraRefs(fresh) : Promise.resolve([])), [wantsIssues]);
   const fileWord = typed?.mark === '@' && (sessionId || cwd) ? typed.word : undefined;
-  const { data: files = [] } = useFetch(() => (fileWord === undefined ? Promise.resolve([]) : api.files({ sessionId, cwd }, fileWord)), [sessionId, cwd, fileWord]);
+  const { data: files = [] } = useCached(() => (fileWord === undefined ? Promise.resolve([]) : api.files({ sessionId, cwd }, fileWord)), [sessionId, cwd, fileWord]);
   const items = typed ? candidates(typed, skills, refs, issues, files) : [];
   const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {

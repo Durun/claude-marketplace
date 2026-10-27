@@ -14,7 +14,7 @@ const run = promisify(execFile);
 const MAX_ENTRIES = 2000;
 // 大きなリポジトリでも、画面へ送る候補はこの数までにする。
 const MAX_FILE_CANDIDATES = 50;
-// @ の後に 1 文字打つたびに一覧を使うので、git に聞いた一覧をこの間だけ覚える。新しく作ったファイルは、これを過ぎると候補に出る。
+// git に聞いた一覧は、この時間を過ぎると、覚えた一覧で答えてから裏で聞き直す。新しく作ったファイルは、聞き直し終えると候補に出る。
 const FILE_LIST_MS = 10_000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 
@@ -53,18 +53,28 @@ export const listDir = (dir: string | undefined, p: Platform = platform): Explor
   };
 };
 
-const fileLists = new Map<string, { at: number; files: Promise<string[] | undefined> }>();
+// cwd ごとに、git に聞いた一覧と聞いた時刻を覚える。git のリポジトリの外では files が無い。聞いている最中に git を重ねて動かさないよう、聞き始めた時点でも時刻を改める。
+// 一覧は 1 万件のリポジトリで 1 MB 近くになり、作業ツリーごとに増えるので、cache.json には残さずメモリにだけ置く。
+const fileLists = new Map<string, { at: number; files?: string[] }>();
 
-/** cwd の下にあり git が無視していないファイルの、cwd からのパス。浅いファイルを先に出せるよう、短い順に並べる。git のリポジトリの外では undefined。 */
-const gitFiles = (cwd: string): Promise<string[] | undefined> => {
+/**
+ * cwd の下にあり git が無視していないファイルの、cwd からのパス。浅いファイルを先に出せるよう、短い順に並べる。
+ * git を待たずに覚えた一覧を返し、無いか古ければ裏で聞き直して、聞き終えたら onLoad を呼ぶ。まだ一覧が無いときと、git のリポジトリの外では undefined。
+ */
+const gitFiles = (cwd: string, onLoad: () => void): string[] | undefined => {
   const hit = fileLists.get(cwd);
   if (hit && Date.now() - hit.at < FILE_LIST_MS) return hit.files;
-  const files = run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd, maxBuffer: MAX_BUFFER }).then(
-    ({ stdout }) => stdout.split('\0').filter(Boolean).sort((a, b) => a.length - b.length),
-    () => undefined,
-  );
-  fileLists.set(cwd, { at: Date.now(), files });
-  return files;
+  fileLists.set(cwd, { at: Date.now(), files: hit?.files });
+  void run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd, maxBuffer: MAX_BUFFER })
+    .then(
+      ({ stdout }) => stdout.split('\0').filter(Boolean).sort((a, b) => a.length - b.length),
+      () => undefined,
+    )
+    .then((files) => {
+      fileLists.set(cwd, { at: Date.now(), files });
+      onLoad();
+    });
+  return hit?.files;
 };
 
 /** word の最後の / までが指すディレクトリの中身。ディレクトリには / を付ける。読めなければ空。 */
@@ -84,9 +94,10 @@ const lastName = (p: string): string => p.slice(p.lastIndexOf('/', p.length - 2)
  * 送信欄で @ の後に打った語に合うパスを、名前の頭、パスの一部、パスに順に現れる文字の順に返す。
  * git のリポジトリでは、git が無視していないファイルをすべて探す。リポジトリの外と、~ か / で始まる語では、打ったディレクトリの中だけを見る。
  * 下の階層まで読むと、ホームディレクトリやリポジトリを束ねたディレクトリで、ファイルが多すぎて遅くなる。
+ * 混んだマシンでは git が数秒かかるので、git の一覧は待たない。一覧をまだ覚えていなければ打ったディレクトリの中から答え、git に聞き終えたら onLoad で知らせる。
  */
-export const fileCandidates = async (cwd: string, word: string): Promise<string[]> => {
-  const files = /^[~/]/.test(word) ? undefined : await gitFiles(cwd);
+export const fileCandidates = (cwd: string, word: string, onLoad: () => void): string[] => {
+  const files = /^[~/]/.test(word) ? undefined : gitFiles(cwd, onLoad);
   // ponytail: 打つたびに一覧のすべてを小文字にして比べる。1 万件で数ミリ秒、30 万件で 100 ミリ秒ほどかかる。大きなリポジトリで遅くなったら、小文字にした一覧も覚える。
   return rankBy(files ?? entriesIn(cwd, word), word, lastName, (p) => p).slice(0, MAX_FILE_CANDIDATES);
 };
