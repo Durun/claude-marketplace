@@ -1,31 +1,50 @@
 import type { ComponentChildren } from 'preact';
 import { useContext, useRef, useState } from 'preact/hooks';
-import type { IssueInfo, JiraIssue, PrInfo, RepoRef, SessionStatus, Usage, WaitingFor } from '../shared/types.ts';
+import type { IssueInfo, JiraIssue, PrInfo, RepoRef, Session, SessionStatus, Usage, WaitingFor } from '../shared/types.ts';
 import { fmtInt, relativeTime, totalTokens } from './format.ts';
 import { NowContext, useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
 
 type Tone = 'ok' | 'bad' | 'warn' | 'info' | 'muted';
 
-const STATUS_LABEL: Record<SessionStatus, string> = { busy: '作業中', idle: '入力待ち', done: '完了', interrupted: '中断', ended: '終了' };
-/** 入力待ちのセッションの見出しと色。実行中は、作業中と同じ色にする。 */
-const WAITING_BADGE: Record<WaitingFor, { label: string; tone: string }> = {
-  human: { label: '回答待ち', tone: 'idle' },
+/**
+ * セッションの状態の見出しと色。入力待ちのセッションは、何を待っているかを分類し終えていれば、その見出しで出す。実行中は、作業中と同じ色にする。
+ * 状態ごとの件数は、この順に並べる。
+ */
+const BADGES: Record<SessionStatus | WaitingFor, { label: string; tone: string }> = {
+  busy: { label: '作業中', tone: 'busy' },
   work: { label: '実行中', tone: 'busy' },
+  human: { label: '回答待ち', tone: 'idle' },
   event: { label: '待機中', tone: 'standby' },
+  idle: { label: '入力待ち', tone: 'idle' },
+  done: { label: '完了', tone: 'done' },
+  interrupted: { label: '中断', tone: 'interrupted' },
+  ended: { label: '終了', tone: 'ended' },
 };
 
 export const Chip = ({ tone = 'muted', title, children }: { tone?: Tone; title?: string; children: ComponentChildren }) => (
   <span class={`chip chip-${tone}`} title={title}>{children}</span>
 );
 
-/** 入力待ちのセッションは、何を待っているかを分類し終えていれば、それを出す。 */
 export const StatusBadge = ({ status, waitingFor }: { status: SessionStatus; waitingFor?: WaitingFor }) => {
-  const waiting = waitingFor && WAITING_BADGE[waitingFor];
+  const { label, tone } = BADGES[waitingFor ?? status];
   return (
-    <span class={`badge badge-${waiting?.tone ?? status}`}>
+    <span class={`badge badge-${tone}`}>
       <i class="dot" aria-hidden="true" />
-      {waiting?.label ?? STATUS_LABEL[status]}
+      {label}
+    </span>
+  );
+};
+
+/** セッションを StatusBadge と同じ見出しで数える。1 件もない状態は出さない。 */
+export const StatusCounts = ({ sessions }: { sessions: Session[] }) => {
+  const keys = sessions.map((s) => s.waitingFor ?? s.status);
+  return (
+    <span class="status-counts">
+      {Object.entries(BADGES).map(([key, { label, tone }]) => {
+        const count = keys.filter((k) => k === key).length;
+        return count > 0 && <span key={key} class="status-count"><i class={`dot dot-${tone}`} aria-hidden="true" />{label} {count}</span>;
+      })}
     </span>
   );
 };

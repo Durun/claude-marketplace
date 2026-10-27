@@ -240,6 +240,10 @@ textarea.input { resize: vertical; min-height: 36px; }
 .dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tone, var(--muted)); }
 .dot-busy { background: var(--busy); }
 .dot-idle { background: var(--idle); }
+.dot-standby { background: var(--muted); }
+.dot-done { background: var(--done); }
+.dot-interrupted { background: var(--interrupted); }
+.dot-ended { background: var(--ended); }
 .badge-busy .dot, .is-running .dot { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .badge-busy .dot, .is-running .dot { animation: none; } }
@@ -621,6 +625,9 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .theme-rename { width: 20px; height: 20px; margin-left: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); line-height: 1; cursor: pointer; opacity: 0; }
 .theme-head:hover .theme-rename, .theme-rename:focus-visible { opacity: 1; }
 .theme-rename:hover { background: var(--surface-2); color: var(--text); }
+/* 状態ごとの件数は、幅が足りなければ見出しの中で折り返す。 */
+.status-counts { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 0; margin-left: 8px; font-size: 12px; font-weight: normal; color: var(--muted); }
+.status-count { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .cards { display: grid; gap: 10px; }
 /* ピン留めのボタンは、選ぶためのチェックボックスと同じく、マウスを載せたときと、ピン留めしている間だけ見せる。カード全体のリンクより上に置いて押せるようにする。 */
 .pin { position: relative; z-index: 1; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }

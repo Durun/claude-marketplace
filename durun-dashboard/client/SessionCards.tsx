@@ -5,7 +5,7 @@ import { fmtInt, fmtTokens } from './format.ts';
 import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
-import { Chip, ContextBar, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, Time } from './ui.tsx';
+import { Chip, ContextBar, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -399,6 +399,7 @@ export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Select
             <h3 class="theme-head">
               <SelectBox ids={g.sessions.map((s) => s.id)} sel={sel} label={`${g.theme || PINNED_TITLE} のセッションをすべて選ぶ`} />
               <ThemeTitle theme={g.theme} count={g.sessions.length} />
+              <StatusCounts sessions={g.sessions} />
               <span class="chevron" aria-hidden="true">{collapsed.has(g.theme) ? '▸' : '▾'}</span>
             </h3>
           </summary>
