@@ -77,6 +77,8 @@ export const api = {
     getJson<SkillInfo[]>(sessionId ? `${session(sessionId)}/skills` : `/api/skills?${query({ cwd })}`),
   /** # の補完に出す PR と Issue。セッションが無ければ、cwd のリポジトリから探す。 */
   repoRefs: (target: { sessionId?: string; cwd?: string }, fresh?: boolean) => postJson<RepoRef[]>('/api/github/refs', { ...target, fresh }),
+  /** @ の補完に出すファイルのパス。サーバーが q に合う順に並べて絞る。セッションが無ければ、cwd から探す。 */
+  files: (target: { sessionId?: string; cwd?: string }, q: string) => postJson<string[]>('/api/files', { ...target, q }),
   // fresh は、人間が「更新」を押したときに付け、サーバーに覚えた値を使わず読み直させる。
   jiraIssue: (key: string, fresh?: boolean) => getJson<JiraDetail>(`/api/jira/issues/${seg(key)}?${query({ fresh: flag(fresh) })}`),
   notionPage: (id: string, fresh?: boolean) => getJson<NotionPage>(`/api/notion/pages/${seg(id)}?${query({ fresh: flag(fresh) })}`),

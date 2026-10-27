@@ -7,18 +7,20 @@ import { type GhRefs, toRefs } from '../server/integrations.ts';
 const ref = (number: number, title: string, mine = false, kind: RepoRef['kind'] = 'pr', state: RepoRef['state'] = 'Open'): RepoRef => ({ number, title, url: '', kind, state, createdAt: 0, mine });
 // サーバーから新しい順に届く。
 const REFS = [ref(12, 'ログインの修正', true), ref(120, 'Fix login for v3'), ref(7, 'ログ画面を足す', true, 'issue', 'Closed'), ref(3, 'Update README')];
-const labels = (word: string): string[] => candidates({ mark: '#', word }, [], REFS, []).map((c) => c.label);
+const labels = (word: string): string[] => candidates({ mark: '#', word }, [], REFS, [], []).map((c) => c.label);
 const issue = (key: string, summary: string, status = '進行中'): JiraIssue => ({ key, url: '', summary, status });
 // サーバーから、スペースごとに自分の課題、ほかの課題の順に、それぞれ更新が新しい順で届く。
 const ISSUES = [issue('CATS-12', 'ログインの修正'), issue('CATS-3', '画面を足す', '完了'), issue('LPO-1', 'ログを見る'), issue('CATS-120', 'ログ画面の修正', '未着手')];
-const issueLabels = (mark: string, word: string): string[] => candidates({ mark, word }, [], [], ISSUES).map((c) => c.label);
+const issueLabels = (mark: string, word: string): string[] => candidates({ mark, word }, [], [], ISSUES, []).map((c) => c.label);
 
-test('typedAt は、行の頭か空白の後の / と # から、カーソルまでの語を返し、URL の途中や見出しの # では返さない', () => {
+test('typedAt は、行の頭か空白の後の /、#、@ から、カーソルまでの語を返し、URL の途中や見出しの #、メールアドレスの @ では返さない', () => {
   assert.deepEqual(typedAt('see #12'), { mark: '#', word: '12' });
   assert.deepEqual(typedAt('#'), { mark: '#', word: '' });
   assert.deepEqual(typedAt('/rev'), { mark: '/', word: 'rev' });
+  assert.deepEqual(typedAt('見て @client/Ho'), { mark: '@', word: 'client/Ho' });
   assert.equal(typedAt('https://example.test/a#b'), undefined);
   assert.equal(typedAt('# 見出し'), undefined);
+  assert.equal(typedAt('me@example.test'), undefined);
 });
 
 test('typedAt は、英数字の後ろでなければ、JIRA のプロジェクトキーとハイフンから、カーソルまでの語を返す', () => {
@@ -29,7 +31,7 @@ test('typedAt は、英数字の後ろでなければ、JIRA のプロジェク�
 });
 
 test('candidates は、# の後に何も打っていなければ、自分が作った PR と Issue を、種別と状態を添えて新しい順に出す', () => {
-  assert.deepEqual(candidates({ mark: '#', word: '' }, [], REFS, []), [
+  assert.deepEqual(candidates({ mark: '#', word: '' }, [], REFS, [], []), [
     { label: '#12', desc: 'ログインの修正', icon: { kind: 'pr', state: 'Open' } },
     { label: '#7', desc: 'ログ画面を足す', icon: { kind: 'issue', state: 'Closed' } },
   ]);
@@ -62,11 +64,11 @@ test('candidates は、# の後に打った語に、番号の頭、題名の一�
 
 test('candidates は、/ の後に打った語に合う skills を、名前の頭が合うものから出す', () => {
   const skills = [{ name: 'code-review', description: 'a' }, { name: 'review', description: 'b' }, { name: 'plugin:reviewer', description: 'c' }];
-  assert.deepEqual(candidates({ mark: '/', word: 'rev' }, skills, [], []).map((c) => c.label), ['/review', '/plugin:reviewer', '/code-review']);
+  assert.deepEqual(candidates({ mark: '/', word: 'rev' }, skills, [], [], []).map((c) => c.label), ['/review', '/plugin:reviewer', '/code-review']);
 });
 
 test('candidates は、JIRA のプロジェクトキーとハイフンの後に何も打っていなければ、そのスペースの課題を、状態を添えて届いた順に出す', () => {
-  assert.deepEqual(candidates({ mark: 'cats-', word: '' }, [], [], ISSUES), [
+  assert.deepEqual(candidates({ mark: 'cats-', word: '' }, [], [], ISSUES, []), [
     { label: 'CATS-12', desc: '進行中 · ログインの修正' },
     { label: 'CATS-3', desc: '完了 · 画面を足す' },
     { label: 'CATS-120', desc: '未着手 · ログ画面の修正' },

@@ -26,7 +26,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
-import { listDir, saveText } from './explorer.ts';
+import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
@@ -437,10 +437,16 @@ const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
 
 const threadsOf = (pr: PrInfo, fresh = false): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr, fresh));
 
-/** # の補完に出す PR と Issue。セッションの欄ではセッションの、新規セッションの欄では入力したディレクトリのリポジトリから探す。 */
+/** 補完の候補を探すディレクトリ。セッションの欄ではセッションの作業ディレクトリ、新規セッションの欄では入力したディレクトリ。 */
+const completionCwd = (body: unknown): string => {
+  const { sessionId } = body as { sessionId?: unknown };
+  return typeof sessionId === 'string' ? sessionMeta(sessionId).cwd : field<string>(body, 'cwd', 'string');
+};
+
+/** # の補完に出す、そのディレクトリのリポジトリの PR と Issue。 */
 const githubRefs = (body: unknown) => {
-  const { sessionId, fresh } = body as { sessionId?: unknown; fresh?: unknown };
-  const cwd = typeof sessionId === 'string' ? sessionMeta(sessionId).cwd : field<string>(body, 'cwd', 'string');
+  const cwd = completionCwd(body);
+  const { fresh } = body as { fresh?: unknown };
   return viaGh('PR と Issue を読めません', () => repoRefs(cwd, fresh === true));
 };
 
@@ -1112,8 +1118,9 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
   [/^\/api\/queue\/([^/]+)\/send$/, ([, id = '']) => ({ delivery: sendQueued(findQueued(id)) })],
   [/^\/api\/pr\/comment$/, (_, b) => commentPr(b), WEB_API_MS],
-  // 渡されたディレクトリで gh を動かすので、他のサイトから GET で起こされないよう POST で受ける。
+  // 渡されたディレクトリで gh や git を動かすので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/github\/refs$/, (_, b) => githubRefs(b), WEB_API_MS],
+  [/^\/api\/files$/, (_, b) => fileCandidates(completionCwd(b), field<string>(b, 'q', 'string'))],
   [/^\/api\/jira\/refresh$/, () => refreshJira()],
   [/^\/api\/jira\/issues\/([^/]+)\/comment$/, ([, key = ''], b) => commentJira(key, b), WEB_API_MS],
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b), WEB_API_MS],
