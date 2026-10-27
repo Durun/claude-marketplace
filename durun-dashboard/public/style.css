@@ -1084,6 +1084,7 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .completion-option > svg { align-self: center; }
 .completion-label { flex: none; font: 12.5px var(--mono); }
 .completion-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.completion-option.is-badge > span { font-weight: 700; }
 .outbox { display: grid; gap: 8px; }
 .outbox-item { position: relative; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
 .outbox-item:has(.outbox-jump:hover) { border-color: var(--accent); }

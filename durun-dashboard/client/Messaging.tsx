@@ -4,7 +4,7 @@ import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessa
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { AppIcon } from './apps.tsx';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
-import { type Candidate, type Typed, candidates, typedAt } from './completion.ts';
+import { type Badges, type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { chatIndexOf } from './delivery.ts';
 import { dateTime } from './format.ts';
@@ -62,7 +62,7 @@ type CompletionMenuState = { items: Candidate[]; active: number };
  * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
  * @ はセッションか cwd のファイルで、ファイルが多くても重くならないよう、サーバーに 1 文字ごとに絞らせて、上位だけを受け取る。サーバーは git の一覧を待たずに答えるので、一覧が届いたら取り直す。
  */
-const useCompletion = (sessionId: string | undefined, cwd: string | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+const useCompletion = (sessionId: string | undefined, cwd: string | undefined, badges: Badges | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
   const [typed, setTyped] = useState<Typed>();
   const [active, setActive] = useState(0);
   const { data: skills = [] } = useFetch(() => api.skills({ sessionId, cwd }), [sessionId, cwd]);
@@ -72,7 +72,7 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, i
   const { data: issues = [] } = useCached((fresh) => (wantsIssues ? api.jiraRefs(fresh) : Promise.resolve([])), [wantsIssues]);
   const fileWord = typed?.mark === '@' && (sessionId || cwd) ? typed.word : undefined;
   const { data: files = [] } = useCached(() => (fileWord === undefined ? Promise.resolve([]) : api.files({ sessionId, cwd }, fileWord)), [sessionId, cwd, fileWord]);
-  const items = typed ? candidates(typed, skills, refs, issues, files) : [];
+  const items = typed ? candidates(typed, skills, refs, issues, files, badges) : [];
   const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {
     const el = input.current;
@@ -120,7 +120,7 @@ const CompletionMenu = ({ menu, onPick }: { menu: CompletionMenuState; onPick: (
         <li
           key={c.label}
           id={`completion-${i}`}
-          class="completion-option"
+          class={`completion-option ${c.badge ? 'is-badge' : ''}`}
           role="option"
           aria-selected={i === menu.active}
           title={c.desc}
@@ -142,6 +142,8 @@ type MessageInputProps = {
   sessionId?: string;
   /** セッションが無いときに、# で PR と Issue を探すリポジトリのディレクトリ。 */
   cwd?: string;
+  /** 補完で先に出して太字にする、セッションのバッジ。 */
+  badges?: Badges;
   value: string;
   setValue: (value: string) => void;
   placeholder: string;
@@ -150,10 +152,10 @@ type MessageInputProps = {
 };
 
 /** セッションへのメッセージと、新規セッションの最初の依頼とで使う入力欄。skills、PR と Issue、ファイル、JIRA の課題の補完と「なんでも添付」を持つ。 */
-export const MessageInput = ({ sessionId, cwd, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
+export const MessageInput = ({ sessionId, cwd, badges, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
   const own = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? own;
-  const completion = useCompletion(sessionId, cwd, input, setValue);
+  const completion = useCompletion(sessionId, cwd, badges, input, setValue);
   // 入力欄の外をクリックしてもカーソル位置は残るので、そこへ入れる。
   const insert = (piece: string) => {
     const el = input.current;
@@ -418,7 +420,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   return (
     <>
       <ReplySuggestions s={s} onPick={pick} />
-      <MessageInput sessionId={s.id} value={text} setValue={setText} placeholder="メッセージ（/ で skills、# で PR と Issue、@ でファイル、PROJ- で JIRA の課題を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
+      <MessageInput sessionId={s.id} badges={s} value={text} setValue={setText} placeholder="メッセージ（/ で skills、# で PR と Issue、@ でファイル、PROJ- で JIRA の課題を補完、Cmd/Ctrl + Enter で送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
         <span class="send-split">
           <button class="btn btn-primary" disabled={busy || !text.trim()} title={mode === 'queue' ? QUEUE_HELP : choice.changed ? SWITCH_HELP : undefined} onClick={send}>
@@ -450,7 +452,7 @@ export const asksOf = (attention: Attention[], sessionId: string): Attention[] =
   attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question' || a.kind === 'permission'));
 
 /** 保留しているメッセージ。書き直している間はサーバーが送らないので、書き直しを始めるときと終えるときに知らせる。 */
-const QueuedItem = ({ m }: { m: QueuedMessage }) => {
+const QueuedItem = ({ m, badges }: { m: QueuedMessage; badges: Badges }) => {
   const [draft, setDraft] = useState<string>();
   const [busy, setBusy] = useState(false);
   const run = async (label: string, fn: () => Promise<unknown>): Promise<boolean> => {
@@ -475,7 +477,7 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
   if (draft !== undefined) {
     return (
       <li class="outbox-item is-queued">
-        <MessageInput sessionId={m.sessionId} value={draft} setValue={setDraft} placeholder="書き直した文（Cmd/Ctrl + Enter で保存）" onSubmit={() => save(draft)} />
+        <MessageInput sessionId={m.sessionId} badges={badges} value={draft} setValue={setDraft} placeholder="書き直した文（Cmd/Ctrl + Enter で保存）" onSubmit={() => save(draft)} />
         <div class="actions">
           <button class="btn btn-sm" disabled={busy} onClick={() => save(m.text)}>キャンセル</button>
           <button class="btn btn-sm btn-primary" disabled={busy || !draft.trim()} onClick={() => save(draft)}>保存</button>
@@ -501,7 +503,7 @@ const QueuedItem = ({ m }: { m: QueuedMessage }) => {
 const QueuedList = ({ s }: { s: Session }) =>
   s.queued?.length ? (
     <ul class="outbox queued-list" aria-label="保留しているメッセージ">
-      {s.queued.map((m) => <QueuedItem key={m.id} m={m} />)}
+      {s.queued.map((m) => <QueuedItem key={m.id} m={m} badges={s} />)}
     </ul>
   ) : null;
 
