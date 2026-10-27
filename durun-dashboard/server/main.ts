@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -29,7 +29,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { badgeOf, badgePr, cachedPr, gitDiff, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { latestMemory } from './memory.ts';
@@ -206,6 +206,31 @@ const sendFavicon = async (req: IncomingMessage, res: ServerResponse, url: URL):
       'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     })
     .end(icon.body);
+};
+
+// 添付は中身が変わらないので、ブラウザに長く覚えさせる。
+const ATTACHMENT_MAX_AGE_S = 30 * 24 * 60 * 60;
+
+/**
+ * PR に添付した画像を、gh のログインで読んで返す。ほかのサイトの img から非公開の添付を読ませないよう、ダッシュボードの画面からの読み込みに限る。
+ * cache.json には覚えず、ブラウザに覚えさせる。cache.json は保存のたびに全体を書き直すので、画像を入れると重くなるため。
+ * 取ってきた SVG を直接開かれても中のスクリプトが動かないよう、sandbox で返す。
+ */
+const sendGithubImage = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+  const src = url.searchParams.get('url') ?? '';
+  if (!GITHUB_ATTACHMENT.test(src)) throw new HttpError(400, 'url must be a GitHub attachment');
+  const image = await viaGh('添付を読めません', () => githubAttachment(src));
+  if (!image.type.startsWith('image/')) throw new HttpError(415, `画像ではありません: ${image.type}`);
+  res
+    .writeHead(200, {
+      'content-type': image.type,
+      'cache-control': `private, max-age=${ATTACHMENT_MAX_AGE_S}`,
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    })
+    .end(image.body);
 };
 
 /** I'm Feeling Lucky は検索結果の 1 件目へ移す。結果が無ければ、Google と同じく結果のページを出す。 */
@@ -1251,6 +1276,7 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'POST' && url.pathname === '/api/proofread') return proofreadStream(req, res);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
+  if (req.method === 'GET' && url.pathname === '/api/github/image') return sendGithubImage(req, res, url);
   // 端末でコマンドを動かすので、ほかのサイトの img などから GET で起こされないよう、ダッシュボードの画面からの接続に限る。
   if (req.method === 'GET' && url.pathname === '/api/terminal') {
     const fetchSite = req.headers['sec-fetch-site'];

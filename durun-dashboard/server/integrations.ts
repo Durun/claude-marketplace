@@ -301,6 +301,17 @@ export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
 export const prDetail = (url: string, fresh = false): Promise<PrDetail> =>
   cached(`pr:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
 
+/** gh api --include の出力を、ヘッダーの Content-Type と本文に分ける。ヘッダーは空行で終わる。 */
+export const splitIncluded = (out: Buffer): { type: string; body: Buffer } => {
+  const end = out.indexOf('\r\n\r\n');
+  if (end < 0) throw new Error('gh の出力にヘッダーの終わりがありません');
+  return { type: /^content-type:\s*([^\r\n]*)/im.exec(out.subarray(0, end).toString())?.[1] ?? '', body: out.subarray(end + 4) };
+};
+
+/** PR に添付した画像を、gh のログインで読む。非公開のリポジトリの添付は、画面の img からでは GitHub のログインが送られず読めないため。 */
+export const githubAttachment = async (url: string): Promise<{ type: string; body: Buffer }> =>
+  splitIncluded((await run('gh', ['api', '--include', url], { encoding: 'buffer', maxBuffer: MAX_BUFFER })).stdout);
+
 /** PR の会話にコメントを投稿し、投稿したコメントの URL を返す。 */
 export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => {
   const posted = (await gh(['pr', 'comment', url, '--body-file', '-'], body)).trim();

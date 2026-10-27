@@ -58,6 +58,9 @@ export type IssueInfo = { url: string; number: number; title: string; state: 'Op
 /** PR そのものを指す URL。サーバーは gh の引数に渡すので、- で始まる値やほかのページを通さない。 */
 export const PR_URL = /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/;
 
+/** PR や Issue に添付した画像や動画の URL。サーバーは gh の引数に渡すので、ほかのページを通さない。 */
+export const GITHUB_ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/;
+
 /** PR の会話のコメントとレビュー。state はレビューの結果（APPROVED など）で、コメントには無い。at は epoch ミリ秒。 */
 export type PrPost = { author: string; body: string; at: number; state?: string };
 

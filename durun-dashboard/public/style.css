@@ -143,6 +143,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .md th { background: var(--surface-2); text-align: left; }
 .md blockquote { padding-left: 0.8em; border-left: 3px solid var(--border-strong); color: var(--text-2); }
 .md hr { border: 0; border-top: 1px solid var(--border); }
+.md img { max-width: 100%; }
 /* JIRA の課題の表は、昔の IE で border="1" を付けた表に見立てる。外枠は浮き出させ、セルはへこませて間を空ける。色はテーマによらず当時の既定にする。 */
 .jira-view .md table { width: max-content; max-width: 100%; border: 1px solid; border-color: #c0c0c0 #808080 #808080 #c0c0c0; border-collapse: separate; border-spacing: 2px; background: #fff; color: #000; font: 12px/1.5 "MS PGothic", "MS UI Gothic", sans-serif; }
 .jira-view .md :is(th, td) { padding: 2px 4px; border: 1px solid; border-color: #808080 #c0c0c0 #c0c0c0 #808080; vertical-align: top; }

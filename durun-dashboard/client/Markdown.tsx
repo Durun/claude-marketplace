@@ -1,12 +1,14 @@
 import type { MarkedToken, Token } from 'marked';
 import { type ComponentChildren, type ComponentType, createContext } from 'preact';
 import { useContext, useState } from 'preact/hooks';
+import { imgOf } from '../shared/html.ts';
+import { GITHUB_ATTACHMENT } from '../shared/types.ts';
 import { lexMarkdown } from './chatLinks.ts';
 import { headLines } from './format.ts';
 import { CopyButton, Ext } from './ui.tsx';
 
 // Claude の発言は信頼できない内容なので、HTML として解釈させずに Preact の要素へ組み直す。
-// 生の HTML は文字のまま出し、リンクは http(s) のものだけを開けるようにする。
+// 生の HTML は文字のまま出す。ただし <img> だけのものは、Markdown の画像と同じに扱う。リンクは http(s) のものだけを開けるようにする。
 
 type Heading = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 
@@ -28,6 +30,14 @@ const PlainText = ({ text }: { text: string }) => {
   return <>{mark ? mark(text) : text}</>;
 };
 
+/**
+ * 外部の画像を勝手に読み込まないよう、リンクとして出す。押すと元の画像を開く。
+ * GitHub の添付だけは画像で出す。非公開のリポジトリの添付も読めるよう、サーバーが gh で読んだものを出す。
+ */
+const ImageLink = ({ src, alt }: { src: string; alt: string }) => (
+  <Ext href={src}>{GITHUB_ATTACHMENT.test(src) ? <img src={`/api/github/image?${new URLSearchParams({ url: src })}`} alt={alt} loading="lazy" /> : alt || src}</Ext>
+);
+
 const Inline = ({ tokens = [] }: { tokens?: Token[] }) => <>{tokens.map((t, i) => <InlineToken key={i} t={t as MarkedToken} />)}</>;
 
 const InlineToken = ({ t }: { t: MarkedToken }) => {
@@ -39,8 +49,11 @@ const InlineToken = ({ t }: { t: MarkedToken }) => {
     case 'br': return <br />;
     // リンクの文には印を付けない。印の下線とリンクの下線が重なって見分けられないため。
     case 'link': return <Ext href={t.href}><MarkTextContext.Provider value={undefined}><Inline tokens={t.tokens} /></MarkTextContext.Provider></Ext>;
-    // 外部の画像を勝手に読み込まないよう、リンクとして出す。
-    case 'image': return <Ext href={t.href}>{t.text || t.href}</Ext>;
+    case 'image': return <ImageLink src={t.href} alt={t.text} />;
+    case 'html': {
+      const img = imgOf(t.text);
+      return img ? <ImageLink {...img} /> : <>{t.raw}</>;
+    }
     case 'checkbox': return <input type="checkbox" checked={t.checked} disabled />;
     case 'text': return t.tokens ? <Inline tokens={t.tokens} /> : <PlainText text={t.text} />;
     case 'escape': return <>{t.text}</>;
@@ -64,7 +77,9 @@ const Block = ({ t }: { t: MarkedToken }) => {
       const H = `h${t.depth}` as Heading;
       return <H><Inline tokens={t.tokens} /></H>;
     }
-    case 'code': case 'html': return <CodeBlock text={t.text} />;
+    case 'code': return <CodeBlock text={t.text} />;
+    // GitHub の画面で貼った画像は、<img> だけの段落になる。
+    case 'html': return imgOf(t.text) ? <p><InlineToken t={t} /></p> : <CodeBlock text={t.text} />;
     case 'blockquote': return <blockquote><Blocks tokens={t.tokens} /></blockquote>;
     case 'list': {
       const List = t.ordered ? 'ol' : 'ul';
