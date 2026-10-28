@@ -187,9 +187,12 @@ const listJobs = async (): Promise<Job[]> => {
   return JSON.parse(stdout) as Job[];
 };
 
-/** claude --bg は「backgrounded · ジョブの id」と書く。そのジョブのセッションの id を返す。 */
+/** claude --bg は、起動したら「backgrounded · ジョブの id」と書く。 */
+const backgroundedJob = (output: string): string | undefined => /backgrounded\W+(\w+)/.exec(output)?.[1];
+
+/** claude --bg が起動したジョブの、セッションの id を返す。 */
 const backgroundedSession = async (output: string): Promise<string | undefined> => {
-  const jobId = /backgrounded\W+(\w+)/.exec(output)?.[1];
+  const jobId = backgroundedJob(output);
   return jobId ? (await listJobs()).find((j) => j.id === jobId)?.sessionId : undefined;
 };
 
@@ -567,6 +570,8 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   let output: string;
   try {
     output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort));
+    // claude はセッションを起動しないまま正常に終わることがある。届いたことにすると、本文がどこにも残らない。
+    if (!backgroundedJob(output)) throw new UpstreamError(output.trim() || 'claude がセッションを起動しませんでした');
   } catch (e) {
     for (const m of pending) Object.assign(m, { deliveredAt: undefined, via: undefined, error: (e as Error).message });
     touch();

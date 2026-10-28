@@ -623,6 +623,19 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });
 
+test('モデルと effort を変えるとき、claude がセッションを起動せずに正常に終わったら、書いた理由で失敗にして、依頼を未配信に戻す', async () => {
+  // 名簿には j14 を載せず、止めたらすぐ止まり終えたことにする。
+  fs.writeFileSync(path.join(tmp, 'claude', 'daemon', 'roster.json'), JSON.stringify({ workers: {} }));
+  useFakeClaude(path.join(tmp, 'bin-switch-none'), `if (args[0] === '--bg') console.log('起動できませんでした');`);
+  fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's14.json'), JSON.stringify({ pid: process.pid, sessionId: 's14', cwd: tmp, status: 'idle', kind: 'bg', jobId: 'j14' }));
+  ensureSession('s14', tmp);
+
+  await assert.rejects(switchSession('s14', '書き込んで', 'opus', 'high'), (e: Error) => e instanceof UpstreamError && e.message === '起動できませんでした');
+  const sent = state.outbox.find((m) => m.text === '書き込んで');
+  assert.deepEqual([sent?.sessionId, sent?.deliveredAt, sent?.error], ['s14', undefined, '起動できませんでした']);
+  assert.equal(state.sessions.s14?.archived, false);
+});
+
 test('分岐するときは、元のセッションを止めずに --fork-session を付けて再開し、分岐先にテーマと JIRA の課題を付けて、渡した依頼を記録する', async () => {
   // 偽の claude は呼ばれた引数を書き足す。分岐は、新しいジョブ j12 を起動したと書く。agents は、作業中の元の j11 と分岐先の j12 を返す。
   const bin = path.join(tmp, 'bin-fork');
