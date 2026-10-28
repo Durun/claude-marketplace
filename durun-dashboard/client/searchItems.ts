@@ -1,5 +1,5 @@
-// 検索窓（Cmd/Ctrl + K）に並べる候補。画面にあるデータはその場で語に当たるものに絞り、会話ログはサーバーの検索の結果から作る。
-import type { SearchResponse, SessionStatus, Snapshot, WaitingFor } from '../shared/types.ts';
+// 検索窓（Cmd/Ctrl + K）に並べる候補。画面にあるデータと、JIRA の課題と PR の一覧はその場で語に当たるものに絞り、会話ログはサーバーの検索の結果から作る。
+import type { InboxSection, JiraIssue, SearchResponse, SessionStatus, Snapshot, WaitingFor } from '../shared/types.ts';
 import { dateTime } from './format.ts';
 import { KIND_LABEL } from './notify.ts';
 import { attentionHref, href } from './router.ts';
@@ -56,6 +56,37 @@ export const localGroups = (snapshot: Snapshot | null, q: string): SearchGroup[]
         .map((d) => ({ key: `doc:${d.id}`, label: d.title, sub: joined(names.get(d.sessionId), dateTime(d.createdAt)), href: href.doc(d.id) })),
     },
     { title: '画面', items: PAGES.filter((p) => hit(p.label)) },
+  ];
+  return groups.map((g) => ({ ...g, items: g.items.slice(0, MAX_PER_GROUP) })).filter((g) => g.items.length > 0);
+};
+
+/** PR の URL のうち、owner/repo の部分。 */
+const repoOf = (url: string): string => url.split('/').slice(3, 5).join('/');
+
+/**
+ * JIRA の課題と PR。セッションのバッジにあるものを、セッションが新しい順に先に並べ、補完に出す JIRA の課題と GitHub Inbox の PR を後に続ける。
+ * href は課題や PR そのものの URL で、選ぶと、リンクを押したときと同じくダッシュボードで開く。何か打つまでは出さない。
+ */
+export const refGroups = (snapshot: Snapshot | null, q: string, issues: JiraIssue[] = [], inbox: InboxSection[] = []): SearchGroup[] => {
+  if (!q) return [];
+  const hit = matcher(q);
+  const sessions = (snapshot?.sessions ?? []).toSorted((a, b) => b.updatedAt - a.updatedAt);
+  // 同じものは、先に並べた位置に残る。
+  const jira = new Map([...sessions.flatMap((s) => s.jira), ...issues].map((j) => [j.key, j]));
+  const prs = new Map([...sessions.flatMap((s) => s.prs ?? []), ...inbox.flatMap((s) => s.prs)].map((p) => [p.url, p]));
+  const groups: SearchGroup[] = [
+    {
+      title: 'JIRA',
+      items: [...jira.values()]
+        .filter((j) => hit(j.key, j.summary))
+        .map((j) => ({ key: `jira:${j.key}`, label: j.summary ? `${j.key} ${j.summary}` : j.key, sub: j.status, href: j.url })),
+    },
+    {
+      title: 'PR',
+      items: [...prs.values()]
+        .filter((p) => hit(`#${p.number} ${p.title}`, repoOf(p.url)))
+        .map((p) => ({ key: `pr:${p.url}`, label: `#${p.number} ${p.title}`, sub: repoOf(p.url), href: p.url })),
+    },
   ];
   return groups.map((g) => ({ ...g, items: g.items.slice(0, MAX_PER_GROUP) })).filter((g) => g.items.length > 0);
 };

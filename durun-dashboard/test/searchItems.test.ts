@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { localGroups, logGroup } from '../client/searchItems.ts';
-import type { SearchResponse, Snapshot } from '../shared/types.ts';
+import { localGroups, logGroup, refGroups } from '../client/searchItems.ts';
+import type { InboxSection, JiraIssue, SearchResponse, Snapshot } from '../shared/types.ts';
 
 const session = (id: string, name: string, updatedAt: number, extra = {}) => ({ id, name, theme: '', repo: 'app', cwd: `/repo/${id}`, status: 'idle', updatedAt, jira: [], ...extra });
 
@@ -42,4 +42,24 @@ test('会話ログで当たったセッションは、一覧にあれば概要�
     ['古いセッション', '依頼', '#/search/favicon'],
     ['「favicon」をすべての会話ログから探す', undefined, '#/search/favicon'],
   ]);
+});
+
+test('JIRA の課題と PR は、セッションのバッジにあるものを先に、補完の課題と GitHub Inbox の PR を後に並べて同じものを 1 つにまとめ、何か打つまでは出さない', () => {
+  const pr = (repo: string, number: number, title: string) => ({ url: `https://github.com/${repo}/pull/${number}`, repo, number, title, author: 'someone', updatedAt: 1 });
+  const jira = (key: string, summary: string, status?: string) => ({ key, url: `https://jira.example/browse/${key}`, summary, status });
+  const refs = {
+    sessions: [
+      session('a', 'favicon の保存先', 1, { jira: [jira('WEB-1', 'favicon を直す', '進行中')], prs: [pr('o/app', 1, 'favicon を直す')] }),
+      session('b', 'CDN の設定', 2, { jira: [jira('WEB-2', 'favicon を CDN に載せる')] }),
+    ],
+  } as unknown as Snapshot;
+  const issues: JiraIssue[] = [jira('WEB-1', 'favicon を直す', '完了'), jira('WEB-3', 'ログの整理')];
+  const inbox: InboxSection[] = [{ title: 'Needs your review', prs: [pr('o/app', 1, 'favicon を直す'), pr('o/web', 9, 'Favicon の色')] }];
+  const found = (q: string) => refGroups(refs, q, issues, inbox).map((g) => [g.title, g.items.map((i) => [i.label, i.sub, i.href])]);
+  assert.deepEqual(found(''), []);
+  assert.deepEqual(found('favicon'), [
+    ['JIRA', [['WEB-2 favicon を CDN に載せる', undefined, 'https://jira.example/browse/WEB-2'], ['WEB-1 favicon を直す', '完了', 'https://jira.example/browse/WEB-1']]],
+    ['PR', [['#1 favicon を直す', 'o/app', 'https://github.com/o/app/pull/1'], ['#9 Favicon の色', 'o/web', 'https://github.com/o/web/pull/9']]],
+  ]);
+  assert.deepEqual(found('FAVICON o/web'), [['PR', [['#9 Favicon の色', 'o/web', 'https://github.com/o/web/pull/9']]]]);
 });

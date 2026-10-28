@@ -1,10 +1,10 @@
-// Cmd/Ctrl + K かメニューの「検索」で開く検索窓。セッション、要対応、資料、画面、会話ログから探し、選んだものの画面へ移る。
+// Cmd/Ctrl + K かメニューの「検索」で開く検索窓。セッション、要対応、資料、JIRA の課題、PR、画面、会話ログから探し、選んだものを開く。
 import type { Dispatch, StateUpdater } from 'preact/hooks';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { SearchResponse, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
-import { useFetch } from './hooks.ts';
-import { type SearchItem, localGroups, logGroup } from './searchItems.ts';
+import { useCached, useFetch } from './hooks.ts';
+import { type SearchItem, localGroups, logGroup, refGroups } from './searchItems.ts';
 import { SEARCH_SHORTCUT, isShortcut } from './shortcut.ts';
 import { StatusBadge } from './ui.tsx';
 
@@ -29,14 +29,22 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
   const query = q.trim();
   const logQuery = useDebounced(query, LOG_SEARCH_DELAY_MS);
   const logs = useFetch(() => (logQuery ? api.search(logQuery) : Promise.resolve(NO_RESULTS)), [logQuery]);
+  const issues = useCached(api.jiraRefs, []);
+  const inbox = useCached(api.githubInbox, []);
   const note = logs.loading || logQuery !== query ? '探しています…' : logs.error && `探せませんでした（${logs.error}）`;
-  const groups = [...localGroups(snapshot, query), ...(query ? [{ ...logGroup(snapshot, query, logs.data), note }] : [])];
+  const groups = [
+    ...localGroups(snapshot, query),
+    ...refGroups(snapshot, query, issues.data, inbox.data),
+    ...(query ? [{ ...logGroup(snapshot, query, logs.data), note }] : []),
+  ];
   const items = groups.flatMap((g) => g.items);
   // 会話ログの結果が届くと候補の数が変わるので、選んでいる位置を候補の中に収める。
   const current = Math.min(active, items.length - 1);
   useLayoutEffect(() => list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }), [current]);
   const go = (item: SearchItem | undefined) => {
     if (!item) return;
+    // PR と JIRA の課題は、リンクを押したときの処理にダッシュボードのウィンドウで開かせるため、候補を押す。
+    if (!item.href.startsWith('#')) return list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.click();
     location.hash = item.href;
     onClose();
   };
@@ -59,7 +67,7 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
         aria-controls="quick-list"
         aria-autocomplete="list"
         aria-activedescendant={items[current] && `quick-${current}`}
-        placeholder="セッション、要対応、資料、会話ログを探す"
+        placeholder="セッション、要対応、資料、JIRA、PR、会話ログを探す"
         autoFocus
         value={q}
         onInput={(e) => {
@@ -77,9 +85,11 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
             </div>
             {g.items.map((it) => {
               const i = items.indexOf(it);
+              // PR と JIRA の課題は、ダッシュボードのウィンドウで開けなかったときに、このタブを移らず別のタブで開く。
+              const target = it.href.startsWith('#') ? undefined : '_blank';
               return (
                 // フォーカスは入力欄に残し、Tab で候補へ移らないようにする。
-                <a key={it.key} id={`quick-${i}`} class="quick-item" role="option" aria-selected={i === current} tabIndex={-1} href={it.href} onMouseMove={() => setActive(i)} onClick={onClose}>
+                <a key={it.key} id={`quick-${i}`} class="quick-item" role="option" aria-selected={i === current} tabIndex={-1} href={it.href} target={target} rel="noopener noreferrer" onMouseMove={() => setActive(i)} onClick={onClose}>
                   <span class="quick-label">{it.label}</span>
                   {it.status && <StatusBadge status={it.status} waitingFor={it.waitingFor} />}
                   {it.sub && <span class="quick-sub">{it.sub}</span>}
