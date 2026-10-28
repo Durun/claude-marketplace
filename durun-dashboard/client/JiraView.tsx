@@ -1,6 +1,6 @@
 // JIRA の課題を、本文とコメントとともに読み、コメントを投稿する。
 // セッションの課題はセッション内の「JIRA」ウィジェットで、ほかの課題はウィンドウに浮かべて開く。
-import { useId, useState } from 'preact/hooks';
+import { useEffect, useId, useState } from 'preact/hooks';
 import type { JiraDetail, JiraTransition, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -22,22 +22,28 @@ const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new
 
 const CHILD_FIELDS = new Set(['assignee', 'priority']);
 
-/** ステータスを押すと、課題を読んだときに JIRA が返した移せる先を並べる。選ぶと、そのトランジションで移してから課題を読み直す。 */
+/**
+ * ステータスを押すと、課題を読んだときに JIRA が返した移せる先を並べる。選ぶと、そのトランジションで移してから課題を読み直す。
+ * JIRA は移し終えるまで数秒かかることがあるので、選んだ先を待たずに出す。移せなかったら元のステータスに戻す。
+ */
 const StatusMenu = ({ issue, onMoved }: { issue: JiraDetail; onMoved: () => void }) => {
   const id = useId();
-  const [busy, setBusy] = useState(false);
+  // done は JIRA が移し終えたこと。読み直した課題が届くまでは課題のステータスも移せる先も古いので、選んだ先を出したまま選ばせない。
+  const [moving, setMoving] = useState<{ to: JiraTransition; done?: boolean }>();
+  useEffect(() => setMoving((m) => (m?.done ? undefined : m)), [issue]);
   const move = async (t: JiraTransition) => {
-    setBusy(true);
+    setMoving({ to: t });
     const done = await attempt('ステータスの変更', () => api.jiraTransition(issue.key, t.id).then(() => true));
-    setBusy(false);
+    setMoving(done ? { to: t, done } : undefined);
     if (!done) return;
     toast(`${issue.key} を「${t.status}」にしました`);
     onMoved();
   };
+  const shown = moving?.to ?? issue;
   return (
     <span class="jira-status">
-      <button class="jira-status-button" popovertarget={id} disabled={busy} title="押すと、ステータスを変えられます">
-        <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>
+      <button class="jira-status-button" popovertarget={id} disabled={!!moving} title="押すと、ステータスを変えられます">
+        <Chip tone={CATEGORY_TONE[shown.statusCategory ?? '']}>{shown.status}</Chip>
       </button>
       <div id={id} class="jira-status-menu" popover>
         {issue.transitions.length === 0 && <p class="jira-status-note">移せるステータスはありません。</p>}
