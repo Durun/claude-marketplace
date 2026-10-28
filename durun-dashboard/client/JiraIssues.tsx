@@ -1,6 +1,6 @@
 // ダッシュボードの「JIRA Issues」ウィジェット。設定した JQL で JIRA の課題を探して並べる。
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { JIRA_MAX_RESULTS, type JiraIssue } from '../shared/types.ts';
+import { JIRA_LIST_MAX, type JiraIssue } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
@@ -61,7 +61,7 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
       </label>
       <label class="inline-field">
         表示する件数
-        <input class="input input-sm jira-max" type="number" min={1} max={JIRA_MAX_RESULTS} required value={max} onInput={(e) => setMax(e.currentTarget.value)} />
+        <input class="input input-sm jira-max" type="number" min={1} max={JIRA_LIST_MAX} required value={max} onInput={(e) => setMax(e.currentTarget.value)} />
       </label>
       <fieldset class="jira-fields">
         <legend>表示する属性</legend>

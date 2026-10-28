@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_MAX_RESULTS, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -515,11 +515,11 @@ const prNotes = async (id: string, body: unknown): Promise<PrNotes> => {
   return notesFor(tree, pr, threads);
 };
 
-/** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は JIRA が 1 回で返せる範囲に収め、無ければ上限まで返す。 */
+/** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は JIRA_LIST_MAX までに収め、無ければ上限まで返す。 */
 const jiraSearch = async (url: URL): Promise<JiraIssue[]> => {
   const jql = url.searchParams.get('jql')?.trim();
   if (!jql) throw new HttpError(400, 'jql is required');
-  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_MAX_RESULTS, 1), JIRA_MAX_RESULTS);
+  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_LIST_MAX, 1), JIRA_LIST_MAX);
   try {
     return await jiraList(jql, max);
   } catch (e) {

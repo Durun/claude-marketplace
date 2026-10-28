@@ -136,8 +136,8 @@ export const notionPageId = (u: URL): string | undefined => {
   return /[0-9a-f]{32}$/i.exec(last.replaceAll('-', ''))?.[0].toLowerCase();
 };
 
-/** JIRA の検索が 1 回で返せる件数の上限。 */
-export const JIRA_MAX_RESULTS = 100;
+/** JIRA Issues のウィジェットに並べられる件数の上限。 */
+export const JIRA_LIST_MAX = 1000;
 
 export type TokenTotals = { input: number; output: number; cacheRead: number; cacheCreation: number };
 

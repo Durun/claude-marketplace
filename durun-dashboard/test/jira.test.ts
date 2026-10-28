@@ -34,6 +34,23 @@ test('searchJira は、JQL の誤りを JIRA が返した理由で投げる', as
   await assert.rejects(searchJira('foo = =', 5), /JQL クエリのエラー/);
 });
 
+test('searchJira は、JIRA が 1 回に返す件数を絞っても、max 件に届くか課題が尽きるまで続きのページを読む', async (t) => {
+  const keys = ['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-4', 'PROJ-5'];
+  const asked: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    const q = new URL(url).searchParams;
+    asked.push(`${q.get('nextPageToken')} ${q.get('maxResults')}`);
+    // 1 回に 2 件までしか返さず、続きの位置を nextPageToken で渡す JIRA。
+    const from = Number(q.get('nextPageToken') ?? 0);
+    const to = Math.min(from + 2, from + Number(q.get('maxResults')), keys.length);
+    return Response.json({ issues: keys.slice(from, to).map((key) => ({ key })), nextPageToken: to < keys.length ? String(to) : undefined });
+  });
+  assert.deepEqual((await searchJira('project = PROJ', 3)).map((j) => j.key), keys.slice(0, 3));
+  assert.deepEqual(asked.splice(0), ['null 3', '2 1']);
+  assert.deepEqual((await searchJira('project = PROJ', 10)).map((j) => j.key), keys);
+  assert.deepEqual(asked, ['null 10', '2 8', '4 6']);
+});
+
 test('jiraRefs は、自分が担当者か起票者の課題があるスペースごとに、自分の課題、ほかの課題の順に、それぞれ更新が新しい順で並べる', async (t) => {
   const mine = 'assignee = currentUser() OR reporter = currentUser()';
   const found: Record<string, string[]> = {

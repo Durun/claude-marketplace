@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, JIRA_MAX_RESULTS, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -519,19 +519,30 @@ type JiraSearchBody = {
       duedate?: string | null;
     };
   }[];
+  nextPageToken?: string;
   errorMessages?: string[];
 };
 
 const SEARCH_FIELDS = 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate';
 
-/** JQL で課題を探す。fields で読む項目を絞れる。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。 */
+/**
+ * JQL で課題を探す。fields で読む項目を絞れる。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。
+ * JIRA は 1 回に返す件数を絞るので、max 件に届くか課題が尽きるまで、続きのページを読む。
+ */
 export const searchJira = async (jql: string, max: number, fields = SEARCH_FIELDS): Promise<JiraIssue[]> => {
   if (!JIRA_BASE || !JIRA_AUTH) throw new Error('~/.durun-dashboard/.env.local に JIRA_BASE_URL、JIRA_EMAIL、JIRA_API_TOKEN を設定してください');
-  const query = new URLSearchParams({ jql, maxResults: String(max), fields });
-  const res = await fetch(`${JIRA_BASE}/rest/api/3/search/jql?${query}`, { headers: { authorization: JIRA_AUTH, accept: 'application/json' } });
-  const body = (await res.json().catch(() => ({}))) as JiraSearchBody;
-  if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
-  return (body.issues ?? []).map(({ key, fields: f }) => ({
+  const issues: NonNullable<JiraSearchBody['issues']> = [];
+  let nextPageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({ jql, maxResults: String(max - issues.length), fields });
+    if (nextPageToken) query.set('nextPageToken', nextPageToken);
+    const res = await fetch(`${JIRA_BASE}/rest/api/3/search/jql?${query}`, { headers: { authorization: JIRA_AUTH, accept: 'application/json' } });
+    const body = (await res.json().catch(() => ({}))) as JiraSearchBody;
+    if (!res.ok) throw new Error(body.errorMessages?.join(' ') || `HTTP ${res.status}`);
+    issues.push(...(body.issues ?? []));
+    nextPageToken = body.nextPageToken;
+  } while (nextPageToken && issues.length < max);
+  return issues.map(({ key, fields: f }) => ({
     key,
     url: browseUrl(key),
     summary: f?.summary,
@@ -553,6 +564,8 @@ export const jiraList = (jql: string, max: number): Promise<JiraIssue[]> => cach
 const JIRA_MINE = 'assignee = currentUser() OR reporter = currentUser()';
 // JIRA の検索は、キーだけなら 1 回でこの件数まで返す。古い課題しか無いスペースも数えるよう、自分の課題はキーだけをこの件数まで読む。
 const JIRA_KEYS_MAX = 5000;
+// JIRA の検索は、ほかの項目も読むと 1 回にこの件数まで返す。
+const JIRA_MAX_RESULTS = 100;
 
 /**
  * JIRA のキーの補完に出す課題。自分が担当者か起票者の課題が 1 つ以上あるスペースごとに、自分の課題、ほかの課題の順に、それぞれ更新が新しい順で並べる。
