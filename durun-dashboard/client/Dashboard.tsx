@@ -21,6 +21,7 @@ import {
   keepTabs,
   kindOf,
   mergeInto,
+  moveTab,
   moveWidget,
   placementAt,
   readingOrder,
@@ -165,9 +166,25 @@ const DRAG_START = 4;
 type Move = { start: Layout; p: Placement; tab?: Tab; x: number; y: number; dragging: boolean; at: string; drop?: Layout };
 
 /**
+ * 指した位置が枠のタブの列の上なら、ドラッグしている tab を入れる位置を、ほかのタブのうち前から数えた数で返す。
+ * ほかのタブの中央と比べるので、幅の違うタブを越えた直後に元の位置へ戻らない。
+ */
+const tabIndexAt = (widget: HTMLElement, tab: string, e: PointerEvent): number | undefined => {
+  const strip = widget.querySelector('.widget-tabs');
+  if (!strip) return undefined;
+  const r = strip.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) return undefined;
+  return [...strip.querySelectorAll<HTMLElement>('.widget-tab')].filter((el) => {
+    const b = el.getBoundingClientRect();
+    return el.dataset.tab !== tab && b.left + b.width / 2 < e.clientX;
+  }).length;
+};
+
+/**
  * 見出しのドラッグで枠を動かす操作。押した位置からの移動量を升目の数に丸め、押したときの配置から置き直す。
  * 指した先がほかの枠なら、動かさずに、離したときにタブとして重ねる。
  * タブを並べた枠でタブを押してドラッグしたときは、そのタブだけを離した場所へ移す。空いているところなら新しい枠にする。
+ * 同じ枠のタブの列の上では、移さずに、指した位置へ並べ替える。
  * 押し出した枠がグリッドの下端をはみ出す位置には動かさず、最後に収まった位置で止める。
  */
 const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: Layout) => void, sizeOf: (t: Tab) => Size | undefined) => {
@@ -196,6 +213,15 @@ const useMove = (grid: RefObject<HTMLElement>, layout: Layout, update: (next: La
         // 動かし始めてから捕まえる。押してすぐ捕まえると、クリックがタブに届かず選べない。
         m.dragging = true;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+      const index = m.tab && tabIndexAt(e.currentTarget as HTMLElement, m.tab.id, e);
+      if (m.tab && index !== undefined) {
+        // 列を出たときに置く先を測り直すよう、覚えた升目を忘れる。
+        m.at = '';
+        m.drop = undefined;
+        setGhost(undefined);
+        if (p.tabs[index]?.id !== m.tab.id) update(moveTab(layout, m.tab.id, index));
+        return;
       }
       const cell = cellAt(grid.current, e);
       const { col, row } = pitchOf(grid.current);
@@ -331,7 +357,7 @@ const EditBar = ({ widgets, placing, onAdd, onCancel, onReset, onDone }: EditBar
     {placing === undefined ? (
       <>
         <span id="dashboard-help" class="help">
-          見出しをドラッグして動かし、辺や角で大きさを変え、× で外します。ほかのウィジェットの上で離すとタブとして重ね、タブを空いているところへドラッグすると単独に戻します。キーボードではウィジェットを選んで矢印キーで動かし、Shift と矢印キーで大きさを変えます。
+          見出しをドラッグして動かし、辺や角で大きさを変え、× で外します。ほかのウィジェットの上で離すとタブとして重ねます。タブは、並びの中でドラッグすると並べ替え、空いているところへドラッグすると単独に戻します。キーボードではウィジェットを選んで矢印キーで動かし、Shift と矢印キーで大きさを変えます。
         </span>
         <span class="spacer" />
         {/* 一覧の外を押すか Esc で閉じるモーダルで開く。選んだら、置く場所を押してもらう。 */}
@@ -488,7 +514,8 @@ const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, ed
               ))}
             </div>
           </div>
-          {p.tabs.map((t) => (
+          {/* 要素を動かすと中のスクロールの位置が戻るので、中身はタブの並びでなく id の順に並べ、タブを並べ替えても動かさない。 */}
+          {p.tabs.toSorted((a, b) => a.id.localeCompare(b.id)).map((t) => (
             <div key={t.id} class="widget-tab-panel" role="tabpanel" hidden={t !== active}>
               {body(t)}
             </div>

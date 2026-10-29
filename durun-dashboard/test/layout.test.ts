@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLS, ROWS, addWidget, dropTab, fitRect, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
+import { COLS, ROWS, addWidget, dropTab, fitRect, freeApps, fromSaved, keepTabs, mergeInto, moveTab, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
 import { uniqueName } from '../client/dashboards.ts';
 
 test('重なったウィジェットを順に下へ押し出し、配列の順と、グリッドに収まる位置と大きさを保つ', () => {
@@ -92,6 +92,13 @@ test('枠を別の枠へ重ねると、タブをすべて移して選んでい�
   assert.deepEqual(mergeInto([main, side], 'main', 'side'), [{ ...side, tabs: [{ id: 'usage' }, { id: 'chat' }, { id: 'code' }], active: 'code' }]);
   assert.deepEqual(mergeInto([main, side], 'side', 'main'), [{ ...main, tabs: [...main.tabs, { id: 'usage' }], active: 'usage' }]);
   assert.deepEqual(mergeInto([main, side], 'main', 'none'), [main, side]);
+});
+
+test('タブは同じ枠の中で、ほかのタブのうち前から数えた位置へ動かし、選んでいるタブとほかの枠は変えない', () => {
+  const main = { id: 'main', x: 0, y: 0, w: 10, h: 8, tabs: [{ id: 'chat' }, { id: 'code' }, { id: 'usage' }], active: 'code' };
+  const side = { id: 'side', x: 10, y: 0, w: 4, h: 4, tabs: [{ id: 'jira' }] };
+  assert.deepEqual(moveTab([main, side], 'chat', 2), [{ ...main, tabs: [{ id: 'code' }, { id: 'usage' }, { id: 'chat' }] }, side]);
+  assert.deepEqual(moveTab([main, side], 'usage', 0), [{ ...main, tabs: [{ id: 'usage' }, { id: 'chat' }, { id: 'code' }] }, side]);
 });
 
 test('前の形で保存した配置は、升目を 2 倍にし、「タブ」のウィジェットを、選んでいた種類を重ねた枠に直す', () => {

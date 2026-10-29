@@ -138,6 +138,13 @@ export const mergeInto = (layout: Layout, from: string, to: string): Layout => {
   return layout.flatMap((p) => (p.id === from ? [] : p.id === to ? [{ ...p, tabs: [...p.tabs, ...src.tabs], active }] : [p]));
 };
 
+/** tab を、同じ枠のほかのタブのうち前から index 個の後ろへ動かす。 */
+export const moveTab = (layout: Layout, tab: string, index: number): Layout =>
+  layout.map((p) => {
+    const t = p.tabs.find((x) => x.id === tab);
+    return t ? { ...p, tabs: p.tabs.filter((x) => x !== t).toSpliced(index, 0, t) } : p;
+  });
+
 /** 前の形の配置。升目は今の半分の細かさで数え、タブは「タブ」のウィジェットの設定に、入れる種類と、中のウィジェットの設定（「s:種類」の JSON）を持つ。 */
 type SavedBefore = Box & { settings?: WidgetSettings };
 
