@@ -142,11 +142,24 @@ const AskBody = ({ a }: { a: Attention }) => {
   );
 };
 
+const AllowButton = ({ id }: { id: string }) => {
+  const [busy, setBusy] = useState(false);
+  const click = async () => {
+    setBusy(true);
+    if (await attempt('許可', () => api.allow(id).then(() => true))) toast('許可しました');
+    setBusy(false);
+  };
+  return <button class="btn btn-primary" disabled={busy} onClick={click}>許可</button>;
+};
+
+/** Claude Code がフックで答えを待っている権限の確認は、ダッシュボードから許可できる。拒否するときは、端末か claude.ai/code で答えてもらう。 */
 const PermissionBody = ({ a, session }: { a: Attention; session?: Session }) => (
   <>
     <Body id={a.sessionId} text={a.body} />
+    {a.detail && <pre class="att-detail">{a.detail}</pre>}
     <Actions>
-      {session?.remoteUrl && <Ext class="btn btn-primary" href={session.remoteUrl}>claude.ai/code で開く</Ext>}
+      {a.allowable && <AllowButton id={a.id} />}
+      {session?.remoteUrl && <Ext class={a.allowable ? 'btn' : 'btn btn-primary'} href={session.remoteUrl}>claude.ai/code で開く</Ext>}
       <DismissButton id={a.id} />
     </Actions>
   </>

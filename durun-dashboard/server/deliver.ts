@@ -1,5 +1,6 @@
 // 人間から Claude へのメッセージを届ける。
-// MCP のツールで待っている Claude には直接返し、止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
+// MCP のツールで待っている Claude には直接返し、フックで権限の確認を待っている Claude Code には、人間が許可したら許可を返す。
+// 止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
 // 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
 // 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消し、消せなかったものは後で消し直す。
 // 作業中にアーカイブしたセッションは、止めずに入力待ちか停止になるのを待ってからアーカイブする。
@@ -9,7 +10,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
@@ -43,6 +44,40 @@ export const isWaiting = (attentionId: string): boolean => waiters.has(attention
 
 /** 今のセッションの状態ではできない操作の失敗。ダッシュボードの不具合ではないので、改善要望にはしない。 */
 export class SessionStateError extends Error {}
+
+/**
+ * フックで権限の確認の答えを待っている Claude Code。要対応の id ごとに、確認を求めたツールの呼び出しと、フックに答える関数を持つ。
+ * answer(true) で許可を返し、answer(false) は何も返さずに Claude Code の確認の画面に任せる。
+ */
+export type PermissionWait = { sessionId: string; tool?: string; input?: unknown; answer: (allow: boolean) => void };
+const permissionWaits = new Map<string, PermissionWait>();
+
+export const waitForPermission = (attentionId: string, wait: PermissionWait): void => {
+  permissionWaits.set(attentionId, wait);
+};
+
+/** フックが打ち切られて答えを返せなくなったら呼ぶ。待っていたら true を返す。 */
+export const forgetPermission = (attentionId: string): boolean => permissionWaits.delete(attentionId);
+
+export const isAllowable = (attentionId: string): boolean => permissionWaits.has(attentionId);
+
+const settlePermission = (attentionId: string, allow: boolean): void => {
+  permissionWaits.get(attentionId)?.answer(allow);
+  permissionWaits.delete(attentionId);
+  removeAttention(attentionId);
+};
+
+export const allowPermission = (attentionId: string): void => {
+  if (!permissionWaits.has(attentionId)) throw new SessionStateError('Claude Code はもうこの権限の確認を待っていません');
+  settlePermission(attentionId, true);
+};
+
+/** 端末や claude.ai/code で答え終えた権限の確認を、フックに何も返さずに片付ける。call を渡すと、そのツールの呼び出しへの確認だけを片付ける。 */
+export const releasePermissions = (sessionId: string, call?: Pick<PermissionWait, 'tool' | 'input'>): void => {
+  for (const [id, w] of permissionWaits) {
+    if (w.sessionId === sessionId && (!call || (w.tool === call.tool && isDeepStrictEqual(w.input, call.input)))) settlePermission(id, false);
+  }
+};
 
 const joinTexts = (msgs: OutboxMessage[]): string => msgs.map((m) => m.text).join('\n---\n');
 

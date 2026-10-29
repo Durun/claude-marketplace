@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, recordRateLimits, saveLogSummaries, summarizeLog } from './claude.ts';
-import { answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { allowPermission, answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -24,7 +24,7 @@ import { OLD_GOOGLE_HOME, fetchGoogle, fetchLucky } from './google.ts';
 import { recordError, recordSlow } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
-import { handleHook, type HookInput } from './hooks.ts';
+import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
@@ -1147,6 +1147,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/pr-notes$/, ([, id = ''], b) => prNotes(id, b), READER_MS],
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
+  [/^\/api\/attention\/([^/]+)\/allow$/, ([, id = '']) => allowPermission(id)],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
   [/^\/api\/queue\/([^/]+)\/send$/, ([, id = '']) => ({ delivery: sendQueued(findQueued(id)) })],
@@ -1283,6 +1284,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
   // JSON ではなく画像そのものを受けるので、ほかの POST より先に本文を読む。
   if (req.method === 'POST' && url.pathname === '/api/wallpaper') return uploadWallpaper(req, res);
   if (req.method === 'POST' && url.pathname === '/api/proofread') return proofreadStream(req, res);
+  // 人間が許可するか、Claude Code が確認を終えるまで応答しないので、遅い応答として数えない。
+  if (req.method === 'POST' && url.pathname === '/api/hook/permission') return holdPermission(res, (await readBody(req)) as HookInput);
   if (req.method === 'GET' && url.pathname === '/api/favicon') return sendFavicon(req, res, url);
   if (req.method === 'GET' && url.pathname === '/api/github/attachment') return sendGithubAttachment(req, res, url);
   // 端末でコマンドを動かすので、ほかのサイトの img などから GET で起こされないよう、ダッシュボードの画面からの接続に限る。

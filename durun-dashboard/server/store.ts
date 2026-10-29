@@ -79,6 +79,8 @@ export type StoredAttention = {
   options?: string[];
   descriptions?: string[];
   questions?: AskedQuestion[];
+  /** 権限の確認で、Claude Code が使おうとしているツールの入力 */
+  detail?: string;
   /** レビュー依頼で、Claude が見てほしいコミットの範囲 */
   range?: DiffRange;
   createdAt: number;

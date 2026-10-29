@@ -952,6 +952,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 /* 説明を添えた選択肢は、説明を読めるよう 1 つずつ行を分け、説明を見出しの下に小さく出す。 */
 .att-option:has(> .att-option-desc) { flex-basis: 100%; flex-direction: column; align-items: flex-start; gap: 2px; }
 .att-option-desc { font-size: 12px; opacity: 0.75; }
+/* 権限の確認で許可するツールの入力。チャットのツールの呼び出しと同じく JSON のまま見せる。 */
+.att-detail { margin: 0; padding: 8px; max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .session-card { position: relative; display: grid; gap: 6px; padding: 10px 12px; }
 .session-card:hover { border-color: var(--border-strong); background: var(--surface-2); }

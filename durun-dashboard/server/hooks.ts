@@ -1,9 +1,10 @@
-// Claude Code のフックを受ける。要対応を記録し、人間に送ったファイルを資料に足し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決める。
+// Claude Code のフックを受ける。要対応を記録し、人間に送ったファイルを資料に足し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決め、権限の確認に人間の許可を返す。
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
-import { dropStaleRequests } from './deliver.ts';
+import { dropStaleRequests, forgetPermission, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
@@ -48,10 +49,13 @@ const pidSessions = new Map<number, string>();
 
 export const sessionIdForPid = (pid: number): string | undefined => pidSessions.get(pid);
 
-/** Claude Code の画面で人間の操作を待っている要対応。セッションごとに最後の 1 件だけを持つ。 */
-const isDialog = (a: StoredAttention, sessionId: string): boolean => a.sessionId === sessionId && (a.kind === 'permission' || a.kind === 'question');
+/**
+ * Claude Code の画面で人間の操作を待っている要対応。セッションごとに最後の 1 件だけを持つ。
+ * フックで答えを待っている権限の確認は含めない。確認ごとに持ち、settleAnswered が答え終えたものを片付ける。
+ */
+const isDialog = (a: StoredAttention, sessionId: string): boolean => a.sessionId === sessionId && (a.kind === 'permission' || a.kind === 'question') && !isAllowable(a.id);
 
-type Dialog = Pick<StoredAttention, 'kind' | 'title' | 'body' | 'options' | 'descriptions' | 'questions'>;
+type Dialog = Pick<StoredAttention, 'kind' | 'title' | 'body' | 'detail' | 'options' | 'descriptions' | 'questions'>;
 
 const toDialog = (q: ReturnType<typeof questionDialog>): Dialog | undefined => q && { kind: 'question', title: '質問', ...q };
 
@@ -61,10 +65,12 @@ const questionOf = (meta: SessionMeta): Dialog | undefined => {
   return log?.lastToolUse === ASK_TOOL ? toDialog(questionDialog(log.lastQuestions ?? [])) : undefined;
 };
 
-const pushDialog = (meta: SessionMeta, dialog: Dialog, replaces: (a: StoredAttention) => boolean): void => {
+const pushDialog = (meta: SessionMeta, dialog: Dialog, replaces: (a: StoredAttention) => boolean): string => {
+  const id = newId();
   state.attention = state.attention.filter((a) => !replaces(a));
-  state.attention.push({ id: newId(), sessionId: meta.id, ...dialog, createdAt: Date.now() });
+  state.attention.push({ id, sessionId: meta.id, ...dialog, createdAt: Date.now() });
   touch();
+  return id;
 };
 
 /**
@@ -78,6 +84,7 @@ const recordQuestion = (meta: SessionMeta, input: HookInput): void => {
 
 /**
  * Claude Code は AskUserQuestion の質問で止まったときも、権限の確認として通知する。記録済みの質問があれば、その通知なので質問を残す。
+ * フックで記録した権限の確認があれば、ツールの入力まで見せているので、同じ確認の通知では足さない。
  * サブエージェントの権限の確認は、質問と並べて記録する。
  */
 const recordNotification = (meta: SessionMeta, input: HookInput): void => {
@@ -86,9 +93,20 @@ const recordNotification = (meta: SessionMeta, input: HookInput): void => {
   if (input.notification_type === 'permission_prompt') {
     if (state.attention.some((a) => isDialog(a, meta.id) && a.kind === 'question')) return;
     const question = questionOf(meta);
-    if (question) return pushDialog(meta, question, (a) => isDialog(a, meta.id));
+    if (question) return void pushDialog(meta, question, (a) => isDialog(a, meta.id));
+    if (state.attention.some((a) => a.sessionId === meta.id && isAllowable(a.id))) return;
   }
   pushDialog(meta, { kind: 'permission', title, body: input.message }, (a) => isDialog(a, meta.id) && a.kind === 'permission');
+};
+
+/**
+ * フックで許可を待っている権限の確認のうち、端末や claude.ai/code で答え終えたものを片付ける。
+ * 並べて呼んだツールの確認は 1 つずつ出るので、ほかのツールを使い終えても、まだ答えていない確認は残す。
+ * 拒否するとターンが止まるので、次の依頼か、ターンやセッションの終わりで片付ける。
+ */
+const settleAnswered = (sessionId: string, event: string | undefined, input: HookInput): void => {
+  if (event === 'PostToolUse') releasePermissions(sessionId, { tool: input.tool_name, input: input.tool_input });
+  else if (event === 'Stop' || event === 'UserPromptSubmit' || event === 'SessionEnd') releasePermissions(sessionId);
 };
 
 /** 質問はセッションの本体が尋ねるので、サブエージェントが先へ進んでも残す。 */
@@ -138,6 +156,7 @@ const observe = (meta: SessionMeta, event: string | undefined, input: HookInput)
   if (event === 'PreToolUse' && input.tool_name === ASK_TOOL && !input.agent_id) return recordQuestion(meta, input);
   // 通知以外のイベントが来たら、権限の確認や質問は済んで先へ進んでいる。
   clearDialogs(meta.id, !!input.agent_id);
+  if (!input.agent_id) settleAnswered(meta.id, event, input);
   if (event === 'UserPromptSubmit') {
     meta.replySeenAt = Date.now();
     dropStaleRequests(meta.id);
@@ -252,4 +271,31 @@ export const handleHook = (input: HookInput, pid: number): HookOutput | undefine
   nameUntitled(meta, input, responded);
   if (responded) nextImprovement(input.session_id, input.last_assistant_message);
   if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
+};
+
+const PERMISSION_DETAIL_CHARS = 2000;
+// 確認の画面を Claude Code が自分で出し、フックの許可を受け付けないツール。AskUserQuestion の質問は、ツールを呼ぶ前のフックで記録する。
+const OWN_DIALOG_TOOLS = new Set([ASK_TOOL, 'ExitPlanMode']);
+const ALLOW = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
+
+/** 確認を求めたツールの入力。長い入力は先頭だけにし、省いたことを示す。 */
+const callDetail = (input: HookInput['tool_input']): string => {
+  const json = JSON.stringify(input ?? {}, null, 2);
+  return json.length > PERMISSION_DETAIL_CHARS ? `${json.slice(0, PERMISSION_DETAIL_CHARS)}…` : json;
+};
+
+/**
+ * PermissionRequest のフックで、権限の確認を要対応にし、人間がダッシュボードで許可したら許可を返す。
+ * Claude Code は確認の画面を出したままフックの応答も待ち、先に届いた答えを使う。端末や claude.ai/code で先に答えれば、そちらが使われる。
+ * claude -p とサブエージェントは、確認の画面を出さずにフックの応答だけを待ち、待たせると止まるので、すぐに何も返さない。
+ */
+export const holdPermission = (res: ServerResponse, input: HookInput): void => {
+  const { session_id: sessionId, cwd, tool_name: tool } = input;
+  if (!sessionId || !cwd || !tool || input.agent_id || OWN_DIALOG_TOOLS.has(tool) || readLiveSessions().get(sessionId)?.entrypoint !== 'cli') return void res.writeHead(204).end();
+  // 通知から記録した権限の確認は、同じ確認なので置き換える。
+  const id = pushDialog(ensureSession(sessionId, cwd), { kind: 'permission', title: tool, detail: callDetail(input.tool_input) }, (a) => isDialog(a, sessionId) && a.kind === 'permission');
+  const answer = (allow: boolean): void => void (allow ? res.writeHead(200, { 'content-type': 'application/json' }).end(ALLOW) : res.writeHead(204).end());
+  waitForPermission(id, { sessionId, tool, input: input.tool_input, answer });
+  // フックが打ち切られたら許可を返せない。確認の画面はまだ出ているかもしれないので、要対応は残す。
+  res.on('close', () => forgetPermission(id) && touch());
 };

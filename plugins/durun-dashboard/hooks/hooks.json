@@ -57,6 +57,17 @@
         ]
       }
     ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sf -X POST -H 'content-type: application/json' --data-binary @- \"http://127.0.0.1:${DURUN_DASHBOARD_PORT:-7337}/api/hook/permission\" 2>/dev/null || true",
+            "timeout": 86400
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "hooks": [

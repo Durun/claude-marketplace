@@ -156,6 +156,7 @@ export const api = {
   setPrViewed: (id: string, path: string, viewed: boolean) => postJson(`${session(id)}/pr-viewed`, { path, viewed }),
   answer: (attentionId: string, answer: string) => postJson(`/api/attention/${seg(attentionId)}/answer`, { answer }),
   dismiss: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/dismiss`),
+  allow: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/allow`),
   manual: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/manual`),
   cancel: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/cancel`),
   retry: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/retry`),

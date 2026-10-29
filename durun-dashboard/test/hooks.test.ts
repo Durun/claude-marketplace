@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -10,7 +12,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-durun-dashboard-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { handleHook } = await import('../server/hooks.ts');
+const { handleHook, holdPermission } = await import('../server/hooks.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 
 const toolUse = (name: string, input: object): string => `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } })}\n`;
@@ -181,6 +183,68 @@ test('EnterWorktree は、ほかのセッションがいない worktree なら�
   assert.equal(enter('wt-b', repo, { name: 'b' })?.permissionDecision, 'allow');
   assert.equal(enter('wt-c', repo, {})?.permissionDecision, 'allow');
   assert.equal(enter('wt-c', tmp, { name: 'x' }), undefined);
+});
+
+test('PermissionRequest のフックは、端末とバックグラウンドのセッションの本体の確認だけを要対応にして待たせ、人間が許可したら許可を返し、ほかで答え終えたら何も返さずに片付ける', { timeout: 10_000 }, async (t) => {
+  const { allowPermission } = await import('../server/deliver.ts');
+  const { buildSnapshot } = await import('../server/snapshot.ts');
+  const sessionsDir = path.join(tmp, 'claude', 'sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const live = { perm: 'cli', print: 'sdk-cli' };
+  for (const [id, entrypoint] of Object.entries(live)) fs.writeFileSync(path.join(sessionsDir, `${id}.json`), JSON.stringify({ pid: process.pid, sessionId: id, cwd: tmp, status: 'busy', entrypoint }));
+  const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    holdPermission(res, JSON.parse(body));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    Object.keys(live).forEach((id) => fs.rmSync(path.join(sessionsDir, `${id}.json`)));
+    server.closeAllConnections();
+    server.close();
+  });
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ask = (input: object, signal?: AbortSignal) => fetch(url, { method: 'POST', body: JSON.stringify(input), signal }).then(async (r) => ({ status: r.status, body: await r.text() }));
+  const until = (done: () => boolean): Promise<void> => new Promise((resolve) => (done() ? resolve() : onChange(() => done() && resolve())));
+  const cards = () => buildSnapshot().attention.filter((a) => a.sessionId === 'perm').map(({ kind, title, detail, allowable }) => ({ kind, title, detail, allowable }));
+  const base = { session_id: 'perm', cwd: tmp };
+  const push = { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'git push' } };
+  const pushCard = { kind: 'permission', title: 'Bash', detail: JSON.stringify({ command: 'git push' }, null, 2), allowable: true };
+
+  // claude -p とサブエージェントと、Claude Code が自分で尋ねるツールは、待たせずに Claude Code に任せる。
+  for (const input of [{ ...push, session_id: 'print' }, { ...push, agent_id: 'a1' }, { ...push, tool_name: 'AskUserQuestion' }]) assert.deepEqual(await ask(input), { status: 204, body: '' });
+  assert.deepEqual(cards(), []);
+
+  // 同じ確認の通知や、並べて呼んだほかのツールを使い終えたフックでは片付けず、許可したら許可を返す。
+  const allowed = ask(push);
+  await until(() => cards().length > 0);
+  handleHook({ ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }, 0);
+  handleHook({ ...push, hook_event_name: 'PostToolUse', tool_input: { command: 'git status' } }, 0);
+  assert.deepEqual(cards(), [pushCard]);
+  allowPermission(state.attention.find((a) => a.sessionId === 'perm')?.id ?? '');
+  assert.deepEqual(JSON.parse((await allowed).body), { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
+  assert.deepEqual(cards(), []);
+
+  // 端末で許可したら、そのツールを使い終えたフックで、何も返さずに片付ける。拒否したら、次の依頼で片付ける。
+  const inTerminal = ask(push);
+  await until(() => cards().length > 0);
+  handleHook({ ...push, hook_event_name: 'PostToolUse' }, 0);
+  assert.deepEqual(await inTerminal, { status: 204, body: '' });
+  const rejected = ask(push);
+  await until(() => cards().length > 0);
+  handleHook({ ...base, hook_event_name: 'UserPromptSubmit' }, 0);
+  assert.deepEqual(await rejected, { status: 204, body: '' });
+  assert.deepEqual(cards(), []);
+
+  // フックが打ち切られたら、許可はもう返せないが、確認の画面は残っているかもしれないので要対応は残す。
+  const stop = new AbortController();
+  void ask(push, stop.signal).catch(() => {});
+  await until(() => cards().length > 0);
+  const [card] = state.attention.filter((a) => a.sessionId === 'perm');
+  stop.abort();
+  await until(() => !cards()[0]?.allowable);
+  assert.deepEqual(cards(), [{ ...pushCard, allowable: undefined }]);
+  assert.throws(() => allowPermission(card?.id ?? ''), /もうこの権限の確認を待っていません/);
 });
 
 test('SendUserFile で送ったファイルは、送ったときの説明を題名に添えて未読の資料にし、送り直したら同じ資料を未読に戻して、外していればまた並べる', () => {

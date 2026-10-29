@@ -5,6 +5,7 @@ import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usa
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
+import { isAllowable } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, prPending } from './integrations.ts';
@@ -267,7 +268,7 @@ const prAttention = (s: Session, dismissed: Set<string>): Attention[] => {
 
 const deriveAttention = (sessions: Session[]): Attention[] => {
   const dismissed = new Set(state.dismissed);
-  const items: Attention[] = [...state.attention];
+  const items: Attention[] = state.attention.map((a) => (isAllowable(a.id) ? { ...a, allowable: true } : a));
   for (const s of sessions) {
     const meta = state.sessions[s.id];
     const waiting = state.attention.some((a) => a.sessionId === s.id);

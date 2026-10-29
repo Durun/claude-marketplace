@@ -276,6 +276,10 @@ export type Attention = {
   descriptions?: string[];
   /** 分けて尋ねた質問。人間は質問ごとに選択肢を選ぶ。 */
   questions?: AskedQuestion[];
+  /** 権限の確認で、Claude Code が使おうとしているツールの入力 */
+  detail?: string;
+  /** ダッシュボードから許可を返せる権限の確認。Claude Code がフックで答えを待っている間だけ付く。 */
+  allowable?: boolean;
   docId?: string;
   url?: string;
   createdAt: number;
