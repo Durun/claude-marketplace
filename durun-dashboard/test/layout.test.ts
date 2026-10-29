@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLS, ROWS, addWidget, dropTab, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
+import { COLS, ROWS, addWidget, dropTab, fitRect, freeApps, fromSaved, keepTabs, mergeInto, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
 import { uniqueName } from '../client/dashboards.ts';
 
 test('重なったウィジェットを順に下へ押し出し、配列の順と、グリッドに収まる位置と大きさを保つ', () => {
@@ -116,6 +116,17 @@ test('ウィンドウは、つかんだ辺だけを動かし、最小の大き�
   assert.deepEqual(resizeRect(r, 'w', -30, 99, min), { x: 70, y: 50, w: 430, h: 300 });
   assert.deepEqual(resizeRect(r, 'w', 300, 0, min), { x: 260, y: 50, w: 240, h: 300 });
   assert.deepEqual(resizeRect(r, 'nw', 10, -80, min), { x: 110, y: 0, w: 390, h: 350 });
+});
+
+test('中身の縦横比に合わせて、中身の上下か左右に余る分だけウィンドウを縮め、中心は動かさない', () => {
+  const r = { x: 100, y: 50, w: 1000, h: 800 };
+  const min = { w: 240, h: 120 };
+  // タイトルバーと余白を除いた、中身に使える枠。
+  const box = { w: 960, h: 720 };
+  assert.deepEqual(fitRect(r, box, 16 / 9, min), { x: 100, y: 140, w: 1000, h: 620 });
+  assert.deepEqual(fitRect(r, box, 1 / 2, min), { x: 400, y: 50, w: 400, h: 800 });
+  assert.deepEqual(fitRect(r, box, 4 / 3, min), r);
+  assert.deepEqual(fitRect(r, box, 40, min), { x: 100, y: 390, w: 1000, h: 120 });
 });
 
 test('ダッシュボードの名前が使われていれば、(2) から順に番号を付ける', () => {

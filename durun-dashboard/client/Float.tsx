@@ -3,15 +3,16 @@ import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Widget } from './Dashboard.tsx';
-import { type Tab, type WidgetSettings, clamp, kindOf, resizeRect } from './layout.ts';
+import { type Tab, type WidgetSettings, clamp, fitRect, kindOf, resizeRect } from './layout.ts';
 
 /**
  * 浮かべたウィジェット。key は元のダッシュボードの保存キー、scope はセッション画面ならセッションの id で、ホームなら空にする。
  * tab は元の枠のタブの写しで、ウィンドウで変えた設定は元の枠には戻さない。x, y, w, h は画面上の位置と大きさ（px）。
  * min は最小化してタスクバーにしまっているか。タスクバーがあるのは XP のスキンだけなので、ほかのスキンでは出したままにする。
  * max は最大化しているときに持ち、最大化する前の状態を表す。float はウィンドウ、dock は元の枠に入れた状態。最大化の間も x, y, w, h は元のまま残す。
+ * fitted は、中に見せる画像や動画の縦横比に、ウィンドウを合わせ終えたか。
  */
-export type Float = { key: string; scope: string; tab: Tab; x: number; y: number; w: number; h: number; min?: boolean; max?: 'float' | 'dock' };
+export type Float = { key: string; scope: string; tab: Tab; x: number; y: number; w: number; h: number; min?: boolean; max?: 'float' | 'dock'; fitted?: boolean };
 
 const STORAGE_KEY = 'dashboard-floats';
 // 小さくしすぎて、タイトルバーのボタンを押せなくならない大きさ。
@@ -167,12 +168,24 @@ const MIN = { w: MIN_W, h: MIN_H };
 type DragStart = { x: number; y: number; f: Float; edge?: string };
 
 /**
+ * 画像や動画（.file-media）を見せるウィンドウを、読めたときに中身と同じ縦横比へ縮める。.file-media は中身に使える枠いっぱいに広がるので、その大きさを枠とみなす。
+ * 合わせるのは開いてから 1 度だけにし、人間が後から変えた大きさを、ページを読み込み直したときに戻さない。
+ */
+const fitMedia = (f: Float, el: EventTarget | null): void => {
+  if (f.fitted || f.max || !(el instanceof HTMLImageElement || el instanceof HTMLVideoElement) || !el.classList.contains('file-media')) return;
+  const [w, h] = el instanceof HTMLImageElement ? [el.naturalWidth, el.naturalHeight] : [el.videoWidth, el.videoHeight];
+  const box = el.getBoundingClientRect();
+  if (w && h && box.width && box.height) update(f, { ...fitRect(f, { w: box.width, h: box.height }, w / h, MIN), fitted: true });
+};
+
+/**
  * タイトルバーのドラッグで動かし、上下左右の辺と 4 つの角のドラッグで大きさを変える。
  * タスクバーには、ヘッダーの .taskbar-windows へ、このウィンドウのボタンを置く。
  * ウィンドウ化のボタンは、最大化していれば前の状態に戻し、ウィンドウなら onDock で元の枠に戻す。元の枠が無いウィンドウでは、最大化している間だけ出す。
  * 最大化のボタンは、最大化している間は出さない。
  * 最大化している間は、動かすことも大きさを変えることもできない。
  * 最大化している間は、押しても手前に出さない。上に重ねたほかのウィンドウを、後ろに隠さないためである。
+ * 画像や動画を見せるウィンドウは、読めたときに中身の縦横比に合わせる。load と loadedmetadata はバブリングしないので、中身からキャプチャで受け取る。
  */
 export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; children: ComponentChildren }) => {
   const drag = useRef<DragStart>();
@@ -225,7 +238,7 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
       <div class="section-head float-head" {...grab()} onDblClick={() => (f.max ? unmaximize(f) : maximize(f))}>
         <h2 class="section-title">{title}</h2>
       </div>
-      <div class="widget-tab-panel">{children}</div>
+      <div class="widget-tab-panel" onLoadCapture={(e) => fitMedia(f, e.target)} onLoadedMetadataCapture={(e) => fitMedia(f, e.target)}>{children}</div>
       <WindowControls controls={all} />
       {!f.max && EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
       {taskbar && createPortal(

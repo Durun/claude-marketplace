@@ -46,6 +46,16 @@ export const resizeRect = (r: Rect, edge: string, dx: number, dy: number, min: {
   return { x, y, w, h };
 };
 
+/**
+ * 中身を縦横比 ratio（幅 / 高さ）で見せるよう、r を縮める。box は r の中で中身に使える枠の大きさで、中身の上下か左右に余る分だけ縮める。
+ * 縮めても中心は動かさない。
+ */
+export const fitRect = (r: Rect, box: { w: number; h: number }, ratio: number, min: { w: number; h: number }): Rect => {
+  const w = Math.max(min.w, r.w - Math.max(0, box.w - box.h * ratio));
+  const h = Math.max(min.h, r.h - Math.max(0, box.h - box.w / ratio));
+  return { x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 2, w, h };
+};
+
 const overlaps = (a: Box, b: Box): boolean =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
