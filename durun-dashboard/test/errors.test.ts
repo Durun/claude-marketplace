@@ -8,7 +8,8 @@ import { test } from 'node:test';
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-errors-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const { recordError, recordSlow } = await import('../server/errors.ts');
-const { state } = await import('../server/store.ts');
+const { nextImprovement } = await import('../server/improve.ts');
+const { ensureSession, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
@@ -55,4 +56,23 @@ test('遅い処理は、同じ処理を 1 件の要望にまとめて最長の�
   assert.equal(pending().length - before.length, 3);
   recordError('client', 'TypeError: d is undefined');
   assert.equal(pending().length - before.length, 4);
+});
+
+test('要望に対応した後に再発したら、回数と最長をその後の回から数え直して起票し直す', () => {
+  for (const item of pending()) finish(item);
+  const message = 'session/overview の画面を固めた「FrameRequestCallback」の処理（見込み 0.5 秒）';
+  recordSlow('client', message, 10453);
+  const [item = ''] = pending();
+  // 改善のセッションが、この要望に対応したと書いて止まる。
+  const transcript = path.join(dataDir, 'wave.jsonl');
+  fs.writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '直しました。' }] } })}\n`);
+  ensureSession('wave', dataDir).transcriptPath = transcript;
+  state.improve.run = { sessionId: 'wave', pid: process.pid, items: [item], startedAt: 0 };
+  nextImprovement('wave', `直しました。\n対応した要望:\n${item}`);
+
+  const since = Date.now();
+  recordSlow('client', message, 800);
+  const [refiled = ''] = pending();
+  assert.match(JSON.parse(fs.readFileSync(path.join(feedbackDir, refiled), 'utf8')).text, new RegExp(`1 回（最長 0\\.8 秒.*前回の要望（${item}）`, 's'));
+  assert.ok((Object.values(state.errors).find((e) => e.item === refiled)?.firstAt ?? 0) >= since);
 });

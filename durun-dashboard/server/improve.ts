@@ -38,11 +38,13 @@ ${items.map((item) => `  - ${path.relative(ROOT, path.join(FEEDBACK_DIR, item))}
 - 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
 
 // 済んだ要望は、何をしたか（セッションの最後の発言）を先頭に置いて done/ へ移す。
+// その要望を起票したエラーや遅い処理の記録は、回数と最長を数え直す。再発して起票し直す要望に、直す前の原因で長かった回を混ぜないため。
 const finishItem = (item: string, sessionId: string, result: string | undefined): void => {
   const file = path.join(FEEDBACK_DIR, item);
   fs.mkdirSync(DONE_DIR, { recursive: true });
   fs.writeFileSync(path.join(DONE_DIR, item), JSON.stringify({ result, sessionId, doneAt: new Date().toISOString(), ...readJson(file) }, null, 2));
   fs.rmSync(file, { force: true });
+  for (const r of Object.values(state.errors)) if (r.item === item) Object.assign(r, { count: 0, slowestMs: undefined, slowestLoad: undefined });
 };
 
 const lastLogLine = (): string => {
