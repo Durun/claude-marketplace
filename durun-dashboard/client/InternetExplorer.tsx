@@ -6,6 +6,7 @@ import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
+import { XpConfirm } from './XpConfirm.tsx';
 import { type MenuItem, XpMenu } from './XpMenu.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「ie:開いた時刻」にし、いくつも開けるようにする。 */
@@ -208,6 +209,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
   const url = urlOf(page);
   const title = titleOf(page);
   const favs = useFavorites();
+  const [removing, setRemoving] = useState<Favorite>();
   // ダッシュボードを開き直したら、開いていたタブのページから始める。
   useEffect(() => {
     if (url !== f.tab.settings?.url) setFloatSettings(f, { ...f.tab.settings, url });
@@ -257,8 +259,9 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
   const addFavorite = () => {
     if (!favorites.some((fv) => fv.url === url)) setFavorites([...favorites, { url, title }]);
   };
-  const removeFavorite = (fv: Favorite) => {
-    if (confirm(`「${fv.title}」をお気に入りバーから削除しますか？`)) setFavorites(favorites.filter((x) => x.url !== fv.url));
+  const removeFavorite = (ok: boolean) => {
+    setRemoving(undefined);
+    if (ok && removing) setFavorites(favorites.filter((x) => x.url !== removing.url));
   };
   const setZoom = (zoom: number) => update(page.id, (p) => ({ ...p, zoom }));
   const menuId = (name: string) => `ie-${f.tab.id}-${name}`;
@@ -302,7 +305,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
                 onClick={() => go(fv.url)}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  removeFavorite(fv);
+                  setRemoving(fv);
                 }}
               >
                 {site && <img src={faviconOf(site)} alt="" width={16} height={16} />}
@@ -337,6 +340,7 @@ export const InternetExplorerFloat = ({ f }: { f: Float }) => {
           ))}
         </div>
         <StatusBar zoom={page.zoom} zoomId={menuId('zoom')} zoomItems={zoomItems} onZoom={setZoom} />
+        {removing && <XpConfirm title="削除の確認" text={`「${removing.title}」をお気に入りバーから削除しますか？`} onClose={removeFavorite} />}
       </div>
     </FloatFrame>
   );

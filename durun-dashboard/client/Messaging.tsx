@@ -1,8 +1,7 @@
 import type { RefObject } from 'preact';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
-import { AppIcon } from './apps.tsx';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
 import { type Badges, type Candidate, type Typed, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -13,6 +12,7 @@ import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
 import { href, currentSessionId } from './router.ts';
 import { Choice, ContextPie, Empty, RefIcon, Time, copyText, onSubmitKey } from './ui.tsx';
+import { XpConfirm } from './XpConfirm.tsx';
 
 const STATUS_HELP: Record<SessionStatus, string> = {
   busy: '作業中です。ツール実行の合間に Claude が読みます。',
@@ -329,28 +329,6 @@ const useMessageDraft = (sessionId: string): [string, (next: string | ((prev: st
       return { sessionId, text: value };
     });
   return [text, setText];
-};
-
-/**
- * 押し間違いでないかの確認。XP の警告のメッセージボックスに倣う。「はい」で閉じたときだけ ok を真にし、× と Esc は「いいえ」と同じに扱う。
- * ブラウザの confirm は答えるまで画面ごと止まるので、ページの中のダイアログで尋ねる。
- */
-const XpConfirm = ({ title, text, onClose }: { title: string; text: string; onClose: (ok: boolean) => void }) => {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => dialog.current?.showModal(), []);
-  return (
-    <dialog ref={dialog} class="xp-confirm" role="alertdialog" aria-label={title} onClose={(e) => onClose(e.currentTarget.returnValue === 'yes')}>
-      <form method="dialog">
-        <h3 class="xp-confirm-title">{title}</h3>
-        <button class="xp-confirm-close" aria-label="閉じる" />
-        <p class="xp-confirm-text"><AppIcon icon="⚠️" size={32} />{text}</p>
-        <div class="xp-confirm-actions">
-          <button value="yes" autofocus>はい(<u>Y</u>)</button>
-          <button>いいえ(<u>N</u>)</button>
-        </div>
-      </form>
-    </dialog>
-  );
 };
 
 /** 返答の候補と入力欄。 */
