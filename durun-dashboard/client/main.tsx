@@ -146,7 +146,9 @@ const App = () => {
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, [hasDashboard]);
-  useAttentionEffects(fresh);
+  // セッションの画面をいくつものタブで開いても見分けられるよう、タブ名をセッション名にする。
+  const here = route.page === 'session' ? snapshot?.sessions.find((s) => s.id === route.id) : undefined;
+  useAttentionEffects(fresh, here?.name);
   useSessionToasts(fresh);
   useDeliveryFailureEffects(fresh);
   useRemoveFailureToasts(fresh);

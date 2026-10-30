@@ -47,13 +47,15 @@ const show = (a: Attention, sessionName: string) => {
   }
 };
 
-/** 未対応件数をタブ名に出し、前回なかった要対応を通知する。初回の読み込みでは通知しない。 */
-export const useAttentionEffects = (snapshot: Snapshot | null): void => {
+/** 未対応件数と title をタブ名に出し、前回なかった要対応を通知する。初回の読み込みでは通知しない。 */
+export const useAttentionEffects = (snapshot: Snapshot | null, title = APP_NAME): void => {
+  const count = snapshot?.attention.length ?? 0;
+  useEffect(() => {
+    document.title = count > 0 ? `(${count}) ${title}` : title;
+  }, [count, title]);
   const known = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (!snapshot) return;
-    const count = snapshot.attention.length;
-    document.title = count > 0 ? `(${count}) ${APP_NAME}` : APP_NAME;
     const previous = known.current;
     known.current = new Set(snapshot.attention.map((a) => a.id));
     if (!previous || notificationPermission() !== 'granted') return;
