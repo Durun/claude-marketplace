@@ -66,10 +66,12 @@ const repoOf = (url: string): string => url.split('/').slice(3, 5).join('/');
 /**
  * JIRA の課題と PR。セッションのバッジにあるものを、セッションが新しい順に先に並べ、補完に出す JIRA の課題と GitHub Inbox の PR を後に続ける。
  * href は課題や PR そのものの URL で、選ぶと、リンクを押したときと同じくダッシュボードで開く。何か打つまでは出さない。
+ * ハイフンで始めたときは、プロジェクトキーを省いた課題のキーを打っているので、JIRA の課題を spaces のスペースのものに絞る。
  */
-export const refGroups = (snapshot: Snapshot | null, q: string, issues: JiraIssue[] = [], inbox: InboxSection[] = []): SearchGroup[] => {
+export const refGroups = (snapshot: Snapshot | null, q: string, issues: JiraIssue[] = [], inbox: InboxSection[] = [], spaces: string[] = []): SearchGroup[] => {
   if (!q) return [];
   const hit = matcher(q);
+  const keyless = q.startsWith('-');
   const sessions = (snapshot?.sessions ?? []).toSorted((a, b) => b.updatedAt - a.updatedAt);
   // 同じものは、先に並べた位置に残る。
   const jira = new Map([...sessions.flatMap((s) => s.jira), ...issues].map((j) => [j.key, j]));
@@ -78,7 +80,7 @@ export const refGroups = (snapshot: Snapshot | null, q: string, issues: JiraIssu
     {
       title: 'JIRA',
       items: [...jira.values()]
-        .filter((j) => hit(j.key, j.summary))
+        .filter((j) => (!keyless || spaces.some((space) => j.key.startsWith(`${space}-`))) && hit(j.key, j.summary))
         .map((j) => ({ key: `jira:${j.key}`, label: j.summary ? `${j.key} ${j.summary}` : j.key, sub: j.status, href: j.url })),
     },
     {

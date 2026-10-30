@@ -3,7 +3,9 @@ import type { Dispatch, StateUpdater } from 'preact/hooks';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { SearchResponse, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
+import { jiraSpaces } from './completion.ts';
 import { useCached, useFetch } from './hooks.ts';
+import { currentSessionId } from './router.ts';
 import { type SearchItem, localGroups, logGroup, refGroups } from './searchItems.ts';
 import { SEARCH_SHORTCUT, isShortcut } from './shortcut.ts';
 import { StatusBadge } from './ui.tsx';
@@ -32,9 +34,11 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
   const issues = useCached(api.jiraRefs, []);
   const inbox = useCached(api.githubInbox, []);
   const note = logs.loading || logQuery !== query ? '探しています…' : logs.error && `探せませんでした（${logs.error}）`;
+  const local = localGroups(snapshot, query);
+  const refs = refGroups(snapshot, query, issues.data, inbox.data, jiraSpaces(snapshot?.sessions ?? [], currentSessionId()));
+  // ハイフンで始めたら課題のキーを打っているので、JIRA の課題を先頭に出す。
   const groups = [
-    ...localGroups(snapshot, query),
-    ...refGroups(snapshot, query, issues.data, inbox.data),
+    ...(query.startsWith('-') ? [...refs, ...local] : [...local, ...refs]),
     ...(query ? [{ ...logGroup(snapshot, query, logs.data), note }] : []),
   ];
   const items = groups.flatMap((g) => g.items);

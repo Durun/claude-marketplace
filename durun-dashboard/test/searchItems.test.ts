@@ -63,3 +63,12 @@ test('JIRA の課題と PR は、セッションのバッジにあるものを�
   ]);
   assert.deepEqual(found('FAVICON o/web'), [['PR', [['#9 Favicon の色', 'o/web', 'https://github.com/o/web/pull/9']]]]);
 });
+
+test('JIRA の課題は、ハイフンで始めたときだけ、渡したスペースのものに絞る', () => {
+  const jira = (key: string) => ({ key, url: `https://jira.example/browse/${key}` });
+  const issues: JiraIssue[] = [jira('LPO-12'), jira('CATS-12'), jira('LPO-120')];
+  const keys = (q: string, spaces: string[]) => refGroups(null, q, issues, [], spaces).flatMap((g) => g.items.map((i) => i.key));
+  assert.deepEqual(keys('-12', ['LPO']), ['jira:LPO-12', 'jira:LPO-120']);
+  assert.deepEqual(keys('-12', []), []);
+  assert.deepEqual(keys('12', ['LPO']), ['jira:LPO-12', 'jira:CATS-12', 'jira:LPO-120']);
+});

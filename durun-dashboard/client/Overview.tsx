@@ -5,6 +5,7 @@ import { type Attention, type BgTask, type Bookmark, type ChatEntry, type Outbox
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { refSplitter } from './chatLinks.ts';
+import type { Badges } from './completion.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
 import { fileLink, openDocFloat } from './Docs.tsx';
@@ -384,7 +385,7 @@ const STICK_PX = 40;
  * 過去の依頼を書き直して送る欄。確定すると、会話をその依頼の直前まで巻き戻してから送る。
  * 届くまで欄を残し、失敗したら書き直した文を消さずに残す。
  */
-const PromptEditor = ({ sessionId, e, onClose }: { sessionId: string; e: ChatEntry; onClose: () => void }) => {
+const PromptEditor = ({ sessionId, badges, e, onClose }: { sessionId: string; badges?: Badges; e: ChatEntry; onClose: () => void }) => {
   const [text, setText] = useState(e.text);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -400,7 +401,7 @@ const PromptEditor = ({ sessionId, e, onClose }: { sessionId: string; e: ChatEnt
   };
   return (
     <div class="chat-edit">
-      <MessageInput sessionId={sessionId} value={text} setValue={setText} placeholder="書き直した依頼（Cmd/Ctrl + Enter で巻き戻して送信）" onSubmit={send} inputRef={input} />
+      <MessageInput sessionId={sessionId} badges={badges} value={text} setValue={setText} placeholder="書き直した依頼（Cmd/Ctrl + Enter で巻き戻して送信）" onSubmit={send} inputRef={input} />
       <div class="actions">
         <button class="btn" onClick={onClose}>キャンセル</button>
         <button class="btn btn-primary" disabled={busy || !text.trim()} title="この依頼の直前まで会話を巻き戻して送ります" onClick={send}>巻き戻して送信</button>
@@ -423,9 +424,9 @@ const BookmarkButton = ({ sessionId, mark, on }: { sessionId: string; mark: Pick
 );
 
 /** ブックマークから移れるのはセッションのチャットの発言だけなので、bookmarked を渡さないサブエージェントの会話には、ブックマークのボタンを出さない。 */
-type ChatBubbleProps = { sessionId: string; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean };
+type ChatBubbleProps = { sessionId: string; badges?: Badges; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean };
 
-const ChatBubble = ({ sessionId, e, codeLink, markText, focused, bookmarked }: ChatBubbleProps) => {
+const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmarked }: ChatBubbleProps) => {
   const [editing, setEditing] = useState(false);
   const now = useContext(NowContext);
   const time = e.at ? <time title={dateTime(e.at)}>{shortDateTime(e.at, now)}</time> : null;
@@ -436,7 +437,7 @@ const ChatBubble = ({ sessionId, e, codeLink, markText, focused, bookmarked }: C
       <pre>{e.detail}</pre>
     </details>
   );
-  if (e.kind === 'prompt' && editing) return <PromptEditor sessionId={sessionId} e={e} onClose={() => setEditing(false)} />;
+  if (e.kind === 'prompt' && editing) return <PromptEditor sessionId={sessionId} badges={badges} e={e} onClose={() => setEditing(false)} />;
   // 発言は種類と時刻で見分けるので、時刻の無い発言はブックマークできない。
   const star = bookmarked !== undefined && e.at !== undefined && <BookmarkButton sessionId={sessionId} mark={{ kind: e.kind, at: e.at, text: e.text }} on={bookmarked} />;
   // 依頼の ☆ は、短い依頼の行を高くしないよう、時刻の列に積まずに ✎ と並べる。
@@ -551,7 +552,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} badges={s} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>

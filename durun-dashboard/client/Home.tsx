@@ -5,6 +5,7 @@ import { HOME_KEY, layoutKeyOf, useDashboards } from './dashboards.ts';
 import { Dashboard, type EditProps, type Widget, type WidgetProps, WidgetPanel } from './Dashboard.tsx';
 import { DesktopIcon } from './apps.tsx';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
+import { jiraSpaces } from './completion.ts';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
@@ -16,6 +17,7 @@ import { Inbox } from './Inbox.tsx';
 import { JIRA_TITLE, JiraIssues, jiraControls } from './JiraIssues.tsx';
 import { ROWS, type Layout } from './layout.ts';
 import { MessageInput } from './Messaging.tsx';
+import { currentSessionId } from './router.ts';
 import { ThemeGroups, type Selection } from './SessionCards.tsx';
 import { useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
@@ -67,7 +69,7 @@ type Preset = { cwd: string; theme: string };
 let presetOnOpen: Preset | undefined;
 const presetListeners = new Set<(preset: Preset) => void>();
 
-const NewSession = ({ cwds, themes, onClose }: { cwds: string[]; themes: string[]; onClose: () => void }) => {
+const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; themes: string[]; sessions: Session[]; onClose: () => void }) => {
   const dir = useRef<HTMLInputElement>(null);
   const ask = useRef<HTMLTextAreaElement>(null);
   const [cwd, setCwd] = useSaved('dashboard-new-session-cwd');
@@ -120,7 +122,8 @@ const NewSession = ({ cwds, themes, onClose }: { cwds: string[]; themes: string[
           {themes.map((t) => <option key={t} value={t} />)}
         </datalist>
       </label>
-      <MessageInput cwd={cwd.trim()} value={prompt} setValue={setPrompt} placeholder="最初の依頼（/ で skills、# で PR と Issue、@ でファイル、PROJ- で JIRA の課題を補完、Cmd/Ctrl + Enter で起動）" onSubmit={start} inputRef={ask} />
+      {/* ウィンドウは画面を移っただけでは描き直さないので、開いている画面は、打つたびに描き直すこの欄で読む。 */}
+      <MessageInput cwd={cwd.trim()} spaces={jiraSpaces(sessions, currentSessionId())} value={prompt} setValue={setPrompt} placeholder="最初の依頼（/ で skills、# で PR と Issue、@ でファイル、PROJ- か - で JIRA の課題を補完、Cmd/Ctrl + Enter で起動）" onSubmit={start} inputRef={ask} />
       <div class="actions">
         <Choice label="モデル" value={model} options={MODELS} onChange={setModel} />
         <Choice label="effort" value={effort} options={EFFORT_LEVELS} onChange={setEffort} />
@@ -164,7 +167,7 @@ export const NewSessionIcon = ({ cwd, theme }: { cwd?: string; theme?: string })
 
 export const NewSessionFloat = ({ f, snapshot }: HomeData & { f: Float }) => (
   <FloatFrame f={f} title={NEW_SESSION_TITLE} icon={NEW_SESSION_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: closeNewSession }]}>
-    <NewSession cwds={recentCwds(snapshot.sessions)} themes={snapshot.themes} onClose={closeNewSession} />
+    <NewSession cwds={recentCwds(snapshot.sessions)} themes={snapshot.themes} sessions={snapshot.sessions} onClose={closeNewSession} />
   </FloatFrame>
 );
 

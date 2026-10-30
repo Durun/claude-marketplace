@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { IssueInfo, JiraIssue, PrInfo, RepoRef } from '../shared/types.ts';
-import { candidates, typedAt } from '../client/completion.ts';
+import type { IssueInfo, JiraIssue, PrInfo, RepoRef, Session } from '../shared/types.ts';
+import { candidates, jiraSpaces, typedAt } from '../client/completion.ts';
 import { type GhRefs, toRefs } from '../server/integrations.ts';
 
 const REPO = 'https://github.test/o/r';
@@ -29,6 +29,13 @@ test('typedAt は、英数字の後ろでなければ、JIRA のプロジェク�
   assert.deepEqual(typedAt('次はlpo-'), { mark: 'lpo-', word: '' });
   assert.deepEqual(typedAt('#CATS-1'), { mark: '#', word: 'CATS-1' });
   assert.equal(typedAt('2CATS-'), undefined);
+});
+
+test('typedAt は、英数字の後ろでなければ、プロジェクトキーを省いたハイフンだけからも、カーソルまでの語を返す', () => {
+  assert.deepEqual(typedAt('-'), { mark: '-', word: '' });
+  assert.deepEqual(typedAt('see -12'), { mark: '-', word: '12' });
+  assert.deepEqual(typedAt('次は-1'), { mark: '-', word: '1' });
+  assert.equal(typedAt('2026-10'), undefined);
 });
 
 test('candidates は、# の後に何も打っていなければ、自分が作った PR と Issue を、種別と状態を添えて新しい順に出す', () => {
@@ -103,4 +110,19 @@ test('candidates は、JIRA のプロジェクトキーとハイフンの後に�
   const jira = [issue('CATS-120', 'ログ画面の修正', '未着手'), issue('CATS-9', '古い課題', '完了'), issue('LPO-1', 'ログを見る')];
   const marks = candidates({ mark: 'CATS-', word: '' }, [], [], ISSUES, [], { prs: [], jira }).map((c) => `${c.label} ${c.badge}`);
   assert.deepEqual(marks, ['CATS-120 true', 'CATS-9 true', 'CATS-12 false', 'CATS-3 false']);
+});
+
+test('candidates は、ハイフンだけの後に打った語に合う課題を、渡したスペースから出し、渡さなければセッションのバッジの課題のスペースから出す', () => {
+  assert.deepEqual(candidates({ mark: '-', word: '12' }, [], [], ISSUES, [], undefined, ['CATS']).map((c) => c.label), ['CATS-12', 'CATS-120']);
+  const marks = candidates({ mark: '-', word: '' }, [], [], ISSUES, [], { prs: [], jira: [issue('LPO-9', '古い課題')] }).map((c) => `${c.label} ${c.badge}`);
+  assert.deepEqual(marks, ['LPO-9 true', 'LPO-1 false']);
+  assert.deepEqual(issueLabels('-', ''), []);
+});
+
+test('jiraSpaces は、sessionId のセッションの課題のスペースを返し、sessionId が空なら、アーカイブしていないセッションの課題のスペースを重ねずに返す', () => {
+  const session = (id: string, keys: string[], archived = false) => ({ id, archived, jira: keys.map((k) => issue(k, '')) }) as unknown as Session;
+  const sessions = [session('a', ['LPO-1', 'LPO-2']), session('b', ['WEB-11', 'LPO-3']), session('c', ['CATS-5'], true)];
+  assert.deepEqual(jiraSpaces(sessions, 'b'), ['WEB', 'LPO']);
+  assert.deepEqual(jiraSpaces(sessions, 'c'), ['CATS']);
+  assert.deepEqual(jiraSpaces(sessions, ''), ['LPO', 'WEB']);
 });
