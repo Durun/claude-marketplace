@@ -1180,8 +1180,11 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chevron { color: var(--muted); }
 .diff-note { margin: 0; padding: 12px; color: var(--muted); }
+/* 描く順番を待っているファイルは、表の行の数だけ高さを空けておき、スクロールの位置を保つ目印にもしない。描き足しても、一覧で押したファイルの位置がずれないようにするため。 */
+.diff-pending { overflow-anchor: none; height: calc(var(--rows) * 1lh); }
 .diff-scroll { overflow-x: auto; }
-table.diff { width: 100%; min-width: max-content; border-collapse: collapse; font: 12.5px/1.55 var(--mono); }
+table.diff { width: 100%; min-width: max-content; border-collapse: collapse; }
+table.diff, .diff-pending { font: 12.5px/1.55 var(--mono); }
 .diff td { padding: 0; }
 .diff .ln { width: 1%; min-width: 48px; padding: 0 8px; color: var(--muted); text-align: right; white-space: nowrap; user-select: none; cursor: pointer; }
 .diff .ln:hover { color: var(--accent); }

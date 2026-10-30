@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DiffFile } from '../shared/types.ts';
-import { findFocus, isFileRef, splitFilePaths } from '../client/fileRef.ts';
+import { diffBatchEnd, findFocus, isFileRef, splitFilePaths } from '../client/fileRef.ts';
 
 test('ファイルを指すコードだけを見分け、相対パス、絶対パス、ファイル名だけの指定から差分のファイルと行を探す', () => {
   assert.deepEqual(['client/Home.tsx:32', 'README.md', 'server/main.ts:10-20', '.github/workflows/ci.yml', 'conf.d/app.json', '~/out/S1-3.mp4', 'shot.PNG'].map(isFileRef), [true, true, true, true, true, true, true]);
@@ -22,4 +22,9 @@ test('地の文のファイルパスを、空白を置かずに続く日本語�
   const pieces = splitFilePaths(text);
   assert.equal(pieces.map((p) => p.text).join(''), text);
   assert.deepEqual(pieces.filter((p) => p.file).map((p) => p.text), ['~/.claude/jobs/1/report-1521.md', 'client/Home.tsx:32', 'README.md']);
+});
+
+test('大きな差分は、表の行の数が合わせて決めた数に収まるファイルずつ描き、決めた数より多いファイルも 1 つは描く', () => {
+  const files = [499, 399, 299, 3999, 9].map((n) => ({ hunks: [{ lines: Array(n).fill({}) }] }) as DiffFile);
+  assert.deepEqual([0, 2, 3, 4, 5].map((from) => diffBatchEnd(files, from, 1000)), [2, 3, 4, 5, 5]);
 });

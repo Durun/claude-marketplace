@@ -2,8 +2,8 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { type BranchView, type CommitInfo, type DiffFile, type DiffRange, type DiffResult, type PrInfo, type ReviewComment, type Session, WORKTREE } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { DiffStat, FileDiff, STATUS_LETTER } from './DiffTable.tsx';
-import { type Focus, findFocus } from './fileRef.ts';
+import { DiffStat, FileDiff, NO_THREADS, STATUS_LETTER } from './DiffTable.tsx';
+import { type Focus, diffBatchEnd, findFocus } from './fileRef.ts';
 import { useCached, useFetch } from './hooks.ts';
 import { ReviewBar } from './ReviewBar.tsx';
 import { type ReviewDraft, useReviewDraft } from './review.ts';
@@ -118,27 +118,45 @@ const CodeToolbar = ({ diff, picker, worktree, full, loading, onRange, onFull, o
   </div>
 );
 
-type DiffFilesProps = { entries: Entry[]; full: boolean; review: ReviewDraft; focus?: Focus; sync?: PrSync };
+// 1 回に描く差分の表の行の数の目安。数万行の差分を一度に描くと画面が数秒固まるので、先頭のファイルからこの行数ずつ描き足す。
+const ROWS_PER_FRAME = 1000;
 
-const DiffFiles = ({ entries, full, review, focus, sync }: DiffFilesProps) => (
-  <div class="diff-files">
-    {entries.length === 0 && <Empty>表示できる差分はありません。</Empty>}
-    {entries.map(({ file, index }) => (
-      <FileDiff
-        key={`${file.path}:${full}`}
-        id={anchorId(index)}
-        file={file}
-        comments={review.comments.filter((c) => c.path === file.path)}
-        threads={sync?.threads.filter((t) => t.path === file.path)}
-        viewed={sync?.viewed.has(file.path)}
-        onViewed={sync && ((v) => sync.setViewed(file.path, v))}
-        onSave={review.upsert}
-        onDelete={review.remove}
-        focusLine={focus?.index === index ? (focus.line ?? null) : undefined}
-      />
-    ))}
-  </div>
-);
+/** 差分のファイルのうち、行まで描くものの数。届いた差分ごとに先頭から数え直す。 */
+const useDrawnFiles = (files: DiffFile[]): number => {
+  const [drawn, setDrawn] = useState({ files, count: 0 });
+  const count = drawn.files === files ? drawn.count : diffBatchEnd(files, 0, ROWS_PER_FRAME);
+  // useEffect は描いたものを画面に出してから動くので、描き足すたびに画面へ出し、その間の操作も受け付ける。
+  useEffect(() => {
+    if (count < files.length) setDrawn({ files, count: diffBatchEnd(files, count, ROWS_PER_FRAME) });
+  }, [files, count]);
+  return count;
+};
+
+type DiffFilesProps = { files: DiffFile[]; entries: Entry[]; full: boolean; review: ReviewDraft; focus?: Focus; sync?: PrSync };
+
+const DiffFiles = ({ files, entries, full, review, focus, sync }: DiffFilesProps) => {
+  const drawn = useDrawnFiles(files);
+  return (
+    <div class="diff-files">
+      {entries.length === 0 && <Empty>表示できる差分はありません。</Empty>}
+      {entries.map(({ file, index }) => (
+        <FileDiff
+          key={`${file.path}:${full}`}
+          id={anchorId(index)}
+          file={file}
+          comments={review.comments}
+          threads={sync?.threads}
+          viewed={sync?.viewed.has(file.path)}
+          onViewed={sync && ((v) => sync.setViewed(file.path, v))}
+          onSave={review.upsert}
+          onDelete={review.remove}
+          focusLine={focus?.index === index ? (focus.line ?? null) : undefined}
+          pending={index >= drawn && index !== focus?.index}
+        />
+      ))}
+    </div>
+  );
+};
 
 type PrSync = ReturnType<typeof usePrSync>;
 
@@ -161,7 +179,7 @@ const usePrSync = (s: Session, pr: PrInfo | undefined) => {
     // 書けなかったら、GitHub の状態に戻す。
     if (!(await attempt('Viewed の切り替え', () => api.setPrViewed(s.id, path, v)))) remote.reload();
   };
-  return { pr, threads: threads.data ?? [], viewed, setViewed, reloadThreads: threads.reload };
+  return { pr, threads: threads.data ?? NO_THREADS, viewed, setViewed, reloadThreads: threads.reload };
 };
 
 type BodyProps = { s: Session; focus?: string; view?: BranchView; pr?: PrInfo; picker: ComponentChildren };
@@ -208,7 +226,7 @@ const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
             key={wholeFile.path}
             id={WHOLE_ANCHOR}
             file={wholeFile}
-            comments={review.comments.filter((c) => c.path === wholeFile.path)}
+            comments={review.comments}
             onSave={review.upsert}
             onDelete={review.remove}
             focusLine={wholeLine ?? null}
@@ -227,7 +245,7 @@ const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
             )}
             <FileList entries={entries} counts={commentCounts(review.comments)} />
           </aside>
-          <DiffFiles entries={entries} full={full} review={review} focus={focus} sync={sync} />
+          <DiffFiles files={diff.data.files} entries={entries} full={full} review={review} focus={focus} sync={sync} />
         </div>
       )}
       {!diff.data && !diff.error && <Loading />}

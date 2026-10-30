@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { DiffFile, DiffHunk, DiffLine, PrThread, ReviewComment } from '../shared/types.ts';
+import { rowCount } from './fileRef.ts';
 import { highlightLine, languageOf } from './highlight.ts';
 import { Markdown } from './Markdown.tsx';
 import { commentKey, lineTarget } from './review.ts';
@@ -167,7 +168,7 @@ const FileBody = ({ file, ctx }: { file: DiffFile; ctx: FileCtx }) => {
   );
 };
 
-const NO_THREADS: PrThread[] = [];
+export const NO_THREADS: PrThread[] = [];
 
 const byLine = (threads: PrThread[]): Map<string, PrThread[]> => {
   const map = new Map<string, PrThread[]>();
@@ -182,8 +183,9 @@ const byLine = (threads: PrThread[]): Map<string, PrThread[]> => {
 type FileDiffProps = {
   file: DiffFile;
   id: string;
+  /** レビューの下書きのコメント。このファイルに付いたものを出す。 */
   comments: ReviewComment[];
-  /** PR を表示しているときの、このファイルに付いた PR のスレッド。 */
+  /** PR を表示しているときの、PR のスレッド。このファイルに付いたものを出す。 */
   threads?: PrThread[];
   /** PR を表示しているときの、GitHub の「Viewed」。切り替えると onViewed を呼ぶ。 */
   viewed?: boolean;
@@ -192,25 +194,37 @@ type FileDiffProps = {
   onDelete: (key: string) => void;
   /** コードへのリンクで開いたファイルなら、行番号か、行の指定が無ければ null。 */
   focusLine?: number | null;
+  /** 真なら、行をまだ描かない。大きな差分を先頭から少しずつ描くときに、順番を待っているファイル。 */
+  pending?: boolean;
 };
 
-export const FileDiff = ({ file, id, comments, threads = NO_THREADS, viewed, onViewed, onSave, onDelete, focusLine }: FileDiffProps) => {
+export const FileDiff = ({ file, id, comments, threads = NO_THREADS, viewed, onViewed, onSave, onDelete, focusLine, pending }: FileDiffProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const byKey = useMemo(() => new Map(comments.map((c) => [commentKey(c), c])), [comments]);
-  const threadsByKey = useMemo(() => byLine(threads), [threads]);
+  const byKey = useMemo(() => new Map(comments.filter((c) => c.path === file.path).map((c) => [commentKey(c), c])), [comments, file.path]);
+  const threadsByKey = useMemo(() => byLine(threads.filter((t) => t.path === file.path)), [threads, file.path]);
   // GitHub と同じく、見終えたファイルは畳む。
   useEffect(() => {
     if (viewed !== undefined) setCollapsed(viewed);
   }, [viewed]);
-  const ctx: FileCtx = { path: file.path, lang: languageOf(file.path), focusLine, comments: byKey, threads: threadsByKey, openKey, setOpenKey, onSave, onDelete };
+  // 親はスナップショットが届くたびに描き直すので、行の表は、行やコメントが変わったときだけ描き直す。保存と削除は、表を描き直さずに最新の関数を呼ぶ。
+  const handlers = useRef({ onSave, onDelete });
+  handlers.current = { onSave, onDelete };
+  const body = useMemo(() => {
+    const ctx: FileCtx = {
+      path: file.path, lang: languageOf(file.path), focusLine, comments: byKey, threads: threadsByKey, openKey, setOpenKey,
+      onSave: (c) => handlers.current.onSave(c),
+      onDelete: (key) => handlers.current.onDelete(key),
+    };
+    return <FileBody file={file} ctx={ctx} />;
+  }, [file, focusLine, byKey, threadsByKey, openKey]);
   const head = (
     <button class="diff-file-head" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
       <span class={`fstatus fstatus-${file.status}`} title={STATUS_LABEL[file.status]}>{STATUS_LETTER[file.status]}</span>
       <span class="path mono">{file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ${file.path}` : file.path}</span>
       {file.status !== 'unchanged' && <DiffStat file={file} />}
       {file.editedBySession && <span class="tag tag-info">このセッションが編集</span>}
-      {comments.length > 0 && <span class="tag tag-warn">コメント {comments.length}</span>}
+      {byKey.size > 0 && <span class="tag tag-warn">コメント {byKey.size}</span>}
       <span class="chevron" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
     </button>
   );
@@ -225,7 +239,7 @@ export const FileDiff = ({ file, id, comments, threads = NO_THREADS, viewed, onV
           </label>
         </div>
       ) : head}
-      {!collapsed && <FileBody file={file} ctx={ctx} />}
+      {!collapsed && (pending ? <p class="diff-note diff-pending" style={`--rows: ${rowCount(file)}`}>表示しています…</p> : body)}
     </section>
   );
 };

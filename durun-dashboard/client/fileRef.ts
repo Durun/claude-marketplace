@@ -37,3 +37,16 @@ export const findFocus = (files: DiffFile[], ref: string): Focus | undefined => 
   const index = exact >= 0 ? exact : files.findIndex((f) => path.endsWith(`/${f.path}`) || f.path.endsWith(`/${path}`));
   return index >= 0 ? { index, line: line ? Number(line) : undefined } : undefined;
 };
+
+/** 差分の表の行の数。ハンクの見出しも 1 行に数える。 */
+export const rowCount = (file: DiffFile): number => file.hunks.reduce((n, h) => n + 1 + h.lines.length, 0);
+
+/** 差分のファイルを from 番目から順に、表の行の数が合わせて rows に収まるところまで描くとき、描かずに残る最初のファイルの位置。rows より多いファイルも、1 つは描く。 */
+export const diffBatchEnd = (files: DiffFile[], from: number, rows: number): number => {
+  let end = from;
+  for (let total = 0; end < files.length; end++) {
+    total += rowCount(files[end]!);
+    if (end > from && total > rows) break;
+  }
+  return end;
+};
