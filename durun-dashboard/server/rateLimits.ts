@@ -55,10 +55,19 @@ const peekUsage = (now: number): RateLimits | undefined => {
     : undefined;
 };
 
+/**
+ * statusline の 5 時間の値が、同じ枠で記録した使用率より低い。
+ * 5 時間の枠の使用率は減らないので、API を呼ばずに描き直したセッションが、前に読んだ値を出しているとみなす。
+ */
+const behind = (limit: RateLimit): boolean => {
+  const recorded = state.rateWindows.fiveHour;
+  return !!recorded && recorded.resetsAt === limit.resetsAt && (recorded.points.at(-1)?.[1] ?? 0) > limit.usedPercent;
+};
+
 /** 今の使用制限。1 分以内に描いた statusline に今の 5 時間の枠があれば、その値を出す。無ければ get_usage で読んだ値を、それも無ければ statusline に残る値を出す。 */
 export const currentRateLimits = (now: number): RateLimits | undefined => {
   const fresh = readRateLimits(FRESH_MS);
-  return fresh?.fiveHour ? fresh : (peekUsage(now) ?? readRateLimits());
+  return fresh?.fiveHour && !behind(fresh.fiveHour) ? fresh : (peekUsage(now) ?? readRateLimits());
 };
 
 /** statusline が変わったときに、今の使用率を推移に記録する。 */

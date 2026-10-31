@@ -217,4 +217,10 @@ test('currentRateLimits は、1 分以内に描いた statusline に今の 5 時
   assert.deepEqual([currentRateLimits(fiveHourEnd)?.fiveHour, currentRateLimits(fiveHourEnd)?.sevenDay?.usedPercent], [undefined, 9]);
   // 読んでから 10 分を過ぎた値は、読めなくなったときに出し続けないよう使わず、statusline に残る値に戻る。
   assert.equal(currentRateLimits(Date.now() + 11 * minute)?.fiveHour?.usedPercent, 12);
+
+  // API を呼ばずに描き直したセッションが、同じ枠で記録した使用率より低い前の値を出していたら、使わずに get_usage で読んだ値を出す。
+  fs.writeFileSync(file, JSON.stringify({ rate_limits: { five_hour: window(12, fiveHourEnd), seven_day: window(3, sevenDayEnd) } }));
+  assert.equal(currentRateLimits(Date.now())?.fiveHour?.usedPercent, 40);
+  fs.writeFileSync(file, JSON.stringify({ rate_limits: { five_hour: window(45, fiveHourEnd), seven_day: window(10, sevenDayEnd) } }));
+  assert.deepEqual([currentRateLimits(Date.now())?.fiveHour?.usedPercent, currentRateLimits(Date.now())?.sevenDay?.usedPercent], [45, 10]);
 });
