@@ -174,7 +174,7 @@ const SideDocRow = ({ d, dragging, drag, onPin, onRemove, onRename }: RowProps) 
   );
 };
 
-/** 資料を足す入力欄。http(s) の URL ならリンクとして、ほかはファイルの絶対パスとして足す。題名はサーバーと画面が付けるので、変えたければ名前を変える。 */
+/** 資料を足す入力欄。http(s) の URL ならリンクとして、ほかはファイルの絶対パスか ~ から始まるパスとして足す。題名はサーバーと画面が付けるので、変えたければ名前を変える。 */
 const AddDoc = ({ s, onClose }: { s: Session; onClose: () => void }) => {
   const [value, setValue] = useState('');
   const save = async (e: Event) => {

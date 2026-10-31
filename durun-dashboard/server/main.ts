@@ -780,10 +780,10 @@ const pinDocs = (id: string, body: unknown): DocEditResult => {
   return { at: Date.now() };
 };
 
-/** エクスプローラーから資料に足すファイル。絶対パスで受け、同じファイルを足し直したら時刻を新しくし、外していたものはまた並べる。 */
+/** エクスプローラーや入力欄から資料に足すファイル。絶対パスで受け、~ はホームディレクトリにする。同じファイルを足し直したら時刻を新しくし、外していたものはまた並べる。 */
 const addFile = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
-  const file = field<string>(body, 'path', 'string');
+  const file = field<string>(body, 'path', 'string').replace(/^~(?=\/|$)/, os.homedir());
   if (!path.isAbsolute(file) || !fs.statSync(file, { throwIfNoEntry: false })?.isFile()) throw new HttpError(400, `「${file}」はファイルではありません`);
   meta.files = [...(meta.files ?? []).filter((f) => f.path !== file), { path: file, at: Date.now() }];
   meta.hiddenDocs = meta.hiddenDocs?.filter((k) => k !== file);
