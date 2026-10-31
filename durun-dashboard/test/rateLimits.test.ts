@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { RateWindow } from '../server/store.ts';
+import { js, useFakeClaude } from './fakeClaude.ts';
 
 // 実際の状態や statusline の入力に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 // 状態ファイルは、使用率の推移を持たない前の形で置いておく。
@@ -13,12 +14,40 @@ fs.writeFileSync(
   path.join(dataDir, 'state.json'),
   JSON.stringify({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] }),
 );
-const { STATUSLINE_DIR, advanceRateWindow, readRateLimits, readStatusline, recordRateLimits } = await import('../server/claude.ts');
+const { STATUSLINE_DIR, readRateLimits, readStatusline } = await import('../server/claude.ts');
+const { forgetCached } = await import('../server/cache.ts');
+const { askRateLimits, rateLimitsOf } = await import('../server/haiku.ts');
+const { advanceRateWindow, currentRateLimits, recordRateLimits } = await import('../server/rateLimits.ts');
 const { onChange, state } = await import('../server/store.ts');
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const END = Date.UTC(2026, 9, 14, 18, 0);
 const NEXT_END = END + FIVE_HOURS_MS;
+
+/** get_usage に答える偽の claude。要求が get_usage でなければ断る。calls を渡すと、動いた回数をそのファイルに残す。 */
+const useUsageClaude = (rateLimits: object | null, calls?: string): void =>
+  useFakeClaude(
+    dataDir,
+    `${calls ? `fs.appendFileSync(${js(calls)}, 'x');` : ''}
+const { request_id, request } = JSON.parse(stdin());
+const response = request.subtype === 'get_usage' && request.skip_behaviors
+  ? { subtype: 'success', request_id, response: { rate_limits: ${js(rateLimits)} } }
+  : { subtype: 'error', request_id, error: 'unknown request' };
+process.stdout.write(lines([JSON.stringify({ type: 'system', subtype: 'init' }), JSON.stringify({ type: 'control_response', response })]));`,
+  );
+
+// statusline に今の値が無いと get_usage を読みに claude を動かすので、本物を動かさないよう、使用制限の無いログインとして答える偽物にしておく。
+useUsageClaude(null);
+
+/** 裏で読み終えるまで、read を呼び直して待つ。 */
+const until = async <T,>(read: () => T, done: (value: T) => boolean): Promise<T> => {
+  for (let i = 0; i < 250; i++) {
+    const value = read();
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('待ちきれませんでした');
+};
 
 test('使用率の推移を持たない前の形の状態ファイルを読むと、推移は空で始まる', () => {
   assert.deepEqual(state.rateWindows, {});
@@ -120,4 +149,72 @@ test('週の制限をリセットした後は、止まったセッションに�
   write('after', { seven_day: { ...week, used_percentage: 2 } });
   const limits = readRateLimits();
   assert.deepEqual([limits?.fiveHour, limits?.sevenDay?.usedPercent], [undefined, 2]);
+});
+
+test('rateLimitsOf は、get_usage の答えのリセットの時刻を、読むたびに変わる秒より下の端数を落として分に丸め、無い枠は読まない', () => {
+  const reply = {
+    rate_limits: {
+      five_hour: { utilization: 22, resets_at: '2026-10-14T18:00:00.044426+00:00' },
+      seven_day: { utilization: 10, resets_at: '2026-10-19T03:59:59.908135+00:00' },
+    },
+  };
+  assert.deepEqual(rateLimitsOf(reply, 1), { fiveHour: { usedPercent: 22, resetsAt: END }, sevenDay: { usedPercent: 10, resetsAt: Date.UTC(2026, 9, 19, 4) }, updatedAt: 1 });
+  // API キーでログインしていると、rate_limits は null で返る。
+  assert.deepEqual(rateLimitsOf({ rate_limits: null }, 1), { fiveHour: undefined, sevenDay: undefined, updatedAt: 1 });
+  assert.deepEqual(rateLimitsOf({ rate_limits: { five_hour: null, seven_day: { utilization: 3, resets_at: null } } }, 1), {
+    fiveHour: undefined,
+    sevenDay: { usedPercent: 3, resetsAt: undefined },
+    updatedAt: 1,
+  });
+});
+
+test('askRateLimits は、claude -p に get_usage を送って答えから使用率を読み、断られたら claude が返した理由で失敗する', async () => {
+  useUsageClaude({ five_hour: { utilization: 22, resets_at: '2026-10-14T18:00:00.04+00:00' } });
+  const before = Date.now();
+  const limits = await askRateLimits();
+  assert.deepEqual([limits.fiveHour, limits.sevenDay], [{ usedPercent: 22, resetsAt: END }, undefined]);
+  assert.ok(limits.updatedAt >= before && limits.updatedAt <= Date.now());
+
+  useFakeClaude(dataDir, `const { request_id } = JSON.parse(stdin());
+process.stdout.write(lines([JSON.stringify({ type: 'control_response', response: { subtype: 'error', request_id, error: 'unknown request' } })]));`);
+  await assert.rejects(askRateLimits(), /unknown request/);
+});
+
+test('currentRateLimits は、1 分以内に描いた statusline に今の 5 時間の枠があればその値を出し、無ければ get_usage で読んだ値を出して推移に記録する', async () => {
+  fs.rmSync(STATUSLINE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
+  state.rateWindows = {};
+  forgetCached('rate-limits');
+  // 5 時間の枠は、読んでから 10 分たたないうちにリセットを過ぎるよう、数分後に終わらせる。
+  const minute = 60_000;
+  const fiveHourEnd = Math.ceil(Date.now() / minute) * minute + 3 * minute;
+  const sevenDayEnd = fiveHourEnd + 24 * 60 * minute;
+  const file = path.join(STATUSLINE_DIR, 'tui.json');
+  const window = (used: number, end: number) => ({ used_percentage: used, resets_at: end / 1000 });
+  fs.writeFileSync(file, JSON.stringify({ rate_limits: { five_hour: window(12, fiveHourEnd), seven_day: window(3, sevenDayEnd) } }));
+  const calls = path.join(dataDir, 'usage-calls');
+  useUsageClaude({ five_hour: { utilization: 40, resets_at: new Date(fiveHourEnd).toISOString() }, seven_day: { utilization: 9, resets_at: new Date(sevenDayEnd).toISOString() } }, calls);
+
+  // 描いたばかりの statusline の値は今の値なので、claude を動かさない。
+  assert.deepEqual([currentRateLimits(Date.now())?.fiveHour?.usedPercent, currentRateLimits(Date.now())?.sevenDay?.usedPercent], [12, 3]);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(fs.existsSync(calls), false);
+
+  // 描いてから 1 分を過ぎたら、ほかのセッションが使った分を含まないことがあるので、get_usage で読む。読み終えるまでは statusline の値を出す。
+  const old = new Date(Date.now() - 2 * minute);
+  fs.utimesSync(file, old, old);
+  assert.equal(currentRateLimits(Date.now())?.fiveHour?.usedPercent, 12);
+  const limits = await until(() => currentRateLimits(Date.now()), (l) => l?.fiveHour?.usedPercent === 40);
+  const recordedAt = state.rateWindows.fiveHour?.points.at(-1)?.[0] ?? 0;
+  assert.deepEqual(limits, {
+    fiveHour: { usedPercent: 40, resetsAt: fiveHourEnd, points: [[recordedAt, 40]] },
+    sevenDay: { usedPercent: 9, resetsAt: sevenDayEnd, points: [[recordedAt, 9]] },
+    updatedAt: recordedAt,
+  });
+  assert.equal(fs.readFileSync(calls, 'utf8'), 'x');
+
+  // 読んだ後にリセットを過ぎた枠は、読み直すまで出さない。
+  assert.deepEqual([currentRateLimits(fiveHourEnd)?.fiveHour, currentRateLimits(fiveHourEnd)?.sevenDay?.usedPercent], [undefined, 9]);
+  // 読んでから 10 分を過ぎた値は、読めなくなったときに出し続けないよう使わず、statusline に残る値に戻る。
+  assert.equal(currentRateLimits(Date.now() + 11 * minute)?.fiveHour?.usedPercent, 12);
 });

@@ -12,6 +12,12 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-durun-dashboard-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
+// スナップショットを組み立てると、使用制限を読みに claude を動かす。本物のアカウントに問い合わせないよう、使用制限の無いログインとして答える偽物にする。
+useFakeClaude(
+  tmp,
+  `const { request_id } = JSON.parse(stdin());
+process.stdout.write(lines([JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id, response: { rate_limits: null } } })]));`,
+);
 const { handleHook, holdPermission } = await import('../server/hooks.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 

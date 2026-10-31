@@ -133,7 +133,7 @@ const RateTray = ({ fiveHour, sevenDay, loading }: { fiveHour?: RateLimit; seven
         {sevenDay && <RateMeter limit={sevenDay} rateWindow={sevenDays} />}
         {loading ? <Loading /> : empty && (
           <p class="rate-empty">
-            まだ値がありません。<code>pnpm install-statusline</code> で statusline のラッパーを登録し、Claude Code のセッションでやり取りすると出ます。
+            まだ値がありません。Claude.ai のプランで Claude Code にログインしていると出ます。
           </p>
         )}
       </div>

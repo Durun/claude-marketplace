@@ -1,7 +1,8 @@
 // ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。文章校正の修正版は opus に書かせる。
+// 使用制限は、モデルを呼ばずに、SDK の get_usage で読む。
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import type { TokenTotals } from '../shared/types.ts';
+import type { RateLimit, RateLimits, TokenTotals } from '../shared/types.ts';
 import { claudeCommand } from './platform.ts';
 
 const HAIKU_TIMEOUT_MS = 30_000;
@@ -11,6 +12,7 @@ const SONNET_TIMEOUT_MS = 2 * 60_000;
 const READER_TIMEOUT_MS = 10 * 60_000;
 // 長い文章では書き直す文が多く、数分かかることがある。
 const OPUS_TIMEOUT_MS = 10 * 60_000;
+const USAGE_TIMEOUT_MS = 30_000;
 
 const COMMON_ARGS = ['-p', '--no-session-persistence', '--output-format', 'json'];
 // フック、MCP、CLAUDE.md を外す。フックが動くと、このセッションもダッシュボードに記録される。
@@ -110,3 +112,53 @@ export const askOpus = (prompt: string, schema: object, plugin?: string): Promis
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>
   askClaude(prompt, schema, READER_ARGS, READER_TIMEOUT_MS, cwd);
+
+/** get_usage が返す、使用制限の 1 つの枠。枠の無いプランでは null。 */
+type RawWindow = { utilization?: number | null; resets_at?: string | null } | null;
+/** get_usage の答え。API キーなど、プランの使用制限が無いログインでは rate_limits が null。 */
+type UsageReply = { rate_limits?: { five_hour?: RawWindow; seven_day?: RawWindow } | null };
+type ControlResponse = { type?: string; response?: { subtype?: string; request_id?: string; error?: string; response?: UsageReply } };
+
+const USAGE_REQUEST_ID = 'usage';
+
+// リセットの時刻は、読むたびに秒より下の端数が変わる。同じ枠を同じ時刻で見分けられるよう、分に丸める。
+const resetOf = (at: string | null | undefined): number | undefined => {
+  const ms = Date.parse(at ?? '');
+  return Number.isNaN(ms) ? undefined : Math.round(ms / 60_000) * 60_000;
+};
+
+const limitOf = (w: RawWindow | undefined): RateLimit | undefined =>
+  w?.utilization == null ? undefined : { usedPercent: w.utilization, resetsAt: resetOf(w.resets_at) };
+
+/** get_usage の答えから、5 時間と 7 日の枠を読む。at は読んだ時刻。 */
+export const rateLimitsOf = (reply: UsageReply, at: number): RateLimits => ({
+  fiveHour: limitOf(reply.rate_limits?.five_hour),
+  sevenDay: limitOf(reply.rate_limits?.seven_day),
+  updatedAt: at,
+});
+
+const parseLine = (line: string): ControlResponse | undefined => {
+  try {
+    return JSON.parse(line) as ControlResponse;
+  } catch {
+    return undefined;
+  }
+};
+
+/** ログインしているアカウントの使用制限を、claude -p に SDK の get_usage を送って読む。 */
+export const askRateLimits = (): Promise<RateLimits> =>
+  new Promise((resolve, reject) => {
+    const id = randomUUID();
+    running.add(id);
+    const args = ['-p', SAFE_MODE, '--no-session-persistence', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--session-id', id];
+    const claude = claudeCommand(args);
+    const child = execFile(claude.file, claude.args, { timeout: USAGE_TIMEOUT_MS }, (err, stdout, stderr) => {
+      running.delete(id);
+      if (err?.killed) return reject(new UpstreamError(`${USAGE_TIMEOUT_MS / 1000} 秒以内に終わりませんでした`));
+      const reply = stdout.split('\n').map(parseLine).find((m) => m?.type === 'control_response' && m.response?.request_id === USAGE_REQUEST_ID)?.response;
+      if (reply?.subtype === 'success' && reply.response) resolve(rateLimitsOf(reply.response, Date.now()));
+      else reject(new UpstreamError(reply?.error || stderr.trim() || err?.message || '答えが返りませんでした'));
+    });
+    // 使用率だけを読むので、7 日分の会話ログを調べて使い方の傾向を出す処理は飛ばさせる。要求を書いて標準入力を閉じると、claude は答えてから終わる。
+    child.stdin?.end(`${JSON.stringify({ type: 'control_request', request_id: USAGE_REQUEST_ID, request: { subtype: 'get_usage', skip_behaviors: true } })}\n`);
+  });
