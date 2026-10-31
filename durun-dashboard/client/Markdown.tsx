@@ -1,12 +1,14 @@
 import type { MarkedToken, Token, Tokens } from 'marked';
 import { type ComponentChildren, type ComponentType, createContext } from 'preact';
-import { useContext, useState } from 'preact/hooks';
+import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { imgOf } from '../shared/html.ts';
 import { GITHUB_ATTACHMENT } from '../shared/types.ts';
 import { attachmentSrc, openAttachment } from './Attachment.tsx';
 import { lexMarkdown } from './chatLinks.ts';
+import { buildSrcdoc } from './docFrame.ts';
 import { plainClick } from './Docs.tsx';
 import { headLines } from './format.ts';
+import { useSkin } from './skin.ts';
 import { CopyButton, Ext } from './ui.tsx';
 
 // Claude の発言は信頼できない内容なので、HTML として解釈させずに Preact の要素へ組み直す。
@@ -93,6 +95,27 @@ const CodeBlock = ({ text }: { text: string }) => (
   </div>
 );
 
+/**
+ * mermaid は図を SVG の文字列で返すので、資料と同じく別オリジンの iframe の中で描き、ダッシュボードの DOM には入れない。
+ * 親からは iframe の中の大きさを読めないので、描いた高さを postMessage で受け取って合わせる。
+ */
+// ponytail: 図ごとに iframe で mermaid（5 MB）を読み込む。図の多い画面で重くなったら、1 つの iframe で描いて画像で出す。
+const Diagram = ({ source }: { source: string }) => {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState<number>();
+  const skin = useSkin();
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const h: unknown = e.source === frame.current?.contentWindow ? e.data?.height : undefined;
+      // 描く前の高さ 0 は受け取らない。描き終えるまで既定の高さで場所を空けておき、本文が一度縮んでから伸びるのを避ける。
+      if (typeof h === 'number' && h > 0) setHeight(h);
+    };
+    addEventListener('message', onMessage);
+    return () => removeEventListener('message', onMessage);
+  }, []);
+  return <iframe ref={frame} class="md-diagram" title="図" sandbox="allow-scripts" style={height ? { height: `${height}px` } : undefined} srcdoc={buildSrcdoc({ format: 'mermaid', content: source }, skin, true)} />;
+};
+
 const Blocks = ({ tokens }: { tokens: Token[] }) => <>{tokens.map((t, i) => <Block key={i} t={t as MarkedToken} />)}</>;
 
 const Block = ({ t }: { t: MarkedToken }) => {
@@ -105,7 +128,7 @@ const Block = ({ t }: { t: MarkedToken }) => {
       const H = `h${t.depth}` as Heading;
       return <H><Inline tokens={t.tokens} /></H>;
     }
-    case 'code': return <CodeBlock text={t.text} />;
+    case 'code': return t.lang === 'mermaid' ? <Diagram source={t.text} /> : <CodeBlock text={t.text} />;
     // GitHub の画面で貼った画像は、<img> だけの段落になる。
     case 'html': return imgOf(t.text) ? <p><InlineToken t={t} /></p> : <CodeBlock text={t.text} />;
     case 'blockquote': return <blockquote><Blocks tokens={t.tokens} /></blockquote>;

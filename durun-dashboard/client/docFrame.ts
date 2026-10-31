@@ -36,6 +36,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 .code-block button { position: absolute; top: 6px; right: 6px; padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px system-ui, sans-serif; cursor: pointer; opacity: 0.45; }
 .code-block:hover button, .code-block button:focus-visible { opacity: 1; }
 .plain { white-space: pre-wrap; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: none; padding: 0; }
+.embedded, .embedded body { background: none; }
+.embedded body { margin: 0; padding: 0; }
+.embedded .diagram { margin: 0; }
 `;
 
 /**
@@ -162,6 +165,9 @@ document.addEventListener('click', (e) => {
   parent.postMessage({ openFile: href }, '*');
 });
 
+// Markdown の本文に埋め込んだ図は、この高さに iframe を合わせてもらう。
+new ResizeObserver(() => parent.postMessage({ height: out.offsetHeight }, '*')).observe(out);
+
 if (data.format === 'text') {
   const pre = document.createElement('pre');
   pre.className = 'plain';
@@ -221,8 +227,9 @@ document.addEventListener('click', (e) => {
  * 呼び出し側は、この文字列を sandbox="allow-scripts" の iframe の srcdoc にだけ渡す。
  * iframe には本体の CSS が届かないので、スキンのスクロールバーはここで入れる。
  * ファイルから読んだ HTML の資料は、相対パスで埋め込んだ音声や画像を、サーバーが資料のディレクトリから返すアドレスへ向ける。
+ * embedded は Markdown の本文に埋め込む図で、ページの余白と背景を外す。
  */
-export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<Doc, 'id' | 'path'>>, skin: Skin = 'default'): string => {
+export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<Doc, 'id' | 'path'>>, skin: Skin = 'default', embedded = false): string => {
   const skinStyle = skin === 'xp' ? `<style>${XP_SCROLLBAR_STYLE}</style>` : '';
   // HTML や SVG の資料は、先頭に足すと doctype より前になって互換モードに落ちるので、末尾に足す。
   if (doc.format === 'html') {
@@ -233,7 +240,7 @@ export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<
   // '<' を Unicode エスケープにして、内容に含まれる </script> や <!-- で script 要素が終わらないようにする。
   const data = JSON.stringify({ format: doc.format, content: doc.content }).replace(/</g, '\\u003c');
   return [
-    '<!doctype html><html lang="ja"><head><meta charset="utf-8">',
+    `<!doctype html><html lang="ja"${embedded ? ' class="embedded"' : ''}><head><meta charset="utf-8">`,
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<style>${TEMPLATE_STYLE}</style>${skin === 'xp' ? `<style>${XP_TEMPLATE_STYLE}</style>` : ''}${skinStyle}</head><body><main id="out"></main>`,
     `<script type="application/json" id="doc-data">${data}</script>`,
