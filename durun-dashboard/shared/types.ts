@@ -18,6 +18,9 @@ export type TaskItem = {
   blockedBy: string[];
 };
 
+/** やり取りから haiku が判定した、人間の依頼を分けたタスクと進み具合。 */
+export type ObservedTask = Pick<TaskItem, 'subject' | 'status'>;
+
 export type Subagent = {
   id: string;
   type: string;
@@ -193,6 +196,8 @@ export type Session = {
   lastMessage?: string;
   lastMessageAt?: number;
   tasks: TaskItem[];
+  /** 画面に出すタスク。アーカイブしたセッションと、やり取りの無いセッションと、まだ判定していないセッションには無い。 */
+  observedTasks?: ObservedTask[];
   subagents: Subagent[];
   background: BgTask[];
   /** 今のブランチの PR。 */

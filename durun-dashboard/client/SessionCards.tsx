@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { BgTask, Session, SessionSummary, Snapshot, TaskItem } from '../shared/types.ts';
+import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { fmtInt, fmtTokens } from './format.ts';
 import { useCollapsed } from './hooks.ts';
@@ -32,14 +32,14 @@ const groupSessions = (sessions: Session[], themeOrder: string[], order: string[
     .map(([theme, list]) => ({ theme, sessions: arrangeSessions(list, order) }));
 };
 
-const TaskLine = ({ tasks }: { tasks: TaskItem[] }) => {
+const TaskLine = ({ tasks }: { tasks: ObservedTask[] }) => {
   if (tasks.length === 0) return null;
   const done = tasks.filter((t) => t.status === 'completed').length;
   const active = tasks.find((t) => t.status === 'in_progress');
   return (
     <div class="task-line">
       <span class="muted">タスク</span> <b>{done}/{tasks.length}</b>
-      {active && <span class="active-form">{active.activeForm ?? active.subject}</span>}
+      {active && <span class="active-form">{active.subject}</span>}
     </div>
   );
 };
@@ -52,7 +52,7 @@ const Activity = ({ s }: { s: Session }) => {
   const monitors = runningTools(s, 'monitor');
   return (
     <div class="activity">
-      <TaskLine tasks={s.tasks} />
+      <TaskLine tasks={s.observedTasks ?? []} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
       {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}

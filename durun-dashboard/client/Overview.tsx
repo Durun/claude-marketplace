@@ -1,7 +1,7 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import type { ComponentChildren } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, type TaskItem, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, type ObservedTask, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { refSplitter } from './chatLinks.ts';
@@ -22,28 +22,28 @@ import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
 
-const TASK_LABEL: Record<TaskItem['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
+const TASK_LABEL: Record<ObservedTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
-const TaskRow = ({ t }: { t: TaskItem }) => {
-  const active = t.status === 'in_progress';
-  const blocked = t.status !== 'completed' && t.blockedBy.length > 0;
-  return (
-    <li class={`task task-${t.status}`}>
-      <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
-      <span class="task-text" title={t.subject}>{active ? t.activeForm ?? t.subject : t.subject}</span>
-      {blocked && <Chip title={`先行タスク ${t.blockedBy.join(', ')} の完了待ち`}>待ち {t.blockedBy.length}</Chip>}
-    </li>
-  );
-};
+const TaskRow = ({ t }: { t: ObservedTask }) => (
+  <li class={`task task-${t.status}`}>
+    <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
+    <span class="task-text" title={t.subject}>{t.subject}</span>
+  </li>
+);
 
-export const TaskList = ({ s: { tasks } }: { s: Session }) => {
-  const done = tasks.filter((t) => t.status === 'completed').length;
+/** タスクがまだ無いときの説明。サーバーが判定するのは、アーカイブしていない、やり取りのあるセッションだけ。 */
+const noTasks = (s: Session): string =>
+  s.archived ? 'アーカイブしたセッションでは、タスクをまとめません。' : !(s.lastPrompt || s.lastMessage) ? 'まだやり取りがありません。' : 'タスクをまとめています…';
+
+export const TaskList = ({ s }: { s: Session }) => {
+  const tasks = s.observedTasks;
+  const done = tasks?.filter((t) => t.status === 'completed').length;
   return (
-    <WidgetPanel title="タスク" count={tasks.length}>
-      {tasks.length === 0 ? <Empty>タスクはありません。</Empty> : (
+    <WidgetPanel title="タスク" count={tasks?.length}>
+      {!tasks ? <Empty>{noTasks(s)}</Empty> : tasks.length === 0 ? <Empty>タスクはありません。</Empty> : (
         <>
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks">{tasks.map((t) => <TaskRow key={t.id} t={t} />)}</ul>
+          <ul class="tasks">{tasks.map((t, i) => <TaskRow key={i} t={t} />)}</ul>
         </>
       )}
     </WidgetPanel>
@@ -128,11 +128,11 @@ const BgRow = ({ sessionId, t }: { sessionId: string; t: BgTask }) => {
 
 /** メインエージェントの状態。いま進めているタスクがあれば、それを添える。 */
 const MainAgent = ({ s }: { s: Session }) => {
-  const active = s.tasks.find((t) => t.status === 'in_progress');
+  const active = s.observedTasks?.find((t) => t.status === 'in_progress');
   return (
     <div class="subagent agent-main">
       <StatusBadge status={s.status} waitingFor={s.waitingFor} />
-      <span class="subagent-desc">{active ? active.activeForm ?? active.subject : s.name}</span>
+      <span class="subagent-desc">{active?.subject ?? s.name}</span>
       <span class="subagent-meta">
         {s.usage.model && <Chip>{s.usage.model}</Chip>}
         <span title="コンテキストの使用率">コンテキスト {Math.round(s.usage.contextPercent)}%</span>

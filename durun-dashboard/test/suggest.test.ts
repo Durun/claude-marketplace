@@ -15,7 +15,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 // 本物の Jev に問い合わせないよう、キーを外す。Jev を使うテストは、偽の Jev を立てる。
 delete process.env.TYPESAFE_AI_API_KEY;
-const { explainTerm, peekReplies, peekSummary, peekWaiting, sessionGlossary, suggestTitle, summarize } = await import('../server/suggest.ts');
+const { explainTerm, peekReplies, peekSummary, peekTasks, peekWaiting, sessionGlossary, suggestTitle, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
 const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
@@ -123,6 +123,42 @@ console.log(${js(JSON.stringify({ structured_output: output }))});`,
   assert.deepEqual(peekSummary({ ...conversation('p1', '作業中の発言'), status: 'busy' }), { doing: '候補を出す', now: '直し終えた' });
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(calls(), before);
+});
+
+test('タスクは、依頼とやり取りから待たずに裏で判定し、作業中は発言が増えても間を空けるまで判定し直さず、止まったらすぐ判定し直す', async () => {
+  const tasks = [{ subject: ' 原因を調べる ', status: 'completed' }, { subject: '直す', status: 'in_progress' }, { subject: '', status: 'pending' }, { subject: '確かめる', status: 'done' }];
+  useFakeClaude(
+    tmp,
+    `fs.writeFileSync(${js(promptFile)}, stdin());
+fs.appendFileSync(${js(callsFile)}, '\\n');
+console.log(${js(JSON.stringify({ structured_output: { tasks } }))});`,
+  );
+  const entries: ChatEntry[] = [
+    { kind: 'prompt', text: '最初の依頼' },
+    { kind: 'message', text: '調べます' },
+    { kind: 'tool', text: 'Bash ls' },
+    { kind: 'prompt', text: '次の依頼' },
+    { kind: 'message', text: '直しています' },
+  ];
+  const claudeTasks = [{ id: '1', subject: 'Claude のタスク', status: 'in_progress' as const, blockedBy: [] }];
+  const busy = { ...conversation('t1', '直しています'), status: 'busy' as const, firstPrompt: '最初の依頼', tasks: claudeTasks, entries };
+  assert.equal(peekTasks(busy), undefined);
+  await until(() => !!peekTasks(busy));
+  assert.deepEqual(peekTasks(busy), [{ subject: '原因を調べる', status: 'completed' }, { subject: '直す', status: 'in_progress' }]);
+  const prompt = lastPrompt();
+  assert.match(prompt, /<first_prompt>\n最初の依頼\n/);
+  assert.match(prompt, /<prompts>\n- 次の依頼\n/);
+  assert.match(prompt, /<claude_tasks>\n- \[作業中\] Claude のタスク\n/);
+  assert.match(prompt, /<conversation>\n人間: 最初の依頼\n\nClaude: 調べます\n\n人間: 次の依頼\n\nClaude: 直しています\n/);
+
+  const before = calls();
+  const more: ChatEntry[] = [...entries, { kind: 'message', text: '続けます' }];
+  peekTasks({ ...busy, entries: more });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(calls(), before);
+  peekTasks({ ...busy, status: 'idle', entries: more });
+  await until(() => calls() > before);
+  assert.match(lastPrompt(), /Claude: 続けます/);
 });
 
 // 用語集を作る偽の claude。やり取りの中の「TERM:語」を拾い、FAIL があれば失敗する。説明を頼まれたら、全角と半角の違いを除いて、材料に語が出てくるかを説明に書く。
