@@ -1,4 +1,4 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -24,6 +24,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 判断や確認が必要になったら ask_human で質問してください。回答が届くまで待ち、そのまま作業を続けられます。選択肢がある質問は options に並べてください。決めてほしいことが複数あるときは、選択肢を組み合わせず、questions に質問を分けて並べてください。
 - 図解や資料で説明すると伝わりやすいときは present で表示してください。ファイルに書いた資料は path で渡すと、開くたびに最新の内容が表示されます。
 - まとまった実装を終えたらコミットし、request_review でコードレビューを依頼してください。レビューしてほしいコミットの範囲は from と to に渡します。返ってきた指摘は反映してください。
+- 権限の確認や auto モードに止められて自分では実行できないコマンドを人間に実行してほしいときは、\`! コマンド\` を打つよう頼まずに request_command で頼んでください。実行を選んだと返ったらターンを終えてください。出力は次のターンに届きます。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
@@ -80,6 +81,19 @@ const TOOLS = [
         from: { type: 'string', description: 'レビューしてほしいコミットのうち、最も古いもの（例: abc1234、HEAD~2）。省略すると、分岐点から未コミットの変更までを見せる。' },
         to: { type: 'string', description: 'レビューしてほしいコミットのうち、最も新しいもの。省略すると HEAD。' },
       },
+    },
+  },
+  {
+    name: 'request_command',
+    description:
+      '人間にコマンドの実行を頼み、人間がダッシュボードで実行か却下を選ぶまで待つ。実行を選ぶと、人間が Claude Code の入力欄に `! コマンド` を打ったときと同じく、このセッションで実行され、出力が会話に載る。実行はこのターンを終えてから始まるので、実行を選んだと返ったらすぐにターンを終え、次のターンで出力を読む。権限の確認や auto モードに止められるなど、自分では実行できないコマンドを人間に頼むときに使う。使えるのは claude --bg で動くバックグラウンドのセッションだけ。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: '実行してほしいシェルのコマンド。人間が入力欄で ! の後に打つものと同じ。' },
+        reason: { type: 'string', description: '人間に見せる、何のために実行してほしいのか。自分では実行できない理由も書く。' },
+      },
+      required: ['command'],
     },
   },
   {
@@ -211,15 +225,17 @@ const sessionIdOf = (req: IncomingMessage): string | undefined => {
   return sessionIdForPid(pid);
 };
 
+const REQUEST_TITLE = { ask: '質問', review: 'レビュー依頼', command: 'コマンドの実行の依頼' };
+
 /**
- * 同じ質問の再呼び出し（接続が切れた後の再試行など）は、既存の項目に待ち手を付け替える。
- * 新しく尋ねたときは、待ち手のいない前の質問を片付ける。Claude は先へ進んでおり、文面を変えて尋ね直した質問が二重に残る。
+ * 同じ依頼の再呼び出し（接続が切れた後の再試行など）は、既存の項目に待ち手を付け替える。
+ * 新しく頼んだときは、待ち手のいない前の依頼を片付ける。Claude は先へ進んでおり、文面を変えて尋ね直した質問が二重に残る。
  */
-const upsertRequest = (sessionId: string, kind: 'ask' | 'review', body: string | undefined, extra: Pick<StoredAttention, 'options' | 'questions' | 'range'> = {}): StoredAttention => {
-  const existing = state.attention.find((a) => a.sessionId === sessionId && a.kind === kind && a.body === body);
+const upsertRequest = (sessionId: string, kind: keyof typeof REQUEST_TITLE, body: string | undefined, extra: Pick<StoredAttention, 'options' | 'questions' | 'range' | 'detail'> = {}): StoredAttention => {
+  const existing = state.attention.find((a) => a.sessionId === sessionId && a.kind === kind && a.body === body && a.detail === extra.detail);
   if (existing) return existing;
   dropStaleRequests(sessionId);
-  const item: StoredAttention = { id: newId(), kind, sessionId, title: kind === 'ask' ? '質問' : 'レビュー依頼', body, ...extra, createdAt: Date.now() };
+  const item: StoredAttention = { id: newId(), kind, sessionId, title: REQUEST_TITLE[kind], body, ...extra, createdAt: Date.now() };
   state.attention.push(item);
   touch();
   return item;
@@ -452,6 +468,16 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
         (range) => waitForHuman(req, res, rpcId, params, upsertRequest(sessionId, 'review', str(args.summary), { range })),
         (e: Error) => send(res, { id: rpcId, result: textResult(`レビューの範囲を決められません。${e.message}`, true) }),
       );
+    case 'request_command': {
+      const command = str(args.command);
+      if (!command) return send(res, { id: rpcId, result: textResult('command を渡してください。', true) });
+      // `!` のコマンドは supervisor への返信でしか渡せない。--resume や受信ソケットで渡すと、bash モードにならず依頼の文として読まれる。
+      const live = readLiveSessions().get(sessionId);
+      if (live?.kind !== 'bg' || !live.jobId) {
+        return send(res, { id: rpcId, result: textResult(`ダッシュボードから \`!\` のコマンドを渡せるのは、claude --bg で動くバックグラウンドのセッションだけです。人間に、Claude Code の入力欄で \`! ${command}\` を打つよう頼んでください。`, true) });
+      }
+      return waitForHuman(req, res, rpcId, params, upsertRequest(sessionId, 'command', str(args.reason), { detail: command }));
+    }
     case 'present':
       return send(res, { id: rpcId, result: present(req, sessionId, args) });
     case 'show_branches':

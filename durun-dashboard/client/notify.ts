@@ -10,6 +10,7 @@ export const KIND_LABEL: Record<AttentionKind, string> = {
   ask: '質問',
   question: '質問',
   review: 'レビュー依頼',
+  command: 'コマンド実行',
   permission: '権限確認',
   pr: 'PR',
   reply: '返信待ち',

@@ -157,6 +157,7 @@ export const api = {
   answer: (attentionId: string, answer: string) => postJson(`/api/attention/${seg(attentionId)}/answer`, { answer }),
   dismiss: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/dismiss`),
   allow: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/allow`),
+  answerCommand: (attentionId: string, run: boolean) => postJson(`/api/attention/${seg(attentionId)}/command`, { run }),
   manual: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/manual`),
   cancel: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/cancel`),
   retry: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/retry`),

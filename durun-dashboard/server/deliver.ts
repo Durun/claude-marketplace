@@ -460,7 +460,7 @@ const deliver = (sessionId: string, cwd: string, live: LiveSession | undefined, 
   return restart ? 'resumed' : 'sent';
 };
 
-const ASK_KINDS = new Set(['ask', 'question', 'permission']);
+const ASK_KINDS = new Set(['ask', 'question', 'command', 'permission']);
 
 /** 質問や権限の確認で止まっているセッション。質問や権限の確認は、フックで記録されるより先に会話ログに現れることがあるので、答えを待っているツールの呼び出しでも見分ける。 */
 const awaitingAnswer = (sessionId: string): boolean => state.attention.some((a) => a.sessionId === sessionId && ASK_KINDS.has(a.kind)) || !!summaryOf(sessionId)?.lastToolUse;
@@ -661,6 +661,33 @@ export const answerQuestion = (attentionId: string, answer: string): Delivery =>
   const item = state.attention.find((a) => a.id === attentionId);
   // 分けた質問への回答には、どの質問への答えかが書いてある。
   return resolveAttention(attentionId, answer, item?.questions ? '質問への回答:' : `質問「${item?.body ?? ''}」への回答:`);
+};
+
+// 実行を選ぶと Claude Code が `!` の実行をターンの後に回すので、待っている Claude にはターンを終えさせる。
+const COMMAND_RUN_REPLY = '人間が実行を選びました。Claude Code が、人間が入力欄で打ったのと同じく `!` で実行し、出力を会話に載せます。実行はこのターンを終えてから始まるので、すぐにターンを終えてください。出力は次のターンで読めます。';
+
+/**
+ * request_command の依頼に人間が答える。実行を選んだら、supervisor への返信で `! コマンド` を渡す。
+ * Claude Code は入力欄で打ったときと同じく bash モードで実行し、出力を会話に載せてから Claude に読ませる。作業中なら、ターンを終えてから実行する。
+ * 待ち手がいなくても、出力を読むターンが始まるので、メッセージは送らない。
+ */
+export const answerCommand = async (attentionId: string, run: boolean): Promise<void> => {
+  const item = state.attention.find((a) => a.id === attentionId && a.kind === 'command');
+  if (!item?.detail) throw new Error(`unknown command request: ${attentionId}`);
+  if (!run) return void resolveAttention(attentionId, '人間はコマンドの実行を断りました。', `コマンド「${item.detail}」の実行の依頼への回答:`);
+  const live = readLiveSessions().get(item.sessionId);
+  if (live?.kind !== 'bg' || !live.jobId) throw new SessionStateError('動いているバックグラウンドのセッションでないと、`!` のコマンドを渡せません');
+  // 続けて押されても二度実行しないよう、渡す前に片付ける。渡せなければ戻し、選び直せるようにする。
+  removeAttention(attentionId);
+  try {
+    await replyToJob(live.jobId, `! ${item.detail}`);
+  } catch (e) {
+    state.attention.push(item);
+    touch();
+    throw e;
+  }
+  waiters.get(attentionId)?.(COMMAND_RUN_REPLY);
+  waiters.delete(attentionId);
 };
 
 /** branch は、人間がコードでブランチを表示して付けたコメントのとき。作業ツリーのファイルと取り違えないよう、どのブランチの行かを添える。 */

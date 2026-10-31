@@ -476,7 +476,7 @@ export type Jump = { index: number };
  * 新しい発言が来たら、一番下を見ているときだけ送る。読み返している位置は動かさない。
  * entries は会話ログを読み終えるまで無いので、その間は吹き出しの形の帯を出す。読めなければ chatError を出す。
  * unread は Claude がまだ読んでいない送ったメッセージで、会話の後ろに並べる。
- * asks は Claude が人間の操作を待っている質問と権限の確認。質問は送信欄の代わりに、権限の確認は送信欄の上に出す。
+ * asks は Claude が人間の操作を待っている質問、コマンドの実行の依頼、権限の確認。質問と依頼は送信欄の代わりに、権限の確認は送信欄の上に出す。
  */
 export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session; entries?: ChatEntry[]; chatError?: string; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump }) => {
   const list = entries ?? [];

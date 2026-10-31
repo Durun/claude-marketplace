@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, saveLogSummaries, summarizeLog } from './claude.ts';
-import { allowPermission, answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { allowPermission, answerCommand, answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -1149,6 +1149,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/attention\/([^/]+)\/answer$/, ([, id = ''], b) => ({ delivery: answerQuestion(id, field<string>(b, 'answer', 'string')) })],
   [/^\/api\/attention\/([^/]+)\/dismiss$/, ([, id = '']) => dismiss(id)],
   [/^\/api\/attention\/([^/]+)\/allow$/, ([, id = '']) => allowPermission(id)],
+  [/^\/api\/attention\/([^/]+)\/command$/, ([, id = ''], b) => answerCommand(id, field<boolean>(b, 'run', 'boolean'))],
   [/^\/api\/outbox\/([^/]+)\/(manual|cancel|retry)$/, ([, id = '', action]) => updateOutbox(id, action as 'manual' | 'cancel' | 'retry')],
   [/^\/api\/queue\/([^/]+)\/(edit|save|cancel)$/, ([, id = '', action], b) => updateQueue(id, action as 'edit' | 'save' | 'cancel', b)],
   [/^\/api\/queue\/([^/]+)\/send$/, ([, id = '']) => ({ delivery: sendQueued(findQueued(id)) })],

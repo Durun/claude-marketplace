@@ -56,7 +56,7 @@ export const href = {
 export const attentionHref = (a: Attention): string => {
   if (a.kind === 'review') return href.session(a.sessionId, 'code');
   if (a.kind === 'doc' && a.docId) return href.doc(a.docId);
-  if (a.kind === 'reply' || a.kind === 'pr') return href.session(a.sessionId);
+  if (a.kind === 'reply' || a.kind === 'pr' || a.kind === 'command') return href.session(a.sessionId);
   return href.home();
 };
 

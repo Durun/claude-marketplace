@@ -72,14 +72,14 @@ export type SessionMeta = {
 
 export type StoredAttention = {
   id: string;
-  kind: 'ask' | 'review' | 'permission' | 'question';
+  kind: 'ask' | 'review' | 'command' | 'permission' | 'question';
   sessionId: string;
   title: string;
   body?: string;
   options?: string[];
   descriptions?: string[];
   questions?: AskedQuestion[];
-  /** 権限の確認で、Claude Code が使おうとしているツールの入力 */
+  /** 権限の確認では Claude Code が使おうとしているツールの入力、コマンドの実行の依頼では実行するコマンド */
   detail?: string;
   /** レビュー依頼で、Claude が見てほしいコミットの範囲 */
   range?: DiffRange;

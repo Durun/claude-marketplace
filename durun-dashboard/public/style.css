@@ -955,7 +955,7 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }
 .att-review { --k: #7a6ae0; }
-.att-permission { --k: var(--serious); }
+.att-permission, .att-command { --k: var(--serious); }
 .att-pr { --k: var(--critical); }
 .att-reply { --k: #1baf7a; }
 .att-doc { --k: var(--ended); }
