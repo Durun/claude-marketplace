@@ -789,8 +789,10 @@ const removeChannels = async (sessionId: string, args: Record<string, unknown>, 
     const r = await gopher!.call('remove_channels', { target_channels: indices.map((i) => i + 1).join(',') }).catch((e: Error) => e);
     if (r instanceof Error) return fail(r.message);
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_gopher:remove_channels');
-    addLog({ tool: 'fl_gopher', title: 'remove_channels', detail: channels.map((c) => `${c.position}: ${c.name}（${c.plugin}）`).join('\n'), output: r.text, ok: !r.isError, changes: changeLines(changes) });
-    return { text: `${r.text}\n消したチャンネルは、FL の元に戻す履歴に残らないので、Ctrl+Z では戻りません。`, isError: r.isError };
+    // FL は、チャンネルが 0 個になると空の Sampler を 1 つ足す。消したのが既定の Sampler だけなら、前と後の並びが同じになり、変化として見えない。
+    const refilled = indices.length === now.length ? '\nチャンネルを全部消したので、FL が空の Sampler を 1 つ足した（チャンネルが 0 個になると、FL が足す）。' : '';
+    addLog({ tool: 'fl_gopher', title: 'remove_channels', detail: channels.map((c) => `${c.position}: ${c.name}（${c.plugin}）`).join('\n'), output: `${r.text}${refilled}`, ok: !r.isError, changes: changeLines(changes) });
+    return { text: `${r.text}\n消したチャンネルは、FL の元に戻す履歴に残らないので、Ctrl+Z では戻りません。${refilled}`, isError: r.isError };
   });
 };
 
