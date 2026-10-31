@@ -11,6 +11,7 @@ import { PrTip } from './PrView.tsx';
 import { currentSessionId } from './router.ts';
 import { toast } from './toast.tsx';
 import { onSubmitKey } from './ui.tsx';
+import { type VoiceEvent, answerOf, onVoice, say } from './voice.ts';
 
 const W = 160;
 const H = 120;
@@ -334,6 +335,13 @@ const press = (href: string): void => {
 /** stateOf は、i 番目の送る指示を人間がどうしたか。 */
 type SaysProps = { turn: Turn; stateOf: (i: number) => SendState | undefined; onDecide: (i: number, s: Send, ok: boolean) => void };
 
+/** 声で頼まれた答えを読み上げる文。Markdown の記号と URL は読まず、送る指示は送り先と中身を読んで確かめる。 */
+const spokenOf = (r: AssistantReply): string =>
+  [
+    r.answer.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, '').replace(/[*`#>|~]/g, ''),
+    ...r.sends.map((s) => `「${s.name}」に「${s.text}」と送りますか？`),
+  ].join('\n');
+
 const DolphinSays = ({ turn: t, stateOf, onDecide }: SaysProps) => (
   <div class="dolphin-say">
     <Markdown text={t.text} />
@@ -360,10 +368,14 @@ const DolphinSays = ({ turn: t, stateOf, onDecide }: SaysProps) => (
   </div>
 );
 
-/** onHint は、マインスイーパのヒントを出せるときだけ渡す。sendStates は、送る指示を人間がどうしたかを、ターンと指示の番号を / でつないだキーで持つ。 */
+/**
+ * onHint は、マインスイーパのヒントを出せるときだけ渡す。sendStates は、送る指示を人間がどうしたかを、ターンと指示の番号を / でつないだキーで持つ。
+ * hearing は、呼びかけを聞いて続きを待っている間に、話している途中の文字。待っていなければ無い。
+ */
 type ChatProps = {
   turns: Turn[];
   thinking: boolean;
+  hearing?: string;
   sendStates: Record<string, SendState | undefined>;
   onAsk: (text: string) => void;
   onDecide: (key: string, s: Send, ok: boolean) => void;
@@ -372,10 +384,10 @@ type ChatProps = {
   chatRef: RefObject<HTMLElement>;
 };
 
-const DolphinChat = ({ turns, thinking, sendStates, onAsk, onDecide, onHint, onClose, chatRef }: ChatProps) => {
+const DolphinChat = ({ turns, thinking, hearing, sendStates, onAsk, onDecide, onHint, onClose, chatRef }: ChatProps) => {
   const [text, setText] = useState('');
   const log = useRef<HTMLDivElement>(null);
-  useEffect(() => log.current?.scrollTo({ top: log.current.scrollHeight }), [turns.length, thinking]);
+  useEffect(() => log.current?.scrollTo({ top: log.current.scrollHeight }), [turns.length, thinking, hearing]);
   const ask = () => {
     if (thinking || !text.trim()) return;
     onAsk(text.trim());
@@ -395,6 +407,7 @@ const DolphinChat = ({ turns, thinking, sendStates, onAsk, onDecide, onHint, onC
             <DolphinSays key={i} turn={t} stateOf={(j) => sendStates[`${i}/${j}`]} onDecide={(j, s, ok) => onDecide(`${i}/${j}`, s, ok)} />
           ),
         )}
+        {hearing !== undefined && <div class="dolphin-you is-hearing"><p class="plain">{hearing || '聞いています…'}</p></div>}
         {thinking && <p class="dolphin-say muted">考えています…</p>}
       </div>
       <textarea
@@ -423,6 +436,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
   const [sendStates, setSendStates] = useState<Record<string, SendState | undefined>>({});
+  const [hearing, setHearing] = useState<string>();
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const chat = useRef<HTMLElement>(null);
@@ -455,7 +469,8 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
 
   const mines = useFloats((list) => list.find((f) => f.key === MINESWEEPER_KEY));
   const toggle = () => setOpen((o) => !o);
-  const ask = async (text: string) => {
+  /** voice は、声で頼まれたか。声で頼まれたら、答えを読み上げる。 */
+  const ask = async (text: string, voice = false) => {
     const next: Turn[] = [...turns, { role: 'human', text }];
     setTurns(next);
     setThinking(true);
@@ -464,6 +479,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     if (!res) return;
     setTurns([...next, { role: 'dolphin', text: res.answer, links: res.links, sends: res.sends }]);
     for (const l of res.links) if (l.open) press(l.href);
+    if (voice) say(spokenOf(res));
   };
   const decide = async (key: string, s: Send, ok: boolean) => {
     if (!ok) return setSendStates((m) => ({ ...m, [key]: 'dropped' }));
@@ -473,6 +489,24 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     setSendStates((m) => ({ ...m, [key]: res && 'sent' }));
     if (res) toast(DELIVERY_TOAST[res.delivery]);
   };
+  /** 声で頼まれたこと。確かめている送る指示があれば、「送って」「やめて」をその答えとして受け取る。考えている間の頼みは聞かない。 */
+  const heard = (e: VoiceEvent) => {
+    if (e.kind === 'error') return toast(e.message, 'error');
+    if (e.kind === 'idle') return setHearing(undefined);
+    setOpen(true);
+    if (e.kind === 'listening') return setHearing(e.text);
+    setHearing(undefined);
+    if (thinking) return;
+    const last = turns.length - 1;
+    const pending = turns[last]?.role === 'dolphin' ? (turns[last].sends ?? []).map((s, j) => [`${last}/${j}`, s] as const).filter(([key]) => !sendStates[key]) : [];
+    const ok = pending.length ? answerOf(e.text) : undefined;
+    if (ok === undefined) return void ask(e.text, true);
+    for (const [key, s] of pending) void decide(key, s, ok);
+    say(ok ? '送ります' : '送るのをやめました');
+  };
+  const latestHeard = useRef(heard);
+  latestHeard.current = heard;
+  useEffect(() => onVoice((e) => latestHeard.current(e)), []);
   const hint = async (f: NonNullable<typeof mines>) => {
     setThinking(true);
     const done = await attempt('マインスイーパのヒント', async () => {
@@ -485,7 +519,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
 
   return (
     <div class="dolphin" ref={box}>
-      {open && <DolphinChat turns={turns} thinking={thinking} sendStates={sendStates} onAsk={ask} onDecide={decide} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
+      {open && <DolphinChat turns={turns} thinking={thinking} hearing={hearing} sendStates={sendStates} onAsk={ask} onDecide={decide} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
       {explained && (
         <div class={`card dolphin-chat ${'pr' in explained ? 'dolphin-pr' : 'dolphin-term'}`} ref={tip} role="tooltip">
           {'pr' in explained ? (

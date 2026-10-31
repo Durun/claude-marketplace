@@ -351,6 +351,22 @@ textarea.input { resize: vertical; min-height: 36px; }
 .memory-list > div { display: flex; justify-content: space-between; gap: 24px; }
 .memory-list dd { margin: 0; font-variant-numeric: tabular-nums; }
 .memory-list .is-sub { padding-left: 12px; color: var(--text-2); }
+/* 通知領域に常駐するイルカのマイク。ON の間はマイクをイルカの色で塗り、OFF は斜線を引く。押すたびに切り替え、右クリックで呼びかけの設定を開く。 */
+.mic-tray {
+  anchor-name: --mic-tray; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius); background: none; cursor: pointer;
+}
+.mic-tray:hover { border-color: var(--border); background: var(--surface-2); }
+.mic-tray svg { width: 20px; height: 20px; fill: none; stroke: var(--text-2); stroke-width: 1.6; stroke-linecap: round; }
+.mic-tray.is-on .mic-head { fill: #d97757; stroke: #d97757; }
+.mic-tray.is-preparing svg { opacity: 0.5; }
+.mic-flyout {
+  position-anchor: --mic-tray; position-area: bottom span-left; margin: 4px 0 0; padding: 10px 12px; max-width: 300px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12.5px; white-space: normal;
+}
+.mic-flyout:popover-open { display: grid; gap: 8px; }
+.mic-flyout p { margin: 0; }
+.mic-words { display: grid; gap: 4px; }
 /* 通知領域に常駐する Claude のログイン。リングの長さがタイマーの残りで、切れたら赤くする。押すとボタンの下に内訳を開く。 */
 .login-tray {
   anchor-name: --login-tray; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0;
@@ -1347,6 +1363,8 @@ table.data { width: 100%; border-collapse: collapse; }
 .dolphin-chat :is(.md > :not(table, .code-block), .dolphin-say .actions, .dolphin-you) { contain: inline-size; }
 .dolphin-you { display: flex; justify-content: end; }
 .dolphin-you > p { max-width: 85%; padding: 6px 10px; border-radius: var(--radius); background: var(--surface-2); }
+/* 呼びかけを聞いて続きを待っている間の、話している途中の文字。 */
+.dolphin-you.is-hearing > p { border: 1px dashed var(--border-strong); background: none; color: var(--muted); }
 /* 用語と PR の説明は、マウスを素通りさせ、語やリンクの上に重なっても、そこから外れたことにしない。 */
 .dolphin-term, .dolphin-pr { font-size: 13px; pointer-events: none; }
 /* 用語の説明は、チャットの吹き出しより狭くする。 */
@@ -1524,6 +1542,11 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .login-ring-track { stroke: #0b2a85; }
 [data-skin="xp"] .login-flyout { --text: #000; --text-2: #333; --muted: #5c5c5c; position-area: top span-left; margin: 0 0 4px; }
 [data-skin="xp"] .login-head { margin: -10px -12px 0; }
+[data-skin="xp"] .mic-tray { width: 20px; height: 20px; border: 0; }
+[data-skin="xp"] .mic-tray:hover { background: none; }
+[data-skin="xp"] .mic-tray svg { stroke: #0b2a85; }
+[data-skin="xp"] .mic-flyout { --text: #000; --text-2: #333; --muted: #5c5c5c; position-area: top span-left; margin: 0 0 4px; }
+[data-skin="xp"] .mic-flyout-head { margin: -10px -12px 0; }
 [data-skin="xp"] .ctx-flyout-head { margin: -10px -12px 0; }
 /*
  * 入力待ちは、通知領域の手のひらのアイコンと右下の件数のバッジで知らせる。昔のアニメーションのように、1 秒に 1 コマで黄色とグレーを交互に表示する。
@@ -1603,7 +1626,7 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .app-menu-foot-icon { width: 22px; height: 22px; padding: 4px; border: 1px solid #fff; }
 
 /* パネルとウィジェットはウィンドウにし、見出しをタイトルバーにする。 */
-[data-skin="xp"] :is(.panel, .widget, .fb-panel, .doc-head, .memory-flyout, .rate-flyout, .login-flyout, .count-flyout, .ctx-flyout) {
+[data-skin="xp"] :is(.panel, .widget, .fb-panel, .doc-head, .memory-flyout, .rate-flyout, .login-flyout, .mic-flyout, .count-flyout, .ctx-flyout) {
   border: 3px solid; border-color: #0855dd #003bda #003bda #0855dd; border-radius: 8px 8px 0 0; background: #ece9d8;
 }
 [data-skin="xp"] .is-editing .widget { border-style: dashed; }
@@ -1622,7 +1645,7 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .window-controls > .window-ctl.is-refresh { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M13.5 8.5A5.5 5.5 0 1 1 11 3.4' fill='none' stroke='%23fff' stroke-width='2.4'/><path d='M8.5 0.5 15 1.5 12 7z' fill='%23fff'/></svg>"), linear-gradient(#5c9cfc, #2a6cf0 45%, #1d55d8); }
 [data-skin="xp"] .window-controls > .window-ctl.is-archive { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 1.5h4V3h4v1.6H2V3h4zM3.3 5.6h9.4l-.8 8.9H4.1zM6 7v6h1.3V7zm2.7 0v6H10V7z' fill='%23fff' fill-rule='evenodd'/></svg>"), linear-gradient(#ec9077, #e05a32 45%, #c3401c); }
 [data-skin="xp"] .window-controls > .window-ctl.is-archive[aria-pressed="true"] { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 1.5h4V3h4v1.6H2V3h4zM3.3 5.6h9.4l-.8 8.9H4.1zM6 7v6h1.3V7zm2.7 0v6H10V7z' fill='%23fff' fill-rule='evenodd'/></svg>"), linear-gradient(#c4c4c4, #9a9a9a 45%, #7d7d7d); }
-[data-skin="xp"] :is(.panel-title, .widget > .section-title, .widget > .section-head, .widget > .session-title, .widget > .widget-tabs-head, .doc-head > .head-row:first-child, .fb-head, .memory-head, .rate-head, .login-head, .count-head, .ctx-flyout-head) {
+[data-skin="xp"] :is(.panel-title, .widget > .section-title, .widget > .section-head, .widget > .session-title, .widget > .widget-tabs-head, .doc-head > .head-row:first-child, .fb-head, .memory-head, .rate-head, .login-head, .mic-flyout-head, .count-head, .ctx-flyout-head) {
   padding: 4px 8px; border-radius: 5px 5px 0 0; color: #fff; text-shadow: 1px 1px #0f1089;
   font: 700 13px "Trebuchet MS", var(--sans);
   background: linear-gradient(#0997ff, #0053ee 8%, #0050ee 40%, #06f 88%, #06f 93%, #005bff 95%, #003dd7 96%, #003dd7);
