@@ -177,8 +177,10 @@ test('EnterWorktree は、ほかのセッションがいない worktree なら�
   const live = { 'wt-a': path.join(repo, '.worktrees', 'a', 'src'), 'wt-b': repo, 'wt-c': repo };
   for (const [id, cwd] of Object.entries(live)) fs.writeFileSync(path.join(sessionsDir, `${id}.json`), JSON.stringify({ pid: process.pid, sessionId: id, cwd, status: 'busy' }));
   t.after(() => Object.keys(live).forEach((id) => fs.rmSync(path.join(sessionsDir, `${id}.json`))));
-  const enter = (id: string, cwd: string, toolInput: object) =>
-    handleHook({ session_id: id, cwd, hook_event_name: 'PreToolUse', tool_name: 'EnterWorktree', tool_input: toolInput }, 0)?.hookSpecificOutput;
+  const enter = (id: string, cwd: string, toolInput: object) => {
+    const out = handleHook({ session_id: id, cwd, hook_event_name: 'PreToolUse', tool_name: 'EnterWorktree', tool_input: toolInput }, 0)?.hookSpecificOutput;
+    return out && 'permissionDecision' in out ? out : undefined;
+  };
 
   assert.equal(enter('wt-b', repo, { path: '.worktrees/a' })?.permissionDecision, 'deny');
   assert.match(enter('wt-b', repo, { name: 'a' })?.permissionDecisionReason ?? '', /別のセッション「wt-a」/);

@@ -1,4 +1,4 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼、FL Connect での FL Studio の読み書きを受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -7,6 +7,7 @@ import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '
 import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
 import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
+import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
@@ -28,7 +29,8 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
-- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。`;
+- 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。
+- fl_ で始まるツールは、人間が FL Connect のウィンドウを開いてこのセッションにつないでいる間だけ、FL Studio を読み書きできます。最初に fl_state で読んでください。まとまった変更は fl_python の 1 回のコードでまとめて書いてください。人間も同時に FL を触っており、人間がした操作はフックで届きます。ピアノロールのスクリプトを動かすと、FL が前に出ます。`;
 
 const TOOLS = [
   {
@@ -184,6 +186,71 @@ const TOOLS = [
       },
       required: ['file', 'version'],
     },
+  },
+  {
+    name: 'fl_state',
+    description:
+      'FL Studio の今の状態を読む（FL Connect）。既定は、再生とテンポ、人間が見ているウィンドウと選んでいるもの、チャンネル、ミキサー（Master と、名前か色を変えたトラックと、チャンネルの送り先）、プレイリストのトラック（名前か色を変えたもの）、パターンを、名前と主な値の短い形で返す。番号は MIDI スクリプトの API の番号で、チャンネルとミキサーは 0 から（ミキサーの 0 は Master）、プレイリストとパターンは 1 から。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sections: { type: 'array', items: { type: 'string', enum: ['channels', 'mixer', 'playlist', 'patterns'] }, description: '読む範囲。省くと全部。' },
+        detail: { type: 'boolean', description: 'true なら、音量とパン、ミキサーのスロットのプラグイン、送り先も返し、触っていないトラックも並べる。' },
+        plugin: {
+          type: 'object',
+          description: 'プラグインのパラメーターを読む。チャンネルのプラグインは { channel: 番号 }、ミキサーのエフェクトは { mixer: 番号, slot: 0 から 9 }。',
+          properties: { channel: { type: 'integer' }, mixer: { type: 'integer' }, slot: { type: 'integer' } },
+        },
+        start: { type: 'integer', description: '一覧の何行目から返すか。長い一覧の続きを読むときに渡す。' },
+      },
+    },
+  },
+  {
+    name: 'fl_changes',
+    description: 'FL Studio で、前に読んでから変わった値を、人間の操作とエージェントの変更に分けて時刻順に返す（FL Connect）。人間の操作は、メッセージが届いたときとツールを使った後にもフックで届くので、そこで届いた分は含まない。',
+    inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'true なら、読んだかどうかによらず、最近の 50 件を返す。' } } },
+  },
+  {
+    name: 'fl_python',
+    description:
+      'AI が書いた Python を、FL Studio の中（MIDI スクリプトの環境）で動かす（FL Connect）。channels、mixer、playlist、patterns、plugins、transport、ui、general、arrangement、device、midi、utils は読み込んである。print の出力と、コードの中で result に入れた値を返す。動かす前と後に、名前、色、音量、パン、ミュート、ソロ、送り先を読み、変わった値を返す（fl_undo で戻せる）。トラックの色と名前の整理のようなまとまった変更は、1 回のコードでまとめて書く。色は 0xRRGGBB。ループは timeout 秒で止まる。FL の外（ファイル、ネット、スレッド）には触れない。人間が FL Connect のウィンドウで書き込みを止めていると、値を変える関数は例外になる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: '動かす Python のコード。' },
+        timeout: { type: 'number', description: '時間切れの秒数。既定は 2、上限は 10。' },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'fl_pianoroll',
+    description:
+      'ピアノロールのスクリプト（flpianoroll を使う Python）を FL Studio で動かす（FL Connect の ② の道、FL 2026）。ノートを足す、移調、量子化などをコードで書ける。FL は、選んでいるチャンネルの、今のパターンのピアノロールを開いてから動かすので、先に fl_python の channels.selectOneChannel と patterns.jumpToPattern で選んでおく。FL は結果も例外も返さないので、ノートは人間に FL の画面で確かめてもらう。書いたノートは FL の元に戻す履歴に残らない。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'import flpianoroll as flp して、def apply(form=None): の中で flp.score を書き換えるスクリプト（例: n = flp.Note(); n.number = 60; n.time = 0; n.length = flp.score.PPQ; flp.score.addNote(n)）。' },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'fl_gopher',
+    description:
+      'FL Studio 2026 の中の口（内蔵の AI の Gopher が使うツール）を呼ぶ（FL Connect の ② の道）。チャンネルにプラグインを足す（add_channel）、ミキサーのスロットにエフェクトを足す（add_effect）など、fl_python の API に無い操作ができる。tool を省くと、ツールの一覧と引数を返す。remove_channels は、人間が FL Connect のウィンドウで許すまで返らない。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool: { type: 'string', description: '呼ぶツールの名前。省くと一覧を返す。' },
+        arguments: { type: 'object', description: 'ツールの引数。' },
+      },
+    },
+  },
+  {
+    name: 'fl_undo',
+    description: 'エージェントが fl_python などで変えた値を、FL Connect の記録から書く前に戻す（FL Connect）。新しい操作から steps 回分を戻す。人間がそのあとで変えた値と、足したチャンネルのように ① の道で戻せないものは戻さず、そう返す。',
+    inputSchema: { type: 'object', properties: { steps: { type: 'integer', description: '戻す操作の数。既定は 1。' } } },
   },
 ];
 
@@ -474,6 +541,14 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'revise_proofread':
       return void reviseProofread(res, rpcId, params, args);
     default:
+      if (FL_TOOL_NAMES.has(String(params.name))) {
+        // remove_channels は人間がウィンドウで許すまで返らないので、打ち切られないよう SSE で返す。
+        // Esc などで取り消されて接続が切れたら、人間に確かめている remove_channels も取り下げる。
+        const cancelled = new AbortController();
+        res.on('close', () => cancelled.abort());
+        const finish = openStream(res, rpcId, params, () => 'FL Connect のウィンドウで、人間の確認を待っています');
+        return void callFlTool(String(params.name), sessionId, args, cancelled.signal).then(({ text, isError }) => finish(textResult(text, isError)));
+      }
       return send(res, { id: rpcId, error: { code: METHOD_NOT_FOUND, message: `Unknown tool: ${String(params.name)}` } });
   }
 };

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@julusian/midi':
+        specifier: 3.8.1
+        version: 3.8.1
       '@xterm/addon-fit':
         specifier: ^0.11.0
         version: 0.11.0
@@ -239,6 +242,10 @@ packages:
 
   '@iconify/utils@3.1.7':
     resolution: {integrity: sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==}
+
+  '@julusian/midi@3.8.1':
+    resolution: {integrity: sha512-T+Ecn2pWTFu0G81PUa64Tk7yqzS6KlW61BKIaWVCBeXKXtXQ8ARgn6NcqmH6kABOM3FA8DV7XaPcw7VDBtgxKQ==}
+    engines: {node: '>=14.15'}
 
   '@mermaid-js/parser@2.0.1':
     resolution: {integrity: sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA==}
@@ -783,6 +790,9 @@ packages:
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
+  node-addon-api@6.1.0:
+    resolution: {integrity: sha512-+eawOlIgy680F0kBzPUNFhMZGtJ1YmqM6l4+Crf4IkImjYrO/mqPwRMh352g23uIaQKFItcQ64I7KMaJxHgAVA==}
+
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
@@ -794,6 +804,11 @@ packages:
 
   path-data-parser@0.1.0:
     resolution: {integrity: sha512-NOnmBpt5Y2RWbuv0LMzsayp3lVylAHLPUTut412ZA3l+C4uw4ZVkQbjShYCQ8TCpUMdPapr4YjUqLYD6v68j+w==}
+
+  pkg-prebuilds@1.1.0:
+    resolution: {integrity: sha512-jyai+KTQ2OwbN6iRYw88XbYOMgtpoSYJpjYebx7d9ihqz3txNi3ucsBt3va0iVWe6svSlaqpijMHFF/eJCMZzg==}
+    engines: {node: '>= 14.15.0'}
+    hasBin: true
 
   points-on-curve@0.2.0:
     resolution: {integrity: sha512-0mYKnYYe9ZcqMCWhUjItv/oHjvgEsfKvnUTg8sAtnHr3GVy7rGkXCb6d5cSyqrWqL4k81b9CPg3urd+T7aop3A==}
@@ -834,6 +849,9 @@ packages:
   ts-dedent@2.3.0:
     resolution: {integrity: sha512-JfJeIHke7y2egdGGgRAvpCwYFUsHlM2gPcrVOxFkznt/4uzQ7HFmvE63iFHVLBJNDuyDOQgijDK/tXH/f6Msjg==}
     engines: {node: '>=6.10'}
+
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
@@ -958,6 +976,12 @@ snapshots:
       '@antfu/install-pkg': 2.1.0
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
+
+  '@julusian/midi@3.8.1':
+    dependencies:
+      node-addon-api: 6.1.0
+      pkg-prebuilds: 1.1.0
+      tslib: 2.8.1
 
   '@mermaid-js/parser@2.0.1':
     dependencies:
@@ -1509,6 +1533,8 @@ snapshots:
 
   meshoptimizer@1.1.1: {}
 
+  node-addon-api@6.1.0: {}
+
   node-addon-api@7.1.1: {}
 
   node-pty@1.2.0-beta.15:
@@ -1518,6 +1544,8 @@ snapshots:
   package-manager-detector@1.9.0: {}
 
   path-data-parser@0.1.0: {}
+
+  pkg-prebuilds@1.1.0: {}
 
   points-on-curve@0.2.0: {}
 
@@ -1548,6 +1576,8 @@ snapshots:
   tinyexec@1.3.1: {}
 
   ts-dedent@2.3.0: {}
+
+  tslib@2.8.1: {}
 
   typescript@7.0.2:
     optionalDependencies:

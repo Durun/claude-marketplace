@@ -769,6 +769,38 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 /* コマンドプロンプト。xterm.js が描く端末を、ウィンドウの余白なしで敷き詰める。端末の大きさは、この枠に収まる行と桁の数で決める。xterm.js は自分の要素に terminal のクラスを付けるので、枠には別の名前を使う。 */
 .terminal-host { flex: 1; min-height: 0; margin: -10px -12px -12px; background: #000; }
 .terminal-host > .xterm { height: 100%; padding: 4px; }
+/* FL Connect。上に、つなぐセッション、道ごとの状態、切り替え、導入を並べ、下に記録を時刻の新しい順に並べる。記録の欄だけがスクロールする。 */
+.fl-connect { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.fl-session select { max-width: 360px; }
+.fl-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; }
+.fl-status-label { min-width: 9em; color: var(--text-2); }
+.fl-status-message { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.fl-toggles { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.fl-toggles label { display: inline-flex; align-items: center; gap: 4px; }
+.fl-note { margin: 0; color: var(--muted); font-size: 12px; }
+.fl-warn { color: var(--warning); }
+.fl-focus { margin: 0; padding: 4px 8px; border-radius: 4px; background: var(--surface-2); font-size: 12px; }
+.fl-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.fl-setup summary { cursor: pointer; color: var(--text-2); }
+.fl-steps { margin: 4px 0; padding: 0; list-style: none; }
+.fl-steps li { color: var(--muted); }
+.fl-steps li.is-done { color: var(--good); }
+.fl-pre { max-height: 220px; margin: 4px 0; padding: 6px 8px; overflow: auto; border-radius: 4px; background: var(--surface-2); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+.fl-removal { padding: 8px 10px; border: 2px solid var(--critical); border-radius: 6px; }
+.fl-removal ul { margin: 6px 0; }
+.fl-removal p { margin: 4px 0; }
+.fl-tabs { display: flex; gap: 6px; }
+.fl-tabs .is-active { background: var(--surface-2); font-weight: 600; }
+.fl-records, .fl-log { flex: 1; min-height: 120px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.fl-record { padding: 2px 0; border-bottom: 1px solid var(--border); }
+.fl-record time, .fl-log-item time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.fl-who { display: inline-block; min-width: 4.5em; color: var(--text-2); }
+.fl-record.is-agent .fl-who { color: var(--accent); }
+.fl-log-item { padding: 3px 0; border-bottom: 1px solid var(--border); }
+.fl-log-item.is-failed summary { color: var(--critical); }
+.fl-log-item summary { cursor: pointer; }
+.fl-log-count { margin-left: 6px; color: var(--accent); font-size: 12px; }
+.fl-changes { margin: 4px 0; padding-left: 18px; }
 /* 文章校正。読み手がまだ読んでいない文は灰色にし、読み進めを妨げる文は赤、気にしてほしい文は黄に塗る。語句の印は、妨げるものを赤い波線、ほかを橙の点線にする。 */
 /* XP の見た目は明るい配色だけなので、暗い画面でもチェックボックスや入力欄を明るく描く。 */
 .proof { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; color-scheme: light; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }

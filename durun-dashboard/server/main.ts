@@ -49,6 +49,7 @@ import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
+import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -78,6 +79,7 @@ const STATIC: Record<string, string> = {
   '/bookmark.svg': 'public/bookmark.svg',
   '/proofread.svg': 'public/proofread.svg',
   '/terminal.svg': 'public/terminal.svg',
+  '/flconnect.svg': 'public/flconnect.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
@@ -130,6 +132,18 @@ const field = <T>(body: unknown, key: string, type: 'string' | 'number' | 'boole
   const v = (body as Record<string, unknown>)[key];
   if (typeof v !== type) throw new HttpError(400, `${key} must be ${type}`);
   return v as T;
+};
+
+/** 省ける文字の項目。空や文字でない値は、渡さなかったものとする。 */
+const optionalString = (body: unknown, key: string): string | undefined => {
+  const v = (body as Record<string, unknown> | undefined)?.[key];
+  return typeof v === 'string' && v ? v : undefined;
+};
+
+const flSettingsOf = (body: unknown): { readOnly?: boolean; gopher?: boolean } => {
+  const { readOnly, gopher } = (body ?? {}) as Record<string, unknown>;
+  if ((readOnly !== undefined && typeof readOnly !== 'boolean') || (gopher !== undefined && typeof gopher !== 'boolean')) throw new HttpError(400, 'readOnly and gopher must be boolean');
+  return { readOnly, gopher } as { readOnly?: boolean; gopher?: boolean };
 };
 
 const strings = (body: unknown, key: string): string[] => {
@@ -1161,6 +1175,15 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b), WEB_API_MS],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b), READER_MS],
+  [/^\/api\/flconnect\/session$/, (_, b) => setFlSession(optionalString(b, 'session'))],
+  [/^\/api\/flconnect\/settings$/, (_, b) => setFlSettings(flSettingsOf(b))],
+  // FL のユーザーデータにスクリプトを書き、FL を起動し、ループバックを作るので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/flconnect\/install$/, () => installFlScripts(), WEB_API_MS],
+  [/^\/api\/flconnect\/launch$/, () => launchFlStudio(), WEB_API_MS],
+  [/^\/api\/flconnect\/loopback$/, () => createFlLoopback(), WEB_API_MS],
+  [/^\/api\/flconnect\/removal\/([\w-]+)$/, ([, id = ''], b) => {
+    if (!answerFlRemoval(id, field<boolean>(b, 'allow', 'boolean'))) throw new HttpError(404, 'この確認は終わっています');
+  }],
   [/^\/api\/terminal\/([\w-]+)\/input$/, ([, id = ''], b) => terminalInput(id, b)],
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
@@ -1294,6 +1317,12 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     const fetchSite = req.headers['sec-fetch-site'];
     if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
     return streamTerminal(res, url.searchParams.get('cwd') || os.homedir());
+  }
+  // つないでいる間は FL の MIDI のポートを開き、FL の状態を流すので、ダッシュボードの画面からの接続に限る。
+  if (req.method === 'GET' && url.pathname === '/api/flconnect/events') {
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+    return streamFlConnect(res, url.searchParams.get('session') || undefined);
   }
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);

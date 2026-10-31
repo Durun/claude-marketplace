@@ -1,10 +1,11 @@
-// Claude Code のフックを受ける。要対応を記録し、人間に送ったファイルを資料に足し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決め、権限の確認に人間の許可を返す。
+// Claude Code のフックを受ける。要対応を記録し、人間に送ったファイルを資料に足し、名前の無いセッションに名前を付け、改善のセッションのウェーブを区切り、worktree に入る権限を決め、権限の確認に人間の許可を返し、FL Connect でつないだセッションに人間の FL の操作を伝える。
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests, forgetPermission, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
+import { flHookContext } from './flconnect.ts';
 import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
@@ -26,8 +27,10 @@ export type HookInput = {
   tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown; files?: unknown; caption?: unknown };
 };
 
-/** フックへの応答。PreToolUse で、ツールを使ってよいかを Claude Code に返す。 */
-export type HookOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'allow' | 'deny'; permissionDecisionReason: string } };
+/** フックへの応答。PreToolUse で、ツールを使ってよいかを Claude Code に返す。UserPromptSubmit と PostToolUse で、Claude に伝えることを添える。 */
+export type HookOutput =
+  | { hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'allow' | 'deny'; permissionDecisionReason: string } }
+  | { hookSpecificOutput: { hookEventName: 'UserPromptSubmit' | 'PostToolUse'; additionalContext: string } };
 
 /**
  * 人間の操作を待って Claude が止まっている通知。idle_prompt は入力待ちの一覧（reply）で扱う。
@@ -259,7 +262,11 @@ const enterWorktree = (sessionId: string, cwd: string, input: HookInput['tool_in
   return decide('allow', 'ほかのセッションがいない worktree なので、durun-dashboard が許可しました。');
 };
 
-/** EnterWorktree の PreToolUse には、使ってよいかを返す。 */
+/**
+ * EnterWorktree の PreToolUse には、使ってよいかを返す。
+ * FL Connect でつないだセッションの UserPromptSubmit と PostToolUse には、前に知らせてから人間が FL でした操作を添える。
+ * サブエージェントに渡すと、本体のセッションに届かないまま読んだことになるので、本体にだけ渡す。
+ */
 export const handleHook = (input: HookInput, pid: number): HookOutput | undefined => {
   if (!input.session_id || !input.cwd) return;
   if (pid) pidSessions.set(pid, input.session_id);
@@ -271,6 +278,10 @@ export const handleHook = (input: HookInput, pid: number): HookOutput | undefine
   nameUntitled(meta, input, responded);
   if (responded) nextImprovement(input.session_id, input.last_assistant_message);
   if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
+  if (!input.agent_id && (event === 'UserPromptSubmit' || event === 'PostToolUse')) {
+    const additionalContext = flHookContext(input.session_id);
+    if (additionalContext) return { hookSpecificOutput: { hookEventName: event, additionalContext } };
+  }
 };
 
 const PERMISSION_DETAIL_CHARS = 2000;

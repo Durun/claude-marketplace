@@ -13,6 +13,7 @@ import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer }
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
+import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
 import { pickInWidget, reloadSnapshot, useFetch, usePicked, useWaitCursor } from './hooks.ts';
@@ -244,6 +245,8 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   [NOTEPAD_KEY]: { title: NOTEPAD_TITLE, icon: NOTEPAD_ICON, Body: () => <NotepadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNotepad() },
   [PROOFREAD_KEY]: { title: PROOFREAD_TITLE, icon: PROOFREAD_ICON, Body: () => <ProofreadIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openProofread() },
   [TERMINAL_KEY]: { title: TERMINAL_TITLE, icon: TERMINAL_ICON, Body: ({ s }) => <TerminalIcon cwd={s.cwd} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openTerminal(s.cwd) },
+  // セッションの画面から開いた FL Connect は、そのセッションにつなぐ。
+  [FL_KEY]: { title: FL_TITLE, icon: FL_ICON, Body: ({ s }) => <FlConnectIcon sessionId={s.id} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openFlConnect(s.id) },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
   [CHAT_WIDGET]: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },

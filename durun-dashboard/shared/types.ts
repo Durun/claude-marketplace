@@ -681,3 +681,61 @@ export type FeedbackContext = {
   /** 画面が表示していたデータ */
   snapshot: Snapshot | null;
 };
+
+/** FL Connect が FL の中で読む範囲。song はテンポと再生の状態。sends はミキサーのトラックの送り先。 */
+export type FlSection = 'channels' | 'mixer' | 'playlist' | 'patterns' | 'sends' | 'song';
+export type FlValue = string | number | boolean | number[] | null;
+
+/** FL の値の 1 つの変化。index は MIDI スクリプトの API の番号（チャンネルとミキサーは 0 から、プレイリストとパターンは 1 から）。 */
+export type FlChange = {
+  section: FlSection;
+  index: number;
+  /** 対象の名前（例: channel 2「Kick」） */
+  target: string;
+  field: string;
+  before: FlValue;
+  after: FlValue;
+  /** 音量のように、見せる値と書き戻す値が違うときの、書き戻す値（前と後）。 */
+  raw?: [FlValue, FlValue];
+};
+
+/** 操作の記録。who は、FL Connect が書いた値と合うものを agent、合わないものを human にする。via は、エージェントが変えたときのツール。 */
+export type FlRecord = FlChange & { seq: number; at: number; who: 'human' | 'agent'; via?: string };
+
+/** FL Connect のウィンドウに並べる操作の記録。text は記録を文にしたもの。 */
+export type FlRecordView = Pick<FlRecord, 'seq' | 'at' | 'who' | 'via'> & { text: string };
+
+/** FL Connect のウィンドウに並べる、エージェントがしたことの記録。 */
+export type FlLogEntry = { id: string; at: number; tool: string; title: string; detail?: string; output?: string; ok: boolean; changes?: string[] };
+
+/** 人間に確かめている、② の remove_channels で消えるチャンネル。position はチャンネルラックの上からの番号（1 から）。 */
+export type FlRemoval = { id: string; sessionId: string; channels: { position: number; name: string; plugin: string }[] };
+
+/** つながり方。no-port はポートが無い、silent はポートはあるが FL が名乗らないか応答しない。 */
+export type FlLinkStatus = 'off' | 'no-port' | 'silent' | 'connected';
+export type FlGopherStatus = 'off' | 'no-port' | 'no-page' | 'no-handler' | 'connected' | 'busy';
+
+/** FL のスクリプトの名乗り。 */
+export type FlHello = { script: string; core?: string; coreError?: string; fl: string; api: number; python: string };
+
+/** FL Connect のウィンドウに描くもの。ウィンドウがつないでいる間、サーバーが変わるたびに送る。 */
+export type FlConnectView = {
+  /** 記録を届け、ツールを使えるセッション。 */
+  sessionId?: string;
+  midi: { status: FlLinkStatus; message?: string; ports: { input: string; output: string }; hello?: FlHello };
+  gopher: { enabled: boolean; status: FlGopherStatus; message?: string; port: number; tools?: number };
+  readOnly: boolean;
+  setup: {
+    /** FL のユーザーデータのフォルダー。見つからなければ無い。 */
+    userData?: string;
+    /** FL のユーザーデータに置いてあるスクリプトの版。置いていなければ無い。 */
+    installed?: string;
+    /** ダッシュボードが持つスクリプトの版。 */
+    bundled: string;
+  };
+  /** 人間が今見ているもの。 */
+  focus?: { window?: string; caption?: string; channel?: number; mixer?: number; pattern?: number; playing: boolean; tempo?: number; undo?: string };
+  log: FlLogEntry[];
+  records: FlRecordView[];
+  removal?: FlRemoval;
+};

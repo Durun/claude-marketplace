@@ -58,7 +58,25 @@ export type Platform = {
   shellCommand: (line: string) => { file: string; args: string[] | string };
   /** 直近 1 分の load average。測れない OS では undefined。 */
   loadAverage: () => number | undefined;
+  /** ドキュメントのフォルダー。Windows では、OneDrive に移したときも追えるよう、既知のフォルダーから引く。読めなければ undefined。 */
+  documentsDir: (run?: Run) => Promise<string | undefined>;
+  /**
+   * FL Studio のユーザーデータのフォルダーの候補。FL はこの場所をどこに覚えているかを公開していないので、よくある場所を並べる。
+   * ドキュメントの下の Image-Line/FL Studio と、Windows では各ドライブの直下の Image-Line/FL Studio。exists はテストで偽物に差し替える。
+   */
+  flUserDataCandidates: (documents: string | undefined, exists?: (dir: string) => boolean) => string[];
+  /** FL Studio 2026 の実行ファイル。FL_STUDIO_PATH で指せる。FL の中の口（Gopher の WebView2）を使えない OS では undefined。 */
+  flStudioPath: (env: NodeJS.ProcessEnv) => string | undefined;
+  /** FL Studio が動いているか。調べられない OS では undefined。 */
+  isFlRunning: (run?: Run) => Promise<boolean | undefined>;
+  /** FL Connect の MIDI のループバック（FL Connect (A) と (B)）を作り、設定に保存するコマンド。Windows MIDI Services の無い OS では undefined。 */
+  midiLoopbackCommand: (env: NodeJS.ProcessEnv) => { file: string; args: string[] } | undefined;
 };
+
+const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
+
+/** tasklist の出力に、image の行があるか。見つからないときも、tasklist は終了コード 0 で知らせの文を出す。 */
+export const listedInTasklist = (tasklist: string, image: string): boolean => tasklist.split('\n').some((line) => line.trim().toLowerCase().startsWith(image.toLowerCase()));
 
 /** tailscale status --json から、この端末の MagicDNS の名前（完全な名前と先頭のラベル）と IP を取り出す。IPv6 は Host ヘッダーと同じく [] で囲む。 */
 export const hostsInTailscaleStatus = (status: string): string[] => {
@@ -101,6 +119,12 @@ const posix = {
   fileRoots: () => ['/'],
   shellCommand: (line: string) => ({ file: '/bin/sh', args: ['-c', line] }),
   loadAverage: () => os.loadavg()[0],
+  documentsDir: async () => path.posix.join(os.homedir(), 'Documents'),
+  flUserDataCandidates: (documents: string | undefined) => (documents ? [path.posix.join(documents, 'Image-Line', 'FL Studio')] : []),
+  // FL の Mac 版は WebView2 を使わないので、デバッグのポートを開いて起動する道が無い。
+  flStudioPath: () => undefined,
+  isFlRunning: async () => undefined,
+  midiLoopbackCommand: () => undefined,
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -172,6 +196,26 @@ const win32: Platform = {
   shellCommand: (line) => ({ file: 'cmd.exe', args: `/d /s /c "${line}"` }),
   // Node の os.loadavg は、Windows では負荷によらず 0 を返す。
   loadAverage: () => undefined,
+  // reg.exe はコンソールのコードページで書くので、日本語のパスが化ける。PowerShell に UTF-8 で書かせる。
+  documentsDir: async (run = realRun) => {
+    try {
+      const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Environment]::GetFolderPath('MyDocuments')"]);
+      return out.trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  flUserDataCandidates: (documents, exists = fs.existsSync) => [
+    ...(documents ? [path.win32.join(documents, FL_USER_DATA)] : []),
+    ...DRIVE_LETTERS.filter((d) => exists(`${d}:\\`)).map((d) => path.win32.join(`${d}:\\`, FL_USER_DATA)),
+  ],
+  flStudioPath: (env) => env.FL_STUDIO_PATH || path.win32.join(env.PROGRAMFILES ?? 'C:\\Program Files', 'Image-Line', 'FL Studio 2026', 'FL64.exe'),
+  isFlRunning: async (run = realRun) => listedInTasklist(await run('tasklist', ['/FI', 'IMAGENAME eq FL64.exe', '/NH']), 'FL64.exe'),
+  // Windows MIDI Services の道具は Program Files に入る。識別子は英字と数字だけでないと、設定に保存されない。
+  midiLoopbackCommand: (env) => ({
+    file: path.win32.join(env.PROGRAMFILES ?? 'C:\\Program Files', 'Windows MIDI Services', 'Tools', 'midi.exe'),
+    args: ['loopback', 'create', '--root-name', 'FL Connect', '--unique-identifier', 'flconnect', '--save-to-config'],
+  }),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

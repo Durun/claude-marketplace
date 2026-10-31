@@ -208,6 +208,42 @@ test('設定に書いたコマンドの行は、Windows では cmd.exe に行の
   assert.deepEqual(platformFor('win32').shellCommand('wsl tmux new -A -s "a b"'), { file: 'cmd.exe', args: '/d /s /c "wsl tmux new -A -s "a b""' });
 });
 
+test('FL Connect は、Windows では FL のユーザーデータをドキュメントの下と各ドライブの直下から探し、FL 2026 の起動とループバックの作成を Program Files の道具で行う', async () => {
+  const win = platformFor('win32');
+  assert.deepEqual(win.flUserDataCandidates('C:\\Users\\me\\OneDrive\\ドキュメント', (d) => d === 'C:\\' || d === 'D:\\'), [
+    'C:\\Users\\me\\OneDrive\\ドキュメント\\Image-Line\\FL Studio',
+    'C:\\Image-Line\\FL Studio',
+    'D:\\Image-Line\\FL Studio',
+  ]);
+  assert.equal(win.flStudioPath({ PROGRAMFILES: 'C:\\Program Files' }), 'C:\\Program Files\\Image-Line\\FL Studio 2026\\FL64.exe');
+  assert.equal(win.flStudioPath({ FL_STUDIO_PATH: 'E:\\FL\\FL64.exe' }), 'E:\\FL\\FL64.exe');
+  assert.deepEqual(win.midiLoopbackCommand({ PROGRAMFILES: 'C:\\Program Files' }), {
+    file: 'C:\\Program Files\\Windows MIDI Services\\Tools\\midi.exe',
+    args: ['loopback', 'create', '--root-name', 'FL Connect', '--unique-identifier', 'flconnect', '--save-to-config'],
+  });
+
+  const running = fakeRun({ tasklist: '\r\nFL64.exe                     12345 Console                    1    812,345 K\r\n' });
+  assert.equal(await win.isFlRunning(running.run), true);
+  assert.deepEqual(running.calls, ['tasklist /FI IMAGENAME eq FL64.exe /NH']);
+  const stopped = fakeRun({ tasklist: '情報: 指定された条件に一致するタスクは実行されていません。\r\n' });
+  assert.equal(await win.isFlRunning(stopped.run), false);
+
+  const docs = fakeRun({ 'powershell.exe': 'C:\\Users\\me\\OneDrive\\ドキュメント\r\n' });
+  assert.equal(await win.documentsDir(docs.run), 'C:\\Users\\me\\OneDrive\\ドキュメント');
+  assert.equal(await win.documentsDir(async () => Promise.reject(new Error('no powershell'))), undefined);
+});
+
+test('FL Connect は、Windows 以外では FL のユーザーデータをドキュメントの下だけで探し、② の道のための FL の起動とループバックの作成はしない', async () => {
+  for (const name of ['darwin', 'other']) {
+    const p = platformFor(name);
+    assert.deepEqual(p.flUserDataCandidates('/Users/me/Documents'), ['/Users/me/Documents/Image-Line/FL Studio']);
+    assert.equal(p.flStudioPath({ FL_STUDIO_PATH: '/x' }), undefined);
+    assert.equal(p.midiLoopbackCommand({}), undefined);
+    assert.equal(await p.isFlRunning(), undefined);
+    assert.match((await p.documentsDir()) ?? '', /Documents$/);
+  }
+});
+
 test('claude は、偽物が指されていれば node でそれを動かし、なければ PATH の claude を起動する', () => {
   assert.deepEqual(claudeCommand(['--bg', '--', '依頼'], {}), { file: 'claude', args: ['--bg', '--', '依頼'] });
   assert.deepEqual(claudeCommand(['stop', 'j1'], { DURUN_DASHBOARD_FAKE_CLAUDE: '/tmp/fake.mjs' }), { file: process.execPath, args: ['/tmp/fake.mjs', 'stop', 'j1'] });
