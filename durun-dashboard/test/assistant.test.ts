@@ -7,21 +7,37 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Session, Snapshot } from '../shared/types.ts';
 import { askDolphin } from '../server/assistant.ts';
 
-test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクはボタンにしない', async () => {
+test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクと無いセッションへの指示は返さない', async () => {
   // 標準入力のプロンプトを書き出し、外へのリンクを混ぜた答えを返す偽の claude を置く。
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-assistant-'));
   const promptFile = path.join(tmp, 'prompt');
-  const links = [{ label: '開く', href: '#/s/s1' }, { label: '外', href: 'https://example.com' }, { label: '', href: '#/' }];
-  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin()); console.log(${js(JSON.stringify({ structured_output: { answer: ' 入力待ちです ', links } }))});`);
+  const links = [
+    { label: '開く', href: '#/s/s1', open: true },
+    { label: '外', href: 'https://example.com', open: true },
+    { label: '', href: '#/', open: false },
+    { label: 'PR', href: 'https://github.com/o/r/pull/12', open: false },
+    { label: '課題', href: 'https://jira.example.com/browse/WEB-3', open: 'yes' },
+    { label: '別の JIRA', href: 'https://other.example.com/browse/WEB-3', open: false },
+  ];
+  const sends = [{ sessionId: 's1', text: ' テストを足して ' }, { sessionId: 'nope', text: '止めて' }, { sessionId: 's1', text: ' ' }];
+  useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin()); console.log(${js(JSON.stringify({ structured_output: { answer: ' 入力待ちです ', links, sends } }))});`);
   const session = {
     id: 's1', name: '検索画面', theme: 'dash', repo: 'dash', cwd: tmp, status: 'idle', updatedAt: 0, tasks: [], subagents: [], background: [], prs: [], jira: [],
     usage: { contextTokens: 0, contextWindow: 1, contextPercent: 12.3, exact: false, totals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, timeline: [] },
     archived: false, pinned: false, links: [], files: [], docOrder: [], hiddenDocs: [], docTitles: {}, pinnedDocs: [], artifacts: [], pendingMessages: 0, awaitingReview: false, lastMessage: '終わりました',
   } satisfies Session;
-  const snap = { now: 0, sessions: [session], attention: [], docs: [], outbox: [], themes: [], sessionOrder: [], improve: { enabled: false, running: false, pending: 0 }, jiraRefreshedAt: 0, assets: { js: 0, css: 0 } } satisfies Snapshot;
+  const snap = { now: 0, sessions: [session], attention: [], docs: [], outbox: [], themes: [], sessionOrder: [], improve: { enabled: false, running: false, pending: 0 }, jiraRefreshedAt: 0, jiraBase: 'https://jira.example.com', assets: { js: 0, css: 0 } } satisfies Snapshot;
 
   const reply = await askDolphin(snap, [{ role: 'human', text: '何か待ってる？' }, { role: 'dolphin', text: 'はい' }, { role: 'human', text: 'どれ？' }]);
-  assert.deepEqual(reply, { answer: '入力待ちです', links: [{ label: '開く', href: '#/s/s1' }] });
+  assert.deepEqual(reply, {
+    answer: '入力待ちです',
+    links: [
+      { label: '開く', href: '#/s/s1', open: true },
+      { label: 'PR', href: 'https://github.com/o/r/pull/12', open: false },
+      { label: '課題', href: 'https://jira.example.com/browse/WEB-3', open: false },
+    ],
+    sends: [{ sessionId: 's1', name: '検索画面', text: 'テストを足して' }],
+  });
   const prompt = fs.readFileSync(promptFile, 'utf8');
   assert.match(prompt, /<guide>\n# durun-dashboard/);
   assert.match(prompt, /"name":"検索画面".*"lastMessage":"終わりました"/);

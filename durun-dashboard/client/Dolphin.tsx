@@ -1,7 +1,7 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply, GlossaryTerm } from '../shared/types.ts';
-import { api, attempt } from './api.ts';
+import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import type { Pose, createDolphin } from './dolphin3d.ts';
 import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
@@ -9,6 +9,7 @@ import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sampl
 import { Markdown } from './Markdown.tsx';
 import { PrTip } from './PrView.tsx';
 import { currentSessionId } from './router.ts';
+import { toast } from './toast.tsx';
 import { onSubmitKey } from './ui.tsx';
 
 const W = 160;
@@ -46,7 +47,14 @@ const TAIL_INSET = 16;
 const BODY_HALF_LENGTH = 46;
 const BODY_HALF_THICKNESS = 19;
 
-type Turn = AssistantMessage & { links?: AssistantReply['links'] };
+type Turn = AssistantMessage & Partial<Pick<AssistantReply, 'links' | 'sends'>>;
+
+type Send = AssistantReply['sends'][number];
+
+/** セッションへ送る指示を、人間がどうしたか。sending は、送り終えるのを待っている間。 */
+type SendState = 'sending' | 'sent' | 'dropped';
+
+const SEND_RESULT: Record<Exclude<SendState, 'sending'>, string> = { sent: '送りました', dropped: '送りませんでした' };
 
 /**
  * 突き刺さった壁と、刺さった向き。at は、刺さりきったときの壁に沿った位置（px）で、左右の壁なら y、上下の壁なら x。
@@ -315,19 +323,56 @@ const pointerHandlers = (m: Motion, live: Live, toggle: () => void) => ({
   },
 });
 
-const DolphinSays = ({ turn: t }: { turn: Turn }) => (
+/** 人間がリンクを押したときと同じ開き方で開く。PR と課題は、main.tsx の useLinks がページを移らずにウィンドウで開く。 */
+const press = (href: string): void => {
+  const a = Object.assign(document.createElement('a'), { href });
+  document.body.append(a);
+  a.click();
+  a.remove();
+};
+
+/** stateOf は、i 番目の送る指示を人間がどうしたか。 */
+type SaysProps = { turn: Turn; stateOf: (i: number) => SendState | undefined; onDecide: (i: number, s: Send, ok: boolean) => void };
+
+const DolphinSays = ({ turn: t, stateOf, onDecide }: SaysProps) => (
   <div class="dolphin-say">
     <Markdown text={t.text} />
+    {t.sends?.map((s, i) => {
+      const state = stateOf(i);
+      return (
+        <div key={i} class="dolphin-send">
+          <p class="muted">「{s.name}」に送る指示</p>
+          <p class="plain">{s.text}</p>
+          {state === 'sent' || state === 'dropped' ? (
+            <p class="muted">{SEND_RESULT[state]}</p>
+          ) : (
+            <div class="actions">
+              <button class="btn btn-sm btn-primary" disabled={state === 'sending'} onClick={() => onDecide(i, s, true)}>送る</button>
+              <button class="btn btn-sm" disabled={state === 'sending'} onClick={() => onDecide(i, s, false)}>やめる</button>
+            </div>
+          )}
+        </div>
+      );
+    })}
     {t.links && t.links.length > 0 && (
       <div class="actions">{t.links.map((l) => <a key={l.href} class="btn btn-sm" href={l.href}>{l.label}</a>)}</div>
     )}
   </div>
 );
 
-/** onHint は、マインスイーパのヒントを出せるときだけ渡す。 */
-type ChatProps = { turns: Turn[]; thinking: boolean; onAsk: (text: string) => void; onHint?: () => void; onClose: () => void; chatRef: RefObject<HTMLElement> };
+/** onHint は、マインスイーパのヒントを出せるときだけ渡す。sendStates は、送る指示を人間がどうしたかを、ターンと指示の番号を / でつないだキーで持つ。 */
+type ChatProps = {
+  turns: Turn[];
+  thinking: boolean;
+  sendStates: Record<string, SendState | undefined>;
+  onAsk: (text: string) => void;
+  onDecide: (key: string, s: Send, ok: boolean) => void;
+  onHint?: () => void;
+  onClose: () => void;
+  chatRef: RefObject<HTMLElement>;
+};
 
-const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatProps) => {
+const DolphinChat = ({ turns, thinking, sendStates, onAsk, onDecide, onHint, onClose, chatRef }: ChatProps) => {
   const [text, setText] = useState('');
   const log = useRef<HTMLDivElement>(null);
   useEffect(() => log.current?.scrollTo({ top: log.current.scrollHeight }), [turns.length, thinking]);
@@ -343,7 +388,13 @@ const DolphinChat = ({ turns, thinking, onAsk, onHint, onClose, chatRef }: ChatP
         <button class="dolphin-close" aria-label="閉じる" onClick={onClose}>×</button>
       </header>
       <div class="dolphin-log" ref={log}>
-        {turns.map((t, i) => (t.role === 'human' ? <div key={i} class="dolphin-you"><p class="plain">{t.text}</p></div> : <DolphinSays key={i} turn={t} />))}
+        {turns.map((t, i) =>
+          t.role === 'human' ? (
+            <div key={i} class="dolphin-you"><p class="plain">{t.text}</p></div>
+          ) : (
+            <DolphinSays key={i} turn={t} stateOf={(j) => sendStates[`${i}/${j}`]} onDecide={(j, s, ok) => onDecide(`${i}/${j}`, s, ok)} />
+          ),
+        )}
         {thinking && <p class="dolphin-say muted">考えています…</p>}
       </div>
       <textarea
@@ -371,6 +422,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [sendStates, setSendStates] = useState<Record<string, SendState | undefined>>({});
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const chat = useRef<HTMLElement>(null);
@@ -409,7 +461,17 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     setThinking(true);
     const res = await attempt('イルカへの質問', () => api.assistant(next.map(({ role, text: t }) => ({ role, text: t })), currentSessionId()));
     setThinking(false);
-    if (res) setTurns([...next, { role: 'dolphin', text: res.answer, links: res.links }]);
+    if (!res) return;
+    setTurns([...next, { role: 'dolphin', text: res.answer, links: res.links, sends: res.sends }]);
+    for (const l of res.links) if (l.open) press(l.href);
+  };
+  const decide = async (key: string, s: Send, ok: boolean) => {
+    if (!ok) return setSendStates((m) => ({ ...m, [key]: 'dropped' }));
+    setSendStates((m) => ({ ...m, [key]: 'sending' }));
+    const res = await attempt('指示の送信', () => api.message(s.sessionId, s.text));
+    // 送れなければ、もう一度押せるよう元に戻す。
+    setSendStates((m) => ({ ...m, [key]: res && 'sent' }));
+    if (res) toast(DELIVERY_TOAST[res.delivery]);
   };
   const hint = async (f: NonNullable<typeof mines>) => {
     setThinking(true);
@@ -423,7 +485,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
 
   return (
     <div class="dolphin" ref={box}>
-      {open && <DolphinChat turns={turns} thinking={thinking} onAsk={ask} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
+      {open && <DolphinChat turns={turns} thinking={thinking} sendStates={sendStates} onAsk={ask} onDecide={decide} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
       {explained && (
         <div class={`card dolphin-chat ${'pr' in explained ? 'dolphin-pr' : 'dolphin-term'}`} ref={tip} role="tooltip">
           {'pr' in explained ? (

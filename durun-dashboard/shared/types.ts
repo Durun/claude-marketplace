@@ -563,8 +563,11 @@ export type SessionSummary = { doing: string; now: string; stale?: boolean };
 /** イルカの吹き出しでの会話。dolphin はイルカの答え。 */
 export type AssistantMessage = { role: 'human' | 'dolphin'; text: string };
 
-/** links は、答えに関係するダッシュボードの画面（#/ から始まる）。 */
-export type AssistantReply = { answer: string; links: { label: string; href: string }[] };
+/**
+ * links は、答えに関係するダッシュボードの画面（#/ から始まる）と、PR と課題の URL。open が真のものは、人間が開くよう頼んだもので、画面がすぐに開く。
+ * sends は、人間がセッションに伝えてほしいと頼んだ指示。聞き違いや言い換えがあり得るので、人間が「送る」を押してから送る。
+ */
+export type AssistantReply = { answer: string; links: { label: string; href: string; open: boolean }[]; sends: { sessionId: string; name: string; text: string }[] };
 
 /** 文章校正の評価軸。順に、指す先、疑問の回収、指す先までの距離と係り方、文の役割、前の文とのつながり、文章の主張を支えているか、語の選び方、1 文の負担。 */
 export type ProofAxis = '参照' | '回収' | '近接' | '骨組み' | '連結' | '貢献' | '語' | '負荷';
