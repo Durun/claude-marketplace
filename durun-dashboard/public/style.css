@@ -276,7 +276,6 @@ textarea.input { resize: vertical; min-height: 36px; }
 .ctx-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .ctx-value { min-width: 2.6em; font-size: 12.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 .ctx-est { padding: 0 5px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--muted); font-size: 10.5px; line-height: 15px; }
-.ctx-row { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
 
 /* ---- 共通レイアウト ---- */
 /* ヘッダーは 1 段に収める。幅が足りないときは、ツールチップでも読めるリセットの時刻を末尾から省く。狭い画面では折り返す。 */

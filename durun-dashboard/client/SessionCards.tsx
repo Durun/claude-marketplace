@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { fmtInt, fmtTokens } from './format.ts';
-import { useCollapsed } from './hooks.ts';
+import { fmtSpan } from './format.ts';
+import { NowContext, useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
-import { Chip, ContextBar, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
+import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -44,17 +44,19 @@ const TaskLine = ({ tasks }: { tasks: ObservedTask[] }) => {
   );
 };
 
-const runningTools = (s: Session, kind: BgTask['kind']): number => s.background.filter((t) => t.kind === kind && t.status === 'running').length;
+const runningTools = (s: Session, kind: BgTask['kind']): BgTask[] => s.background.filter((t) => t.kind === kind && t.status === 'running');
 
 const Activity = ({ s }: { s: Session }) => {
+  const now = useContext(NowContext);
   const running = s.subagents.filter((a) => a.running).length;
   const shells = runningTools(s, 'shell');
-  const monitors = runningTools(s, 'monitor');
+  const started = shells.flatMap((t) => t.startedAt ?? []);
+  const monitors = runningTools(s, 'monitor').length;
   return (
     <div class="activity">
       <TaskLine tasks={s.observedTasks ?? []} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
-      {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
+      {shells.length > 0 && <Chip tone="info">shell {shells.length} 実行中{started.length > 0 && ` · 最長 ${fmtSpan(now - Math.min(...started))}`}</Chip>}
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}
       {s.pendingMessages > 0 && <Chip tone="warn" title="Claude にまだ届いていないメッセージ">未配信 {s.pendingMessages}</Chip>}
       {s.awaitingReview && <Chip tone="info" title="Claude がレビューを待っています">レビュー待ち</Chip>}
@@ -70,12 +72,6 @@ const CardSummary = ({ summary }: { summary: SessionSummary }) => (
     <p><span class="card-summary-label">やっていること</span>{summary.doing}</p>
   </div>
 );
-
-// 合計はキャッシュ読み取りが大半を占め、作業量より大きく見える。カードには出力を出し、内訳はツールチップに回す。
-const totalsTitle = (s: Session): string => {
-  const t = s.usage.totals;
-  return `入力 ${fmtInt(t.input)} / 出力 ${fmtInt(t.output)} / キャッシュ読取 ${fmtInt(t.cacheRead)} / キャッシュ作成 ${fmtInt(t.cacheCreation)}`;
-};
 
 export type Selection = { selected: Set<string>; toggle: (ids: string[], on: boolean) => void };
 
@@ -138,10 +134,6 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
         )}
       </div>
       {s.summary && <CardSummary summary={s.summary} />}
-    </div>
-    <div class="ctx-row">
-      <ContextBar usage={s.usage} />
-      <span class="muted nowrap" title={totalsTitle(s)}>出力 {fmtTokens(s.usage.totals.output)}</span>
     </div>
     <Activity s={s} />
   </article>
