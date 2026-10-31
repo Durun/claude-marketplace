@@ -19,7 +19,6 @@ import { ROWS, type Layout } from './layout.ts';
 import { MessageInput } from './Messaging.tsx';
 import { currentSessionId } from './router.ts';
 import { ThemeGroups, type Selection } from './SessionCards.tsx';
-import { useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
 import { Choice } from './ui.tsx';
 
@@ -65,7 +64,8 @@ const useSaved = (key: string, options?: readonly string[]) => {
 };
 
 // 新規セッションのウィンドウを開くときに、ディレクトリとテーマの欄へ入れる値。ウィンドウが開いていれば、入力欄へ直に渡す。
-type Preset = { cwd: string; theme: string };
+// prompt は、起動できなかった最初の依頼を書き戻すときだけ渡す。
+type Preset = { cwd: string; theme: string; prompt?: string };
 let presetOnOpen: Preset | undefined;
 const presetListeners = new Set<(preset: Preset) => void>();
 
@@ -78,8 +78,6 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
-  const [busy, setBusy] = useState(false);
-  useWaitCursor(busy);
   // セッションの画面から開いたときは、そのセッションの作業ディレクトリとテーマを入れる。開いている間にもう一度開かれたら、入れ直す。
   // ディレクトリが埋まっていれば、次に書く最初の依頼から入力できるようにする。
   useEffect(() => {
@@ -88,6 +86,7 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
     const fill = (p: Preset) => {
       setCwd(p.cwd);
       setTheme(p.theme);
+      if (p.prompt) setPrompt(p.prompt);
     };
     if (preset) fill(preset);
     (preset || cwd ? ask : dir).current?.focus();
@@ -97,14 +96,13 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
     };
   }, []);
   const ready = !!cwd.trim() && !!prompt.trim();
+  // claude --bg は、まれに数十秒かかる。人間を待たせないよう、起動を待たずにウィンドウを閉じる。
+  // 起動できなかったら、書いた依頼を失わないよう、ウィンドウを開き直して書き戻す。次の依頼を書いているウィンドウは書き換えない。
   const start = async () => {
-    if (busy || !ready) return;
-    setBusy(true);
-    const done = await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme));
-    setBusy(false);
-    if (!done) return;
-    toast('セッションを起動しました');
+    if (!ready) return;
     onClose();
+    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme))) toast('セッションを起動しました');
+    else if (!presetListeners.size) openNewSession(cwd.trim(), theme, prompt);
   };
   return (
     <div class="stack new-session">
@@ -132,7 +130,7 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
         <span class="help">バックグラウンドで Claude Code を起動し、最初の依頼を渡します。</span>
         <span class="spacer" />
         <button class="btn" onClick={onClose}>キャンセル</button>
-        <button class="btn btn-primary" disabled={busy || !ready} onClick={start}>起動</button>
+        <button class="btn btn-primary" disabled={!ready} onClick={start}>起動</button>
       </div>
     </div>
   );
@@ -147,9 +145,9 @@ const NEW_SESSION_SIZE = { w: 640, h: 333 };
 export const NEW_SESSION_TITLE = '新規セッション';
 export const NEW_SESSION_ICON = '/claude-new.svg';
 
-/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd と theme を渡すと、ディレクトリとテーマの欄にそれぞれ入れる。 */
-export const openNewSession = (cwd?: string, theme = ''): void => {
-  const preset = cwd ? { cwd, theme } : undefined;
+/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd と theme と prompt を渡すと、ディレクトリとテーマと最初の依頼の欄にそれぞれ入れる。 */
+export const openNewSession = (cwd?: string, theme = '', prompt?: string): void => {
+  const preset = cwd ? { cwd, theme, prompt } : undefined;
   if (preset && presetListeners.size > 0) presetListeners.forEach((fn) => fn(preset));
   else presetOnOpen = preset;
   floatUp(NEW_SESSION_KEY, '', NEW_SESSION_TAB, NEW_SESSION_SIZE);
