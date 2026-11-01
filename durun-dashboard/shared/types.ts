@@ -393,10 +393,12 @@ export type AuthRequest = {
   id: string;
   /** 何の認証か（例: Google Cloud の認証、MCP サーバー「notion」の認証、example.com のブラウザ認証） */
   title: string;
-  /** 人間が OK を押すと動かす、認証のコマンド */
+  /** 人間が OK を押すと動かす、認証のコマンド。loginUrl も持つときは、尋ねる前から動いている。 */
   command?: string;
   /** ブラウザ認証で、人間が「進む」を押すとブラウザで開くログイン画面の URL */
   url?: string;
+  /** 認証のコマンドが受け取りを待っている、ログイン画面の URL。人間が OK を押すと、画面がブラウザで開く。Google Cloud の認証が持つ。 */
+  loginUrl?: string;
   /** ダッシュボードから前回ログインした時刻。Claude のログインで、ダッシュボードからログインしたことがあるときだけ持つ。 */
   lastLoginAt?: number;
   /** 認証を求めたセッション。求めた順。 */
