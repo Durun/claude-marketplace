@@ -65,11 +65,42 @@ test('Google Cloud は、確かめのコマンドが成功すれば認証済み�
   const gcloud = authProvider('gcloud', undefined, tmp)!;
   assert.equal(gcloud.command, 'exit 0');
   assert.equal(await gcloud.check(), false);
-  await gcloud.login();
+  await (await gcloud.prepare!()).finish();
   process.env.GCLOUD_CHECK_COMMAND = 'exit 0';
   process.env.GCLOUD_LOGIN_COMMAND = 'echo failed && exit 3';
   assert.equal(await authProvider('gcloud', undefined, tmp)!.check(), true);
-  await assert.rejects(authProvider('gcloud', undefined, tmp)!.login(), /failed/);
+  await assert.rejects((await authProvider('gcloud', undefined, tmp)!.prepare!()).finish(), /failed/);
+});
+
+test('Google Cloud は、尋ねる前に認証のコマンドを動かしてログイン画面の URL を添え、却下したらコマンドを止め、OK ならコマンドが終わるのを待つ', async () => {
+  // gcloud と同じく Python の webbrowser でログイン画面を開き、受け取りを待つ偽物。
+  const pidFile = path.join(tmp, 'gcloud-login.pid');
+  const fakeLogin = (seconds: number) =>
+    `python3 -c "import os, time, webbrowser; open('${pidFile}', 'w').write(str(os.getpid())); webbrowser.open('https://example.com/login?state=1'); time.sleep(${seconds})"`;
+  const alive = (pid: number): boolean => {
+    try {
+      return process.kill(pid, 0);
+    } catch {
+      return false;
+    }
+  };
+  process.env.GCLOUD_CHECK_COMMAND = 'exit 1';
+  process.env.GCLOUD_LOGIN_COMMAND = fakeLogin(30);
+  const rejected = requestAuth(authProvider('gcloud', undefined, tmp)!, 's1');
+  await until(() => authRequests().length > 0);
+  const [request] = authRequests();
+  assert.deepEqual(request, { id: request?.id, title: 'Google Cloud の認証', command: fakeLogin(30), loginUrl: 'https://example.com/login?state=1', sessionIds: ['s1'] });
+  const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+  answerAuth(request!.id, false);
+  assert.deepEqual(await rejected, { ok: false, text: 'Google Cloud の認証を、人間が却下しました。' });
+  await until(() => !alive(pid));
+  assert.equal(alive(pid), false);
+
+  process.env.GCLOUD_LOGIN_COMMAND = fakeLogin(0.2);
+  const approved = requestAuth(authProvider('gcloud', undefined, tmp)!, 's1');
+  await until(() => authRequests().length > 0);
+  answerAuth(authRequests()[0]!.id, true);
+  assert.deepEqual(await approved, { ok: true, text: 'Google Cloud の認証を終えました。' });
 });
 
 test('MCP サーバーは、claude mcp get の Status で確かめて claude mcp login で認証し、登録されていない名前は失敗にする', async () => {
@@ -85,7 +116,7 @@ test('MCP サーバーは、claude mcp get の Status で確かめて claude mcp
   assert.equal(await authProvider('mcp', 'claude.ai Slack', tmp)!.check(), true);
   assert.equal(await authProvider('mcp', 'notion', tmp)!.check(), false);
   await assert.rejects(authProvider('mcp', 'missing', tmp)!.check(), /No MCP server named "missing"/);
-  await authProvider('mcp', 'notion', tmp)!.login();
+  await authProvider('mcp', 'notion', tmp)!.login!();
   assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['mcp get claude.ai Slack', 'mcp get notion', 'mcp get missing', 'mcp login notion']);
   assert.equal(authProvider('mcp', undefined, tmp), undefined);
   assert.equal(authProvider('slack', 'notion', tmp), undefined);

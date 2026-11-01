@@ -1,5 +1,6 @@
 // Claude が求めた認証を、進めてよいか尋ねる。同じ相手の認証を求めたセッションは、1 つのウィンドウにまとめて並べる。
 // ブラウザ認証は、「進む」でログイン画面を開き、人間がログインを終えて「認証した」を押したら、Claude に返す。
+// Google Cloud は、待っている gcloud のログイン画面を OK で開く。クリックの中で開くので、ポップアップとして止められない。
 // Claude のログインには、ダッシュボードから前回ログインした時刻を添え、ログインが何日もったかを人間がタイマーに使えるようにする。
 import { useState } from 'preact/hooks';
 import type { Snapshot } from '../shared/types.ts';
@@ -16,10 +17,14 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
   if (!snapshot || !request) return null;
   const answer = (ok: boolean) => void attempt('認証への答え', () => api.answerAuth(request.id, ok));
   const sessions = snapshot.sessions.filter((s) => request.sessionIds.includes(s.id));
-  const { url, lastLoginAt } = request;
+  const { url, lastLoginAt, loginUrl } = request;
   const open = () => {
     window.open(url, '_blank', 'noopener');
     setOpened(request.id);
+  };
+  const ok = () => {
+    if (loginUrl) window.open(loginUrl, '_blank', 'noopener');
+    answer(true);
   };
   return (
     <XpInfoWindow key={request.id} title={request.title} closeTitle="認証せずに閉じる" onClose={() => answer(false)}>
@@ -28,7 +33,13 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
         <span>
           次のセッションが、{request.title}を求めています。<br />
           {lastLoginAt && <>前回のログインは {dateTime(lastLoginAt)}（{fmtSpan(snapshot.now - lastLoginAt)}前）です。<br /></>}
-          {url ?<>「進む」を押すと、ブラウザで <code>{url}</code> を開きます。ログインを終えたら、「認証した」を押してください。</> : <>OK を押すと、<code>{request.command}</code> で認証します。</>}
+          {url ? (
+            <>「進む」を押すと、ブラウザで <code>{url}</code> を開きます。ログインを終えたら、「認証した」を押してください。</>
+          ) : loginUrl ? (
+            <>OK を押すと、<code>{request.command}</code> のログイン画面をブラウザで開きます。</>
+          ) : (
+            <>OK を押すと、<code>{request.command}</code> で認証します。</>
+          )}
         </span>
       </p>
       <ul class="xp-info-list">
@@ -41,7 +52,7 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
             <button disabled={opened !== request.id} onClick={() => answer(true)}>認証した</button>
           </>
         ) : (
-          <button onClick={() => answer(true)}>OK</button>
+          <button onClick={ok}>OK</button>
         )}
         <button onClick={() => answer(false)}>キャンセル</button>
       </div>
