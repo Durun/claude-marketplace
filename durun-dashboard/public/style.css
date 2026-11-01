@@ -993,6 +993,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 /* 区分は見出しを押すと折りたためる。開閉の印は、テーマの見出しと同じく右端に置く。 */
 .inbox-section > summary { list-style: none; cursor: pointer; }
 .inbox-section-title .chevron { margin-left: auto; }
+/* JIRA Issues をプロジェクトとほかの属性の 2 段で分けたときは、内側の組を字下げして段の違いを見せる。 */
+.inbox-section .inbox-section { margin-left: 12px; }
 
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }

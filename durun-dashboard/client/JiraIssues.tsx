@@ -5,6 +5,7 @@ import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
+import { BY_PROJECT, GROUPINGS, type Grouping, groupIssues } from './jiraGroups.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
 import { matcher } from './searchItems.ts';
@@ -36,10 +37,12 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
   const [jql, setJql] = useState(settings.jql || DEFAULT_JQL);
   const [max, setMax] = useState(settings.max || String(DEFAULT_MAX));
   const [fields, setFields] = useState(() => fieldsOf(settings));
+  const [group, setGroup] = useState(settings.group ?? '');
+  const [groupProject, setGroupProject] = useState(Boolean(settings.groupProject));
   const toggle = (key: FieldKey, on: boolean) => setFields((prev) => new Set(FIELDS.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k)))));
   const save = (e: SubmitEvent) => {
     e.preventDefault();
-    onSave({ title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(',') });
+    onSave({ title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), group, groupProject: groupProject ? '1' : '' });
     onClose();
   };
   return (
@@ -71,6 +74,20 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
             {f.label}
           </label>
         ))}
+      </fieldset>
+      {/* 属性は 1 つだけ選び、プロジェクトはその外側の組として重ねられる。 */}
+      <fieldset class="jira-fields">
+        <legend>グループ化</legend>
+        {[{ key: '', label: 'なし' }, ...GROUPINGS].map((g) => (
+          <label key={g.key} class="check">
+            <input type="radio" name="group" checked={group === g.key} onChange={() => setGroup(g.key)} />
+            {g.label}
+          </label>
+        ))}
+        <label class="check">
+          <input type="checkbox" checked={groupProject} onChange={(e) => setGroupProject(e.currentTarget.checked)} />
+          {BY_PROJECT.label}
+        </label>
       </fieldset>
       <div class="actions">
         <span class="spacer" />
@@ -123,6 +140,26 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
   </li>
 );
 
+/** 課題を by の先頭の属性で組に分け、組の中を残りの属性でさらに分ける。 */
+const IssueGroups = ({ issues, by, fields, nested = false }: { issues: JiraIssue[]; by: Grouping[]; fields: Set<string>; nested?: boolean }) => {
+  const [first, ...rest] = by;
+  if (!first) return <ul class="jira-list">{issues.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>;
+  const Heading = nested ? 'h4' : 'h3';
+  return (
+    <>
+      {groupIssues(issues, first).map((g) => (
+        <section key={g.name} class="inbox-section">
+          <Heading class="inbox-section-title">
+            {g.name}
+            <span class="count-pill">{g.issues.length}</span>
+          </Heading>
+          <IssueGroups issues={g.issues} by={rest} fields={fields} nested />
+        </section>
+      ))}
+    </>
+  );
+};
+
 /** タイトルバー右端の更新のボタン。サーバーに JIRA の情報を取り直させ、JQL が同じでも探し直す。 */
 export const jiraControls = (): Control[] => [
   { kind: 'refresh', label: 'JIRA の課題の情報を取り直す', onClick: () => void attempt('JIRA の更新', api.refreshJira) },
@@ -162,6 +199,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const jql = settings.jql || DEFAULT_JQL;
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
+  const by = [...(settings.groupProject ? [BY_PROJECT] : []), ...GROUPINGS.filter((g) => g.key === settings.group)];
   const { data, error } = useCached(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
   const hit = matcher(query);
   const shown = data?.filter((i) => hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
@@ -201,7 +239,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
         ) : shown.length === 0 ? (
           <Empty>絞り込みに合う課題はありません。</Empty>
         ) : (
-          <ul class="jira-list">{shown.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>
+          <IssueGroups issues={shown} by={by} fields={fields} />
         )}
       </div>
     </>
