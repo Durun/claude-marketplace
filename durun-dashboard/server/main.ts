@@ -1128,6 +1128,8 @@ const proofFileOf = (id: string, body: unknown): ProofFile => {
 const OWN_MS = 1000;
 // gh、JIRA、Notion、Jev の API。
 const WEB_API_MS = 5000;
+// GitHub の検索は、PR ごとのレビューの判定やチェックの状態を GitHub の側で集めるので、50 件で 4〜7 秒、上限の 100 件で約 8 秒かかる。
+const GITHUB_SEARCH_MS = 15_000;
 // claude でセッションを起動し、止め、再開する。止まるのを待つだけで十数秒かかることがある。
 const CLAUDE_MS = 20_000;
 const HAIKU_MS = 15_000;
@@ -1229,7 +1231,7 @@ const GET_ROUTES: Route[] = [
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url), WEB_API_MS],
   [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url))), WEB_API_MS],
   [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url))), WEB_API_MS],
-  [/^\/api\/github\/search$/, (_, __, url) => githubListSearch(url), WEB_API_MS],
+  [/^\/api\/github\/search$/, (_, __, url) => githubListSearch(url), GITHUB_SEARCH_MS],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) })), WEB_API_MS],
