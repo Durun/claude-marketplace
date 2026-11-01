@@ -165,11 +165,11 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
   const Heading = parent ? 'h4' : 'h3';
   return (
     <>
-      {groupIssues(issues, first).map((g) => {
+      {groupIssues(issues, first).map((g, i) => {
         const path = parent ? `${parent}\t${g.name}` : g.name;
         const open = !fold.collapsed.has(path);
         return (
-          <details key={g.name} class="inbox-section jira-group" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
+          <details key={`${i}\t${g.name}`} class="inbox-section jira-group" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
             {/* 絞り込みの欄からフォーカスを外さない。外すと欄が消えて見出しの行が縮み、離した位置がずれて開閉しない。 */}
             <summary onMouseDown={(e) => e.preventDefault()}>
               <Heading class="inbox-section-title">

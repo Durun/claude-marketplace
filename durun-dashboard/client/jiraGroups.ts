@@ -35,6 +35,14 @@ export const groupingsFor = (keys: Set<string>, issues: JiraIssue[]): Grouping[]
 
 export type IssueGroup = { name: string; issues: JiraIssue[] };
 
-/** 課題を組に分ける。JQL の ORDER BY に従うよう、組も組の中の課題も、渡した順で先に出たものから並べる。 */
-export const groupIssues = (issues: JiraIssue[], by: Grouping): IssueGroup[] =>
-  Array.from(Map.groupBy(issues, by.of), ([name, list]) => ({ name: name ?? by.none, issues: list }));
+/** 課題を、渡した順のまま、同じ値が続くところで組にまとめる。並びは JQL の ORDER BY に任せ、離れた課題を同じ組へ寄せない。 */
+export const groupIssues = (issues: JiraIssue[], by: Grouping): IssueGroup[] => {
+  const groups: IssueGroup[] = [];
+  for (const issue of issues) {
+    const name = by.of(issue) ?? by.none;
+    const last = groups.at(-1);
+    if (last?.name === name) last.issues.push(issue);
+    else groups.push({ name, issues: [issue] });
+  }
+  return groups;
+};
