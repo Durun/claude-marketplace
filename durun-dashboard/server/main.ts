@@ -140,10 +140,10 @@ const optionalString = (body: unknown, key: string): string | undefined => {
   return typeof v === 'string' && v ? v : undefined;
 };
 
-const flSettingsOf = (body: unknown): { readOnly?: boolean; gopher?: boolean } => {
-  const { readOnly, gopher } = (body ?? {}) as Record<string, unknown>;
-  if ((readOnly !== undefined && typeof readOnly !== 'boolean') || (gopher !== undefined && typeof gopher !== 'boolean')) throw new HttpError(400, 'readOnly and gopher must be boolean');
-  return { readOnly, gopher } as { readOnly?: boolean; gopher?: boolean };
+const flSettingsOf = (body: unknown): { readOnly?: boolean } => {
+  const { readOnly } = (body ?? {}) as Record<string, unknown>;
+  if (readOnly !== undefined && typeof readOnly !== 'boolean') throw new HttpError(400, 'readOnly must be boolean');
+  return { readOnly };
 };
 
 const strings = (body: unknown, key: string): string[] => {

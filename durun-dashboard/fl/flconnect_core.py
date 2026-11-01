@@ -1,5 +1,5 @@
 # durun-dashboard の FL Connect の中身。入口の device_FLConnect.py が読み込み、reload の要求で読み直す。
-# 受けるのは 3 つ：状態を読む（summary、read、params）、AI が書いた Python を動かす（exec）、echo。
+# 受けるのは 4 つ：状態を読む（summary、read、params）、起動したときの設定を読む（info）、AI が書いた Python を動かす（exec）、echo。
 # 読んだ値は生のまま返す。比べる、まとめる、決めるといった判断はダッシュボードのサーバーでする。
 
 import ast
@@ -26,7 +26,7 @@ try:
 except ImportError:
     traceback = None
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 EXEC_LIMIT_SEC = 2.0
 MAX_EXEC_LIMIT_SEC = 10.0
 # 応答は SysEx で分けて運ぶ。print の出力と result が大きすぎると FL の主スレッドが長く止まるので、ここで切る。
@@ -333,8 +333,20 @@ def params(req):
     return {"ok": True, "plugin": plugins.getPluginName(index, slot), "count": count, "next": p if p < count else None, "items": items}
 
 
+def info():
+    """FL を起動したときの設定のうち、ダッシュボードが知りたいもの。デバッグのポートを開く設定で起動したかを、FL の環境変数で見る。"""
+    try:
+        import os
+        webview2 = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+    except Exception:
+        webview2 = None
+    return {"ok": True, "webview2": webview2}
+
+
 def handle(req):
     op = req.get("op")
+    if op == "info":
+        return info()
     if op == "exec":
         return exec_code(req.get("code", ""), req.get("limit", EXEC_LIMIT_SEC), bool(req.get("readonly")))
     if op == "summary":

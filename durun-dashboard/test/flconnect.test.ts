@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
-import { align, COALESCE_MS, describeChange, diffPlaylist, diffRows, diffSends, diffSong, followChannels, RecordLog, resolveChannels, restoreLines, type Row } from '../server/flChanges.ts';
+import { nextSteps } from '../client/flSteps.ts';
+import { align, COALESCE_MS, describeChange, diffPlaylist, diffRows, diffSends, diffSong, followChannels, RecordLog, resolveChannels, restoreLines, type Row, undoChanges, undoDelta, windowName } from '../server/flChanges.ts';
 import { gopherText } from '../server/flGopher.ts';
+import { appendLog, logFilePath, markdownEntry } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
+import type { FlConnectView } from '../shared/types.ts';
 
 test('SysEx の JSON は ASCII の文字だけにし、日本語は \\u の形にして、読み戻すと元の値になる', () => {
   const value = { name: 'キック 🥁', n: 1 };
@@ -126,4 +132,90 @@ test('Gopher の返事は、JSON-RPC として読めればその文を、中の 
   assert.deepEqual(gopherText('{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Project "Song" has 2 channels\\nOK"}],"isError":false}}'), { text: 'Project "Song" has 2 channels\nOK', isError: false });
   assert.deepEqual(gopherText('{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"FL Studio timeout"}}'), { text: 'FL Studio timeout', isError: true });
   assert.deepEqual(gopherText('plain answer'), { text: 'plain answer', isError: false });
+});
+
+test('元に戻す履歴の数と戻した数から、新しく増えた操作、Ctrl+Z で戻した数、やり直した数を出す', () => {
+  assert.deepEqual(undoDelta({ count: 1, undone: 0 }, { count: 3, undone: 0 }), { added: 2, undone: 0, redone: 0 });
+  assert.deepEqual(undoDelta({ count: 5, undone: 0 }, { count: 5, undone: 2 }), { added: 0, undone: 2, redone: 0 });
+  assert.deepEqual(undoDelta({ count: 5, undone: 2 }, { count: 5, undone: 1 }), { added: 0, undone: 0, redone: 1 });
+  // 2 回戻してから新しく操作すると、FL は戻した 2 件を消してから 1 件足す。
+  assert.deepEqual(undoDelta({ count: 5, undone: 2 }, { count: 4, undone: 0 }), { added: 1, undone: 0, redone: 0 });
+  // 別のプロジェクトを読み込むと履歴は減るが、操作ではない。
+  assert.deepEqual(undoDelta({ count: 17, undone: 0 }, { count: 1, undone: 0 }), { added: 0, undone: 0, redone: 0 });
+});
+
+test('増えた操作は、ほかの記録で説明できないときだけ「FL Connect が読まない値を変えた」にし、ウィンドウの名前からアイコンの文字を外す', () => {
+  const window = windowName('Sampler\ue5a0 (Master)\ue5ff');
+  assert.equal(window, 'Sampler (Master)');
+  assert.deepEqual(undoChanges({ added: 2, undone: 0, redone: 0 }, window, false).map(describeChange), ['「Sampler (Master)」で、FL Connect が読まない値を変えた（FL の元に戻す履歴が 2 件増えた）']);
+  assert.deepEqual(undoChanges({ added: 2, undone: 0, redone: 0 }, window, true), []);
+  // 元に戻したことは、戻って変わった値が見えても残す。
+  assert.deepEqual(undoChanges({ added: 0, undone: 1, redone: 0 }, '', true).map(describeChange), ['FL で元に戻した（1 回）']);
+  assert.deepEqual(undoChanges({ added: 0, undone: 0, redone: 3 }, 'Mixer', false).map(describeChange), ['「Mixer」でやり直した（3 回）']);
+});
+
+test('同じウィンドウで続けた操作は回数を足して 1 件にし、別のウィンドウの操作はまとめない', () => {
+  const log = new RecordLog();
+  const op = (window: string, n: number) => undoChanges({ added: n, undone: 0, redone: 0 }, window, false)[0]!;
+  log.add(op('Sampler (Master)', 2), 'human', undefined, 1000);
+  log.add(op('Sampler (Master)', 1), 'human', undefined, 1500);
+  log.add(op('Mixer', 1), 'human', undefined, 1600);
+  assert.deepEqual(log.records.map((r) => [r.target, r.before]), [['Sampler (Master)', 3], ['Mixer', 1]]);
+});
+
+const at = new Date(2026, 10, 1, 9, 30, 5).getTime();
+
+test('ログの 1 件を Markdown の箇条書きにし、名前の中の記号はそのまま見せ、コードは中のバッククォートより長いフェンスで囲む', () => {
+  assert.equal(markdownEntry({ id: 'r1', at, who: 'you', text: 'channel 0「*Kick_1*」の名前: 「a」 → 「b」' }), '- 09:30:05 **You** channel 0「\\*Kick\\_1\\*」の名前: 「a」 → 「b」');
+  const code = 'print("```")\nx = 1';
+  assert.equal(
+    markdownEntry({ id: 'a', at, who: 'agent', text: 'fl_python: print("```")', tool: 'fl_python', detail: code, output: 'ok', ok: false, changes: ['channel 0の名前: 「a」 → 「b」'] }),
+    ['- 09:30:05 **Agent** fl\\_python: print("\\`\\`\\`")（失敗）', '  - channel 0の名前: 「a」 → 「b」', '  ````python', '  print("```")', '  x = 1', '  ````', '  ```', '  ok', '  ```'].join('\n'),
+  );
+});
+
+test('ログは、セッションごとのフォルダーの、日ごとのファイルに書き足し、新しく作ったファイルだけを返す', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fl-log-'));
+  try {
+    const next = at + 24 * 3600_000;
+    const created = appendLog(dir, 's1', 'Song', [{ at, heading: 'FL Studio 26.1.7 とつながった' }, { id: 'r1', at, who: 'you', text: 'A' }]);
+    assert.deepEqual(created, [logFilePath(dir, 's1', at)]);
+    assert.deepEqual(appendLog(dir, 's1', 'Song', [{ id: 'r2', at, who: 'you', text: 'B' }, { id: 'r3', at: next, who: 'you', text: 'C' }]), [logFilePath(dir, 's1', next)]);
+    const text = fs.readFileSync(logFilePath(dir, 's1', at), 'utf8');
+    assert.match(text, /^# FL Connect のログ（Song、2026-11-01）\n/);
+    assert.match(text, /\n\n## 09:30:05 FL Studio 26\.1\.7 とつながった\n\n- 09:30:05 \*\*You\*\* A\n- 09:30:05 \*\*You\*\* B\n$/);
+    assert.match(fs.readFileSync(logFilePath(dir, 's1', next), 'utf8'), /- 09:30:05 \*\*You\*\* C\n$/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const view = (patch: { midi?: Partial<FlConnectView['midi']>; gopher?: Partial<FlConnectView['gopher']>; setup?: Partial<FlConnectView['setup']> } = {}): FlConnectView => ({
+  midi: { status: 'connected', ports: { input: 'FL Connect (B)', output: 'FL Connect (B)' }, hello: { script: '0.1.0', core: '0.2.0', fl: '26.1.7', api: 45, python: '3.12' }, ...patch.midi },
+  gopher: { status: 'no-port', port: 9222, debug: false, ...patch.gopher },
+  readOnly: false,
+  setup: { userData: 'D:/Image-Line/FL Studio', installed: '0.1.0', bundled: '0.1.0', bundledCore: '0.2.0', flRunning: true, ...patch.setup },
+  log: [],
+});
+
+const stepKeys = (v: FlConnectView) => nextSteps(v).map((s) => s.key);
+
+test('導入で次にすることは、済んでいないものだけを出し、Gopher MCP は使いたいときだけの案内にする', () => {
+  // 全部済んでいて、FL をふつうに起動している。Gopher MCP を開放して起動するボタンは、FL を閉じるまで押せない。
+  const ready = nextSteps(view());
+  assert.deepEqual(ready.map((s) => [s.key, s.tone]), [['launch', 'info']]);
+  assert.match(ready[0]?.action?.disabled ?? '', /FL Studio が動いています/);
+  assert.equal(nextSteps(view({ setup: { flRunning: false }, midi: { status: 'silent', hello: undefined } })).find((s) => s.key === 'launch')?.action?.disabled, undefined);
+  // デバッグのポートを開いて起動したが、Gopher を開いていない。
+  assert.deepEqual(nextSteps(view({ gopher: { debug: true } })).map((s) => [s.key, s.title, s.text]), [['gopher', 'Gopher MCP not connected', 'Alt+F1を押してください（FL で Gopher を開くと、つながります）。']]);
+  assert.deepEqual(stepKeys(view({ gopher: { status: 'connected', debug: true } })), []);
+});
+
+test('スクリプトが無いか版が違うときだけ Install Script を出し、FL が名乗らなければ、FL が動いているかで案内を変える', () => {
+  const gopher = { status: 'connected' as const, debug: true };
+  assert.deepEqual(nextSteps(view({ gopher, setup: { installed: undefined }, midi: { status: 'silent', hello: undefined, message: 'MIDI の設定' } })).map((s) => [s.key, s.action?.label]), [['install', 'Install Script'], ['midi', undefined]]);
+  assert.deepEqual(stepKeys(view({ gopher, midi: { hello: { script: '0.1.0', core: '0.1.0', fl: '26.1.7', api: 45, python: '3.12' } } })), ['install']);
+  assert.deepEqual(stepKeys(view({ gopher, setup: { flRunning: false }, midi: { status: 'silent', hello: undefined } })), ['start-fl']);
+  assert.deepEqual(stepKeys(view({ gopher, midi: { status: 'no-port', hello: undefined } })), ['loopback']);
+  assert.deepEqual(stepKeys(view({ gopher, setup: { userData: undefined } })), ['user-data']);
 });

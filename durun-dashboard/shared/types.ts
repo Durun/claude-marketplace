@@ -702,11 +702,11 @@ export type FlChange = {
 /** 操作の記録。who は、FL Connect が書いた値と合うものを agent、合わないものを human にする。via は、エージェントが変えたときのツール。 */
 export type FlRecord = FlChange & { seq: number; at: number; who: 'human' | 'agent'; via?: string };
 
-/** FL Connect のウィンドウに並べる操作の記録。text は記録を文にしたもの。 */
-export type FlRecordView = Pick<FlRecord, 'seq' | 'at' | 'who' | 'via'> & { text: string };
-
-/** FL Connect のウィンドウに並べる、エージェントがしたことの記録。 */
-export type FlLogEntry = { id: string; at: number; tool: string; title: string; detail?: string; output?: string; ok: boolean; changes?: string[] };
+/**
+ * FL Connect のログの 1 件。you は人間が FL でした操作で、agent はエージェントがツールでしたこと。
+ * エージェントの 1 件には、使ったツールと、動かしたコードか引数（detail）、FL が返したもの（output）、変わった値（changes）が付く。
+ */
+export type FlLogEntry = { id: string; at: number; who: 'you' | 'agent'; text: string; tool?: string; detail?: string; output?: string; ok?: boolean; changes?: string[] };
 
 /** 人間に確かめている、② の remove_channels で消えるチャンネル。position はチャンネルラックの上からの番号（1 から）。 */
 export type FlRemoval = { id: string; sessionId: string; channels: { position: number; name: string; plugin: string }[] };
@@ -723,19 +723,31 @@ export type FlConnectView = {
   /** 記録を届け、ツールを使えるセッション。 */
   sessionId?: string;
   midi: { status: FlLinkStatus; message?: string; ports: { input: string; output: string }; hello?: FlHello };
-  gopher: { enabled: boolean; status: FlGopherStatus; message?: string; port: number; tools?: number };
+  gopher: {
+    status: FlGopherStatus;
+    message?: string;
+    port: number;
+    tools?: number;
+    /** FL が、デバッグのポートを開く設定で動いている。ポートが開いているか、FL Connect がその設定で起動した FL がまだ動いている。 */
+    debug: boolean;
+  };
   readOnly: boolean;
   setup: {
     /** FL のユーザーデータのフォルダー。見つからなければ無い。 */
     userData?: string;
     /** FL のユーザーデータに置いてあるスクリプトの版。置いていなければ無い。 */
     installed?: string;
-    /** ダッシュボードが持つスクリプトの版。 */
+    /** ダッシュボードが持つスクリプトの版（入口と中身）。 */
     bundled: string;
+    bundledCore: string;
+    /** FL Studio が動いているか。調べられないときは無い。 */
+    flRunning?: boolean;
   };
   /** 人間が今見ているもの。 */
   focus?: { window?: string; caption?: string; channel?: number; mixer?: number; pattern?: number; playing: boolean; tempo?: number; undo?: string };
+  /** 最近のログ。古いものから並べる。 */
   log: FlLogEntry[];
-  records: FlRecordView[];
+  /** ログを書いているファイル。つないだセッションの資料にも足す。セッションを選んでいなければ無い。 */
+  logFile?: string;
   removal?: FlRemoval;
 };

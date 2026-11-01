@@ -130,6 +130,32 @@ export const diffSends = (before: Record<string, number[]>, after: Record<string
     return [{ section: 'sends' as const, index, target: targetOf('sends', index, names.get(index)), field: 'sends', before: b, after: a }];
   });
 
+/** FL の元に戻す履歴。count は履歴の数、undone は Ctrl+Z で戻している数。 */
+export type UndoState = { count: number; undone: number };
+
+/** 元に戻す履歴の変わり方。added は新しく増えた操作の数、undone は Ctrl+Z で戻した数、redone はやり直した数。 */
+export type UndoDelta = { added: number; undone: number; redone: number };
+
+export const undoDelta = (before: UndoState, after: UndoState): UndoDelta => {
+  if (after.count === before.count && after.undone !== before.undone) {
+    return after.undone > before.undone ? { added: 0, undone: after.undone - before.undone, redone: 0 } : { added: 0, undone: 0, redone: before.undone - after.undone };
+  }
+  // 戻したあとで新しく操作すると、FL は戻した分を履歴から消してから足す。プロジェクトを読み込むと履歴が減るが、それは操作ではない。
+  return { added: Math.max(0, after.count - after.undone - (before.count - before.undone)), undone: 0, redone: 0 };
+};
+
+/** ウィンドウの名前。FL は名前の中に、私用領域の文字でアイコンを入れる（例: Sampler (Master) の前後）。 */
+export const windowName = (caption: string | null | undefined): string => (caption ?? '').replace(/[-]/g, '').replace(/\s+/g, ' ').trim();
+
+/**
+ * 元に戻す履歴の変化の記録。window は、そのとき前面にあったウィンドウ。
+ * 増えた操作は、ほかの記録で説明できないとき（explained が偽）だけ、FL Connect が読まない値を変えた記録にする。Sampler の Envelope のように、MIDI スクリプトの API で安全に読めない値があるため。
+ */
+export const undoChanges = (d: UndoDelta, window: string, explained: boolean): FlChange[] => {
+  const change = (field: string, n: number): FlChange => ({ section: 'song', index: 0, target: window, field, before: n, after: null });
+  return [...(d.added && !explained ? [change('op', d.added)] : []), ...(d.undone ? [change('undo', d.undone)] : []), ...(d.redone ? [change('redo', d.redone)] : [])];
+};
+
 export type SongState = { tempo?: number | null; playing?: boolean; recording?: boolean };
 
 /** テンポと、再生と録音の状態を比べる。 */
@@ -158,11 +184,18 @@ export const formatValue = (field: string, v: FlValue): string => {
 
 /** まとめずに 1 件ずつ残す項目。足した、消した、プロジェクトを読み込み直した、は前と後の値で比べられない。 */
 const EVENT_FIELDS = new Set(['added', 'removed', 'project']);
+/** 回数を数える項目（before が回数）。続けて起きたら、同じウィンドウのものを足し合わせて 1 件にする。 */
+const COUNT_FIELDS = new Set(['op', 'undo', 'redo']);
+
+const inWindow = (window: string): string => (window ? `「${window}」で` : 'FL で');
 
 export const describeChange = (c: FlChange): string => {
   if (c.field === 'project') return 'プロジェクトを読み込み直した（ここより前の番号と名前は、今のプロジェクトのものではない）';
   if (c.field === 'added') return `${c.target}を足した`;
   if (c.field === 'removed') return `${c.target}を消した`;
+  if (c.field === 'op') return `${inWindow(c.target)}、FL Connect が読まない値を変えた（FL の元に戻す履歴が ${String(c.before)} 件増えた）`;
+  if (c.field === 'undo') return `${inWindow(c.target)}元に戻した（${String(c.before)} 回）`;
+  if (c.field === 'redo') return `${inWindow(c.target)}やり直した（${String(c.before)} 回）`;
   return `${c.target}の${FIELD_LABEL[c.field] ?? c.field}: ${formatValue(c.field, c.before)} → ${formatValue(c.field, c.after)}`;
 };
 
@@ -180,12 +213,19 @@ export class RecordLog {
    * 移すときに番号を振り直すので、前の記録を読んだ人にも、まとめた後の値がもう一度届く。元の値に戻ったら、記録を消す。
    */
   add(change: FlChange, who: FlRecord['who'], via?: string, at = Date.now()): void {
+    const counted = COUNT_FIELDS.has(change.field);
     if (!EVENT_FIELDS.has(change.field)) {
       for (let k = this.records.length - 1; k >= 0; k--) {
         const r = this.records[k];
         if (!r || at - r.at > COALESCE_MS) break;
         if (r.section !== change.section || r.index !== change.index || r.field !== change.field || r.who !== who || r.via !== via) continue;
+        // 回数を数える項目は、別のウィンドウでしたものをまとめない。
+        if (counted && r.target !== change.target) continue;
         this.records.splice(k, 1);
+        if (counted) {
+          this.#push({ ...r, before: Number(r.before) + Number(change.before), at });
+          return;
+        }
         const raw: FlChange['raw'] = r.raw && change.raw ? [r.raw[0], change.raw[1]] : change.raw;
         const merged = { ...r, target: change.target, after: change.after, raw, at };
         if (!(raw ? same(raw[0], raw[1]) : same(merged.before, merged.after))) this.#push(merged);

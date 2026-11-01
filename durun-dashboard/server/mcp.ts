@@ -207,13 +207,14 @@ const TOOLS = [
   },
   {
     name: 'fl_changes',
-    description: 'FL Studio で、前に読んでから変わった値を、人間の操作とエージェントの変更に分けて時刻順に返す（FL Connect）。人間の操作は、メッセージが届いたときとツールを使った後にもフックで届くので、そこで届いた分は含まない。',
+    description:
+      'FL Studio で、前に読んでから変わった値を、人間の操作とエージェントの変更に分けて時刻順に返す（FL Connect）。人間が FL Connect の読まない値（Sampler の Envelope など）を変えたときは、FL の元に戻す履歴が増えたことと、そのとき前面にあったウィンドウの名前を返す。Ctrl+Z とやり直しも返す。人間の操作は、メッセージが届いたときとツールを使った後にもフックで届くので、そこで届いた分は含まない。',
     inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'true なら、読んだかどうかによらず、最近の 50 件を返す。' } } },
   },
   {
     name: 'fl_python',
     description:
-      'AI が書いた Python を、FL Studio の中（MIDI スクリプトの環境）で動かす（FL Connect）。channels、mixer、playlist、patterns、plugins、transport、ui、general、arrangement、device、midi、utils は読み込んである。print の出力と、コードの中で result に入れた値を返す。動かす前と後に、名前、色、音量、パン、ミュート、ソロ、送り先を読み、変わった値を返す（fl_undo で戻せる）。トラックの色と名前の整理のようなまとまった変更は、1 回のコードでまとめて書く。色は 0xRRGGBB。ループは timeout 秒で止まる。FL の外（ファイル、ネット、スレッド）には触れない。人間が FL Connect のウィンドウで書き込みを止めていると、値を変える関数は例外になる。',
+      'AI が書いた Python を、FL Studio の中（MIDI スクリプトの環境）で動かす（FL Connect）。channels、mixer、playlist、patterns、plugins、transport、ui、general、arrangement、device、midi、utils は読み込んである。print の出力と、コードの中で result に入れた値を返す。動かす前と後に、名前、色、音量、パン、ミュート、ソロ、送り先を読み、変わった値を返す（fl_undo で戻せる）。トラックの色と名前の整理のようなまとまった変更は、1 回のコードでまとめて書く。色は 0xRRGGBB。ループは timeout 秒で止まる。FL の外（ファイル、ネット、スレッド）には触れない。人間が FL Connect のウィンドウで書き込みを止めていると、値を変える関数は例外になる。イベントの番号を受ける関数（mixer.getEventIDName など）に、無い番号を渡すと FL が落ちる（FL 26.1.7）。番号を順に試して探さないこと。',
     inputSchema: {
       type: 'object',
       properties: {
