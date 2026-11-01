@@ -42,7 +42,7 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
   const toggle = (key: FieldKey, on: boolean) => setFields((prev) => new Set(FIELDS.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k)))));
   const save = (e: SubmitEvent) => {
     e.preventDefault();
-    onSave({ title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), group, groupProject: groupProject ? '1' : '' });
+    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), group, groupProject: groupProject ? '1' : '' });
     onClose();
   };
   return (
@@ -140,22 +140,32 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
   </li>
 );
 
-/** 課題を by の先頭の属性で組に分け、組の中を残りの属性でさらに分ける。 */
-const IssueGroups = ({ issues, by, fields, nested = false }: { issues: JiraIssue[]; by: Grouping[]; fields: Set<string>; nested?: boolean }) => {
+/** 折りたたんだ組。組は、外側の組からの名前をタブでつないだ path で見分ける。 */
+type Fold = { collapsed: Set<string>; toggle: (path: string, open: boolean) => void };
+
+/** 課題を by の先頭の属性で組に分け、組の中を残りの属性でさらに分ける。組は見出しを押すと折りたためる。 */
+const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIssue[]; by: Grouping[]; fields: Set<string>; fold: Fold; parent?: string }) => {
   const [first, ...rest] = by;
   if (!first) return <ul class="jira-list">{issues.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>;
-  const Heading = nested ? 'h4' : 'h3';
+  const Heading = parent ? 'h4' : 'h3';
   return (
     <>
-      {groupIssues(issues, first).map((g) => (
-        <section key={g.name} class="inbox-section">
-          <Heading class="inbox-section-title">
-            {g.name}
-            <span class="count-pill">{g.issues.length}</span>
-          </Heading>
-          <IssueGroups issues={g.issues} by={rest} fields={fields} nested />
-        </section>
-      ))}
+      {groupIssues(issues, first).map((g) => {
+        const path = parent ? `${parent}\t${g.name}` : g.name;
+        const open = !fold.collapsed.has(path);
+        return (
+          <details key={g.name} class="inbox-section" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
+            <summary>
+              <Heading class="inbox-section-title">
+                {g.name}
+                <span class="count-pill">{g.issues.length}</span>
+                <span class="chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+              </Heading>
+            </summary>
+            {open && <IssueGroups issues={g.issues} by={rest} fields={fields} fold={fold} parent={path} />}
+          </details>
+        );
+      })}
     </>
   );
 };
@@ -200,6 +210,15 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
   const by = [...(settings.groupProject ? [BY_PROJECT] : []), ...GROUPINGS.filter((g) => g.key === settings.group)];
+  // 折りたたんだ組はウィジェットの設定に覚え、同じ JQL のウィジェットを複数置いても別々に開閉する。
+  const collapsed = new Set(settings.collapsed?.split('\n').filter(Boolean));
+  const fold: Fold = {
+    collapsed,
+    toggle: (path, open) => {
+      if (open === !collapsed.has(path)) return;
+      onSettings({ ...settings, collapsed: [...collapsed].filter((p) => p !== path).concat(open ? [] : [path]).join('\n') });
+    },
+  };
   const { data, error } = useCached(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
   const hit = matcher(query);
   const shown = data?.filter((i) => hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
@@ -239,7 +258,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
         ) : shown.length === 0 ? (
           <Empty>絞り込みに合う課題はありません。</Empty>
         ) : (
-          <IssueGroups issues={shown} by={by} fields={fields} />
+          <IssueGroups issues={shown} by={by} fields={fields} fold={fold} />
         )}
       </div>
     </>
