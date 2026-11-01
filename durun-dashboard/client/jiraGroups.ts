@@ -11,7 +11,7 @@ export type Grouping = { key: string; label: string; none: string; of: (issue: J
 export const GROUPINGS: Grouping[] = [
   { key: 'epic', label: 'エピック', none: 'エピックなし', of: (i) => i.parent && [i.parent.key, i.parent.summary].filter(Boolean).join(' ') },
   { key: 'status', label: 'ステータス', none: 'ステータスなし', of: (i) => i.status },
-  { key: 'dueDate', label: '期限', none: '期限なし', of: (i) => i.dueDate },
+  { key: 'dueDate', label: '期限', none: '期限なし', of: (i) => i.dueDate && `期限 ${i.dueDate}` },
   { key: 'assignee', label: '担当者', none: '未割り当て', of: (i) => i.assignee },
   { key: 'priority', label: '優先度', none: '優先度なし', of: (i) => i.priority },
   // 課題のキーの番号の前の部分がプロジェクトのキーなので、どの課題にも値がある。

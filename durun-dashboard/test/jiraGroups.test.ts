@@ -32,3 +32,8 @@ test('groupingsFor は、選んだ属性を、結果の並びでまとまって�
   // どれもまとまっているときは、GROUPINGS の順に置く。
   assert.deepEqual(keys(['project', 'status'], [issue('CATS-1', { status: '未着手' })]), ['status', 'project']);
 });
+
+test('groupIssues は、期限の組を「期限 YYYY-MM-DD」と名付ける', () => {
+  const issues = [issue('CATS-1', { dueDate: '2026-11-15' }), issue('CATS-2')];
+  assert.deepEqual(shape(groupIssues(issues, by('dueDate'))), [['期限 2026-11-15', ['CATS-1']], ['期限なし', ['CATS-2']]]);
+});
