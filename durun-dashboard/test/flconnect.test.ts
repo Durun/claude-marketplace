@@ -5,6 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
 import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, pluginChanges, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
+import { backupFileName, backupPlan, type FileLookup, projectFileOf } from '../server/flBackup.ts';
 import { gopherText } from '../server/flGopher.ts';
 import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
@@ -264,4 +265,51 @@ test('前面のプラグインの変わったパラメーターを、プラグ�
   assert.equal(describeChange(eq!), 'mixer 1「Insert 1」のスロット 1 の Pro-Q 4 の「Band 1 Frequency」: 1000.0 Hz  → 1200.0 Hz ');
   const preset = pluginChanges({ plugin: 'Serum 2', index: 1, slot: -1, changes: Array.from({ length: 101 }, (_, p): [number, string, number, number, string, string] => [p, `P${p}`, 0, 1, '', '']) }, 'Serum 2');
   assert.deepEqual(preset.map(describeChange), ['channel 1「Serum 2」の Serum 2 で、一度に 101 件のパラメーターが変わった（プリセットを読み込んだなど）']);
+});
+
+test('バックアップは、ウィンドウの題名のファイルを、最近のファイルのフォルダーと Projects の下から探していちばん新しいものにし、名前の無いプロジェクトと見つからないものは取らない', () => {
+  // FL 26.1.7 は、名前を付けて保存したばかりのプロジェクトを、FL を閉じるまで最近のファイル（レジストリ）に書かない。
+  const files: Record<string, number> = {
+    'D:\\FL\\Projects\\new\\new.flp': 300,
+    'D:\\FL\\Projects\\new\\Backup\\new.flp': 400,
+    'D:\\FL\\Projects\\song\\song.flp': 100,
+    'E:\\DTM\\song\\song.flp': 200,
+    'E:\\DTM\\song\\song_2.flp': 250,
+  };
+  const io: FileLookup = {
+    list: (dir) => {
+      const names = new Map<string, boolean>();
+      for (const f of Object.keys(files)) {
+        if (!f.toLowerCase().startsWith(`${dir.toLowerCase()}\\`)) continue;
+        const [head, ...rest] = f.slice(dir.length + 1).split('\\');
+        names.set(head ?? '', rest.length > 0);
+      }
+      return [...names].map(([name, dir]) => ({ name, dir }));
+    },
+    mtime: (file) => files[file],
+  };
+  const recent = ['E:\\DTM\\song\\song_2.flp', 'D:\\FL\\Projects\\song\\song.flp', 'E:\\DTM\\pack.zip'];
+  assert.deepEqual(projectFileOf({ title: 'song.flp - FL Studio 2026', recent }, 'D:\\FL\\Projects', io), { kind: 'file', file: 'E:\\DTM\\song\\song.flp', name: 'song' });
+  assert.deepEqual(projectFileOf({ title: 'new.flp - FL Studio 2026', recent }, 'D:\\FL\\Projects', io), { kind: 'file', file: 'D:\\FL\\Projects\\new\\new.flp', name: 'new' });
+  assert.deepEqual(projectFileOf({ title: 'new.flp* - FL Studio 2026', recent }, 'D:\\FL\\Projects', io), { kind: 'file', file: 'D:\\FL\\Projects\\new\\new.flp', name: 'new' });
+  assert.equal(projectFileOf({ title: 'new.flp - FL Studio 2026', recent }, undefined, io).kind, 'unknown');
+  assert.deepEqual(projectFileOf({ title: 'FL Studio 2026', recent }, 'D:\\FL\\Projects', io), { kind: 'untitled' });
+  assert.equal(projectFileOf({ title: 'other.flp - FL Studio 2026', recent }, 'D:\\FL\\Projects', io).kind, 'unknown');
+  assert.equal(projectFileOf({ title: 'pack.zip - FL Studio 2026', recent }, 'D:\\FL\\Projects', io).kind, 'unknown');
+  assert.equal(projectFileOf({ title: '', recent }, 'D:\\FL\\Projects', io).kind, 'unknown');
+  assert.equal(projectFileOf(undefined, 'D:\\FL\\Projects', io).kind, 'unknown');
+});
+
+test('バックアップは、人間が触ったあとの最初の書き込みの前にだけ取り、保存していない変更にエージェントの変更が混ざっていれば上書き保存しない', () => {
+  const base = { changed: 1, humanSinceBackup: true, agentUnsaved: false, recording: false };
+  assert.deepEqual(backupPlan(base), { copy: true, save: true });
+  assert.equal(backupPlan({ ...base, changed: 2 })?.save, true);
+  assert.deepEqual(backupPlan({ ...base, changed: 0 }), { copy: true, save: false });
+  assert.equal(backupPlan({ ...base, humanSinceBackup: false }), undefined);
+  assert.deepEqual(backupPlan({ ...base, agentUnsaved: true }), { copy: true, save: false, note: '保存していない変更にエージェントの変更が混ざっているので、上書き保存しなかった' });
+  assert.equal(backupPlan({ ...base, recording: true })?.save, false);
+  assert.equal(backupFileName('song', new Date(2026, 10, 1, 9, 5, 7).getTime(), 'saved'), 'song 2026-11-01 09-05-07 前回の保存.flp');
+  assert.equal(backupFileName('song', new Date(2026, 10, 1, 9, 5, 7).getTime(), 'before'), 'song 2026-11-01 09-05-07 エージェントの前.flp');
+  assert.equal(describeAgent({ id: 'a', at: 0, who: 'agent', tool: 'fl_backup', args: {}, detail: 'a.flp\nb.flp', ok: true, changes: [] }), 'エージェントが書き込む前に、プロジェクトのバックアップを取った（2 個のファイル）');
+  assert.equal(describeAgent({ id: 'b', at: 0, who: 'agent', tool: 'fl_backup', args: {}, output: '名前の無いプロジェクトなので、バックアップを取らなかった', ok: true, changes: [] }), 'バックアップを取らなかった: 名前の無いプロジェクトなので、バックアップを取らなかった');
 });
