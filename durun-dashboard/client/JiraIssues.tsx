@@ -5,9 +5,10 @@ import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
-import { BY_PROJECT, GROUPINGS, type Grouping, groupIssues } from './jiraGroups.ts';
+import { GROUPINGS, type Grouping, groupIssues } from './jiraGroups.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
+import { ARROW_STEP, moveTo } from './order.ts';
 import { matcher } from './searchItems.ts';
 import { Chip, Empty, Ext, Loading, Time, onSubmitKey } from './ui.tsx';
 
@@ -28,6 +29,10 @@ type FieldKey = (typeof FIELDS)[number]['key'];
 // 設定が無いときは、属性を選べるようになる前と同じく担当者だけを出す。
 const DEFAULT_FIELDS = 'assignee';
 const fieldsOf = (settings: WidgetSettings): Set<string> => new Set((settings.fields ?? DEFAULT_FIELDS).split(',').filter(Boolean));
+/** グループ化の属性の key を、外側の組から順にカンマで区切って持つ。groups の無い設定は、group の属性 1 つと、groupProject のときはその外側のプロジェクトで分ける。 */
+const groupKeysOf = (settings: WidgetSettings): string[] =>
+  (settings.groups ?? [settings.groupProject && 'project', settings.group].filter(Boolean).join(',')).split(',').filter(Boolean);
+const labelOf = (key: string): string => GROUPINGS.find((g) => g.key === key)?.label ?? key;
 
 type SettingsProps = { settings: WidgetSettings; onSave: (next: WidgetSettings) => void; onClose: () => void };
 
@@ -37,12 +42,12 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
   const [jql, setJql] = useState(settings.jql || DEFAULT_JQL);
   const [max, setMax] = useState(settings.max || String(DEFAULT_MAX));
   const [fields, setFields] = useState(() => fieldsOf(settings));
-  const [group, setGroup] = useState(settings.group ?? '');
-  const [groupProject, setGroupProject] = useState(Boolean(settings.groupProject));
+  const [groups, setGroups] = useState(() => groupKeysOf(settings));
+  const [dragging, setDragging] = useState<string>();
   const toggle = (key: FieldKey, on: boolean) => setFields((prev) => new Set(FIELDS.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k)))));
   const save = (e: SubmitEvent) => {
     e.preventDefault();
-    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), group, groupProject: groupProject ? '1' : '' });
+    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), groups: groups.join(',') });
     onClose();
   };
   return (
@@ -75,19 +80,44 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
           </label>
         ))}
       </fieldset>
-      {/* 属性は 1 つだけ選び、プロジェクトはその外側の組として重ねられる。 */}
-      <fieldset class="jira-fields">
+      {/* 上の属性ほど外側の組にする。ドラッグか Alt + ↑↓ で並べ替える。 */}
+      <fieldset class="jira-groups">
         <legend>グループ化</legend>
-        {[{ key: '', label: 'なし' }, ...GROUPINGS].map((g) => (
-          <label key={g.key} class="check">
-            <input type="radio" name="group" checked={group === g.key} onChange={() => setGroup(g.key)} />
-            {g.label}
-          </label>
-        ))}
-        <label class="check">
-          <input type="checkbox" checked={groupProject} onChange={(e) => setGroupProject(e.currentTarget.checked)} />
-          {BY_PROJECT.label}
-        </label>
+        <ol class="jira-group-list">
+          {groups.map((key) => (
+            <li
+              key={key}
+              class={`jira-group-item${dragging === key ? ' is-dragging' : ''}`}
+              draggable
+              tabIndex={0}
+              aria-label={`${labelOf(key)}。Alt + ↑↓ で並べ替える`}
+              onDragStart={() => setDragging(key)}
+              onDragOver={(e) => {
+                if (!dragging) return;
+                e.preventDefault();
+                if (key !== dragging) setGroups(moveTo(groups, dragging, key));
+              }}
+              onDragEnd={() => setDragging(undefined)}
+              onKeyDown={(e) => {
+                const step = e.altKey ? ARROW_STEP[e.key] : undefined;
+                const target = step && groups[groups.indexOf(key) + step];
+                if (!target) return;
+                e.preventDefault();
+                setGroups(moveTo(groups, key, target));
+              }}
+            >
+              <span class="jira-group-grip" aria-hidden="true">⠿</span>
+              {labelOf(key)}
+              <button type="button" class="jira-group-remove" aria-label={`${labelOf(key)}で分けるのをやめる`} onClick={() => setGroups(groups.filter((k) => k !== key))}>×</button>
+            </li>
+          ))}
+        </ol>
+        {groups.length < GROUPINGS.length && (
+          <select class="input input-sm jira-group-add" value="" aria-label="グループ化の属性を足す" onChange={(e) => setGroups([...groups, e.currentTarget.value])}>
+            <option value="">＋ 追加</option>
+            {GROUPINGS.filter((g) => !groups.includes(g.key)).map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+          </select>
+        )}
       </fieldset>
       <div class="actions">
         <span class="spacer" />
@@ -209,7 +239,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const jql = settings.jql || DEFAULT_JQL;
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
-  const by = [...(settings.groupProject ? [BY_PROJECT] : []), ...GROUPINGS.filter((g) => g.key === settings.group)];
+  const by = groupKeysOf(settings).map((key) => GROUPINGS.find((g) => g.key === key)).filter((g) => g !== undefined);
   // 折りたたんだ組はウィジェットの設定に覚え、同じ JQL のウィジェットを複数置いても別々に開閉する。
   const collapsed = new Set(settings.collapsed?.split('\n').filter(Boolean));
   const fold: Fold = {

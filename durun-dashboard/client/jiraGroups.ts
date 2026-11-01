@@ -24,10 +24,9 @@ export const GROUPINGS: Grouping[] = [
   { key: 'dueDate', label: '期限', none: '期限なし', of: (i) => i.dueDate, rank: (i) => Date.parse(i.dueDate ?? '') },
   { key: 'assignee', label: '担当者', none: '未割り当て', of: (i) => i.assignee },
   { key: 'priority', label: '優先度', none: '優先度なし', of: (i) => i.priority, rank: (i) => rankIn(PRIORITIES, i.priority) },
+  // 課題のキーの番号の前の部分がプロジェクトのキーなので、どの課題にも値がある。
+  { key: 'project', label: 'プロジェクト', none: '', of: (i) => i.key.replace(/-\d+$/, '') },
 ];
-
-/** 課題のキーの番号の前の部分で、プロジェクトに分ける。 */
-export const BY_PROJECT: Grouping = { key: 'project', label: 'プロジェクト', none: '', of: (i) => i.key.replace(/-\d+$/, '') };
 
 export type IssueGroup = { name: string; issues: JiraIssue[] };
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { JiraIssue } from '../shared/types.ts';
-import { BY_PROJECT, GROUPINGS, groupIssues } from '../client/jiraGroups.ts';
+import { GROUPINGS, groupIssues } from '../client/jiraGroups.ts';
 
 const issue = (key: string, fields: Partial<JiraIssue> = {}): JiraIssue => ({ key, url: '', ...fields });
 const by = (key: string) => GROUPINGS.find((g) => g.key === key)!;
@@ -24,5 +24,5 @@ test('groupIssues は、ステータスを作業の進む順に、優先度を�
 test('groupIssues は、エピックを親の課題のキーと題名で、プロジェクトを課題のキーで分ける', () => {
   const issues = [issue('CATS-2', { parent: { key: 'CATS-1', summary: '親' } }), issue('LPO-3'), issue('CATS-4')];
   assert.deepEqual(shape(groupIssues(issues, by('epic'))), [['CATS-1 親', ['CATS-2']], ['エピックなし', ['LPO-3', 'CATS-4']]]);
-  assert.deepEqual(shape(groupIssues(issues, BY_PROJECT)), [['CATS', ['CATS-2', 'CATS-4']], ['LPO', ['LPO-3']]]);
+  assert.deepEqual(shape(groupIssues(issues, by('project'))), [['CATS', ['CATS-2', 'CATS-4']], ['LPO', ['LPO-3']]]);
 });

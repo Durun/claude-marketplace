@@ -979,6 +979,15 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-filter:placeholder-shown:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; clip-path: inset(50%); }
 .jira-fields { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 12.5px; }
 .jira-fields legend { float: left; margin-right: 4px; padding: 0; }
+.jira-groups { display: grid; justify-items: start; gap: 4px; margin: 0; padding: 0; border: 0; color: var(--text-2); font-size: 12.5px; }
+.jira-groups legend { margin-bottom: 4px; padding: 0; }
+.jira-group-list { display: grid; gap: 4px; margin: 0; padding: 0 0 0 20px; }
+.jira-group-item { padding-left: 2px; cursor: grab; }
+.jira-group-item.is-dragging { opacity: 0.4; }
+.jira-group-grip { margin-right: 6px; color: var(--muted); }
+.jira-group-remove { margin-left: 6px; padding: 0 4px; border: 0; border-radius: 4px; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+.jira-group-remove:hover { background: var(--surface-2); color: var(--text); }
+.jira-group-add { width: auto; }
 .jira-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .jira-row { display: grid; gap: 2px; padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
 .jira-row:hover { background: var(--surface-2); }
