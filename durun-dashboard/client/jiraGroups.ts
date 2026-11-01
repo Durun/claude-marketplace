@@ -18,29 +18,19 @@ export const GROUPINGS: Grouping[] = [
   { key: 'project', label: 'プロジェクト', none: '', of: (i) => i.key.replace(/-\d+$/, '') },
 ];
 
-/** JQL の ORDER BY に書ける項目の名前と、その項目で分ける属性。 */
-const ORDER_FIELDS: Record<string, string> = {
-  parent: 'epic',
-  'epic link': 'epic',
-  status: 'status',
-  statuscategory: 'status',
-  duedate: 'dueDate',
-  due: 'dueDate',
-  assignee: 'assignee',
-  priority: 'priority',
-  project: 'project',
-};
-
-/** 選んだ属性を、JQL の ORDER BY に並べた順に外側から並べる。ORDER BY に無い属性は、その後に GROUPINGS の順で置く。 */
-export const groupingsFor = (keys: Set<string>, jql: string): Grouping[] => {
-  const order = (/\border\s+by\s+(.+)$/is.exec(jql)?.[1] ?? '')
-    .split(',')
-    .map((f) => ORDER_FIELDS[f.trim().replace(/\s+(asc|desc)$/i, '').replace(/^"|"$/g, '').toLowerCase()]);
-  const rank = (key: string): number => {
-    const i = order.indexOf(key);
-    return i < 0 ? order.length : i;
+/**
+ * 選んだ属性を、結果の並びでまとまっているものから外側に並べる。
+ * JQL の ORDER BY で先に並べた属性ほど、同じ値の課題が続く。値が切り替わる回数から値の種類の数を引いた数が少ないほど、まとまっているとみなす。同じ数なら GROUPINGS の順に置く。
+ */
+export const groupingsFor = (keys: Set<string>, issues: JiraIssue[]): Grouping[] => {
+  const scattered = (g: Grouping): number => {
+    const values = issues.map(g.of);
+    return values.filter((v, i) => i === 0 || v !== values[i - 1]).length - new Set(values).size;
   };
-  return GROUPINGS.filter((g) => keys.has(g.key)).sort((a, b) => rank(a.key) - rank(b.key));
+  return GROUPINGS.filter((g) => keys.has(g.key))
+    .map((g) => ({ g, n: scattered(g) }))
+    .sort((a, b) => a.n - b.n)
+    .map(({ g }) => g);
 };
 
 export type IssueGroup = { name: string; issues: JiraIssue[] };

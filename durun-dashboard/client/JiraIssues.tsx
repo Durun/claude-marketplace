@@ -227,7 +227,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const jql = settings.jql || DEFAULT_JQL;
   const max = Number(settings.max) || DEFAULT_MAX;
   const fields = fieldsOf(settings);
-  const by = groupingsFor(groupKeysOf(settings), jql);
+  const groupKeys = groupKeysOf(settings);
   // 折りたたんだ組はウィジェットの設定に覚え、同じ JQL のウィジェットを複数置いても別々に開閉する。
   const collapsed = new Set(settings.collapsed?.split('\n').filter(Boolean));
   const fold: Fold = {
@@ -243,8 +243,9 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
   const more = (found?.length ?? 0) > max;
   const hit = matcher(query);
   // エピックで分けている間は、エピックそのものは組の見出しが表すので、行には出さない。
-  const byEpic = by.some((g) => g.key === 'epic');
+  const byEpic = groupKeys.has('epic');
   const shown = data?.filter((i) => !(byEpic && i.isEpic) && hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
+  const by = groupingsFor(groupKeys, shown);
   return (
     <>
       <div class="section-head" onClick={filter.onClick}>

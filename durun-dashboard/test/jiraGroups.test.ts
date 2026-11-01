@@ -18,9 +18,17 @@ test('groupIssues は、エピックを親の課題のキーと題名で、プ�
   assert.deepEqual(shape(groupIssues(issues, by('project'))), [['CATS', ['CATS-2', 'CATS-4']], ['LPO', ['LPO-3']]]);
 });
 
-test('groupingsFor は、選んだ属性を JQL の ORDER BY に並べた順に外側から並べ、ORDER BY に無い属性を後に置く', () => {
-  const keys = (jql: string) => groupingsFor(new Set(['epic', 'status', 'priority', 'project']), jql).map((g) => g.key);
-  assert.deepEqual(keys('project = CATS ORDER BY priority DESC, "Status" ASC, updated'), ['priority', 'status', 'epic', 'project']);
-  assert.deepEqual(keys('assignee = currentUser() order by project, parent'), ['project', 'epic', 'status', 'priority']);
-  assert.deepEqual(keys('assignee = currentUser()'), ['epic', 'status', 'priority', 'project']);
+test('groupingsFor は、選んだ属性を、結果の並びでまとまっているものから外側に並べる', () => {
+  // ステータス、プロジェクトの順に並べた結果。
+  const issues = [
+    issue('CATS-1', { status: '未着手', priority: 'Low' }),
+    issue('LPO-2', { status: '未着手', priority: 'High' }),
+    issue('CATS-3', { status: '進行中', priority: 'Low' }),
+    issue('LPO-4', { status: '進行中', priority: 'High' }),
+  ];
+  const keys = (selected: string[], list = issues) => groupingsFor(new Set(selected), list).map((g) => g.key);
+  assert.deepEqual(keys(['project', 'status']), ['status', 'project']);
+  assert.deepEqual(keys(['priority', 'project', 'status']), ['status', 'priority', 'project']);
+  // どれもまとまっているときは、GROUPINGS の順に置く。
+  assert.deepEqual(keys(['project', 'status'], [issue('CATS-1', { status: '未着手' })]), ['status', 'project']);
 });
