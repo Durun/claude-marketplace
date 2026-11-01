@@ -66,6 +66,8 @@ const PR_CACHE_FILE = 'gh-pr-status-cache.json';
 // アーカイブしたのに Claude Code の一覧から消せなかったセッションを、消し直す間隔。
 // 消せない理由の多くは作業ツリーに残る未 push の変更で、人間が push したことはダッシュボードから見えないので、間を置いて試す。
 const REMOVE_RETRY_MS = 10 * 60_000;
+// 会話ログの要約を残す間隔。書くのに数十ミリ秒かかるので間を空け、起動し直した後に読み直すのはこの間に増えた分だけにする。
+const SAVE_SUMMARIES_MS = 5 * 60_000;
 
 const STATIC: Record<string, string> = {
   '/': 'public/index.html',
@@ -165,7 +167,12 @@ const broadcastTimers = new Map<number, NodeJS.Timeout>();
 // 起動した直後に、会話ログの要約を裏で作る。作り終えるまでは、スナップショットを組み立てずに待たせ、画面にも配り始めない。
 const logsReady = warmLogs();
 // 検索だけが読む会話ログは、スナップショットを待たせないよう、一覧に出る分を読み終えてから読む。
-void logsReady.then(warmSearch);
+// Windows では node --watch がシグナルを送らずにサーバーを止め、止めるときに要約を残せない。
+// 起動し直した後に大きな会話ログを頭から読み直さないよう、読み終えたときと、その後も一定の間隔で残す。
+void logsReady.then(warmSearch).then(() => {
+  saveLogSummaries();
+  setInterval(saveLogSummaries, SAVE_SUMMARIES_MS).unref();
+});
 
 const snapshotEvent = (): string => `data: ${JSON.stringify(buildSnapshot())}\n\n`;
 

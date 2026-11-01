@@ -307,18 +307,15 @@ const listedSessions = (live: Map<string, claude.LiveSession>, now: number): Ses
   Object.values(state.sessions).filter((m) => isListed(m) && (live.has(m.id) || !!m.bookmarks?.length || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS));
 
 /**
- * 一覧に出すセッションの会話ログを、1 つ読むごとにほかの要求へ順番を譲りながら要約しておく。起動した直後に呼ぶ。
+ * 一覧に出すセッションの会話ログを、区切って読むごとにほかの要求へ順番を譲りながら要約しておく。起動した直後に呼ぶ。
  * 要約の作り方を変えた後は、会話ログを頭から読み直す。スナップショットを組み立てるときにまとめて読むと、読み終えるまでサーバーが止まるため。
  */
 export const warmLogs = async (): Promise<void> => {
-  const yieldToRequests = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
   try {
     for (const m of listedSessions(claude.readLiveSessions(), Date.now())) {
       if (!m.transcriptPath) continue;
-      claude.summarizeLog(m.transcriptPath);
-      await yieldToRequests();
-      claude.readSubagents(m.transcriptPath);
-      await yieldToRequests();
+      await claude.warmLog(m.transcriptPath);
+      await claude.warmSubagents(m.transcriptPath);
     }
   } catch (e) {
     // 残りの会話ログは、スナップショットを組み立てるときに読む。

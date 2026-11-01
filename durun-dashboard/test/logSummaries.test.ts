@@ -7,7 +7,7 @@ import { test } from 'node:test';
 // 要約を書き出すファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-log-summaries-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
-const { saveLogSummaries, summarizeLog } = await import('../server/claude.ts');
+const { saveLogSummaries, summarizeLog, warmLog } = await import('../server/claude.ts');
 
 const prompt = (text: string): string => `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, timestamp: new Date().toISOString(), message: { content: text } })}\n`;
 
@@ -44,4 +44,17 @@ test('スラッシュコマンドの依頼は、タグを外して打ったと�
   const file = path.join(tmp, 'command.jsonl');
   fs.writeFileSync(file, prompt('<command-message>imozuru</command-message>\n<command-name>/imozuru</command-name>\n<command-args>対位法の使い方</command-args>') + prompt('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>'));
   assert.deepEqual(summarizeLog(file).texts.map((t) => t.text), ['/imozuru 対位法の使い方', '/clear']);
+});
+
+test('裏で区切って読んだ会話ログも、一度に読んだときと同じ要約になる。区切りより長い行も読み落とさない', async () => {
+  const file = path.join(tmp, 'warm.jsonl');
+  const texts = ['短い', '長い'.repeat(100), '最後'];
+  fs.writeFileSync(file, texts.map(prompt).join('') + '{"type":"user"');
+  // 区切りを 1 行より短くし、どの区切りでも行の途中で切れるようにする。
+  await warmLog(file, false, 64);
+  assert.deepEqual(summarizeLog(file).texts.map((t) => t.text), texts);
+  // 書きかけの最終行は、書き終えてから読む。
+  fs.appendFileSync(file, ',"origin":{"kind":"human"},"message":{"content":"足した"}}\n');
+  await warmLog(file, false, 64);
+  assert.deepEqual(summarizeLog(file).texts.map((t) => t.text), [...texts, '足した']);
 });

@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import type { SearchHit, SearchResponse, SearchResult } from '../shared/types.ts';
-import { PROJECTS_DIR, listDir, readCustomTitle, summarizeLog } from './claude.ts';
+import { PROJECTS_DIR, listDir, readCustomTitle, summarizeLog, warmLog } from './claude.ts';
 import { repoName } from './snapshot.ts';
 
 const MAX_RESULTS = 50;
@@ -73,10 +73,7 @@ export const searchSessions = async (query: string): Promise<SearchResponse> => 
  */
 export const warmSearch = async (): Promise<void> => {
   try {
-    for (const file of transcripts()) {
-      await setImmediate();
-      summarizeLog(file);
-    }
+    for (const file of transcripts()) await warmLog(file);
   } catch (e) {
     // 残りの会話ログは、検索するときに読む。
     console.error(`会話ログを要約できません: ${(e as Error).message}`);

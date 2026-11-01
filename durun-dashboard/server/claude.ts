@@ -512,7 +512,7 @@ const loadSummaries = (): Map<string, LogSummary> => {
 
 const summaries = loadSummaries();
 
-/** サーバーを止めるときに、会話ログの要約を書き出す。読みかけの例外で止まるときは、要約が途中の状態かもしれないので呼ばない。 */
+/** 会話ログの要約を書き出す。読みかけの例外で止まるときは、要約が途中の状態かもしれないので呼ばない。 */
 export const saveLogSummaries = (): void => {
   const since = Date.now() - KEEP_SUMMARY_MS;
   const logs = Object.fromEntries([...summaries].filter(([, s]) => (s.lastActivityAt ?? 0) > since));
@@ -522,37 +522,50 @@ export const saveLogSummaries = (): void => {
   fs.renameSync(tmp, SUMMARIES_FILE);
 };
 
-/**
- * 会話ログを前回の続きから読み、要約を更新して返す。
- * includeSidechain はサブエージェント専用ファイルを読むときに true にする。
- */
-export const summarizeLog = (file: string, includeSidechain = false): LogSummary => {
+// 裏で会話ログを読むときに一度に読む量。数百 MB の会話ログでも、ほかの応答を数十ミリ秒より長く止めないよう、この量ごとに処理を譲る。
+const WARM_CHUNK_BYTES = 16 * 1024 * 1024;
+
+/** 会話ログの続きを、多くても limit バイトまで読んで要約に足す。done は、読み終えたか（残りが書きかけの最終行だけか）。 */
+const readMore = (file: string, includeSidechain: boolean, limit: number): { summary: LogSummary; done: boolean } => {
   let s = summaries.get(file);
   let size: number;
   try {
     size = fs.statSync(file).size;
   } catch {
-    return s ?? emptySummary();
+    return { summary: s ?? emptySummary(), done: true };
   }
   if (!s || size < s.offset) {
     s = emptySummary();
     summaries.set(file, s);
   }
-  if (size === s.offset) return s;
-  // ponytail: 差分を一度に読む。数百 MB の会話ログが出てきたら分割して読む。
-  const buf = Buffer.alloc(size - s.offset);
+  if (size === s.offset) return { summary: s, done: true };
+  const length = Math.min(size - s.offset, limit);
+  const buf = Buffer.alloc(length);
   const fd = fs.openSync(file, 'r');
   try {
     fs.readSync(fd, buf, 0, buf.length, s.offset);
   } finally {
     fs.closeSync(fd);
   }
-  // 書きかけの最終行は次回に回す。
+  // 書きかけの最終行は次回に回す。区切った量より長い行は、残りをまとめて読む。
   const end = buf.lastIndexOf(0x0a);
-  if (end < 0) return s;
+  if (end < 0) return length < size - s.offset ? readMore(file, includeSidechain, Infinity) : { summary: s, done: true };
   for (const line of buf.subarray(0, end).toString('utf8').split('\n')) applyLine(s, line, includeSidechain);
   s.offset += end + 1;
-  return s;
+  return { summary: s, done: s.offset === size };
+};
+
+/**
+ * 会話ログを前回の続きから読み、要約を更新して返す。
+ * includeSidechain はサブエージェント専用ファイルを読むときに true にする。
+ */
+export const summarizeLog = (file: string, includeSidechain = false): LogSummary => readMore(file, includeSidechain, Infinity).summary;
+
+const yieldToRequests = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+/** 会話ログを裏で読んでおく。summarizeLog と同じ要約を作るが、区切って読み、読むたびにほかの要求に応える。 */
+export const warmLog = async (file: string, includeSidechain = false, chunkBytes = WARM_CHUNK_BYTES): Promise<void> => {
+  for (let done = false; !done; await yieldToRequests()) done = readMore(file, includeSidechain, chunkBytes).done;
 };
 
 export const findTranscript = (sessionId: string): string | undefined => {
@@ -569,20 +582,28 @@ export const readCustomTitle = (transcript: string): string | undefined =>
 
 export type SubagentLog = { id: string; type: string; description: string; model?: string; log: LogSummary };
 
-export const readSubagents = (transcript: string): SubagentLog[] => {
+const subagentLogs = (transcript: string): string[] => {
   const dir = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents');
   return listDir(dir)
     .filter((f) => f.endsWith('.jsonl'))
-    .map((f) => {
-      const meta = readJsonCached<{ agentType: string; description: string; model: string }>(path.join(dir, f.replace(/\.jsonl$/, '.meta.json')));
-      return {
-        id: f.replace(/^agent-/, '').replace(/\.jsonl$/, ''),
-        type: meta?.agentType ?? 'agent',
-        description: meta?.description ?? '',
-        model: meta?.model,
-        log: summarizeLog(path.join(dir, f), true),
-      };
-    });
+    .map((f) => path.join(dir, f));
+};
+
+export const readSubagents = (transcript: string): SubagentLog[] =>
+  subagentLogs(transcript).map((file) => {
+    const meta = readJsonCached<{ agentType: string; description: string; model: string }>(file.replace(/\.jsonl$/, '.meta.json'));
+    return {
+      id: path.basename(file).replace(/^agent-/, '').replace(/\.jsonl$/, ''),
+      type: meta?.agentType ?? 'agent',
+      description: meta?.description ?? '',
+      model: meta?.model,
+      log: summarizeLog(file, true),
+    };
+  });
+
+/** サブエージェントの会話ログを裏で読んでおく。1 つのセッションに数百のサブエージェントがあっても、ほかの応答を止めないよう 1 つずつ読む。 */
+export const warmSubagents = async (transcript: string): Promise<void> => {
+  for (const file of subagentLogs(transcript)) await warmLog(file, true);
 };
 
 const TASK_STATUSES = new Set(['pending', 'in_progress', 'completed']);
