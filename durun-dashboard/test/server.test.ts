@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { borrowSkills, summarizeLog } from '../server/claude.ts';
@@ -10,9 +9,10 @@ import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resol
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
 import { arrangeThemes, renameTheme, stoppedStatus } from '../server/snapshot.ts';
+import { tempDir } from './tmp.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-skills-')), 'log.jsonl');
+  const file = path.join(tempDir('durun-dashboard-skills-'), 'log.jsonl');
   const listing = (names: string[], content: string): string => JSON.stringify({ type: 'attachment', attachment: { type: 'skill_listing', names, content } });
   fs.writeFileSync(file, `${listing(['code-review:comment-review', 'code-review', 'pdf'], '- code-review:comment-review: コメントを見る\n- code-review: 差分を見る\n  続きの行\n- pdf')}\n${listing(['extra'], '- extra: 増えた分')}\n`);
   assert.deepEqual([...summarizeLog(file).skills], [
@@ -24,14 +24,14 @@ test('summarizeLog は、会話ログに載った skills の一覧を、後か�
 });
 
 test('summarizeLog は、claude.ai に公開した artifact の題名と元のファイルを URL ごとに集め、公開し直したら新しいほうを残す', () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-artifacts-')), 'log.jsonl');
+  const file = path.join(tempDir('durun-dashboard-artifacts-'), 'log.jsonl');
   const link = (title: string, p: string): string => JSON.stringify({ type: 'frame-link', frameUrl: 'https://claude.ai/artifact/abc', title, path: p });
   fs.writeFileSync(file, `${link('旧題', '/tmp/a.html')}\n${link('新題', '/tmp/b.html')}\n`);
   assert.deepEqual([...summarizeLog(file).artifacts.values()], [{ url: 'https://claude.ai/artifact/abc', title: '新題', path: '/tmp/b.html' }]);
 });
 
 test('summarizeLog は、居たブランチを最後に居た順に並べ、戻ってきたブランチは末尾へ移す', () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-branches-')), 'log.jsonl');
+  const file = path.join(tempDir('durun-dashboard-branches-'), 'log.jsonl');
   const on = (gitBranch: string): string => `${JSON.stringify({ type: 'user', gitBranch, message: { content: '' } })}\n`;
   fs.writeFileSync(file, ['a', 'b', 'b', 'a', 'c', 'b'].map(on).join(''));
   const log = summarizeLog(file);
@@ -40,7 +40,7 @@ test('summarizeLog は、居たブランチを最後に居た順に並べ、戻�
 });
 
 test('summarizeLog は、バックグラウンドの shell と Monitor を、ツールの結果でタスクの id と結びつけ、終わった通知で状態を更新する', () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bg-')), 'log.jsonl');
+  const file = path.join(tempDir('durun-dashboard-bg-'), 'log.jsonl');
   const call = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
   const result = (id: string, text: string, toolUseResult: object) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] }, toolUseResult });
   const notify = (body: string) => ({ type: 'user', message: { content: `<task-notification>\n${body}\n</task-notification>` } });
@@ -106,7 +106,7 @@ test('parseDiff は行番号と変更の種類を取り出す', () => {
 });
 
 test('gitDiff はコミットの範囲の差分を返し、repoFile は差分に無いファイルを git が無視しないものに限って読む。ブランチを渡されたら、そのブランチから出す', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-git-'));
+  const dir = tempDir('durun-dashboard-git-');
   const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
   const commit = (files: Record<string, string>, subject: string): string => {
     for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text);
@@ -163,7 +163,7 @@ test('gitDiff はコミットの範囲の差分を返し、repoFile は差分に
 });
 
 test('inRepo は git が無視しないファイルに限って真にし、一度聞いたファイルは git に聞き直さずに答える', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-git-'));
+  const dir = tempDir('durun-dashboard-git-');
   execFileSync('git', ['init', '-q'], { cwd: dir });
   fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n');
   fs.writeFileSync(path.join(dir, 'a.ts'), 'a\n');
@@ -195,7 +195,7 @@ test('parseIncluded は、gh api --include が本文の前に出す状態の番�
 });
 
 test('summarizeLog は同じ応答の usage を二重に数えず、書きかけの行は次回に読む', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
+  const dir = tempDir('durun-dashboard-test-');
   const file = path.join(dir, 's.jsonl');
   const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 };
   const entry = (o: object): string => `${JSON.stringify(o)}\n`;
@@ -233,7 +233,7 @@ test('summarizeLog は同じ応答の usage を二重に数えず、書きかけ
 });
 
 test('summarizeLog は、呼んだツールを名前と入力の要点の 1 行にして会話に入れ、入力の全体を detail に持つ', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
+  const dir = tempDir('durun-dashboard-test-');
   const file = path.join(dir, 's.jsonl');
   const content = [{ type: 'text', text: '調べます' }, { type: 'tool_use', name: 'Bash', input: { command: 'ls\npwd' } }, { type: 'tool_use', name: 'TodoWrite', input: { todos: [] } }];
   fs.writeFileSync(file, `${JSON.stringify({ type: 'assistant', message: { content } })}\n`);
@@ -246,7 +246,7 @@ test('summarizeLog は、呼んだツールを名前と入力の要点の 1 行�
 });
 
 test('summarizeLog は、人が打った依頼と claude -p で渡した依頼とダッシュボードから届いた依頼を、作業中に届いたものも会話に入れ、前置きと閉じタグと注意書きを外す', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
+  const dir = tempDir('durun-dashboard-test-');
   const file = path.join(dir, 's.jsonl');
   const user = (o: object): string => `${JSON.stringify({ type: 'user', ...o })}\n`;
   // 作業中に届いた依頼とタスク通知は、ターンの途中に差し込まれた記録として残る。
@@ -276,7 +276,7 @@ test('summarizeLog は、人が打った依頼と claude -p で渡した依頼�
 });
 
 test('summarizeLog は、巻き戻して送った依頼が来たら、捨てられた分岐の発言を会話から外し、依頼に巻き戻す先を持たせる', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-test-'));
+  const dir = tempDir('durun-dashboard-test-');
   const file = path.join(dir, 's.jsonl');
   const entry = (o: object): string => `${JSON.stringify(o)}\n`;
   const ask = (uuid: string, parentUuid: string, content: string): string => entry({ type: 'user', uuid, parentUuid, origin: { kind: 'human' }, message: { content } });

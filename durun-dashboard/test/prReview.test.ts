@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import type { PrInfo, PrThread } from '../shared/types.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-pr-review-'));
+const tmp = tempDir('durun-dashboard-pr-review-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 const { toPrDetail, toThreads } = await import('../server/integrations.ts');
 const { notesFor } = await import('../server/prReview.ts');

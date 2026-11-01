@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { buildSrcdoc, linkPath } from '../client/docFrame.ts';
 import { docAsset, inlineAssets } from '../server/docAssets.ts';
 import { withBase } from '../shared/html.ts';
+import { tempDir } from './tmp.ts';
 
 const HTML = '<!doctype html><html><body><p>本文</p></body></html>';
 
@@ -56,7 +56,7 @@ test('docAsset は、資料のディレクトリの中の音声、画像、動�
 });
 
 test('inlineAssets は、相対パスで埋め込んだ音声を data URL にして HTML の中に入れ、外のアドレスと無いファイルはそのままにする', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-assets-'));
+  const dir = tempDir('doc-assets-');
   fs.mkdirSync(path.join(dir, 'assets'));
   fs.writeFileSync(path.join(dir, 'assets', 'a b.ogg'), 'ogg');
   const html = '<audio src="assets/a%20b.ogg?v=1"></audio><img src="https://example.com/x.png"><video src=\'gone.mp4\' poster="../out.png"></video>';

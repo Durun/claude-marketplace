@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Session, Snapshot } from '../shared/types.ts';
 import { askDolphin } from '../server/assistant.ts';
+import { tempDir } from './tmp.ts';
 
 test('イルカは説明と状態と会話を渡して答えさせ、ダッシュボードの外へのリンクと無いセッションへの指示は返さない', async () => {
   // 標準入力のプロンプトを書き出し、外へのリンクを混ぜた答えを返す偽の claude を置く。
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-assistant-'));
+  const tmp = tempDir('durun-dashboard-assistant-');
   const promptFile = path.join(tmp, 'prompt');
   const links = [
     { label: '開く', href: '#/s/s1', open: true },

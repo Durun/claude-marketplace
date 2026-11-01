@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-diagram-'));
+const tmp = tempDir('durun-dashboard-diagram-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 const { makeDiagram } = await import('../server/diagram.ts');
 const { state } = await import('../server/store.ts');

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from './tmp.ts';
 
 // 実際の会話ログや状態に触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-search-'));
+const tmp = tempDir('durun-dashboard-search-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { searchSessions } = await import('../server/search.ts');

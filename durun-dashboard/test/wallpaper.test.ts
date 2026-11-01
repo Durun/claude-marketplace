@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { clearWallpaper, readWallpaper, saveWallpaper } from '../server/wallpaper.ts';
+import { tempDir } from './tmp.ts';
 
-const tmpDir = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-wallpaper-')), 'data');
+const tmpDir = (): string => path.join(tempDir('durun-dashboard-wallpaper-'), 'data');
 
 test('saveWallpaper は、画像を種類に合う拡張子で置き、URL に替えたら前の画像を外す', () => {
   const dir = tmpDir();

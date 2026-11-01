@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import { addTerm, applyEvent, emptyRun, findingKey, glossaryEntries, isIgnored, mergeClaudeWrites, newFile, newVersion, piecesOf, reviseInput, titleOf } from '../shared/proofread.ts';
 import type { ProofEvent, ProofFinding, ProofReading, ProofRole, ReviseNote } from '../shared/types.ts';
 import { closuresOf, isFar, numbered, parseProof } from '../server/proofText.ts';
+import { tempDir } from './tmp.ts';
 
 // 修正版は入れてあるプラグインを見て書き方を変えるので、実際の Claude Code の設定ではなく、一時ディレクトリを読ませる。
-process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-claude-'));
+process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-claude-');
 const { commentFindings, ledgerFinding, outlineFindings, priorReadings, proofReport, proofread, readFindings, revise, summarizeProof, wordFindings } = await import('../server/proofread.ts');
 
 const DOC = `# 方針
@@ -109,7 +109,7 @@ test('指摘の付いた語句は、文の中で最初に現れた所に印を�
 });
 
 test('文章校正は、読み手の答えを文ごとに流し、区切りで Jev に回収を確かめ、文書全体から用語の揺れと文の役割を調べてから終わり、使ったトークン数をモデルごとに数える', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
+  const tmp = tempDir('durun-dashboard-proofread-');
   // 読み手には、文の番号ごとに決めた答えを返す。用語の揺れを探す依頼には組を 1 つ、文の役割を問う依頼には予告と余談を 1 文ずつ含む役割を返す。
   const answers = {
     3: reading({ refs: [{ quote: '焼く', antecedent: -2 }] }),
@@ -217,7 +217,7 @@ test('後の文が指している余談と予告は不要と指摘せず、見�
 });
 
 test('要約は、読み手を動かさずに文の役割から寄与度を決め、余談、予告、まとめ、言い直しの文を、Jev も要らないとみれば赤、役割の読み取りだけなら黄にする', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-summarize-'));
+  const tmp = tempDir('durun-dashboard-summarize-');
   const text = '# 方針\n\n甲は乙である。つまり甲は乙だ。ところで天気が良い。以下で理由を述べる。乙は丙だからである。なお丙は丁でもある。\n';
   const roles = [[0, 'heading'], [0, 'claim'], [2, 'restate'], [0, 'aside'], [0, 'preview'], [2, 'reason'], [6, 'aside']];
   const outline = { claim: '甲は乙である', sentences: roles.map(([parent, role], n) => ({ n: n + 1, parent, role })) };
@@ -267,7 +267,7 @@ test('要約は、読み手を動かさずに文の役割から寄与度を決�
 });
 
 test('続きから校正すると、前に読んだ文は読み手に読ませ直さず、前の答えから指摘を作り直す。形の崩れた答えの文は読み直す', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proofread-'));
+  const tmp = tempDir('durun-dashboard-proofread-');
   const asked = path.join(tmp, 'asked');
   useFakeClaude(tmp, `const prompt = stdin();
 const k = /<sentence>\\n\\[(\\d+)\\]/.exec(prompt)?.[1];
@@ -287,7 +287,7 @@ console.log(JSON.stringify({ structured_output: k ? ${js(reading())} : { groups:
 });
 
 test('修正版は、指摘と人間のコメントを渡して文ごとに opus に書き直させ、固定した文と、文と文のあいだの記号は元のまま残す', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-revise-'));
+  const tmp = tempDir('durun-dashboard-revise-');
   const promptFile = path.join(tmp, 'prompt');
   const argsFile = path.join(tmp, 'args');
   // 書き手は、固定した [2] まで書き直そうとする。
@@ -304,7 +304,7 @@ test('修正版は、指摘と人間のコメントを渡して文ごとに opus
 });
 
 test('要約の修正版は、説明を足させず、寄与度の低い文を消すか前後の文にまとめて短くさせる', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-revise-'));
+  const tmp = tempDir('durun-dashboard-revise-');
   const promptFile = path.join(tmp, 'prompt');
   useFakeClaude(tmp, `fs.writeFileSync(${js(promptFile)}, stdin());\nconsole.log(JSON.stringify({ structured_output: { edits: [{ n: 4, text: '' }] } }));`);
   const notes: ReviseNote[] = [{ i: 3, axis: '貢献', level: 'note', message: '主張とも、主張を支える文ともつながらない。消しても主張は伝わる' }];
@@ -317,7 +317,7 @@ test('要約の修正版は、説明を足させず、寄与度の低い文を�
 });
 
 test('yomiyasu が入っていれば、修正版はそのスキルを読ませた opus に、指摘の無い文も推敲させる', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-yomiyasu-'));
+  const tmp = tempDir('durun-dashboard-yomiyasu-');
   const plugin = path.join(tmp, 'yomiyasu');
   fs.mkdirSync(plugin);
   const installed = path.join(process.env.CLAUDE_CONFIG_DIR!, 'plugins', 'installed_plugins.json');

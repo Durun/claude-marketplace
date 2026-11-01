@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { hostOs } from '../server/platform.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態や要望に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-improve-'));
+const dataDir = tempDir('durun-dashboard-improve-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const { ensureImprover, improveState, nextImprovement, saveFeedback, updateImprove } = await import('../server/improve.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
@@ -58,7 +58,7 @@ test('対応した要望を書かずに止まったウェーブでは、同じ�
 
 test('待機中に要望が届くと、たまっている要望をすべて渡して再開し、失敗したら ON のまま理由を残して、続けるまで待つ', async () => {
   // 偽の claude は、受け取った引数を書き出してすぐ失敗する。
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const bin = tempDir('durun-dashboard-bin-');
   const argsFile = path.join(bin, 'args');
   useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('fake failure'); process.exitCode = 1;`);
   const failed = () => new Promise<void>((resolve) => onChange(() => state.improve.error?.includes('fake') && resolve()));

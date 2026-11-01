@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from './tmp.ts';
 
 // 覚えた値を書き出すファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
-process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-cache-'));
+process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-cache-');
 const { cacheVersion, cached, forgetCached, peekCached, saveCache } = await import('../server/cache.ts');
 
 /** イベントループを 1 周させる。 */

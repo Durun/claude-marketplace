@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { PrInfo } from '../shared/types.ts';
+import { tempDir } from './tmp.ts';
 
 // 読んだ PR を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-claude-pr-'));
+const dir = tempDir('durun-dashboard-claude-pr-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dir;
 const { cached } = await import('../server/cache.ts');
 const { badgePr, mergeClaudePrCache } = await import('../server/integrations.ts');

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import zlib from 'node:zlib';
 import { analyze, demonstratives, extractZip, hasDictionary, isContentWord, isPlainWagoVerb, isPredicate, type Morpheme, once, prepare, toMorphemes, unzip } from '../server/morph.ts';
+import { tempDir } from './tmp.ts';
 
 type ZipEntry = { name: string; data: string; method?: 0 | 8; crc?: number };
 
@@ -75,7 +75,7 @@ test('unzip は、zip でないバイト列を拒否する', () => {
 });
 
 test('extractZip は、全部が同じ最上位のディレクトリにあればその 1 段を外して書き出す', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-morph-'));
+  const tmp = tempDir('durun-dashboard-morph-');
   extractZip(buildZip([{ name: 'top/', data: '' }, { name: 'top/a.txt', data: 'A' }, { name: 'top/d/b.txt', data: 'B', method: 8 }]), path.join(tmp, 'stripped'));
   assert.equal(fs.readFileSync(path.join(tmp, 'stripped', 'a.txt'), 'utf8'), 'A');
   assert.equal(fs.readFileSync(path.join(tmp, 'stripped', 'd', 'b.txt'), 'utf8'), 'B');
@@ -85,7 +85,7 @@ test('extractZip は、全部が同じ最上位のディレクトリにあれば
 });
 
 test('extractZip は、拒否した zip の中身を 1 つも書き出さない', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-morph-'));
+  const tmp = tempDir('durun-dashboard-morph-');
   assert.throws(() => extractZip(buildZip([{ name: 'a.txt', data: 'A' }, { name: '../b.txt', data: 'B' }]), path.join(tmp, 'out')));
   assert.equal(fs.existsSync(path.join(tmp, 'out')), false);
   assert.equal(fs.existsSync(path.join(tmp, 'b.txt')), false);

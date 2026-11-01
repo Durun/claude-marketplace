@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { OutboxMessage, QueuedMessage } from '../shared/types.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
+const tmp = tempDir('durun-dashboard-deliver-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { SessionStateError, answerCommand, archiveSession, compactSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, waitFor } = await import('../server/deliver.ts');

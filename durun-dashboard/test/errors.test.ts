@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態や要望に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-errors-'));
+const dataDir = tempDir('durun-dashboard-errors-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const { recordError, recordSlow } = await import('../server/errors.ts');
 const { nextImprovement } = await import('../server/improve.ts');
