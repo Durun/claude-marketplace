@@ -492,12 +492,19 @@ const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, ed
       ? dockedControls(floating(active), (e, max) => onWindow(active, (e.currentTarget as HTMLElement).closest('.widget')!.getBoundingClientRect(), max))
       : []),
   ];
+  // Windows や VS Code と同じく、タイトルバーとタブのダブルクリックでも最大化する。タイトルバーは枠の最初の子で、その中の入力欄やほかのボタンでのダブルクリックは、語の選択や押す操作のままにする。
+  const max = controls.find((c) => c.kind === 'max');
+  const onDblClick = (e: MouseEvent) => {
+    const target = e.target as Element;
+    if ((e.currentTarget as Element).firstElementChild?.contains(target) && !target.closest('a, input, textarea, select, button:not([role="tab"])')) max?.onClick(e);
+  };
   return (
     <section
       class={`widget${active && floating(active) ? ' is-floating' : ''}${p.free ? ' is-app' : ''}`}
       data-tabs={p.tabs.map((t) => kindOf(t.id)).join(' ')}
       aria-label={p.tabs.map(titleOf).join('、')}
       style={`${area(p)}; ${controlsVar(controls)}${only ? `; ${iconVar(widgets[kindOf(only.id)]?.icon ?? '')}` : ''}`}
+      onDblClick={onDblClick}
       {...edit}
     >
       {p.tabs.length > 1 ? (
