@@ -57,7 +57,11 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
     <Ext class="jira-row" href={item.url}>
       <span class="jira-head">
         {fields.has('type') && <RefIcon kind={item.kind} state={item.state} />}
-        <span class="jira-key">{fields.has('repo') && <><span class="jira-key-trim">{item.repo}</span> </>}#{item.number}</span>
+        <span class="jira-key">
+          {fields.has('repo') && <span class="jira-key-trim">{item.repo}</span>}
+          {/* 空白だけの文字はフレックスの中で消えるので、番号と 1 つの文字にする。 */}
+          {`${fields.has('repo') ? ' ' : ''}#${item.number}`}
+        </span>
         {fields.has('checks') && item.checks && <ChecksIcon state={item.checks} />}
         {fields.has('review') && item.review && <Chip tone={REVIEW_TONE[item.review]}>{REVIEW_LABEL[item.review] ?? item.review}</Chip>}
         <span class="jira-rule" aria-hidden="true" />
