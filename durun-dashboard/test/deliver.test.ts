@@ -11,7 +11,7 @@ import { js, useFakeClaude } from './fakeClaude.ts';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-deliver-'));
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { SessionStateError, archiveSession, compactSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession } = await import('../server/deliver.ts');
+const { SessionStateError, answerCommand, archiveSession, compactSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -681,4 +681,38 @@ test('compact は、入力待ちのバックグラウンドのセッションな
   await close(accepting.server);
   removeSupervisorDir();
   assert.equal(fs.existsSync(callsFile), false);
+});
+
+test('コマンドの実行の依頼は、実行を選ぶと supervisor への返信で ! を付けて渡し、待っている Claude にターンを終えさせる。渡せなければ依頼を残し、却下は待っている Claude に返す', async () => {
+  const live = (extra: object): void => fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's14.json'), JSON.stringify({ pid: process.pid, sessionId: 's14', cwd: tmp, status: 'busy', ...extra }));
+  ensureSession('s14', tmp);
+  const request = (id: string): Promise<string> => {
+    state.attention.push({ id, kind: 'command', sessionId: 's14', title: 'コマンドの実行の依頼', detail: 'echo hi', createdAt: Date.now() });
+    return new Promise((resolve) => waitFor(id, resolve));
+  };
+  const pending = (id: string): boolean => state.attention.some((a) => a.id === id);
+
+  const ran = request('c1');
+  live({});
+  await assert.rejects(answerCommand('c1', true), SessionStateError);
+  assert.ok(pending('c1'));
+
+  live({ kind: 'bg', jobId: 'j14' });
+  const refusing = await listenSupervisor({ ok: false, error: 'busy' });
+  await assert.rejects(answerCommand('c1', true), /busy/);
+  assert.ok(pending('c1'));
+  await close(refusing.server);
+
+  const accepting = await listenSupervisor({ ok: true, op: 'reply' });
+  await answerCommand('c1', true);
+  assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'j14', text: '! echo hi', auth: 'control-key' });
+  assert.match(await ran, /ターンを終えて/);
+  assert.equal(pending('c1'), false);
+  await close(accepting.server);
+  removeSupervisorDir();
+
+  const rejected = request('c2');
+  await answerCommand('c2', false);
+  assert.equal(await rejected, '人間はコマンドの実行を断りました。');
+  assert.equal(pending('c2'), false);
 });

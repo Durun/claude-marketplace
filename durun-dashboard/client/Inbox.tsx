@@ -11,7 +11,7 @@ import { href } from './router.ts';
 import { toast } from './toast.tsx';
 import { Empty, Ext, Time, onSubmitKey } from './ui.tsx';
 
-const KIND_ORDER: AttentionKind[] = ['ask', 'question', 'review', 'permission', 'pr', 'reply', 'doc'];
+const KIND_ORDER: AttentionKind[] = ['ask', 'question', 'command', 'review', 'permission', 'pr', 'reply', 'doc'];
 const REPLY_PREVIEW_CHARS = 400;
 
 const sortAttention = (list: Attention[]): Attention[] =>
@@ -165,6 +165,27 @@ const PermissionBody = ({ a, session }: { a: Attention; session?: Session }) => 
   </>
 );
 
+/** 実行を選ぶと、Claude Code の入力欄に打ったのと同じ `! コマンド` を渡すので、渡す文のまま見せる。 */
+const CommandBody = ({ a }: { a: Attention }) => {
+  const [busy, setBusy] = useState(false);
+  const answer = async (run: boolean) => {
+    setBusy(true);
+    const done = await attempt(run ? 'コマンドの実行' : 'コマンドの却下', () => api.answerCommand(a.id, run).then(() => true));
+    setBusy(false);
+    if (done) toast(run ? 'Claude Code に渡しました。出力は Claude が読みます' : '却下を伝えました');
+  };
+  return (
+    <>
+      <Body id={a.sessionId} text={a.body} />
+      <pre class="att-detail">! {a.detail}</pre>
+      <Actions>
+        <button class="btn btn-primary" disabled={busy} onClick={() => answer(true)}>実行</button>
+        <button class="btn" disabled={busy} onClick={() => answer(false)}>却下</button>
+      </Actions>
+    </>
+  );
+};
+
 const ReplyBody = ({ a }: { a: Attention }) => (
   <>
     {a.body && <MarkdownPreview text={a.body} max={REPLY_PREVIEW_CHARS} />}
@@ -182,6 +203,8 @@ const AttentionBody = ({ a, session }: { a: Attention; session?: Session }) => {
     case 'question':
       // バックグラウンドのセッションは、止めて再開すれば回答を渡せる。端末のセッションは止められないので、Claude Code の画面で答えてもらう。
       return session?.kind === 'bg' ? <AskBody a={a} /> : <PermissionBody a={a} session={session} />;
+    case 'command':
+      return <CommandBody a={a} />;
     case 'review':
       return <Actions><a class="btn btn-primary" href={href.session(a.sessionId, 'code')}>コードを見る</a></Actions>;
     case 'permission':

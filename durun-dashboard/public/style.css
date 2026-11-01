@@ -144,6 +144,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .md blockquote { padding-left: 0.8em; border-left: 3px solid var(--border-strong); color: var(--text-2); }
 .md hr { border: 0; border-top: 1px solid var(--border); }
 .md img { max-width: 100%; }
+.md-diagram { display: block; width: 100%; margin: 0 0 0.6em; border: 0; }
 /* 添付の動画は、最初の場面に再生の印を重ね、押すとウィンドウで再生すると分かるようにする。 */
 .md-video { position: relative; display: inline-block; max-width: 100%; }
 .md-video video { display: block; max-width: 100%; max-height: 360px; background: #000; }
@@ -993,7 +994,7 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }
 .att-review { --k: #7a6ae0; }
-.att-permission { --k: var(--serious); }
+.att-permission, .att-command { --k: var(--serious); }
 .att-pr { --k: var(--critical); }
 .att-reply { --k: #1baf7a; }
 .att-doc { --k: var(--ended); }

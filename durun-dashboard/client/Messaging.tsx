@@ -425,11 +425,11 @@ const MessageForm = ({ s }: { s: Session }) => {
 };
 
 /**
- * Claude が人間の操作を待って止まっている、そのセッションの質問と権限の確認。
+ * Claude が人間の操作を待って止まっている、そのセッションの質問、コマンドの実行の依頼、権限の確認。
  * 質問を読み取れずに権限の確認として届いたときも、止まっていることがチャットで分かるよう、権限の確認も含める。
  */
 export const asksOf = (attention: Attention[], sessionId: string): Attention[] =>
-  attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question' || a.kind === 'permission'));
+  attention.filter((a) => a.sessionId === sessionId && (a.kind === 'ask' || a.kind === 'question' || a.kind === 'command' || a.kind === 'permission'));
 
 /** 保留しているメッセージ。書き直している間はサーバーが送らないので、書き直しを始めるときと終えるときに知らせる。 */
 const QueuedItem = ({ m, badges }: { m: QueuedMessage; badges: Badges }) => {
@@ -488,7 +488,7 @@ const QueuedList = ({ s }: { s: Session }) =>
   ) : null;
 
 /**
- * 送信欄。Claude が質問の答えを待っている間は、質問のカードの回答欄から答えてもらい、通常の送信欄は出さない。
+ * 送信欄。Claude が質問の答えやコマンドの実行の選択を待っている間は、カードから答えてもらい、通常の送信欄は出さない。
  * 両方を出すと、どちらで答えればよいか迷う。権限の確認のカードには回答欄が無いので、送信欄も出す。
  * チャットのウィジェットと、ヘッダーの件数から開く一覧で使う。
  */

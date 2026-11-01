@@ -265,10 +265,10 @@ export type AskedQuestion = { question: string; header?: string; options: string
 
 /**
  * 人間の対応が必要なもの。
- * ask: ask_human の質問、question: Claude Code の AskUserQuestion の質問、review: request_review の依頼、permission: 権限確認ダイアログ、
- * reply: 回答待ちになったセッションの最後の発言、pr: CI 失敗や変更要求、doc: 未読の資料。
+ * ask: ask_human の質問、question: Claude Code の AskUserQuestion の質問、review: request_review の依頼、command: request_command のコマンドの実行の依頼、
+ * permission: 権限確認ダイアログ、reply: 回答待ちになったセッションの最後の発言、pr: CI 失敗や変更要求、doc: 未読の資料。
  */
-export type AttentionKind = 'ask' | 'question' | 'review' | 'permission' | 'reply' | 'pr' | 'doc';
+export type AttentionKind = 'ask' | 'question' | 'review' | 'command' | 'permission' | 'reply' | 'pr' | 'doc';
 
 export type Attention = {
   id: string;
@@ -281,7 +281,7 @@ export type Attention = {
   descriptions?: string[];
   /** 分けて尋ねた質問。人間は質問ごとに選択肢を選ぶ。 */
   questions?: AskedQuestion[];
-  /** 権限の確認で、Claude Code が使おうとしているツールの入力 */
+  /** 権限の確認では Claude Code が使おうとしているツールの入力、コマンドの実行の依頼では実行するコマンド */
   detail?: string;
   /** ダッシュボードから許可を返せる権限の確認。Claude Code がフックで答えを待っている間だけ付く。 */
   allowable?: boolean;
