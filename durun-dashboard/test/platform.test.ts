@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import path from 'node:path';
@@ -206,6 +207,27 @@ test('設定に書いたコマンドの行は、Windows では cmd.exe に行の
   assert.deepEqual(platformFor('darwin').shellCommand(line), { file: '/bin/sh', args: ['-c', line] });
   assert.deepEqual(platformFor('other').shellCommand(line), { file: '/bin/sh', args: ['-c', line] });
   assert.deepEqual(platformFor('win32').shellCommand('wsl tmux new -A -s "a b"'), { file: 'cmd.exe', args: '/d /s /c "wsl tmux new -A -s "a b""' });
+});
+
+test('シェルで動かしたコマンドは、Windows では taskkill でプロセスの木ごと止め、ほかの OS ではシェルを止める', () => {
+  const fakeChild = (pid: number | undefined) => {
+    const signals: string[] = [];
+    const child = { pid, kill: (signal: string = 'SIGTERM') => (signals.push(signal), true) } as unknown as ChildProcess;
+    return { child, signals };
+  };
+  const win = fakeRun({});
+  const started = fakeChild(4321);
+  platformFor('win32').killTree(started.child, win.run);
+  assert.deepEqual(win.calls, ['taskkill /pid 4321 /T /F']);
+  assert.deepEqual(started.signals, []);
+  // 起動できず PID の無いプロセスには、何もしない。
+  platformFor('win32').killTree(fakeChild(undefined).child, win.run);
+  assert.equal(win.calls.length, 1);
+  for (const name of ['darwin', 'other']) {
+    const { child, signals } = fakeChild(4321);
+    platformFor(name).killTree(child);
+    assert.deepEqual(signals, ['SIGTERM']);
+  }
 });
 
 test('FL Connect は、Windows では FL のユーザーデータをドキュメントの下と各ドライブの直下から探し、FL 2026 の起動とループバックの作成を Program Files の道具で行う', async () => {
