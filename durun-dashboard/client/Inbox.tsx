@@ -6,6 +6,7 @@ import { fileLink, filePathMarks } from './Docs.tsx';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
 import { toggled } from './explorerFavorites.ts';
 import { askAnswer } from './format.ts';
+import { dismissAttention } from './hooks.ts';
 import { KIND_LABEL } from './notify.ts';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
@@ -19,15 +20,7 @@ const sortAttention = (list: Attention[]): Attention[] =>
 
 const Actions = ({ children }: { children: ComponentChildren }) => <div class="actions">{children}</div>;
 
-const DismissButton = ({ id }: { id: string }) => {
-  const [busy, setBusy] = useState(false);
-  const click = async () => {
-    setBusy(true);
-    await attempt('既読にする操作', () => api.dismiss(id));
-    setBusy(false);
-  };
-  return <button class="btn btn-sm" disabled={busy} onClick={click}>既読</button>;
-};
+const DismissButton = ({ id }: { id: string }) => <button class="btn btn-sm" onClick={() => dismissAttention(id)}>既読</button>;
 
 /** 文に書いたファイルパスを、インラインのコードでも地の文でも開けるようにする。id はセッションの id。 */
 const Body = ({ id, text }: { id: string; text?: string }) => {

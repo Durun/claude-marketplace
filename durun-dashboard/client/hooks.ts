@@ -1,7 +1,8 @@
 import { createContext } from 'preact';
-import { useContext, useEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Snapshot } from '../shared/types.ts';
-import { getJson } from './api.ts';
+import { api, attempt, getJson } from './api.ts';
+import { pendingEdits } from './docEdits.ts';
 
 const NOW_TICK_MS = 30_000;
 
@@ -28,6 +29,23 @@ let loadSnapshot: (() => void) | undefined;
 /** SSE が変化を送るのを待たずに、サーバーにスナップショットを作らせて受け取る。 */
 export const reloadSnapshot = (): void => loadSnapshot?.();
 
+/** 既読を押した要対応。at はサーバーが済ませた時刻で、応答が届くまでは無い。 */
+type Dismissal = { id: string; at?: number };
+
+// useSnapshot が、要対応を画面から外してサーバーに既読を伝える関数。useSnapshot を使っている間だけある。
+let dismiss: ((id: string) => void) | undefined;
+
+/**
+ * 要対応を既読にする。押したらすぐ画面から外す。サーバーから届くスナップショットは、配る間隔のぶん遅れるため。
+ * サーバーが済ませた後に作ったスナップショットが届いたら、その中身に任せる。既読にできなかったら、画面に戻す。
+ */
+export const dismissAttention = (id: string): void => dismiss?.(id);
+
+const withDismissals = (s: Snapshot | null, dismissals: Dismissal[]): Snapshot | null => {
+  const hidden = new Set(pendingEdits(dismissals, s?.now ?? 0).map((d) => d.id));
+  return s && hidden.size ? { ...s, attention: s.attention.filter((a) => !hidden.has(a.id)) } : s;
+};
+
 const cachedSnapshot = (): Snapshot | null => {
   try {
     return JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Snapshot | null;
@@ -39,14 +57,27 @@ const cachedSnapshot = (): Snapshot | null => {
 /**
  * snapshot は画面に出すデータで、サーバーから届くまでは、前に開いていたときのデータを出す。
  * fresh はサーバーから届いたものだけで、通知や読み込み直しのように、古いデータで動くと困る処理に使う。
+ * どちらも、既読を押した要対応を、サーバーが済ませた後に作ったものが届くまで外して出す。
  * 軽量モードでは、サーバーに間隔を空けて配らせ、タブが裏にある間は受け取らない。そのため、裏にある間は通知も出ない。
  */
 export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh: Snapshot | null; connected: boolean } => {
   const [fresh, setFresh] = useState<Snapshot | null>(null);
   const [cached] = useState(cachedSnapshot);
   const [connected, setConnected] = useState(true);
+  const [dismissals, setDismissals] = useState<Dismissal[]>([]);
   const latest = useRef(fresh);
   latest.current = fresh;
+  useEffect(() => {
+    dismiss = async (id) => {
+      const d: Dismissal = { id };
+      setDismissals((list) => [...pendingEdits(list, latest.current?.now ?? 0), d]);
+      const res = await attempt('既読にする操作', () => api.dismiss(id));
+      setDismissals((list) => (res ? list.map((x) => (x === d ? { ...x, at: res.at } : x)) : list.filter((x) => x !== d)));
+    };
+    return () => {
+      dismiss = undefined;
+    };
+  }, []);
   useEffect(() => {
     // 取得の応答が、後から届いた SSE より古いことがあるため、新しい方を残す。
     const accept = (next: Snapshot) => setFresh((current) => (current && current.now > next.now ? current : next));
@@ -122,7 +153,8 @@ export const useSnapshot = (light: boolean): { snapshot: Snapshot | null; fresh:
       removeEventListener('pagehide', save);
     };
   }, [light]);
-  return { snapshot: fresh ?? cached, fresh, connected };
+  const shown = useMemo(() => withDismissals(fresh ?? cached, dismissals), [fresh, cached, dismissals]);
+  return { snapshot: shown, fresh: fresh && shown, connected };
 };
 
 type FetchState<T> = { data?: T; error?: string; loading: boolean; reload: () => void };

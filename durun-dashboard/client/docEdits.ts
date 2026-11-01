@@ -17,7 +17,7 @@ const applyDocEdit = (s: DocState, e: DocEdit): DocState => {
 };
 
 /** snapshotAt に作ったスナップショットに、まだ載っていない操作。 */
-export const pendingEdits = (edits: DocEdit[], snapshotAt: number): DocEdit[] => edits.filter((e) => e.at === undefined || e.at >= snapshotAt);
+export const pendingEdits = <T extends { at?: number }>(edits: T[], snapshotAt: number): T[] => edits.filter((e) => e.at === undefined || e.at >= snapshotAt);
 
 /** snapshotAt に作ったスナップショットの状態に、まだ載っていない操作を、押した順に重ねる。 */
 export const withDocEdits = (s: DocState, edits: DocEdit[], snapshotAt: number): DocState => pendingEdits(edits, snapshotAt).reduce(applyDocEdit, s);

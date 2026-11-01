@@ -162,7 +162,7 @@ export const api = {
     postJson<{ url: string }>(`${session(id)}/pr-review`, { comments, summary, commit }),
   setPrViewed: (id: string, path: string, viewed: boolean) => postJson(`${session(id)}/pr-viewed`, { path, viewed }),
   answer: (attentionId: string, answer: string) => postJson(`/api/attention/${seg(attentionId)}/answer`, { answer }),
-  dismiss: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/dismiss`),
+  dismiss: (attentionId: string) => postJson<{ at: number }>(`/api/attention/${seg(attentionId)}/dismiss`),
   allow: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/allow`),
   answerCommand: (attentionId: string, run: boolean) => postJson(`/api/attention/${seg(attentionId)}/command`, { run }),
   manual: (outboxId: string) => postJson(`/api/outbox/${seg(outboxId)}/manual`),

@@ -654,8 +654,11 @@ const sendExport = async (res: ServerResponse, id: string, format: string): Prom
   res.writeHead(200, { 'content-type': format === 'pdf' ? 'application/pdf' : 'image/png', 'content-length': body.length }).end(body);
 };
 
-/** 派生の要対応は種類ごとに既読の付け方が違う。質問とレビュー依頼は、待っている Claude に取り下げを伝える。 */
-const dismiss = (id: string): void => {
+/**
+ * 派生の要対応は種類ごとに既読の付け方が違う。質問とレビュー依頼は、待っている Claude に取り下げを伝える。
+ * 済ませた時刻を返す。画面は、この時刻より後に作ったスナップショットが届くまで、既読にした要対応を手元で外しておく。
+ */
+const dismiss = (id: string): { at: number } => {
   const [kind, rest = ''] = id.split(/:(.*)/s);
   const doc = kind === 'doc' ? state.docs.find((d) => d.id === rest) : undefined;
   if (kind === 'reply') sessionMeta(rest).replySeenAt = Date.now();
@@ -664,6 +667,7 @@ const dismiss = (id: string): void => {
   else if (isWaiting(id)) resolveAttention(id, '人間はこの依頼を回答せずに閉じました。', '');
   else state.attention = state.attention.filter((a) => a.id !== id);
   touch();
+  return { at: Date.now() };
 };
 
 const updateOutbox = (id: string, action: 'manual' | 'cancel' | 'retry'): void => {
