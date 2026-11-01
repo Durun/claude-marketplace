@@ -199,7 +199,7 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
         const path = parent ? `${parent}\t${g.name}` : g.name;
         const open = !fold.collapsed.has(path);
         return (
-          <details key={g.name} class="inbox-section" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
+          <details key={g.name} class="inbox-section jira-group" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
             <summary>
               <Heading class="inbox-section-title">
                 <GroupName by={first} group={g} />
