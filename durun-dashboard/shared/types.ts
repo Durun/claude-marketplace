@@ -682,31 +682,40 @@ export type FeedbackContext = {
   snapshot: Snapshot | null;
 };
 
-/** FL Connect が FL の中で読む範囲。song はテンポと再生の状態。sends はミキサーのトラックの送り先。 */
-export type FlSection = 'channels' | 'mixer' | 'playlist' | 'patterns' | 'sends' | 'song';
+/** FL Connect が FL の中で読む範囲。song はテンポと再生の状態。sends はミキサーのトラックの送り先。undo は FL の元に戻す履歴。 */
+export type FlSection = 'channels' | 'mixer' | 'playlist' | 'patterns' | 'sends' | 'song' | 'undo';
 export type FlValue = string | number | boolean | number[] | null;
 
-/** FL の値の 1 つの変化。index は MIDI スクリプトの API の番号（チャンネルとミキサーは 0 から、プレイリストとパターンは 1 から）。 */
+/**
+ * FL の値の 1 つの変化。値は FL が返したままに持ち、人間に見せる文には画面が訳す（shared/flText.ts）。
+ * index は MIDI スクリプトの API の番号（チャンネルとミキサーは 0 から、プレイリストとパターンは 1 から）。
+ * undo の変化は、元に戻す履歴の [数, 戻した数] の前と後で、name はそのとき前面にあったウィンドウの名前。
+ */
 export type FlChange = {
   section: FlSection;
   index: number;
-  /** 対象の名前（例: channel 2「Kick」） */
-  target: string;
+  /** 変わったときの、チャンネルやトラックの名前。 */
+  name?: string;
+  /** 変わった項目。FL Connect が読む項目の名前（vol など）。 */
   field: string;
   before: FlValue;
   after: FlValue;
-  /** 音量のように、見せる値と書き戻す値が違うときの、書き戻す値（前と後）。 */
-  raw?: [FlValue, FlValue];
+  /** FL が付けた、項目の名前（イベントの番号やプラグインのパラメーターで読んだとき）。 */
+  label?: string;
+  /** FL が付けた、前と後の値の文字。 */
+  text?: [string, string];
+  /** 音量の dB。FL が返した値。 */
+  db?: [number | null, number | null];
 };
 
 /** 操作の記録。who は、FL Connect が書いた値と合うものを agent、合わないものを human にする。via は、エージェントが変えたときのツール。 */
 export type FlRecord = FlChange & { seq: number; at: number; who: 'human' | 'agent'; via?: string };
 
-/**
- * FL Connect のログの 1 件。you は人間が FL でした操作で、agent はエージェントがツールでしたこと。
- * エージェントの 1 件には、使ったツールと、動かしたコードか引数（detail）、FL が返したもの（output）、変わった値（changes）が付く。
- */
-export type FlLogEntry = { id: string; at: number; who: 'you' | 'agent'; text: string; tool?: string; detail?: string; output?: string; ok?: boolean; changes?: string[] };
+/** エージェントがツールでしたこと。args はツールに渡した引数、detail は FL で動かしたもの、output は FL が返したもの。 */
+export type FlAgentEntry = { id: string; at: number; who: 'agent'; tool: string; args: Record<string, unknown>; detail?: string; output?: string; ok: boolean; changes: FlChange[] };
+
+/** FL Connect のログの 1 件。you は人間が FL でした操作で、agent はエージェントがツールでしたこと。どちらも生の値のまま持つ。 */
+export type FlLogEntry = (FlChange & { id: string; at: number; who: 'you' }) | FlAgentEntry;
 
 /** 人間に確かめている、② の remove_channels で消えるチャンネル。position はチャンネルラックの上からの番号（1 から）。 */
 export type FlRemoval = { id: string; sessionId: string; channels: { position: number; name: string; plugin: string }[] };

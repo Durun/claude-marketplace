@@ -4,10 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
-import { align, COALESCE_MS, describeChange, diffPlaylist, diffRows, diffSends, diffSong, followChannels, RecordLog, resolveChannels, restoreLines, type Row, undoChanges, undoDelta, windowName } from '../server/flChanges.ts';
+import { align, COALESCE_MS, diffPlaylist, diffRows, diffSends, diffSong, followChannels, RecordLog, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
 import { gopherText } from '../server/flGopher.ts';
-import { appendLog, logFilePath, markdownEntry } from '../server/flLogFile.ts';
+import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
+import { describeAgent, describeChange, undoDelta, windowName } from '../shared/flText.ts';
 import type { FlConnectView } from '../shared/types.ts';
 
 test('SysEx の JSON は ASCII の文字だけにし、日本語は \\u の形にして、読み戻すと元の値になる', () => {
@@ -54,10 +55,12 @@ test('チャンネルの数が同じなら、同じ位置どうしを比べ、�
   assert.deepEqual(diffRows('channels', before, after).map(describeChange), ['channel 0「BD」の名前: 「Kick」 → 「BD」', 'channel 1「Snare」の色: #808080 → #E04848']);
 });
 
-test('音量は 0 から 1 の値で比べ、記録には dB で残し、書き戻す値を raw に持つ', () => {
+test('記録は生の値のまま持つ。音量は書き戻せる 0 から 1 の値にし、FL が返した dB を添え、画面が dB で見せる', () => {
   const [c] = diffRows('channels', [ch(0, 'Kick')], [ch(0, 'Kick', { vol: 0.5, db: -6.2 })]);
-  assert.deepEqual(c, { section: 'channels', index: 0, target: 'channel 0「Kick」', field: 'vol', before: 0, after: -6.2, raw: [0.78, 0.5] });
+  assert.deepEqual(c, { section: 'channels', index: 0, name: 'Kick', field: 'vol', before: 0.78, after: 0.5, db: [0, -6.2] });
   assert.equal(describeChange(c!), 'channel 0「Kick」の音量: 0 dB → -6.2 dB');
+  // FL が名前と値の文字を付けた項目は、FL の言葉のまま見せる。
+  assert.equal(describeChange({ section: 'channels', index: 0, name: 'Sampler', field: 'rec:4097', label: 'Sampler - Volume envelope - Attack', before: 100, after: 900, text: ['0:00', '0:25'] }), 'channel 0「Sampler」の「Sampler - Volume envelope - Attack」: 0:00 → 0:25');
 });
 
 test('チャンネルの数が変わったら、名前とプラグインの並びを合わせて、足したものと消したものを見分ける', () => {
@@ -92,31 +95,32 @@ test('ミキサーの送り先と、テンポと再生の変化を記録にす�
 
 test('同じ人の、同じ対象の同じ項目の変化が続いたら 1 件にまとめて末尾に移し、元の値に戻ったら消す', () => {
   const log = new RecordLog();
-  const vol = (after: number, raw: number) => ({ section: 'mixer' as const, index: 1, target: 'mixer 1', field: 'vol', before: 0, after, raw: [0.8, raw] as [number, number] });
-  log.add(vol(-1, 0.7), 'human', undefined, 1000);
-  log.add({ section: 'channels', index: 0, target: 'channel 0', field: 'name', before: 'a', after: 'b' }, 'human', undefined, 1100);
-  log.add(vol(-3, 0.6), 'human', undefined, 1200);
-  assert.deepEqual(log.records.map((r) => [r.seq, r.field, r.after, r.raw?.[1]]), [[2, 'name', 'b', undefined], [3, 'vol', -3, 0.6]]);
+  const vol = (after: number, db: number) => ({ section: 'mixer' as const, index: 1, name: 'Bass', field: 'vol', before: 0.8, after, db: [0, db] as [number, number] });
+  log.add(vol(0.7, -1), 'human', undefined, 1000);
+  log.add({ section: 'channels', index: 0, field: 'name', before: 'a', after: 'b' }, 'human', undefined, 1100);
+  log.add(vol(0.6, -3), 'human', undefined, 1200);
+  assert.deepEqual(log.records.map((r) => [r.seq, r.field, r.after, r.db]), [[2, 'name', 'b', undefined], [3, 'vol', 0.6, [0, -3]]]);
   assert.deepEqual(log.since(2).map((r) => r.seq), [3]);
   // エージェントの変更は、人間の記録とまとめない。
-  log.add(vol(-4, 0.5), 'agent', 'fl_python', 1300);
+  log.add(vol(0.5, -4), 'agent', 'fl_python', 1300);
   assert.equal(log.records.length, 3);
-  log.add(vol(0, 0.8), 'human', undefined, 1400);
+  log.add(vol(0.8, 0), 'human', undefined, 1400);
   assert.deepEqual(log.records.map((r) => r.who), ['human', 'agent']);
   // 時間が空いたら、まとめない。
-  log.add(vol(-2, 0.65), 'human', undefined, 1400 + COALESCE_MS + 1);
-  log.add(vol(-5, 0.4), 'human', undefined, 1400 + 2 * COALESCE_MS + 2);
+  log.add(vol(0.65, -2), 'human', undefined, 1400 + COALESCE_MS + 1);
+  log.add(vol(0.4, -5), 'human', undefined, 1400 + 2 * COALESCE_MS + 2);
   assert.equal(log.records.filter((r) => r.who === 'human' && r.field === 'vol').length, 2);
 });
 
 test('記録から、前の値に戻す Python の行を作る。ソロは今と違うときだけ切り替え、戻せない変化は空にする', () => {
-  assert.deepEqual(restoreLines({ section: 'channels', index: 2, target: '', field: 'name', before: 'Kick "A"', after: 'BD' }), ['channels.setChannelName(2, "Kick \\"A\\"")']);
-  assert.deepEqual(restoreLines({ section: 'mixer', index: 1, target: '', field: 'vol', before: 0, after: -6, raw: [0.8, 0.4] }), ['mixer.setTrackVolume(1, 0.8)']);
-  assert.deepEqual(restoreLines({ section: 'channels', index: 0, target: '', field: 'solo', before: false, after: true }), ['if channels.isChannelSolo(0) != False: channels.soloChannel(0)']);
-  assert.deepEqual(restoreLines({ section: 'sends', index: 3, target: '', field: 'sends', before: [0], after: [0, 5] }), ['mixer.setRouteTo(3, 5, False)', 'mixer.afterRoutingChanged()']);
-  assert.deepEqual(restoreLines({ section: 'channels', index: 1, target: '', field: 'added', before: null, after: '3x Osc' }), []);
-  assert.deepEqual(restoreLines({ section: 'playlist', index: 2, target: '', field: 'color', before: null, after: 0x4080ff }), []);
-  assert.deepEqual(restoreLines({ section: 'song', index: 0, target: '', field: 'tempo', before: 140, after: 128 }), []);
+  assert.deepEqual(restoreLines({ section: 'channels', index: 2, field: 'name', before: 'Kick "A"', after: 'BD' }), ['channels.setChannelName(2, "Kick \\"A\\"")']);
+  assert.deepEqual(restoreLines({ section: 'mixer', index: 1, field: 'vol', before: 0.8, after: 0.4, db: [0, -6] }), ['mixer.setTrackVolume(1, 0.8)']);
+  assert.deepEqual(restoreLines({ section: 'channels', index: 0, field: 'solo', before: false, after: true }), ['if channels.isChannelSolo(0) != False: channels.soloChannel(0)']);
+  assert.deepEqual(restoreLines({ section: 'sends', index: 3, field: 'sends', before: [0], after: [0, 5] }), ['mixer.setRouteTo(3, 5, False)', 'mixer.afterRoutingChanged()']);
+  assert.deepEqual(restoreLines({ section: 'channels', index: 1, field: 'added', before: null, after: '3x Osc' }), []);
+  assert.deepEqual(restoreLines({ section: 'playlist', index: 2, field: 'color', before: null, after: 0x4080ff }), []);
+  assert.deepEqual(restoreLines({ section: 'song', index: 0, field: 'tempo', before: 140, after: 128 }), []);
+  assert.deepEqual(restoreLines({ section: 'undo', index: 0, field: 'history', before: [1, 0], after: [3, 0] }), []);
 });
 
 test('remove_channels の指定を、1 からの番号、名前（大文字と小文字を区別しない）、all、selected から、消えるチャンネルの番号にする', () => {
@@ -134,61 +138,64 @@ test('Gopher の返事は、JSON-RPC として読めればその文を、中の 
   assert.deepEqual(gopherText('plain answer'), { text: 'plain answer', isError: false });
 });
 
-test('元に戻す履歴の数と戻した数から、新しく増えた操作、Ctrl+Z で戻した数、やり直した数を出す', () => {
-  assert.deepEqual(undoDelta({ count: 1, undone: 0 }, { count: 3, undone: 0 }), { added: 2, undone: 0, redone: 0 });
-  assert.deepEqual(undoDelta({ count: 5, undone: 0 }, { count: 5, undone: 2 }), { added: 0, undone: 2, redone: 0 });
-  assert.deepEqual(undoDelta({ count: 5, undone: 2 }, { count: 5, undone: 1 }), { added: 0, undone: 0, redone: 1 });
+test('元に戻す履歴の [数, 戻した数] の前と後から、新しく増えた操作、Ctrl+Z で戻した数、やり直した数を出す', () => {
+  assert.deepEqual(undoDelta([1, 0], [3, 0]), { added: 2, undone: 0, redone: 0 });
+  assert.deepEqual(undoDelta([5, 0], [5, 2]), { added: 0, undone: 2, redone: 0 });
+  assert.deepEqual(undoDelta([5, 2], [5, 1]), { added: 0, undone: 0, redone: 1 });
   // 2 回戻してから新しく操作すると、FL は戻した 2 件を消してから 1 件足す。
-  assert.deepEqual(undoDelta({ count: 5, undone: 2 }, { count: 4, undone: 0 }), { added: 1, undone: 0, redone: 0 });
+  assert.deepEqual(undoDelta([5, 2], [4, 0]), { added: 1, undone: 0, redone: 0 });
   // 別のプロジェクトを読み込むと履歴は減るが、操作ではない。
-  assert.deepEqual(undoDelta({ count: 17, undone: 0 }, { count: 1, undone: 0 }), { added: 0, undone: 0, redone: 0 });
+  assert.deepEqual(undoDelta([17, 0], [1, 0]), { added: 0, undone: 0, redone: 0 });
 });
 
-test('増えた操作は、ほかの記録で説明できないときだけ「FL Connect が読まない値を変えた」にし、ウィンドウの名前からアイコンの文字を外す', () => {
-  const window = windowName('Sampler\ue5a0 (Master)\ue5ff');
-  assert.equal(window, 'Sampler (Master)');
-  assert.deepEqual(undoChanges({ added: 2, undone: 0, redone: 0 }, window, false).map(describeChange), ['「Sampler (Master)」で、FL Connect が読まない値を変えた（FL の元に戻す履歴が 2 件増えた）']);
-  assert.deepEqual(undoChanges({ added: 2, undone: 0, redone: 0 }, window, true), []);
+const SAMPLER_WINDOW = `Sampler${String.fromCodePoint(0xe5a0)} (Master)${String.fromCodePoint(0xe5ff)}`;
+
+test('元に戻す履歴の変化は、ほかの変化で説明できないときだけ生の値で記録し、画面がウィンドウの名前からアイコンの文字を外して訳す', () => {
+  assert.equal(windowName(SAMPLER_WINDOW), 'Sampler (Master)');
+  const op = undoChange([1, 0], [3, 0], SAMPLER_WINDOW, false);
+  assert.deepEqual(op, { section: 'undo', index: 0, name: SAMPLER_WINDOW, field: 'history', before: [1, 0], after: [3, 0] });
+  assert.equal(describeChange(op!), '「Sampler (Master)」で、FL Connect が読まない値を変えた（FL の元に戻す履歴が 2 件増えた）');
+  assert.equal(undoChange([1, 0], [3, 0], SAMPLER_WINDOW, true), undefined);
   // 元に戻したことは、戻って変わった値が見えても残す。
-  assert.deepEqual(undoChanges({ added: 0, undone: 1, redone: 0 }, '', true).map(describeChange), ['FL で元に戻した（1 回）']);
-  assert.deepEqual(undoChanges({ added: 0, undone: 0, redone: 3 }, 'Mixer', false).map(describeChange), ['「Mixer」でやり直した（3 回）']);
+  assert.equal(describeChange(undoChange([5, 0], [5, 1], '', true)!), 'FL で元に戻した（1 回）');
+  assert.equal(describeChange(undoChange([5, 3], [5, 0], 'Mixer', false)!), '「Mixer」でやり直した（3 回）');
 });
 
-test('同じウィンドウで続けた操作は回数を足して 1 件にし、別のウィンドウの操作はまとめない', () => {
+test('同じウィンドウで続いた元に戻す履歴の変化は、最初の前と最後の後で 1 件にし、別のウィンドウのものはまとめない', () => {
   const log = new RecordLog();
-  const op = (window: string, n: number) => undoChanges({ added: n, undone: 0, redone: 0 }, window, false)[0]!;
-  log.add(op('Sampler (Master)', 2), 'human', undefined, 1000);
-  log.add(op('Sampler (Master)', 1), 'human', undefined, 1500);
-  log.add(op('Mixer', 1), 'human', undefined, 1600);
-  assert.deepEqual(log.records.map((r) => [r.target, r.before]), [['Sampler (Master)', 3], ['Mixer', 1]]);
+  log.add(undoChange([1, 0], [3, 0], 'A', false)!, 'human', undefined, 1000);
+  log.add(undoChange([3, 0], [4, 0], 'A', false)!, 'human', undefined, 1500);
+  log.add(undoChange([4, 0], [5, 0], 'B', false)!, 'human', undefined, 1600);
+  assert.deepEqual(log.records.map((r) => [r.name, r.before, r.after]), [['A', [1, 0], [4, 0]], ['B', [4, 0], [5, 0]]]);
 });
 
 const at = new Date(2026, 10, 1, 9, 30, 5).getTime();
 
-test('ログの 1 件を Markdown の箇条書きにし、名前の中の記号はそのまま見せ、コードは中のバッククォートより長いフェンスで囲む', () => {
-  assert.equal(markdownEntry({ id: 'r1', at, who: 'you', text: 'channel 0「*Kick_1*」の名前: 「a」 → 「b」' }), '- 09:30:05 **You** channel 0「\\*Kick\\_1\\*」の名前: 「a」 → 「b」');
-  const code = 'print("```")\nx = 1';
-  assert.equal(
-    markdownEntry({ id: 'a', at, who: 'agent', text: 'fl_python: print("```")', tool: 'fl_python', detail: code, output: 'ok', ok: false, changes: ['channel 0の名前: 「a」 → 「b」'] }),
-    ['- 09:30:05 **Agent** fl\\_python: print("\\`\\`\\`")（失敗）', '  - channel 0の名前: 「a」 → 「b」', '  ````python', '  print("```")', '  x = 1', '  ````', '  ```', '  ok', '  ```'].join('\n'),
-  );
+test('ログの 1 件を、時刻を読める形にした JSONL の 1 行にし、ウィンドウのための id は書かない', () => {
+  assert.match(isoLocal(at), /^2026-11-01T09:30:05\.000[+-]\d\d:\d\d$/);
+  assert.equal(jsonLine({ id: 'r1', at, who: 'you', section: 'channels', index: 0, name: 'Kick', field: 'vol', before: 0.78, after: 0.5, db: [0, -6.2] }), `{"at":"${isoLocal(at)}","who":"you","section":"channels","index":0,"name":"Kick","field":"vol","before":0.78,"after":0.5,"db":[0,-6.2]}`);
+  const agent = { id: 'a', at, who: 'agent' as const, tool: 'fl_python', args: { code: 'print(1)' }, output: '1', ok: true, changes: [] };
+  assert.equal(jsonLine(agent), `{"at":"${isoLocal(at)}","who":"agent","tool":"fl_python","args":{"code":"print(1)"},"output":"1","ok":true,"changes":[]}`);
+  assert.equal(describeAgent(agent), 'fl_python: print(1)');
 });
 
-test('ログは、セッションごとのフォルダーの、日ごとのファイルに書き足し、新しく作ったファイルだけを返す', () => {
+test('ログは、セッションごとのフォルダーの、日ごとの JSONL のファイルに書き足し、新しく作ったファイルだけを返す', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fl-log-'));
   try {
     const next = at + 24 * 3600_000;
-    const created = appendLog(dir, 's1', 'Song', [{ at, heading: 'FL Studio 26.1.7 とつながった' }, { id: 'r1', at, who: 'you', text: 'A' }]);
+    const you = (id: string, when: number, after: string) => ({ id, at: when, who: 'you' as const, section: 'channels' as const, index: 0, field: 'name', before: 'a', after });
+    const created = appendLog(dir, 's1', [{ at, event: 'connect', fl: '26.1.7' }, you('r1', at, 'A')]);
     assert.deepEqual(created, [logFilePath(dir, 's1', at)]);
-    assert.deepEqual(appendLog(dir, 's1', 'Song', [{ id: 'r2', at, who: 'you', text: 'B' }, { id: 'r3', at: next, who: 'you', text: 'C' }]), [logFilePath(dir, 's1', next)]);
-    const text = fs.readFileSync(logFilePath(dir, 's1', at), 'utf8');
-    assert.match(text, /^# FL Connect のログ（Song、2026-11-01）\n/);
-    assert.match(text, /\n\n## 09:30:05 FL Studio 26\.1\.7 とつながった\n\n- 09:30:05 \*\*You\*\* A\n- 09:30:05 \*\*You\*\* B\n$/);
-    assert.match(fs.readFileSync(logFilePath(dir, 's1', next), 'utf8'), /- 09:30:05 \*\*You\*\* C\n$/);
+    assert.match(created[0] ?? '', /FL Connect 2026-11-01\.jsonl$/);
+    assert.deepEqual(appendLog(dir, 's1', [you('r2', at, 'B'), you('r3', next, 'C')]), [logFilePath(dir, 's1', next)]);
+    const lines = fs.readFileSync(logFilePath(dir, 's1', at), 'utf8').trimEnd().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
+    assert.deepEqual(lines.map((l) => l.event ?? l.after), ['connect', 'A', 'B']);
+    assert.equal(JSON.parse(fs.readFileSync(logFilePath(dir, 's1', next), 'utf8')).after, 'C');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
 
 const view = (patch: { midi?: Partial<FlConnectView['midi']>; gopher?: Partial<FlConnectView['gopher']>; setup?: Partial<FlConnectView['setup']> } = {}): FlConnectView => ({
   midi: { status: 'connected', ports: { input: 'FL Connect (B)', output: 'FL Connect (B)' }, hello: { script: '0.1.0', core: '0.2.0', fl: '26.1.7', api: 45, python: '3.12' }, ...patch.midi },

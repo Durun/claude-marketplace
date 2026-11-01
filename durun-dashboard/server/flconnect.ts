@@ -6,10 +6,9 @@ import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
-import type { FlChange, FlConnectView, FlGopherStatus, FlHello, FlLinkStatus, FlLogEntry, FlRecord, FlRemoval, FlValue } from '../shared/types.ts';
+import type { FlAgentEntry, FlChange, FlConnectView, FlGopherStatus, FlHello, FlLinkStatus, FlLogEntry, FlRecord, FlRemoval, FlValue } from '../shared/types.ts';
 import {
   COALESCE_MS,
-  describeChange,
   diffPlaylist,
   diffRows,
   diffSends,
@@ -22,13 +21,11 @@ import {
   type RowSection,
   same,
   type SongState,
-  type UndoDelta,
-  undoChanges,
-  undoDelta,
-  windowName,
+  undoChange,
+  type UndoState,
 } from './flChanges.ts';
 import { GopherError, GopherLink, type GopherTool } from './flGopher.ts';
-import { appendLog, logFilePath } from './flLogFile.ts';
+import { appendLog, type FlLogEvent, logFilePath } from './flLogFile.ts';
 import { openMidi, type MidiLink } from './flMidi.ts';
 import { platform } from './platform.ts';
 import { DATA_DIR, newId, state, touch } from './store.ts';
@@ -130,10 +127,10 @@ const dirty = new Set<RowSection>();
 let readTimer: NodeJS.Timeout | undefined;
 const records = new RecordLog();
 /** エージェントがツールでしたこと。人間の操作は records に持ち、ログを見せるときに時刻の順に混ぜる。 */
-const agentLog: FlLogEntry[] = [];
+const agentLog: FlAgentEntry[] = [];
 /** ログのファイルにまだ書いていないもの。記録は、まとめ終わるまで（COALESCE_MS）待ってから書く。 */
 let writtenSeq = 0;
-let unwritten: ({ at: number; heading: string } | FlLogEntry)[] = [];
+let unwritten: (FlAgentEntry | FlLogEvent)[] = [];
 const agentOps: AgentOp[] = [];
 /** ② の add_channel で足したチャンネルの、今の番号。② の remove_channels で消すと、そのあとの Ctrl+Z で FL 26.1.7 が落ちるので、消すのを止める。 */
 let addedChannels: number[] = [];
@@ -156,8 +153,11 @@ const sessionName = (id: string): string => state.sessions[id]?.title ?? id.slic
 
 // ─── ウィンドウ ─────────────────────────────────────────────────────────
 
+/** 記録の、変化の部分。番号、時刻、誰が、を除いた生の値。 */
+const changeOf = (r: FlRecord): FlChange => ({ section: r.section, index: r.index, name: r.name, field: r.field, before: r.before, after: r.after, label: r.label, text: r.text, db: r.db });
+
 /** 人間の操作の記録を、ログの 1 件にする。エージェントの変更は、ツールの 1 件に入っているので、ログには出さない。 */
-const youEntry = (r: FlRecord): FlLogEntry => ({ id: `r${r.seq}`, at: r.at, who: 'you', text: describeChange(r) });
+const youEntry = (r: FlRecord): FlLogEntry => ({ id: `r${r.seq}`, at: r.at, who: 'you', ...changeOf(r) });
 
 const clipBlock = (text: string | undefined): string | undefined => (text && text.length > VIEW_BLOCK_CHARS ? `${text.slice(0, VIEW_BLOCK_CHARS)}\n…（${text.length} 文字のうち、先頭の ${VIEW_BLOCK_CHARS} 文字）` : text);
 
@@ -210,18 +210,18 @@ const broadcast = (): void => {
   }, VIEW_THROTTLE_MS);
 };
 
-/** エージェントがツールでしたことを、ログに足す。 */
-const addLog = (entry: Omit<FlLogEntry, 'id' | 'at' | 'who'>): void => {
-  const e: FlLogEntry = { id: newId(), at: Date.now(), who: 'agent', ...entry };
+/** エージェントがツールでしたことを、ログに足す。args は、エージェントがツールに渡した引数のまま。 */
+const addLog = (entry: Omit<FlAgentEntry, 'id' | 'at' | 'who' | 'changes'> & { changes?: FlChange[] }): void => {
+  const e: FlAgentEntry = { id: newId(), at: Date.now(), who: 'agent', ...entry, changes: entry.changes ?? [] };
   agentLog.push(e);
   if (agentLog.length > MAX_LOG) agentLog.splice(0, agentLog.length - MAX_LOG);
   unwritten.push(e);
   broadcast();
 };
 
-/** ログのファイルに、見出しを書き足す。FL とつながったときなど、区切りを付けるため。 */
-const addHeading = (heading: string): void => {
-  unwritten.push({ at: Date.now(), heading });
+/** ログのファイルに、区切りの印を書き足す。FL とつながったときなど。 */
+const addEvent = (event: string, fields: Record<string, unknown>): void => {
+  unwritten.push({ at: Date.now(), event, ...fields });
 };
 
 /**
@@ -245,7 +245,7 @@ const writeLog = (all = false): void => {
   const meta = state.sessions[boundSession];
   let created: string[];
   try {
-    created = appendLog(LOG_DIR, boundSession, sessionName(boundSession), items);
+    created = appendLog(LOG_DIR, boundSession, items);
   } catch (e) {
     console.error(`[flconnect] ログのファイルに書けません: ${(e as Error).message}`);
     return;
@@ -369,7 +369,7 @@ const greeted = (h: FlHello): void => {
   // FL を起動し直したか、スクリプトを読み直した。前のプロジェクトの値とは比べない。
   if (fresh) {
     resetProject();
-    addHeading(`FL Studio ${h.fl} とつながった（FL Connect のスクリプト ${h.script}）`);
+    addEvent('connect', { fl: h.fl, api: h.api, script: h.script, core: h.core });
   }
   setMidi('connected', versionNote(h));
   broadcast();
@@ -407,8 +407,10 @@ const resetProject = (): void => {
 
 const songOf = (s: Summary): SongState => ({ tempo: s.tempo, playing: s.playing, recording: s.recording });
 
-/** まだ記録にしていない、元に戻す履歴の変化。次に全部を読んだときに、ほかの変化と合わせて記録にする。 */
-let pendingUndo: (UndoDelta & { window: string; explained: boolean }) | undefined;
+/** まだ記録にしていない、元に戻す履歴の変化（最初の前と、最後の後）。次に全部を読んだときに、ほかの変化と合わせて記録にする。 */
+let pendingUndo: { before: UndoState; after: UndoState; window: string; explained: boolean } | undefined;
+
+const undoOf = (s: Summary): UndoState => [s.undo[0], s.undo[1]];
 
 /**
  * 要約を覚え直し、前の要約と比べたテンポと再生の変化を返す。元に戻す履歴の変化は pendingUndo に溜める。
@@ -419,11 +421,7 @@ const observe = (next: Summary): FlChange[] => {
   mirror.summary = next;
   if (!prev) return [];
   const song = diffSong(songOf(prev), songOf(next));
-  const d = undoDelta({ count: prev.undo[0], undone: prev.undo[1] }, { count: next.undo[0], undone: next.undo[1] });
-  if (d.added || d.undone || d.redone) {
-    const p = pendingUndo;
-    pendingUndo = { added: (p?.added ?? 0) + d.added, undone: (p?.undone ?? 0) + d.undone, redone: (p?.redone ?? 0) + d.redone, window: windowName(next.focus[1]), explained: !!p?.explained };
-  }
+  if (!same(undoOf(prev), undoOf(next))) pendingUndo = { before: pendingUndo?.before ?? undoOf(prev), after: undoOf(next), window: next.focus[1], explained: !!pendingUndo?.explained };
   if (pendingUndo && song.some((c) => c.field === 'tempo')) pendingUndo.explained = true;
   return song;
 };
@@ -436,7 +434,8 @@ const settleUndo = (who: FlRecord['who'], changes: FlChange[]): FlChange[] => {
   const p = pendingUndo;
   pendingUndo = undefined;
   if (!p || who !== 'human') return [];
-  return undoChanges(p, p.window, p.explained || changes.some((c) => c.field !== 'playing' && c.field !== 'recording'));
+  const change = undoChange(p.before, p.after, p.window, p.explained || changes.some((c) => c.field !== 'playing' && c.field !== 'recording'));
+  return change ? [change] : [];
 };
 
 /** プロジェクトの読み込みの印が届いたら、前のプロジェクトの値と比べないよう、覚えた値を捨てる。 */
@@ -473,7 +472,7 @@ const readDirty = async (): Promise<void> => {
   if (projectLoaded) {
     projectLoaded = false;
     resetProject();
-    records.add({ section: 'song', index: 0, target: 'song', field: 'project', before: null, after: null }, 'human');
+    records.add({ section: 'song', index: 0, field: 'project', before: null, after: null }, 'human');
   }
   if (!dirty.size) return;
   const sections = [...dirty];
@@ -805,18 +804,19 @@ const flState = async (args: Record<string, unknown>): Promise<FlToolResult> => 
   return { text: lines.join('\n') };
 };
 
-const recordLine = (r: FlRecord): string => {
-  const time = new Date(r.at).toTimeString().slice(0, 8);
-  const who = r.who === 'human' ? '人間' : `エージェント（${r.via ?? '?'}）`;
-  return `[${time}] ${who}: ${describeChange(r)}`;
-};
+/** エージェントに渡す記録の 1 行。FL が返した生の値のまま、1 行に 1 つの JSON にする。 */
+const recordLine = (r: FlRecord): string => JSON.stringify({ at: new Date(r.at).toTimeString().slice(0, 8), who: r.who, via: r.via, ...changeOf(r) });
+
+/** 記録の JSON の読み方。エージェントに記録を渡すときに添える。 */
+const RECORD_FORMAT =
+  '1 行に 1 つ、FL が返した生の値の JSON。番号は MIDI スクリプトの API の番号。vol は 0 から 1 の値で、db に FL が返した dB を添える。color は 0xRRGGBB の数。label と text があれば、FL が付けた項目の名前と値の文字。section が undo の行は、FL Connect が読まない値を変えたか Ctrl+Z をしたことを表し、before と after は元に戻す履歴の [数, 戻した数]、name はそのとき前面にあったウィンドウ';
 
 /** fl_changes：前に読んだところから先の記録を返す。フックで届けた記録も読んだものとして扱う。 */
 const flChanges = (sessionId: string, args: Record<string, unknown>): FlToolResult => {
   const since = args.all === true ? Math.max(0, records.last - 50) : (cursors.get(sessionId) ?? 0);
   const list = records.since(since);
   cursors.set(sessionId, records.last);
-  const head = list.length ? `前に読んでから ${list.length} 件の変化があった（番号は MIDI スクリプトの API の番号）:` : '前に読んでから、FL の値は変わっていない。';
+  const head = list.length ? `前に読んでから ${list.length} 件の変化があった（${RECORD_FORMAT}）:` : '前に読んでから、FL の値は変わっていない。';
   const file = logFileOf(sessionId);
   return { text: [head, ...list.map(recordLine), ...summaryLines(mirror.summary), ...(file ? [`今日のログ（人間の操作と、エージェントがツールでしたこと）は ${file} にある。`] : [])].join('\n') };
 };
@@ -827,7 +827,8 @@ const pushAgentOp = (via: string, changes: FlChange[]): void => {
   if (agentOps.length > MAX_AGENT_OPS) agentOps.splice(0, agentOps.length - MAX_AGENT_OPS);
 };
 
-const changeLines = (changes: FlChange[]): string[] => changes.map((c) => describeChange(c));
+/** エージェントに渡す、変わった値の行。記録と同じく、生の値の JSON にする。 */
+const changeLines = (changes: FlChange[]): string[] => changes.map((c) => JSON.stringify(c));
 
 /** fl_python：AI が書いた Python を FL の中で動かす。前と後を読み、変わった値をエージェントの変更として記録する。 */
 const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> => {
@@ -850,13 +851,12 @@ const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> =>
     const ok = reply.ok === true;
     const stdout = String(reply.stdout ?? '');
     const result = reply.result === null || reply.result === undefined ? '' : JSON.stringify(reply.result, null, 2);
-    const firstLine = code.trim().split('\n')[0] ?? '';
-    addLog({ tool: 'fl_python', text: `fl_python: ${firstLine.slice(0, 80)}`, detail: code, output: [stdout, ok ? result : String(reply.error ?? '')].filter(Boolean).join('\n'), ok, changes: changeLines(changes) });
+    addLog({ tool: 'fl_python', args, output: [stdout, ok ? result : String(reply.error ?? '')].filter(Boolean).join('\n'), ok, changes });
     const parts = [
       ok ? `動いた（${String(reply.ms)} ms）。` : `例外で止まった（${String(reply.ms)} ms）。例外より前に変えた値は、そのまま残っている。\n${String(reply.error ?? '')}`,
       stdout ? `print の出力:\n${stdout}` : '',
       result ? `result:\n${result}` : '',
-      changes.length ? `変わった値（${changes.length} 件。fl_undo で戻せる。FL の元に戻す履歴にも、API の 1 回の呼び出しごとに残る）:\n${changeLines(changes).map((l) => `- ${l}`).join('\n')}` : '名前、色、音量、パン、ミュート、ソロ、送り先は変わっていない。',
+      changes.length ? `変わった値（${changes.length} 件。fl_undo で戻せる。FL の元に戻す履歴にも、API の 1 回の呼び出しごとに残る。${RECORD_FORMAT}）:\n${changeLines(changes).join('\n')}` : '名前、色、音量、パン、ミュート、ソロ、送り先は変わっていない。',
     ];
     return { text: parts.filter(Boolean).join('\n\n'), isError: !ok };
   });
@@ -876,8 +876,8 @@ const flUndo = async (args: Record<string, unknown>): Promise<FlToolResult> => {
     for (const op of ops) {
       for (const c of [...op.changes].reverse()) {
         const restore = restoreLines(c);
-        if (!restore.length) skipped.push(`${describeChange(c)}（① の道では戻せない）`);
-        else if (!same(currentValue(c), c.raw ? c.raw[1] : c.after)) skipped.push(`${describeChange(c)}（人間がそのあとで変えたか、並びが変わったので戻さない）`);
+        if (!restore.length) skipped.push(`${JSON.stringify(c)}（① の道では戻せない）`);
+        else if (!same(currentValue(c), c.after)) skipped.push(`${JSON.stringify(c)}（人間がそのあとで変えたか、並びが変わったので戻さない）`);
         else lines.push(...restore);
       }
     }
@@ -887,19 +887,19 @@ const flUndo = async (args: Record<string, unknown>): Promise<FlToolResult> => {
       changes = (await refresh(ROW_SECTIONS, 'agent', 'fl_undo', { sends: used })).changes;
       if (reply.ok !== true) skipped.push(`戻す途中で例外が起きた: ${String(reply.error ?? '')}`);
     }
-    addLog({ tool: 'fl_undo', text: `fl_undo: ${ops.length} 回分の操作を戻した`, detail: lines.join('\n'), ok: !skipped.length, changes: changeLines(changes) });
+    addLog({ tool: 'fl_undo', args, detail: lines.join('\n'), output: skipped.join('\n') || undefined, ok: !skipped.length, changes });
     const text = [
-      changes.length ? `戻した（${changes.length} 件）:\n${changeLines(changes).map((l) => `- ${l}`).join('\n')}` : '書き戻した値はない。',
+      changes.length ? `戻した（${changes.length} 件。${RECORD_FORMAT}）:\n${changeLines(changes).join('\n')}` : '書き戻した値はない。',
       skipped.length ? `戻さなかったもの:\n${skipped.map((l) => `- ${l}`).join('\n')}` : '',
     ];
     return { text: text.filter(Boolean).join('\n\n') };
   });
 };
 
-/** 覚えている今の値。音量は書き戻す値で比べる。 */
+/** 覚えている今の値。 */
 const currentValue = (c: FlChange): FlValue | undefined => {
   if (c.section === 'sends') return mirror.sends?.[String(c.index)];
-  if (c.section === 'song') return undefined;
+  if (c.section === 'song' || c.section === 'undo') return undefined;
   const row = mirror[c.section]?.find((r) => r.i === c.index);
   return row?.[c.field] ?? (c.section === 'playlist' && !row ? null : undefined);
 };
@@ -944,7 +944,7 @@ const removeChannels = async (sessionId: string, args: Record<string, unknown>, 
   if (guarded.length) return fail(`${guarded.map((i) => `channel ${i}「${String(rows[i]?.name)}」`).join('、')}${ADDED_CHANNEL_CRASH}`);
   const channels = indices.map((i) => ({ position: i + 1, name: String(rows[i]?.name ?? ''), plugin: String(rows[i]?.plugin ?? CHANNEL_TYPES[Number(rows[i]?.type)] ?? '') }));
   if (!(await askRemoval(sessionId, channels, signal))) {
-    addLog({ tool: 'fl_gopher', text: 'fl_gopher: remove_channels を人間が断った', detail: channels.map((c) => `${c.position}: ${c.name}`).join('\n'), ok: false });
+    addLog({ tool: 'fl_gopher', args: { tool: 'remove_channels', arguments: args }, detail: JSON.stringify(channels), output: '人間が断ったので、消していない', ok: false });
     return { text: '人間が、チャンネルを消すのを断りました。消していません。' };
   }
   return exclusive(async () => {
@@ -956,7 +956,7 @@ const removeChannels = async (sessionId: string, args: Record<string, unknown>, 
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_gopher:remove_channels');
     // FL は、チャンネルが 0 個になると空の Sampler を 1 つ足す。消したのが既定の Sampler だけなら、前と後の並びが同じになり、変化として見えない。
     const refilled = indices.length === now.length ? '\nチャンネルを全部消したので、FL が空の Sampler を 1 つ足した（チャンネルが 0 個になると、FL が足す）。' : '';
-    addLog({ tool: 'fl_gopher', text: 'fl_gopher: remove_channels', detail: channels.map((c) => `${c.position}: ${c.name}（${c.plugin}）`).join('\n'), output: `${r.text}${refilled}`, ok: !r.isError, changes: changeLines(changes) });
+    addLog({ tool: 'fl_gopher', args: { tool: 'remove_channels', arguments: args }, detail: JSON.stringify(channels), output: `${r.text}${refilled}`, ok: !r.isError, changes });
     return { text: `${r.text}\n消したチャンネルは、FL の元に戻す履歴に残らないので、Ctrl+Z では戻りません。${refilled}`, isError: r.isError };
   });
 };
@@ -1003,8 +1003,8 @@ const flGopher = async (sessionId: string, args: Record<string, unknown>, signal
     const changes = track ? (await refresh(ROW_SECTIONS, 'agent', `fl_gopher:${tool}`)).changes : [];
     if (tool === 'add_channel') addedChannels.push(...changes.filter((c) => c.section === 'channels' && c.field === 'added').map((c) => c.index));
     pushAgentOp(`fl_gopher:${tool}`, changes);
-    if (write) addLog({ tool: 'fl_gopher', text: `fl_gopher: ${tool}`, detail: JSON.stringify(toolArgs), output: r.text, ok: !r.isError, changes: changeLines(changes) });
-    const notes = changes.length ? `\n\n変わった値:\n${changeLines(changes).map((l) => `- ${l}`).join('\n')}` : '';
+    if (write) addLog({ tool: 'fl_gopher', args, output: r.text, ok: !r.isError, changes });
+    const notes = changes.length ? `\n\n変わった値（${RECORD_FORMAT}）:\n${changeLines(changes).join('\n')}` : '';
     return { text: `${r.text}（${r.ms} ms）${notes}`, isError: r.isError };
   });
 };
@@ -1021,7 +1021,7 @@ const flPianoroll = async (args: Record<string, unknown>): Promise<FlToolResult>
     if (r instanceof Error) return fail(r.message);
     // FL の元に戻す履歴が動いていたら、人間の操作と読み違えないよう、エージェントのものとして覚え直す。
     if (!midiRefusal()) await refresh([], 'agent', 'fl_pianoroll').catch(() => undefined);
-    addLog({ tool: 'fl_pianoroll', text: `fl_pianoroll: ${(code.trim().split('\n')[0] ?? '').slice(0, 80)}`, detail: code, output: r.text, ok: !r.isError });
+    addLog({ tool: 'fl_pianoroll', args, output: r.text, ok: !r.isError });
     return {
       text: `${r.text}（${r.ms} ms）\nFL は、スクリプトが例外を投げても「Script executed without errors」と返し、画面にもエラーを出さない。ノートが思ったとおりになったかは、人間に FL の画面で確かめてもらうこと。ピアノロールのスクリプトで書いたノートは FL の元に戻す履歴に残らず、そのあと人間が Ctrl+Z を押すと、ノートは残ったまま、その前の操作が戻る。`,
       isError: r.isError,
@@ -1073,5 +1073,5 @@ export const flHookContext = (sessionId: string): string | undefined => {
   if (!human.length) return undefined;
   const shown = human.slice(-HOOK_LIMIT);
   const rest = human.length > shown.length ? [`ほかに ${human.length - shown.length} 件あった。fl_changes に all: true を渡すと読める。`] : [];
-  return [`FL Connect: 前に知らせてから、人間が FL Studio で次の操作をした（番号は MIDI スクリプトの API の番号）。`, ...shown.map(recordLine), ...rest].join('\n');
+  return [`FL Connect: 前に知らせてから、人間が FL Studio で次の操作をした（${RECORD_FORMAT}）。`, ...shown.map(recordLine), ...rest].join('\n');
 };

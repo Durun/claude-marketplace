@@ -1,6 +1,7 @@
-// FL Connect の、FL の値の比べ方と記録の作り方。FL の中のスクリプトが読んだ生の値（行）を比べ、変わった値を記録にする。
-// ここの関数は FL にも MIDI にも触れないので、テストで確かめる。
-import type { FlChange, FlRecord, FlSection, FlValue } from '../shared/types.ts';
+// FL Connect の、FL の値の比べ方と記録の作り方。FL の中のスクリプトが読んだ生の値（行）を比べ、変わった値を生の値のまま記録にする。
+// 人間に見せる文には、ウィンドウが訳す（shared/flText.ts）。ここの関数は FL にも MIDI にも触れないので、テストで確かめる。
+import { undoDelta } from '../shared/flText.ts';
+import type { FlChange, FlRecord, FlValue } from '../shared/types.ts';
 
 /** FL の中のスクリプトが返す、チャンネルやトラックの 1 行。i は MIDI スクリプトの API の番号。 */
 export type Row = { i: number } & Record<string, FlValue | undefined>;
@@ -15,33 +16,11 @@ const FIELDS: Record<RowSection, string[]> = {
   patterns: ['name', 'color', 'length'],
 };
 
-const KIND: Record<FlSection, string> = { channels: 'channel', mixer: 'mixer', playlist: 'playlist', patterns: 'pattern', sends: 'mixer', song: 'song' };
-
-const FIELD_LABEL: Record<string, string> = {
-  name: '名前',
-  color: '色',
-  vol: '音量',
-  pan: 'パン',
-  mute: 'ミュート',
-  solo: 'ソロ',
-  mixer: '送り先のミキサー',
-  plugin: 'プラグイン',
-  length: '長さ',
-  tempo: 'テンポ',
-  playing: '再生',
-  recording: '録音',
-  sends: '送り先',
-};
-
 /** 同じ対象の同じ項目が、この時間のうちに続けて変わったら、1 件にまとめる。つまみを回す操作が何十件にもならないように。 */
 export const COALESCE_MS = 1500;
 const MAX_RECORDS = 1000;
 
 export const same = (a: FlValue | undefined, b: FlValue | undefined): boolean => (Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b);
-
-/** 記録や画面に出す対象の名前。番号は MIDI スクリプトの API の番号。 */
-export const targetOf = (section: FlSection, index: number, name?: FlValue): string =>
-  section === 'song' ? 'song' : `${KIND[section]} ${index}${typeof name === 'string' && name ? `「${name}」` : ''}`;
 
 /**
  * 2 つの並びの対応（前の位置 → 後の位置）。チャンネルやパターンの数が変わったときに、足されたものと消えたものを見分けるため、key の最長共通部分列で合わせる。
@@ -73,14 +52,16 @@ export const align = (before: string[], after: string[]): Map<number, number> =>
 
 const rowKey = (r: Row): string => `${String(r.name)}|${String(r.plugin ?? '')}`;
 
+const nameOf = (r: Row | undefined): string | undefined => (typeof r?.name === 'string' ? r.name : undefined);
+
+const dbOf = (v: FlValue | undefined): number | null => (typeof v === 'number' ? v : null);
+
 const fieldChange = (section: RowSection, b: Row, a: Row, field: string): FlChange | undefined => {
-  if (field === 'vol') {
-    // 音量は、見せるのは dB で、書き戻すのは 0 から 1 の値。dB は丸めてあるので、比べるのは書き戻す値にする。
-    if (same(b.vol, a.vol)) return undefined;
-    return { section, index: a.i, target: targetOf(section, a.i, a.name), field, before: b.db ?? null, after: a.db ?? null, raw: [b.vol ?? null, a.vol ?? null] };
-  }
   if (same(b[field], a[field])) return undefined;
-  return { section, index: a.i, target: targetOf(section, a.i, a.name), field, before: b[field] ?? null, after: a[field] ?? null };
+  const change: FlChange = { section, index: a.i, name: nameOf(a), field, before: b[field] ?? null, after: a[field] ?? null };
+  // 音量は、書き戻せる 0 から 1 の値で比べ、FL が返した dB も添える。
+  if (field === 'vol') change.db = [dbOf(b.db), dbOf(a.db)];
+  return change;
 };
 
 /** 並び（チャンネル、ミキサー、パターン）を比べ、変わった値と、足されたものと消えたものを返す。 */
@@ -99,10 +80,10 @@ export const diffRows = (section: Exclude<RowSection, 'playlist'>, before: Row[]
     }
   }
   before.forEach((b, bi) => {
-    if (!map.has(bi)) changes.push({ section, index: b.i, target: targetOf(section, b.i, b.name), field: 'removed', before: b.name ?? null, after: null });
+    if (!map.has(bi)) changes.push({ section, index: b.i, name: nameOf(b), field: 'removed', before: b.name ?? null, after: null });
   });
   after.forEach((a, ai) => {
-    if (!matched.has(ai)) changes.push({ section, index: a.i, target: targetOf(section, a.i, a.name), field: 'added', before: null, after: a.name ?? null });
+    if (!matched.has(ai)) changes.push({ section, index: a.i, name: nameOf(a), field: 'added', before: null, after: a.name ?? null });
   });
   return changes;
 };
@@ -127,33 +108,22 @@ export const diffSends = (before: Record<string, number[]>, after: Record<string
     const a = after[key];
     if (!b || !a || same(b, a)) return [];
     const index = Number(key);
-    return [{ section: 'sends' as const, index, target: targetOf('sends', index, names.get(index)), field: 'sends', before: b, after: a }];
+    const name = names.get(index);
+    return [{ section: 'sends' as const, index, name: typeof name === 'string' ? name : undefined, field: 'sends', before: b, after: a }];
   });
 
-/** FL の元に戻す履歴。count は履歴の数、undone は Ctrl+Z で戻している数。 */
-export type UndoState = { count: number; undone: number };
-
-/** 元に戻す履歴の変わり方。added は新しく増えた操作の数、undone は Ctrl+Z で戻した数、redone はやり直した数。 */
-export type UndoDelta = { added: number; undone: number; redone: number };
-
-export const undoDelta = (before: UndoState, after: UndoState): UndoDelta => {
-  if (after.count === before.count && after.undone !== before.undone) {
-    return after.undone > before.undone ? { added: 0, undone: after.undone - before.undone, redone: 0 } : { added: 0, undone: 0, redone: before.undone - after.undone };
-  }
-  // 戻したあとで新しく操作すると、FL は戻した分を履歴から消してから足す。プロジェクトを読み込むと履歴が減るが、それは操作ではない。
-  return { added: Math.max(0, after.count - after.undone - (before.count - before.undone)), undone: 0, redone: 0 };
-};
-
-/** ウィンドウの名前。FL は名前の中に、私用領域の文字でアイコンを入れる（例: Sampler (Master) の前後）。 */
-export const windowName = (caption: string | null | undefined): string => (caption ?? '').replace(/[-]/g, '').replace(/\s+/g, ' ').trim();
+/** FL の元に戻す履歴。[数, 戻した数]。 */
+export type UndoState = [number, number];
 
 /**
- * 元に戻す履歴の変化の記録。window は、そのとき前面にあったウィンドウ。
- * 増えた操作は、ほかの記録で説明できないとき（explained が偽）だけ、FL Connect が読まない値を変えた記録にする。Sampler の Envelope のように、MIDI スクリプトの API で安全に読めない値があるため。
+ * 元に戻す履歴の変化の記録。window は、そのとき前面にあったウィンドウの名前（FL の値のまま）。
+ * 増えた操作は、同じ読み直しのほかの変化で説明できないとき（explained が偽）だけ記録する。Sampler の Envelope のように、FL Connect が読まない値があるため。
+ * Ctrl+Z とやり直しは、戻って値が変わって見えても記録する。
  */
-export const undoChanges = (d: UndoDelta, window: string, explained: boolean): FlChange[] => {
-  const change = (field: string, n: number): FlChange => ({ section: 'song', index: 0, target: window, field, before: n, after: null });
-  return [...(d.added && !explained ? [change('op', d.added)] : []), ...(d.undone ? [change('undo', d.undone)] : []), ...(d.redone ? [change('redo', d.redone)] : [])];
+export const undoChange = (before: UndoState, after: UndoState, window: string, explained: boolean): FlChange | undefined => {
+  const d = undoDelta(before, after);
+  if (!d.undone && !d.redone && (!d.added || explained)) return undefined;
+  return { section: 'undo', index: 0, name: window, field: 'history', before, after };
 };
 
 export type SongState = { tempo?: number | null; playing?: boolean; recording?: boolean };
@@ -161,43 +131,11 @@ export type SongState = { tempo?: number | null; playing?: boolean; recording?: 
 /** テンポと、再生と録音の状態を比べる。 */
 export const diffSong = (before: SongState, after: SongState): FlChange[] =>
   (['tempo', 'playing', 'recording'] as const).flatMap((field) =>
-    before[field] === undefined || same(before[field], after[field]) ? [] : [{ section: 'song' as const, index: 0, target: 'song', field, before: before[field] ?? null, after: after[field] ?? null }],
+    before[field] === undefined || same(before[field], after[field]) ? [] : [{ section: 'song' as const, index: 0, field, before: before[field] ?? null, after: after[field] ?? null }],
   );
-
-const hex = (v: number): string => `#${(v & 0xffffff).toString(16).toUpperCase().padStart(6, '0')}`;
-
-const panText = (v: number): string => (Math.abs(v) < 0.005 ? '中央' : v < 0 ? `左 ${Math.round(-v * 100)}%` : `右 ${Math.round(v * 100)}%`);
-
-/** 記録の値を、人間とエージェントが読める形にする。 */
-export const formatValue = (field: string, v: FlValue): string => {
-  if (field === 'vol') return v === null ? '-∞ dB' : `${String(v)} dB`;
-  if (v === null) return '（既定）';
-  if (typeof v === 'boolean') return v ? 'オン' : 'オフ';
-  if (Array.isArray(v)) return v.length ? v.map((d) => `mixer ${d}`).join('、') : 'なし';
-  if (field === 'color' && typeof v === 'number') return hex(v);
-  if (field === 'pan' && typeof v === 'number') return panText(v);
-  if (field === 'mixer') return `mixer ${String(v)}`;
-  if (field === 'length') return `${String(v)} 拍`;
-  if (field === 'tempo') return `${String(v)} BPM`;
-  return typeof v === 'string' ? `「${v}」` : String(v);
-};
 
 /** まとめずに 1 件ずつ残す項目。足した、消した、プロジェクトを読み込み直した、は前と後の値で比べられない。 */
 const EVENT_FIELDS = new Set(['added', 'removed', 'project']);
-/** 回数を数える項目（before が回数）。続けて起きたら、同じウィンドウのものを足し合わせて 1 件にする。 */
-const COUNT_FIELDS = new Set(['op', 'undo', 'redo']);
-
-const inWindow = (window: string): string => (window ? `「${window}」で` : 'FL で');
-
-export const describeChange = (c: FlChange): string => {
-  if (c.field === 'project') return 'プロジェクトを読み込み直した（ここより前の番号と名前は、今のプロジェクトのものではない）';
-  if (c.field === 'added') return `${c.target}を足した`;
-  if (c.field === 'removed') return `${c.target}を消した`;
-  if (c.field === 'op') return `${inWindow(c.target)}、FL Connect が読まない値を変えた（FL の元に戻す履歴が ${String(c.before)} 件増えた）`;
-  if (c.field === 'undo') return `${inWindow(c.target)}元に戻した（${String(c.before)} 回）`;
-  if (c.field === 'redo') return `${inWindow(c.target)}やり直した（${String(c.before)} 回）`;
-  return `${c.target}の${FIELD_LABEL[c.field] ?? c.field}: ${formatValue(c.field, c.before)} → ${formatValue(c.field, c.after)}`;
-};
 
 /** 操作の記録。番号（seq）は増え続けるので、どこまで読んだかを番号で覚えられる。 */
 export class RecordLog {
@@ -211,24 +149,20 @@ export class RecordLog {
   /**
    * 同じ人の、同じ対象の同じ項目の変化が COALESCE_MS のうちに続いたら、前の記録の後の値を書き換えて、末尾に移す。
    * 移すときに番号を振り直すので、前の記録を読んだ人にも、まとめた後の値がもう一度届く。元の値に戻ったら、記録を消す。
+   * 元に戻す履歴は、別のウィンドウでしたものをまとめない。
    */
   add(change: FlChange, who: FlRecord['who'], via?: string, at = Date.now()): void {
-    const counted = COUNT_FIELDS.has(change.field);
     if (!EVENT_FIELDS.has(change.field)) {
       for (let k = this.records.length - 1; k >= 0; k--) {
         const r = this.records[k];
         if (!r || at - r.at > COALESCE_MS) break;
         if (r.section !== change.section || r.index !== change.index || r.field !== change.field || r.who !== who || r.via !== via) continue;
-        // 回数を数える項目は、別のウィンドウでしたものをまとめない。
-        if (counted && r.target !== change.target) continue;
+        if (change.section === 'undo' && r.name !== change.name) continue;
         this.records.splice(k, 1);
-        if (counted) {
-          this.#push({ ...r, before: Number(r.before) + Number(change.before), at });
-          return;
-        }
-        const raw: FlChange['raw'] = r.raw && change.raw ? [r.raw[0], change.raw[1]] : change.raw;
-        const merged = { ...r, target: change.target, after: change.after, raw, at };
-        if (!(raw ? same(raw[0], raw[1]) : same(merged.before, merged.after))) this.#push(merged);
+        const merged: FlRecord = { ...r, name: change.name, after: change.after, at };
+        if (r.db && change.db) merged.db = [r.db[0], change.db[1]];
+        if (r.text && change.text) merged.text = [r.text[0], change.text[1]];
+        if (!same(merged.before, merged.after)) this.#push(merged);
         return;
       }
     }
@@ -260,7 +194,7 @@ const onOff = (v: FlValue): number => (v ? 1 : 0);
 /** 変化を前の値に戻す Python の行。① の道で戻せない変化（足したチャンネル、テンポ、既定の色など）は空。 */
 export const restoreLines = (c: FlChange): string[] => {
   const i = c.index;
-  const v = c.raw ? c.raw[0] : c.before;
+  const v = c.before;
   if (c.section === 'sends' && Array.isArray(c.before) && Array.isArray(c.after)) {
     const before = c.before;
     const after = c.after;

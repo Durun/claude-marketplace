@@ -1,7 +1,8 @@
 // アプリ「FL Connect」のウィンドウ。開いている間だけ、ダッシュボードのサーバーが FL Studio とつながり、つないだセッションのエージェントが FL を読み書きできる。
 // サーバーとは SSE でつなぎ、FL の状態とログを受け取る。ダッシュボードが起動し直して切れたら、つなぎ直す。
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { FlConnectView, FlLogEntry, Snapshot } from '../shared/types.ts';
+import { describeAgent, describeChange } from '../shared/flText.ts';
+import type { FlAgentEntry, FlConnectView, FlLogEntry, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { openFileFloat } from './Docs.tsx';
@@ -135,27 +136,37 @@ const Removal = ({ removal, sessionName }: { removal: NonNullable<FlConnectView[
 
 const WHO = { you: 'You', agent: 'Agent' } as const;
 
-/** ログの 1 件。エージェントの 1 件は、開くと動かしたコードと出力と、変わった値を見せる。 */
+/** エージェントが FL で動かしたもの。コードを渡すツールはコードを、ほかは引数を見せる。 */
+const ranOf = (e: FlAgentEntry): string => e.detail ?? (typeof e.args.code === 'string' ? e.args.code : JSON.stringify(e.args, null, 2));
+
+/** ログの 1 件。記録は生の値なので、ここで文に訳す。人間の操作は、開くと生の値の JSON を見せる。エージェントの 1 件は、開くと動かしたものと出力と、変わった値を見せる。 */
 const LogItem = ({ e }: { e: FlLogEntry }) => {
-  const head = (
-    <>
-      <time>{clock(e.at)}</time> <span class="fl-who">{WHO[e.who]}</span> {e.text}
-    </>
-  );
-  if (e.who === 'you' || !(e.detail || e.output || e.changes?.length)) return <li class={`fl-log-item is-${e.who}${e.ok === false ? ' is-failed' : ''}`}>{head}</li>;
+  if (e.who === 'you') {
+    const { id: _id, at: _at, who: _who, ...raw } = e;
+    return (
+      <li class="fl-log-item is-you">
+        <details>
+          <summary>
+            <time>{clock(e.at)}</time> <span class="fl-who">{WHO.you}</span> {describeChange(e)}
+          </summary>
+          <pre class="fl-pre">{JSON.stringify(raw)}</pre>
+        </details>
+      </li>
+    );
+  }
   return (
-    <li class={`fl-log-item is-agent${e.ok === false ? ' is-failed' : ''}`}>
+    <li class={`fl-log-item is-agent${e.ok ? '' : ' is-failed'}`}>
       <details>
         <summary>
-          {head}
-          {e.changes?.length ? <span class="fl-log-count">{e.changes.length} 件の変更</span> : null}
+          <time>{clock(e.at)}</time> <span class="fl-who">{WHO.agent}</span> {describeAgent(e)}
+          {e.changes.length ? <span class="fl-log-count">{e.changes.length} 件の変更</span> : null}
         </summary>
-        {e.changes?.length ? (
+        {e.changes.length ? (
           <ul class="fl-changes">
-            {e.changes.map((c, k) => <li key={k}>{c}</li>)}
+            {e.changes.map((c, k) => <li key={k}>{describeChange(c)}</li>)}
           </ul>
         ) : null}
-        {e.detail && <pre class="fl-pre">{e.detail}</pre>}
+        <pre class="fl-pre">{ranOf(e)}</pre>
         {e.output && <pre class="fl-pre">{e.output}</pre>}
       </details>
     </li>
