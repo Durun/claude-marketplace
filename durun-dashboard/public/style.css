@@ -1004,7 +1004,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .inbox-section-title .chevron { margin-left: auto; }
 /* JIRA Issues をプロジェクトとほかの属性の 2 段で分けたときは、内側の組を字下げして段の違いを見せる。 */
 .inbox-section .inbox-section { margin-left: 12px; }
-.jira-group + .jira-group { padding-top: 8px; border-top: 1px solid var(--border-strong); }
+/* 組の見出しの名前と開閉の印の間に線を引き、組の区切りにする。 */
+.jira-group-rule { flex: 1; height: 1px; background: var(--border-strong); }
 
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }

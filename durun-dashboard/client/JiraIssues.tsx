@@ -204,6 +204,7 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
               <Heading class="inbox-section-title">
                 <GroupName by={first} group={g} />
                 <span class="count-pill">{g.issues.length}</span>
+                <span class="jira-group-rule" aria-hidden="true" />
                 <span class="chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
               </Heading>
             </summary>
