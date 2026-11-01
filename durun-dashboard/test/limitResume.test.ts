@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態やセッションに触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-limit-'));
+const tmp = tempDir('durun-dashboard-limit-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { summarizeLog } = await import('../server/claude.ts');
@@ -104,7 +104,7 @@ test('制限が明けたセッションには、前置きを付けずに「続�
 });
 
 test('使用制限で止まった改善のウェーブは区切らずに待ち、制限が明けたら同じセッションに「続けて」と頼んで続ける', async () => {
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const bin = tempDir('durun-dashboard-bin-');
   const argsFile = path.join(bin, 'args');
   useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args));`);
   const resetsAt = toSecond(Date.now() - 2 * MINUTE);
@@ -249,7 +249,7 @@ test('自動継続モードなら、ログインが切れて止まったセッ�
   fs.writeFileSync(path.join(sessionsDir, 'expired.json'), JSON.stringify({ pid: process.pid, sessionId: 'expired', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   const { server, received } = await listen(socketPath);
   const auth = platform.inboxToken(process.pid, sessionsDir) ? [{ type: 'auth', token: 'test-token' }] : [];
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const bin = tempDir('durun-dashboard-bin-');
   const argsFile = path.join(bin, 'args');
   useFakeClaude(bin, `fs.appendFileSync(${js(argsFile)}, lines([args.join(' ')]));`);
   t.after(async () => {
@@ -281,7 +281,7 @@ test('自動継続モードでなければ、Claude にログインし直して�
   const socketPath = platform.localSocketPath(tmp, 'relogin');
   fs.writeFileSync(path.join(sessionsDir, 'relogin.json'), JSON.stringify({ pid: process.pid, sessionId: 'relogin', cwd: tmp, status: 'idle', messagingSocketPath: socketPath }));
   const { server, received } = await listen(socketPath);
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-bin-'));
+  const bin = tempDir('durun-dashboard-bin-');
   const argsFile = path.join(bin, 'args');
   const failFile = path.join(bin, 'fail');
   useFakeClaude(bin, `

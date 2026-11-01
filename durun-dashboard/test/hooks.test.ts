@@ -3,13 +3,13 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データと Claude Code の置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-durun-dashboard-'));
+const tmp = tempDir('claude-durun-dashboard-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 // スナップショットを組み立てると、使用制限を読みに claude を動かす。本物のアカウントに問い合わせないよう、使用制限の無いログインとして答える偽物にする。

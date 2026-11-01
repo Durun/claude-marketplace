@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { js, useFakeClaude } from './fakeClaude.ts';
 import type { Conversation, Waiting } from '../server/suggest.ts';
 import type { BgTask, ChatEntry } from '../shared/types.ts';
+import { tempDir } from './tmp.ts';
 
 // 標準入力のプロンプトを書き出して呼ばれた回数を数え、発言が「失敗」なら失敗する偽の claude を置く。
 // 作った概要を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-suggest-'));
+const tmp = tempDir('durun-dashboard-suggest-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 // 本物の Jev に問い合わせないよう、キーを外す。Jev を使うテストは、偽の Jev を立てる。
 delete process.env.TYPESAFE_AI_API_KEY;

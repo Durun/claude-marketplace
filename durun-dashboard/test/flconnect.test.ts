@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
 import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, pluginChanges, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
@@ -11,6 +9,7 @@ import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
 import { describeAgent, describeChange, undoDelta, windowName } from '../shared/flText.ts';
 import type { FlConnectView } from '../shared/types.ts';
+import { tempDir } from './tmp.ts';
 
 test('SysEx の JSON は ASCII の文字だけにし、日本語は \\u の形にして、読み戻すと元の値になる', () => {
   const value = { name: 'キック 🥁', n: 1 };
@@ -181,7 +180,7 @@ test('ログの 1 件を、時刻を読める形にした JSONL の 1 行にし�
 });
 
 test('ログは、セッションごとのフォルダーの、日ごとの JSONL のファイルに書き足し、新しく作ったファイルだけを返す', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fl-log-'));
+  const dir = tempDir('fl-log-');
   try {
     const next = at + 24 * 3600_000;
     const you = (id: string, when: number, after: string) => ({ id, at: when, who: 'you' as const, section: 'channels' as const, index: 0, field: 'name', before: 'a', after });

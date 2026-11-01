@@ -8,12 +8,13 @@ import { baseName, toggled } from '../client/explorerFavorites.ts';
 import { fmtBytes } from '../client/format.ts';
 import { fileCandidates, listDir, saveText } from '../server/explorer.ts';
 import { platformFor } from '../server/platform.ts';
+import { tempDir } from './tmp.ts';
 
 /** git に一覧を聞き終えたことを待たないときに、fileCandidates へ渡す。 */
 const ignore = () => {};
 
 test('listDir は、フォルダーを先に名前の順で並べ、ファイルには大きさを付け、1 つ上のフォルダーと最上位の場所を添える', (t) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'explorer-'));
+  const tmp = tempDir('explorer-');
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   fs.mkdirSync(path.join(tmp, 'src'));
   fs.mkdirSync(path.join(tmp, 'docs'));
@@ -48,7 +49,7 @@ test('listDir は、省くとホームディレクトリを読み、最上位で
 });
 
 test('saveText は、読んだときの更新時刻のままなら上書きし、CRLF のファイルは CRLF のまま保つ。ほかで書き換えられていたら上書きしない', (t) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'notepad-'));
+  const tmp = tempDir('notepad-');
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   const crlf = path.join(tmp, 'crlf.txt');
   const lf = path.join(tmp, 'lf.txt');
@@ -84,7 +85,7 @@ test('fmtBytes は、1024 ごとに単位を上げ、KB から上は小数 1 桁
 });
 
 test('fileCandidates は、git のリポジトリでは無視していないファイルから、名前の頭、パスの一部、順に現れる文字の順に、それぞれ短いパスから出す。git の一覧は待たず、聞き終えるまでは覚えた一覧か打ったディレクトリの中から出す', async (t) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'files-'));
+  const tmp = tempDir('files-');
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   for (const file of ['README.md', 'docs/README.md', 'client/Messaging.tsx', 'client/attach.ts', 'node_modules/x/index.js']) {
     fs.mkdirSync(path.dirname(path.join(tmp, file)), { recursive: true });
@@ -113,7 +114,7 @@ test('fileCandidates は、git のリポジトリでは無視していないフ�
 });
 
 test('fileCandidates は、git のリポジトリの外と、/ で始まる語では、打ったディレクトリの中だけを、ディレクトリに / を付けて出す', async (t) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'files-'));
+  const tmp = tempDir('files-');
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   fs.mkdirSync(path.join(tmp, 'repos/app/src'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'repos/app/main.ts'), '');

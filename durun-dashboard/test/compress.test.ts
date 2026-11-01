@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import zlib from 'node:zlib';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from '../server/compress.ts';
+import { tempDir } from './tmp.ts';
 
 test('pickEncoding は、ブラウザが受けられる中から brotli を先に選び、q=0 で断られたものと知らないものは選ばない', () => {
   assert.equal(pickEncoding('gzip, deflate, br, zstd'), 'br');
@@ -35,7 +35,7 @@ test('compress は、選んだ縮め方で元に戻せる形に縮める', async
 });
 
 test('compressedFile は、etag が変わるまで縮めた結果を使い回し、変わったら縮め直す', async () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-compress-')), 'app.js');
+  const file = path.join(tempDir('durun-dashboard-compress-'), 'app.js');
   fs.writeFileSync(file, 'const a = 1;'.repeat(200));
   const first = compressedFile(file, 'v1', 'gzip');
   assert.equal(compressedFile(file, 'v1', 'gzip'), first);

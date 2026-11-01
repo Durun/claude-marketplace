@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-proof-files-'));
+const tmp = tempDir('durun-dashboard-proof-files-');
 process.env.DURUN_DASHBOARD_DATA_DIR = tmp;
 const { readProofFile, recentProofFiles, writeProofFile } = await import('../server/proofFiles.ts');
 const { newFile } = await import('../shared/proofread.ts');

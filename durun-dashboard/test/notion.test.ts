@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { test } from 'node:test';
 import { notionPageId } from '../shared/types.ts';
+import { tempDir } from './tmp.ts';
 
 // notion.ts は読み込んだ時点の環境変数でトークンを決めるので、先に設定してから読み込む。
 // 読んだページを覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置く。
-process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-notion-'));
+process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-notion-');
 process.env.NOTION_TOKEN = 'secret';
 const { blocksToMarkdown, notionPage, notionTitle } = await import('../server/notion.ts');
 

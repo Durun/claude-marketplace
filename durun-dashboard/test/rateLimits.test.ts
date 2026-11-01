@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import type { RateWindow } from '../server/store.ts';
 import { js, useFakeClaude } from './fakeClaude.ts';
+import { tempDir } from './tmp.ts';
 
 // 実際の状態や statusline の入力に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 // 状態ファイルは、使用率の推移を持たない前の形で置いておく。
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-dashboard-rate-'));
+const dataDir = tempDir('durun-dashboard-rate-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 fs.writeFileSync(
   path.join(dataDir, 'state.json'),
