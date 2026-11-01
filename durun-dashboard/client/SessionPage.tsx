@@ -151,16 +151,16 @@ const BadgeInput = ({ s }: { s: Session }) => {
   );
 };
 
-/** 名前の行をウィジェットの見出しにする。 */
+/** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。 */
 const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   <>
     <div class="head-row session-title">
       <NameEditor key={s.id} s={s} />
-      <StatusBadge status={s.status} waitingFor={s.waitingFor} />
-      {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
     </div>
     <div class="widget-body session-head">
       <div class="head-row">
+        <StatusBadge status={s.status} waitingFor={s.waitingFor} />
+        {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
         <ThemeEditor s={s} themes={themes} />
         <span class="mono muted">
           <CopyText text={s.cwd} title={`${s.cwd}（押すと絶対パスをコピー）`}>{s.repo}</CopyText>

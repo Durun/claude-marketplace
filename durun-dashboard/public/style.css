@@ -1035,11 +1035,12 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 /* ---- セッション ---- */
 .session-head { display: grid; align-content: start; gap: 8px; }
 .head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.session-title { margin-bottom: 10px; }
+/* XP のタイトルバーはアイコンも並べるので、折り返すと長い名前がアイコンの下の行に回る。折り返さず、入らない名前は切る。 */
+.session-title { flex-wrap: nowrap; margin-bottom: 10px; }
 .session-name { font-size: 18px; }
 /* 見出しのまま書き換えられるよう、幅は名前の長さに合わせる。枠は位置をずらさない outline で、マウスを載せたときだけ出す。 */
 .session-title .session-name { min-width: 0; }
-.name-input { max-width: 100%; padding: 0; border: 0; border-radius: 2px; background: transparent; field-sizing: content; }
+.name-input { max-width: 100%; padding: 0; border: 0; border-radius: 2px; background: transparent; text-overflow: ellipsis; field-sizing: content; }
 .name-input:hover:not(:focus) { outline: 1px solid var(--border-strong); outline-offset: 3px; }
 .name-input:focus-visible { outline-offset: 3px; }
 .copy-text { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: copy; }
