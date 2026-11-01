@@ -5,7 +5,7 @@ import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
-import { GROUPINGS, type Grouping, groupIssues } from './jiraGroups.ts';
+import { GROUPINGS, type Grouping, type IssueGroup, groupIssues } from './jiraGroups.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
 import { ARROW_STEP, moveTo } from './order.ts';
@@ -170,6 +170,19 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
   </li>
 );
 
+/** 組の見出しの名前。ステータス、優先度、エピックは、一覧の行と同じ色と装飾で出す。 */
+const GroupName = ({ by, group }: { by: Grouping; group: IssueGroup }) => {
+  // 組の課題はどれも同じ値を持つので、先頭の課題から色を決める。値の無い組は名前だけを出す。
+  const [issue] = group.issues;
+  if (!issue || by.of(issue) === undefined) return <>{group.name}</>;
+  if (by.key === 'status') return <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{group.name}</Chip>;
+  if (by.key === 'priority') return <Chip tone={PRIORITY_TONE[group.name]}>{group.name}</Chip>;
+  if (by.key === 'epic' && issue.parent) {
+    return <span class="jira-parent" title={issue.parent.summary} onClick={openParent(issue.parent.key)}>{group.name}</span>;
+  }
+  return <>{group.name}</>;
+};
+
 /** 折りたたんだ組。組は、外側の組からの名前をタブでつないだ path で見分ける。 */
 type Fold = { collapsed: Set<string>; toggle: (path: string, open: boolean) => void };
 
@@ -187,7 +200,7 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
           <details key={g.name} class="inbox-section" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
             <summary>
               <Heading class="inbox-section-title">
-                {g.name}
+                <GroupName by={first} group={g} />
                 <span class="count-pill">{g.issues.length}</span>
                 <span class="chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
               </Heading>
