@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
+  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -97,6 +97,7 @@ export const api = {
   doc: (id: string) => getJson<Doc>(`/api/docs/${seg(id)}`),
   search: (q: string) => getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`),
   githubInbox: (fresh?: boolean) => getJson<InboxSection[]>(`/api/github/inbox?${query({ fresh: flag(fresh) })}`),
+  githubSearch: (q: string, max: number, fresh?: boolean) => getJson<GithubSearch>(`/api/github/search?${query({ q, max: String(max), fresh: flag(fresh) })}`),
   jira: (jql: string, max: number) => getJson<JiraIssue[]>(`/api/jira?${new URLSearchParams({ jql, max: String(max) })}`),
   jiraRefs: (fresh?: boolean) => getJson<JiraIssue[]>(`/api/jira/refs?${query({ fresh: flag(fresh) })}`),
   memory: () => getJson<MemoryStatus | null>('/api/memory'),

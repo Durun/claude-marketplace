@@ -97,6 +97,16 @@ export type PrNotes = { notes: Record<string, PrThreadNote>; failed?: string };
 /** assignee から下は、JQL で探した課題だけが持つ。updatedAt は epoch ミリ秒で、dueDate は JIRA のとおり YYYY-MM-DD。 */
 /** GitHub Inbox の一覧に出す PR。repo は owner/name。 */
 export type InboxPr = { url: string; repo: string; number: number; title: string; author: string; updatedAt: number };
+/**
+ * GitHub Inbox のウィジェットに並べる PR と Issue。review は PR のレビューの判定（APPROVED、CHANGES_REQUESTED、REVIEW_REQUIRED）、checks は最後のコミットのチェックの状態。
+ * section は PR のダッシュボード（github.com/pulls）の Inbox の区分で、どの区分にも入らないものは undefined。
+ */
+export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; isDraft?: boolean; review?: string; checks?: string; section?: string };
+/** GitHub の検索の結果。total は条件に合う件数で、items より多ければ表示する件数を超えている。 */
+export type GithubSearch = { items: GithubItem[]; total: number };
+/** GitHub Inbox のウィジェットに並べられる件数の上限。GitHub の検索は 1 回で 100 件まで返す。 */
+export const GITHUB_LIST_MAX = 100;
+
 /** GitHub の PR のダッシュボード（github.com/pulls）の Inbox と同じ区分。 */
 export type InboxSection = { title: string; prs: InboxPr[] };
 

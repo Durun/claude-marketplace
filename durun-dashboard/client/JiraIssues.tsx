@@ -1,15 +1,14 @@
-// ダッシュボードの「JIRA Issues」ウィジェット。設定した JQL で JIRA の課題を探して並べる。
-import { useEffect, useRef, useState } from 'preact/hooks';
+// ダッシュボードの「JIRA Issues」ウィジェット。設定した JQL で JIRA の課題を探して並べる。共通の形は ListWidget にある。
 import { JIRA_LIST_MAX, type JiraIssue } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
-import { GROUPINGS, type Grouping, type IssueGroup, groupIssues, groupingsFor } from './jiraGroups.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
-import { matcher } from './searchItems.ts';
-import { Chip, Empty, Ext, Loading, Time, onSubmitKey } from './ui.tsx';
+import { type Grouping, type ItemGroup, JIRA_GROUPINGS } from './listGroups.ts';
+import { type ListSpec, ListWidget, keysOf } from './ListWidget.tsx';
+import { Chip, Ext, Time } from './ui.tsx';
 
 export const JIRA_TITLE = 'JIRA Issues';
 const DEFAULT_JQL = 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC';
@@ -25,79 +24,12 @@ const FIELDS = [
   { key: 'assignee', label: '担当者' },
   { key: 'dueDate', label: '期限' },
 ] as const;
-type FieldKey = (typeof FIELDS)[number]['key'];
 // 設定が無いときは、ステータスと担当者だけを出す。
 const DEFAULT_FIELDS = 'assignee';
 /** fields は、ステータスをいつも出し、ほかの属性だけを選んでいた形の設定なので、ステータスを足して読む。 */
-const fieldsOf = (settings: WidgetSettings): Set<string> => new Set((settings.shown ?? `status,${settings.fields ?? DEFAULT_FIELDS}`).split(',').filter(Boolean));
+const fieldsOf = (settings: WidgetSettings): Set<string> => keysOf(settings.shown, `status,${settings.fields ?? DEFAULT_FIELDS}`);
 /** グループ化の属性の key をカンマで区切って持つ。groups の無い設定は、group の属性 1 つと、groupProject のときはプロジェクトでも分ける。 */
-const groupKeysOf = (settings: WidgetSettings): Set<string> =>
-  new Set((settings.groups ?? [settings.groupProject && 'project', settings.group].filter(Boolean).join(',')).split(',').filter(Boolean));
-
-type SettingsProps = { settings: WidgetSettings; onSave: (next: WidgetSettings) => void; onClose: () => void };
-
-/** 件数の範囲はフォームの検証で守る。Cmd/Ctrl + Enter でも検証を通すため、requestSubmit で送る。 */
-const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
-  const [title, setTitle] = useState(settings.title ?? '');
-  const [jql, setJql] = useState(settings.jql || DEFAULT_JQL);
-  const [max, setMax] = useState(settings.max || String(DEFAULT_MAX));
-  const [fields, setFields] = useState(() => fieldsOf(settings));
-  const [groups, setGroups] = useState(() => groupKeysOf(settings));
-  const toggleGroup = (key: string, on: boolean) => setGroups((prev) => new Set(GROUPINGS.map((g) => g.key).filter((k) => (k === key ? on : prev.has(k)))));
-  const toggle = (key: FieldKey, on: boolean) => setFields((prev) => new Set(FIELDS.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k)))));
-  const save = (e: SubmitEvent) => {
-    e.preventDefault();
-    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, shown: [...fields].join(','), groups: [...groups].join(',') });
-    onClose();
-  };
-  return (
-    <form class="card panel stack jira-settings" onSubmit={save}>
-      <label class="inline-field">
-        見出し
-        <input class="input input-sm" value={title} placeholder={JIRA_TITLE} onInput={(e) => setTitle(e.currentTarget.value)} />
-      </label>
-      <label class="jira-jql">
-        条件（JQL）
-        <textarea
-          class="input mono"
-          rows={3}
-          required
-          value={jql}
-          onInput={(e) => setJql(e.currentTarget.value)}
-          onKeyDown={(e) => onSubmitKey(e, () => e.currentTarget.form?.requestSubmit())}
-        />
-      </label>
-      <label class="inline-field">
-        表示する件数
-        <input class="input input-sm jira-max" type="number" min={1} max={JIRA_LIST_MAX} required value={max} onInput={(e) => setMax(e.currentTarget.value)} />
-      </label>
-      <fieldset class="jira-fields">
-        <legend>表示する属性</legend>
-        {FIELDS.map((f) => (
-          <label key={f.key} class="check">
-            <input type="checkbox" checked={fields.has(f.key)} onChange={(e) => toggle(f.key, e.currentTarget.checked)} />
-            {f.label}
-          </label>
-        ))}
-      </fieldset>
-      {/* 外側から分ける属性の順は、条件の ORDER BY に並べた順に従う。 */}
-      <fieldset class="jira-fields">
-        <legend>グループ化</legend>
-        {GROUPINGS.map((g) => (
-          <label key={g.key} class="check">
-            <input type="checkbox" checked={groups.has(g.key)} onChange={(e) => toggleGroup(g.key, e.currentTarget.checked)} />
-            {g.label}
-          </label>
-        ))}
-      </fieldset>
-      <div class="actions">
-        <span class="spacer" />
-        <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>
-        <button class="btn btn-sm btn-primary">保存</button>
-      </div>
-    </form>
-  );
-};
+const groupKeysOf = (settings: WidgetSettings): Set<string> => keysOf(settings.groups, [settings.groupProject && 'project', settings.group].filter(Boolean).join(','));
 
 /** JIRA のステータスカテゴリの key。new は未着手、indeterminate は進行中、done は完了。 */
 const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new: 'muted', indeterminate: 'info', done: 'ok' };
@@ -143,9 +75,9 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
 );
 
 /** 組の見出しの名前。ステータス、優先度、エピックは、一覧の行と同じ色と装飾で出す。 */
-const GroupName = ({ by, group }: { by: Grouping; group: IssueGroup }) => {
+const GroupName = ({ by, group }: { by: Grouping<JiraIssue>; group: ItemGroup<JiraIssue> }) => {
   // 組の課題はどれも同じ値を持つので、先頭の課題から色を決める。値の無い組は名前だけを出す。
-  const [issue] = group.issues;
+  const [issue] = group.items;
   if (!issue || by.of(issue) === undefined) return <>{group.name}</>;
   if (by.key === 'status') return <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{group.name}</Chip>;
   if (by.key === 'priority') return <Chip tone={PRIORITY_TONE[group.name]}>{group.name}</Chip>;
@@ -155,136 +87,38 @@ const GroupName = ({ by, group }: { by: Grouping; group: IssueGroup }) => {
   return <>{group.name}</>;
 };
 
-/** 折りたたんだ組。組は、外側の組からの名前をタブでつないだ path で見分ける。 */
-type Fold = { collapsed: Set<string>; toggle: (path: string, open: boolean) => void };
-
-/** 課題を by の先頭の属性で組に分け、組の中を残りの属性でさらに分ける。組は見出しを押すと折りたためる。 */
-const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIssue[]; by: Grouping[]; fields: Set<string>; fold: Fold; parent?: string }) => {
-  const [first, ...rest] = by;
-  if (!first) return <ul class="jira-list">{issues.map((issue) => <IssueRow key={issue.key} issue={issue} fields={fields} />)}</ul>;
-  const Heading = parent ? 'h4' : 'h3';
-  return (
-    <>
-      {groupIssues(issues, first).map((g, i) => {
-        const path = parent ? `${parent}\t${g.name}` : g.name;
-        const open = !fold.collapsed.has(path);
-        return (
-          <details key={`${i}\t${g.name}`} class="inbox-section jira-group" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
-            {/* 絞り込みの欄からフォーカスを外さない。外すと欄が消えて見出しの行が縮み、離した位置がずれて開閉しない。 */}
-            <summary onMouseDown={(e) => e.preventDefault()}>
-              <Heading class="inbox-section-title">
-                <GroupName by={first} group={g} />
-                <span class="count-pill">{g.issues.length}</span>
-                <span class="jira-rule" aria-hidden="true" />
-                <span class="chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
-              </Heading>
-            </summary>
-            {open && <IssueGroups issues={g.issues} by={rest} fields={fields} fold={fold} parent={path} />}
-          </details>
-        );
-      })}
-    </>
-  );
-};
-
 /** タイトルバー右端の更新のボタン。サーバーに JIRA の情報を取り直させ、JQL が同じでも探し直す。 */
 export const jiraControls = (): Control[] => [
   { kind: 'refresh', label: 'JIRA の課題の情報を取り直す', onClick: () => void attempt('JIRA の更新', api.refreshJira) },
 ];
 
-/**
- * 枠の中にフォーカスがあるときに文字を打つと、絞り込みの欄にフォーカスを移し、打った文字から欄に入れる。
- * 見出しや一覧の空いたところを押しただけでは枠のどこにもフォーカスが入らないので、押したら欄に移す。欄で打ち始めれば、日本語入力も 1 文字目から変換できる。
- * ダッシュボードの編集中は、矢印キーで枠を動かせるよう、フォーカスを移さない。
- */
-const useFilterFocus = () => {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const input = ref.current;
-      const target = e.target as Element;
-      // 空白は、ボタンを押したり一覧をスクロールしたりするのに残す。
-      if (e.key?.length !== 1 || e.key === ' ' || e.ctrlKey || e.metaKey || e.altKey) return;
-      // 同じ枠に重ねたほかのタブを選んでいる間は、欄が隠れているので何もしない。
-      if (!input?.checkVisibility() || !input.closest('.widget')?.contains(target) || target.closest('input, textarea, .is-editing')) return;
-      input.focus();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, []);
-  // 組の見出しは押すと開閉するので、欄を出して見出しの位置をずらさないよう、フォーカスを移さない。
-  const onClick = (e: MouseEvent) => {
-    if (!(e.target as Element).closest('a, button, input, form, summary, .is-editing')) ref.current?.focus();
-  };
-  return { ref, onClick };
+const JIRA_SPEC: ListSpec<JiraIssue> = {
+  title: JIRA_TITLE,
+  noun: '課題',
+  query: { key: 'jql', label: '条件（JQL）', fallback: DEFAULT_JQL },
+  maxLimit: JIRA_LIST_MAX,
+  defaultMax: DEFAULT_MAX,
+  fields: FIELDS,
+  fieldsOf,
+  groupings: JIRA_GROUPINGS,
+  groupKeysOf,
+  keyOf: (i) => i.key,
+  textOf: (i) => [i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? [])],
+  // エピックで分けている間は、エピックそのものは組の見出しが表すので、行には出さない。
+  hide: (i, groupKeys) => groupKeys.has('epic') && Boolean(i.isEpic),
+  Row: ({ item, fields }) => <IssueRow issue={item} fields={fields} />,
+  GroupName,
 };
 
-/** JQL で探した課題を、絞り込みの欄に打った語でさらに絞る。空白で区切ると、すべての語を含む課題だけを残す。Esc で語を消して欄を閉じる。 */
-export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) => {
-  const [editing, setEditing] = useState(false);
-  const [query, setQuery] = useState('');
-  const filter = useFilterFocus();
-  const jql = settings.jql || DEFAULT_JQL;
-  const max = Number(settings.max) || DEFAULT_MAX;
-  const fields = fieldsOf(settings);
-  const groupKeys = groupKeysOf(settings);
-  // 折りたたんだ組はウィジェットの設定に覚え、同じ JQL のウィジェットを複数置いても別々に開閉する。
-  const collapsed = new Set(settings.collapsed?.split('\n').filter(Boolean));
-  const fold: Fold = {
-    collapsed,
-    toggle: (path, open) => {
-      if (open === !collapsed.has(path)) return;
-      onSettings({ ...settings, collapsed: [...collapsed].filter((p) => p !== path).concat(open ? [] : [path]).join('\n') });
-    },
-  };
-  // 1 件多く探し、表示する件数を超える課題があれば、件数に + を添える。
-  const { data: found, error } = useCached(() => api.jira(jql, max + 1), [jql, max, snapshot.jiraRefreshedAt]);
-  const data = found?.slice(0, max);
-  const more = (found?.length ?? 0) > max;
-  const hit = matcher(query);
-  // エピックで分けている間は、エピックそのものは組の見出しが表すので、行には出さない。
-  const byEpic = groupKeys.has('epic');
-  const shown = data?.filter((i) => !(byEpic && i.isEpic) && hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
-  const by = groupingsFor(groupKeys, shown);
-  return (
-    <>
-      <div class="section-head" onClick={filter.onClick}>
-        <h2 class="section-title">
-          {settings.title || JIRA_TITLE}
-          {data && !error && <span class="count-pill">{shown.length}{more && '+'}</span>}
-        </h2>
-        <div class="actions">
-          <input
-            ref={filter.ref}
-            class="input input-sm jira-filter"
-            type="search"
-            placeholder="絞り込み"
-            aria-label="表示中の課題を絞り込む"
-            value={query}
-            onInput={(e) => setQuery(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Escape' || e.isComposing) return;
-              setQuery('');
-              e.currentTarget.blur();
-            }}
-          />
-          <button class="btn btn-sm" data-icon="settings" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>設定</button>
-        </div>
-      </div>
-      <div class="widget-body" onClick={filter.onClick}>
-        {editing && <JiraSettings settings={settings} onSave={onSettings} onClose={() => setEditing(false)} />}
-        {error ? (
-          <Empty>課題を探せませんでした（{error}）</Empty>
-        ) : !data ? (
-          <Loading />
-        ) : data.length === 0 ? (
-          <Empty>条件に合う課題はありません。</Empty>
-        ) : shown.length === 0 ? (
-          <Empty>絞り込みに合う課題はありません。</Empty>
-        ) : (
-          <IssueGroups issues={shown} by={by} fields={fields} fold={fold} />
-        )}
-      </div>
-    </>
-  );
-};
+export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) => (
+  <ListWidget
+    spec={JIRA_SPEC}
+    settings={settings}
+    onSettings={onSettings}
+    useFound={(jql, max) => {
+      // 1 件多く探し、表示する件数を超える課題があるかを知る。
+      const { data, error } = useCached(() => api.jira(jql, max + 1), [jql, max, snapshot.jiraRefreshedAt]);
+      return { items: data?.slice(0, max), more: (data?.length ?? 0) > max, error };
+    }}
+  />
+);

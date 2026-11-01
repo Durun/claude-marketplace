@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, type Glossary, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -29,7 +29,7 @@ import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { latestMemory } from './memory.ts';
@@ -535,6 +535,14 @@ const prNotes = async (id: string, body: unknown): Promise<PrNotes> => {
     throw new HttpError(400, `リポジトリを読めません（${e.message.split('\n')[0]}）`);
   });
   return notesFor(tree, pr, threads);
+};
+
+/** GitHub Inbox のウィジェットが、設定した条件で PR と Issue を探す。件数は GITHUB_LIST_MAX までに収める。 */
+const githubListSearch = (url: URL): Promise<GithubSearch> => {
+  const q = url.searchParams.get('q')?.trim();
+  if (!q) throw new HttpError(400, 'q is required');
+  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || GITHUB_LIST_MAX, 1), GITHUB_LIST_MAX);
+  return viaGh('GitHub を探せません', () => githubSearch(q, max, wantsFresh(url)));
 };
 
 /** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は、上限を超える課題があるかを知るための 1 件を足した JIRA_LIST_MAX + 1 までに収め、無ければ上限まで返す。 */
@@ -1221,6 +1229,7 @@ const GET_ROUTES: Route[] = [
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url), WEB_API_MS],
   [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url))), WEB_API_MS],
   [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/github\/search$/, (_, __, url) => githubListSearch(url), WEB_API_MS],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) })), WEB_API_MS],

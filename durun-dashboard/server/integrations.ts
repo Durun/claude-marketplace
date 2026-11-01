@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -275,7 +275,7 @@ export const mineSection = (pr: GhInboxPr): (typeof MINE_SECTIONS)[number] => {
   return 'Waiting for review or checks';
 };
 
-const toInboxPr = (pr: GhInboxPr): InboxPr => ({
+const toInboxPr = (pr: Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'>): InboxPr => ({
   url: pr.url,
   repo: pr.repository.nameWithOwner,
   number: pr.number,
@@ -293,6 +293,61 @@ export const toInbox = (data: GhInbox): InboxSection[] =>
   ]
     .filter((s) => s.prs.length > 0)
     .map((s) => ({ title: s.title, prs: s.prs.map(toInboxPr) }));
+
+const SEARCH_QUERY = `query($q: String!, $n: Int!) {
+  viewer { login }
+  search(type: ISSUE, first: $n, query: $q) {
+    issueCount
+    nodes {
+      __typename
+      ... on PullRequest { url number title isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } } } } }
+      ... on Issue { url number title updatedAt repository { nameWithOwner } author { login } }
+    }
+  }
+}`;
+
+type GhSearchPr = GhInboxPr & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string } | null }[] } };
+type GhSearchIssue = Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'> & { __typename: 'Issue' };
+export type GhSearch = { viewer: { login: string }; search: { issueCount: number; nodes: (GhSearchPr | GhSearchIssue)[] } };
+
+/**
+ * PR が Inbox のどの区分に入るか。自分の PR は状態で分け、ほかの PR はレビューを頼まれた相手で分ける。
+ * ponytail: チームへの依頼は、自分がそのチームにいるかを確かめずに「Needs your teams' review」とする。外れが目立ったら、チームの一員かを読む。
+ */
+const sectionOf = (pr: GhSearchPr, viewer: string): string | undefined => {
+  if (pr.author?.login === viewer) return mineSection(pr);
+  const reviewers = pr.reviewRequests.nodes.map((n) => n.requestedReviewer);
+  if (reviewers.some((r) => r?.__typename === 'User' && r.login === viewer)) return 'Needs your review';
+  if (reviewers.some((r) => r?.__typename === 'Team')) return "Needs your teams' review";
+  return undefined;
+};
+
+/** 検索の結果を、GitHub が返した順のまま一覧の項目にする。PR と Issue のほかに返るもの（Discussion など）は外す。 */
+export const toGithubSearch = ({ viewer, search }: GhSearch): GithubSearch => ({
+  total: search.issueCount,
+  items: search.nodes.flatMap((n): GithubItem[] => {
+    if (n.__typename === 'Issue') return [{ ...toInboxPr(n), kind: 'issue' }];
+    // 型の上では PR だが、検索は Discussion なども返しうるので、名前で確かめる。
+    if (n.__typename !== 'PullRequest') return [];
+    const pr = n;
+    return [
+      {
+        ...toInboxPr(pr),
+        kind: 'pr',
+        isDraft: pr.isDraft,
+        review: pr.reviewDecision ?? undefined,
+        checks: pr.commits.nodes[0]?.commit.statusCheckRollup?.state,
+        section: sectionOf(pr, viewer.login),
+      },
+    ];
+  }),
+});
+
+/** GitHub Inbox のウィジェットが、設定した検索の条件で PR と Issue を探す。並びは条件の sort: に任せる。 */
+export const githubSearch = (q: string, max: number, fresh = false): Promise<GithubSearch> =>
+  cached(`github-search:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () =>
+    toGithubSearch((await ghApi<{ data: GhSearch }>(['graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, '-F', `n=${max}`])).data),
+  );
 
 /** GitHub の PR のダッシュボードの Inbox と同じ区分で、自分に関わる開いた PR を集める。 */
 export const githubInbox = (fresh = false): Promise<InboxSection[]> =>

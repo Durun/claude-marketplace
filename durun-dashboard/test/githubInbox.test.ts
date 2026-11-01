@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type GhInbox, toInbox } from '../server/integrations.ts';
+import { type GhInbox, type GhSearch, toGithubSearch, toInbox } from '../server/integrations.ts';
 
 type Pr = GhInbox['mine']['nodes'][number];
 const pr = (number: number, over: Partial<Pr> = {}, checks?: string): Pr => ({
@@ -45,4 +45,34 @@ test('toInbox は、自分の PR をドラフト、要対応、マージ可、�
     ],
   );
   assert.deepEqual(sections[0]?.prs[0], { url: 'https://github.com/o/r/pull/1', repo: 'o/r', number: 1, title: 'PR 1', author: 'ghost', updatedAt: Date.parse('2026-10-09T00:00:00Z') });
+});
+
+test('toGithubSearch は、検索の結果を返った順のまま並べ、PR を Inbox の区分に分け、Issue とほかの種類を見分ける', () => {
+  const reviewers = (...nodes: { __typename: string; login?: string }[]) => ({ nodes: nodes.map((requestedReviewer) => ({ requestedReviewer })) });
+  const node = (number: number, over: Partial<Pr> = {}, requested = reviewers(), checks?: string) => ({ ...pr(number, over, checks), __typename: 'PullRequest' as const, reviewRequests: requested });
+  const found = toGithubSearch({
+    viewer: { login: 'me' },
+    search: {
+      issueCount: 9,
+      nodes: [
+        node(1, { author: { login: 'you' } }, reviewers({ __typename: 'User', login: 'me' })),
+        node(2, { author: { login: 'you' } }, reviewers({ __typename: 'Team' })),
+        node(3, { isDraft: true }, reviewers(), 'FAILURE'),
+        node(4, { author: { login: 'you' }, reviewDecision: 'APPROVED' }, reviewers(), 'SUCCESS'),
+        { __typename: 'Issue', url: 'https://github.com/o/r/issues/5', number: 5, title: 'Issue 5', updatedAt: '2026-10-09T00:00:00Z', repository: { nameWithOwner: 'o/r' }, author: { login: 'you' } },
+        { __typename: 'Discussion' } as unknown as GhSearch['search']['nodes'][number],
+      ],
+    },
+  });
+  assert.equal(found.total, 9);
+  assert.deepEqual(
+    found.items.map((i) => [i.number, i.kind, i.section, i.review, i.checks, i.isDraft]),
+    [
+      [1, 'pr', 'Needs your review', 'REVIEW_REQUIRED', undefined, false],
+      [2, 'pr', "Needs your teams' review", 'REVIEW_REQUIRED', undefined, false],
+      [3, 'pr', 'Your drafts', 'REVIEW_REQUIRED', 'FAILURE', true],
+      [4, 'pr', undefined, 'APPROVED', 'SUCCESS', false],
+      [5, 'issue', undefined, undefined, undefined, undefined],
+    ],
+  );
 });
