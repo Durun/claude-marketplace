@@ -16,8 +16,9 @@ export const JIRA_TITLE = 'JIRA Issues';
 const DEFAULT_JQL = 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC';
 const DEFAULT_MAX = 20;
 
-/** 一覧の行に出せる課題の属性。設定では、選んだものの key をこの順にカンマで区切って持つ。 */
+/** 一覧の行に出せる課題の属性。設定では、選んだものの key をこの順にカンマで区切って shown に持つ。 */
 const FIELDS = [
+  { key: 'status', label: 'ステータス' },
   { key: 'priority', label: '優先度' },
   { key: 'parent', label: '親' },
   { key: 'labels', label: 'ラベル' },
@@ -26,9 +27,10 @@ const FIELDS = [
   { key: 'dueDate', label: '期限' },
 ] as const;
 type FieldKey = (typeof FIELDS)[number]['key'];
-// 設定が無いときは、属性を選べるようになる前と同じく担当者だけを出す。
+// 設定が無いときは、ステータスと担当者だけを出す。
 const DEFAULT_FIELDS = 'assignee';
-const fieldsOf = (settings: WidgetSettings): Set<string> => new Set((settings.fields ?? DEFAULT_FIELDS).split(',').filter(Boolean));
+/** fields は、ステータスをいつも出し、ほかの属性だけを選んでいた形の設定なので、ステータスを足して読む。 */
+const fieldsOf = (settings: WidgetSettings): Set<string> => new Set((settings.shown ?? `status,${settings.fields ?? DEFAULT_FIELDS}`).split(',').filter(Boolean));
 /** グループ化の属性の key を、外側の組から順にカンマで区切って持つ。groups の無い設定は、group の属性 1 つと、groupProject のときはその外側のプロジェクトで分ける。 */
 const groupKeysOf = (settings: WidgetSettings): string[] =>
   (settings.groups ?? [settings.groupProject && 'project', settings.group].filter(Boolean).join(',')).split(',').filter(Boolean);
@@ -47,7 +49,7 @@ const JiraSettings = ({ settings, onSave, onClose }: SettingsProps) => {
   const toggle = (key: FieldKey, on: boolean) => setFields((prev) => new Set(FIELDS.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k)))));
   const save = (e: SubmitEvent) => {
     e.preventDefault();
-    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, fields: [...fields].join(','), groups: groups.join(',') });
+    onSave({ ...settings, title: title.trim(), jql: jql.trim(), max, shown: [...fields].join(','), groups: groups.join(',') });
     onClose();
   };
   return (
@@ -157,7 +159,7 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
           )}
           {issue.key}
         </span>
-        {issue.status && <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>}
+        {fields.has('status') && issue.status && <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>}
         {fields.has('priority') && issue.priority && <Chip tone={PRIORITY_TONE[issue.priority]}>{issue.priority}</Chip>}
         {fields.has('labels') && issue.labels?.map((l) => <Chip key={l}>{l}</Chip>)}
         <span class="jira-meta">

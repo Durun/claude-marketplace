@@ -20,7 +20,7 @@ export const JIRA_KEY = 'jira';
 
 const CATEGORY_TONE: Record<string, 'muted' | 'info' | 'ok' | undefined> = { new: 'muted', indeterminate: 'info', done: 'ok' };
 
-const CHILD_FIELDS = new Set(['assignee', 'priority']);
+const CHILD_FIELDS = new Set(['status', 'assignee', 'priority']);
 
 /**
  * ステータスを押すと、課題を読んだときに JIRA が返した移せる先を並べる。選ぶと、そのトランジションで移してから課題を読み直す。
