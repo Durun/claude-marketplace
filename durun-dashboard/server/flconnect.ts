@@ -164,8 +164,6 @@ let addedChannels: number[] = [];
 let removal: (FlRemoval & { resolve: (allow: boolean) => void }) | undefined;
 /** セッションごとの、fl_changes とフックで届けた記録の番号。 */
 const cursors = new Map<string, number>();
-/** 保存していない変更に、エージェントの変更が混ざっているか。FL が保存してから変わっていない（changed が 0）と答えたら外す。 */
-let agentUnsaved = false;
 /** 最後にバックアップを取ったか、取れないと分かった時刻。まだなら undefined で、次にエージェントが書き込む前に取る。 */
 let backedUpAt: number | undefined;
 /** 写したファイルの、写したときの更新時刻と大きさ。変わっていなければ、もう一度は写さない。 */
@@ -436,7 +434,6 @@ const forgetValues = (): void => {
 const resetProject = (): void => {
   forgetValues();
   addedChannels = [];
-  agentUnsaved = false;
   backedUpAt = undefined;
 };
 
@@ -628,8 +625,6 @@ const tick = async (): Promise<void> => {
     }
     if (!hello) await sayHello();
     const prev = mirror.summary;
-    // 人間が保存したら、エージェントの変更も人間が確かめて保存したものとみなす。
-    if (s.changed === 0) agentUnsaved = false;
     for (const c of observe(s)) records.add(c, 'human');
     const focusChanged = !prev || JSON.stringify(prev.focus) !== JSON.stringify(s.focus) || prev.channel !== s.channel || prev.mixer !== s.mixer || prev.pattern !== s.pattern || prev.playing !== s.playing || prev.undo[2] !== s.undo[2];
     // 元に戻す履歴が動いたら、全部を読み直す。読み直しで見つけた変化と合わせて、履歴の変化を記録にする。
@@ -969,7 +964,7 @@ const waitSaved = async (file: string, before: string | undefined): Promise<bool
 const backupBeforeWrite = async (): Promise<string | undefined> => {
   if (!link || readOnly) return undefined;
   const s = mirror.summary;
-  const plan = backupPlan({ changed: s?.changed, humanSinceBackup: backedUpAt === undefined || lastHumanAt() > backedUpAt, agentUnsaved, recording: s?.recording === true });
+  const plan = backupPlan({ changed: s?.changed, humanSinceBackup: backedUpAt === undefined || lastHumanAt() > backedUpAt, recording: s?.recording === true });
   if (!plan) return undefined;
   const at = Date.now();
   backedUpAt = at;
@@ -1030,7 +1025,6 @@ const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> =>
       return fail(`${(e as Error).message}。FL の画面が固まっていないか、人間に確かめてもらってください。`);
     }
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_python', { sends: used });
-    if (changes.length) agentUnsaved = true;
     pushAgentOp('fl_python', changes);
     const ok = reply.ok === true;
     const stdout = String(reply.stdout ?? '');
@@ -1070,7 +1064,6 @@ const flUndo = async (args: Record<string, unknown>): Promise<FlToolResult> => {
     if (lines.length && link) {
       const reply = await link.request({ op: 'exec', code: lines.join('\n'), limit: MAX_EXEC_LIMIT_SEC }, (MAX_EXEC_LIMIT_SEC + 5) * 1000);
       changes = (await refresh(ROW_SECTIONS, 'agent', 'fl_undo', { sends: used })).changes;
-      if (changes.length) agentUnsaved = true;
       if (reply.ok !== true) skipped.push(`戻す途中で例外が起きた: ${String(reply.error ?? '')}`);
     }
     addLog({ tool: 'fl_undo', args, detail: lines.join('\n'), output: skipped.join('\n') || undefined, ok: !skipped.length, changes });
@@ -1141,7 +1134,6 @@ const removeChannels = async (sessionId: string, args: Record<string, unknown>, 
     const backup = await backupBeforeWrite();
     const r = await gopher!.call('remove_channels', { target_channels: indices.map((i) => i + 1).join(',') }).catch((e: Error) => e);
     if (r instanceof Error) return fail([backup, r.message].filter(Boolean).join('\n'));
-    agentUnsaved = true;
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_gopher:remove_channels');
     // FL は、チャンネルが 0 個になると空の Sampler を 1 つ足す。消したのが既定の Sampler だけなら、前と後の並びが同じになり、変化として見えない。
     const refilled = indices.length === now.length ? '\nチャンネルを全部消したので、FL が空の Sampler を 1 つ足した（チャンネルが 0 個になると、FL が足す）。' : '';
@@ -1190,8 +1182,6 @@ const flGopher = async (sessionId: string, args: Record<string, unknown>, signal
       return fail([backup, r.message].filter(Boolean).join('\n'));
     }
     if (gopherStatus === 'busy') setGopher('connected');
-    // ② の道で何が変わったかは、① の道で読めるものしか分からないので、書き込むツールを呼んだら変えたものとみなす。
-    if (write) agentUnsaved = true;
     const changes = track ? (await refresh(ROW_SECTIONS, 'agent', `fl_gopher:${tool}`)).changes : [];
     if (tool === 'add_channel') addedChannels.push(...changes.filter((c) => c.section === 'channels' && c.field === 'added').map((c) => c.index));
     pushAgentOp(`fl_gopher:${tool}`, changes);
@@ -1212,8 +1202,6 @@ const flPianoroll = async (args: Record<string, unknown>): Promise<FlToolResult>
     const backup = await backupBeforeWrite();
     const r = await gopher!.call('run_piano_roll_script', { source: code }).catch((e: Error) => e);
     if (r instanceof Error) return fail([backup, r.message].filter(Boolean).join('\n'));
-    // ピアノロールのスクリプトで書いたノートは読めないので、動かしたら変えたものとみなす。
-    agentUnsaved = true;
     // FL の元に戻す履歴が動いていたら、人間の操作と読み違えないよう、エージェントのものとして覚え直す。
     if (!midiRefusal()) await refresh([], 'agent', 'fl_pianoroll').catch(() => undefined);
     addLog({ tool: 'fl_pianoroll', args, output: r.text, ok: !r.isError });

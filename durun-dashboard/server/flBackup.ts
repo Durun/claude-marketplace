@@ -85,14 +85,13 @@ export type BackupPlan = { copy: boolean; save: boolean; note?: string };
 /**
  * エージェントが書き込む前に取る手順を決める。省くときは undefined。
  * - 前のバックアップのあとで人間が FL を触っていなければ、取り直さない。そのあとの変更はエージェントのものなので、前のバックアップがエージェントの前の状態になっている。
- * - 保存していない変更にエージェントの変更が混ざっていたら、上書き保存しない。エージェントの変更を、人間が確かめる前にユーザーのファイルへ書かないため。
+ * - 保存していない変更にエージェントの変更が混ざっていても、上書き保存する（人間が決めた。2026-11-01）。
  * - 録音している間は、上書き保存しない。
  * changed は general.getChangedFlag() の値（0 は保存してから変わっていない、1 と 2 は保存していない変更がある）。
  */
-export const backupPlan = (s: { changed: number | undefined; humanSinceBackup: boolean; agentUnsaved: boolean; recording: boolean }): BackupPlan | undefined => {
+export const backupPlan = (s: { changed: number | undefined; humanSinceBackup: boolean; recording: boolean }): BackupPlan | undefined => {
   if (!s.humanSinceBackup) return undefined;
   if (!s.changed) return { copy: true, save: false };
-  if (s.agentUnsaved) return { copy: true, save: false, note: '保存していない変更にエージェントの変更が混ざっているので、上書き保存しなかった' };
   if (s.recording) return { copy: true, save: false, note: '録音しているので、上書き保存しなかった' };
   return { copy: true, save: true };
 };
