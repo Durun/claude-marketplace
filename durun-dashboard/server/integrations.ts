@@ -300,30 +300,39 @@ const SEARCH_QUERY = `query($q: String!, $n: Int!) {
     issueCount
     nodes {
       __typename
-      ... on PullRequest { url number title isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } } } } }
+      ... on PullRequest { url number title isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { id } } } } }
       ... on Issue { url number title updatedAt repository { nameWithOwner } author { login } }
     }
   }
 }`;
 
-type GhSearchPr = GhInboxPr & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string } | null }[] } };
+type GhSearchPr = GhInboxPr & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string; id?: string } | null }[] } };
 type GhSearchIssue = Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'> & { __typename: 'Issue' };
 export type GhSearch = { viewer: { login: string }; search: { issueCount: number; nodes: (GhSearchPr | GhSearchIssue)[] } };
 
-/**
- * PR が Inbox のどの区分に入るか。自分の PR は状態で分け、ほかの PR はレビューを頼まれた相手で分ける。
- * ponytail: チームへの依頼は、自分がそのチームにいるかを確かめずに「Needs your teams' review」とする。外れが目立ったら、チームの一員かを読む。
- */
-const sectionOf = (pr: GhSearchPr, viewer: string): string | undefined => {
+// 入っているチームは滅多に変わらないので、間隔を空けて読み直す。
+const MY_TEAMS_MAX_AGE = 60 * 60_000;
+
+/** 自分が入っているチームの id。読めない（read:org の権限が無いなど）ときは空にし、チームへの依頼を自分に関わるものとみなさない。 */
+const myTeams = (): Promise<string[]> =>
+  cached('github-my-teams', { maxAge: MY_TEAMS_MAX_AGE }, async () => {
+    const { login } = (await ghApi<{ data: { viewer: { login: string } } }>(['graphql', '-f', 'query={ viewer { login } }'])).data.viewer;
+    const query = `{ viewer { organizations(first: 100) { nodes { teams(first: 100, userLogins: [${JSON.stringify(login)}]) { nodes { id } } } } } }`;
+    const { data } = await ghApi<{ data: { viewer: { organizations: { nodes: { teams: { nodes: { id: string }[] } }[] } } } }>(['graphql', '-f', `query=${query}`]);
+    return data.viewer.organizations.nodes.flatMap((o) => o.teams.nodes.map((t) => t.id));
+  }).catch(() => []);
+
+/** PR が Inbox のどの区分に入るか。自分の PR は状態で分け、ほかの PR はレビューを頼まれた相手（自分か、自分が入っているチーム）で分ける。 */
+const sectionOf = (pr: GhSearchPr, viewer: string, teams: Set<string>): string | undefined => {
   if (pr.author?.login === viewer) return mineSection(pr);
   const reviewers = pr.reviewRequests.nodes.map((n) => n.requestedReviewer);
   if (reviewers.some((r) => r?.__typename === 'User' && r.login === viewer)) return 'Needs your review';
-  if (reviewers.some((r) => r?.__typename === 'Team')) return "Needs your teams' review";
+  if (reviewers.some((r) => r?.__typename === 'Team' && teams.has(r.id ?? ''))) return "Needs your teams' review";
   return undefined;
 };
 
 /** 検索の結果を、GitHub が返した順のまま一覧の項目にする。PR と Issue のほかに返るもの（Discussion など）は外す。 */
-export const toGithubSearch = ({ viewer, search }: GhSearch): GithubSearch => ({
+export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>): GithubSearch => ({
   total: search.issueCount,
   items: search.nodes.flatMap((n): GithubItem[] => {
     if (n.__typename === 'Issue') return [{ ...toInboxPr(n), kind: 'issue' }];
@@ -337,7 +346,7 @@ export const toGithubSearch = ({ viewer, search }: GhSearch): GithubSearch => ({
         isDraft: pr.isDraft,
         review: pr.reviewDecision ?? undefined,
         checks: pr.commits.nodes[0]?.commit.statusCheckRollup?.state,
-        section: sectionOf(pr, viewer.login),
+        section: sectionOf(pr, viewer.login, teams),
       },
     ];
   }),
@@ -345,9 +354,10 @@ export const toGithubSearch = ({ viewer, search }: GhSearch): GithubSearch => ({
 
 /** GitHub Inbox のウィジェットが、設定した検索の条件で PR と Issue を探す。並びは条件の sort: に任せる。 */
 export const githubSearch = (q: string, max: number, fresh = false): Promise<GithubSearch> =>
-  cached(`github-search:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () =>
-    toGithubSearch((await ghApi<{ data: GhSearch }>(['graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, '-F', `n=${max}`])).data),
-  );
+  cached(`github-search:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () => {
+    const [{ data }, teams] = await Promise.all([ghApi<{ data: GhSearch }>(['graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, '-F', `n=${max}`]), myTeams()]);
+    return toGithubSearch(data, new Set(teams));
+  });
 
 /** GitHub の PR のダッシュボードの Inbox と同じ区分で、自分に関わる開いた PR を集める。 */
 export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
