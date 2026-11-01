@@ -149,7 +149,8 @@ const waitForStop = (jobId: string): Promise<void> =>
       const workers = readJson<{ workers: Record<string, unknown> }>(ROSTER)?.workers;
       if (workers && !(jobId in workers)) finish();
     };
-    const watcher = fs.watch(path.dirname(ROSTER), check);
+    // 名簿そのものの知らせのときだけ読む。別名で書いてから置き換える途中の知らせで読むと、Windows では置き換えが名簿を開いているこちらとぶつかり、置き換える側が EPERM で失敗する。
+    const watcher = fs.watch(path.dirname(ROSTER), (_, file) => (!file || file === path.basename(ROSTER)) && check());
     // 名簿の置き換えを fs.watch が知らせないことがあるので、間を置いて読み直しもする。
     const poll = setInterval(check, ROSTER_POLL_MS);
     const timer = setTimeout(() => finish(new Error('セッションを止められません')), STOP_TIMEOUT_MS);
