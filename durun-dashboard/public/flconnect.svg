@@ -1,7 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <rect x="2.5" y="4.5" width="27" height="23" rx="3" fill="#26292e" stroke="#4a4f57"/>
-  <path d="M6 16h2.5l1.5-5 2.5 10 2.5-13 2.5 13 2.5-10 1.5 5H26" fill="none" stroke="#f39c32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="9" cy="24" r="2.2" fill="none" stroke="#7fc8ff" stroke-width="1.5"/>
-  <circle cx="23" cy="24" r="2.2" fill="none" stroke="#7fc8ff" stroke-width="1.5"/>
-  <path d="M11.2 24h9.6" stroke="#7fc8ff" stroke-width="1.5" stroke-dasharray="1.6 1.4"/>
+  <defs>
+    <linearGradient id="fruit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb84d"/>
+      <stop offset=".55" stop-color="#f27d1f"/>
+      <stop offset="1" stop-color="#d2541a"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fd457"/>
+      <stop offset="1" stop-color="#3f8f27"/>
+    </linearGradient>
+  </defs>
+  <path d="M16 30.5C11.3 27.5 7.8 20.9 8.1 15.4 8.3 11.7 11.2 10 16 10s7.7 1.7 7.9 5.4c.3 5.5-3.2 12.1-7.9 15.1z" fill="url(#fruit)" stroke="#a8420f"/>
+  <path d="M11.5 15.8c.2 3.4 1.4 6.6 3.4 9.1" fill="none" stroke="#ffdcaa" stroke-width="1.6" stroke-linecap="round" opacity=".85"/>
+  <g fill="#ffd08f">
+    <circle cx="19.4" cy="15.4" r=".7"/>
+    <circle cx="20.6" cy="19.6" r=".7"/>
+    <circle cx="17.4" cy="21.6" r=".7"/>
+    <circle cx="18.4" cy="25.2" r=".7"/>
+  </g>
+  <path d="M16 8c.1-2.2 1.1-4 2.9-5" fill="none" stroke="#3f7f22" stroke-width="1.5" stroke-linecap="round"/>
+  <g fill="url(#leaf)" stroke="#2e6b1c" stroke-width=".8" stroke-linejoin="round">
+    <path d="M16 11.4C13.7 7.6 10.2 6.7 7.6 8.1c1.8 3 5.1 4.3 8.4 3.3z"/>
+    <path d="M16 11.4c2.3-3.8 5.8-4.7 8.4-3.3-1.8 3-5.1 4.3-8.4 3.3z"/>
+    <path d="M16 11.6c-1.7-2.4-1.6-5.2 0-6.6 1.6 1.4 1.7 4.2 0 6.6z"/>
+  </g>
 </svg>

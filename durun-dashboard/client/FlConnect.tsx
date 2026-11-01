@@ -10,6 +10,7 @@ import { type FlAction, type FlStep, nextSteps } from './flSteps.ts';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty } from './ui.tsx';
+import { XpConfirm } from './XpConfirm.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。FL とつなぐ道は 1 組なので、ウィンドウは 1 つだけ開く。 */
 export const FL_KEY = 'flconnect';
@@ -232,7 +233,14 @@ export const FlConnectFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
   }, [removalId]);
   const sessions = snapshot.sessions.filter((s) => !s.archived || s.id === bound);
   const nameOf = (id: string): string => snapshot.sessions.find((s) => s.id === id)?.name ?? id.slice(0, 8);
-  const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
+  // 閉じるとセッションとのつながりが切れ、エージェントが FL を読み書きできなくなるので、セッションにつないでいる間は確かめてから閉じる。
+  const [closing, setClosing] = useState<string>();
+  const closeWindow = () => dock(f.key, f.scope, f.tab.id);
+  const close = { kind: 'close' as const, label: '閉じる', onClick: () => (bound ? setClosing(nameOf(bound)) : closeWindow()) };
+  const answerClose = (ok: boolean) => {
+    setClosing(undefined);
+    if (ok) closeWindow();
+  };
   return (
     <FloatFrame f={f} title={bound ? `${nameOf(bound)} - ${FL_TITLE}` : FL_TITLE} icon={FL_ICON} controls={[close]}>
       <div class="widget-body fl-connect">
@@ -267,6 +275,7 @@ export const FlConnectFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }
           </>
         )}
       </div>
+      {closing !== undefined && <XpConfirm title="終了の確認" text={`FL Connect を閉じると、セッション「${closing}」とのつながりが切れ、エージェントは FL Studio を読み書きできなくなります。閉じますか?`} onClose={answerClose} />}
     </FloatFrame>
   );
 };
