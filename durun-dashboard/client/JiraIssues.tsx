@@ -200,7 +200,8 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
         const open = !fold.collapsed.has(path);
         return (
           <details key={g.name} class="inbox-section jira-group" open={open} onToggle={(e) => fold.toggle(path, e.currentTarget.open)}>
-            <summary>
+            {/* 絞り込みの欄からフォーカスを外さない。外すと欄が消えて見出しの行が縮み、離した位置がずれて開閉しない。 */}
+            <summary onMouseDown={(e) => e.preventDefault()}>
               <Heading class="inbox-section-title">
                 <GroupName by={first} group={g} />
                 <span class="count-pill">{g.issues.length}</span>
@@ -241,8 +242,9 @@ const useFilterFocus = () => {
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, []);
+  // 組の見出しは押すと開閉するので、欄を出して見出しの位置をずらさないよう、フォーカスを移さない。
   const onClick = (e: MouseEvent) => {
-    if (!(e.target as Element).closest('a, button, input, form, .is-editing')) ref.current?.focus();
+    if (!(e.target as Element).closest('a, button, input, form, summary, .is-editing')) ref.current?.focus();
   };
   return { ref, onClick };
 };
