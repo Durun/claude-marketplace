@@ -33,7 +33,7 @@ export type WidgetProps<P> = P & { settings: WidgetSettings; onSettings: (next: 
 /** 「追加」の一覧に描く、ウィジェットの大まかな見た目。中身を描くと読み込みや問い合わせが走るため、線と箱の略図で見せる。 */
 export type Sketch = 'list' | 'cards' | 'text' | 'chat' | 'code' | 'chart';
 /**
- * icon はタイトルバーの左端に添える絵文字。size は、編集の「追加」で空いているところに置くときの大きさ。controls は、タイトルバー右端に並べる、このウィジェットのボタン。
+ * icon はタイトルバーの左端に添える絵文字。size は、編集の「追加」で空いているところを押して置くときの大きさ。controls は、タイトルバー右端に並べる、このウィジェットのボタン。
  * launch を持つものは「アプリ」。デスクトップのアイコンのように枠もタイトルバーも描かず、升目に合わせず好きな位置に置く。ウィンドウには浮かべない。
  * launch はアプリを起動する。アイコンのほか、スタートメニューの「アプリ」からも呼ぶ。
  */
@@ -389,7 +389,7 @@ const EditBar = ({ widgets, placing, onAdd, onCancel, onReset, onDone }: EditBar
     ) : (
       <>
         <span id="dashboard-help" class="help">
-          「{placing}」を置く場所を押します。空いているところなら新しく置き、ウィジェットの上ならタブとして重ねます。キーボードでは矢印キーで升目を選び、Enter で置きます。
+          「{placing}」を置く場所を押します。空いているところなら新しく置き、ウィジェットの上ならタブとして重ねます。ドラッグして囲むと、その範囲に新しく置きます。キーボードでは矢印キーで升目を選び、Shift と矢印キーで範囲を広げ、Enter で置きます。
         </span>
         <span class="spacer" />
         <button class="btn btn-sm" onClick={onCancel}>やめる</button>
@@ -402,31 +402,78 @@ const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRigh
 
 type PlacingProps = { grid: RefObject<HTMLElement>; layout: Layout; tab: Tab; title: string; size: Size; free: boolean; onDrop: (next: Layout) => void; onCancel: () => void };
 
+/** 置く範囲。from は選び始めた升目、to は今の升目で、この 2 つを向かい合う角にした長方形に置く。 */
+type Span = { from: Cell; to: Cell };
+
+/**
+ * 押した升目から離した升目までを、ドラッグで囲む操作。押していない間は、指している 1 升を span にする。
+ * グリッドの外までドラッグしても離すまで受け、外で離したときは端の升目まで囲む。離したら、囲んだ範囲を onUp に渡す。
+ */
+const useSpanDrag = (grid: RefObject<HTMLElement>, setSpan: (s: Span | undefined) => void, onUp: (s: Span) => void) => {
+  // 押している間だけ、押した升目を持つ。
+  const pressed = useRef<Cell>();
+  const cellOf = (e: MouseEvent): Cell | undefined => (grid.current ? cellAt(grid.current, e) : undefined);
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      const c = cellOf(e);
+      if (e.button !== 0 || !c) return;
+      pressed.current = c;
+      setSpan({ from: c, to: c });
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: PointerEvent) => {
+      const to = cellOf(e);
+      setSpan(to && { from: pressed.current ?? to, to });
+    },
+    onPointerUp: (e: PointerEvent) => {
+      const from = pressed.current;
+      const to = cellOf(e);
+      pressed.current = undefined;
+      if (from && to) onUp({ from, to });
+    },
+    onLostPointerCapture: () => {
+      pressed.current = undefined;
+    },
+    onPointerLeave: () => setSpan(undefined),
+  };
+};
+
 /**
  * 「追加」で選んだウィジェットを置く場所を、グリッドに重ねた透明なボタンで受ける。
- * 押した升目が空いていれば新しく置き、ウィジェットの上ならタブとして重ねる。置く先は、升目に重ねた枠で示す。
- * free のもの（アプリのアイコン）は、ウィジェットの上でも重ねずに、そこへ置く。
+ * 押した升目が空いていれば新しく置き、ウィジェットの上ならタブとして重ねる。ドラッグして囲むと、ウィジェットの上でも重ねずに、囲んだ範囲に新しく置く。置く先は、升目に重ねた枠で示す。
+ * free のもの（アプリのアイコン）は、ウィジェットの上でも重ねずに、離した升目へ置く。大きさは変えないので、ドラッグしても囲んだ範囲は使わない。
  */
 const PlacingLayer = ({ grid, layout, tab, title, size, free, onDrop, onCancel }: PlacingProps) => {
-  const [cell, setCell] = useState<Cell>();
+  const [span, setSpan] = useState<Span>();
   const layer = useRef<HTMLButtonElement>(null);
   useEffect(() => layer.current?.focus(), []);
-  const cellOf = (e: MouseEvent): Cell | undefined => (grid.current ? cellAt(grid.current, e) : undefined);
+  // 置いた後の配置と、置く先を示す枠。アイコンは、下端をはみ出さない高さまで上げて置く。ウィジェットは、押し出す枠が下端をはみ出すなら置かずに待つ。
+  const dropOf = ({ from, to }: Span, id: string): { next: Layout; ghost: Ghost } => {
+    if (free) return { next: addWidget(layout, { id, ...to, y: Math.min(to.y, ROWS - size.h), ...size, tabs: [tab], free }), ghost: { ...to, ...size, merge: false } };
+    if (from.x === to.x && from.y === to.y) return { next: dropTab(layout, tab, to.x, to.y, size, id), ghost: ghostOf(layout, tab, to, size) };
+    const box = { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), w: Math.abs(from.x - to.x) + 1, h: Math.abs(from.y - to.y) + 1 };
+    const next = addWidget(layout, { id, ...box, tabs: [tab] });
+    return { next, ghost: { ...box, merge: false, full: next === layout } };
+  };
+  const place = (s: Span) => {
+    const { next } = dropOf(s, String(Date.now()));
+    if (next !== layout) onDrop(next);
+  };
+  const drag = useSpanDrag(grid, setSpan, place);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') return onCancel();
     const step = ARROWS[e.key];
     if (!step) return;
     e.preventDefault();
-    setCell((c) => (c ? { x: clamp(c.x + step[0], 0, COLS - 1), y: clamp(c.y + step[1], 0, ROWS - 1) } : { x: 0, y: 0 }));
+    // Shift を押しながらなら、選び始めた升目を残して、囲む範囲を変える。
+    setSpan((s) => {
+      const to = s ? { x: clamp(s.to.x + step[0], 0, COLS - 1), y: clamp(s.to.y + step[1], 0, ROWS - 1) } : { x: 0, y: 0 };
+      return { from: s && e.shiftKey ? s.from : to, to };
+    });
   };
-  // キーボードの Enter で押したときは、矢印キーで選んだ升目に置く。
+  // マウスでは離したときに置くので、ここではキーボードの Enter だけを受け、矢印キーで選んだ範囲に置く。
   const onClick = (e: MouseEvent) => {
-    const c = e.detail ? cellOf(e) : cell;
-    if (!c) return;
-    const id = String(Date.now());
-    // アイコンは、下端をはみ出さない高さまで上げて置く。ウィジェットは、押し出す枠が下端をはみ出すなら置かずに待つ。
-    const next = free ? addWidget(layout, { id, ...c, y: Math.min(c.y, ROWS - size.h), ...size, tabs: [tab], free }) : dropTab(layout, tab, c.x, c.y, size, id);
-    if (next !== layout) onDrop(next);
+    if (!e.detail && span) place(span);
   };
   return (
     <>
@@ -435,12 +482,11 @@ const PlacingLayer = ({ grid, layout, tab, title, size, free, onDrop, onCancel }
         class="dashboard-placing"
         aria-label={`${title}を置く場所`}
         aria-describedby="dashboard-help"
-        onPointerMove={(e) => setCell(cellOf(e))}
-        onPointerLeave={() => setCell(undefined)}
+        {...drag}
         onKeyDown={onKeyDown}
         onClick={onClick}
       />
-      {cell && <DropGhost ghost={free ? { ...cell, ...size, merge: false } : ghostOf(layout, tab, cell, size)} />}
+      {span && <DropGhost ghost={dropOf(span, '').ghost} />}
     </>
   );
 };
