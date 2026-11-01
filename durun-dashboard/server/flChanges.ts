@@ -152,6 +152,23 @@ export const diffRec = (before: RecValues, after: RecValues, offsets: number[], 
 /** FL が付けたつまみの名前（「Sampler - Panning envelope - Attack time」）から、頭のチャンネルの名前を外す。チャンネルの名前は、記録の name に持つため。 */
 export const recLabel = (fullName: string, channelName: string | undefined): string => (channelName && fullName.startsWith(`${channelName} - `) ? fullName.slice(channelName.length + 3) : fullName);
 
+/**
+ * FL の中のスクリプトが返す、前面のプラグインの変わったパラメーター。index と slot は、音源ならチャンネルの番号と -1、エフェクトならミキサーのトラックとスロット（0 から）。
+ * changes は [番号, 名前, 前の値, 後の値, 前の値の文字, 後の値の文字] の並び。前の値の文字は、前に変わったときに読んだもので、初めて変わったときは空。
+ */
+export type PluginChanges = { plugin: string; index: number; slot: number; changes: [number, string, number, number, string, string][] };
+
+/** プラグインの 1 回の読み直しで、これより多くのパラメーターが変わったら（プリセットを読み込んだなど）、1 件にまとめる。 */
+const MAX_PLUGIN_CHANGES = 100;
+
+/** 前面のプラグインの変わったパラメーターを、記録にする。name は、チャンネルかミキサーのトラックの名前。 */
+export const pluginChanges = (p: PluginChanges, name: string | undefined): FlChange[] => {
+  const section = p.slot < 0 ? ('channels' as const) : ('mixer' as const);
+  const prefix = p.slot < 0 ? '' : `slot:${p.slot}:`;
+  if (p.changes.length > MAX_PLUGIN_CHANGES) return [{ section, index: p.index, name, plugin: p.plugin, field: `${prefix}bulk`, before: null, after: p.changes.length }];
+  return p.changes.map(([param, label, before, after, textBefore, textAfter]) => ({ section, index: p.index, name, plugin: p.plugin, field: `${prefix}param:${param}`, label, before, after, text: [textBefore, textAfter] }));
+};
+
 /** FL の元に戻す履歴。[数, 戻した数]。 */
 export type UndoState = [number, number];
 

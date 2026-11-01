@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
-import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
+import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, pluginChanges, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
 import { gopherText } from '../server/flGopher.ts';
 import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
@@ -252,4 +252,16 @@ test('ミキサーの EQ と送りの量も比べ、EQ は変わった帯だけ�
   // 送り先が変わったトラックは、送りの量を比べない。
   assert.deepEqual(diffLevels({ before: { '1': [0] }, after: { '1': [0, 5] } }, { before: { '1': [0.8] }, after: { '1': [0.8, 1] } }, new Map()), []);
   assert.equal(describeChange({ section: 'song', index: 0, field: 'bulk', before: null, after: 539 }), '一度に 539 件の値が変わった（プロジェクトを読み込んだか、まとめて変えた）');
+});
+
+test('前面のプラグインの変わったパラメーターを、プラグインの名前と FL の名前と値の文字で記録し、多すぎればまとめる', () => {
+  const [synth] = pluginChanges({ plugin: 'Serum 2', index: 1, slot: -1, changes: [[0, 'Main Vol', 0.5, 0.62, '', '62% [-6.4 dB] ']] }, 'Serum 2');
+  assert.deepEqual(synth, { section: 'channels', index: 1, name: 'Serum 2', plugin: 'Serum 2', field: 'param:0', label: 'Main Vol', before: 0.5, after: 0.62, text: ['', '62% [-6.4 dB] '] });
+  // 前の値の文字が分からないときは、生の値を見せる。
+  assert.equal(describeChange(synth!), 'channel 1「Serum 2」の Serum 2 の「Main Vol」: 0.5 → 62% [-6.4 dB] ');
+  const [eq] = pluginChanges({ plugin: 'Pro-Q 4', index: 1, slot: 0, changes: [[2, 'Band 1 Frequency', 0.575, 0.6, '1000.0 Hz ', '1200.0 Hz ']] }, 'Insert 1');
+  assert.equal(eq?.field, 'slot:0:param:2');
+  assert.equal(describeChange(eq!), 'mixer 1「Insert 1」のスロット 1 の Pro-Q 4 の「Band 1 Frequency」: 1000.0 Hz  → 1200.0 Hz ');
+  const preset = pluginChanges({ plugin: 'Serum 2', index: 1, slot: -1, changes: Array.from({ length: 101 }, (_, p): [number, string, number, number, string, string] => [p, `P${p}`, 0, 1, '', '']) }, 'Serum 2');
+  assert.deepEqual(preset.map(describeChange), ['channel 1「Serum 2」の Serum 2 で、一度に 101 件のパラメーターが変わった（プリセットを読み込んだなど）']);
 });

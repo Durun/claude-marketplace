@@ -700,6 +700,8 @@ export type FlChange = {
   field: string;
   before: FlValue;
   after: FlValue;
+  /** プラグインのパラメーターなら、プラグインの名前（FL が返したもの）。 */
+  plugin?: string;
   /** FL が付けた、項目の名前（イベントの番号やプラグインのパラメーターで読んだとき）。 */
   label?: string;
   /** FL が付けた、前と後の値の文字。 */

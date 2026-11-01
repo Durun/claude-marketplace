@@ -16,6 +16,8 @@ import {
   diffSends,
   diffSong,
   followChannels,
+  type PluginChanges,
+  pluginChanges,
   type RecValues,
   RecordLog,
   recLabel,
@@ -99,6 +101,8 @@ type Summary = {
   focus: [string | null, string];
   undo: [number, number, string];
   counts: number[];
+  /** 前面のプラグインで、前に読んでから変わったパラメーター。中身のスクリプトが 0.4.0 より古いと無い。 */
+  plugin?: PluginChanges | null;
 };
 
 /**
@@ -439,11 +443,20 @@ const undoOf = (s: Summary): UndoState => [s.undo[0], s.undo[1]];
 const observe = (next: Summary): FlChange[] => {
   const prev = mirror.summary;
   mirror.summary = next;
-  if (!prev) return [];
+  // 前面のプラグインの変化は、FL の中のスクリプトが前の要約と比べたもの。覚えた値を捨てた直後でも、そのまま記録にする。
+  const plugin = next.plugin ? pluginChanges(next.plugin, rowName(next.plugin.slot < 0 ? mirror.channels : mirror.mixer, next.plugin.index)) : [];
+  if (!prev) return plugin;
   const song = diffSong(songOf(prev), songOf(next));
   if (!same(undoOf(prev), undoOf(next))) pendingUndo = { before: pendingUndo?.before ?? undoOf(prev), after: undoOf(next), window: next.focus[1], explained: !!pendingUndo?.explained };
-  if (pendingUndo && song.some((c) => c.field === 'tempo')) pendingUndo.explained = true;
-  return song;
+  // テンポとプラグインのパラメーターを変えると履歴が増えるので、それで説明できたものとする。
+  if (pendingUndo && (plugin.length || song.some((c) => c.field === 'tempo'))) pendingUndo.explained = true;
+  return [...song, ...plugin];
+};
+
+/** 並びの index の行の名前。 */
+const rowName = (rows: Row[] | undefined, index: number): string | undefined => {
+  const name = rows?.find((r) => r.i === index)?.name;
+  return typeof name === 'string' ? name : undefined;
 };
 
 /**
@@ -872,6 +885,7 @@ const RECORD_FORMAT =
   '1 行に 1 つ、FL が返した生の値の JSON。番号は MIDI スクリプトの API の番号。vol は 0 から 1 の値で、db に FL が返した dB を添える。color は 0xRRGGBB の数。' +
   'field が rec:番号 の行はチャンネルのつまみで、番号は channels.getRecEventId(index) からの位置、値は FL の 0 から 2^30 の値、label と text は FL が付けたつまみの名前と値の文字。' +
   'ミキサーの eq は帯ごとの [Gain, Frequency, Bandwidth] を順に並べた 0 から 1 の値、sends の level:送り先 は送りの量。' +
+  'plugin の付いた行はプラグインのパラメーターで（人間が前面に出しているプラグインだけを比べる）、field は param:番号（チャンネルの音源）か slot:スロット:param:番号（ミキサーのエフェクト。スロットは 0 から）、値は 0 から 1、label と text は FL が付けたパラメーターの名前と値の文字（前の文字は、初めて変わったときは空）。' +
   'section が undo の行は、FL Connect が読まない値を変えたか Ctrl+Z をしたことを表し、before と after は元に戻す履歴の [数, 戻した数]、name はそのとき前面にあったウィンドウ。' +
   'field が bulk の行は、一度に after 件の値が変わったこと（プロジェクトの読み込みなど）を表す';
 

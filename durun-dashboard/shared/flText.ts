@@ -85,11 +85,20 @@ const describeUndo = (c: FlChange): string => {
 /** FL の値の文字が空のときは、生の値を見せる。 */
 const shown = (text: string | undefined, raw: FlValue): string => (text ? text : String(raw));
 
+/** プラグインのパラメーターの変化。field は param:番号 か slot:スロット:param:番号（スロットは 0 から）。 */
+const describePlugin = (c: FlChange, target: string): string => {
+  const slot = /^slot:(\d+):/.exec(c.field)?.[1];
+  const where = `${target}の${slot === undefined ? ' ' : `スロット ${Number(slot) + 1} の `}${c.plugin ?? '?'} `;
+  if (c.field.endsWith('bulk')) return `${where}で、一度に ${String(c.after)} 件のパラメーターが変わった（プリセットを読み込んだなど）`;
+  return `${where}の「${c.label ?? c.field}」: ${shown(c.text?.[0], c.before)} → ${shown(c.text?.[1], c.after)}`;
+};
+
 export const describeChange = (c: FlChange): string => {
   if (c.section === 'undo') return describeUndo(c);
   if (c.field === 'project') return 'プロジェクトを読み込み直した（ここより前の番号と名前は、今のプロジェクトのものではない）';
-  if (c.field === 'bulk') return `一度に ${String(c.after)} 件の値が変わった（プロジェクトを読み込んだか、まとめて変えた）`;
+  if (c.field === 'bulk' && !c.plugin) return `一度に ${String(c.after)} 件の値が変わった（プロジェクトを読み込んだか、まとめて変えた）`;
   const target = targetOf(c);
+  if (c.plugin) return describePlugin(c, target);
   if (c.field === 'added') return `${target}を足した`;
   if (c.field === 'removed') return `${target}を消した`;
   // FL が名前と値の文字を付けた項目は、FL の言葉のまま見せる。

@@ -27,7 +27,7 @@ try:
 except ImportError:
     traceback = None
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 EXEC_LIMIT_SEC = 2.0
 MAX_EXEC_LIMIT_SEC = 10.0
 # 応答は SysEx で分けて運ぶ。print の出力と result が大きすぎると FL の主スレッドが長く止まるので、ここで切る。
@@ -232,9 +232,75 @@ def _tempo():
     return _finite(tempo / 1000 if tempo >= 1000 else tempo, 3)
 
 
+# 前面のプラグインと、そのパラメーターの覚えた値。人間はプラグインのウィンドウでつまみを回すので、前面のプラグインだけを要約のたびに比べる。
+# 名前のあるパラメーターだけを比べる（VST は 4240 個のうち、名前のあるものが 600 ほど。名前と値は全部で 3 ミリ秒）。
+# 値の文字はプラグインに 1 つずつ尋ねるので遅い（1 つ 0.15 ミリ秒）。変わったものだけを読み、次に変わったときの前の文字にする。
+_watched = None
+
+
+def _focused_plugin():
+    """
+    前面のプラグイン（form, 名前, index, slot, useGlobalIndex）。無ければ None。
+    ui.getFocusedFormID は、エフェクトなら ((トラック << 6) + スロット) << 16 を、音源ならチャンネルの番号を返した（FL 26.1.7）。
+    """
+    name = ui.getFocusedPluginName()
+    if not name:
+        return None
+    form = ui.getFocusedFormID()
+    if form >= 1 << 16:
+        index, slot, glob = form >> 22, (form >> 16) & 0x3F, False
+    else:
+        index, slot, glob = form, -1, True
+    if index < 0 or not plugins.isValid(index, slot, glob) or plugins.getPluginName(index, slot, glob) != name:
+        return None
+    return form, name, index, slot, glob
+
+
+def _plugin_changes():
+    """前面のプラグインで、前に読んでから変わったパラメーター。読めなければ（読む途中でプラグインを外したなど）、覚えた値を捨てて、要約は返す。"""
+    global _watched
+    try:
+        return _read_plugin_changes()
+    except Exception:
+        _watched = None
+        return None
+
+
+def _read_plugin_changes():
+    """前面が別のプラグインになったら、比べずに覚え直す。"""
+    global _watched
+    focus = _focused_plugin()
+    if focus is None:
+        _watched = None
+        return None
+    form, name, index, slot, glob = focus
+    if _watched is None or _watched["key"] != (form, name):
+        names = {}
+        for p in range(plugins.getParamCount(index, slot, glob)):
+            param = plugins.getParamName(p, index, slot, glob)
+            if param:
+                names[p] = param
+        _watched = {"key": (form, name), "names": names, "values": {p: plugins.getParamValue(p, index, slot, glob) for p in names}, "texts": {}}
+        return None
+    changes = []
+    for p, before in _watched["values"].items():
+        after = plugins.getParamValue(p, index, slot, glob)
+        if after == before:
+            continue
+        text = plugins.getParamValueString(p, index, slot, glob)
+        changes.append([p, _watched["names"][p], before, after, _watched["texts"].get(p, ""), text])
+        _watched["values"][p] = after
+        _watched["texts"][p] = text
+    return {"plugin": name, "index": index, "slot": slot, "changes": changes} if changes else None
+
+
 def summary():
-    """決まった間隔で問い合わせる、安い要約。元に戻す履歴の数と位置で、どこかが変わったことに気付く。"""
+    """
+    決まった間隔で問い合わせる、安い要約。元に戻す履歴の数と位置で、どこかが変わったことに気付く。
+    plugin は、前面のプラグインで前に読んでから変わったパラメーター（[番号, 名前, 前の値, 後の値, 前の値の文字, 後の値の文字]）。
+    """
     return {
+        "plugin": _plugin_changes(),
         "ok": True,
         "playing": bool(transport.isPlaying()),
         "recording": bool(transport.isRecording()),
