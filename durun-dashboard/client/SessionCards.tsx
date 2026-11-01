@@ -1,8 +1,7 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { fmtSpan } from './format.ts';
-import { NowContext, useCollapsed } from './hooks.ts';
+import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
@@ -44,19 +43,17 @@ const TaskLine = ({ tasks }: { tasks: ObservedTask[] }) => {
   );
 };
 
-const runningTools = (s: Session, kind: BgTask['kind']): BgTask[] => s.background.filter((t) => t.kind === kind && t.status === 'running');
+const runningTools = (s: Session, kind: BgTask['kind']): number => s.background.filter((t) => t.kind === kind && t.status === 'running').length;
 
 const Activity = ({ s }: { s: Session }) => {
-  const now = useContext(NowContext);
   const running = s.subagents.filter((a) => a.running).length;
   const shells = runningTools(s, 'shell');
-  const started = shells.flatMap((t) => t.startedAt ?? []);
-  const monitors = runningTools(s, 'monitor').length;
+  const monitors = runningTools(s, 'monitor');
   return (
     <div class="activity">
       <TaskLine tasks={s.observedTasks ?? []} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
-      {shells.length > 0 && <Chip tone="info">shell {shells.length} 実行中{started.length > 0 && ` · 最長 ${fmtSpan(now - Math.min(...started))}`}</Chip>}
+      {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}
       {s.pendingMessages > 0 && <Chip tone="warn" title="Claude にまだ届いていないメッセージ">未配信 {s.pendingMessages}</Chip>}
       {s.awaitingReview && <Chip tone="info" title="Claude がレビューを待っています">レビュー待ち</Chip>}
