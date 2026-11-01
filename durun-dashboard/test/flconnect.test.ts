@@ -5,7 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
 import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, pluginChanges, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
-import { backupFileName, backupPlan, type FileLookup, projectFileOf } from '../server/flBackup.ts';
+import { backupFileName, backupPlan, type FileLookup, flMajorOf, projectFileOf } from '../server/flBackup.ts';
 import { gopherText } from '../server/flGopher.ts';
 import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
@@ -298,6 +298,10 @@ test('バックアップは、ウィンドウの題名のファイルを、最�
   assert.equal(projectFileOf({ title: 'pack.zip - FL Studio 2026', recent }, 'D:\\FL\\Projects', io).kind, 'unknown');
   assert.equal(projectFileOf({ title: '', recent }, 'D:\\FL\\Projects', io).kind, 'unknown');
   assert.equal(projectFileOf(undefined, 'D:\\FL\\Projects', io).kind, 'unknown');
+  // 最近のファイルのレジストリのキーは、FL が名乗る版の上の桁で分かれる（FL Studio 26）。
+  assert.equal(flMajorOf('Producer Edition v26.1.7 [build 5654]'), 26);
+  assert.ok(Number.isNaN(flMajorOf('?')));
+  assert.ok(Number.isNaN(flMajorOf(undefined)));
 });
 
 test('バックアップは、人間が触ったあとの最初の書き込みの前にだけ取り、保存していない変更にエージェントの変更が混ざっていれば上書き保存しない', () => {

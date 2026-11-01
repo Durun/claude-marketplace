@@ -31,7 +31,7 @@ import {
   type UndoState,
 } from './flChanges.ts';
 import { GopherError, GopherLink, type GopherTool } from './flGopher.ts';
-import { backupFileName, backupPlan, projectFileOf } from './flBackup.ts';
+import { backupFileName, backupPlan, flMajorOf, projectFileOf } from './flBackup.ts';
 import { appendLog, type FlLogEvent, logFilePath } from './flLogFile.ts';
 import { openMidi, type MidiLink } from './flMidi.ts';
 import { platform } from './platform.ts';
@@ -973,7 +973,7 @@ const backupBeforeWrite = async (): Promise<string | undefined> => {
   if (!plan) return undefined;
   const at = Date.now();
   backedUpAt = at;
-  const project = projectFileOf(await platform.flProjectHints(Number.parseInt(hello?.fl ?? '', 10)), userData && path.join(userData, 'Projects'));
+  const project = projectFileOf(await platform.flProjectHints(flMajorOf(hello?.fl)), userData && path.join(userData, 'Projects'));
   const files: string[] = [];
   const notes: string[] = [];
   let failed = false;

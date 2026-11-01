@@ -6,6 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { FlProjectHints } from './platform.ts';
 
+/** FL が名乗る版（FL 26.1.7 なら「Producer Edition v26.1.7 [build 5654]」）から、上の桁（26）を出す。最近のファイルを覚えているレジストリのキーの名前に使う。読めなければ NaN。 */
+export const flMajorOf = (fl: string | undefined): number => Number(/(\d+)\.\d+\.\d+/.exec(fl ?? '')?.[1]);
+
 /** 開いているプロジェクトのファイル。name は拡張子を除いた名前。untitled は名前の無いプロジェクト、unknown は当てられなかったとき。 */
 export type ProjectFile = { kind: 'file'; file: string; name: string } | { kind: 'untitled' } | { kind: 'unknown'; why: string };
 
