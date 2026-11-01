@@ -991,6 +991,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .jira-row { display: grid; gap: 2px; padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
 .jira-row:hover { background: var(--surface-2); }
+/* 行の線は行どうしの区切りなので、最後の行の下には引かない。 */
+.jira-list > li:last-child > .jira-row { border-bottom: 0; }
 .jira-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .jira-key { display: flex; min-width: 0; font-family: var(--mono); white-space: pre; }
 /* JIRA の Epic のアイコンと同じ紫。親の題名が長いときは、課題のキーを残して親の側を省略する。 */
