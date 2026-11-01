@@ -21,6 +21,7 @@ const PrRow = ({ pr }: { pr: InboxPr }) => (
     <Ext class="jira-row" href={pr.url}>
       <span class="jira-head">
         <span class="jira-key">{pr.repo} #{pr.number}</span>
+        <span class="jira-rule" aria-hidden="true" />
         <span class="jira-meta">{pr.author} · <Time at={pr.updatedAt} /></span>
       </span>
       <span class="jira-summary">{pr.title}</span>

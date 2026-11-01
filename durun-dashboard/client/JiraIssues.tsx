@@ -162,6 +162,7 @@ export const IssueRow = ({ issue, fields }: { issue: JiraIssue; fields: Set<stri
         {fields.has('status') && issue.status && <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{issue.status}</Chip>}
         {fields.has('priority') && issue.priority && <Chip tone={PRIORITY_TONE[issue.priority]}>{issue.priority}</Chip>}
         {fields.has('labels') && issue.labels?.map((l) => <Chip key={l}>{l}</Chip>)}
+        <span class="jira-rule" aria-hidden="true" />
         <span class="jira-meta">
           {metaOf(issue, fields).join(' · ')}
           {issue.updatedAt !== undefined && <>{metaOf(issue, fields).length > 0 && ' · '}<Time at={issue.updatedAt} /></>}
@@ -205,7 +206,7 @@ const IssueGroups = ({ issues, by, fields, fold, parent = '' }: { issues: JiraIs
               <Heading class="inbox-section-title">
                 <GroupName by={first} group={g} />
                 <span class="count-pill">{g.issues.length}</span>
-                <span class="jira-group-rule" aria-hidden="true" />
+                <span class="jira-rule" aria-hidden="true" />
                 <span class="chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
               </Heading>
             </summary>

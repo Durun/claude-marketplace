@@ -989,10 +989,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-group-remove:hover { background: var(--surface-2); color: var(--text); }
 .jira-group-add { width: auto; }
 .jira-list { display: grid; margin: 0; padding: 0; list-style: none; }
-.jira-row { display: grid; gap: 2px; padding: 7px 6px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+.jira-row { display: grid; gap: 2px; padding: 7px 6px; color: var(--text); text-decoration: none; }
 .jira-row:hover { background: var(--surface-2); }
-/* 行の線は行どうしの区切りなので、最後の行の下には引かない。 */
-.jira-list > li:last-child > .jira-row { border-bottom: 0; }
 .jira-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .jira-key { display: flex; min-width: 0; font-family: var(--mono); white-space: pre; }
 /* JIRA の Epic のアイコンと同じ紫。親の題名が長いときは、課題のキーを残して親の側を省略する。 */
@@ -1006,8 +1004,9 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .inbox-section-title .chevron { margin-left: auto; }
 /* JIRA Issues をプロジェクトとほかの属性の 2 段で分けたときは、内側の組を字下げして段の違いを見せる。 */
 .inbox-section .inbox-section { margin-left: 12px; }
-/* 組の見出しの名前と開閉の印の間に線を引き、組の区切りにする。 */
-.jira-group-rule { flex: 1; height: 1px; background: var(--border-strong); }
+/* 行と組の区切りは、1 行目の左の項目と右端の項目の間に引く線で見せる。組の線は行の線より濃くする。 */
+.jira-rule { flex: 1; min-width: 12px; height: 1px; background: var(--border); }
+.inbox-section-title > .jira-rule { background: var(--border-strong); }
 
 .att { --k: var(--accent); display: grid; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--k); }
 .att-ask, .att-question { --k: var(--accent); }
