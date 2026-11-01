@@ -986,6 +986,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .jira-key { display: flex; min-width: 0; font-family: var(--mono); white-space: pre; }
 /* JIRA の Epic のアイコンと同じ紫。親の題名が長いときは、課題のキーを残して親の側を省略する。 */
 .jira-parent { overflow: hidden; cursor: pointer; color: #904ee2; text-overflow: ellipsis; }
+/* 幅が足りないときは、番号を残してリポジトリ名の側を省略する。 */
+.jira-key-trim { overflow: hidden; text-overflow: ellipsis; }
 .jira-meta { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
 .jira-summary { overflow-wrap: anywhere; }
 .inbox-section + .inbox-section { margin-top: 12px; }

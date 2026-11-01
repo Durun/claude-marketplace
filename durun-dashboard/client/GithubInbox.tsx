@@ -37,7 +37,7 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
   <li>
     <Ext class="jira-row" href={item.url}>
       <span class="jira-head">
-        <span class="jira-key">{item.repo} #{item.number}</span>
+        <span class="jira-key"><span class="jira-key-trim">{item.repo}</span> #{item.number}</span>
         {fields.has('kind') && <Chip>{item.kind === 'pr' ? 'PR' : 'Issue'}</Chip>}
         {fields.has('draft') && item.isDraft && <Chip tone="muted">ドラフト</Chip>}
         {fields.has('review') && item.review && <Chip tone={REVIEW_TONE[item.review]}>{REVIEW_LABEL[item.review] ?? item.review}</Chip>}
