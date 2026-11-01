@@ -12,8 +12,11 @@ test('groupIssues は、組も組の中の課題も、渡した順で先に出�
   assert.deepEqual(shape(groupIssues(issues, by('priority'))), [['Low', ['CATS-1', 'CATS-4']], ['優先度なし', ['CATS-2']], ['Highest', ['CATS-3']]]);
 });
 
-test('groupIssues は、エピックを親の課題のキーと題名で、プロジェクトを課題のキーで分ける', () => {
+test('groupIssues は、エピックを親の課題のキーと題名で、エピックそのものは自分のキーと題名で、プロジェクトを課題のキーで分ける', () => {
   const issues = [issue('CATS-2', { parent: { key: 'CATS-1', summary: '親' } }), issue('LPO-3'), issue('CATS-4')];
   assert.deepEqual(shape(groupIssues(issues, by('epic'))), [['CATS-1 親', ['CATS-2']], ['エピックなし', ['LPO-3', 'CATS-4']]]);
+  // エピックそのものは、子の課題と同じ組に入る。
+  const withEpic = [issue('CATS-2', { parent: { key: 'CATS-1', summary: '親' } }), issue('CATS-1', { summary: '親', isEpic: true })];
+  assert.deepEqual(shape(groupIssues(withEpic, by('epic'))), [['CATS-1 親', ['CATS-2', 'CATS-1']]]);
   assert.deepEqual(shape(groupIssues(issues, by('project'))), [['CATS', ['CATS-2', 'CATS-4']], ['LPO', ['LPO-3']]]);
 });

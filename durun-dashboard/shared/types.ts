@@ -113,6 +113,8 @@ export type JiraIssue = {
   labels?: string[];
   reporter?: string;
   dueDate?: string;
+  /** 課題がエピックのとき true。 */
+  isEpic?: boolean;
 };
 
 /** 課題のキーとして通す形。サーバーは JIRA の REST の URL に埋めるので、ほかの文字を通さない。 */

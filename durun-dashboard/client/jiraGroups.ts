@@ -4,9 +4,14 @@ import type { JiraIssue } from '../shared/types.ts';
 /** 課題を分ける属性。of は課題の入る組の名前で、値の無い課題は undefined を返し、none の名前の組にまとめる。 */
 export type Grouping = { key: string; label: string; none: string; of: (issue: JiraIssue) => string | undefined };
 
-/** ponytail: エピックは親の課題で代えるので、サブタスクは親のストーリーなどでまとまる。サブタスクもエピックでまとめたくなったら、親の親を読む。 */
+/**
+ * 課題の属するエピック。エピックそのものは、子の課題と同じ組に入るよう、自分をエピックとする。
+ * ponytail: ほかの課題は親の課題で代えるので、サブタスクは親のストーリーなどでまとまる。サブタスクもエピックでまとめたくなったら、親の親を読む。
+ */
+export const epicOf = (i: JiraIssue): { key: string; summary?: string } | undefined => (i.isEpic ? i : i.parent);
+
 export const GROUPINGS: Grouping[] = [
-  { key: 'epic', label: 'エピック', none: 'エピックなし', of: (i) => i.parent && [i.parent.key, i.parent.summary].filter(Boolean).join(' ') },
+  { key: 'epic', label: 'エピック', none: 'エピックなし', of: (i) => { const e = epicOf(i); return e && [e.key, e.summary].filter(Boolean).join(' '); } },
   { key: 'status', label: 'ステータス', none: 'ステータスなし', of: (i) => i.status },
   { key: 'dueDate', label: '期限', none: '期限なし', of: (i) => i.dueDate },
   { key: 'assignee', label: '担当者', none: '未割り当て', of: (i) => i.assignee },

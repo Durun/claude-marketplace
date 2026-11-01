@@ -5,7 +5,7 @@ import { api, attempt } from './api.ts';
 import { type Control, floatUp } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
-import { GROUPINGS, type Grouping, type IssueGroup, groupIssues } from './jiraGroups.ts';
+import { GROUPINGS, type Grouping, type IssueGroup, epicOf, groupIssues } from './jiraGroups.ts';
 import { JIRA_KEY } from './JiraView.tsx';
 import type { WidgetSettings } from './layout.ts';
 import { ARROW_STEP, moveTo } from './order.ts';
@@ -180,9 +180,8 @@ const GroupName = ({ by, group }: { by: Grouping; group: IssueGroup }) => {
   if (!issue || by.of(issue) === undefined) return <>{group.name}</>;
   if (by.key === 'status') return <Chip tone={CATEGORY_TONE[issue.statusCategory ?? '']}>{group.name}</Chip>;
   if (by.key === 'priority') return <Chip tone={PRIORITY_TONE[group.name]}>{group.name}</Chip>;
-  if (by.key === 'epic' && issue.parent) {
-    return <span class="jira-parent" title={issue.parent.summary} onClick={openParent(issue.parent.key)}>{group.name}</span>;
-  }
+  const epic = by.key === 'epic' && epicOf(issue);
+  if (epic) return <span class="jira-parent" title={epic.summary} onClick={openParent(epic.key)}>{group.name}</span>;
   return <>{group.name}</>;
 };
 

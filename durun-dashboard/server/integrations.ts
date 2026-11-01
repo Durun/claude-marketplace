@@ -517,13 +517,14 @@ type JiraSearchBody = {
       labels?: string[];
       reporter?: { displayName?: string } | null;
       duedate?: string | null;
+      issuetype?: { hierarchyLevel?: number };
     };
   }[];
   nextPageToken?: string;
   errorMessages?: string[];
 };
 
-const SEARCH_FIELDS = 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate';
+const SEARCH_FIELDS = 'summary,status,assignee,updated,priority,parent,labels,reporter,duedate,issuetype';
 
 /**
  * JQL で課題を探す。fields で読む項目を絞れる。JQL の誤りなどで探せないときは、JIRA が返した理由を投げる。
@@ -555,11 +556,13 @@ export const searchJira = async (jql: string, max: number, fields = SEARCH_FIELD
     labels: f?.labels?.length ? f.labels : undefined,
     reporter: f?.reporter?.displayName,
     dueDate: f?.duedate ?? undefined,
+    // JIRA の課題の階層では、エピックが 1、ストーリーやタスクが 0、サブタスクが -1。
+    isEpic: f?.issuetype?.hierarchyLevel === 1 || undefined,
   }));
 };
 
 /** JIRA Issues のウィジェットに並べる課題。 */
-export const jiraList = (jql: string, max: number): Promise<JiraIssue[]> => cached(`jira-search:${max} ${jql}`, { maxAge: JIRA_MAX_AGE }, () => searchJira(jql, max));
+export const jiraList = (jql: string, max: number): Promise<JiraIssue[]> => cached(`jira-search-v2:${max} ${jql}`, { maxAge: JIRA_MAX_AGE }, () => searchJira(jql, max));
 
 const JIRA_MINE = 'assignee = currentUser() OR reporter = currentUser()';
 // JIRA の検索は、キーだけなら 1 回でこの件数まで返す。古い課題しか無いスペースも数えるよう、自分の課題はキーだけをこの件数まで読む。
@@ -669,7 +672,7 @@ const jiraFetch = async <T,>(apiPath: string, init?: RequestInit): Promise<T> =>
 };
 
 /** 課題の画面に出す中身。コメントは古い順に、子の課題（Epic に属する課題やサブタスク）は作った順に並べる。 */
-export const jiraDetail = (key: string, fresh = false): Promise<JiraDetail> => cached(`jira:${key}`, { maxAge: JIRA_MAX_AGE, fresh }, () => readJiraDetail(key));
+export const jiraDetail = (key: string, fresh = false): Promise<JiraDetail> => cached(`jira-v2:${key}`, { maxAge: JIRA_MAX_AGE, fresh }, () => readJiraDetail(key));
 
 const readJiraDetail = async (key: string): Promise<JiraDetail> => {
   const fields = 'summary,status,assignee,reporter,priority,parent,labels,duedate,updated,description,comment';
@@ -704,14 +707,14 @@ const readJiraDetail = async (key: string): Promise<JiraDetail> => {
 export const transitionJira = async (key: string, id: string): Promise<void> => {
   await jiraFetch(`issue/${key}/transitions`, { method: 'POST', body: JSON.stringify({ transition: { id } }) });
   refreshedAt = Date.now();
-  forgetCached(`jira-issue-v2:${key}`, `jira:${key}`, 'jira-refs', /^jira-search:/);
+  forgetCached(`jira-issue-v2:${key}`, `jira-v2:${key}`, 'jira-refs', /^jira-search-v2:/);
 };
 
 /** 課題にコメントを投稿する。改行で区切った行を、それぞれ段落にする。 */
 export const postJiraComment = async (key: string, text: string): Promise<void> => {
   const content = text.split('\n').map((line) => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] }));
   await jiraFetch(`issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body: { type: 'doc', version: 1, content } }) });
-  forgetCached(`jira:${key}`);
+  forgetCached(`jira-v2:${key}`);
 };
 
 /** URL が JIRA の課題の画面なら、その課題のキー。 */

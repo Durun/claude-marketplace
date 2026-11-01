@@ -13,19 +13,19 @@ process.env.JIRA_API_TOKEN = 'token';
 const { adfText, badgeOf, jiraDetail, jiraKeyOfUrl, jiraRefs, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
 const { pageTitleOf } = await import('../server/pageTitle.ts');
 
-test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限つきで返す', async (t) => {
+test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限、エピックかどうかつきで返す', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     assert.match(url, /^https:\/\/jira\.example\/rest\/api\/3\/search\/jql\?jql=project\+%3D\+PROJ&maxResults=5&/);
     return Response.json({
       issues: [
-        { key: 'PROJ-1', fields: { summary: '直す', status: { name: '進行中', statusCategory: { key: 'indeterminate' } }, assignee: { displayName: '山田' }, updated: '2026-10-07T12:57:27.228+0900', priority: { name: 'High' }, parent: { key: 'PROJ-9', fields: { summary: '親の課題' } }, labels: ['proj'], reporter: { displayName: '佐藤' }, duedate: '2026-10-31' } },
-        { key: 'PROJ-2', fields: { summary: '誰も持っていない', status: { name: '未着手', statusCategory: { key: 'new' } }, assignee: null } },
+        { key: 'PROJ-1', fields: { summary: '直す', status: { name: '進行中', statusCategory: { key: 'indeterminate' } }, assignee: { displayName: '山田' }, updated: '2026-10-07T12:57:27.228+0900', priority: { name: 'High' }, parent: { key: 'PROJ-9', fields: { summary: '親の課題' } }, labels: ['proj'], reporter: { displayName: '佐藤' }, duedate: '2026-10-31', issuetype: { hierarchyLevel: 0 } } },
+        { key: 'PROJ-2', fields: { summary: '誰も持っていない', status: { name: '未着手', statusCategory: { key: 'new' } }, assignee: null, issuetype: { hierarchyLevel: 1 } } },
       ],
     });
   });
   assert.deepEqual(await searchJira('project = PROJ', 5), [
-    { key: 'PROJ-1', url: 'https://jira.example/browse/PROJ-1', summary: '直す', status: '進行中', statusCategory: 'indeterminate', assignee: '山田', updatedAt: Date.parse('2026-10-07T03:57:27.228Z'), priority: 'High', parent: { key: 'PROJ-9', summary: '親の課題' }, labels: ['proj'], reporter: '佐藤', dueDate: '2026-10-31' },
-    { key: 'PROJ-2', url: 'https://jira.example/browse/PROJ-2', summary: '誰も持っていない', status: '未着手', statusCategory: 'new', assignee: undefined, updatedAt: undefined, priority: undefined, parent: undefined, labels: undefined, reporter: undefined, dueDate: undefined },
+    { key: 'PROJ-1', url: 'https://jira.example/browse/PROJ-1', summary: '直す', status: '進行中', statusCategory: 'indeterminate', assignee: '山田', updatedAt: Date.parse('2026-10-07T03:57:27.228Z'), priority: 'High', parent: { key: 'PROJ-9', summary: '親の課題' }, labels: ['proj'], reporter: '佐藤', dueDate: '2026-10-31', isEpic: undefined },
+    { key: 'PROJ-2', url: 'https://jira.example/browse/PROJ-2', summary: '誰も持っていない', status: '未着手', statusCategory: 'new', assignee: undefined, updatedAt: undefined, priority: undefined, parent: undefined, labels: undefined, reporter: undefined, dueDate: undefined, isEpic: true },
   ]);
 });
 
