@@ -31,6 +31,7 @@ import {
   type UndoState,
 } from './flChanges.ts';
 import { GopherError, GopherLink, type GopherTool } from './flGopher.ts';
+import { backupFileName, backupPlan, projectFileOf } from './flBackup.ts';
 import { appendLog, type FlLogEvent, logFilePath } from './flLogFile.ts';
 import { openMidi, type MidiLink } from './flMidi.ts';
 import { platform } from './platform.ts';
@@ -103,6 +104,8 @@ type Summary = {
   counts: number[];
   /** 前面のプラグインで、前に読んでから変わったパラメーター。中身のスクリプトが 0.4.0 より古いと無い。 */
   plugin?: PluginChanges | null;
+  /** general.getChangedFlag()。0 は保存してから変わっていない、1 と 2 は保存していない変更がある。 */
+  changed?: number;
 };
 
 /**
@@ -161,6 +164,12 @@ let addedChannels: number[] = [];
 let removal: (FlRemoval & { resolve: (allow: boolean) => void }) | undefined;
 /** セッションごとの、fl_changes とフックで届けた記録の番号。 */
 const cursors = new Map<string, number>();
+/** 保存していない変更に、エージェントの変更が混ざっているか。FL が保存してから変わっていない（changed が 0）と答えたら外す。 */
+let agentUnsaved = false;
+/** 最後にバックアップを取ったか、取れないと分かった時刻。まだなら undefined で、次にエージェントが書き込む前に取る。 */
+let backedUpAt: number | undefined;
+/** 写したファイルの、写したときの更新時刻と大きさ。変わっていなければ、もう一度は写さない。 */
+const lastCopied = new Map<string, string>();
 
 const versionOf = (file: string): string | undefined => {
   try {
@@ -427,6 +436,8 @@ const forgetValues = (): void => {
 const resetProject = (): void => {
   forgetValues();
   addedChannels = [];
+  agentUnsaved = false;
+  backedUpAt = undefined;
 };
 
 const songOf = (s: Summary): SongState => ({ tempo: s.tempo, playing: s.playing, recording: s.recording });
@@ -617,6 +628,8 @@ const tick = async (): Promise<void> => {
     }
     if (!hello) await sayHello();
     const prev = mirror.summary;
+    // 人間が保存したら、エージェントの変更も人間が確かめて保存したものとみなす。
+    if (s.changed === 0) agentUnsaved = false;
     for (const c of observe(s)) records.add(c, 'human');
     const focusChanged = !prev || JSON.stringify(prev.focus) !== JSON.stringify(s.focus) || prev.channel !== s.channel || prev.mixer !== s.mixer || prev.pattern !== s.pattern || prev.playing !== s.playing || prev.undo[2] !== s.undo[2];
     // 元に戻す履歴が動いたら、全部を読み直す。読み直しで見つけた変化と合わせて、履歴の変化を記録にする。
@@ -908,6 +921,96 @@ const pushAgentOp = (via: string, changes: FlChange[]): void => {
 /** エージェントに渡す、変わった値の行。記録と同じく、生の値の JSON にする。 */
 const changeLines = (changes: FlChange[]): string[] => changes.map((c) => JSON.stringify(c));
 
+// ─── バックアップ ─────────────────────────────────────────────────────
+
+/** プロジェクトのバックアップを置くフォルダー。ユーザーのフォルダーの外に、プロジェクトの名前ごとに分けて置く。 */
+const BACKUP_DIR = path.join(LOG_DIR, 'backups');
+/** 上書き保存が終わるのを待つ時間と、確かめる間隔。 */
+const SAVE_WAIT_MS = 15_000;
+const SAVE_POLL_MS = 250;
+
+const fileStamp = (file: string): string | undefined => {
+  try {
+    const s = fs.statSync(file);
+    return `${s.mtimeMs}:${s.size}`;
+  } catch {
+    return undefined;
+  }
+};
+
+/** 人間の操作を最後に記録した時刻。 */
+const lastHumanAt = (): number => records.records.findLast((r) => r.who === 'human')?.at ?? 0;
+
+/** file をバックアップのフォルダーに写す。前に写したときから変わっていなければ、写さない。写した先を返す。 */
+const copyBackup = (file: string, name: string, kind: 'saved' | 'before', at: number): string | undefined => {
+  const stamp = fileStamp(file);
+  if (!stamp) throw new Error(`「${file}」を読めません`);
+  if (lastCopied.get(file) === stamp) return undefined;
+  const dest = path.join(BACKUP_DIR, name, backupFileName(name, at, kind));
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(file, dest);
+  lastCopied.set(file, stamp);
+  return dest;
+};
+
+/** 上書き保存が終わるのを待つ。FL が保存してから変わっていないと答え、ファイルが書き換わったら終わり。 */
+const waitSaved = async (file: string, before: string | undefined): Promise<boolean> => {
+  for (const end = Date.now() + SAVE_WAIT_MS; Date.now() < end; await new Promise((r) => setTimeout(r, SAVE_POLL_MS))) {
+    const r = await request({ op: 'changed' }, SUMMARY_TIMEOUT_MS).catch(() => undefined);
+    if (r?.changed === 0 && fileStamp(file) !== before) return true;
+  }
+  return false;
+};
+
+/**
+ * エージェントが FL に書き込む前に、プロジェクトのバックアップを取る（手順は flBackup.ts）。exclusive の中で呼ぶ。
+ * 取ったファイルと省いた理由をログに残し、ツールの結果に添える文を返す。何もしなかったら undefined。失敗しても、エージェントの操作は止めない。
+ */
+const backupBeforeWrite = async (): Promise<string | undefined> => {
+  if (!link || readOnly) return undefined;
+  const s = mirror.summary;
+  const plan = backupPlan({ changed: s?.changed, humanSinceBackup: backedUpAt === undefined || lastHumanAt() > backedUpAt, agentUnsaved, recording: s?.recording === true });
+  if (!plan) return undefined;
+  const at = Date.now();
+  backedUpAt = at;
+  const project = projectFileOf(await platform.flProjectHints(Number.parseInt(hello?.fl ?? '', 10)), userData && path.join(userData, 'Projects'));
+  const files: string[] = [];
+  const notes: string[] = [];
+  let failed = false;
+  if (project.kind === 'untitled') notes.push('名前の無いプロジェクトなので、バックアップを取らなかった（上書き保存すると、FL が保存のダイアログを出して止まる）。FL の自動保存に任せる');
+  else if (project.kind === 'unknown') {
+    failed = true;
+    notes.push(`開いているプロジェクトのファイルが分からないので、バックアップを取らなかった（${project.why}）`);
+  } else {
+    try {
+      const saved = copyBackup(project.file, project.name, 'saved', at);
+      if (saved) files.push(saved);
+      // 上書き保存の要求（save と changed）は、中身のスクリプトの 0.5.0 から受ける。
+      if (plan.save && hello?.core !== BUNDLED_CORE) {
+        failed = true;
+        notes.push(`FL の中のスクリプトが ${hello?.core ?? '?'} 版で古いので、上書き保存しなかった（FL Connect のウィンドウの「Install Script」で新しくなる）`);
+      } else if (plan.save) {
+        const before = fileStamp(project.file);
+        await request({ op: 'save' }, READ_TIMEOUT_MS);
+        const copied = (await waitSaved(project.file, before)) ? copyBackup(project.file, project.name, 'before', at) : undefined;
+        if (copied) files.push(copied);
+        else {
+          failed = true;
+          notes.push('上書き保存が終わらなかったので、エージェントが触る直前の状態は写せなかった');
+        }
+      }
+    } catch (e) {
+      failed = true;
+      notes.push(`バックアップに失敗した: ${(e as Error).message}`);
+    }
+    if (plan.note) notes.push(plan.note);
+  }
+  if (!files.length && !notes.length) return undefined;
+  const shown = files.map((f) => platform.displayPath(f));
+  addLog({ tool: 'fl_backup', args: { project: project.kind === 'file' ? platform.displayPath(project.file) : project.kind }, detail: shown.join('\n') || undefined, output: notes.join('\n') || undefined, ok: !failed });
+  return [shown.length ? `書き込む前に、プロジェクトのバックアップを取った:\n${shown.join('\n')}` : '', ...notes].filter(Boolean).join('\n');
+};
+
 /** fl_python：AI が書いた Python を FL の中で動かす。前と後を読み、変わった値をエージェントの変更として記録する。 */
 const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> => {
   const code = typeof args.code === 'string' ? args.code : '';
@@ -917,6 +1020,8 @@ const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> =>
     // 前に読んでから人間が変えた値を、人間の記録にしてから動かす。
     const used = usedTracks();
     await refresh(ROW_SECTIONS, 'human', undefined, { sends: used });
+    // コードが読むだけかは動かすまで分からないので、書き込むものとしてバックアップを取る。
+    const backup = await backupBeforeWrite();
     let reply: Record<string, unknown>;
     try {
       if (!link) throw new Error('MIDI のポートを閉じました');
@@ -925,13 +1030,15 @@ const flPython = async (args: Record<string, unknown>): Promise<FlToolResult> =>
       return fail(`${(e as Error).message}。FL の画面が固まっていないか、人間に確かめてもらってください。`);
     }
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_python', { sends: used });
+    if (changes.length) agentUnsaved = true;
     pushAgentOp('fl_python', changes);
     const ok = reply.ok === true;
     const stdout = String(reply.stdout ?? '');
     const result = reply.result === null || reply.result === undefined ? '' : JSON.stringify(reply.result, null, 2);
     addLog({ tool: 'fl_python', args, output: [stdout, ok ? result : String(reply.error ?? '')].filter(Boolean).join('\n'), ok, changes });
     const parts = [
-      ok ? `動いた（${String(reply.ms)} ms）。` : `例外で止まった（${String(reply.ms)} ms）。例外より前に変えた値は、そのまま残っている。\n${String(reply.error ?? '')}`,
+      backup ?? '',
+      ok ?`動いた（${String(reply.ms)} ms）。` : `例外で止まった（${String(reply.ms)} ms）。例外より前に変えた値は、そのまま残っている。\n${String(reply.error ?? '')}`,
       stdout ? `print の出力:\n${stdout}` : '',
       result ? `result:\n${result}` : '',
       changes.length ? `変わった値（${changes.length} 件。fl_undo で戻せる。FL の元に戻す履歴にも、API の 1 回の呼び出しごとに残る。${RECORD_FORMAT}）:\n${changeLines(changes).join('\n')}` : '名前、色、音量、パン、ミュート、ソロ、送り先は変わっていない。',
@@ -963,6 +1070,7 @@ const flUndo = async (args: Record<string, unknown>): Promise<FlToolResult> => {
     if (lines.length && link) {
       const reply = await link.request({ op: 'exec', code: lines.join('\n'), limit: MAX_EXEC_LIMIT_SEC }, (MAX_EXEC_LIMIT_SEC + 5) * 1000);
       changes = (await refresh(ROW_SECTIONS, 'agent', 'fl_undo', { sends: used })).changes;
+      if (changes.length) agentUnsaved = true;
       if (reply.ok !== true) skipped.push(`戻す途中で例外が起きた: ${String(reply.error ?? '')}`);
     }
     addLog({ tool: 'fl_undo', args, detail: lines.join('\n'), output: skipped.join('\n') || undefined, ok: !skipped.length, changes });
@@ -1029,13 +1137,16 @@ const removeChannels = async (sessionId: string, args: Record<string, unknown>, 
     await refresh(ROW_SECTIONS, 'human');
     const now = mirror.channels ?? [];
     if (channels.some((c) => now[c.position - 1]?.name !== c.name)) return fail('確かめている間にチャンネルの並びが変わったので、消しませんでした。もう一度呼んでください。');
+    // 消したチャンネルは元に戻す履歴に残らないので、戻すにはバックアップが要る。
+    const backup = await backupBeforeWrite();
     const r = await gopher!.call('remove_channels', { target_channels: indices.map((i) => i + 1).join(',') }).catch((e: Error) => e);
-    if (r instanceof Error) return fail(r.message);
+    if (r instanceof Error) return fail([backup, r.message].filter(Boolean).join('\n'));
+    agentUnsaved = true;
     const { changes } = await refresh(ROW_SECTIONS, 'agent', 'fl_gopher:remove_channels');
     // FL は、チャンネルが 0 個になると空の Sampler を 1 つ足す。消したのが既定の Sampler だけなら、前と後の並びが同じになり、変化として見えない。
     const refilled = indices.length === now.length ? '\nチャンネルを全部消したので、FL が空の Sampler を 1 つ足した（チャンネルが 0 個になると、FL が足す）。' : '';
     addLog({ tool: 'fl_gopher', args: { tool: 'remove_channels', arguments: args }, detail: JSON.stringify(channels), output: `${r.text}${refilled}`, ok: !r.isError, changes });
-    return { text: `${r.text}\n消したチャンネルは、FL の元に戻す履歴に残らないので、Ctrl+Z では戻りません。${refilled}`, isError: r.isError };
+    return { text: `${backup ? `${backup}\n\n` : ''}${r.text}\n消したチャンネルは、FL の元に戻す履歴に残らないので、Ctrl+Z では戻りません。${refilled}`, isError: r.isError };
   });
 };
 
@@ -1072,18 +1183,21 @@ const flGopher = async (sessionId: string, args: Record<string, unknown>, signal
   const track = write && !midiRefusal();
   return exclusive(async () => {
     if (track) await refresh(ROW_SECTIONS, 'human');
+    const backup = write ? await backupBeforeWrite() : undefined;
     const r = await gopher!.call(tool, toolArgs).catch((e: Error) => e);
     if (r instanceof Error) {
       if (r instanceof GopherError && r.state === 'busy') setGopher('busy', r.message);
-      return fail(r.message);
+      return fail([backup, r.message].filter(Boolean).join('\n'));
     }
     if (gopherStatus === 'busy') setGopher('connected');
+    // ② の道で何が変わったかは、① の道で読めるものしか分からないので、書き込むツールを呼んだら変えたものとみなす。
+    if (write) agentUnsaved = true;
     const changes = track ? (await refresh(ROW_SECTIONS, 'agent', `fl_gopher:${tool}`)).changes : [];
     if (tool === 'add_channel') addedChannels.push(...changes.filter((c) => c.section === 'channels' && c.field === 'added').map((c) => c.index));
     pushAgentOp(`fl_gopher:${tool}`, changes);
     if (write) addLog({ tool: 'fl_gopher', args, output: r.text, ok: !r.isError, changes });
     const notes = changes.length ? `\n\n変わった値（${RECORD_FORMAT}）:\n${changeLines(changes).join('\n')}` : '';
-    return { text: `${r.text}（${r.ms} ms）${notes}`, isError: r.isError };
+    return { text: `${backup ? `${backup}\n\n` : ''}${r.text}（${r.ms} ms）${notes}`, isError: r.isError };
   });
 };
 
@@ -1095,13 +1209,16 @@ const flPianoroll = async (args: Record<string, unknown>): Promise<FlToolResult>
   const why = gopherRefusal();
   if (why) return fail(`ピアノロールのスクリプトは、今は ② の道（FL 2026 の Gopher の中の口）でだけ動かせます。${why}`);
   return exclusive(async () => {
+    const backup = await backupBeforeWrite();
     const r = await gopher!.call('run_piano_roll_script', { source: code }).catch((e: Error) => e);
-    if (r instanceof Error) return fail(r.message);
+    if (r instanceof Error) return fail([backup, r.message].filter(Boolean).join('\n'));
+    // ピアノロールのスクリプトで書いたノートは読めないので、動かしたら変えたものとみなす。
+    agentUnsaved = true;
     // FL の元に戻す履歴が動いていたら、人間の操作と読み違えないよう、エージェントのものとして覚え直す。
     if (!midiRefusal()) await refresh([], 'agent', 'fl_pianoroll').catch(() => undefined);
     addLog({ tool: 'fl_pianoroll', args, output: r.text, ok: !r.isError });
     return {
-      text: `${r.text}（${r.ms} ms）\nFL は、スクリプトが例外を投げても「Script executed without errors」と返し、画面にもエラーを出さない。ノートが思ったとおりになったかは、人間に FL の画面で確かめてもらうこと。ピアノロールのスクリプトで書いたノートは FL の元に戻す履歴に残らず、そのあと人間が Ctrl+Z を押すと、ノートは残ったまま、その前の操作が戻る。`,
+      text: `${backup ? `${backup}\n\n` : ''}${r.text}（${r.ms} ms）\nFL は、スクリプトが例外を投げても「Script executed without errors」と返し、画面にもエラーを出さない。ノートが思ったとおりになったかは、人間に FL の画面で確かめてもらうこと。ピアノロールのスクリプトで書いたノートは FL の元に戻す履歴に残らず、そのあと人間が Ctrl+Z を押すと、ノートは残ったまま、その前の操作が戻る。`,
       isError: r.isError,
     };
   });

@@ -16,6 +16,16 @@ export type Run = (file: string, args: string[]) => Promise<string>;
 const exec = promisify(execFile);
 const realRun: Run = async (file, args) => (await exec(file, args)).stdout;
 
+/** FL Studio の、開いているプロジェクトを当てる手がかり。title は FL のウィンドウの題名、recent は FL が覚えている最近のファイル（新しい順）。 */
+export type FlProjectHints = { title: string; recent: string[] };
+
+/** PowerShell が JSON で書いた手がかりを読む。最近のファイルが 1 つでも、空でも、配列にそろえる。 */
+export const parseFlProjectHints = (json: string): FlProjectHints => {
+  const v = JSON.parse(json) as { title?: unknown; recent?: unknown };
+  const recent = Array.isArray(v.recent) ? v.recent : v.recent === undefined || v.recent === null ? [] : [v.recent];
+  return { title: typeof v.title === 'string' ? v.title : '', recent: recent.filter((f): f is string => typeof f === 'string' && f !== '') };
+};
+
 /** ディレクトリの一覧とファイルの中身を読む。テストでは偽物に差し替える。 */
 export type Files = { list: (dir: string) => string[]; read: (file: string) => string };
 
@@ -73,6 +83,11 @@ export type Platform = {
   isFlRunning: (run?: Run) => Promise<boolean | undefined>;
   /** FL Connect の MIDI のループバック（FL Connect (A) と (B)）を作り、設定に保存するコマンド。Windows MIDI Services の無い OS では undefined。 */
   midiLoopbackCommand: (env: NodeJS.ProcessEnv) => { file: string; args: string[] } | undefined;
+  /**
+   * 開いているプロジェクトを当てる手がかり。FL の API はプロジェクトのファイルの場所を返さないので、FL のウィンドウの題名と、FL が覚えている最近のファイルを読む。
+   * major は FL の版の上の桁（FL 2026 なら 26）。読めない OS と、読めなかったときは undefined。
+   */
+  flProjectHints: (major: number, run?: Run) => Promise<FlProjectHints | undefined>;
 };
 
 const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
@@ -129,6 +144,8 @@ const posix = {
   flStudioPath: () => undefined,
   isFlRunning: async () => undefined,
   midiLoopbackCommand: () => undefined,
+  // ponytail: Mac 版の FL が最近のファイルをどこに覚えているかは調べていない。広げるなら、FL の設定の plist を読む。
+  flProjectHints: async () => undefined,
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -225,6 +242,24 @@ const win32: Platform = {
     file: path.win32.join(env.PROGRAMFILES ?? 'C:\\Program Files', 'Windows MIDI Services', 'Tools', 'midi.exe'),
     args: ['loopback', 'create', '--root-name', 'FL Connect', '--unique-identifier', 'flconnect', '--save-to-config'],
   }),
+  // FL は最近のファイルを、レジストリの HKCU\Software\Image-Line\FL Studio <版>\MRU に、0、1、… の名前で新しい順に覚えている。
+  // reg.exe はコンソールのコードページで書くので日本語のパスが化ける。PowerShell に UTF-8 の JSON で書かせる。
+  flProjectHints: async (major, run = realRun) => {
+    if (!Number.isInteger(major)) return undefined;
+    const script = [
+      '[Console]::OutputEncoding = [Text.Encoding]::UTF8',
+      "$p = Get-Process -Name 'FL64*' -ErrorAction SilentlyContinue | Select-Object -First 1",
+      `$k = Get-ItemProperty 'HKCU:\\Software\\Image-Line\\FL Studio ${major}\\MRU' -ErrorAction SilentlyContinue`,
+      '$r = @()',
+      'if ($k) { for ($i = 0; $k.PSObject.Properties[[string]$i]; $i++) { $r += [string]$k.([string]$i) } }',
+      "ConvertTo-Json -Compress @{ title = if ($p) { $p.MainWindowTitle } else { '' }; recent = $r }",
+    ].join('; ');
+    try {
+      return parseFlProjectHints(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]));
+    } catch {
+      return undefined;
+    }
+  },
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

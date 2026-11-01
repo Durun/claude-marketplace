@@ -117,5 +117,10 @@ export const describeAgent = (e: FlAgentEntry): string => {
   if (e.tool === 'fl_python' || e.tool === 'fl_pianoroll') return `${e.tool}: ${firstLine(args.code)}`;
   if (e.tool === 'fl_gopher') return `fl_gopher: ${String(args.tool ?? '')}`;
   if (e.tool === 'fl_undo') return `fl_undo: ${String(args.steps ?? 1)} 回分の操作を戻す`;
+  if (e.tool === 'fl_backup') {
+    // detail は写したファイルを 1 行に 1 つ、output は省いた手順とその理由。
+    const count = e.detail ? e.detail.split('\n').length : 0;
+    return count ? `エージェントが書き込む前に、プロジェクトのバックアップを取った（${count} 個のファイル）` : `バックアップを取らなかった: ${firstLine(e.output)}`;
+  }
   return e.tool;
 };

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
 import { toMemoryUsage } from '../server/memory.ts';
-import { claudeCommand, type Files, hostsInTailscaleStatus, ownerInNetstat, type Platform, platformFor, type Run } from '../server/platform.ts';
+import { claudeCommand, type Files, hostsInTailscaleStatus, ownerInNetstat, parseFlProjectHints, type Platform, platformFor, type Run } from '../server/platform.ts';
 
 const NETSTAT = `
 アクティブな接続
@@ -264,6 +264,18 @@ test('FL Connect は、Windows 以外では FL のユーザーデータをドキ
     assert.equal(await p.isFlRunning(), undefined);
     assert.match((await p.documentsDir()) ?? '', /Documents$/);
   }
+});
+
+test('FL Connect は、Windows では開いているプロジェクトの手がかりを、FL のウィンドウの題名とレジストリの最近のファイルから読み、ほかの OS では読まない', async () => {
+  const hints = fakeRun({ 'powershell.exe': '{"recent":["D:\\\\FL\\\\曲.flp","D:\\\\FL\\\\old.flp"],"title":"曲 - FL Studio 2026"}\r\n' });
+  assert.deepEqual(await platformFor('win32').flProjectHints(26, hints.run), { title: '曲 - FL Studio 2026', recent: ['D:\\FL\\曲.flp', 'D:\\FL\\old.flp'] });
+  assert.match(hints.calls[0] ?? '', /HKCU:\\Software\\Image-Line\\FL Studio 26\\MRU/);
+  assert.equal(await platformFor('win32').flProjectHints(26, async () => Promise.reject(new Error('no powershell'))), undefined);
+  assert.equal(await platformFor('win32').flProjectHints(Number.NaN, hints.run), undefined);
+  // PowerShell は、最近のファイルが 1 つなら配列にしないことがある。
+  assert.deepEqual(parseFlProjectHints('{"recent":"D:\\\\a.flp","title":"a - FL Studio 2026"}'), { title: 'a - FL Studio 2026', recent: ['D:\\a.flp'] });
+  assert.deepEqual(parseFlProjectHints('{"title":"FL Studio 2026"}'), { title: 'FL Studio 2026', recent: [] });
+  for (const name of ['darwin', 'other']) assert.equal(await platformFor(name).flProjectHints(26), undefined);
 });
 
 test('claude は、偽物が指されていれば node でそれを動かし、なければ PATH の claude を起動する', () => {

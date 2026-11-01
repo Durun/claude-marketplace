@@ -1,5 +1,5 @@
 # durun-dashboard の FL Connect の中身。入口の device_FLConnect.py が読み込み、reload の要求で読み直す。
-# 受けるのは 4 つ：状態を読む（summary、read、params）、起動したときの設定を読む（info）、AI が書いた Python を動かす（exec）、echo。
+# 受けるのは 5 つ：状態を読む（summary、read、params、changed）、起動したときの設定を読む（info）、AI が書いた Python を動かす（exec）、プロジェクトを上書き保存する（save）、echo。
 # イベントの番号（REC）を受ける関数は、無い番号を渡すと FL を落とすので、1 つずつ確かめた番号（REC_OFFSETS）だけを引く。
 # 読んだ値は生のまま返す。比べる、まとめる、決めるといった判断はダッシュボードのサーバーでする。
 
@@ -27,7 +27,7 @@ try:
 except ImportError:
     traceback = None
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 EXEC_LIMIT_SEC = 2.0
 MAX_EXEC_LIMIT_SEC = 10.0
 # 応答は SysEx で分けて運ぶ。print の出力と result が大きすぎると FL の主スレッドが長く止まるので、ここで切る。
@@ -458,10 +458,24 @@ def info():
     return {"ok": True, "webview2": webview2}
 
 
+def save():
+    """
+    プロジェクトを上書き保存する（Ctrl+S と同じ）。名前の無いプロジェクトでは、FL が保存のダイアログを出して止まるので、呼ぶ側で避ける。
+    status は globalTransport が返した値。changed は呼んだあとの、保存していない変更の印（0 なら保存した）。
+    """
+    status = transport.globalTransport(midi.FPT_Save, 1)
+    return {"ok": True, "status": status, "changed": general.getChangedFlag()}
+
+
 def handle(req):
     op = req.get("op")
     if op == "info":
         return info()
+    if op == "save":
+        return save()
+    if op == "changed":
+        # 保存が終わったかを確かめる、安い問い合わせ。summary は前面のプラグインの値を比べ直すので使わない。
+        return {"ok": True, "changed": general.getChangedFlag()}
     if op == "exec":
         return exec_code(req.get("code", ""), req.get("limit", EXEC_LIMIT_SEC), bool(req.get("readonly")))
     if op == "summary":
