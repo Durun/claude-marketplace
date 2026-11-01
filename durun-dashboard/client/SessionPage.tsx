@@ -18,7 +18,7 @@ import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from '.
 import { NEW_SESSION_ICON, NEW_SESSION_TITLE, NewSessionIcon, openNewSession } from './Home.tsx';
 import { pickInWidget, reloadSnapshot, useFetch, usePicked, useWaitCursor } from './hooks.ts';
 import { COLS, ROWS, type Layout } from './layout.ts';
-import { OutboxList, asksOf } from './Messaging.tsx';
+import { COMPLETION_ID, CompletionMenu, OutboxList, asksOf, useCompletion } from './Messaging.tsx';
 import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
 import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
@@ -122,10 +122,12 @@ const Removable = ({ s, url, children }: { s: Session; url: string; children: Co
   </span>
 );
 
-/** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。 */
+/** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。#番号と課題のキーは、メッセージ欄と同じく補完する。 */
 const BadgeInput = ({ s }: { s: Session }) => {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const completion = useCompletion({ sessionId: s.id, badges: s, forBadge: true }, input, setValue);
   const add = async (e: Event) => {
     e.preventDefault();
     const url = value.trim();
@@ -139,14 +141,26 @@ const BadgeInput = ({ s }: { s: Session }) => {
   return (
     <form class="badge-add" onSubmit={add}>
       <input
+        ref={input}
         class="input input-sm"
         value={value}
         readOnly={busy}
         aria-label="バッジに登録する URL、#番号、課題のキー"
         title="PR、Issue、JIRA の課題の URL か、このリポジトリの PR や Issue の #番号か、PROJ-123 のような課題のキーを打って Enter を押すと、バッジに登録します。"
         placeholder={busy ? '登録しています…' : 'URL、#番号、課題のキー'}
-        onInput={(e) => setValue(e.currentTarget.value)}
+        aria-autocomplete="list"
+        aria-controls={completion.menu ? COMPLETION_ID : undefined}
+        aria-activedescendant={completion.menu ? `completion-${completion.menu.active}` : undefined}
+        onInput={(e) => {
+          setValue(e.currentTarget.value);
+          completion.update();
+        }}
+        onKeyDown={completion.onKeyDown}
+        onKeyUp={completion.onKeyUp}
+        onClick={completion.update}
+        onBlur={completion.close}
       />
+      {completion.menu && <CompletionMenu menu={completion.menu} onPick={completion.accept} />}
     </form>
   );
 };

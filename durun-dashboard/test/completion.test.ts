@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { IssueInfo, JiraIssue, PrInfo, RepoRef, Session } from '../shared/types.ts';
-import { candidates, jiraSpaces, typedAt } from '../client/completion.ts';
+import { badgeTypedAt, candidates, jiraSpaces, typedAt } from '../client/completion.ts';
 import { type GhRefs, toRefs } from '../server/integrations.ts';
 
 const REPO = 'https://github.test/o/r';
@@ -36,6 +36,15 @@ test('typedAt は、英数字の後ろでなければ、プロジェクトキー
   assert.deepEqual(typedAt('see -12'), { mark: '-', word: '12' });
   assert.deepEqual(typedAt('次は-1'), { mark: '-', word: '1' });
   assert.equal(typedAt('2026-10'), undefined);
+});
+
+test('badgeTypedAt は、欄の全体が # の語か課題のキーのときだけ返し、URL の途中のハイフンや、/ と @ の語では返さない', () => {
+  assert.deepEqual(badgeTypedAt('#12'), { mark: '#', word: '12' });
+  assert.deepEqual(badgeTypedAt('CATS-1'), { mark: 'CATS-', word: '1' });
+  assert.deepEqual(badgeTypedAt('-'), { mark: '-', word: '' });
+  assert.equal(badgeTypedAt('https://jira.test/browse/CATS-1'), undefined);
+  assert.equal(badgeTypedAt('/rev'), undefined);
+  assert.equal(badgeTypedAt('@client'), undefined);
 });
 
 test('candidates は、# の後に何も打っていなければ、自分が作った PR と Issue を、種別と状態を添えて新しい順に出す', () => {

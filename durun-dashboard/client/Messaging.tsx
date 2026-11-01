@@ -3,7 +3,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
-import { type Badges, type Candidate, type Typed, candidates, typedAt } from './completion.ts';
+import { type Badges, type Candidate, type Typed, badgeTypedAt, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { chatIndexOf } from './delivery.ts';
 import { dateTime } from './format.ts';
@@ -52,7 +52,7 @@ const ReplySuggestions = ({ s, onPick }: { s: Session; onPick: (reply: string, r
 };
 
 const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
-const COMPLETION_ID = 'completion-menu';
+export const COMPLETION_ID = 'completion-menu';
 
 type CompletionMenuState = { items: Candidate[]; active: number };
 
@@ -61,22 +61,27 @@ type CompletionMenuState = { items: Candidate[]; active: number };
  * まだ一覧が無い新規セッションや、セッションが無い欄では、cwd で動いたセッションのものを借りる。
  * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
  * @ はセッションか cwd のファイルで、ファイルが多くても重くならないよう、サーバーに 1 文字ごとに絞らせて、上位だけを受け取る。サーバーは git の一覧を待たずに答えるので、一覧が届いたら取り直す。
+ * forBadge はバッジの欄で、#番号と課題のキーだけを補完し、登録済みのバッジは候補から除く。skills は使わないので読まない。
  */
-const useCompletion = (sessionId: string | undefined, cwd: string | undefined, badges: Badges | undefined, spaces: string[] | undefined, input: RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+export const useCompletion = (
+  { sessionId, cwd, badges, spaces, forBadge }: Pick<MessageInputProps, 'sessionId' | 'cwd' | 'badges' | 'spaces'> & { forBadge?: boolean },
+  input: RefObject<HTMLTextAreaElement | HTMLInputElement>,
+  setText: (text: string) => void,
+) => {
   const [typed, setTyped] = useState<Typed>();
   const [active, setActive] = useState(0);
-  const { data: skills = [] } = useFetch(() => api.skills({ sessionId, cwd }), [sessionId, cwd]);
+  const { data: skills = [] } = useFetch(() => (forBadge ? Promise.resolve([]) : api.skills({ sessionId, cwd })), [sessionId, cwd, forBadge]);
   const wantsRefs = typed?.mark === '#' && !!(sessionId || cwd);
   const { data: refs = [] } = useCached((fresh) => (wantsRefs ? api.repoRefs({ sessionId, cwd }, fresh) : Promise.resolve([])), [sessionId, cwd, wantsRefs]);
   const wantsIssues = !!typed?.mark.endsWith('-');
   const { data: issues = [] } = useCached((fresh) => (wantsIssues ? api.jiraRefs(fresh) : Promise.resolve([])), [wantsIssues]);
   const fileWord = typed?.mark === '@' && (sessionId || cwd) ? typed.word : undefined;
   const { data: files = [] } = useCached(() => (fileWord === undefined ? Promise.resolve([]) : api.files({ sessionId, cwd }, fileWord)), [sessionId, cwd, fileWord]);
-  const items = typed ? candidates(typed, skills, refs, issues, files, badges, spaces) : [];
+  const items = typed ? candidates(typed, skills, refs, issues, files, badges, spaces).filter((c) => !(forBadge && c.badge)) : [];
   const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {
     const el = input.current;
-    setTyped(el ? typedAt(el.value.slice(0, el.selectionStart)) : undefined);
+    setTyped(el ? (forBadge ? badgeTypedAt : typedAt)(el.value.slice(0, el.selectionStart ?? el.value.length)) : undefined);
     setActive(0);
   };
   const close = () => setTyped(undefined);
@@ -85,9 +90,9 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, b
     const el = input.current;
     if (!el || !typed) return;
     const dir = picked.label.endsWith('/');
-    const before = el.value.slice(0, el.selectionStart);
+    const before = el.value.slice(0, el.selectionStart ?? el.value.length);
     const head = `${before.slice(0, before.length - typed.mark.length - typed.word.length)}${picked.label}${dir ? '' : ' '}`;
-    const next = head + el.value.slice(el.selectionEnd);
+    const next = head + el.value.slice(el.selectionEnd ?? el.value.length);
     el.value = next;
     el.setSelectionRange(head.length, head.length);
     setText(next);
@@ -110,7 +115,7 @@ const useCompletion = (sessionId: string | undefined, cwd: string | undefined, b
   return { menu, update, accept, onKeyDown, onKeyUp, close };
 };
 
-const CompletionMenu = ({ menu, onPick }: { menu: CompletionMenuState; onPick: (picked: Candidate) => void }) => {
+export const CompletionMenu = ({ menu, onPick }: { menu: CompletionMenuState; onPick: (picked: Candidate) => void }) => {
   const list = useRef<HTMLUListElement>(null);
   useLayoutEffect(() => list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }), [menu.active]);
   return (
@@ -157,7 +162,7 @@ type MessageInputProps = {
 export const MessageInput = ({ sessionId, cwd, badges, spaces, value, setValue, placeholder, onSubmit, inputRef }: MessageInputProps) => {
   const own = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? own;
-  const completion = useCompletion(sessionId, cwd, badges, spaces, input, setValue);
+  const completion = useCompletion({ sessionId, cwd, badges, spaces }, input, setValue);
   // 入力欄の外をクリックしてもカーソル位置は残るので、そこへ入れる。
   const insert = (piece: string) => {
     const el = input.current;

@@ -1121,8 +1121,10 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
  * skills の候補は入力欄の下に重ね、送信ボタンの位置を動かさない。
  * ウィジェットの中のスクロールで切れないよう fixed で置き、anchor で入力欄に合わせる。下に収まらなければ上に出す。
  */
-.composer-field { anchor-scope: --composer; }
-.composer-field .input { anchor-name: --composer; }
+.composer-field, .badge-add { anchor-scope: --composer; }
+:is(.composer-field, .badge-add) .input { anchor-name: --composer; }
+/* バッジの欄は狭いので、候補の題名が読める幅まで広げる。欄が画面の右端に寄っていれば、左へ広げる。 */
+.badge-add .completion-menu { min-width: 360px; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline; }
 /* なんでも添付の + は、Slack と同じく入力欄の左下に重ね、文の下に余白を空けて重ならないようにする。押している間は拾えるものに枠を出して、クリックで入ることを示す。 */
 .composer-field { position: relative; }
 .composer-field .input { display: block; padding-bottom: 36px; }

@@ -23,6 +23,12 @@ export const typedAt = (before: string): Typed | undefined => {
   return m ? { mark: m[1] ?? '', word: m[2] ?? '' } : undefined;
 };
 
+/** バッジの欄の、打ちかけの語。欄には値を 1 つだけ打つので、欄の全体が # の語か課題のキーのときだけ返す。URL の途中のハイフンでは返さない。 */
+export const badgeTypedAt = (before: string): Typed | undefined => {
+  const typed = typedAt(before);
+  return typed && typed.mark !== '/' && typed.mark !== '@' && typed.mark + typed.word === before ? typed : undefined;
+};
+
 /** 名前の頭か、プラグイン名の後ろの頭に合うものを先に並べる。 */
 const matchSkills = (skills: SkillInfo[], word: string): SkillInfo[] => {
   const q = word.toLowerCase();
