@@ -391,7 +391,7 @@ textarea.input { resize: vertical; min-height: 36px; }
 /* popover で開く一覧（ヘッダーのメニューと、ダッシュボードの「追加」）。 */
 .app-menu { padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
 .app-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 5px 12px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 13px; text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
-.app-menu-item:hover { background: var(--surface-2); }
+.app-menu-item:is(:hover, :focus-visible) { background: var(--surface-2); outline: none; }
 /* 名前の左のメニュー。ボタンのすぐ下に、左端をそろえて出す。 */
 .menu-button {
   anchor-name: --app-menu; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: -8px; padding: 0;
@@ -1665,8 +1665,8 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .app-menu-submenu { border: 1px solid #0831d9; border-radius: 0; background: #fff; }
 /* メニューは画面の下端のタスクバーから開くので、選択肢は項目の下端にそろえて上へ伸ばす。 */
 [data-skin="xp"] .app-menu-submenu { top: auto; bottom: -5px; }
-[data-skin="xp"] .app-menu :is(.app-menu-item:hover, .app-menu-sub:is(:hover, :focus-within) > .app-menu-item) { background: #316ac5; color: #fff; }
-[data-skin="xp"] .app-menu-item:hover kbd { color: #fff; }
+[data-skin="xp"] .app-menu :is(.app-menu-item:hover, .app-menu-item:focus-visible, .app-menu-sub:is(:hover, :focus-within) > .app-menu-item) { background: #316ac5; color: #fff; }
+[data-skin="xp"] .app-menu-item:is(:hover, :focus-visible) kbd { color: #fff; }
 /* 足元の青い帯。XP の「ログオフ」「終了オプション」と同じく、白い文字で右に寄せる。 */
 [data-skin="xp"] .app-menu-foot { justify-content: flex-end; gap: 4px; margin: 0; padding: 5px 8px; border: 0; background: var(--menu-blue); }
 [data-skin="xp"] .app-menu-foot > .app-menu-item { color: #fff; }

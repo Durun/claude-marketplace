@@ -25,6 +25,7 @@ import { IE_KEY, InternetExplorerFloat } from './InternetExplorer.tsx';
 import { MINESWEEPER_KEY, MinesweeperFloat, SOLITAIRE_KEY, SolitaireFloat } from './Games.tsx';
 import { NOTEPAD_KEY, NotepadFloat } from './Notepad.tsx';
 import { OfflineDialog } from './OfflineDialog.tsx';
+import { lastOpened } from './opened.ts';
 import { PROOFREAD_KEY, ProofreadFloat } from './Proofread.tsx';
 import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
@@ -32,7 +33,7 @@ import { type Route, currentPage, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
 import { useRemoveFailureToasts, useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
-import { EDIT_SHORTCUT, isShortcut } from './shortcut.ts';
+import { EDIT_SHORTCUT, HOME_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
 import { FL_KEY, FlConnectFloat } from './FlConnect.tsx';
 import { Toasts } from './toast.tsx';
@@ -147,6 +148,20 @@ const App = () => {
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, [hasDashboard]);
+  // Cmd/Ctrl + H で、ホームと最後に開いたセッションを行き来する。ホームでないときは、どの画面からもホームへ移る。
+  const sessionKeys = useRef<string[]>([]);
+  sessionKeys.current = snapshot?.sessions.map((s) => `session:${s.id}`) ?? [];
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isShortcut(e, HOME_SHORTCUT)) return;
+      e.preventDefault();
+      const last = lastOpened(sessionKeys.current);
+      if (route.page !== 'home') location.hash = href.home();
+      else if (last) location.hash = href.session(last.slice('session:'.length));
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [route.page]);
   // セッションの画面をいくつものタブで開いても見分けられるよう、タブ名をセッション名にする。
   const here = route.page === 'session' ? snapshot?.sessions.find((s) => s.id === route.id) : undefined;
   useAttentionEffects(fresh, here?.name);

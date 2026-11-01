@@ -21,7 +21,7 @@ import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE
 import { useLiveReload } from './reload.ts';
 import { href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
-import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
+import { EDIT_SHORTCUT, FULLSCREEN_SHORTCUT, SEARCH_SHORTCUT, isShortcut, onDoubleTap, shortcutLabel } from './shortcut.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 import { XpPrompt } from './XpConfirm.tsx';
@@ -209,6 +209,26 @@ const NotifyButton = () => {
 
 const MENU_ID = 'app-menu';
 
+/** メニューの中を方向キーで移る。上下で同じ階層の項目を移り、右か Enter で入れ子のメニューへ入り、左で入れ子のメニューを開いた項目へ戻る。 */
+const moveInMenu = (e: KeyboardEvent) => {
+  const menu = e.currentTarget as HTMLElement;
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !menu.contains(el)) return;
+  const level = el.closest('.app-menu-submenu');
+  let next: Element | null | undefined;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const items = [...menu.querySelectorAll<HTMLElement>('.app-menu-item')].filter((i) => i.closest('.app-menu-submenu') === level && i.checkVisibility());
+    const at = items.indexOf(el);
+    next = e.key === 'ArrowDown' ? items[(at + 1) % items.length] : items[(at <= 0 ? items.length : at) - 1];
+  } else if ((e.key === 'ArrowRight' || e.key === 'Enter') && el.matches('[aria-haspopup]')) {
+    // 入れ子のメニューは、開いた項目にフォーカスがある間だけ CSS で見せるので、中の項目へフォーカスを移せる。
+    next = el.nextElementSibling?.querySelector('.app-menu-item');
+  } else if (e.key === 'ArrowLeft') next = level?.previousElementSibling;
+  if (!(next instanceof HTMLElement)) return;
+  e.preventDefault();
+  next.focus();
+};
+
 type MenuProps = { onSearch: () => void; onEdit?: () => void };
 
 /**
@@ -228,6 +248,20 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
   const toggleFullscreen = () => {
     void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
   };
+  // Cmd/Ctrl + F はブラウザのページ内検索の代わりに画面全体を切り替え、Cmd/Ctrl を 2 回叩くとメニューを開く。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isShortcut(e, FULLSCREEN_SHORTCUT)) return;
+      e.preventDefault();
+      toggleFullscreen();
+    };
+    addEventListener('keydown', onKey);
+    const stop = onDoubleTap(() => document.getElementById(MENU_ID)?.togglePopover());
+    return () => {
+      removeEventListener('keydown', onKey);
+      stop();
+    };
+  }, []);
   // Internet Explorer は先頭に固定し、エクスプローラーはお気に入りのフォルダーを選べる「マイ コンピュータ」に置くので、ほかのアプリとは並べない。
   const apps = useApps().filter((a) => a.kind !== EXPLORER_KEY && a.kind !== IE_KEY);
   // XP の「最近使ったファイル」と同じく、新しい順に 15 件まで出す。
@@ -247,7 +281,15 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
       <button class="menu-button" popovertarget={MENU_ID} aria-label="メニュー" title="メニュー">
         <span aria-hidden="true">☰</span>
       </button>
-      <div id={MENU_ID} class="app-menu" popover onClick={closeOnItem}>
+      {/* 開いたら先頭の項目にフォーカスを置き、すぐ方向キーで選べるようにする。 */}
+      <div
+        id={MENU_ID}
+        class="app-menu"
+        popover
+        onClick={closeOnItem}
+        onKeyDown={moveInMenu}
+        onToggle={(e) => e.newState === 'open' && e.currentTarget.querySelector<HTMLElement>('.app-menu-item')?.focus()}
+      >
         {/* Windows XP のスタートメニューに倣い、左にプログラム、右に場所と設定を並べる。XP 以外のスキンでは縦に積む。 */}
         <div class="app-menu-items">
           <div class="app-menu-col">
@@ -341,7 +383,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
         </div>
         {/* XP の「ログオフ」「終了オプション」の位置に、画面全体の切り替えと、自動継続モードを置く。 */}
         <div class="app-menu-foot">
-          <button class="app-menu-item" aria-pressed={fullscreen} onClick={toggleFullscreen}>
+          <button class="app-menu-item" aria-pressed={fullscreen} title={`画面全体に広げる（${shortcutLabel(FULLSCREEN_SHORTCUT)}）`} onClick={toggleFullscreen}>
             <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" /></svg>全画面
           </button>
           <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>

@@ -24,3 +24,9 @@ export const markOpened = (key: string): void => {
     // 保存できなくても、開くことはできる。
   }
 };
+
+/** keys のうち、最後に開いたもの。どれも開いていなければ undefined。 */
+export const lastOpened = (keys: string[]): string | undefined => {
+  const opened = loadOpened();
+  return keys.filter((k) => opened[k]).sort((a, b) => (opened[b] ?? 0) - (opened[a] ?? 0))[0];
+};
