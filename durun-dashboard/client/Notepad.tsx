@@ -9,6 +9,7 @@ import { highlightLine, languageOf } from './highlight.ts';
 import { useFetch } from './hooks.ts';
 import { OPEN_SHORTCUT, SAVE_SHORTCUT, isShortcut, shortcutLabel } from './shortcut.ts';
 import { toast } from './toast.tsx';
+import { XpConfirm } from './XpConfirm.tsx';
 import { XpMenu } from './XpMenu.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「notepad:開いた時刻」にし、いくつも開けるようにする。 */
@@ -143,6 +144,9 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
   const view = useRef<HTMLDivElement>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
+  // はいを押したら then を動かす確認。ブラウザの confirm は答えるまで画面ごと止まるので、XP のメッセージボックスで尋ねる。
+  const [asking, setAsking] = useState<{ text: string; then: () => void }>();
+  const ask = (text: string, then: () => void) => setAsking({ text, then });
   // IME で変換している間は、変換中の下線を見せるため、色付けをやめて textarea の字を見せる。
   const [composing, setComposing] = useState(false);
   // ファイルを読んだり保存したりする間に設定が変わっていても、今の設定に重ねる。
@@ -168,11 +172,12 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
     document.execCommand('insertText', false, stamp(new Date()));
   };
   const clear = () => {
-    if (!unsaved || confirm('書いた内容を消して、新しく書き始めますか？')) update({ text: '', path: '', dirty: 'off' });
+    const reset = () => update({ text: '', path: '', dirty: 'off' });
+    if (unsaved) ask('書いた内容を消して、新しく書き始めますか？', reset);
+    else reset();
   };
   /** UTF-8 のテキストでないファイルは、読んだ字のまま上書きすると中身が壊れるので開かない。 */
-  const open = async (path: string) => {
-    if (unsaved && !confirm('書いた内容を消して、ほかのファイルを開きますか？')) return;
+  const load = async (path: string) => {
     try {
       const file = await api.localFile('', path);
       if (/[\0\uFFFD]/.test(file.content)) throw new Error('UTF-8 のテキストではありません');
@@ -183,14 +188,15 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
       toast(`「${baseName(path)}」を開けませんでした（${(e as Error).message}）`, 'error');
     }
   };
+  const open = (path: string) => {
+    if (unsaved) ask('書いた内容を消して、ほかのファイルを開きますか？', () => void load(path));
+    else void load(path);
+  };
   /** 開いた後にほかで書き換えられていたら、上書きしてよいかを聞く。 */
   const write = async (path: string, modifiedAt: number): Promise<void> => {
     try {
       const saved = await api.saveLocalFile(path, text, modifiedAt);
-      if (saved.changed) {
-        if (confirm(`「${baseName(path)}」は、開いた後にほかで書き換えられています。上書きしますか？`)) await write(path, saved.modifiedAt);
-        return;
-      }
+      if (saved.changed) return ask(`「${baseName(path)}」は、開いた後にほかで書き換えられています。上書きしますか？`, () => void write(path, saved.modifiedAt));
       // 保存している間に打った分は、まだ保存していないものとして残す。
       update({ modifiedAt: String(saved.modifiedAt), dirty: latestFloat(f)?.tab.settings?.text === text ? 'off' : 'on' });
     } catch (e) {
@@ -203,7 +209,11 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
   const close = {
     kind: 'close' as const,
     label: '閉じる',
-    onClick: () => (!edited || confirm('保存していない変更を捨てて、閉じますか？')) && dock(f.key, f.scope, f.tab.id),
+    onClick: () => {
+      const closeNow = () => dock(f.key, f.scope, f.tab.id);
+      if (edited) ask('保存していない変更を捨てて、閉じますか？', closeNow);
+      else closeNow();
+    },
   };
   const menus = [
     { name: 'edit', label: '編集(E)', items: [{ label: '日付と時刻(D)', key: 'F5', onClick: insertStamp }] },
@@ -287,6 +297,16 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
         </div>
       </div>
       {picking && <OpenDialog from={folderOf(s.path || recentFiles()[0])} onOpen={open} onClose={() => setPicking(false)} />}
+      {asking && (
+        <XpConfirm
+          title={NOTEPAD_TITLE}
+          text={asking.text}
+          onClose={(ok) => {
+            setAsking(undefined);
+            if (ok) asking.then();
+          }}
+        />
+      )}
     </FloatFrame>
   );
 };

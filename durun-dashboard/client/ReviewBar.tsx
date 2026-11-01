@@ -3,6 +3,7 @@ import type { PrInfo, ReviewComment, Session } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import type { ReviewDraft } from './review.ts';
 import { toast } from './toast.tsx';
+import { XpConfirm } from './XpConfirm.tsx';
 
 const APPROVE_SUMMARY = '指摘なし';
 
@@ -21,6 +22,7 @@ type Props = {
 export const ReviewBar = ({ s, review, branch, pr }: Props) => {
   const [sending, setSending] = useState(false);
   const [toGitHub, setToGitHub] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const count = review.comments.length;
   const github = toGitHub && pr;
   const submit = async (comments: ReviewComment[], summary: string) => {
@@ -42,10 +44,7 @@ export const ReviewBar = ({ s, review, branch, pr }: Props) => {
     github.onPosted();
   };
   // 承認は下書きのコメントを捨てて送るため、残っているときは確認する。
-  const approve = () => {
-    if (count > 0 && !confirm(`下書きのコメント ${count} 件は送らずに破棄されます。指摘なしで承認しますか?`)) return;
-    submit([], APPROVE_SUMMARY);
-  };
+  const approve = () => (count > 0 ? setConfirming(true) : submit([], APPROVE_SUMMARY));
   return (
     <div class="review-bar">
       {s.awaitingReview && (
@@ -53,6 +52,16 @@ export const ReviewBar = ({ s, review, branch, pr }: Props) => {
           <span>Claude がレビューを待っています</span>
           <button class="btn btn-sm btn-primary" disabled={sending} onClick={approve}>指摘なしで承認</button>
         </div>
+      )}
+      {confirming && (
+        <XpConfirm
+          title="承認の確認"
+          text={`下書きのコメント ${count} 件は送らずに破棄されます。指摘なしで承認しますか?`}
+          onClose={(ok) => {
+            setConfirming(false);
+            if (ok) submit([], APPROVE_SUMMARY);
+          }}
+        />
       )}
       <div class="review-controls">
         <span class="review-count">

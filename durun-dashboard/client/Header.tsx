@@ -24,6 +24,7 @@ import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, SEARCH_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
+import { XpPrompt } from './XpConfirm.tsx';
 import { XpDropdown } from './XpMenu.tsx';
 
 // 使用率の数字を、四角の左上の角から離す距離。
@@ -237,10 +238,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
   const showHome = () => {
     location.hash = href.home();
   };
-  const rename = () => {
-    const name = prompt('ダッシュボードの名前', dashboards.list.find((d) => d.id === dashboards.current)?.name);
-    if (name !== null) renameDashboard(name);
-  };
+  const [renaming, setRenaming] = useState(false);
   const closeOnItem = (e: MouseEvent) => {
     if ((e.target as Element).closest('a, button')) (e.currentTarget as HTMLElement).hidePopover();
   };
@@ -332,7 +330,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
                 )}
                 <button class="app-menu-item" onClick={() => (createDashboard(), showHome())}>新規作成</button>
                 <button class="app-menu-item" onClick={() => (duplicateDashboard(), showHome())}>複製</button>
-                <button class="app-menu-item" onClick={rename}>名前を変更</button>
+                <button class="app-menu-item" onClick={() => setRenaming(true)}>名前を変更</button>
               </div>
             </div>
             <hr class="app-menu-sep" />
@@ -354,6 +352,17 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
           </button>
         </div>
       </div>
+      {renaming && (
+        <XpPrompt
+          title="名前を変更"
+          text="ダッシュボードの名前"
+          value={dashboards.list.find((d) => d.id === dashboards.current)?.name ?? ''}
+          onClose={(name) => {
+            setRenaming(false);
+            if (name !== null) renameDashboard(name);
+          }}
+        />
+      )}
     </>
   );
 };

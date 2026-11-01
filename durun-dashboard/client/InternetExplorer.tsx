@@ -6,7 +6,8 @@ import { api } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import type { WidgetProps } from './Dashboard.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
-import { XpConfirm } from './XpConfirm.tsx';
+import { toast } from './toast.tsx';
+import { XpConfirm, XpPrompt } from './XpConfirm.tsx';
 import { type MenuItem, XpMenu } from './XpMenu.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。タブの id は「ie:開いた時刻」にし、いくつも開けるようにする。 */
@@ -36,13 +37,14 @@ const addressOf = (input: string): string => {
 
 export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<object>) => {
   const site = settings.url ? siteOf(settings.url) : undefined;
-  const configure = () => {
-    const input = prompt('ショートカットにするサイトの URL（空にすると Internet Explorer に戻します）', settings.url ?? '');
+  const [configuring, setConfiguring] = useState(false);
+  const configure = (input: string | null) => {
+    setConfiguring(false);
     if (input === null) return;
     if (!input.trim()) return onSettings({ ...settings, url: '' });
     const next = siteOf(input);
     if (next) onSettings({ ...settings, url: next.href });
-    else alert('http:// か https:// で始まる URL を入れてください');
+    else toast('http:// か https:// で始まる URL を入れてください', 'error');
   };
   return (
     <>
@@ -51,7 +53,8 @@ export const InternetExplorerIcon = ({ settings, onSettings }: WidgetProps<objec
       ) : (
         <DesktopIcon icon={IE_ICON} title={IE_TITLE} hint="Web のサイトを見ます。ダブルクリックで開きます" onLaunch={() => openInternetExplorer()} />
       )}
-      <button class="btn btn-sm desktop-icon-settings" data-icon="settings" onClick={configure}>設定</button>
+      <button class="btn btn-sm desktop-icon-settings" data-icon="settings" onClick={() => setConfiguring(true)}>設定</button>
+      {configuring && <XpPrompt title="ショートカットの設定" text="ショートカットにするサイトの URL（空にすると Internet Explorer に戻します）" value={settings.url ?? ''} onClose={configure} />}
     </>
   );
 };
