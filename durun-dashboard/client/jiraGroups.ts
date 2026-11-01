@@ -18,6 +18,31 @@ export const GROUPINGS: Grouping[] = [
   { key: 'project', label: 'プロジェクト', none: '', of: (i) => i.key.replace(/-\d+$/, '') },
 ];
 
+/** JQL の ORDER BY に書ける項目の名前と、その項目で分ける属性。 */
+const ORDER_FIELDS: Record<string, string> = {
+  parent: 'epic',
+  'epic link': 'epic',
+  status: 'status',
+  statuscategory: 'status',
+  duedate: 'dueDate',
+  due: 'dueDate',
+  assignee: 'assignee',
+  priority: 'priority',
+  project: 'project',
+};
+
+/** 選んだ属性を、JQL の ORDER BY に並べた順に外側から並べる。ORDER BY に無い属性は、その後に GROUPINGS の順で置く。 */
+export const groupingsFor = (keys: Set<string>, jql: string): Grouping[] => {
+  const order = (/\border\s+by\s+(.+)$/is.exec(jql)?.[1] ?? '')
+    .split(',')
+    .map((f) => ORDER_FIELDS[f.trim().replace(/\s+(asc|desc)$/i, '').replace(/^"|"$/g, '').toLowerCase()]);
+  const rank = (key: string): number => {
+    const i = order.indexOf(key);
+    return i < 0 ? order.length : i;
+  };
+  return GROUPINGS.filter((g) => keys.has(g.key)).sort((a, b) => rank(a.key) - rank(b.key));
+};
+
 export type IssueGroup = { name: string; issues: JiraIssue[] };
 
 /** 課題を組に分ける。JQL の ORDER BY に従うよう、組も組の中の課題も、渡した順で先に出たものから並べる。 */

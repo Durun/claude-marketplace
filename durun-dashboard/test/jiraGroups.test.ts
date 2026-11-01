@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { JiraIssue } from '../shared/types.ts';
-import { GROUPINGS, groupIssues } from '../client/jiraGroups.ts';
+import { GROUPINGS, groupIssues, groupingsFor } from '../client/jiraGroups.ts';
 
 const issue = (key: string, fields: Partial<JiraIssue> = {}): JiraIssue => ({ key, url: '', ...fields });
 const by = (key: string) => GROUPINGS.find((g) => g.key === key)!;
@@ -16,4 +16,11 @@ test('groupIssues は、エピックを親の課題のキーと題名で、プ�
   const issues = [issue('CATS-2', { parent: { key: 'CATS-1', summary: '親' } }), issue('LPO-3'), issue('CATS-4')];
   assert.deepEqual(shape(groupIssues(issues, by('epic'))), [['CATS-1 親', ['CATS-2']], ['エピックなし', ['LPO-3', 'CATS-4']]]);
   assert.deepEqual(shape(groupIssues(issues, by('project'))), [['CATS', ['CATS-2', 'CATS-4']], ['LPO', ['LPO-3']]]);
+});
+
+test('groupingsFor は、選んだ属性を JQL の ORDER BY に並べた順に外側から並べ、ORDER BY に無い属性を後に置く', () => {
+  const keys = (jql: string) => groupingsFor(new Set(['epic', 'status', 'priority', 'project']), jql).map((g) => g.key);
+  assert.deepEqual(keys('project = CATS ORDER BY priority DESC, "Status" ASC, updated'), ['priority', 'status', 'epic', 'project']);
+  assert.deepEqual(keys('assignee = currentUser() order by project, parent'), ['project', 'epic', 'status', 'priority']);
+  assert.deepEqual(keys('assignee = currentUser()'), ['epic', 'status', 'priority', 'project']);
 });
