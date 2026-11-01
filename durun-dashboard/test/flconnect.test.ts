@@ -304,14 +304,13 @@ test('バックアップは、ウィンドウの題名のファイルを、最�
   assert.ok(Number.isNaN(flMajorOf(undefined)));
 });
 
-test('バックアップは、人間が触ったあとの最初の書き込みの前にだけ取り、保存していない変更にエージェントの変更が混ざっていれば上書き保存しない', () => {
-  const base = { changed: 1, humanSinceBackup: true, agentUnsaved: false, recording: false };
+test('バックアップは、人間が触ったあとの最初の書き込みの前にだけ取り、保存していない変更があれば上書き保存し、録音している間は上書き保存しない', () => {
+  const base = { changed: 1, humanSinceBackup: true, recording: false };
   assert.deepEqual(backupPlan(base), { copy: true, save: true });
   assert.equal(backupPlan({ ...base, changed: 2 })?.save, true);
   assert.deepEqual(backupPlan({ ...base, changed: 0 }), { copy: true, save: false });
   assert.equal(backupPlan({ ...base, humanSinceBackup: false }), undefined);
-  assert.deepEqual(backupPlan({ ...base, agentUnsaved: true }), { copy: true, save: false, note: '保存していない変更にエージェントの変更が混ざっているので、上書き保存しなかった' });
-  assert.equal(backupPlan({ ...base, recording: true })?.save, false);
+  assert.deepEqual(backupPlan({ ...base, recording: true }), { copy: true, save: false, note: '録音しているので、上書き保存しなかった' });
   assert.equal(backupFileName('song', new Date(2026, 10, 1, 9, 5, 7).getTime(), 'saved'), 'song 2026-11-01 09-05-07 前回の保存.flp');
   assert.equal(backupFileName('song', new Date(2026, 10, 1, 9, 5, 7).getTime(), 'before'), 'song 2026-11-01 09-05-07 エージェントの前.flp');
   assert.equal(describeAgent({ id: 'a', at: 0, who: 'agent', tool: 'fl_backup', args: {}, detail: 'a.flp\nb.flp', ok: true, changes: [] }), 'エージェントが書き込む前に、プロジェクトのバックアップを取った（2 個のファイル）');
