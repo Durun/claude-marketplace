@@ -1,8 +1,11 @@
 // JIRA Issues と GitHub Inbox のウィジェットで、一覧の項目を属性の値ごとの組に分ける。
 import type { GithubItem, JiraIssue } from '../shared/types.ts';
 
-/** 項目を分ける属性。of は項目の入る組の名前で、値の無い項目は undefined を返し、none の名前の組にまとめる。 */
-export type Grouping<T> = { key: string; label: string; none: string; of: (item: T) => string | undefined };
+/**
+ * 項目を分ける属性。of は項目の入る組の名前で、値の無い項目は undefined を返し、none の名前の組にまとめる。
+ * order のある属性は、ほかの属性の内側の組にし、組の中でだけ項目をこの名前の順に並べ替えて、同じ値を 1 つの組にまとめる。
+ */
+export type Grouping<T> = { key: string; label: string; none: string; of: (item: T) => string | undefined; order?: string[] };
 
 /**
  * エピックの組には、エピックそのものを入れない。組の見出しがエピックを表す。
@@ -24,7 +27,14 @@ export const REVIEW_LABEL: Record<string, string> = { APPROVED: '承認済み', 
 export const CHECKS_LABEL: Record<string, string> = { SUCCESS: 'チェック成功', FAILURE: 'チェック失敗', ERROR: 'チェック失敗', PENDING: 'チェック中', EXPECTED: 'チェック中' };
 
 export const GITHUB_GROUPINGS: Grouping<GithubItem>[] = [
-  { key: 'section', label: 'Inbox の区分', none: 'Other', of: (i) => i.section },
+  // GitHub の PR のダッシュボードの Inbox と同じ順に並べる。
+  {
+    key: 'section',
+    label: 'Inbox の区分',
+    none: 'Other',
+    of: (i) => i.section,
+    order: ['Needs your review', "Needs your teams' review", 'Your drafts', 'Waiting for review or checks', 'Needs action', 'Ready to merge'],
+  },
   { key: 'repo', label: 'リポジトリ', none: '', of: (i) => i.repo },
   { key: 'author', label: '作成者', none: '', of: (i) => i.author },
   { key: 'review', label: 'レビューの判定', none: 'レビュー不要', of: (i) => i.review && REVIEW_LABEL[i.review] },
@@ -43,8 +53,8 @@ export const groupingsFor = <T,>(groupings: Grouping<T>[], keys: Set<string>, it
     return values.filter((v, i) => i === 0 || v !== values[i - 1]).length - new Set(values).size;
   };
   return groupings.filter((g) => keys.has(g.key))
-    .map((g) => ({ g, n: scattered(g) }))
-    .sort((a, b) => a.n - b.n)
+    .map((g) => ({ g, n: g.order ? Infinity : scattered(g) }))
+    .sort((a, b) => a.n - b.n || 0)
     .map(({ g }) => g);
 };
 
@@ -53,7 +63,12 @@ export type ItemGroup<T> = { name: string; items: T[] };
 /** 項目を、渡した順のまま、同じ値が続くところで組にまとめる。並びは検索の条件の並べ方に任せ、離れた項目を同じ組へ寄せない。 */
 export const groupItems = <T,>(items: T[], by: Grouping<T>): ItemGroup<T>[] => {
   const groups: ItemGroup<T>[] = [];
-  for (const item of items) {
+  // order に無い名前と値の無い項目は後ろに置く。sort は安定なので、同じ組の中は渡した順のまま残る。
+  const rank = (item: T): number => {
+    const i = by.order?.indexOf(by.of(item) ?? '') ?? -1;
+    return i < 0 ? Infinity : i;
+  };
+  for (const item of by.order ? items.toSorted((a, b) => rank(a) - rank(b) || 0) : items) {
     const name = by.of(item) ?? by.none;
     const last = groups.at(-1);
     if (last?.name === name) last.items.push(item);

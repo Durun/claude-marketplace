@@ -47,3 +47,12 @@ test('GitHub の項目は、Inbox の区分、レビューの判定、チェッ�
   assert.deepEqual(names('checks'), ['チェック失敗', 'チェックなし']);
   assert.deepEqual(names('kind'), ['PR', 'Issue']);
 });
+
+test('Inbox の区分は、いちばん内側の組にし、組の中でだけ Inbox の順に並べ替えて同じ区分をまとめる', () => {
+  const item = (number: number, over: Partial<GithubItem> = {}): GithubItem => ({ url: '', repo: 'o/r', number, title: '', author: 'me', updatedAt: 0, kind: 'pr', ...over });
+  const items = [item(1, { section: 'Your drafts' }), item(2), item(3, { section: 'Needs your review' }), item(4, { section: 'Your drafts' })];
+  const section = GITHUB_GROUPINGS.find((g) => g.key === 'section')!;
+  assert.deepEqual(groupItems(items, section).map((g) => [g.name, g.items.map((i) => i.number)]), [['Needs your review', [3]], ['Your drafts', [1, 4]], ['Other', [2]]]);
+  // 結果の並びでまとまっていても、ほかの属性より内側に置く。
+  assert.deepEqual(groupingsFor(GITHUB_GROUPINGS, new Set(['section', 'author']), items).map((g) => g.key), ['author', 'section']);
+});
