@@ -3,7 +3,7 @@
 // 同じ相手の認証を複数のセッションが求めても、人間に尋ねるのは 1 回にし、答えと認証の結果を、求めたすべてのセッションに返す。
 import { type ChildProcess, exec, execFile } from 'node:child_process';
 import type { AuthRequest, ClaudeLogin } from '../shared/types.ts';
-import { claudeCommand } from './platform.ts';
+import { claudeCommand, platform } from './platform.ts';
 import { changed, newId, state, touch } from './store.ts';
 
 // claude mcp get は、MCP サーバーにつないで確かめるので数秒かかる。
@@ -61,7 +61,7 @@ const PRINT_URL = `${JSON.stringify(process.execPath)} -p process.argv[1] %s`;
  */
 const prepareLogin = (command: string, cwd: string | undefined): Promise<PreparedLogin> => {
   const { child, result } = start(command, cwd, 0, { ...process.env, BROWSER: PRINT_URL });
-  const cancel = (): void => void child.kill();
+  const cancel = (): void => platform.killTree(child);
   // ダッシュボードが止まったら、ログイン画面の受け取りを待ち続けないよう止める。
   process.once('exit', cancel);
   const finish = async (): Promise<void> => {

@@ -74,9 +74,10 @@ test('Google Cloud は、確かめのコマンドが成功すれば認証済み�
 
 test('Google Cloud は、尋ねる前に認証のコマンドを動かしてログイン画面の URL を添え、却下したらコマンドを止め、OK ならコマンドが終わるのを待つ', async () => {
   // gcloud と同じく Python の webbrowser でログイン画面を開き、受け取りを待つ偽物。
+  // Windows のパス（C:\Users\…）の \U をエスケープと読ませないよう、パスは Python の raw 文字列で渡す。
   const pidFile = path.join(tmp, 'gcloud-login.pid');
   const fakeLogin = (seconds: number) =>
-    `python3 -c "import os, time, webbrowser; open('${pidFile}', 'w').write(str(os.getpid())); webbrowser.open('https://example.com/login?state=1'); time.sleep(${seconds})"`;
+    `python3 -c "import os, time, webbrowser; open(r'${pidFile}', 'w').write(str(os.getpid())); webbrowser.open('https://example.com/login?state=1'); time.sleep(${seconds})"`;
   const alive = (pid: number): boolean => {
     try {
       return process.kill(pid, 0);

@@ -1,7 +1,7 @@
 // OS ごとに違う情報の取り方と操作を、ここにまとめる互換レイヤー。
 // サーバーのほかのコードは process.platform を見ずに、必ず platform を経由する。
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
-import { execFile } from 'node:child_process';
+import { type ChildProcess, execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -56,6 +56,8 @@ export type Platform = {
   fileRoots: (exists?: (dir: string) => boolean) => string[];
   /** 人間が設定に書いたコマンドの行を、シェルで動かすときの起動するファイルと引数。node-pty に渡す。 */
   shellCommand: (line: string) => { file: string; args: string[] | string };
+  /** シェルで動かしたコマンドを、シェルが起動したプロセスごと止める。止め終わるのは待たない。run はテストで偽物に差し替える。 */
+  killTree: (child: ChildProcess, run?: Run) => void;
   /** 直近 1 分の load average。測れない OS では undefined。 */
   loadAverage: () => number | undefined;
   /** ドキュメントのフォルダー。Windows では、OneDrive に移したときも追えるよう、既知のフォルダーから引く。読めなければ undefined。 */
@@ -118,6 +120,8 @@ const posix = {
   displayPath: (file: string) => file,
   fileRoots: () => ['/'],
   shellCommand: (line: string) => ({ file: '/bin/sh', args: ['-c', line] }),
+  // sh は -c の 1 つのコマンドを自分と入れ替えて動かすので、sh を止めればコマンドも止まる。
+  killTree: (child: ChildProcess) => void child.kill(),
   loadAverage: () => os.loadavg()[0],
   documentsDir: async () => path.posix.join(os.homedir(), 'Documents'),
   flUserDataCandidates: (documents: string | undefined) => (documents ? [path.posix.join(documents, 'Image-Line', 'FL Studio')] : []),
@@ -194,6 +198,11 @@ const win32: Platform = {
   // node-pty は配列の引数を引用符でくくり直し、行の中の引用符を崩すので、cmd.exe の引数を 1 つの文字列で渡す。
   // /s を付けた cmd.exe は最初と最後の引用符だけを外し、間の行をそのまま動かす。Node の shell: true と同じ渡し方。
   shellCommand: (line) => ({ file: 'cmd.exe', args: `/d /s /c "${line}"` }),
+  // cmd.exe を止めても、cmd.exe が起動したコマンド（gcloud.cmd が起動する Python など）は残るので、taskkill の /T で木ごと止める。
+  // もう終わっていれば taskkill は失敗するが、止める物が無いだけなので構わない。
+  killTree: (child, run = realRun) => {
+    if (child.pid !== undefined) run('taskkill', ['/pid', String(child.pid), '/T', '/F']).catch(() => undefined);
+  },
   // Node の os.loadavg は、Windows では負荷によらず 0 を返す。
   loadAverage: () => undefined,
   // reg.exe はコンソールのコードページで書くので、日本語のパスが化ける。PowerShell に UTF-8 で書かせる。
