@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Attention } from '../shared/types.ts';
+import { markOpened } from './opened.ts';
 
 export type SessionTab = 'overview' | 'code' | 'usage';
 
@@ -60,11 +61,19 @@ export const attentionHref = (a: Attention): string => {
   return href.home();
 };
 
+const markRoute = (route: Route): void => {
+  if (route.page === 'session' || route.page === 'doc') markOpened(`${route.page}:${route.id}`);
+};
+
+/** 開いたセッションと資料を覚える。コードを変えるたびに、開いている全部のタブが読み込み直すので、読み込み直しは開いたことにしない。 */
 export const useRoute = (): Route => {
   const [route, setRoute] = useState<Route>(() => parseHash(location.hash));
   useEffect(() => {
+    if ((performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type !== 'reload') markRoute(route);
     const onChange = () => {
-      setRoute(parseHash(location.hash));
+      const next = parseHash(location.hash);
+      markRoute(next);
+      setRoute(next);
       window.scrollTo(0, 0);
     };
     window.addEventListener('hashchange', onChange);

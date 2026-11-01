@@ -29,6 +29,15 @@ test('検索窓の候補は、空白で区切った語をすべて含むもの�
   assert.deepEqual(hrefs('')[0], ['セッション', ['#/s/c', '#/s/b', '#/s/a']]);
 });
 
+test('何も打っていないときのセッションと資料は、人間が開いた新しい順に並べ、開いていないものを後に新しい順で続ける。語を打ったら開いた時刻は使わない', () => {
+  const docs = [...snapshot.docs, { id: 'e', sessionId: 'b', title: 'CDN の手順', format: 'markdown', createdAt: 7, seen: true }];
+  const opened = { 'session:a': 20, 'session:c': 10, 'doc:d': 1 };
+  const found = (q: string) => Object.fromEntries(localGroups({ ...snapshot, docs } as Snapshot, q, opened).map((g) => [g.title, g.items.map((i) => i.href)]));
+  assert.deepEqual(found('')['セッション'], ['#/s/a', '#/s/c', '#/s/b']);
+  assert.deepEqual(found('')['資料'], ['#/doc/d', '#/doc/e']);
+  assert.deepEqual(found('favicon')['セッション'], ['#/s/b', '#/s/a']);
+});
+
 test('会話ログで当たったセッションは、一覧にあれば概要へ、無ければ検索の画面へ送り、最後にすべてを探す候補を置く', () => {
   const res = {
     total: 2,

@@ -2,11 +2,13 @@
 import type { InboxSection, JiraIssue, SearchResponse, SessionStatus, Snapshot, WaitingFor } from '../shared/types.ts';
 import { dateTime } from './format.ts';
 import { KIND_LABEL } from './notify.ts';
+import type { Opened } from './opened.ts';
 import { attentionHref, href } from './router.ts';
 
 const MAX_PER_GROUP = 5;
 
-export type SearchItem = { key: string; label: string; sub?: string; href: string; status?: SessionStatus; waitingFor?: WaitingFor };
+/** at は、候補の右端に「x 分前」と出す時刻。 */
+export type SearchItem = { key: string; label: string; sub?: string; href: string; status?: SessionStatus; waitingFor?: WaitingFor; at?: number };
 /** note は、見出しの横に出す進み具合や失敗の理由。 */
 export type SearchGroup = { title: string; items: SearchItem[]; note?: string };
 
@@ -27,18 +29,22 @@ const PAGES: SearchItem[] = [
   { key: 'page:search', label: '会話ログの検索', href: href.search() },
 ];
 
-/** 語に当たるものを、種類ごとに新しい順に並べる。何も打っていなければ、すべてが当たる。 */
-export const localGroups = (snapshot: Snapshot | null, q: string): SearchGroup[] => {
+/**
+ * 語に当たるものを、種類ごとに新しい順に並べる。何も打っていなければ、すべてが当たる。
+ * 何も打っていないときのセッションと資料は、opened にある人間が開いた時刻の新しい順に並べ、開いていないものをその後に置く。
+ */
+export const localGroups = (snapshot: Snapshot | null, q: string, opened: Opened = {}): SearchGroup[] => {
   const hit = matcher(q);
   const sessions = snapshot?.sessions ?? [];
   const names = new Map(sessions.map((s) => [s.id, s.name]));
+  const openedAt = (key: string): number => (q ? 0 : (opened[key] ?? 0));
   const groups: SearchGroup[] = [
     {
       title: 'セッション',
       items: sessions
         .filter((s) => hit(s.name, s.theme, s.repo, s.branch, s.cwd, s.pr && `#${s.pr.number} ${s.pr.title}`, ...s.jira.map((j) => `${j.key} ${j.summary ?? ''}`)))
-        .toSorted((a, b) => b.updatedAt - a.updatedAt)
-        .map((s) => ({ key: `session:${s.id}`, label: s.name, sub: joined(s.repo, s.branch), href: href.session(s.id), status: s.status, waitingFor: s.waitingFor })),
+        .toSorted((a, b) => openedAt(`session:${b.id}`) - openedAt(`session:${a.id}`) || b.updatedAt - a.updatedAt)
+        .map((s) => ({ key: `session:${s.id}`, label: s.name, sub: joined(s.repo, s.branch), href: href.session(s.id), status: s.status, waitingFor: s.waitingFor, at: s.updatedAt })),
     },
     {
       title: '要対応',
@@ -52,7 +58,7 @@ export const localGroups = (snapshot: Snapshot | null, q: string): SearchGroup[]
       title: '資料',
       items: (snapshot?.docs ?? [])
         .filter((d) => hit(d.title, names.get(d.sessionId)))
-        .toSorted((a, b) => b.createdAt - a.createdAt)
+        .toSorted((a, b) => openedAt(`doc:${b.id}`) - openedAt(`doc:${a.id}`) || b.createdAt - a.createdAt)
         .map((d) => ({ key: `doc:${d.id}`, label: d.title, sub: joined(names.get(d.sessionId), dateTime(d.createdAt)), href: href.doc(d.id) })),
     },
     { title: '画面', items: PAGES.filter((p) => hit(p.label)) },

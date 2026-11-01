@@ -13,6 +13,7 @@ import { FILE_DRAG_TYPE, isFileRef, mediaTypeOf, splitFilePaths } from './fileRe
 import { dateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
 import type { CodeLink, MarkText } from './Markdown.tsx';
+import { markOpened } from './opened.ts';
 import { ARROW_STEP, arrangeDocs, moveTo } from './order.ts';
 import { PROOFREAD_ICON, PROOFREAD_TITLE, openProofFile } from './Proofread.tsx';
 import { href } from './router.ts';
@@ -648,7 +649,10 @@ export const DocViewer = ({ id, snapshot }: { id: string; snapshot: Snapshot }) 
 export const DOC_KEY = 'doc';
 
 /** 資料をウィンドウに浮かべる。同じ資料は 1 つのウィンドウにまとめる。icon を渡すと、タイトルバーにそのアイコンを出す。 */
-export const openDocFloat = (id: string, icon?: string): void => floatUp(DOC_KEY, '', { id, settings: icon ? { icon } : undefined });
+export const openDocFloat = (id: string, icon?: string): void => {
+  markOpened(`doc:${id}`);
+  floatUp(DOC_KEY, '', { id, settings: icon ? { icon } : undefined });
+};
 
 /** ウィンドウには資料の中身だけを出す。題名はウィンドウのタイトルバーに出す。 */
 export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {

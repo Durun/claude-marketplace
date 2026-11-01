@@ -5,10 +5,11 @@ import type { SearchResponse, Snapshot } from '../shared/types.ts';
 import { api } from './api.ts';
 import { jiraSpaces } from './completion.ts';
 import { useCached, useFetch } from './hooks.ts';
+import { loadOpened } from './opened.ts';
 import { currentSessionId } from './router.ts';
 import { type SearchItem, localGroups, logGroup, refGroups } from './searchItems.ts';
 import { SEARCH_SHORTCUT, isShortcut } from './shortcut.ts';
-import { StatusBadge } from './ui.tsx';
+import { StatusBadge, Time } from './ui.tsx';
 
 // 打っている間に会話ログを何度も読ませないよう、手が止まってから探す。
 const LOG_SEARCH_DELAY_MS = 250;
@@ -27,6 +28,7 @@ const useDebounced = (value: string, ms: number): string => {
 const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: () => void }) => {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
+  const [opened] = useState(loadOpened);
   const list = useRef<HTMLDivElement>(null);
   const query = q.trim();
   const logQuery = useDebounced(query, LOG_SEARCH_DELAY_MS);
@@ -34,7 +36,7 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
   const issues = useCached(api.jiraRefs, []);
   const inbox = useCached(api.githubInbox, []);
   const note = logs.loading || logQuery !== query ? '探しています…' : logs.error && `探せませんでした（${logs.error}）`;
-  const local = localGroups(snapshot, query);
+  const local = localGroups(snapshot, query, opened);
   const refs = refGroups(snapshot, query, issues.data, inbox.data, jiraSpaces(snapshot?.sessions ?? [], currentSessionId()));
   // ハイフンで始めたら課題のキーを打っているので、JIRA の課題を先頭に出す。
   const groups = [
@@ -97,6 +99,7 @@ const Results = ({ snapshot, onClose }: { snapshot: Snapshot | null; onClose: ()
                   <span class="quick-label">{it.label}</span>
                   {it.status && <StatusBadge status={it.status} waitingFor={it.waitingFor} />}
                   {it.sub && <span class="quick-sub">{it.sub}</span>}
+                  {it.at !== undefined && <span class="quick-time"><Time at={it.at} /></span>}
                 </a>
               );
             })}

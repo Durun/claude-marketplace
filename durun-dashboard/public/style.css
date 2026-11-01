@@ -1343,7 +1343,7 @@ table.diff, .diff-pending { font: 12.5px/1.55 var(--mono); }
 .search-item .attach code { overflow-wrap: anywhere; }
 mark { border-radius: 2px; background: color-mix(in srgb, var(--warning) 35%, transparent); color: inherit; }
 /* 検索窓（Cmd/Ctrl + K）は画面の上寄りに出し、候補が増えても入力欄と案内を動かさず、候補の欄の中でスクロールする。 */
-.quick-search { width: min(640px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 96px)); margin: 10vh auto auto; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.quick-search { width: min(640px, calc(100vw - 32px)); max-height: 80vh; margin: 10vh auto auto; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
 .quick-search[open] { display: flex; flex-direction: column; }
 .quick-search::backdrop { background: rgb(0 0 0 / 40%); }
 .quick-input { flex: none; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; font-size: 15px; }
@@ -1354,6 +1354,7 @@ mark { border-radius: 2px; background: color-mix(in srgb, var(--warning) 35%, tr
 .quick-item[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .quick-label { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-sub { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.quick-time { flex: none; margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .quick-empty { padding: 10px 8px; }
 .quick-foot { flex: none; margin: 0; padding: 6px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 
