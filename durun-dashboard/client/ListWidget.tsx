@@ -1,8 +1,9 @@
-// JIRA Issues と GitHub Inbox のウィジェットの共通の形。設定した検索の条件で探した項目を、結果の順のまま並べ、選んだ属性で折りたためる組にまとめる。
+// JIRA Issues と GitHub Inbox のウィジェットの共通の形。設定した検索の条件で探した項目を、選んだ属性の順に折りたためる組にまとめ、組の中は結果の順のまま並べる。
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { WidgetSettings } from './layout.ts';
-import { type Grouping, type ItemGroup, groupItems, groupingsFor } from './listGroups.ts';
+import { type Grouping, type ItemGroup, groupItems } from './listGroups.ts';
+import { ARROW_STEP, moveTo } from './order.ts';
 import { matcher } from './searchItems.ts';
 import { Empty, Loading, onSubmitKey } from './ui.tsx';
 
@@ -11,7 +12,7 @@ type Field = { key: string; label: string };
 export type Found<T> = { items?: T[]; more: boolean; error?: string };
 
 /**
- * ウィジェットごとに違うところ。query は設定に検索の条件を持つキーで、fieldsOf と groupKeysOf は設定から選んだ属性を読む。
+ * ウィジェットごとに違うところ。query は設定に検索の条件を持つキーで、fieldsOf と groupKeysOf は設定から選んだ属性を読む。groupKeysOf は外側の組の属性から順に並べる。
  * textOf は絞り込みで探す文字、hide はグループ化の属性に応じて行に出さない項目。
  */
 export type ListSpec<T> = {
@@ -57,10 +58,12 @@ const ListSettings = <T,>({ spec, settings, onSave, onClose }: SettingsProps<T>)
   const [query, setQuery] = useState(settings[spec.query.key] || spec.query.fallback);
   const [max, setMax] = useState(settings.max || String(spec.defaultMax));
   const [fields, setFields] = useState(() => spec.fieldsOf(settings));
-  const [groups, setGroups] = useState(() => spec.groupKeysOf(settings));
+  const [groups, setGroups] = useState(() => [...spec.groupKeysOf(settings)].filter((key) => spec.groupings.some((g) => g.key === key)));
+  const [dragging, setDragging] = useState<string>();
+  const labelOf = (key: string): string => spec.groupings.find((g) => g.key === key)?.label ?? key;
   const save = (e: SubmitEvent) => {
     e.preventDefault();
-    onSave({ ...settings, title: title.trim(), [spec.query.key]: query.trim(), max, shown: [...fields].join(','), groups: [...groups].join(',') });
+    onSave({ ...settings, title: title.trim(), [spec.query.key]: query.trim(), max, shown: [...fields].join(','), groups: groups.join(',') });
     onClose();
   };
   return (
@@ -85,8 +88,45 @@ const ListSettings = <T,>({ spec, settings, onSave, onClose }: SettingsProps<T>)
         <input class="input input-sm jira-max" type="number" min={1} max={spec.maxLimit} required value={max} onInput={(e) => setMax(e.currentTarget.value)} />
       </label>
       <Checks legend="表示する属性" all={spec.fields} on={fields} onToggle={(key, on) => setFields((prev) => toggled(spec.fields, prev, key, on))} />
-      {/* 外側の組にする属性は、結果の並びで同じ値が長く続くものから選ぶ。 */}
-      <Checks legend="グループ化" all={spec.groupings} on={groups} onToggle={(key, on) => setGroups((prev) => toggled(spec.groupings, prev, key, on))} />
+      {/* 上の属性ほど外側の組にする。ドラッグか Alt + ↑↓ で並べ替える。 */}
+      <fieldset class="jira-groups">
+        <legend>グループ化</legend>
+        <ol class="jira-group-list">
+          {groups.map((key) => (
+            <li
+              key={key}
+              class={`jira-group-item${dragging === key ? ' is-dragging' : ''}`}
+              draggable
+              tabIndex={0}
+              aria-label={`${labelOf(key)}。Alt + ↑↓ で並べ替える`}
+              onDragStart={() => setDragging(key)}
+              onDragOver={(e) => {
+                if (!dragging) return;
+                e.preventDefault();
+                if (key !== dragging) setGroups(moveTo(groups, dragging, key));
+              }}
+              onDragEnd={() => setDragging(undefined)}
+              onKeyDown={(e) => {
+                const step = e.altKey ? ARROW_STEP[e.key] : undefined;
+                const target = step && groups[groups.indexOf(key) + step];
+                if (!target) return;
+                e.preventDefault();
+                setGroups(moveTo(groups, key, target));
+              }}
+            >
+              <span class="jira-group-grip" aria-hidden="true">⠿</span>
+              {labelOf(key)}
+              <button type="button" class="jira-group-remove" aria-label={`${labelOf(key)}で分けるのをやめる`} onClick={() => setGroups(groups.filter((k) => k !== key))}>×</button>
+            </li>
+          ))}
+        </ol>
+        {groups.length < spec.groupings.length && (
+          <select class="input input-sm jira-group-add" value="" aria-label="グループ化の属性を足す" onChange={(e) => setGroups([...groups, e.currentTarget.value])}>
+            <option value="">＋ 追加</option>
+            {spec.groupings.filter((g) => !groups.includes(g.key)).map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+          </select>
+        )}
+      </fieldset>
       <div class="actions">
         <span class="spacer" />
         <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>
@@ -185,7 +225,7 @@ export const ListWidget = <T,>({ spec, settings, onSettings, useFound }: ListWid
   const { items, more, error } = useFound(settings[spec.query.key] || spec.query.fallback, max);
   const hit = matcher(text);
   const shown = items?.filter((i) => !spec.hide?.(i, groupKeys) && hit(...spec.textOf(i))) ?? [];
-  const by = groupingsFor(spec.groupings, groupKeys, shown);
+  const by = [...groupKeys].map((key) => spec.groupings.find((g) => g.key === key)).filter((g) => g !== undefined);
   return (
     <>
       <div class="section-head" onClick={filter.onClick}>

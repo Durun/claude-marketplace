@@ -1,10 +1,7 @@
 // JIRA Issues と GitHub Inbox のウィジェットで、一覧の項目を属性の値ごとの組に分ける。
 import type { GithubItem, JiraIssue } from '../shared/types.ts';
 
-/**
- * 項目を分ける属性。of は項目の入る組の名前で、値の無い項目は undefined を返し、none の名前の組にまとめる。
- * order のある属性は、ほかの属性の内側の組にし、組の中でだけ項目をこの名前の順に並べ替えて、同じ値を 1 つの組にまとめる。
- */
+/** 項目を分ける属性。of は項目の入る組の名前で、値の無い項目は undefined を返し、none の名前の組にまとめる。order は組を並べる名前の順。 */
 export type Grouping<T> = { key: string; label: string; none: string; of: (item: T) => string | undefined; order?: string[] };
 
 /**
@@ -43,36 +40,17 @@ export const GITHUB_GROUPINGS: Grouping<GithubItem>[] = [
   { key: 'type', label: 'タイプ', none: '', of: (i) => `${i.state} ${i.kind === 'pr' ? 'PR' : 'Issue'}` },
 ];
 
-/**
- * 選んだ属性を、結果の並びでまとまっているものから外側に並べる。
- * 検索の条件で先に並べた属性ほど、同じ値の項目が続く。値が切り替わる回数から値の種類の数を引いた数が少ないほど、まとまっているとみなす。同じ数なら groupings の順に置く。
- */
-export const groupingsFor = <T,>(groupings: Grouping<T>[], keys: Set<string>, items: T[]): Grouping<T>[] => {
-  const scattered = (g: Grouping<T>): number => {
-    const values = items.map(g.of);
-    return values.filter((v, i) => i === 0 || v !== values[i - 1]).length - new Set(values).size;
-  };
-  return groupings.filter((g) => keys.has(g.key))
-    .map((g) => ({ g, n: g.order ? Infinity : scattered(g) }))
-    .sort((a, b) => a.n - b.n || 0)
-    .map(({ g }) => g);
-};
-
 export type ItemGroup<T> = { name: string; items: T[] };
 
-/** 項目を、渡した順のまま、同じ値が続くところで組にまとめる。並びは検索の条件の並べ方に任せ、離れた項目を同じ組へ寄せない。 */
+/** 項目を、同じ値ごとに 1 つの組にまとめる。組は値が先に出た順に並べ、order のある属性はその名前の順に並べ替える。組の中の項目は、渡した順のまま残す。 */
 export const groupItems = <T,>(items: T[], by: Grouping<T>): ItemGroup<T>[] => {
-  const groups: ItemGroup<T>[] = [];
-  // order に無い名前と値の無い項目は後ろに置く。sort は安定なので、同じ組の中は渡した順のまま残る。
-  const rank = (item: T): number => {
-    const i = by.order?.indexOf(by.of(item) ?? '') ?? -1;
+  const groups = Array.from(Map.groupBy(items, (item) => by.of(item) ?? by.none), ([name, list]) => ({ name, items: list }));
+  const { order } = by;
+  if (!order) return groups;
+  // order に無い名前と値の無い組は後ろに置く。sort は安定なので、それらは先に出た順のまま残る。
+  const rank = (name: string): number => {
+    const i = order.indexOf(name);
     return i < 0 ? Infinity : i;
   };
-  for (const item of by.order ? items.toSorted((a, b) => rank(a) - rank(b) || 0) : items) {
-    const name = by.of(item) ?? by.none;
-    const last = groups.at(-1);
-    if (last?.name === name) last.items.push(item);
-    else groups.push({ name, items: [item] });
-  }
-  return groups;
+  return groups.sort((x, y) => rank(x.name) - rank(y.name) || 0);
 };
