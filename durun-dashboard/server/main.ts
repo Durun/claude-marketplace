@@ -537,11 +537,11 @@ const prNotes = async (id: string, body: unknown): Promise<PrNotes> => {
   return notesFor(tree, pr, threads);
 };
 
-/** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は JIRA_LIST_MAX までに収め、無ければ上限まで返す。 */
+/** JIRA の一覧のウィジェットが、設定した JQL で課題を探す。件数は、上限を超える課題があるかを知るための 1 件を足した JIRA_LIST_MAX + 1 までに収め、無ければ上限まで返す。 */
 const jiraSearch = async (url: URL): Promise<JiraIssue[]> => {
   const jql = url.searchParams.get('jql')?.trim();
   if (!jql) throw new HttpError(400, 'jql is required');
-  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_LIST_MAX, 1), JIRA_LIST_MAX);
+  const max = Math.min(Math.max(Math.trunc(Number(url.searchParams.get('max'))) || JIRA_LIST_MAX + 1, 1), JIRA_LIST_MAX + 1);
   try {
     return await jiraList(jql, max);
   } catch (e) {

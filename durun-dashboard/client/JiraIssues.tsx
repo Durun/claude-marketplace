@@ -264,7 +264,10 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
       onSettings({ ...settings, collapsed: [...collapsed].filter((p) => p !== path).concat(open ? [] : [path]).join('\n') });
     },
   };
-  const { data, error } = useCached(() => api.jira(jql, max), [jql, max, snapshot.jiraRefreshedAt]);
+  // 1 件多く探し、表示する件数を超える課題があれば、件数に + を添える。
+  const { data: found, error } = useCached(() => api.jira(jql, max + 1), [jql, max, snapshot.jiraRefreshedAt]);
+  const data = found?.slice(0, max);
+  const more = (found?.length ?? 0) > max;
   const hit = matcher(query);
   const shown = data?.filter((i) => hit(i.key, i.summary, i.status, i.priority, i.parent?.key, i.parent?.summary, i.assignee, i.reporter, ...(i.labels ?? []))) ?? [];
   return (
@@ -272,7 +275,7 @@ export const JiraIssues = ({ snapshot, settings, onSettings }: HomeWidgetProps) 
       <div class="section-head" onClick={filter.onClick}>
         <h2 class="section-title">
           {settings.title || JIRA_TITLE}
-          {data && !error && <span class="count-pill">{shown.length}</span>}
+          {data && !error && <span class="count-pill">{shown.length}{more && '+'}</span>}
         </h2>
         <div class="actions">
           <input
