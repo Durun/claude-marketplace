@@ -49,7 +49,7 @@ test('toInbox は、自分の PR をドラフト、要対応、マージ可、�
 
 test('toGithubSearch は、検索の結果を返った順のまま並べ、PR を Inbox の区分に分け、チームへの依頼は自分が入っているチームのときだけ数え、Issue とほかの種類を見分ける', () => {
   const reviewers = (...nodes: { __typename: string; login?: string; id?: string }[]) => ({ nodes: nodes.map((requestedReviewer) => ({ requestedReviewer })) });
-  const node = (number: number, over: Partial<Pr> = {}, requested = reviewers(), checks?: string) => ({ ...pr(number, over, checks), __typename: 'PullRequest' as const, reviewRequests: requested });
+  const node = (number: number, over: Partial<Pr> = {}, requested = reviewers(), checks?: string, state: 'OPEN' | 'MERGED' = 'OPEN') => ({ ...pr(number, over, checks), __typename: 'PullRequest' as const, state, reviewRequests: requested });
   const found = toGithubSearch({
     viewer: { login: 'me' },
     search: {
@@ -59,22 +59,22 @@ test('toGithubSearch は、検索の結果を返った順のまま並べ、PR �
         node(2, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'mine' })),
         node(6, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'other' })),
         node(3, { isDraft: true }, reviewers(), 'FAILURE'),
-        node(4, { author: { login: 'you' }, reviewDecision: 'APPROVED' }, reviewers(), 'SUCCESS'),
-        { __typename: 'Issue', url: 'https://github.com/o/r/issues/5', number: 5, title: 'Issue 5', updatedAt: '2026-10-09T00:00:00Z', repository: { nameWithOwner: 'o/r' }, author: { login: 'you' } },
+        node(4, { author: { login: 'you' }, reviewDecision: 'APPROVED' }, reviewers(), 'SUCCESS', 'MERGED'),
+        { __typename: 'Issue', state: 'CLOSED', stateReason: 'NOT_PLANNED', url: 'https://github.com/o/r/issues/5', number: 5, title: 'Issue 5', updatedAt: '2026-10-09T00:00:00Z', repository: { nameWithOwner: 'o/r' }, author: { login: 'you' } },
         { __typename: 'Discussion' } as unknown as GhSearch['search']['nodes'][number],
       ],
     },
   }, new Set(['mine']));
   assert.equal(found.total, 9);
   assert.deepEqual(
-    found.items.map((i) => [i.number, i.kind, i.section, i.review, i.checks, i.isDraft]),
+    found.items.map((i) => [i.number, i.kind, i.section, i.review, i.checks, i.state]),
     [
-      [1, 'pr', 'Needs your review', 'REVIEW_REQUIRED', undefined, false],
-      [2, 'pr', "Needs your teams' review", 'REVIEW_REQUIRED', undefined, false],
-      [6, 'pr', undefined, 'REVIEW_REQUIRED', undefined, false],
-      [3, 'pr', 'Your drafts', 'REVIEW_REQUIRED', 'FAILURE', true],
-      [4, 'pr', undefined, 'APPROVED', 'SUCCESS', false],
-      [5, 'issue', undefined, undefined, undefined, undefined],
+      [1, 'pr', 'Needs your review', 'REVIEW_REQUIRED', undefined, 'Open'],
+      [2, 'pr', "Needs your teams' review", 'REVIEW_REQUIRED', undefined, 'Open'],
+      [6, 'pr', undefined, 'REVIEW_REQUIRED', undefined, 'Open'],
+      [3, 'pr', 'Your drafts', 'REVIEW_REQUIRED', 'FAILURE', 'Draft'],
+      [4, 'pr', undefined, 'APPROVED', 'SUCCESS', 'Merged'],
+      [5, 'issue', undefined, undefined, undefined, 'Canceled'],
     ],
   );
 });

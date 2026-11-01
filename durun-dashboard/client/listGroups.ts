@@ -39,8 +39,8 @@ export const GITHUB_GROUPINGS: Grouping<GithubItem>[] = [
   { key: 'author', label: '作成者', none: '', of: (i) => i.author },
   { key: 'review', label: 'レビューの判定', none: 'レビュー不要', of: (i) => i.review && REVIEW_LABEL[i.review] },
   { key: 'checks', label: 'チェックの状態', none: 'チェックなし', of: (i) => i.checks && CHECKS_LABEL[i.checks] },
-  { key: 'draft', label: 'ドラフト', none: 'ドラフトでない', of: (i) => (i.isDraft ? 'ドラフト' : undefined) },
-  { key: 'kind', label: 'PR/Issue', none: '', of: (i) => (i.kind === 'pr' ? 'PR' : 'Issue') },
+  // PR か Issue かと、その状態を 1 つにまとめた種類。
+  { key: 'type', label: 'タイプ', none: '', of: (i) => `${i.state} ${i.kind === 'pr' ? 'PR' : 'Issue'}` },
 ];
 
 /**

@@ -7,7 +7,7 @@ import type { HomeWidgetProps } from './Home.tsx';
 import { useCached } from './hooks.ts';
 import { CHECKS_LABEL, GITHUB_GROUPINGS, type Grouping, type ItemGroup, REVIEW_LABEL } from './listGroups.ts';
 import { type ListSpec, ListWidget, keysOf } from './ListWidget.tsx';
-import { Chip, Ext, Time } from './ui.tsx';
+import { Chip, Ext, RefIcon, Time } from './ui.tsx';
 
 export const GITHUB_INBOX_TITLE = 'GitHub Inbox';
 // タイトルバーのボタンはウィジェットの外にあるので、イベントで探し直させる。
@@ -22,12 +22,14 @@ export const githubInboxControls = (): Control[] => [
 
 /** 一覧の行に出せる属性。設定では、選んだものの key をカンマで区切って shown に持つ。 */
 const FIELDS = [
-  { key: 'kind', label: 'PR/Issue' },
-  { key: 'draft', label: 'ドラフト' },
+  { key: 'type', label: 'タイプ' },
   { key: 'review', label: 'レビューの判定' },
   { key: 'checks', label: 'チェックの状態' },
   { key: 'author', label: '作成者' },
 ] as const;
+
+/** PR/Issue（kind）とドラフト（draft）を別々に選んでいた設定は、まとめたタイプ（type）として読む。 */
+const withType = (keys: Set<string>): Set<string> => (keys.has('kind') || keys.has('draft') ? keys.add('type') : keys);
 
 const REVIEW_TONE: Record<string, 'ok' | 'bad' | 'warn' | undefined> = { APPROVED: 'ok', CHANGES_REQUESTED: 'bad', REVIEW_REQUIRED: 'warn' };
 const CHECKS_TONE: Record<string, 'ok' | 'bad' | 'info' | undefined> = { SUCCESS: 'ok', FAILURE: 'bad', ERROR: 'bad', PENDING: 'info', EXPECTED: 'info' };
@@ -37,9 +39,8 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
   <li>
     <Ext class="jira-row" href={item.url}>
       <span class="jira-head">
+        {fields.has('type') && <RefIcon kind={item.kind} state={item.state} />}
         <span class="jira-key"><span class="jira-key-trim">{item.repo}</span> #{item.number}</span>
-        {fields.has('kind') && <Chip>{item.kind === 'pr' ? 'PR' : 'Issue'}</Chip>}
-        {fields.has('draft') && item.isDraft && <Chip tone="muted">ドラフト</Chip>}
         {fields.has('review') && item.review && <Chip tone={REVIEW_TONE[item.review]}>{REVIEW_LABEL[item.review] ?? item.review}</Chip>}
         {fields.has('checks') && item.checks && <Chip tone={CHECKS_TONE[item.checks]}>{CHECKS_LABEL[item.checks] ?? item.checks}</Chip>}
         <span class="jira-rule" aria-hidden="true" />
@@ -57,6 +58,7 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
 const GroupName = ({ by, group }: { by: Grouping<GithubItem>; group: ItemGroup<GithubItem> }) => {
   // 組の項目はどれも同じ値を持つので、先頭の項目から色を決める。値の無い組は名前だけを出す。
   const [item] = group.items;
+  if (by.key === 'type' && item) return <><RefIcon kind={item.kind} state={item.state} />{group.name}</>;
   if (by.key === 'review' && item?.review) return <Chip tone={REVIEW_TONE[item.review]}>{group.name}</Chip>;
   if (by.key === 'checks' && item?.checks) return <Chip tone={CHECKS_TONE[item.checks]}>{group.name}</Chip>;
   return <>{group.name}</>;
@@ -70,9 +72,9 @@ const GITHUB_SPEC: ListSpec<GithubItem> = {
   defaultMax: DEFAULT_MAX,
   fields: FIELDS,
   // 設定が無いときは、属性を選べるようになる前と同じく作成者だけを出す。
-  fieldsOf: (settings) => keysOf(settings.shown, 'author'),
+  fieldsOf: (settings) => withType(keysOf(settings.shown, 'author')),
   groupings: GITHUB_GROUPINGS,
-  groupKeysOf: (settings) => keysOf(settings.groups),
+  groupKeysOf: (settings) => withType(keysOf(settings.groups)),
   keyOf: (i) => i.url,
   textOf: (i) => [i.repo, `#${i.number}`, i.title, i.author, i.section],
   Row: ({ item, fields }) => <ItemRow item={item} fields={fields} />,

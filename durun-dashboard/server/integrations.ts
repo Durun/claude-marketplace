@@ -300,14 +300,14 @@ const SEARCH_QUERY = `query($q: String!, $n: Int!) {
     issueCount
     nodes {
       __typename
-      ... on PullRequest { url number title isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { id } } } } }
-      ... on Issue { url number title updatedAt repository { nameWithOwner } author { login } }
+      ... on PullRequest { url number title state isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { id } } } } }
+      ... on Issue { url number title state stateReason updatedAt repository { nameWithOwner } author { login } }
     }
   }
 }`;
 
-type GhSearchPr = GhInboxPr & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string; id?: string } | null }[] } };
-type GhSearchIssue = Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'> & { __typename: 'Issue' };
+type GhSearchPr = GhInboxPr & Pick<GhRef, 'state'> & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string; id?: string } | null }[] } };
+type GhSearchIssue = Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'> & Pick<GhRef, 'state' | 'stateReason'> & { __typename: 'Issue' };
 export type GhSearch = { viewer: { login: string }; search: { issueCount: number; nodes: (GhSearchPr | GhSearchIssue)[] } };
 
 // 入っているチームは滅多に変わらないので、間隔を空けて読み直す。
@@ -335,7 +335,7 @@ const sectionOf = (pr: GhSearchPr, viewer: string, teams: Set<string>): string |
 export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>): GithubSearch => ({
   total: search.issueCount,
   items: search.nodes.flatMap((n): GithubItem[] => {
-    if (n.__typename === 'Issue') return [{ ...toInboxPr(n), kind: 'issue' }];
+    if (n.__typename === 'Issue') return [{ ...toInboxPr(n), kind: 'issue', state: refState(n) }];
     // 型の上では PR だが、検索は Discussion なども返しうるので、名前で確かめる。
     if (n.__typename !== 'PullRequest') return [];
     const pr = n;
@@ -343,7 +343,7 @@ export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>)
       {
         ...toInboxPr(pr),
         kind: 'pr',
-        isDraft: pr.isDraft,
+        state: refState(pr),
         review: pr.reviewDecision ?? undefined,
         checks: pr.commits.nodes[0]?.commit.statusCheckRollup?.state,
         section: sectionOf(pr, viewer.login, teams),
@@ -354,7 +354,7 @@ export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>)
 
 /** GitHub Inbox のウィジェットが、設定した検索の条件で PR と Issue を探す。並びは条件の sort: に任せる。 */
 export const githubSearch = (q: string, max: number, fresh = false): Promise<GithubSearch> =>
-  cached(`github-search:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () => {
+  cached(`github-search-v2:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () => {
     const [{ data }, teams] = await Promise.all([ghApi<{ data: GhSearch }>(['graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, '-F', `n=${max}`]), myTeams()]);
     return toGithubSearch(data, new Set(teams));
   });

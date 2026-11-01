@@ -101,7 +101,7 @@ export type InboxPr = { url: string; repo: string; number: number; title: string
  * GitHub Inbox のウィジェットに並べる PR と Issue。review は PR のレビューの判定（APPROVED、CHANGES_REQUESTED、REVIEW_REQUIRED）、checks は最後のコミットのチェックの状態。
  * section は PR のダッシュボード（github.com/pulls）の Inbox の区分で、どの区分にも入らないものは undefined。
  */
-export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; isDraft?: boolean; review?: string; checks?: string; section?: string };
+export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; state: RepoRef['state']; review?: string; checks?: string; section?: string };
 /** GitHub の検索の結果。total は条件に合う件数で、items より多ければ表示する件数を超えている。 */
 export type GithubSearch = { items: GithubItem[]; total: number };
 /** GitHub Inbox のウィジェットに並べられる件数の上限。GitHub の検索は 1 回で 100 件まで返す。 */

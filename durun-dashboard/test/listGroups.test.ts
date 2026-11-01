@@ -38,18 +38,18 @@ test('groupItems は、期限の組を「期限 YYYY-MM-DD」と名付ける', (
   assert.deepEqual(shape(groupItems(issues, by('dueDate'))), [['期限 2026-11-15', ['CATS-1']], ['期限なし', ['CATS-2']]]);
 });
 
-test('GitHub の項目は、Inbox の区分、レビューの判定、チェックの状態を名前にし、値の無いものを none の名前の組にする', () => {
-  const item = (number: number, over: Partial<GithubItem> = {}): GithubItem => ({ url: '', repo: 'o/r', number, title: '', author: 'me', updatedAt: 0, kind: 'pr', ...over });
-  const items = [item(1, { section: 'Needs your review', review: 'APPROVED', checks: 'FAILURE' }), item(2, { kind: 'issue' })];
+test('GitHub の項目は、Inbox の区分、レビューの判定、チェックの状態、状態と PR か Issue かを合わせたタイプを名前にし、値の無いものを none の名前の組にする', () => {
+  const item = (number: number, over: Partial<GithubItem> = {}): GithubItem => ({ url: '', repo: 'o/r', number, title: '', author: 'me', updatedAt: 0, kind: 'pr', state: 'Open', ...over });
+  const items = [item(1, { section: 'Needs your review', review: 'APPROVED', checks: 'FAILURE' }), item(2, { kind: 'issue' }), item(3, { state: 'Draft' })];
   const names = (key: string) => groupItems(items, GITHUB_GROUPINGS.find((g) => g.key === key)!).map((g) => g.name);
   assert.deepEqual(names('section'), ['Needs your review', 'Other']);
   assert.deepEqual(names('review'), ['承認済み', 'レビュー不要']);
   assert.deepEqual(names('checks'), ['チェック失敗', 'チェックなし']);
-  assert.deepEqual(names('kind'), ['PR', 'Issue']);
+  assert.deepEqual(names('type'), ['Open PR', 'Open Issue', 'Draft PR']);
 });
 
 test('Inbox の区分は、いちばん内側の組にし、組の中でだけ Inbox の順に並べ替えて同じ区分をまとめる', () => {
-  const item = (number: number, over: Partial<GithubItem> = {}): GithubItem => ({ url: '', repo: 'o/r', number, title: '', author: 'me', updatedAt: 0, kind: 'pr', ...over });
+  const item = (number: number, over: Partial<GithubItem> = {}): GithubItem => ({ url: '', repo: 'o/r', number, title: '', author: 'me', updatedAt: 0, kind: 'pr', state: 'Open', ...over });
   const items = [item(1, { section: 'Your drafts' }), item(2), item(3, { section: 'Needs your review' }), item(4, { section: 'Your drafts' })];
   const section = GITHUB_GROUPINGS.find((g) => g.key === 'section')!;
   assert.deepEqual(groupItems(items, section).map((g) => [g.name, g.items.map((i) => i.number)]), [['Needs your review', [3]], ['Your drafts', [1, 4]], ['Other', [2]]]);
