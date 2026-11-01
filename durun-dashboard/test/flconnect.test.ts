@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { nextSteps } from '../client/flSteps.ts';
-import { align, COALESCE_MS, diffPlaylist, diffRows, diffSends, diffSong, followChannels, RecordLog, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
+import { align, COALESCE_MS, diffLevels, diffPlaylist, diffRec, diffRows, diffSends, diffSong, followChannels, RecordLog, recLabel, resolveChannels, restoreLines, type Row, undoChange } from '../server/flChanges.ts';
 import { gopherText } from '../server/flGopher.ts';
 import { appendLog, isoLocal, jsonLine, logFilePath } from '../server/flLogFile.ts';
 import { Assembler, asciiJson, CHUNK, DIRECTION, encodeMessages, parseFrame } from '../server/flMidi.ts';
@@ -225,4 +225,31 @@ test('スクリプトが無いか版が違うときだけ Install Script を出�
   assert.deepEqual(stepKeys(view({ gopher, setup: { flRunning: false }, midi: { status: 'silent', hello: undefined } })), ['start-fl']);
   assert.deepEqual(stepKeys(view({ gopher, midi: { status: 'no-port', hello: undefined } })), ['loopback']);
   assert.deepEqual(stepKeys(view({ gopher, setup: { userData: undefined } })), ['user-data']);
+});
+
+test('チャンネルのつまみは、イベントの番号ごとに FL の生の値で比べ、FL が付けた名前と値の文字を添え、画面が FL の言葉のまま見せる', () => {
+  const offsets = [2, 0x1003];
+  const before = { '0': [[1073741824, '100%'], [326539860, '31%']] as [number, string][] };
+  const after = { '0': [[1073741824, '100%'], [490630242, '46%']] as [number, string][] };
+  const labels = new Map([[0x1003, recLabel('Kick - Panning envelope - Attack time', 'Kick')]]);
+  const [c] = diffRec(before, after, offsets, labels, new Map([[0, 'Kick']]));
+  assert.deepEqual(c, { section: 'channels', index: 0, name: 'Kick', field: 'rec:4099', label: 'Panning envelope - Attack time', before: 326539860, after: 490630242, text: ['31%', '46%'] });
+  assert.equal(describeChange(c!), 'channel 0「Kick」の「Panning envelope - Attack time」: 31% → 46%');
+  // FL が値の文字を付けないつまみは、生の値を見せる。
+  assert.equal(describeChange({ ...c!, field: 'rec:9', label: 'Gate', before: 0, after: 1073741824, text: ['', ''] }), 'channel 0「Kick」の「Gate」: 0 → 1073741824');
+  // 名前の頭がチャンネルの名前でなければ、そのまま使う。
+  assert.equal(recLabel('Sampler - Gate', 'Kick'), 'Sampler - Gate');
+});
+
+test('ミキサーの EQ と送りの量も比べ、EQ は変わった帯だけを、送りの量は送り先ごとに見せる', () => {
+  const m = (eq: number[]): Row => ({ i: 0, name: 'Master', color: 0, vol: 0.8, db: 0, pan: 0, mute: false, solo: false, stereo: 0, eq, enabled: true, polarity: false, swap: false, armed: false, fx: true });
+  const [eq] = diffRows('mixer', [m([0.5, 0.08, 0.26, 0.5, 0.5, 0.26])], [m([0.5, 0.08, 0.26, 0.62, 0.5, 0.26])]);
+  assert.equal(describeChange(eq!), 'mixer 0「Master」の EQ: 帯 2 の Gain 0.5 → 0.62');
+  const sends = { before: { '1': [0, 5] }, after: { '1': [0, 5] } };
+  const [level] = diffLevels(sends, { before: { '1': [0.8, 0.5] }, after: { '1': [0.8, 0.3] } }, new Map([[1, 'Bass']]));
+  assert.deepEqual(level, { section: 'sends', index: 1, name: 'Bass', field: 'level:5', before: 0.5, after: 0.3 });
+  assert.equal(describeChange(level!), 'mixer 1「Bass」の mixer 5 への送りの量: 0.5 → 0.3');
+  // 送り先が変わったトラックは、送りの量を比べない。
+  assert.deepEqual(diffLevels({ before: { '1': [0] }, after: { '1': [0, 5] } }, { before: { '1': [0.8] }, after: { '1': [0.8, 1] } }, new Map()), []);
+  assert.equal(describeChange({ section: 'song', index: 0, field: 'bulk', before: null, after: 539 }), '一度に 539 件の値が変わった（プロジェクトを読み込んだか、まとめて変えた）');
 });

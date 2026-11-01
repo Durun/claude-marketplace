@@ -11,7 +11,7 @@ export type RowSection = 'channels' | 'mixer' | 'playlist' | 'patterns';
 /** 比べる項目。sel（選んでいるか）は変わりやすく、人間の操作として記録すると多すぎるので比べない。 */
 const FIELDS: Record<RowSection, string[]> = {
   channels: ['name', 'color', 'vol', 'pan', 'mute', 'solo', 'mixer', 'plugin'],
-  mixer: ['name', 'color', 'vol', 'pan', 'mute', 'solo'],
+  mixer: ['name', 'color', 'vol', 'pan', 'mute', 'solo', 'stereo', 'eq', 'enabled', 'polarity', 'swap', 'armed', 'fx'],
   playlist: ['name', 'color', 'mute', 'solo'],
   patterns: ['name', 'color', 'length'],
 };
@@ -111,6 +111,46 @@ export const diffSends = (before: Record<string, number[]>, after: Record<string
     const name = names.get(index);
     return [{ section: 'sends' as const, index, name: typeof name === 'string' ? name : undefined, field: 'sends', before: b, after: a }];
   });
+
+/** ミキサーのトラックの送りの量を比べる。送り先が同じトラックだけを、送り先ごとに比べる（送り先の変化は diffSends が見る）。 */
+export const diffLevels = (
+  sends: { before: Record<string, number[]>; after: Record<string, number[]> },
+  levels: { before: Record<string, number[]>; after: Record<string, number[]> },
+  names: Map<number, FlValue | undefined>,
+): FlChange[] =>
+  Object.keys(levels.after).flatMap((key) => {
+    const dests = sends.after[key];
+    const b = levels.before[key];
+    const a = levels.after[key];
+    if (!dests || !b || !a || !same(sends.before[key], dests)) return [];
+    const index = Number(key);
+    const name = names.get(index);
+    return dests.flatMap((dest, k) => (b[k] === a[k] ? [] : [{ section: 'sends' as const, index, name: typeof name === 'string' ? name : undefined, field: `level:${dest}`, before: b[k] ?? null, after: a[k] ?? null }]));
+  });
+
+/** チャンネルのつまみの値。チャンネルの番号ごとに、[FL の生の値, FL の値の文字] を、イベントの番号の並び（offsets）の順に持つ。 */
+export type RecValues = Record<string, [number, string][]>;
+
+/**
+ * チャンネルのつまみを比べる。field はイベントの番号（チャンネルの番号の先頭からの位置）、label は FL が付けたつまみの名前。
+ * チャンネルの並びが変わったときは、番号がずれるので呼ばない（呼ぶ側が決める）。
+ */
+export const diffRec = (before: RecValues, after: RecValues, offsets: number[], labels: Map<number, string>, names: Map<number, string | undefined>): FlChange[] =>
+  Object.keys(after).flatMap((key) => {
+    const b = before[key];
+    const a = after[key];
+    if (!b || !a || b.length !== a.length) return [];
+    const index = Number(key);
+    return a.flatMap(([value, text], k): FlChange[] => {
+      const prev = b[k];
+      const offset = offsets[k];
+      if (!prev || offset === undefined || prev[0] === value) return [];
+      return [{ section: 'channels', index, name: names.get(index), field: `rec:${offset}`, label: labels.get(offset), before: prev[0], after: value, text: [prev[1], text] }];
+    });
+  });
+
+/** FL が付けたつまみの名前（「Sampler - Panning envelope - Attack time」）から、頭のチャンネルの名前を外す。チャンネルの名前は、記録の name に持つため。 */
+export const recLabel = (fullName: string, channelName: string | undefined): string => (channelName && fullName.startsWith(`${channelName} - `) ? fullName.slice(channelName.length + 3) : fullName);
 
 /** FL の元に戻す履歴。[数, 戻した数]。 */
 export type UndoState = [number, number];

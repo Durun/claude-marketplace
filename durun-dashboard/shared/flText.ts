@@ -18,6 +18,22 @@ const FIELD_LABEL: Record<string, string> = {
   playing: '再生',
   recording: '録音',
   sends: '送り先',
+  stereo: 'ステレオの広がり',
+  enabled: '有効',
+  polarity: '極性の反転',
+  swap: '左右の入れ替え',
+  armed: '録音待ち',
+  fx: 'エフェクトのスロット',
+};
+
+const EQ_PARTS = ['Gain', 'Frequency', 'Bandwidth'];
+
+/** EQ の変わった帯と値。eq は帯ごとの [Gain, Frequency, Bandwidth] を順に並べた、0 から 1 の値。 */
+const eqText = (before: FlValue, after: FlValue): string => {
+  const b = Array.isArray(before) ? before : [];
+  const a = Array.isArray(after) ? after : [];
+  const parts = a.flatMap((v, k) => (b[k] === v ? [] : [`帯 ${Math.floor(k / 3) + 1} の ${EQ_PARTS[k % 3] ?? '?'} ${String(b[k] ?? '?')} → ${String(v)}`]));
+  return parts.length ? parts.join('、') : `${JSON.stringify(before)} → ${JSON.stringify(after)}`;
 };
 
 /** FL がウィンドウの名前に入れるアイコンの文字（Unicode の私用領域）。例: Sampler (Master) の前後。 */
@@ -66,15 +82,22 @@ const describeUndo = (c: FlChange): string => {
   return `${inWindow}、FL Connect が読まない値を変えた（FL の元に戻す履歴が ${d.added} 件増えた）`;
 };
 
+/** FL の値の文字が空のときは、生の値を見せる。 */
+const shown = (text: string | undefined, raw: FlValue): string => (text ? text : String(raw));
+
 export const describeChange = (c: FlChange): string => {
   if (c.section === 'undo') return describeUndo(c);
   if (c.field === 'project') return 'プロジェクトを読み込み直した（ここより前の番号と名前は、今のプロジェクトのものではない）';
+  if (c.field === 'bulk') return `一度に ${String(c.after)} 件の値が変わった（プロジェクトを読み込んだか、まとめて変えた）`;
   const target = targetOf(c);
   if (c.field === 'added') return `${target}を足した`;
   if (c.field === 'removed') return `${target}を消した`;
   // FL が名前と値の文字を付けた項目は、FL の言葉のまま見せる。
-  if (c.label) return `${target}の「${c.label}」: ${c.text ? `${c.text[0]} → ${c.text[1]}` : `${String(c.before)} → ${String(c.after)}`}`;
+  if (c.label) return `${target}の「${c.label}」: ${shown(c.text?.[0], c.before)} → ${shown(c.text?.[1], c.after)}`;
   if (c.field === 'vol' && c.db) return `${target}の音量: ${dbText(c.db[0])} → ${dbText(c.db[1])}`;
+  if (c.field === 'eq') return `${target}の EQ: ${eqText(c.before, c.after)}`;
+  const level = /^level:(\d+)$/.exec(c.field);
+  if (level) return `${target}の mixer ${level[1]} への送りの量: ${String(c.before)} → ${String(c.after)}`;
   return `${target}の${FIELD_LABEL[c.field] ?? c.field}: ${formatValue(c.field, c.before)} → ${formatValue(c.field, c.after)}`;
 };
 

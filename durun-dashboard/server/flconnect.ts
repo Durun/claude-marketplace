@@ -9,12 +9,16 @@ import path from 'node:path';
 import type { FlAgentEntry, FlChange, FlConnectView, FlGopherStatus, FlHello, FlLinkStatus, FlLogEntry, FlRecord, FlRemoval, FlValue } from '../shared/types.ts';
 import {
   COALESCE_MS,
+  diffLevels,
   diffPlaylist,
+  diffRec,
   diffRows,
   diffSends,
   diffSong,
   followChannels,
+  type RecValues,
   RecordLog,
+  recLabel,
   resolveChannels,
   restoreLines,
   type Row,
@@ -97,7 +101,23 @@ type Summary = {
   counts: number[];
 };
 
-type Mirror = { summary?: Summary; channels?: Row[]; mixer?: Row[]; playlist?: Row[]; playlistCount?: number; patterns?: Row[]; sends?: Record<string, number[]> };
+/**
+ * 覚えている FL の値。rec はチャンネルのつまみの値で、recOffsets はその番号の並び、recLabels は番号ごとの FL が付けたつまみの名前（チャンネルの名前を外したもの）。
+ * levels は sends の送り先ごとの送りの量。
+ */
+type Mirror = {
+  summary?: Summary;
+  channels?: Row[];
+  mixer?: Row[];
+  playlist?: Row[];
+  playlistCount?: number;
+  patterns?: Row[];
+  sends?: Record<string, number[]>;
+  levels?: Record<string, number[]>;
+  rec?: RecValues;
+  recOffsets?: number[];
+  recLabels?: Map<number, string>;
+};
 
 /** エージェントの 1 回の操作で変わった値。fl_undo はこれを新しいものから戻す。 */
 type AgentOp = { id: string; via: string; at: number; changes: FlChange[] };
@@ -490,15 +510,24 @@ const usedTracks = (): number[] => {
 
 type ReadOptions = { sends?: number[]; slots?: boolean };
 
+/** 人間の 1 回の読み直しで、これより多くの値が変わったら、1 件ずつ記録せずにまとめる。チャンネルのプリセットを読み込む（つまみが 80 ほど変わる）ことは記録したい。 */
+const MAX_HUMAN_CHANGES = 100;
+
 /**
  * sections を読み直し、覚えている値と比べて、違いを who の記録にする。返すのは、変わった値と、FL が返したもの。
  * 初めて読む範囲は、比べずに覚えるだけにする。
  */
 const refresh = async (sections: RowSection[], who: FlRecord['who'], via?: string, options: ReadOptions = {}): Promise<{ changes: FlChange[]; reply: Record<string, unknown> }> => {
-  const reply = await request({ op: 'read', sections, ...(options.sends ? { sends: options.sends } : {}), ...(options.slots ? { slots: true } : {}) }, READ_TIMEOUT_MS);
+  // チャンネルのつまみは、チャンネルを読むときに一緒に読む。名前は、覚えていないときだけ読む。
+  const rec = sections.includes('channels');
+  const reply = await request(
+    { op: 'read', sections, ...(options.sends ? { sends: options.sends } : {}), ...(options.slots ? { slots: true } : {}), ...(rec ? { rec: true, rec_names: !mirror.recLabels?.size } : {}) },
+    READ_TIMEOUT_MS,
+  );
   const changes: FlChange[] = [];
   const summary = reply.summary as Summary | undefined;
   if (summary) changes.push(...observe(summary));
+  const prevChannels = mirror.channels;
   for (const section of sections) {
     if (section === 'playlist') {
       const pl = reply.playlist as { items: Row[]; count: number } | undefined;
@@ -516,14 +545,45 @@ const refresh = async (sections: RowSection[], who: FlRecord['who'], via?: strin
     mirror[section] = rows;
   }
   const sends = reply.sends as Record<string, number[]> | undefined;
+  const levels = reply.levels as Record<string, number[]> | undefined;
   if (sends) {
-    if (mirror.sends) changes.push(...diffSends(mirror.sends, sends, new Map((mirror.mixer ?? []).map((m) => [m.i, m.name]))));
+    const names = new Map((mirror.mixer ?? []).map((m) => [m.i, m.name]));
+    if (mirror.sends) changes.push(...diffSends(mirror.sends, sends, names));
+    if (levels && mirror.sends && mirror.levels) changes.push(...diffLevels({ before: mirror.sends, after: sends }, { before: mirror.levels, after: levels }, names));
     mirror.sends = { ...mirror.sends, ...sends };
+    mirror.levels = { ...mirror.levels, ...levels };
   }
+  changes.push(...readRec(reply, prevChannels));
+  // 人間が一度にこれほど変えることはまず無い。プロジェクトを読み込んだか、FL が起動しながら読み込んでいる途中なので、1 件にまとめる。
+  if (who === 'human' && changes.length > MAX_HUMAN_CHANGES) changes.splice(0, changes.length, { section: 'song', index: 0, field: 'bulk', before: null, after: changes.length });
   changes.push(...settleUndo(who, changes));
   for (const c of changes) records.add(c, who, via);
   if (changes.length) broadcast();
   return { changes, reply };
+};
+
+/**
+ * 読んだチャンネルのつまみを覚え、前と比べた変化を返す。チャンネルの並びか名前が変わったときは、番号がずれるので比べずに覚え直す。
+ * つまみの名前は、FL が名前を返したときに、チャンネルの名前を外して覚える（同じ種類のチャンネルでは同じ名前になる）。
+ */
+const readRec = (reply: Record<string, unknown>, prevChannels: Row[] | undefined): FlChange[] => {
+  const raw = reply.rec as Record<string, [number, string, string?][]> | undefined;
+  const offsets = reply.rec_offsets as number[] | undefined;
+  if (!raw || !offsets) return [];
+  const rows = mirror.channels ?? [];
+  const names = new Map(rows.map((r) => [r.i, typeof r.name === 'string' ? r.name : undefined]));
+  const labels = mirror.recLabels ?? new Map<number, string>();
+  for (const [key, values] of Object.entries(raw)) {
+    values.forEach(([, , full], k) => {
+      const offset = offsets[k];
+      if (full && offset !== undefined && !labels.has(offset)) labels.set(offset, recLabel(full, names.get(Number(key))));
+    });
+  }
+  const rec: RecValues = Object.fromEntries(Object.entries(raw).map(([key, values]) => [key, values.map(([value, text]): [number, string] => [value, text])]));
+  const sameChannels = !!prevChannels && same(JSON.stringify(prevChannels.map((r) => [r.name, r.type])), JSON.stringify(rows.map((r) => [r.name, r.type])));
+  const changes = mirror.rec && sameChannels && same(JSON.stringify(mirror.recOffsets), JSON.stringify(offsets)) ? diffRec(mirror.rec, rec, offsets, labels, names) : [];
+  Object.assign(mirror, { rec, recOffsets: offsets, recLabels: labels });
+  return changes;
 };
 
 /** 決まった間隔で安い要約を問い合わせ、FL が生きているかを見る。元に戻す履歴の数か、チャンネルなどの数が変わっていたら、全部を読み直す。 */
@@ -809,7 +869,11 @@ const recordLine = (r: FlRecord): string => JSON.stringify({ at: new Date(r.at).
 
 /** 記録の JSON の読み方。エージェントに記録を渡すときに添える。 */
 const RECORD_FORMAT =
-  '1 行に 1 つ、FL が返した生の値の JSON。番号は MIDI スクリプトの API の番号。vol は 0 から 1 の値で、db に FL が返した dB を添える。color は 0xRRGGBB の数。label と text があれば、FL が付けた項目の名前と値の文字。section が undo の行は、FL Connect が読まない値を変えたか Ctrl+Z をしたことを表し、before と after は元に戻す履歴の [数, 戻した数]、name はそのとき前面にあったウィンドウ';
+  '1 行に 1 つ、FL が返した生の値の JSON。番号は MIDI スクリプトの API の番号。vol は 0 から 1 の値で、db に FL が返した dB を添える。color は 0xRRGGBB の数。' +
+  'field が rec:番号 の行はチャンネルのつまみで、番号は channels.getRecEventId(index) からの位置、値は FL の 0 から 2^30 の値、label と text は FL が付けたつまみの名前と値の文字。' +
+  'ミキサーの eq は帯ごとの [Gain, Frequency, Bandwidth] を順に並べた 0 から 1 の値、sends の level:送り先 は送りの量。' +
+  'section が undo の行は、FL Connect が読まない値を変えたか Ctrl+Z をしたことを表し、before と after は元に戻す履歴の [数, 戻した数]、name はそのとき前面にあったウィンドウ。' +
+  'field が bulk の行は、一度に after 件の値が変わったこと（プロジェクトの読み込みなど）を表す';
 
 /** fl_changes：前に読んだところから先の記録を返す。フックで届けた記録も読んだものとして扱う。 */
 const flChanges = (sessionId: string, args: Record<string, unknown>): FlToolResult => {

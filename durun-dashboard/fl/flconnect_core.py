@@ -1,5 +1,6 @@
 # durun-dashboard の FL Connect の中身。入口の device_FLConnect.py が読み込み、reload の要求で読み直す。
 # 受けるのは 4 つ：状態を読む（summary、read、params）、起動したときの設定を読む（info）、AI が書いた Python を動かす（exec）、echo。
+# イベントの番号（REC）を受ける関数は、無い番号を渡すと FL を落とすので、1 つずつ確かめた番号（REC_OFFSETS）だけを引く。
 # 読んだ値は生のまま返す。比べる、まとめる、決めるといった判断はダッシュボードのサーバーでする。
 
 import ast
@@ -26,7 +27,7 @@ try:
 except ImportError:
     traceback = None
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 EXEC_LIMIT_SEC = 2.0
 MAX_EXEC_LIMIT_SEC = 10.0
 # 応答は SysEx で分けて運ぶ。print の出力と result が大きすぎると FL の主スレッドが長く止まるので、ここで切る。
@@ -35,6 +36,14 @@ MAX_OUTPUT_CHARS = 60000
 SLOTS = 10
 COLOR_MASK = 0xFFFFFF
 MAX_PARAMS = 200
+
+# チャンネルのつまみを読むイベントの番号（チャンネルの番号の先頭からの位置）。FL 26.1.7 の Sampler のチャンネルで、1 つずつ読んで落ちなかったもの（2026-11-01）。
+# イベントの番号を受ける関数は、無い番号を渡すと FL を落とすので、ここに無い番号は引かない。
+# 基本のつまみ（midi.py の REC_Chan_*）のうち、音量、パン、ミュート、送り先のミキサーは、ほかの読み方（_channels）で読むので外す。
+# Envelope は 5 つ（Panning、Volume、Filter cutoff、Filter resonance、Pitch。0x1000 から 0x100 ずつ）で、つまみは 0〜12 番。13 番（REC_Chan_Env_Hole）は引くと落ちた。
+REC_OFFSETS = (2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20) + tuple(0x1000 + k * 0x100 + p for k in range(5) for p in range(13))
+# REC_OFFSETS を確かめた種類のチャンネル（channels.getChannelType の CT_Sampler）。ほかの種類は、番号の並びが違うかもしれないので読まない。
+REC_CHANNEL_TYPES = (0,)
 
 _FL_MODULES = {
     "arrangement": arrangement, "channels": channels, "device": device, "general": general, "mixer": mixer,
@@ -256,13 +265,21 @@ def _channels():
     ]
 
 
+_EQ_GETTERS = (mixer.getEqGain, mixer.getEqFrequency, mixer.getEqBandwidth)
+
+
 def _mixer(slots):
+    """ミキサーのトラック。eq は、帯ごとの Gain、Frequency、Bandwidth（0 から 1）を順に並べたもの。"""
     items = []
+    bands = mixer.getEqBandCount()
     for i in range(mixer.trackCount()):
         item = {
             "i": i, "name": mixer.getTrackName(i), "color": mixer.getTrackColor(i) & COLOR_MASK,
             "vol": _finite(mixer.getTrackVolume(i), 4), "db": _finite(mixer.getTrackVolume(i, 1), 1), "pan": _finite(mixer.getTrackPan(i), 4),
             "mute": bool(mixer.isTrackMuted(i)), "solo": bool(mixer.isTrackSolo(i)),
+            "stereo": _finite(mixer.getTrackStereoSep(i), 6), "eq": [_finite(get(i, b), 6) for b in range(bands) for get in _EQ_GETTERS],
+            "enabled": bool(mixer.isTrackEnabled(i)), "polarity": bool(mixer.isTrackRevPolarity(i)), "swap": bool(mixer.isTrackSwapChannels(i)),
+            "armed": bool(mixer.isTrackArmed(i)), "fx": bool(mixer.isTrackSlotsEnabled(i)),
         }
         if slots:
             item["slots"] = [_plugin(i, s) for s in range(SLOTS)]
@@ -271,8 +288,34 @@ def _mixer(slots):
 
 
 def _sends(tracks):
+    """tracks の送り先と、送り先ごとの送りの量（0 から 1）。"""
     count = mixer.trackCount()
-    return {str(i): [d for d in range(count) if d != i and mixer.getRouteSendActive(i, d)] for i in tracks if 0 <= i < count}
+    sends, levels = {}, {}
+    for i in tracks:
+        if not 0 <= i < count:
+            continue
+        dests = [d for d in range(count) if d != i and mixer.getRouteSendActive(i, d)]
+        sends[str(i)] = dests
+        levels[str(i)] = [_finite(mixer.getRouteToLevel(i, d), 6) for d in dests]
+    return sends, levels
+
+
+def _rec(names):
+    """
+    チャンネルのつまみを、REC_OFFSETS のイベントの番号で読む。値は FL の生の値（0 から 2^30）と、FL が付けた値の文字。
+    names なら、FL が付けたつまみの名前も足す。名前はチャンネルの名前を含むので、チャンネルを足すか名前を変えるまで変わらない。
+    """
+    out = {}
+    for i in range(channels.channelCount()):
+        if channels.getChannelType(i) not in REC_CHANNEL_TYPES:
+            continue
+        base = channels.getRecEventId(i)
+        values = [[mixer.getEventValue(base + o), device.getLinkedValueString(base + o)] for o in REC_OFFSETS]
+        if names:
+            for value, o in zip(values, REC_OFFSETS):
+                value.append(mixer.getEventIDName(base + o))
+        out[str(i)] = values
+    return out
 
 
 def _playlist():
@@ -296,7 +339,10 @@ def _patterns():
 
 
 def read(req):
-    """sections に挙げた範囲を読む。slots でミキサーのスロットのプラグインも、sends に挙げたトラックの送り先も読む。"""
+    """
+    sections に挙げた範囲を読む。slots でミキサーのスロットのプラグインも、sends に挙げたトラックの送り先と送りの量も読む。
+    rec でチャンネルのつまみも読み（rec_names なら名前も）、rec_offsets に番号の並びを添える。
+    """
     sections = req.get("sections")
     if sections is None:
         sections = ["channels", "mixer", "playlist", "patterns"]
@@ -310,7 +356,10 @@ def read(req):
     if "patterns" in sections:
         out["patterns"] = _patterns()
     if req.get("sends"):
-        out["sends"] = _sends(req["sends"])
+        out["sends"], out["levels"] = _sends(req["sends"])
+    if req.get("rec"):
+        out["rec"] = _rec(bool(req.get("rec_names")))
+        out["rec_offsets"] = REC_OFFSETS
     return out
 
 
