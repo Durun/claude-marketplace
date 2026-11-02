@@ -104,17 +104,25 @@ const withClaudeStatus = (key: string, pr: PrInfo | null | undefined): PrInfo | 
   return { ...pr, title: s.title, state: s.state === 'DRAFT' ? 'OPEN' : s.state, isDraft: s.state === 'DRAFT', checks: s.checks, review: s.review ?? pr.review };
 };
 
-const peekBranchPr = (cwd: string, branch: string): PrInfo | null | undefined =>
-  peekCached(branchKey(cwd, branch), { maxAge: BRANCH_PR_MAX_AGE }, () => findPr(cwd, branch));
+/**
+ * 覚えた PR を返し、無ければ裏で読む。keep なら、覚えた後は読み直さない。アーカイブしたセッションの PR に使う。
+ * マージした PR はもう変わらないので、keep でなくても読み直さない。
+ */
+const peekPr = <T extends PrInfo | null>(key: string, keep: boolean, load: () => Promise<T>): T | undefined => {
+  const pr = peekCached(key, { maxAge: BRANCH_PR_MAX_AGE, keep: true }, load);
+  return keep || pr === undefined || pr?.state === 'MERGED' ? pr : peekCached(key, { maxAge: BRANCH_PR_MAX_AGE }, load);
+};
 
-/** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。 */
-export const cachedPr = (cwd: string, branch: string | undefined): PrInfo | undefined => {
+const peekBranchPr = (cwd: string, branch: string, keep: boolean): PrInfo | null | undefined => peekPr(branchKey(cwd, branch), keep, () => findPr(cwd, branch));
+
+/** 覚えた PR を返す。初めてのブランチと古くなったものは裏で読み、変わったら画面に知らせる。keep は peekPr と同じ。 */
+export const cachedPr = (cwd: string, branch: string | undefined, keep = false): PrInfo | undefined => {
   if (!branch || BASE_BRANCH.test(branch)) return undefined;
-  return withClaudeStatus(branchKey(cwd, branch), peekBranchPr(cwd, branch));
+  return withClaudeStatus(branchKey(cwd, branch), peekBranchPr(cwd, branch, keep));
 };
 
 /** ブランチの PR を、まだ一度も読み終えていないか。findPr は PR が無くても null を返して覚えるので、覚えた値が無ければ読んでいる途中である。 */
-export const prPending = (cwd: string, branch: string): boolean => !BASE_BRANCH.test(branch) && peekBranchPr(cwd, branch) === undefined;
+export const prPending = (cwd: string, branch: string, keep = false): boolean => !BASE_BRANCH.test(branch) && peekBranchPr(cwd, branch, keep) === undefined;
 
 // バッジに登録した PR と Issue も、すべてのセッションの分を読むので、ブランチの PR と同じ間隔で読み直す。
 const BADGE_POLICY = { maxAge: BRANCH_PR_MAX_AGE };
@@ -145,9 +153,11 @@ export const loadBadge = async (kind: 'pr' | 'issue', ref: string, cwd?: string)
   return url;
 };
 
-export const badgePr = (url: string): PrInfo | undefined => withClaudeStatus(`pr-badge:${url}`, peekCached(`pr-badge:${url}`, BADGE_POLICY, () => readBadgePr(url)));
+/** keep は peekPr と同じ。 */
+export const badgePr = (url: string, keep = false): PrInfo | undefined => withClaudeStatus(`pr-badge:${url}`, peekPr(`pr-badge:${url}`, keep, () => readBadgePr(url)));
 
-export const badgeIssue = (url: string): IssueInfo | undefined => peekCached(`issue-badge:${url}`, BADGE_POLICY, () => readIssue(url));
+/** keep なら、覚えた後は読み直さない。 */
+export const badgeIssue = (url: string, keep = false): IssueInfo | undefined => peekCached(`issue-badge:${url}`, { ...BADGE_POLICY, keep }, () => readIssue(url));
 
 // 解決済みかどうかは REST の API では分からないので、GraphQL で読む。
 // ponytail: スレッドは先頭の 100 件、コメントはスレッドごとに 50 件まで。超える PR が出たら、ページを送って読む。
@@ -545,10 +555,10 @@ const JIRA_BADGE_MAX_AGE = 10 * 60_000;
 // 課題の画面と一覧は、開いている間に変わったものを出すよう、短い間隔で読み直す。
 const JIRA_MAX_AGE = 30_000;
 
-/** API トークンが無いときはリンクだけ返す。 */
-export const jiraIssue = (key: string): JiraIssue => {
+/** API トークンが無いときはリンクだけ返す。keep なら、覚えた後は読み直さない。 */
+export const jiraIssue = (key: string, keep = false): JiraIssue => {
   const badge = JIRA_AUTH
-    ? peekCached(`jira-issue-v2:${key}`, { maxAge: JIRA_BADGE_MAX_AGE }, async () => {
+    ? peekCached(`jira-issue-v2:${key}`, { maxAge: JIRA_BADGE_MAX_AGE, keep }, async () => {
         const { fields } = await jiraFetch<JiraIssueBody>(`issue/${encodeURIComponent(key)}?fields=summary,status`);
         return { summary: fields?.summary, status: fields?.status?.name, statusCategory: fields?.status?.statusCategory?.key };
       })
@@ -810,12 +820,12 @@ const REF_URL_POLICY = { maxAge: 24 * 60 * 60_000 };
 
 /**
  * 人間が依頼で触れた PR、Issue、JIRA の課題の、バッジにする URL。#番号は cwd のリポジトリのものとして読み、読み終えたものだけを返す。
- * 登録したプロジェクトの外のキーは、JIRA で課題を読めたものに限る。UTF-8 のような、課題ではない語をバッジにしないため。
+ * 登録したプロジェクトの外のキーは、JIRA で課題を読めたものに限る。UTF-8 のような、課題ではない語をバッジにしないため。keep なら、覚えた後は読み直さない。
  */
-export const mentionedBadges = (texts: string[], cwd: string): string[] => {
+export const mentionedBadges = (texts: string[], cwd: string, keep = false): string[] => {
   const text = texts.join('\n');
-  const refs = [...new Set(text.match(REF_NUMBER))].flatMap((ref) => peekCached(`ref-url:${cwd} ${ref}`, REF_URL_POLICY, async () => (await ghIssue(ref, cwd)).url) ?? []);
-  const keys = [...new Set(text.match(ISSUE_KEY))].filter((key) => jiraIssue(key).summary !== undefined);
+  const refs = [...new Set(text.match(REF_NUMBER))].flatMap((ref) => peekCached(`ref-url:${cwd} ${ref}`, { ...REF_URL_POLICY, keep }, async () => (await ghIssue(ref, cwd)).url) ?? []);
+  const keys = [...new Set(text.match(ISSUE_KEY))].filter((key) => jiraIssue(key, keep).summary !== undefined);
   return [...(text.match(GITHUB_ITEM_URL) ?? []), ...refs, ...[...findJiraKeys(texts), ...keys].map(browseUrl)];
 };
 

@@ -153,7 +153,7 @@ const firstPromptOf = (log: claude.LogSummary | undefined): string | undefined =
 /** バッジにする URL。人間がバッジに登録したものと、人間が依頼で触れたもの。 */
 export const badgeUrls = (meta: SessionMeta, log: claude.LogSummary | undefined): string[] => [
   ...(meta.badges ?? []),
-  ...mentionedBadges(log?.texts.flatMap((t) => (t.kind === 'prompt' ? [t.text] : [])) ?? [], meta.cwd),
+  ...mentionedBadges(log?.texts.flatMap((t) => (t.kind === 'prompt' ? [t.text] : [])) ?? [], meta.cwd, meta.archived),
 ];
 
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
@@ -169,15 +169,17 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const subs = meta.transcriptPath ? claude.readSubagents(meta.transcriptPath) : [];
   recordBgQuestion(meta, log, live);
   const name = displayName(meta, log);
-  const pr = cachedPr(meta.cwd, log?.branch);
+  // アーカイブしたセッションの PR と課題は、gh と JIRA を呼びすぎないよう、覚えた後は読み直さない。
+  const keep = meta.archived;
+  const pr = cachedPr(meta.cwd, log?.branch, keep);
   const branches = [...(log?.branches ?? [])].reverse();
   const badges = badgeUrls(meta, log).flatMap((u) => badgeOf(u) ?? []);
   const shown = <T extends { url: string }>(items: T[]): T[] => {
     const hidden = new Set(meta.hiddenBadges);
     return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url));
   };
-  const branchPrs = branches.flatMap((b) => cachedPr(meta.cwd, b) ?? []);
-  const prs = shown([...branchPrs, ...badges.flatMap((b) => (b.kind === 'pr' && badgePr(b.url)) || [])]);
+  const branchPrs = branches.flatMap((b) => cachedPr(meta.cwd, b, keep) ?? []);
+  const prs = shown([...branchPrs, ...badges.flatMap((b) => (b.kind === 'pr' && badgePr(b.url, keep)) || [])]);
   const badgeJira = badges.flatMap((b) => (b.kind === 'jira' && jiraKeyOfUrl(new URL(b.url))) || []);
   const jiraKeys = new Set([...meta.jira, ...badgeJira, ...findJiraKeys([...branches, name, ...branchPrs.map((p) => p.title)])]);
   const repo = repoName(meta.cwd);
@@ -204,9 +206,9 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
     pr,
     prs,
-    prsPending: branches.some((b) => prPending(meta.cwd, b)),
-    jira: shown([...jiraKeys].map(jiraIssue)),
-    issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url)) || [])),
+    prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),
+    jira: shown([...jiraKeys].map((key) => jiraIssue(key, keep))),
+    issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url, keep)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
