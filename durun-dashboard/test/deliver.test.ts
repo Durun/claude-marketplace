@@ -14,6 +14,7 @@ process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { SessionStateError, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
+const { cached, peekCached } = await import('../server/cache.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
 fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
@@ -700,7 +701,7 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });
 
-test('再開して渡したら複製ができたとき、設定とやり取りを複製へ移して元をアーカイブし、元に移った先を残す。同じ id のまま続いたら、claude agents を動かさない', async () => {
+test('再開して渡したら複製ができたとき、設定とやり取りを複製へ移し、覚えた概要などを写して元をアーカイブし、元に移った先を残す。同じ id のまま続いたら、claude agents を動かさない', async () => {
   // 偽の claude は呼ばれた引数を書き足す。aaaaaaaa-1 の再開は、本物と同じく複製のジョブ bbbbbbbb を起動したと書き、複製の再開は同じジョブで続けたと書く。
   const bin = path.join(tmp, 'bin-follow');
   const callsFile = path.join(tmp, 'calls-follow');
@@ -718,6 +719,9 @@ if (args[0] === '--bg' && args[2] === 'bbbbbbbb-2') console.log('backgrounded ·
   const bookmark = { kind: 'message' as const, at: 1, text: '発言', createdAt: 2 };
   Object.assign(ensureSession('aaaaaaaa-1', tmp), { title: '実装', theme: 'テーマ', badges: ['https://github.com/o/r/pull/1'], bookmarks: [bookmark] });
   state.sessionOrder = ['aaaaaaaa-1'];
+  // 複製の id で先に作った値は、元の値で上書きしない。
+  const seeds = { 'summary:aaaaaaaa-1': '概要', 'glossary:aaaaaaaa-1:0': '用語', 'replies:aaaaaaaa-1': '元の候補', 'replies:bbbbbbbb-2': '複製の候補' };
+  for (const [key, value] of Object.entries(seeds)) await cached(key, {}, async () => value);
   const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
   const settle = (m: OutboxMessage): Promise<void> => new Promise((resolve) => (m.sending ? onChange(() => !m.sending && resolve()) : resolve()));
 
@@ -731,6 +735,8 @@ if (args[0] === '--bg' && args[2] === 'bbbbbbbb-2') console.log('backgrounded ·
   assert.deepEqual([old?.archived, old?.movedTo, old?.bookmarks], [true, 'bbbbbbbb-2', undefined]);
   assert.deepEqual([first.message.sessionId, !!first.message.deliveredAt], ['bbbbbbbb-2', true]);
   assert.deepEqual(state.sessionOrder, ['bbbbbbbb-2']);
+  const peek = (key: string) => peekCached(key, { keep: true }, async () => '読み直した');
+  assert.deepEqual([peek('summary:bbbbbbbb-2'), peek('glossary:bbbbbbbb-2:0'), peek('replies:bbbbbbbb-2')], ['概要', '用語', '複製の候補']);
 
   const next = sendMessage('bbbbbbbb-2', '続けて');
   await settle(next.message);

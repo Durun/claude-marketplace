@@ -13,6 +13,7 @@ import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
+import { copyCached } from './cache.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
@@ -691,6 +692,8 @@ const follow = async (sessionId: string, output: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (next === sessionId || !meta) return next;
   moveSession(sessionId, next);
+  // 複製は同じ会話を続けるので、概要や用語集を元から写し、haiku で一から作るのを待たせない。
+  copyCached(sessionId, next);
   await recordRemoval(meta, removeSession(sessionId));
   return next;
 };

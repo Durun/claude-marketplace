@@ -156,6 +156,16 @@ export const forgetCached = (...keys: (string | RegExp)[]): void => {
   bump();
 };
 
+/** キーに from を含む値を、from を to に置き換えたキーへ写す。to のキーに覚えた値があれば、そちらを残す。 */
+export const copyCached = (from: string, to: string): void => {
+  for (const [key, e] of [...entries]) {
+    const copy = key.replaceAll(from, to);
+    if (copy !== key && !entries.has(copy)) entries.set(copy, e);
+  }
+  scheduleSave();
+  bump();
+};
+
 /** key を、材料 input で読み直している最中か。返した値が古いことを、画面に添えるのに使う。 */
 export const refreshing = (key: string, input?: string): boolean => running.has(`${key}\0${digest(input) ?? ''}`);
 
