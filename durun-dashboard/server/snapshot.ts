@@ -5,7 +5,7 @@ import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usa
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
-import { isAllowable } from './deliver.ts';
+import { isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
@@ -213,7 +213,6 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
     movedTo: meta.movedTo,
-    removeError: meta.removeError,
     pinned: !!meta.pinned,
     links: meta.links ?? [],
     files: meta.files ?? [],
@@ -373,5 +372,10 @@ export const buildSnapshot = (): Snapshot => {
     jev: hasJev(),
     proofCommentedAt,
     assets: { js: mtimeMs(path.join(PUBLIC_DIR, 'app.js')), css: mtimeMs(path.join(PUBLIC_DIR, 'style.css')) },
+    // 一覧に出さない古いセッションも、Claude Code の一覧に残るので入れる。会話ログは読まずに名前を付ける。
+    trash: Object.values(state.sessions).flatMap((m) => {
+      const kept = trashOf(m);
+      return kept ? [{ id: m.id, name: displayName(m, undefined), ...kept, error: m.discardError }] : [];
+    }),
   };
 };

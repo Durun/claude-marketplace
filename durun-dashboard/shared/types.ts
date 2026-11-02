@@ -233,8 +233,6 @@ export type Session = {
   archiveWhenIdle?: boolean;
   /** 会話を引き継いだ複製のセッションの id。会話は複製で続くので、画面はこのセッションを開くと複製の画面へ移る。 */
   movedTo?: string;
-  /** アーカイブしたが、Claude Code の一覧から消せなかった理由。 */
-  removeError?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   links: SavedLink[];
@@ -460,7 +458,15 @@ export type Snapshot = {
   proofCommentedAt?: Record<string, number>;
   /** 画面のファイルの更新時刻。変わったら画面が読み込み直す。 */
   assets: { js: number; css: number };
+  /** ゴミ箱に入っているセッション。前に受け取ったスナップショットには無いことがある。 */
+  trash?: TrashItem[];
 };
+
+/**
+ * アーカイブしたのに、作業ツリーに人間の手当てが要るものが残り、Claude Code の一覧から消せなかったセッション。
+ * reason は claude rm が作業ツリーを残した理由の 1 行で、error はゴミ箱から消そうとして作業ツリーを消せなかった理由。
+ */
+export type TrashItem = { id: string; name: string; path: string; reason: string; error?: string };
 
 export type DiffLine = { kind: 'ctx' | 'add' | 'del'; oldNo?: number; newNo?: number; text: string };
 export type DiffHunk = { header: string; lines: DiffLine[] };

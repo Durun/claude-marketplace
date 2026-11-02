@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, saveLogSummaries, summarizeLog } from './claude.ts';
-import { allowPermission, answerCommand, answerQuestion, archiveSession, compactSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { allowPermission, answerCommand, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -64,7 +64,7 @@ const LIGHT_BROADCAST_INTERVAL_MS = 3000;
 const MIN_COMPRESS_BYTES = 1024;
 const PR_CACHE_FILE = 'gh-pr-status-cache.json';
 // アーカイブしたのに Claude Code の一覧から消せなかったセッションを、消し直す間隔。
-// 消せない理由の多くは作業ツリーに残る未 push の変更で、人間が push したことはダッシュボードから見えないので、間を置いて試す。
+// ほかのセッションが作業ツリーを使い終えたことはダッシュボードから見えないので、間を置いて試す。ゴミ箱に入れたものは、人間が claude agents などから消したかだけを確かめる。
 const REMOVE_RETRY_MS = 10 * 60_000;
 // 会話ログの要約を残す間隔。書くのに数十ミリ秒かかるので間を空け、起動し直した後に読み直すのはこの間に増えた分だけにする。
 const SAVE_SUMMARIES_MS = 5 * 60_000;
@@ -84,6 +84,8 @@ const STATIC: Record<string, string> = {
   '/flconnect.svg': 'public/flconnect.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
+  '/recycle-bin.svg': 'public/recycle-bin.svg',
+  '/recycle-bin-full.svg': 'public/recycle-bin-full.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
@@ -1149,6 +1151,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/themes\/order$/, (_, b) => orderThemes(b)],
   [/^\/api\/sessions\/([^/]+)\/title$/, ([, id = ''], b) => setTitle(id, b)],
   [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/discard$/, ([, id = '']) => discardSession(sessionMeta(id))],
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
   [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
   [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],

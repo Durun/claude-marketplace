@@ -12,6 +12,7 @@ import { Glossary } from './Glossary.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
+import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, openRecycleBin } from './RecycleBin.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
 import { type Control, type Float, FloatWindow, GITHUB_ICON, JIRA_ICON } from './Float.tsx';
@@ -244,6 +245,8 @@ type SessionData = {
   snapshotAt: number;
   /** 一覧に出しているすべてのセッション。PR と課題の画面に、同じものをバッジにしているセッションを並べる。 */
   sessions: Session[];
+  /** ゴミ箱に項目があるか。ゴミ箱のアイコンを、紙くずの入った絵にする。 */
+  trashed: boolean;
 };
 
 const CHAT_WIDGET = 'chat';
@@ -262,6 +265,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   // セッションの画面から開いた FL Connect は、そのセッションにつなぐ。
   [FL_KEY]: { title: FL_TITLE, icon: FL_ICON, Body: ({ s }) => <FlConnectIcon sessionId={s.id} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openFlConnect(s.id) },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
+  [RECYCLE_BIN_KEY]: { title: RECYCLE_BIN_TITLE, icon: RECYCLE_BIN_ICON, Body: ({ trashed }) => <RecycleBinIcon full={trashed} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openRecycleBin() },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
   [CHAT_WIDGET]: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
@@ -334,6 +338,7 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
     notion: !!snapshot.notion,
     snapshotAt: snapshot.now,
     sessions: snapshot.sessions,
+    trashed: !!snapshot.trash?.length,
   };
 };
 

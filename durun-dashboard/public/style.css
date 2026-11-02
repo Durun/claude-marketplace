@@ -705,6 +705,27 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .explorer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explorer-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .explorer-size { text-align: right; }
+/* ゴミ箱は XP のごみ箱に倣い、メニューの下に、左の青いタスク欄と、右の詳細表示の一覧を並べる。 */
+.recycle { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; color-scheme: light; font: 11px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
+.recycle-main { display: grid; flex: 1; grid-template-columns: 210px minmax(0, 1fr); min-height: 0; border-top: 1px solid #aca899; }
+.recycle-tasks { padding: 12px; overflow: auto; background: linear-gradient(#7ba2e7, #6375d6); }
+.xp-task + .xp-task { margin-top: 12px; }
+.xp-task-title { margin: 0; padding: 5px 10px; border-radius: 3px 3px 0 0; background: linear-gradient(to right, #fff, #c6d3f7); color: #215dc6; font-size: 11px; font-weight: 700; }
+.xp-task-body { display: grid; gap: 6px; padding: 10px; border: 1px solid #fff; border-top: 0; background: #d6dff7; overflow-wrap: anywhere; }
+.xp-task-body p { margin: 0; }
+.xp-task-link { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: #215dc6; font: inherit; text-align: left; cursor: pointer; }
+.xp-task-link:hover:not(:disabled) { color: #428eff; text-decoration: underline; }
+.xp-task-link:disabled { color: #8c9bc8; cursor: default; }
+.recycle-error { color: #c00; }
+.recycle-list { overflow: auto; background: #fff; }
+.recycle-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.recycle-table th { padding: 3px 6px; border-right: 1px solid #c7c5b2; border-bottom: 1px solid #c7c5b2; background: linear-gradient(#fff, #ebeadb); font-weight: 400; text-align: left; }
+.recycle-table th:nth-child(1) { width: 34%; }
+.recycle-table th:nth-child(2) { width: 44%; }
+.recycle-table td { padding: 2px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; user-select: none; }
+.recycle-table td .app-icon { margin-right: 4px; vertical-align: -3px; }
+.recycle-table tr:focus { outline: 1px dotted #000; outline-offset: -1px; }
+.recycle-table tr[aria-selected="true"] td { background: #316ac5; color: #fff; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
@@ -722,7 +743,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .xp-submenu + .xp-dropdown { position-area: inline-end span-block-end; position-try-fallbacks: flip-inline, flip-block; }
 /* メモ帳は、スキンによらず Windows XP のメモ帳の色と字で描く。タイトルバーの下から窓の端まで、余白なしで敷き詰める。 */
 .notepad { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: -10px -12px -12px; background: #ece9d8; color: #000; font: 12px Tahoma, "MS UI Gothic", "Meiryo UI", sans-serif; }
-.notepad-menubar, .proof-menubar { display: flex; padding: 1px 0; }
+.notepad-menubar, .proof-menubar, .recycle-menubar { display: flex; padding: 1px 0; }
 /* 行番号と色付けは、textarea の後ろに描いた行で見せる。後ろの行の折り返しと位置が textarea とずれないよう、字と余白をそろえる。 */
 .notepad-editor { position: relative; flex: 1; min-height: 0; border-top: 1px solid #aca899; background: #fff; }
 .notepad-text, .notepad-view { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 1px 3px 1px calc(3px + var(--gutter, 0px)); color: #000; font: 15px/1.25 "MS Gothic", "ＭＳ ゴシック", Osaka-Mono, monospace; }

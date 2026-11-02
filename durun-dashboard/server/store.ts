@@ -23,8 +23,10 @@ export type SessionMeta = {
   archiveWhenIdle?: boolean;
   /** 会話を引き継いだ複製のセッションの id。設定とやり取りは複製へ移してあり、このセッションはアーカイブしてある */
   movedTo?: string;
-  /** アーカイブしたが、Claude Code の一覧から消せなかった理由。残っている間は、後で消し直す */
+  /** アーカイブしたが、Claude Code の一覧から消せなかった理由。作業ツリーに人間の手当てが要るものが残る理由ならゴミ箱に入れ、ほかの理由なら後で消し直す */
   removeError?: string;
+  /** ゴミ箱から消そうとして、作業ツリーを消せなかった理由 */
+  discardError?: string;
   /** 人間がピン留めした */
   pinned?: boolean;
   /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */

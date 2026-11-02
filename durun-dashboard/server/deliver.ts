@@ -2,7 +2,8 @@
 // MCP のツールで待っている Claude には直接返し、フックで権限の確認を待っている Claude Code には、人間が許可したら許可を返す。
 // 止まっているセッションと入力待ちのバックグラウンドのセッションは再開して渡す。
 // 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
-// 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消し、消せなかったものは後で消し直す。
+// 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消す。
+// 作業ツリーに人間の手当てが要るものが残って消せなかったものはゴミ箱に入れ、人間がゴミ箱から消したら作業ツリーごと消す。ほかの理由で消せなかったものは後で消し直す。
 // 作業中にアーカイブしたセッションは、止めずに入力待ちか停止になるのを待ってからアーカイブする。
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -259,12 +260,25 @@ export const removeSession = async (sessionId: string): Promise<void> => {
 // Claude Code の一覧から消している途中のセッション。アーカイブで消している途中のものを、消し直しで同時に消しにいかない。
 const removing = new Set<string>();
 
+/**
+ * claude rm が作業ツリーを消さずに残したときの、作業ツリーの場所と、残した理由の 1 行。
+ * ほかのセッションやプロセスが作業ツリーを使っているだけなら、それが終われば消せるので返さない。
+ */
+export const keptWorktree = (error: string): { path: string; reason: string } | undefined => {
+  const [, dir, reason] = /^kept \w+ — its worktree is still at “(.+)”\n\s*(.+)/.exec(error) ?? [];
+  return dir && reason && !/^(Another running|A live|A Claude Code lock)/.test(reason) ? { path: dir, reason } : undefined;
+};
+
+/** ゴミ箱に入れるセッションなら、作業ツリーの場所と、claude rm が残した理由を返す。ゴミ箱から消している途中のものは入れない。 */
+export const trashOf = (meta: SessionMeta): { path: string; reason: string } | undefined =>
+  meta.archived && meta.removeError && !removing.has(meta.id) ? keptWorktree(meta.removeError) : undefined;
+
 /** 消した結果を残す。消したセッションには claude attach できないので、そのコマンドも出さない。消せなかった理由は removeError に残す。 */
 const recordRemoval = (meta: SessionMeta, removal: Promise<void>): Promise<void> => {
   removing.add(meta.id);
   return removal
     .then(
-      () => void Object.assign(meta, { removeError: undefined, jobId: undefined }),
+      () => void Object.assign(meta, { removeError: undefined, discardError: undefined, jobId: undefined }),
       (e: Error) => void (meta.removeError = e.message),
     )
     .finally(() => {
@@ -275,12 +289,52 @@ const recordRemoval = (meta: SessionMeta, removal: Promise<void>): Promise<void>
 
 /**
  * アーカイブし、バックグラウンドのセッションは Claude Code の一覧からも消す。
- * 消すには claude を何度も動かして数秒かかるので、終わるのを待たずに返る。消せなくてもアーカイブは保ち、retryRemovals が後で消し直す。
+ * 消すには claude を何度も動かして数秒かかるので、終わるのを待たずに返る。消せなくてもアーカイブは保つ。
+ * 作業ツリーに人間の手当てが要るものが残って消せなければゴミ箱に入れ、ほかの理由なら retryRemovals が後で消し直す。
  */
 const archive = (meta: SessionMeta): void => {
-  Object.assign(meta, { archived: true, archiveWhenIdle: undefined, removeError: undefined });
+  Object.assign(meta, { archived: true, archiveWhenIdle: undefined, removeError: undefined, discardError: undefined });
   touch();
   recordRemoval(meta, removeSession(meta.id));
+};
+
+// 作業ツリーを消すのは重いので、ゴミ箱を空にするときも 1 つずつ消す。
+let discarding = Promise.resolve();
+
+/**
+ * git の作業ツリーを、残っている変更ごと消す。中にある入れ子の作業ツリーも一緒に消え、その登録も外す。ブランチは残す。
+ * リポジトリの本体と git の外のディレクトリは、消すと取り返せないので消さない。
+ */
+const deleteWorktree = async (dir: string): Promise<void> => {
+  if (!fs.existsSync(dir)) return;
+  const { stdout } = await run('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']).catch(() => ({ stdout: '' }));
+  const [gitDir, commonDir] = stdout.trim().split('\n');
+  // 作業ツリーの git-dir は、リポジトリの本体の git-dir（共通の git-dir）の下にある。
+  if (!commonDir || gitDir === commonDir) throw new Error(`${dir} は git の作業ツリーではないので、消しません`);
+  await run('git', ['-C', dir, 'worktree', 'remove', '--force', '--force', dir]);
+  await run('git', ['--git-dir', commonDir, 'worktree', 'prune']);
+};
+
+/**
+ * ゴミ箱から消す。作業ツリーを変更ごと消してから、claude rm で Claude Code の一覧から消す。終わるのを待たずに返る。
+ * 消している間はゴミ箱に出さない。作業ツリーを消せなければ、その理由を添えてゴミ箱に戻す。
+ */
+export const discardSession = (meta: SessionMeta): void => {
+  const kept = trashOf(meta);
+  if (!kept) return;
+  removing.add(meta.id);
+  meta.discardError = undefined;
+  touch();
+  discarding = discarding
+    .then(() => deleteWorktree(kept.path))
+    .then(
+      () => recordRemoval(meta, removeSession(meta.id)),
+      (e: Error) => {
+        meta.discardError = e.message;
+        removing.delete(meta.id);
+        touch();
+      },
+    );
 };
 
 /** 作業中のセッションは、止めずにアーカイブ待ちにして true を返す。入力待ちか停止になったら、flushArchives がアーカイブする。 */
@@ -309,6 +363,7 @@ export const flushArchives = (): void => {
 /**
  * アーカイブしたのに Claude Code の一覧に残るバックグラウンドのセッションを、claude rm で消し直す。消せなければ理由を残す。
  * 動いているものは、アーカイブした後に人間が送って再開したのかもしれないので、止めずに次の消し直しに回す。
+ * ゴミ箱に入れたものは、消し直しても人間が手当てするまで消せないので、人間がゴミ箱から消すのを待つ。
  */
 export const retryRemovals = async (): Promise<void> => {
   try {
@@ -320,7 +375,7 @@ export const retryRemovals = async (): Promise<void> => {
     }
     for (const job of jobs) {
       const meta = state.sessions[job.sessionId ?? ''];
-      if (!job.id || job.kind !== 'background' || job.pid || !meta?.archived || removing.has(meta.id)) continue;
+      if (!job.id || job.kind !== 'background' || job.pid || !meta?.archived || removing.has(meta.id) || trashOf(meta)) continue;
       await recordRemoval(meta, runClaude(['rm', job.id], os.homedir()));
     }
   } catch (e) {

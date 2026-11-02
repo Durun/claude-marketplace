@@ -29,9 +29,10 @@ import { lastOpened } from './opened.ts';
 import { PROOFREAD_KEY, ProofreadFloat } from './Proofread.tsx';
 import { NOTION_KEY, NotionFloat } from './NotionView.tsx';
 import { PR_KEY, PR_WIDGET, PrFloat } from './PrView.tsx';
+import { RECYCLE_BIN_KEY, RecycleBinFloat } from './RecycleBin.tsx';
 import { type Route, currentPage, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
-import { useRemoveFailureToasts, useSessionToasts } from './sessionEffects.ts';
+import { useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
 import { EDIT_SHORTCUT, HOME_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
@@ -62,7 +63,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 
@@ -167,7 +168,6 @@ const App = () => {
   useAttentionEffects(fresh, here?.name);
   useSessionToasts(fresh);
   useDeliveryFailureEffects(fresh);
-  useRemoveFailureToasts(fresh);
   useLinks(route, snapshot);
   return (
     <NowContext.Provider value={now}>

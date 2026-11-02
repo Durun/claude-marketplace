@@ -10,6 +10,7 @@ import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
+import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, openRecycleBin } from './RecycleBin.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatUp, isFloating, useFloats } from './Float.tsx';
@@ -223,6 +224,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   // ホームから開いたときは、ウィンドウでセッションを選ぶまで、どのセッションにもつながない。
   [FL_KEY]: { title: FL_TITLE, icon: FL_ICON, Body: () => <FlConnectIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openFlConnect() },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
+  [RECYCLE_BIN_KEY]: { title: RECYCLE_BIN_TITLE, icon: RECYCLE_BIN_ICON, Body: ({ snapshot }) => <RecycleBinIcon full={!!snapshot.trash?.length} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openRecycleBin() },
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },
 };
 

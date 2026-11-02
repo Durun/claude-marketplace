@@ -106,9 +106,11 @@ export const api = {
   orderThemes: (themes: string[]) => postJson('/api/themes/order', { themes }),
   title: (id: string, title: string) => postJson(`${session(id)}/title`, { title }),
   suggestTitle: (id: string) => postJson<{ title: string }>(`${session(id)}/title-suggestion`),
-  /** 作業中でアーカイブ待ちにしたら true を返す。Claude Code の一覧から消し終わるのは待たず、消せなかったときは useRemoveFailureToasts が知らせる。 */
+  /** 作業中でアーカイブ待ちにしたら true を返す。Claude Code の一覧から消し終わるのは待たず、作業ツリーに変更が残って消せなかったものはゴミ箱に入る。 */
   archive: async (id: string, archived: boolean): Promise<boolean> =>
     !!(await postJson<{ deferred?: boolean }>(`${session(id)}/archive`, { archived })).deferred,
+  /** ゴミ箱から消す。作業ツリーを変更ごと消してから、Claude Code の一覧から消す。消し終わるのは待たない。 */
+  discard: (id: string) => postJson(`${session(id)}/discard`),
   orderSessions: (ids: string[]) => postJson('/api/sessions/order', { ids }),
   pin: (id: string, pinned: boolean) => postJson(`${session(id)}/pin`, { pinned }),
   addLink: (id: string, url: string, title: string) => postJson(`${session(id)}/links`, { url, title }),

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -11,7 +12,7 @@ import { tempDir } from './tmp.ts';
 const tmp = tempDir('durun-dashboard-deliver-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { SessionStateError, answerCommand, archiveSession, compactSession, flushArchives, flushQueue, forkSession, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, waitFor } = await import('../server/deliver.ts');
+const { SessionStateError, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const { UpstreamError } = await import('../server/haiku.ts');
@@ -535,6 +536,82 @@ if (args[0] === 'rm' && args[1] === 'jr2') { console.log('kept jr2 — its workt
   assert.equal(r2.removeError, 'kept jr2 — its worktree is still at /wt');
   assert.deepEqual([r3.removeError, r3.jobId], [undefined, 'jr3']);
   assert.deepEqual([r5.removeError, r5.jobId], [undefined, undefined]);
+});
+
+/** claude rm が作業ツリーを消さずに残したときに書く理由。本物と同じく、場所の行、理由の行、することの行が続く。 */
+const keptBy = (job: string, dir: string, reason = 'The worktree has uncommitted changes. Deleting it would lose them.'): string =>
+  `kept ${job} — its worktree is still at “${dir}”\n  ${reason}\n  commit or stash them and run 'claude rm ${job}' again`;
+
+test('claude rm が作業ツリーを残した理由のうち、人間の手当てが要るものだけをゴミ箱に入れる。ほかのセッションやプロセスが作業ツリーを使っているだけなら入れない', () => {
+  assert.deepEqual(keptWorktree(keptBy('j1', '/repo/.worktrees/a')), { path: '/repo/.worktrees/a', reason: 'The worktree has uncommitted changes. Deleting it would lose them.' });
+  assert.equal(keptWorktree(keptBy('j1', '/wt', "Another running background session (j2) claims this worktree, so it isn't this session's to remove.")), undefined);
+  assert.equal(keptWorktree(keptBy('j1', '/wt', 'A live Claude Code session (pid 1) is using the worktree as its working directory.')), undefined);
+  assert.equal(keptWorktree(keptBy('j1', '/wt', 'A Claude Code lock on the worktree names a process that is still running (pid 1).')), undefined);
+  assert.equal(keptWorktree('exit 1'), undefined);
+});
+
+test('ゴミ箱に入れたセッションは消し直さず、ほかのセッションが作業ツリーを使っていたものだけを消し直す。人間が claude agents などから消したものは、ゴミ箱から出す', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。agents は t1 と t2 のジョブを返し、t3 のジョブは返さない。
+  const bin = path.join(tmp, 'bin-trash-retry');
+  const callsFile = path.join(tmp, 'calls-trash-retry');
+  const jobs = [
+    { id: 'jt1', sessionId: 't1', kind: 'background' },
+    { id: 'jt2', sessionId: 't2', kind: 'background' },
+  ];
+  useFakeClaude(bin, `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});`);
+  const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const archived = (id: string, removeError: string) => Object.assign(ensureSession(id, tmp), { archived: true, kind: 'bg', jobId: `j${id}`, removeError });
+  const t1 = archived('t1', keptBy('jt1', '/wt/t1'));
+  const t2 = archived('t2', keptBy('jt2', '/wt/t2', 'Another running background session (jx) claims this worktree.'));
+  const t3 = archived('t3', keptBy('jt3', '/wt/t3'));
+  assert.deepEqual([!!trashOf(t1), !!trashOf(t2), !!trashOf(t3)], [true, false, true]);
+
+  await retryRemovals();
+  assert.deepEqual(calls(), [['agents', '--json', '--all'], ['rm', 'jt2']]);
+  assert.ok(trashOf(t1));
+  assert.deepEqual([t2.removeError, t3.removeError], [undefined, undefined]);
+});
+
+test('ゴミ箱から消すと、作業ツリーを変更ごと消してから claude rm し、ブランチは残す。リポジトリの本体は消さず、理由を添えてゴミ箱に戻す', async () => {
+  // 一時のリポジトリに、未コミットの変更を残した作業ツリーを作る。
+  const repo = path.join(tmp, 'trash-repo');
+  const wt = path.join(tmp, 'trash-wt');
+  fs.mkdirSync(repo);
+  const git = (...args: string[]): string => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+  git('init', '-q');
+  git('-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-q', '--allow-empty', '-m', 'init');
+  git('worktree', 'add', '-q', wt, '-b', 'trash-branch');
+  fs.writeFileSync(path.join(wt, 'left.txt'), 'まだコミットしていない');
+  // 偽の claude は呼ばれた引数を書き足し、agents は d1 と d2 のジョブを返す。
+  const bin = path.join(tmp, 'bin-discard');
+  const callsFile = path.join(tmp, 'calls-discard');
+  const jobs = [
+    { id: 'jd1', sessionId: 'd1', kind: 'background' },
+    { id: 'jd2', sessionId: 'd2', kind: 'background' },
+  ];
+  useFakeClaude(bin, `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});`);
+  const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const archived = (id: string, removeError: string) => Object.assign(ensureSession(id, tmp), { archived: true, kind: 'bg', jobId: `j${id}`, removeError });
+  const d1 = archived('d1', keptBy('jd1', wt));
+  const d2 = archived('d2', keptBy('jd2', repo));
+
+  const settled = new Promise<void>((resolve) => onChange(() => d1.removeError === undefined && d2.discardError !== undefined && resolve()));
+  discardSession(d1);
+  discardSession(d2);
+  // 消している間は、ゴミ箱に出さない。
+  assert.deepEqual([trashOf(d1), trashOf(d2)], [undefined, undefined]);
+  await settled;
+
+  assert.equal(fs.existsSync(wt), false);
+  assert.doesNotMatch(git('worktree', 'list', '--porcelain'), /trash-wt/);
+  assert.match(git('branch', '--list', 'trash-branch'), /trash-branch/);
+  assert.deepEqual(calls().filter((c) => c[0] === 'rm'), [['rm', 'jd1']]);
+  assert.equal(d1.jobId, undefined);
+  assert.equal(fs.existsSync(repo), true);
+  assert.match(d2.discardError ?? '', /git の作業ツリーではない/);
+  assert.equal(trashOf(d2)?.path, repo);
 });
 
 test('作業中にアーカイブしたセッションは、止めずにアーカイブ待ちにし、入力待ちになったら止めて claude rm する。アーカイブ待ちの間は、保留したメッセージを送らない', async () => {
