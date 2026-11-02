@@ -1,14 +1,11 @@
 // エクスプローラーに出すディレクトリの一覧と、送信欄の @ の補完に出すファイルを読み、メモ帳で編集したファイルを上書きする。
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { rankBy } from '../shared/match.ts';
 import type { ExplorerDir, ExplorerEntry, TextSaveResult } from '../shared/types.ts';
 import { type Platform, platform } from './platform.ts';
-
-const run = promisify(execFile);
+import { run } from './run.ts';
 
 // node_modules のような大きなディレクトリで、画面を待たせすぎない件数。
 const MAX_ENTRIES = 2000;

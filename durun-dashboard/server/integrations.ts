@@ -1,15 +1,14 @@
 // 外部の情報源: GitHub の PR（gh）、JIRA、git の差分。
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
-import { promisify } from 'node:util';
 import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, REF_NUMBER, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
+import { run } from './run.ts';
 import { changed } from './store.ts';
 
-const run = promisify(execFile);
 const MAX_BUFFER = 64 * 1024 * 1024;
 const MAX_DIFF_CHARS = 4 * 1024 * 1024;
 const MAX_UNTRACKED_FILES = 50;
@@ -190,9 +189,7 @@ const repoOf = (pr: PrInfo): { host: string; owner: string; name: string; number
 
 /** gh を呼び、標準出力を返す。input は標準入力に渡す本文で、cwd は gh がリポジトリを決めるディレクトリ。gh が失敗したときは、gh が標準エラーに書いた理由で投げる。 */
 const gh = async (args: string[], input?: string, cwd?: string): Promise<string> => {
-  const call = run('gh', args, { maxBuffer: MAX_BUFFER, cwd });
-  call.child.stdin?.end(input);
-  const { stdout } = await call.catch((e: { stderr?: string; message: string }) => {
+  const { stdout } = await run('gh', args, { maxBuffer: MAX_BUFFER, cwd, input }).catch((e: { stderr?: string; message: string }) => {
     throw new Error(e.stderr?.trim() || e.message);
   });
   return stdout;

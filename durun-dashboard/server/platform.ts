@@ -1,20 +1,19 @@
 // OS ごとに違う情報の取り方と操作を、ここにまとめる互換レイヤー。
 // サーバーのほかのコードは process.platform を見ずに、必ず platform を経由する。
 // OS ごとの実装は platformFor で名前から選べ、外のコマンドは run で差し替えられるので、どの OS の上でも全部の実装をテストできる。
-import { type ChildProcess, execFile } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import type { HostOs, MemoryStatus } from '../shared/types.ts';
 import { toMemoryStatus, toMemoryUsage } from './memory.ts';
+import { run as runOffThread } from './run.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
 export type Run = (file: string, args: string[]) => Promise<string>;
 
-const exec = promisify(execFile);
-const realRun: Run = async (file, args) => (await exec(file, args)).stdout;
+const realRun: Run = async (file, args) => (await runOffThread(file, args)).stdout;
 
 /** FL Studio の、開いているプロジェクトを当てる手がかり。title は FL のウィンドウの題名、recent は FL が覚えている最近のファイル（新しい順）。 */
 export type FlProjectHints = { title: string; recent: string[] };

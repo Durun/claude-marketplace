@@ -1,9 +1,9 @@
 // ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。文章校正の修正版は opus に書かせる。
 // 使用制限は、モデルを呼ばずに、SDK の get_usage で読む。
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { RateLimit, RateLimits, TokenTotals } from '../shared/types.ts';
 import { claudeCommand } from './platform.ts';
+import { run, type RunError, type RunOptions } from './run.ts';
 
 const HAIKU_TIMEOUT_MS = 30_000;
 // 長い文章を読ませると、30 秒を超えることがある。
@@ -72,14 +72,22 @@ export const objectSchema = (properties: Record<string, object>): object => ({
   additionalProperties: false,
 });
 
-/** JSON Schema に沿った答えを返す。 */
+/** claude を動かし、終えたら execFile と同じ形で done を呼ぶ。失敗しても、標準出力と標準エラーを読めるようにする。 */
+const runClaude = (args: string[], options: RunOptions, done: (err: RunError | undefined, stdout: string, stderr: string) => void): void => {
+  const claude = claudeCommand(args);
+  void run(claude.file, claude.args, options).then(
+    ({ stdout, stderr }) => done(undefined, stdout, stderr),
+    (e: RunError) => done(e, e.stdout, e.stderr),
+  );
+};
+
+/** JSON Schema に沿った答えを返す。プロンプトは標準入力で渡す。 */
 const askClaude = (prompt: string, schema: object, args: string[], timeout: number, cwd?: string, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
   new Promise((resolve, reject) => {
     const id = randomUUID();
     running.add(id);
     const all = [...COMMON_ARGS, ...args, '--json-schema', JSON.stringify(schema), '--session-id', id];
-    const claude = claudeCommand(all);
-    const child = execFile(claude.file, claude.args, { timeout, cwd }, (err, stdout, stderr) => {
+    runClaude(all, { timeout, cwd, input: prompt }, (err, stdout, stderr) => {
       running.delete(id);
       if (err?.killed) return reject(new UpstreamError(`${timeout / 1000} 秒以内に終わりませんでした`));
       try {
@@ -93,8 +101,6 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
         reject(e instanceof UpstreamError ? e : new UpstreamError(stderr.trim() || err?.message || String(e)));
       }
     });
-    // プロンプトは標準入力で渡す。閉じないと、claude は入力の続きを 3 秒待つ。
-    child.stdin?.end(prompt);
   });
 
 export const askHaiku = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
@@ -151,14 +157,13 @@ export const askRateLimits = (): Promise<RateLimits> =>
     const id = randomUUID();
     running.add(id);
     const args = ['-p', SAFE_MODE, '--no-session-persistence', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--session-id', id];
-    const claude = claudeCommand(args);
-    const child = execFile(claude.file, claude.args, { timeout: USAGE_TIMEOUT_MS }, (err, stdout, stderr) => {
+    // 使用率だけを読むので、7 日分の会話ログを調べて使い方の傾向を出す処理は飛ばさせる。要求を書いて標準入力を閉じると、claude は答えてから終わる。
+    const input = `${JSON.stringify({ type: 'control_request', request_id: USAGE_REQUEST_ID, request: { subtype: 'get_usage', skip_behaviors: true } })}\n`;
+    runClaude(args, { timeout: USAGE_TIMEOUT_MS, input }, (err, stdout, stderr) => {
       running.delete(id);
       if (err?.killed) return reject(new UpstreamError(`${USAGE_TIMEOUT_MS / 1000} 秒以内に終わりませんでした`));
       const reply = stdout.split('\n').map(parseLine).find((m) => m?.type === 'control_response' && m.response?.request_id === USAGE_REQUEST_ID)?.response;
       if (reply?.subtype === 'success' && reply.response) resolve(rateLimitsOf(reply.response, Date.now()));
       else reject(new UpstreamError(reply?.error || stderr.trim() || err?.message || '答えが返りませんでした'));
     });
-    // 使用率だけを読むので、7 日分の会話ログを調べて使い方の傾向を出す処理は飛ばさせる。要求を書いて標準入力を閉じると、claude は答えてから終わる。
-    child.stdin?.end(`${JSON.stringify({ type: 'control_request', request_id: USAGE_REQUEST_ID, request: { subtype: 'get_usage', skip_behaviors: true } })}\n`);
   });

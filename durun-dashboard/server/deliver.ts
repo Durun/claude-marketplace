@@ -4,17 +4,18 @@
 // 作業中のバックグラウンドのセッションは supervisor に返信を頼んで渡し、ほかの動いているセッションには受信ソケットへ送る。
 // 人間が画面から新しいセッションを始めるときは、最初の依頼を渡して起動する。アーカイブしたバックグラウンドのセッションは、Claude Code の一覧から消し、消せなかったものは後で消し直す。
 // 作業中にアーカイブしたセッションは、止めずに入力待ちか停止になるのを待ってからアーカイブする。
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { isDeepStrictEqual, promisify } from 'node:util';
+import { isDeepStrictEqual } from 'node:util';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
+import { run } from './run.ts';
 import { ensureSession, moveSession, newId, state, touch, type SessionMeta } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
@@ -219,7 +220,7 @@ type Job = { id?: string; sessionId?: string; kind?: string; pid?: number };
 
 const listJobs = async (): Promise<Job[]> => {
   const claude = claudeCommand(['agents', '--json', '--all']);
-  const { stdout } = await promisify(execFile)(claude.file, claude.args);
+  const { stdout } = await run(claude.file, claude.args);
   return JSON.parse(stdout) as Job[];
 };
 
