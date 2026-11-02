@@ -8,7 +8,7 @@ import * as claude from './claude.ts';
 import { isAllowable } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
-import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, prPending } from './integrations.ts';
+import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
@@ -150,6 +150,12 @@ const recordBgQuestion = (meta: SessionMeta, log: claude.LogSummary | undefined,
 
 const firstPromptOf = (log: claude.LogSummary | undefined): string | undefined => log?.texts.find((t) => t.kind === 'prompt')?.text;
 
+/** バッジにする URL。人間がバッジに登録したものと、人間が依頼で触れたもの。 */
+export const badgeUrls = (meta: SessionMeta, log: claude.LogSummary | undefined): string[] => [
+  ...(meta.badges ?? []),
+  ...mentionedBadges(log?.texts.flatMap((t) => (t.kind === 'prompt' ? [t.text] : [])) ?? [], meta.cwd),
+];
+
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
   // Claude Code は、worktree に入ったセッションの会話ログを、その worktree のディレクトリへ移すことがある。覚えた場所に無ければ探し直す。
   if (!meta.transcriptPath || !fs.existsSync(meta.transcriptPath)) {
@@ -165,7 +171,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const name = displayName(meta, log);
   const pr = cachedPr(meta.cwd, log?.branch);
   const branches = [...(log?.branches ?? [])].reverse();
-  const badges = (meta.badges ?? []).flatMap((u) => badgeOf(u) ?? []);
+  const badges = badgeUrls(meta, log).flatMap((u) => badgeOf(u) ?? []);
   const shown = <T extends { url: string }>(items: T[]): T[] => {
     const hidden = new Set(meta.hiddenBadges);
     return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url));

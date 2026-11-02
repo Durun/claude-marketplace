@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, REF_NUMBER, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { changed } from './store.ts';
@@ -802,6 +802,24 @@ export const badgeOf = (text: string): { kind: 'pr' | 'issue' | 'jira'; url: str
   if (key) return { kind: 'jira', url: browseUrl(key) };
   const [, owner, name, kind, num] = (u.protocol === 'https:' && GITHUB_REF.exec(u.pathname)) || [];
   return num ? { kind: kind === 'pull' ? 'pr' : 'issue', url: `${u.origin}/${owner}/${name}/${kind}/${num}` } : undefined;
+};
+
+// 番号より後ろは、/files のような下のページか、空白を置かずに続けた文なので含めない。
+const GITHUB_ITEM_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:pull|issues)\/\d+/g;
+// 登録していないプロジェクトのキーは、JIRA の表記と同じく大文字で書いたものだけを候補にする。
+const ISSUE_KEY = /\b[A-Z][A-Z0-9_]*-\d+\b/g;
+// #番号が指す PR か Issue は変わらないので、間隔を長く空けて読み直す。無い番号を試し直すのも、この間隔に抑える。
+const REF_URL_POLICY = { maxAge: 24 * 60 * 60_000 };
+
+/**
+ * 人間が依頼で触れた PR、Issue、JIRA の課題の、バッジにする URL。#番号は cwd のリポジトリのものとして読み、読み終えたものだけを返す。
+ * 登録したプロジェクトの外のキーは、JIRA で課題を読めたものに限る。UTF-8 のような、課題ではない語をバッジにしないため。
+ */
+export const mentionedBadges = (texts: string[], cwd: string): string[] => {
+  const text = texts.join('\n');
+  const refs = [...new Set(text.match(REF_NUMBER))].flatMap((ref) => peekCached(`ref-url:${cwd} ${ref}`, REF_URL_POLICY, async () => (await ghIssue(ref, cwd)).url) ?? []);
+  const keys = [...new Set(text.match(ISSUE_KEY))].filter((key) => jiraIssue(key).summary !== undefined);
+  return [...(text.match(GITHUB_ITEM_URL) ?? []), ...refs, ...[...findJiraKeys(texts), ...keys].map(browseUrl)];
 };
 
 /** 課題のキーと題名をつないだ、資料に並べる題名。 */

@@ -61,6 +61,12 @@ export type IssueInfo = { url: string; number: number; title: string; state: 'Op
 /** PR そのものを指す URL。サーバーは gh の引数に渡すので、- で始まる値やほかのページを通さない。 */
 export const PR_URL = /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/;
 
+/**
+ * 文の中の、セッションのリポジトリの PR か Issue を指す #番号。split で番号を残せるよう、番号全体をキャプチャする。
+ * GitHub と同じく、英数字か / か # に続く #番号（owner/repo#12、page#12、##12）は、そのリポジトリの番号とみなさない。
+ */
+export const REF_NUMBER = /((?<![\w/#])#\d+(?!\w))/g;
+
 /** PR や Issue に添付した画像や動画の URL。サーバーは gh の引数に渡すので、ほかのページを通さない。 */
 export const GITHUB_ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/;
 

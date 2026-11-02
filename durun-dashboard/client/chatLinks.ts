@@ -1,6 +1,6 @@
 // 人間と Claude の発言に出たリンクを、セッションの資料として拾う。発言の #番号は、PR と Issue へのリンクにするために切り出す。
 import { Marked, type MarkedExtension, Tokenizer, type TokensList } from 'marked';
-import { type ChatEntry, type RepoRef, notionPageId } from '../shared/types.ts';
+import { type ChatEntry, REF_NUMBER, type RepoRef, notionPageId } from '../shared/types.ts';
 import { safeDecode } from './router.ts';
 
 // 日本語の文では、URL の後ろに空白を置かずに文を続けることが多い。GFM は空白の手前までを URL とみなすので、閉じていない ) と、日本語の句読点や括弧から先を外す。
@@ -126,9 +126,6 @@ export const mergeLinks = (links: ChatLink[]): MergedLink[] => {
   }
   return [...merged.values()];
 };
-
-// GitHub と同じく、英数字か / か # に続く #番号（owner/repo#12、page#12、##12）は、セッションのリポジトリの番号とみなさない。
-const REF_NUMBER = /((?<![\w/#])#\d+(?!\w))/;
 
 /** 文の切れ端。ref があれば、#番号で指した PR か Issue。 */
 export type RefPiece = { text: string; ref?: RepoRef };

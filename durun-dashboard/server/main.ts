@@ -40,7 +40,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from 
 import { parseProof } from './proofText.ts';
 import { recordRateLimits } from './rateLimits.ts';
 import { searchSessions, warmSearch } from './search.ts';
-import { buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
+import { badgeUrls, buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
@@ -438,8 +438,8 @@ const openPr = (id: string, url?: unknown): { cwd: string; branch: string; pr: P
   const meta = sessionMeta(id);
   const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
   const branch = url ? [...(log?.branches ?? [])].find((b) => cachedPr(meta.cwd, b)?.url === url) : log?.branch;
-  // セッションが居なかったブランチの PR は、人間がバッジに登録したものから探す。
-  const pr = cachedPr(meta.cwd, branch) ?? (typeof url === 'string' && meta.badges?.includes(url) ? badgePr(url) : undefined);
+  // セッションが居なかったブランチの PR は、人間がバッジに登録したものと、人間が依頼で触れたものから探す。
+  const pr = cachedPr(meta.cwd, branch) ?? (typeof url === 'string' && badgeUrls(meta, log).includes(url) ? badgePr(url) : undefined);
   const head = branch ?? pr?.headRef;
   if (!head || pr?.state !== 'OPEN') throw new HttpError(404, `開いている PR がありません: ${id}`);
   return { cwd: meta.cwd, branch: head, pr };
@@ -467,7 +467,7 @@ const addBadge = async (id: string, body: unknown): Promise<void> => {
   touch();
 };
 
-/** 登録したバッジは登録から消す。ブランチや set_task から見つけたバッジは、見つけ直しても出さないよう覚えておく。 */
+/** 登録したバッジは登録から消す。ブランチ、set_task、人間の依頼から見つけたバッジは、見つけ直しても出さないよう覚えておく。 */
 const removeBadge = (id: string, body: unknown): void => {
   const meta = sessionMeta(id);
   const { url } = badgeOfBody(body);

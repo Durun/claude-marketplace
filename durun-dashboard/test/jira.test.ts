@@ -8,7 +8,8 @@ process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-jira-');
 process.env.JIRA_BASE_URL = 'https://jira.example';
 process.env.JIRA_EMAIL = 'me@example.com';
 process.env.JIRA_API_TOKEN = 'token';
-const { adfText, badgeOf, jiraDetail, jiraKeyOfUrl, jiraRefs, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
+process.env.JIRA_PROJECT_KEYS = 'PROJ';
+const { adfText, badgeOf, jiraDetail, jiraKeyOfUrl, jiraRefs, mentionedBadges, postJiraComment, searchJira, transitionJira } = await import('../server/integrations.ts');
 const { pageTitleOf } = await import('../server/pageTitle.ts');
 
 test('searchJira は、JQL で探した課題を、題名、状態、担当、更新日時、優先度、親、ラベル、報告者、期限、エピックかどうかつきで返す', async (t) => {
@@ -180,4 +181,16 @@ test('badgeOf は、JIRA の課題、GitHub の PR と Issue の URL と課題�
   assert.equal(badgeOf('https://github.com/o/r/pulls'), undefined);
   assert.equal(badgeOf('http://github.com/o/r/pull/12'), undefined);
   assert.equal(badgeOf('https://other.example/browse/PROJ-1'), undefined);
+});
+
+test('mentionedBadges は、依頼に出た PR、Issue、課題のキーをバッジの URL にし、登録していないプロジェクトのキーは JIRA で課題を読めたものだけを返す', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    url.includes('/issue/OTHER-5?') ? Response.json({ fields: { summary: '直す' } }) : Response.json({ errorMessages: ['課題がありません'] }, { status: 404 }),
+  );
+  const texts = ['proj-2 の続き。OTHER-5 と UTF-8 も見て', 'https://github.com/o/r/pull/12/files と https://github.com/o/r/issues/3を見て'];
+  const found = ['https://github.com/o/r/pull/12', 'https://github.com/o/r/issues/3', 'https://jira.example/browse/PROJ-2'];
+  assert.deepEqual(mentionedBadges(texts, '/repo'), found);
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(mentionedBadges(texts, '/repo'), [...found, 'https://jira.example/browse/OTHER-5']);
 });

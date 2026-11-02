@@ -27,7 +27,7 @@ export type SessionMeta = {
   pinned?: boolean;
   /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */
   badges?: string[];
-  /** 人間が外したバッジの URL。ブランチや set_task から見つけたものも、ここにあれば出さない */
+  /** 人間が外したバッジの URL。ブランチ、set_task、人間の依頼から見つけたものも、ここにあれば出さない */
   hiddenBadges?: string[];
   /** 人間が資料に足したリンク */
   links?: SavedLink[];
