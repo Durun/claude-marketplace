@@ -187,8 +187,15 @@ const relaunch = async (sessionId: string, cwd: string, text: string, jobId?: st
   });
 };
 
-const resume = (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> =>
-  relaunch(sessionId, cwd, text, jobId, rewindTo).then(() => undefined);
+/**
+ * 再開して渡す。Claude Code がこの会話をそのまま続けられず、会話を引き継いだ複製を別の id で起動したら、複製へ移る。
+ * 例えば /branch で分岐した先が別のジョブで動いていると、分岐の元の会話を再開するたびに複製ができる。
+ */
+const resume = async (sessionId: string, cwd: string, text: string, jobId?: string, rewindTo?: string): Promise<void> => {
+  const output = await relaunch(sessionId, cwd, text, jobId, rewindTo);
+  // 依頼は届いているので、複製を引けなくても、届けられなかったことにはしない。
+  await follow(sessionId, output).catch((e: Error) => console.error(`${sessionId} の複製を引けません: ${e.message}`));
+};
 
 /** 巻き戻して送ったターンの claude -p を、端末で Ctrl+C を押したときと同じ SIGINT で止め、終わるのを待つ。 */
 const interrupt = (pid: number): Promise<void> =>
@@ -614,11 +621,21 @@ export const switchSession = async (sessionId: string, text: string, model?: str
     touch();
     throw e;
   }
-  // 複製なら、元とは別のジョブの id になる。
+  return follow(sessionId, output);
+};
+
+/**
+ * claude --bg --resume が会話を引き継いだ複製を起動していたら、ダッシュボードの設定とやり取りを複製へ移す。会話が続くセッションの id を返す。
+ * 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになり、後で消し直す。
+ */
+const follow = async (sessionId: string, output: string): Promise<string> => {
+  const job = backgroundedJob(output);
+  // ジョブの id はセッションの id の頭 8 文字なので、同じなら同じ id のまま続いている。再開のたびに claude agents を動かさずに済む。
+  if (!job || sessionId.startsWith(job)) return sessionId;
   const next = (await backgroundedSession(output)) || sessionId;
-  if (next === sessionId) return sessionId;
+  const meta = state.sessions[sessionId];
+  if (next === sessionId || !meta) return next;
   moveSession(sessionId, next);
-  // 元のセッションは複製に引き継いだので、Claude Code の一覧からも消す。消せなくても、ダッシュボードではアーカイブ済みになり、後で消し直す。
   await recordRemoval(meta, removeSession(sessionId));
   return next;
 };

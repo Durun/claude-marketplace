@@ -623,6 +623,44 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });
 
+test('再開して渡したら複製ができたとき、設定とやり取りを複製へ移して元をアーカイブし、元に移った先を残す。同じ id のまま続いたら、claude agents を動かさない', async () => {
+  // 偽の claude は呼ばれた引数を書き足す。aaaaaaaa-1 の再開は、本物と同じく複製のジョブ bbbbbbbb を起動したと書き、複製の再開は同じジョブで続けたと書く。
+  const bin = path.join(tmp, 'bin-follow');
+  const callsFile = path.join(tmp, 'calls-follow');
+  const jobs = [
+    { id: 'aaaaaaaa', sessionId: 'aaaaaaaa-1', kind: 'background' },
+    { id: 'bbbbbbbb', sessionId: 'bbbbbbbb-2', kind: 'background', pid: 1 },
+  ];
+  useFakeClaude(
+    bin,
+    `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));
+if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg' && args[2] === 'aaaaaaaa-1') console.log('note: session aaaaaaaa is already running in the background, so this started a copy as bbbbbbbb.\\nbackgrounded · bbbbbbbb');
+if (args[0] === '--bg' && args[2] === 'bbbbbbbb-2') console.log('backgrounded · bbbbbbbb');`,
+  );
+  const bookmark = { kind: 'message' as const, at: 1, text: '発言', createdAt: 2 };
+  Object.assign(ensureSession('aaaaaaaa-1', tmp), { title: '実装', theme: 'テーマ', badges: ['https://github.com/o/r/pull/1'], bookmarks: [bookmark] });
+  state.sessionOrder = ['aaaaaaaa-1'];
+  const calls = (): string[][] => fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const settle = (m: OutboxMessage): Promise<void> => new Promise((resolve) => (m.sending ? onChange(() => !m.sending && resolve()) : resolve()));
+
+  const first = sendMessage('aaaaaaaa-1', 'マージされました');
+  assert.equal(first.delivery, 'resumed');
+  await settle(first.message);
+  assert.deepEqual(calls(), [['--bg', '--resume', 'aaaaaaaa-1', '--', 'マージされました'], ['agents', '--json', '--all'], ['agents', '--json', '--all'], ['rm', 'aaaaaaaa']]);
+  const copy = state.sessions['bbbbbbbb-2'];
+  assert.deepEqual([copy?.title, copy?.theme, copy?.badges, copy?.bookmarks], ['実装', 'テーマ', ['https://github.com/o/r/pull/1'], [bookmark]]);
+  const old = state.sessions['aaaaaaaa-1'];
+  assert.deepEqual([old?.archived, old?.movedTo, old?.bookmarks], [true, 'bbbbbbbb-2', undefined]);
+  assert.deepEqual([first.message.sessionId, !!first.message.deliveredAt], ['bbbbbbbb-2', true]);
+  assert.deepEqual(state.sessionOrder, ['bbbbbbbb-2']);
+
+  const next = sendMessage('bbbbbbbb-2', '続けて');
+  await settle(next.message);
+  assert.deepEqual(calls().slice(4), [['--bg', '--resume', 'bbbbbbbb-2', '--', '続けて']]);
+  assert.equal(next.message.sessionId, 'bbbbbbbb-2');
+});
+
 test('モデルと effort を変えるとき、claude がセッションを起動せずに正常に終わったら、書いた理由で失敗にして、依頼を未配信に戻す', async () => {
   // 名簿には j14 を載せず、止めたらすぐ止まり終えたことにする。
   fs.writeFileSync(path.join(tmp, 'claude', 'daemon', 'roster.json'), JSON.stringify({ workers: {} }));

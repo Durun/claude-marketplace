@@ -371,6 +371,10 @@ export const SessionPage = ({ id, ...props }: Omit<DashboardProps, 's'> & { id: 
   useEffect(() => {
     if (!s) reloadSnapshot();
   }, []);
+  // 会話が複製で続くセッションは、複製の画面へ移る。戻るボタンで戻るとまた移るので、履歴を置き換える。
+  useEffect(() => {
+    if (s?.movedTo) location.replace(href.session(s.movedTo));
+  }, [s?.movedTo]);
   if (!s && props.snapshot.now <= openedAt) return <Loading />;
   if (!s) {
     return (

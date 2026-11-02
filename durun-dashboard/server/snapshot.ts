@@ -212,6 +212,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
+    movedTo: meta.movedTo,
     removeError: meta.removeError,
     pinned: !!meta.pinned,
     links: meta.links ?? [],

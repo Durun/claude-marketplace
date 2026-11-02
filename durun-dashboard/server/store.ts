@@ -21,6 +21,8 @@ export type SessionMeta = {
   archived: boolean;
   /** 人間が作業中にアーカイブした。入力待ちか停止になったら、アーカイブする */
   archiveWhenIdle?: boolean;
+  /** 会話を引き継いだ複製のセッションの id。設定とやり取りは複製へ移してあり、このセッションはアーカイブしてある */
+  movedTo?: string;
   /** アーカイブしたが、Claude Code の一覧から消せなかった理由。残っている間は、後で消し直す */
   removeError?: string;
   /** 人間がピン留めした */
@@ -239,14 +241,14 @@ export const newId = (): string => randomUUID().slice(0, 8);
 
 /**
  * 人間がセッションに付けた設定と、やり取りした内容を、会話を引き継いだ複製のセッションへ移す。元のセッションはアーカイブする。
- * モデルと effort を変えるときに、Claude Code が複製を別の id で起動するので使う。
+ * Claude Code は、モデルと effort を変えるときや、再開を頼んだ会話をそのまま続けられないときに、複製を別の id で起動するので使う。
  */
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { theme, title, jira, pinned, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, replySeenAt, branchViews });
-  Object.assign(old, { archived: true, pinned: undefined, jobId: undefined });
+  const { theme, title, jira, pinned, badges, hiddenBadges, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, badges, hiddenBadges, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  Object.assign(old, { archived: true, movedTo: to, pinned: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;
   }

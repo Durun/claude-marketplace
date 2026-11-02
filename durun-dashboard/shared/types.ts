@@ -231,6 +231,8 @@ export type Session = {
   archived: boolean;
   /** 人間が作業中にアーカイブした。入力待ちか停止になったら、サーバーがアーカイブする。 */
   archiveWhenIdle?: boolean;
+  /** 会話を引き継いだ複製のセッションの id。会話は複製で続くので、画面はこのセッションを開くと複製の画面へ移る。 */
+  movedTo?: string;
   /** アーカイブしたが、Claude Code の一覧から消せなかった理由。 */
   removeError?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
