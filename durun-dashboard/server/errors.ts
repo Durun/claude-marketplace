@@ -55,7 +55,8 @@ const record = (source: ErrorRecord['source'], message: string, stack: string | 
     const key = keyOf(source, message, stack);
     const r = (state.errors[key] ??= { source, message: message.slice(0, MAX_MESSAGE_CHARS), count: 0, firstAt: now, lastAt: now, filed: 0 });
     // 対応を終えた要望の記録は improve.ts が回数を 0 に戻すので、次の回から数え直す。
-    Object.assign(r, { stack: stack ?? r.stack, where: where ?? r.where, count: r.count + 1, firstAt: r.count ? r.firstAt : now, lastAt: now });
+    // 鍵は数字を伏せるので、見込みを直した後の回も同じ記録に入る。文面は最後の回に合わせ、いまの見込みを出す。
+    Object.assign(r, { message: message.slice(0, MAX_MESSAGE_CHARS), stack: stack ?? r.stack, where: where ?? r.where, count: r.count + 1, firstAt: r.count ? r.firstAt : now, lastAt: now });
     // 最長だった回の負荷を添え、マシンが混んでいたせいで遅かったのかを、要望を読んですぐ見分けられるようにする。
     if (ms !== undefined && ms >= (r.slowestMs ?? 0)) Object.assign(r, { slowestMs: ms, slowestLoad: platform.loadAverage() });
     const pending = new Set(pendingItems());

@@ -51,6 +51,9 @@ test('遅い処理は、同じ処理を 1 件の要望にまとめて最長の�
   // 負荷を測れる OS では、最長だった回の load average を添える。
   if (platform.loadAverage() !== undefined) assert.match(text, /最長だったときのサーバーの負荷: load average \d+\.\d（直近 1 分の平均、CPU \d+ 個）/);
   assert.deepEqual(Object.values(state.errors).filter((e) => e.item === slow).map((e) => [e.count, e.slowestMs]), [[2, 3200]]);
+  // 見込みを直した後の回は同じ記録に数え、いまの見込みを出す。
+  recordSlow('server', 'GET ^/api/x$ の応答（見込み 15 秒）', 16_000, 'GET /api/x');
+  assert.equal(Object.values(state.errors).find((e) => e.item === slow)?.message, 'GET ^/api/x$ の応答（見込み 15 秒）');
 
   for (const name of ['a', 'b', 'c']) recordSlow('client', `home の画面を固めた「${name}」の処理`, 600);
   assert.equal(pending().length - before.length, 3);
