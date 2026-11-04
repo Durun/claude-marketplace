@@ -29,6 +29,8 @@ export type SessionMeta = {
   discardError?: string;
   /** 人間がピン留めした */
   pinned?: boolean;
+  /** 人間がデンジャラスモードにした。権限の確認を、サブエージェントや claude -p の分も含めて、尋ねずに許可する。 */
+  dangerous?: boolean;
   /** 人間がセッションのウィジェットでバッジに登録した、PR、Issue、JIRA の課題の URL */
   badges?: string[];
   /** 人間が外したバッジの URL。ブランチ、set_task、人間の依頼から見つけたものも、ここにあれば出さない */
@@ -252,9 +254,9 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { theme, title, jira, pinned, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
-  Object.assign(old, { archived: true, movedTo: to, pinned: undefined, bookmarks: undefined, jobId: undefined });
+  const { theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  Object.assign(old, { archived: true, movedTo: to, pinned: undefined, dangerous: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;
   }

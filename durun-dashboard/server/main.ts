@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, saveLogSummaries, summarizeLog } from './claude.ts';
-import { allowPermission, answerCommand, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { allowPermission, allowPermissions, answerCommand, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -795,6 +795,14 @@ const setArchived = (id: string, body: unknown): { deferred?: boolean } => {
   return { deferred: archiveSession(meta) };
 };
 
+/** デンジャラスモードを切り替える。オンにしたら、もう待っている権限の確認も許可する。 */
+const setDangerous = (id: string, body: unknown): void => {
+  const on = field<boolean>(body, 'dangerous', 'boolean');
+  sessionMeta(id).dangerous = on || undefined;
+  if (on) allowPermissions(id);
+  touch();
+};
+
 const setPinned = (id: string, body: unknown): void => {
   sessionMeta(id).pinned = field<boolean>(body, 'pinned', 'boolean') || undefined;
   touch();
@@ -1195,6 +1203,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
   [/^\/api\/sessions\/([^/]+)\/discard$/, ([, id = '']) => discardSession(sessionMeta(id))],
   [/^\/api\/sessions\/([^/]+)\/pin$/, ([, id = ''], b) => setPinned(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/dangerous$/, ([, id = ''], b) => setDangerous(id, b)],
   [/^\/api\/sessions\/([^/]+)\/links$/, ([, id = ''], b) => addLink(id, b)],
   [/^\/api\/sessions\/([^/]+)\/files$/, ([, id = ''], b) => addFile(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs$/, ([, id = ''], b) => shareDoc(id, b)],

@@ -255,6 +255,23 @@ test('PermissionRequest のフックは、端末とバックグラウンドの�
   assert.throws(() => allowPermission(card?.id ?? ''), /もうこの権限の確認を待っていません/);
 });
 
+
+test('デンジャラスモードのセッションは、サブエージェントと claude -p の分も、権限の確認を待たせずに許可し、Claude Code が自分で尋ねるツールは任せる', () => {
+  const answer = (input: object): { status?: number; body?: string } => {
+    const out: { status?: number; body?: string } = {};
+    const res = { writeHead: (status: number) => ((out.status = status), res), end: (body?: string) => void (out.body = body) };
+    holdPermission(res as unknown as http.ServerResponse, input);
+    return out;
+  };
+  ensureSession('danger', tmp).dangerous = true;
+  const push = { session_id: 'danger', cwd: tmp, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'git push' } };
+  const allow = { status: 200, body: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } }) };
+  assert.deepEqual(answer(push), allow);
+  assert.deepEqual(answer({ ...push, agent_id: 'a1' }), allow);
+  assert.deepEqual(answer({ ...push, tool_name: 'AskUserQuestion' }), { status: 204, body: undefined });
+  assert.deepEqual(state.attention.filter((a) => a.sessionId === 'danger'), []);
+});
+
 test('SendUserFile で送ったファイルは、送ったときの説明を題名に添えて未読の資料にし、送り直したら同じ資料を未読に戻して、外していればまた並べる', () => {
   const base = { session_id: 'sent', cwd: tmp, hook_event_name: 'PostToolUse', tool_name: 'SendUserFile' };
   const sent = () => state.docs.filter((d) => d.sessionId === 'sent').map(({ title, format, path, seen }) => ({ title, format, path, seen }));

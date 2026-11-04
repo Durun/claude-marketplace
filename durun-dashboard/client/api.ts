@@ -115,6 +115,7 @@ export const api = {
   discard: (id: string) => postJson(`${session(id)}/discard`),
   orderSessions: (ids: string[]) => postJson('/api/sessions/order', { ids }),
   pin: (id: string, pinned: boolean) => postJson(`${session(id)}/pin`, { pinned }),
+  dangerous: (id: string, dangerous: boolean) => postJson(`${session(id)}/dangerous`, { dangerous }),
   addLink: (id: string, url: string, title: string) => postJson(`${session(id)}/links`, { url, title }),
   addFile: (id: string, path: string) => postJson(`${session(id)}/files`, { path }),
   shareDoc: (id: string, doc: string) => postJson(`${session(id)}/docs`, { id: doc }),

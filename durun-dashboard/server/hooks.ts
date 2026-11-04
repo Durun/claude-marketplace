@@ -299,9 +299,11 @@ const callDetail = (input: HookInput['tool_input']): string => {
  * PermissionRequest のフックで、権限の確認を要対応にし、人間がダッシュボードで許可したら許可を返す。
  * Claude Code は確認の画面を出したままフックの応答も待ち、先に届いた答えを使う。端末や claude.ai/code で先に答えれば、そちらが使われる。
  * claude -p とサブエージェントは、確認の画面を出さずにフックの応答だけを待ち、待たせると止まるので、すぐに何も返さない。
+ * デンジャラスモードのセッションは、サブエージェントと claude -p の分も、尋ねずにすぐ許可する。
  */
 export const holdPermission = (res: ServerResponse, input: HookInput): void => {
   const { session_id: sessionId, cwd, tool_name: tool } = input;
+  if (sessionId && tool && !OWN_DIALOG_TOOLS.has(tool) && state.sessions[sessionId]?.dangerous) return void res.writeHead(200, { 'content-type': 'application/json' }).end(ALLOW);
   if (!sessionId || !cwd || !tool || input.agent_id || OWN_DIALOG_TOOLS.has(tool) || readLiveSessions().get(sessionId)?.entrypoint !== 'cli') return void res.writeHead(204).end();
   // 通知から記録した権限の確認は、同じ確認なので置き換える。
   const id = pushDialog(ensureSession(sessionId, cwd), { kind: 'permission', title: tool, detail: callDetail(input.tool_input) }, (a) => isDialog(a, sessionId) && a.kind === 'permission');

@@ -187,6 +187,9 @@ button, input, textarea { font: inherit; color: inherit; }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--primary); filter: brightness(1.1); }
 .btn-danger:not(:disabled) { border-color: var(--critical); color: var(--critical); }
+/* デンジャラスモードは、オフの間は目立たせず、オンの間は赤く塗って、尋ねずに許可していることを分かるようにする。 */
+.dangerous-toggle[aria-pressed="false"] { color: var(--text-2); }
+.dangerous-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--critical) 15%, transparent); font-weight: 600; }
 
 .input {
   width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius);

@@ -75,6 +75,11 @@ export const allowPermission = (attentionId: string): void => {
   settlePermission(attentionId, true);
 };
 
+/** デンジャラスモードにしたセッションが待っている権限の確認を、すべて許可する。 */
+export const allowPermissions = (sessionId: string): void => {
+  for (const [id, w] of permissionWaits) if (w.sessionId === sessionId) settlePermission(id, true);
+};
+
 /** 端末や claude.ai/code で答え終えた権限の確認を、フックに何も返さずに片付ける。call を渡すと、そのツールの呼び出しへの確認だけを片付ける。 */
 export const releasePermissions = (sessionId: string, call?: Pick<PermissionWait, 'tool' | 'input'>): void => {
   for (const [id, w] of permissionWaits) {

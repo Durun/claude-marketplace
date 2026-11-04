@@ -227,6 +227,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archiveWhenIdle: meta.archiveWhenIdle,
     movedTo: meta.movedTo,
     pinned: !!meta.pinned,
+    dangerous: !!meta.dangerous,
     links: meta.links ?? [],
     files: meta.files ?? [],
     proofFiles: meta.proofFiles ?? [],

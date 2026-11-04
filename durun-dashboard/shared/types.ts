@@ -247,6 +247,8 @@ export type Session = {
   movedTo?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
+  /** 人間がデンジャラスモードにした。権限の確認を尋ねずに許可する。前に受け取ったスナップショットには無いことがある。 */
+  dangerous?: boolean;
   links: SavedLink[];
   /** 人間がエクスプローラーから資料に足したファイル。 */
   files: SavedFile[];

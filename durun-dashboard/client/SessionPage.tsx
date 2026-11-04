@@ -167,6 +167,19 @@ const BadgeInput = ({ s }: { s: Session }) => {
   );
 };
 
+/** デンジャラスモードの切り替え。オンの間は、Claude Code が尋ねる権限の確認を、ダッシュボードがすべて許可する。 */
+const DangerousToggle = ({ s }: { s: Session }) => (
+  <button
+    type="button"
+    class={`btn btn-sm dangerous-toggle${s.dangerous ? ' btn-danger' : ''}`}
+    aria-pressed={!!s.dangerous}
+    title={s.dangerous ? 'デンジャラスモードをやめて、権限の確認を尋ねるように戻す' : 'デンジャラスモードにして、コマンドの実行などの権限の確認をすべて許可する'}
+    onClick={() => void attempt('デンジャラスモードの切り替え', () => api.dangerous(s.id, !s.dangerous))}
+  >
+    {s.dangerous ? '⚠ デンジャラスモード' : 'デンジャラスモード'}
+  </button>
+);
+
 /** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。 */
 const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   <>
@@ -178,6 +191,7 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
         <StatusBadge status={s.status} waitingFor={s.waitingFor} />
         {s.archiveWhenIdle && <Chip title="作業が終わったらアーカイブします">アーカイブ待ち</Chip>}
         <ThemeEditor s={s} themes={themes} />
+        <DangerousToggle s={s} />
         <span class="mono muted">
           <CopyText text={s.cwd} title={`${s.cwd}（押すと絶対パスをコピー）`}>{s.repo}</CopyText>
           {s.branch && <> · <CopyText text={s.branch} title="押すとブランチ名をコピー">{s.branch}</CopyText></>}
