@@ -262,14 +262,14 @@ const mtimeMs = (file: string | undefined): number => {
   }
 };
 
-/** 対応が済んだ状態に戻った PR の既読印を消し、次に失敗したときにまた知らせる。 */
-const prAttention = (s: Session, dismissed: Set<string>): Attention[] => {
+/** PR の要対応を返し、出さなかった要対応の id を settled に足す。 */
+const prAttention = (s: Session, settled: Set<string>): Attention[] => {
   const pr = s.pr;
   if (!pr) return [];
   const items: Attention[] = [];
   const add = (suffix: string, active: boolean, title: string): void => {
     const id = `pr:${pr.url}:${suffix}`;
-    if (!active) dismissed.delete(id);
+    if (!active) settled.add(id);
     else items.push({ id, kind: 'pr', sessionId: s.id, title, body: pr.title, url: pr.url, createdAt: s.updatedAt });
   };
   const open = pr.state === 'OPEN' && !s.archived;
@@ -278,8 +278,8 @@ const prAttention = (s: Session, dismissed: Set<string>): Attention[] => {
   return items;
 };
 
-const deriveAttention = (sessions: Session[]): Attention[] => {
-  const dismissed = new Set(state.dismissed);
+export const deriveAttention = (sessions: Session[]): Attention[] => {
+  const settled = new Set<string>();
   const items: Attention[] = state.attention.map((a) => (isAllowable(a.id) ? { ...a, allowable: true } : a));
   for (const s of sessions) {
     const meta = state.sessions[s.id];
@@ -289,11 +289,15 @@ const deriveAttention = (sessions: Session[]): Attention[] => {
     if (s.waitingFor === 'human' && s.lastMessage && unseen && !waiting) {
       items.push({ id: `reply:${s.id}`, kind: 'reply', sessionId: s.id, title: '回答待ち', body: s.lastMessage, createdAt: s.lastMessageAt ?? s.updatedAt });
     }
-    items.push(...prAttention(s, dismissed));
+    items.push(...prAttention(s, settled));
   }
   for (const d of state.docs) {
     if (!d.seen) items.push({ id: `doc:${d.id}`, kind: 'doc', sessionId: d.sessionId, title: `資料: ${d.title}`, docId: d.id, createdAt: d.createdAt });
   }
+  // 対応が済んだ状態に戻った PR の既読印を消し、次に失敗したときにまた知らせる。
+  // 同じ PR を、アーカイブしたセッションや別の作業ツリーのセッションも持つ。どれかのセッションでまだ出すものの既読印は残す。
+  const shown = new Set(items.map((a) => a.id));
+  const dismissed = new Set(state.dismissed.filter((id) => shown.has(id) || !settled.has(id)));
   if (dismissed.size !== state.dismissed.length) {
     state.dismissed = [...dismissed];
     persist();
