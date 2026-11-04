@@ -206,6 +206,15 @@ export const teamIdIn = (appState: string | undefined, domain: string): string |
   }
 };
 
+const teams = new Map<string, string>();
+
+/** ワークスペースの ID は変わらないので、見つけたら覚える。Slack のアプリの状態ファイルは、混んだマシンでは開くだけで数十ミリ秒かかり、会話を読むたびに開くと応答を止める。 */
+const teamOf = (domain: string): string | undefined => {
+  const id = teams.get(domain) ?? teamIdIn(platform.slackAppState(), domain);
+  if (id) teams.set(domain, id);
+  return id;
+};
+
 /** 名前とドメインは見出しとリンクに添えるだけなので、読めなくても会話は出す。 */
 const orUndefined = <T,>(p: Promise<T>): Promise<T | undefined> => p.catch(() => undefined);
 
@@ -221,6 +230,6 @@ export const slackConversation = async (target: SlackTarget, fresh = false): Pro
     return { title: titleOf(text, messages, !!thread), channelName: channelNameIn(text), messages };
   });
   const [conv, channelName, domain] = await Promise.all([read, thread ? orUndefined(channelNameOf(channel)) : undefined, given ?? orUndefined(mcpDomain())]);
-  const team = domain && teamIdIn(platform.slackAppState(), domain);
+  const team = domain && teamOf(domain);
   return { ...conv, channel, thread, channelName: conv.channelName ?? channelName, domain, team };
 };

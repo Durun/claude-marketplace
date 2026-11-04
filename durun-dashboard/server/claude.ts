@@ -63,10 +63,23 @@ const readJsonCached = <T>(file: string): Partial<T> | undefined => {
   return value;
 };
 
+const dirCache = new Map<string, { mtimeMs: number; names: string[] }>();
+
+/**
+ * スナップショットを配るたびに、すべてのセッションのサブエージェントやタスクのフォルダーを読む。
+ * 混んだマシンでは、フォルダーを開いて読むのが stat の約 50 倍かかるので、更新時刻が変わっていなければ前に読んだ一覧を返す。返した一覧は共有するので書き換えない。
+ */
 export const listDir = (dir: string): string[] => {
   try {
-    return fs.readdirSync(dir);
+    const { mtimeMs } = fs.statSync(dir);
+    const hit = dirCache.get(dir);
+    if (hit?.mtimeMs === mtimeMs) return hit.names;
+    const names = fs.readdirSync(dir);
+    if (Date.now() - mtimeMs > SETTLED_MS) dirCache.set(dir, { mtimeMs, names });
+    else dirCache.delete(dir);
+    return names;
   } catch {
+    dirCache.delete(dir);
     return [];
   }
 };
@@ -578,7 +591,7 @@ export const findTranscript = (sessionId: string): string | undefined => {
 
 /** ユーザーが /rename などで付けた名前 */
 export const readCustomTitle = (transcript: string): string | undefined =>
-  readJson<{ customTitle: string }>(path.join(transcript.replace(/\.jsonl$/, ''), 'custom-title.json'))?.customTitle;
+  readJsonCached<{ customTitle: string }>(path.join(transcript.replace(/\.jsonl$/, ''), 'custom-title.json'))?.customTitle;
 
 export type SubagentLog = { id: string; type: string; description: string; model?: string; log: LogSummary };
 
