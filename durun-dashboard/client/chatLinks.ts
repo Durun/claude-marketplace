@@ -47,14 +47,23 @@ export type ChatLink = { url: string; title: string; host: string; at: number };
 // インラインのコードに書いた Markdown ファイルのパス。行の指定は外して拾う。
 const MD_FILE = /^([^\s:]+\.md)(?::\d+(?:-\d+)?)?$/i;
 
+// 人間への質問のツール。質問の本文は、ツールの入力を JSON にした detail にある。
+const ASK_TOOL = /^(?:AskUserQuestion|mcp__\S*__ask_human)\b/;
+// 質問の地の文に書いた、/ か ~/ で始まる Markdown ファイルのパス。日本語のファイル名も拾い、日本語の句読点と括弧、JSON の引用符とエスケープの手前で切る。
+const TEXT_MD_FILE = /(?:~|(?<![\w.~/-]))\/[^\s"'`\\:、。，．「」『』（）【】()]*\.md(?![\w.])/gi;
+
 /** 発言に出た Markdown ファイル。ref はパスで、at は最後に出た時刻。 */
 export type ChatFile = { ref: string; at: number };
 
-/** 発言のインラインのコードに出た Markdown ファイルを、同じパスは 1 件にまとめ、新しく出た順に並べる。 */
+/** 発言のインラインのコードと、人間への質問の本文に出た Markdown ファイルを、同じパスは 1 件にまとめ、新しく出た順に並べる。 */
 export const chatMarkdownFiles = (entries: ChatEntry[]): ChatFile[] => {
   const files = new Map<string, number>();
   for (const e of entries) {
-    if (e.kind === 'tool') continue;
+    if (e.kind === 'tool') {
+      // 質問はコードに書かずにパスを出すことが多い。detail は長い質問だと途中で切れて JSON として読めないので、改行のエスケープだけを戻して文字の並びから拾う。
+      if (ASK_TOOL.test(e.text)) for (const [ref] of (e.detail ?? '').replaceAll('\\n', '\n').matchAll(TEXT_MD_FILE)) files.set(ref, e.at ?? 0);
+      continue;
+    }
     md.walkTokens(lexMarkdown(e.text), (t) => {
       const ref = t.type === 'codespan' && MD_FILE.exec(t.text)?.[1];
       if (ref) files.set(ref, e.at ?? 0);

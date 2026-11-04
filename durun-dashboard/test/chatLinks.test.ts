@@ -68,6 +68,16 @@ test('発言のインラインのコードに出た Markdown ファイルを、�
   assert.deepEqual(files, [{ ref: 'docs/a.md', at: 3 }, { ref: '~/b.md', at: 1 }]);
 });
 
+test('人間への質問の本文に出た、/ か ~/ で始まる Markdown ファイルを拾い、ほかのツールの入力は拾わない', () => {
+  const question = '設計を /tmp/hub/CATS-1_設計.md に書きました。~/notes/a.md:3 と（/tmp/b.md）も見てください。x/c.md と /tmp/d.md.bak は除く\n/tmp/e.md';
+  const files = chatMarkdownFiles([
+    { kind: 'tool', at: 1, text: 'mcp__plugin_durun-dashboard_durun-dashboard__ask_human 設計を', detail: JSON.stringify({ question }, null, 2) },
+    { kind: 'tool', at: 2, text: 'AskUserQuestion', detail: JSON.stringify({ questions: [{ question: 'どちらにしますか（/tmp/f.md）' }] }) },
+    { kind: 'tool', at: 3, text: 'Read /tmp/g.md', detail: JSON.stringify({ file_path: '/tmp/g.md' }) },
+  ]);
+  assert.deepEqual(files.map((f) => f.ref).sort(), ['/tmp/b.md', '/tmp/e.md', '/tmp/f.md', '/tmp/hub/CATS-1_設計.md', '~/notes/a.md']);
+});
+
 test('lexMarkdown は、同じ文には覚えた結果を返し、覚えた文が 1000 件を超えたら、いちばん長く使っていない文から忘れる', () => {
   const oldest = lexMarkdown('最初に読んだ文');
   const kept = lexMarkdown('読み続ける文');
