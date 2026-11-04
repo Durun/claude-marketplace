@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -28,6 +28,7 @@ import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
+import { slackConversation, slackTargetOf } from './slack.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
@@ -489,6 +490,13 @@ const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
 
 /** 人間が「更新」を押したか。外部の情報源から読む値を、覚えた値を使わずに読み直す。 */
 const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
+
+/** 「スレッド」のウィジェットが、登録した Slack のスレッドかチャンネルの URL から会話を読む。 */
+const slackRead = (url: URL): Promise<SlackConversation> => {
+  const target = slackTargetOf(url.searchParams.get('url') ?? '');
+  if (!target) throw new HttpError(400, 'Slack のスレッドかチャンネルの URL を指定してください');
+  return viaGh('Slack を読めません', () => slackConversation(target, wantsFresh(url)));
+};
 
 const threadsOf = (pr: PrInfo, fresh = false): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr, fresh));
 
@@ -1235,6 +1243,7 @@ const GET_ROUTES: Route[] = [
   [/^\/api\/jira\/refs$/, (_, __, url) => viaGh('JIRA の課題を読めません', () => jiraRefs(wantsFresh(url))), WEB_API_MS],
   [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url))), WEB_API_MS],
   [/^\/api\/github\/search$/, (_, __, url) => githubListSearch(url), GITHUB_SEARCH_MS],
+  [/^\/api\/slack$/, (_, __, url) => slackRead(url), GITHUB_SEARCH_MS],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) })), WEB_API_MS],

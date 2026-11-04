@@ -17,6 +17,7 @@ import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floa
 import { GITHUB_INBOX_TITLE, GithubInbox, githubInboxControls } from './GithubInbox.tsx';
 import { Inbox } from './Inbox.tsx';
 import { JIRA_TITLE, JiraIssues, jiraControls } from './JiraIssues.tsx';
+import { SLACK_THREAD_TITLE, SlackThread, slackThreadControls } from './SlackThread.tsx';
 import { ROWS, type Layout } from './layout.ts';
 import { MessageInput } from './Messaging.tsx';
 import { currentSessionId } from './router.ts';
@@ -209,6 +210,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   inbox: { title: '要対応', icon: '📥', Body: Inbox, size: { w: 10, h: ROWS }, sketch: 'list' },
   sessions: { title: 'セッション', icon: '🗂️', Body: SessionsWidget, size: { w: 14, h: ROWS }, sketch: 'cards' },
   jira: { title: JIRA_TITLE, icon: JIRA_ICON, Body: JiraIssues, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: jiraControls },
+  slack: { title: SLACK_THREAD_TITLE, icon: '💬', Body: SlackThread, size: { w: 8, h: ROWS / 2 }, sketch: 'chat', controls: slackThreadControls },
   github: { title: GITHUB_INBOX_TITLE, icon: GITHUB_ICON, Body: GithubInbox, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: githubInboxControls },
   [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: () => <ExplorerIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openExplorer() },
   [IE_KEY]: { title: IE_TITLE, icon: IE_ICON, Body: InternetExplorerIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openInternetExplorer() },

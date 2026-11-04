@@ -110,6 +110,11 @@ export type InboxPr = { url: string; repo: string; number: number; title: string
 export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; state: RepoRef['state']; review?: string; checks?: string; section?: string };
 /** GitHub の検索の結果。total は条件に合う件数で、items より多ければ表示する件数を超えている。 */
 export type GithubSearch = { items: GithubItem[]; total: number };
+
+/** Slack のメッセージ。ts は Slack の時刻の文字（秒.マイクロ秒）で、text は Markdown。replies はチャンネルの中のメッセージに付いたスレッドの返信の数。 */
+export type SlackMessage = { ts: string; user: string; text: string; replies?: number };
+/** 「スレッド」のウィジェットが読む会話。 */
+export type SlackConversation = { messages: SlackMessage[] };
 /** GitHub Inbox のウィジェットに並べられる件数の上限。GitHub の検索は 1 回で 100 件まで返す。 */
 export const GITHUB_LIST_MAX = 100;
 

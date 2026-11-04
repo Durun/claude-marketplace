@@ -87,6 +87,17 @@ export type Platform = {
    * major は FL の版の上の桁（FL 2026 なら 26）。読めない OS と、読めなかったときは undefined。
    */
   flProjectHints: (major: number, run?: Run) => Promise<FlProjectHints | undefined>;
+  /** Claude Code の認証情報の JSON。/mcp で接続した MCP サーバーの OAuth のトークンを mcpOAuth に持つ。読めなければ undefined。 */
+  claudeCredentials: (run?: Run, files?: Files) => Promise<string | undefined>;
+};
+
+// Mac 以外の Claude Code は、認証情報をキーチェーンでなくこのファイルに置く。
+const credentialsFile = (files: Files, dir: string): Promise<string | undefined> => {
+  try {
+    return Promise.resolve(files.read(path.join(dir, '.claude', '.credentials.json')));
+  } catch {
+    return Promise.resolve(undefined);
+  }
 };
 
 const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
@@ -145,6 +156,7 @@ const posix = {
   midiLoopbackCommand: () => undefined,
   // ponytail: Mac 版の FL が最近のファイルをどこに覚えているかは調べていない。広げるなら、FL の設定の plist を読む。
   flProjectHints: async () => undefined,
+  claudeCredentials: (_run: Run = realRun, files: Files = realFiles) => credentialsFile(files, os.homedir()),
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -157,6 +169,13 @@ const darwin: Platform = {
   },
   // App Store と配布版の Tailscale は、CLI を PATH に置かず、アプリの中に持つ。
   tailnetHosts: tailnetHostsVia(['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']),
+  claudeCredentials: async (run = realRun) => {
+    try {
+      return await run('/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w']);
+    } catch {
+      return undefined;
+    }
+  },
 };
 
 // ponytail: Linux ではメモリを読まない。広げるなら /proc/pressure/memory と /proc/meminfo から読む。
@@ -259,6 +278,7 @@ const win32: Platform = {
       return undefined;
     }
   },
+  claudeCredentials: (_run = realRun, files = realFiles) => credentialsFile(files, os.homedir()),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

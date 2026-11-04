@@ -278,6 +278,22 @@ test('FL Connect は、Windows では開いているプロジェクトの手が�
   for (const name of ['darwin', 'other']) assert.equal(await platformFor(name).flProjectHints(26), undefined);
 });
 
+test('Claude Code の認証情報は、Mac ではキーチェーンから、ほかの OS では ~/.claude/.credentials.json から読み、読めなければ undefined を返す', async () => {
+  const { run, calls } = fakeRun({ '/usr/bin/security': '{"mcpOAuth":{}}' });
+  assert.equal(await platformFor('darwin').claudeCredentials(run), '{"mcpOAuth":{}}');
+  assert.deepEqual(calls, ['/usr/bin/security find-generic-password -s Claude Code-credentials -w']);
+  const failing: Run = async () => {
+    throw new Error('not found');
+  };
+  assert.equal(await platformFor('darwin').claudeCredentials(failing), undefined);
+  const read: string[] = [];
+  const files: Files = { list: () => [], read: (file) => (read.push(file), '{"x":1}') };
+  for (const name of ['win32', 'other']) assert.equal(await platformFor(name).claudeCredentials(run, files), '{"x":1}');
+  assert.ok(read.every((f) => f.endsWith('.credentials.json')));
+  const missing: Files = { list: () => [], read: () => { throw new Error('ENOENT'); } };
+  assert.equal(await platformFor('win32').claudeCredentials(run, missing), undefined);
+});
+
 test('claude は、偽物が指されていれば node でそれを動かし、なければ PATH の claude を起動する', () => {
   assert.deepEqual(claudeCommand(['--bg', '--', '依頼'], {}), { file: 'claude', args: ['--bg', '--', '依頼'] });
   assert.deepEqual(claudeCommand(['stop', 'j1'], { DURUN_DASHBOARD_FAKE_CLAUDE: '/tmp/fake.mjs' }), { file: process.execPath, args: ['/tmp/fake.mjs', 'stop', 'j1'] });
