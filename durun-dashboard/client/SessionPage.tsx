@@ -23,6 +23,7 @@ import { COMPLETION_ID, CompletionMenu, OutboxList, asksOf, useCompletion } from
 import { AgentList, Chat, DIAGRAM_ICON, DiagramIcon, type Jump, REMOTE_ICON, REMOTE_TITLE, RemoteIcon, Summary, TaskList, launchDiagram, openRemote } from './Overview.tsx';
 import { PR_REVIEW_TITLE, PrReview } from './PrReview.tsx';
 import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
+import { SLACK_THREAD_TITLE, SLACK_WIDGET, SessionSlack, slackThreadControls } from './SlackThread.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, currentSessionId, href } from './router.ts';
 import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
@@ -277,6 +278,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   code: { title: 'コード', icon: '💻', Body: CodeWidget, size: { w: COLS, h: ROWS }, sketch: 'code' },
   [PR_WIDGET]: { title: PR_TITLE, icon: GITHUB_ICON, Body: PrWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
   [JIRA_WIDGET]: { title: JIRA_VIEW_TITLE, icon: JIRA_ICON, Body: JiraWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
+  [SLACK_WIDGET]: { title: SLACK_THREAD_TITLE, icon: '💬', Body: SessionSlack, size: { w: 12, h: ROWS - 6 }, sketch: 'chat', controls: slackThreadControls },
   pr: { title: PR_REVIEW_TITLE, icon: '🔍', Body: PrReview, size: { w: 12, h: ROWS - 6 }, sketch: 'chat' },
   usage: { title: '使用量', icon: '📊', Body: UsageWidget, size: { w: COLS, h: ROWS }, sketch: 'chart' },
 };
@@ -287,7 +289,7 @@ const DEFAULT_LAYOUT: Layout = [
   { id: 'summary', x: 10, y: 0, w: 6, h: 6, tabs: [{ id: 'summary' }] },
   { id: 'diagram', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }], free: true },
   { id: 'remote', x: 16, y: 3, w: 2, h: 3, tabs: [{ id: 'remote' }], free: true },
-  { id: 'main', x: 0, y: 6, w: 18, h: ROWS - 6, tabs: [{ id: 'chat' }, { id: 'code' }, { id: PR_WIDGET }, { id: 'pr' }, { id: JIRA_WIDGET }, { id: 'usage' }] },
+  { id: 'main', x: 0, y: 6, w: 18, h: ROWS - 6, tabs: [{ id: 'chat' }, { id: 'code' }, { id: PR_WIDGET }, { id: 'pr' }, { id: JIRA_WIDGET }, { id: SLACK_WIDGET }, { id: 'usage' }] },
   { id: 'side', x: 18, y: 0, w: 6, h: ROWS, tabs: [{ id: 'outbox' }, { id: 'tasks' }, { id: 'subagents' }, { id: 'docs' }], active: 'tasks' },
 ];
 

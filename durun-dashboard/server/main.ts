@@ -28,7 +28,7 @@ import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
-import { slackConversation, slackTargetOf } from './slack.ts';
+import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
@@ -494,8 +494,42 @@ const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
 /** 「スレッド」のウィジェットが、登録した Slack のスレッドかチャンネルの URL から会話を読む。 */
 const slackRead = (url: URL): Promise<SlackConversation> => {
   const target = slackTargetOf(url.searchParams.get('url') ?? '');
-  if (!target) throw new HttpError(400, 'Slack のスレッドかチャンネルの URL を指定してください');
+  if (!target) throw new HttpError(400, SLACK_REF_HINT);
   return viaGh('Slack を読めません', () => slackConversation(target, wantsFresh(url)));
+};
+
+const SLACK_REF_HINT = 'Slack のスレッドかチャンネルのリンク、チャンネルの ID、# で始めたチャンネルの名前を指定してください';
+
+/** 参照の鍵を返す。読めない参照は登録させない。 */
+const slackKeyOfBody = (body: unknown): { ref: string; key: string } => {
+  const ref = field<string>(body, 'ref', 'string').trim();
+  const key = slackKeyOf(ref);
+  if (!key) throw new HttpError(400, SLACK_REF_HINT);
+  return { ref, key };
+};
+
+/**
+ * セッションの「スレッド」のウィジェットに参照を足す。閉じていた会話は、また出す。
+ * # で始めた名前は ID にして覚え、チャットに出た同じチャンネルのリンクと 1 つにまとめる。
+ */
+const addSlack = async (id: string, body: unknown): Promise<{ ref: string }> => {
+  const meta = sessionMeta(id);
+  const given = slackKeyOfBody(body).ref;
+  const name = given.match(/^#(.+)$/)?.[1];
+  const { ref, key } = slackKeyOfBody({ ref: name ? await viaGh('チャンネルを探せません', () => channelIdOf(name)) : given });
+  meta.slack = [...(meta.slack ?? []).filter((r) => slackKeyOf(r) !== key), ref];
+  meta.hiddenSlack = meta.hiddenSlack?.filter((k) => k !== key);
+  touch();
+  return { ref };
+};
+
+/** 足した参照は消し、チャットに出たリンクは見つけ直しても出さないよう覚える。 */
+const removeSlack = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const { key } = slackKeyOfBody(body);
+  meta.slack = meta.slack?.filter((r) => slackKeyOf(r) !== key);
+  meta.hiddenSlack = [...new Set([...(meta.hiddenSlack ?? []), key])];
+  touch();
 };
 
 const threadsOf = (pr: PrInfo, fresh = false): Promise<PrThread[]> => viaGh('レビューコメントを取得できません', () => prThreads(pr, fresh));
@@ -1167,6 +1201,8 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/proofs$/, ([, id = ''], b) => addProof(id, b)],
   [/^\/api\/sessions\/([^/]+)\/badges$/, ([, id = ''], b) => addBadge(id, b), WEB_API_MS],
   [/^\/api\/sessions\/([^/]+)\/badges\/remove$/, ([, id = ''], b) => removeBadge(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/slack$/, ([, id = ''], b) => addSlack(id, b), GITHUB_SEARCH_MS],
+  [/^\/api\/sessions\/([^/]+)\/slack\/remove$/, ([, id = ''], b) => removeSlack(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/order$/, ([, id = ''], b) => orderDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/hide$/, ([, id = ''], b) => hideDocs(id, b)],
   [/^\/api\/sessions\/([^/]+)\/docs\/rename$/, ([, id = ''], b) => renameDoc(id, b)],
@@ -1244,6 +1280,7 @@ const GET_ROUTES: Route[] = [
   [/^\/api\/github\/inbox$/, (_, __, url) => viaGh('GitHub の PR を探せません', () => githubInbox(wantsFresh(url))), WEB_API_MS],
   [/^\/api\/github\/search$/, (_, __, url) => githubListSearch(url), GITHUB_SEARCH_MS],
   [/^\/api\/slack$/, (_, __, url) => slackRead(url), GITHUB_SEARCH_MS],
+  [/^\/api\/slack\/channels$/, (_, __, url) => viaGh('チャンネルを探せません', () => slackChannels(url.searchParams.get('q')?.trim() || '')), GITHUB_SEARCH_MS],
   [/^\/api\/jira\/issues\/([^/]+)$/, ([, key = ''], _, url) => viaGh('課題を読めません', () => jiraDetail(jiraKeyOf(key), wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})$/, ([, id = ''], _, url) => viaGh('ページを読めません', () => notionPage(id, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/notion\/pages\/([0-9a-f]{32})\/title$/, ([, id = '']) => viaGh('ページを読めません', async () => ({ title: await notionTitle(id) })), WEB_API_MS],

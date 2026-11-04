@@ -1,26 +1,35 @@
-// 「スレッド」のウィジェットが、登録した Slack のスレッドかチャンネルの会話を読む。
+// 「スレッド」のウィジェットが、登録した Slack のスレッドかチャンネルの会話を読む。セッションでは、チャットに出た Slack のリンクも読む先にする。
 // Slack の API でなく、Claude Code が /mcp で接続した Slack の MCP サーバーを、その OAuth のトークンで直に呼ぶ。
 // トークンの保存の形は Claude Code の内部の仕様なので、Claude Code の更新で読めなくなることがある。
-import type { SlackConversation, SlackMessage } from '../shared/types.ts';
+import type { SlackChannel, SlackConversation, SlackMessage } from '../shared/types.ts';
 import { cached } from './cache.ts';
 import { platform } from './platform.ts';
 
 const MAX_AGE_MS = 5 * 60_000;
+// チャンネルの名前と ID の対応はめったに変わらないので、長く覚える。
+const CHANNELS_MAX_AGE_MS = 24 * 60 * 60_000;
 // チャンネルは新しい方からこの件数だけ読む。スレッドは全部読む。
 const CHANNEL_LIMIT = 50;
 const THREAD_LIMIT = 1000;
+const TITLE_CHARS = 40;
 
-/** URL から読む先。thread はスレッドの親の ts。無ければチャンネルを読む。 */
-export type SlackTarget = { channel: string; thread?: string };
+/** 読む先。thread はスレッドの親の ts で、無ければチャンネルを読む。name は # で始めて打ったチャンネルの名前で、読む前に ID を探す。 */
+export type SlackTarget = { channel: string; thread?: string } | { name: string };
+
+const CHANNEL_ID = /^[CGD][A-Z0-9]{6,}$/;
 
 /**
- * Slack の「リンクをコピー」の URL を読む。スレッドの返信のリンクは thread_ts に親を持つ。
- * /archives/<チャンネル>/p<ts の数字> ならメッセージのスレッド、/archives/<チャンネル> ならチャンネルを指す。
+ * 人間が登録した参照を読む。参照は Slack の「リンクをコピー」の URL か、チャンネルの ID か、# で始めたチャンネルの名前。
+ * URL は /archives/<チャンネル>/p<ts の数字> ならメッセージのスレッドを、/archives/<チャンネル> ならチャンネルを指す。スレッドの返信のリンクは thread_ts に親を持つ。
  */
 export const slackTargetOf = (raw: string): SlackTarget | undefined => {
+  const text = raw.trim();
+  if (CHANNEL_ID.test(text)) return { channel: text };
+  const name = text.match(/^#([^\s#]+)$/)?.[1];
+  if (name) return { name };
   let url: URL;
   try {
-    url = new URL(raw.trim());
+    url = new URL(text);
   } catch {
     return undefined;
   }
@@ -29,6 +38,25 @@ export const slackTargetOf = (raw: string): SlackTarget | undefined => {
   const [, channel = '', sec, micro] = m;
   const thread = url.searchParams.get('thread_ts') ?? (sec ? `${sec}.${micro}` : undefined);
   return thread ? { channel, thread } : { channel };
+};
+
+/** 同じ会話を指す参照を 1 つにまとめる鍵。返信のリンクと親のリンクは同じスレッドになる。 */
+export const slackKeyOf = (ref: string): string | undefined => {
+  const t = slackTargetOf(ref);
+  return t && ('name' in t ? `#${t.name}` : `${t.channel}/${t.thread ?? ''}`);
+};
+
+// 発言の中の Slack のリンク。Markdown のリンクの閉じ括弧と、日本語の文の続きは含めない。
+const SLACK_URL = /https:\/\/[\w-]+\.slack\.com\/archives\/[A-Z0-9]+(?:\/p\d{16})?(?:\?[\w=&.%-]*)?/g;
+
+/** 発言に出た Slack のスレッドとチャンネルのリンク。同じ会話を指すものは最初の 1 つにする。 */
+export const slackLinksIn = (texts: string[]): string[] => {
+  const byKey = new Map<string, string>();
+  for (const url of texts.flatMap((t) => t.match(SLACK_URL) ?? [])) {
+    const key = slackKeyOf(url);
+    if (key && !byKey.has(key)) byKey.set(key, url);
+  }
+  return [...byKey.values()];
 };
 
 const ENTITIES: Record<string, string> = { '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&#39;': "'" };
@@ -40,9 +68,16 @@ const BLOCK_START = /\n(?==== |--- )/;
 const AUTHOR = /^(?:=== Message from |From: )(.+?) \(([UB][A-Z0-9]+)\)/;
 const META = /^(?:Reactions: |Files: |Thread: \d+ repl)/;
 
-/** Slack の <URL|文字> のリンクを Markdown のリンクにしてから、文字の参照を戻す。< と > は、本文の文字なら参照で届くので、リンクと見分けられる。 */
+/**
+ * Slack の <URL|文字> のリンクを Markdown のリンクに、<@ユーザー|名前> と <#チャンネル|名前> を @名前 と #名前 にしてから、文字の参照を戻す。
+ * < と > は、本文の文字なら参照で届くので、リンクと見分けられる。
+ */
 const toMarkdown = (s: string): string =>
-  decode(s.replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url: string, label?: string) => (label && label !== url ? `[${label}](${url})` : url)));
+  decode(
+    s
+      .replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url: string, label?: string) => (label && label !== url ? `[${label}](${url})` : url))
+      .replace(/<([@#])[A-Z0-9]+(?:\|([^>]*))?>/g, (m, mark: string, name?: string) => (name ? `${mark}${name}` : m.slice(1, -1))),
+  );
 
 /** MCP が返すチャンネルかスレッドの messages を、古い順のメッセージにする。 */
 export const parseSlackMessages = (text: string): SlackMessage[] =>
@@ -115,11 +150,38 @@ const callSlack = async (tool: string, args: Record<string, unknown>): Promise<R
   }
 };
 
+/** チャンネルの検索の結果の行「#<名前> (<ID>) - ...」から、名前と ID を読む。 */
+export const parseSlackChannels = (text: string): SlackChannel[] => [...text.matchAll(/#([^\s(]+) \(([CG][A-Z0-9]+)\)/g)].map(([, name = '', id = '']) => ({ name, id }));
+
+/** 名前か説明に q を含むチャンネル。補完の候補に出す。 */
+export const slackChannels = (q: string): Promise<SlackChannel[]> =>
+  cached(`slack-channels-v1:${q}`, { maxAge: CHANNELS_MAX_AGE_MS }, async () =>
+    parseSlackChannels(String((await callSlack('slack_search_channels', { keywords: [q], natural_language_query: '', channel_types: 'public_channel,private_channel', response_format: 'concise', limit: 20 })).results ?? '')),
+  );
+
+/** # で始めて打ったチャンネルの名前の ID。名前が完全に一致するものだけを使う。 */
+export const channelIdOf = async (name: string): Promise<string> => {
+  const id = (await slackChannels(name)).find((c) => c.name === name)?.id;
+  if (!id) throw new Error(`チャンネルが見つかりません: #${name}`);
+  return id;
+};
+
+/** チャンネルは名前を、スレッドは親の発言の先頭を見出しにする。 */
+const titleOf = (text: string, messages: SlackMessage[], thread: boolean): string | undefined => {
+  if (!thread) return text.match(/^Channel: (#\S+) \(/m)?.[1];
+  const head = messages[0]?.text.split('\n')[0]?.trim();
+  return head && (head.length > TITLE_CHARS ? `${head.slice(0, TITLE_CHARS)}…` : head);
+};
+
 /** 登録したスレッドかチャンネルの会話を読む。 */
-export const slackConversation = (target: SlackTarget, fresh = false): Promise<SlackConversation> =>
-  cached(`slack-v1:${target.channel}:${target.thread ?? ''}`, { maxAge: MAX_AGE_MS, fresh }, async () => {
-    const payload = target.thread
-      ? await callSlack('slack_read_thread', { channel_id: target.channel, message_ts: target.thread, limit: THREAD_LIMIT, response_format: 'detailed' })
-      : await callSlack('slack_read_channel', { channel_id: target.channel, limit: CHANNEL_LIMIT, response_format: 'detailed' });
-    return { messages: parseSlackMessages(String(payload.messages ?? '')) };
+export const slackConversation = async (target: SlackTarget, fresh = false): Promise<SlackConversation> => {
+  const { channel, thread } = 'name' in target ? { channel: await channelIdOf(target.name), thread: undefined } : target;
+  return cached(`slack-v3:${channel}:${thread ?? ''}`, { maxAge: MAX_AGE_MS, fresh }, async () => {
+    const payload = thread
+      ? await callSlack('slack_read_thread', { channel_id: channel, message_ts: thread, limit: THREAD_LIMIT, response_format: 'detailed' })
+      : await callSlack('slack_read_channel', { channel_id: channel, limit: CHANNEL_LIMIT, response_format: 'detailed' });
+    const text = String(payload.messages ?? '');
+    const messages = parseSlackMessages(text);
+    return { title: titleOf(text, messages, !!thread), messages };
   });
+};

@@ -113,8 +113,10 @@ export type GithubSearch = { items: GithubItem[]; total: number };
 
 /** Slack のメッセージ。ts は Slack の時刻の文字（秒.マイクロ秒）で、text は Markdown。replies はチャンネルの中のメッセージに付いたスレッドの返信の数。 */
 export type SlackMessage = { ts: string; user: string; text: string; replies?: number };
-/** 「スレッド」のウィジェットが読む会話。 */
-export type SlackConversation = { messages: SlackMessage[] };
+/** 「スレッド」のウィジェットが読む会話。title は、チャンネルなら # で始めた名前、スレッドなら親の発言の先頭。 */
+export type SlackConversation = { title?: string; messages: SlackMessage[] };
+/** チャンネルの名前を補うときの候補。 */
+export type SlackChannel = { name: string; id: string };
 /** GitHub Inbox のウィジェットに並べられる件数の上限。GitHub の検索は 1 回で 100 件まで返す。 */
 export const GITHUB_LIST_MAX = 100;
 
@@ -230,6 +232,8 @@ export type Session = {
   /** PR があるかを gh でまだ読み終えていないブランチがあり、prs に足りない PR があるかもしれない。前に受け取ったスナップショットには無いことがある。 */
   prsPending?: boolean;
   jira: JiraIssue[];
+  /** 「スレッド」のウィジェットに並べる Slack の参照。人間が足したものと、チャットに出たリンク。前に受け取ったスナップショットには無いことがある。 */
+  slack?: string[];
   /** 人間がバッジに登録した GitHub の Issue。前に受け取ったスナップショットには無いことがある。 */
   issues?: IssueInfo[];
   usage: Usage;

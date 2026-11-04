@@ -8,6 +8,7 @@ import * as claude from './claude.ts';
 import { isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
+import { slackKeyOf, slackLinksIn } from './slack.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
@@ -156,6 +157,17 @@ export const badgeUrls = (meta: SessionMeta, log: claude.LogSummary | undefined)
   ...mentionedBadges(log?.texts.flatMap((t) => (t.kind === 'prompt' ? [t.text] : [])) ?? [], meta.cwd, meta.archived),
 ];
 
+/** 「スレッド」のウィジェットに並べる参照。人間が足したものを先に、チャットに出たリンクを後に並べ、同じ会話と閉じたものは除く。 */
+const slackRefs = (meta: SessionMeta, log: claude.LogSummary | undefined): string[] => {
+  const said = log?.texts.flatMap((t) => (t.kind === 'tool' ? [] : [t.text])) ?? [];
+  const byKey = new Map<string, string>();
+  for (const ref of [...(meta.slack ?? []), ...slackLinksIn(said)]) {
+    const key = slackKeyOf(ref);
+    if (key && !byKey.has(key) && !meta.hiddenSlack?.includes(key)) byKey.set(key, ref);
+  }
+  return [...byKey.values()];
+};
+
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
   // Claude Code は、worktree に入ったセッションの会話ログを、その worktree のディレクトリへ移すことがある。覚えた場所に無ければ探し直す。
   if (!meta.transcriptPath || !fs.existsSync(meta.transcriptPath)) {
@@ -208,6 +220,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     prs,
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),
     jira: shown([...jiraKeys].map((key) => jiraIssue(key, keep))),
+    slack: slackRefs(meta, log),
     issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url, keep)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,

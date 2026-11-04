@@ -627,9 +627,9 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
  */
 .widget-tabs-head { display: flex; align-items: flex-end; margin-bottom: 10px; border-bottom: 1px solid var(--border); user-select: none; }
 .widget-tabs { display: flex; flex: 1; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
-.widget-tab, .pick-tabs > button { margin-bottom: -1px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-2); font-weight: 500; white-space: nowrap; cursor: pointer; }
-.widget-tab:hover, .pick-tabs > button:hover { color: var(--text); }
-.widget-tab[aria-selected="true"], .pick-tabs > button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
+.widget-tab, .pick-tabs > button, .slack-tab > [role="tab"] { margin-bottom: -1px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-2); font-weight: 500; white-space: nowrap; cursor: pointer; }
+.widget-tab:hover, .pick-tabs > button:hover, .slack-tab > [role="tab"]:hover { color: var(--text); }
+.widget-tab[aria-selected="true"], .pick-tabs > button[aria-selected="true"], .slack-tab > [role="tab"][aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
 /* セッションの PR や課題を切り替えるタブ。枠のタブと同じ見た目にし、XP のスキンでは校正の版のタブと同じ見た目にする。数は少ないので、収まらなければ折り返す。 */
 .pick-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 /* PR と課題のタブでは、番号やキーの左に状態のアイコンを並べる。 */
@@ -879,8 +879,8 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .proof-gloss tr[data-unused] { color: #aca899; }
 .proof-gloss p { margin: 4px 0 0; color: #808080; }
 .proof-tabs, [data-skin="xp"] .pick-tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid #aca899; }
-.proof-tabs > button, [data-skin="xp"] .pick-tabs > button { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
-.proof-tabs > button[aria-selected="true"], [data-skin="xp"] .pick-tabs > button[aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
+.proof-tabs > button, [data-skin="xp"] .pick-tabs > button, [data-skin="xp"] .slack-tab > [role="tab"] { margin-bottom: -1px; padding: 2px 14px; border: 1px solid #aca899; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #e6e4da); color: #000; font: inherit; }
+.proof-tabs > button[aria-selected="true"], [data-skin="xp"] .pick-tabs > button[aria-selected="true"], [data-skin="xp"] .slack-tab > [role="tab"][aria-selected="true"] { border-bottom-color: #ece9d8; background: #ece9d8; font-weight: bold; }
 .proof-detail blockquote { margin: 0 0 8px; padding: 4px 6px; border-left: 3px solid #aca899; background: #f6f5ef; white-space: pre-wrap; }
 .proof-detail p { margin: 0 0 6px; }
 .proof-findings { display: grid; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
@@ -996,27 +996,33 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .wallpaper .help { margin: 0; }
 .wallpaper-preview { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); object-fit: cover; }
 p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-align: center; }
-/* 「スレッド」のウィジェット。昔の Skype の会話ウィンドウに倣い、テーマによらず水色の見出しと白い会話の欄にする。設定の欄はほかのウィジェットと同じくテーマに合わせる。 */
-.skype { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid #9fd3ee; border-radius: var(--radius); background: #fff; color: #1d1d1d; font-family: Tahoma, Segoe UI, sans-serif; }
-.skype-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #9fd3ee; background: linear-gradient(#f2fafe, #cbe9f8); }
-.skype-presence { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: #7fba00; color: #fff; font-size: 10px; font-weight: bold; }
-.skype-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; color: #00578a; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+/* 「スレッド」のウィジェット。会話の欄は昔の Skype の会話ウィンドウに倣い、テーマによらず水色の見出しの帯と白い欄にする。設定とタブはほかのウィジェットと同じくテーマに合わせる。 */
+.skype { display: flex; flex-direction: column; min-height: 100%; border: 1px solid #9fd3ee; border-radius: var(--radius); background: #fff; color: #1d1d1d; font-family: Tahoma, "Segoe UI", sans-serif; }
+.skype-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #9fd3ee; border-radius: var(--radius) var(--radius) 0 0; background: linear-gradient(#f2fafe, #cbe9f8); }
+.skype-presence { display: grid; flex: none; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: #7fba00; color: #fff; font-size: 10px; font-weight: bold; }
+.skype-title { flex: 1; min-width: 0; overflow: hidden; color: #00578a; font-size: 13px; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; }
 .skype-title a { color: inherit; text-decoration: none; }
-.skype-head .btn { border-color: #9fd3ee; background: #fff; color: #00578a; }
-.skype-body { padding: 4px 0; background: #fff; }
-.skype-log { margin: 0; padding: 0; list-style: none; }
-.skype-msg { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 6px 12px 2px; border-top: 1px solid #e3f1f8; }
+.skype-title a:hover { text-decoration: underline; }
+.skype-log { margin: 0; padding: 4px 0; list-style: none; }
+.skype-msg { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; padding: 6px 10px 2px; border-top: 1px solid #e3f1f8; }
+.skype-msg:first-child { border-top: 0; }
 .skype-msg.is-cont { padding-top: 0; border-top: 0; }
 .skype-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 4px; color: #fff; font-size: 13px; font-weight: bold; }
-.skype-msg.is-cont .skype-avatar { height: 0; }
-.skype-msg-main { min-width: 0; }
-.skype-name { color: #0078ca; font-size: 12.5px; }
-.skype-text { font-size: 13px; overflow-wrap: anywhere; }
+.skype-name { display: block; color: #0078ca; font-size: 12.5px; }
+.skype-text { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .skype-text .md > :first-child { margin-top: 0; }
 .skype-text .md > :last-child { margin-bottom: 0; }
+.skype-text a { color: #0066cc; }
 .skype-replies { display: inline-block; margin-top: 2px; color: #0078ca; font-size: 11.5px; }
 .skype-time { color: #8a9aa5; font-size: 11px; white-space: nowrap; }
 .skype .empty { margin: 12px; color: #6b7a85; }
+.slack-add { display: flex; gap: 6px; margin-bottom: 10px; }
+.slack-ref { width: auto; }
+.slack-add > .slack-ref { flex: 1; min-width: 0; }
+.slack-tab { display: flex; align-items: center; max-width: 16em; }
+.slack-tab > [role="tab"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.slack-tab-close { padding: 0 4px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.slack-tab-close:hover { color: var(--text); }
 /* JIRA の一覧。1 行目に課題キー、状態、担当と更新日時を、2 行目に題名を出す。GitHub Inbox の一覧も同じ形で出す。 */
 .jira-settings { margin-bottom: 12px; }
 .jira-jql { display: grid; gap: 4px; color: var(--text-2); font-size: 12.5px; }

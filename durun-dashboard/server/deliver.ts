@@ -709,7 +709,7 @@ export const forkSession = async (sessionId: string, text: string, model?: strin
   const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort), '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
-  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges });
+  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack });
   state.outbox.push({ id: newId(), sessionId: fork, text, createdAt: Date.now(), deliveredAt: Date.now(), via: 'resume' });
   touch();
   return fork;

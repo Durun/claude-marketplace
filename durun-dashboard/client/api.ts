@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackConversation, TextSaveResult,
+  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -98,6 +98,7 @@ export const api = {
   search: (q: string) => getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`),
   githubInbox: (fresh?: boolean) => getJson<InboxSection[]>(`/api/github/inbox?${query({ fresh: flag(fresh) })}`),
   githubSearch: (q: string, max: number, fresh?: boolean) => getJson<GithubSearch>(`/api/github/search?${query({ q, max: String(max), fresh: flag(fresh) })}`),
+  slackChannels: (q: string) => getJson<SlackChannel[]>(`/api/slack/channels?${query({ q })}`),
   slack: (url: string, fresh?: boolean) => getJson<SlackConversation>(`/api/slack?${query({ url, fresh: flag(fresh) })}`),
   jira: (jql: string, max: number) => getJson<JiraIssue[]>(`/api/jira?${new URLSearchParams({ jql, max: String(max) })}`),
   jiraRefs: (fresh?: boolean) => getJson<JiraIssue[]>(`/api/jira/refs?${query({ fresh: flag(fresh) })}`),
@@ -120,6 +121,8 @@ export const api = {
   addProof: (id: string, proof: string) => postJson(`${session(id)}/proofs`, { id: proof }),
   addBadge: (id: string, url: string) => postJson(`${session(id)}/badges`, { url }),
   removeBadge: (id: string, url: string) => postJson(`${session(id)}/badges/remove`, { url }),
+  addSlack: (id: string, ref: string) => postJson<{ ref: string }>(`${session(id)}/slack`, { ref }),
+  removeSlack: (id: string, ref: string) => postJson(`${session(id)}/slack/remove`, { ref }),
   orderDocs: (id: string, keys: string[]) => postJson(`${session(id)}/docs/order`, { keys }),
   hideDocs: (id: string, keys: string[]) => postJson<DocEditResult>(`${session(id)}/docs/hide`, { keys }),
   renameDoc: (id: string, key: string, title: string) => postJson<DocEditResult>(`${session(id)}/docs/rename`, { key, title }),
