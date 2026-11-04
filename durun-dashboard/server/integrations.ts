@@ -217,7 +217,7 @@ type GhPrDetail = GhPr & {
   additions: number;
   deletions: number;
   files?: { path: string; additions: number; deletions: number }[];
-  comments?: { author: GhAuthor; body: string; createdAt: string }[];
+  comments?: { author: GhAuthor; body: string; createdAt: string; url: string }[];
   reviews?: { author: GhAuthor; body: string; state: string; submittedAt: string }[];
   updatedAt: string;
 };
@@ -225,7 +225,7 @@ type GhPrDetail = GhPr & {
 /** 行へのコメントだけを付けたレビューは、総評が空の COMMENTED になる。行へのコメントは「PR コメント」で読むので、会話には出さない。 */
 export const toPrDetail = (pr: GhPrDetail): PrDetail => {
   const posts: PrPost[] = [
-    ...(pr.comments ?? []).map((c) => ({ author: c.author?.login ?? 'ghost', body: c.body, at: Date.parse(c.createdAt) })),
+    ...(pr.comments ?? []).map((c) => ({ author: c.author?.login ?? 'ghost', body: c.body, at: Date.parse(c.createdAt), url: c.url })),
     ...(pr.reviews ?? [])
       .filter((r) => r.body.trim() || r.state !== 'COMMENTED')
       .map((r) => ({ author: r.author?.login ?? 'ghost', body: r.body, at: Date.parse(r.submittedAt), state: r.state })),
@@ -372,7 +372,7 @@ export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
 
 /** PR の本文、変更したファイル、会話を GitHub から読む。 */
 export const prDetail = (url: string, fresh = false): Promise<PrDetail> =>
-  cached(`pr:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
+  cached(`pr-v2:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
 
 /** gh api --include が本文の前に出す、状態の行とヘッダー。ヘッダーの名前は小文字にする。 */
 export const parseIncluded = (head: string): { status: number; headers: Map<string, string> } => {
@@ -410,7 +410,7 @@ export const githubAttachment = (url: string, range?: string): Promise<Attachmen
 /** PR の会話にコメントを投稿し、投稿したコメントの URL を返す。 */
 export const postPrComment = async (url: string, body: string): Promise<{ url: string }> => {
   const posted = (await gh(['pr', 'comment', url, '--body-file', '-'], body)).trim();
-  forgetCached(`pr:${url}`);
+  forgetCached(`pr-v2:${url}`);
   return { url: posted };
 };
 
@@ -459,7 +459,7 @@ export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewC
     comments: comments.map((c) => ({ path: c.path, line: c.line, side: c.side === 'old' ? 'LEFT' : 'RIGHT', body: c.body })),
   };
   const res = await ghApi<{ html_url: string }>(['--hostname', host, '--method', 'POST', `repos/${owner}/${name}/pulls/${number}/reviews`, '--input', '-'], JSON.stringify(review));
-  forgetCached(`pr:${pr.url}`, `pr-threads:${pr.url}`);
+  forgetCached(`pr-v2:${pr.url}`, `pr-threads:${pr.url}`);
   return { url: res.html_url };
 };
 

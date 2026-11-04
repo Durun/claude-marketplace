@@ -70,8 +70,8 @@ export const REF_NUMBER = /((?<![\w/#])#\d+(?!\w))/g;
 /** PR や Issue に添付した画像や動画の URL。サーバーは gh の引数に渡すので、ほかのページを通さない。 */
 export const GITHUB_ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/;
 
-/** PR の会話のコメントとレビュー。state はレビューの結果（APPROVED など）で、コメントには無い。at は epoch ミリ秒。 */
-export type PrPost = { author: string; body: string; at: number; state?: string };
+/** PR の会話のコメントとレビュー。state はレビューの結果（APPROVED など）で、コメントには無い。at は epoch ミリ秒。url はコメントを GitHub で開く URL で、gh はレビューの URL を返さないので、レビューには無い。 */
+export type PrPost = { author: string; body: string; at: number; state?: string; url?: string };
 
 /** PR の画面に出す中身。files は変更したファイルと行数。posts は会話を古い順に並べる。 */
 export type PrDetail = PrInfo & {

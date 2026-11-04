@@ -93,7 +93,7 @@ test('toPrDetail は、会話のコメントとレビューを古い順に並べ
   const detail = toPrDetail({
     url: 'https://github.com/o/r/pull/1', number: 1, title: '直す', state: 'OPEN', isDraft: false, author: { login: 'me' }, body: '本文',
     headRefName: 'feature/x', baseRefName: 'main', additions: 3, deletions: 1, files: [{ path: 'a.ts', additions: 3, deletions: 1 }], updatedAt: '2026-10-09T00:00:03Z',
-    comments: [{ author: null, body: '2 番目', createdAt: '2026-10-09T00:00:02Z' }],
+    comments: [{ author: null, body: '2 番目', createdAt: '2026-10-09T00:00:02Z', url: 'https://github.com/o/r/pull/1#issuecomment-2' }],
     reviews: [
       { author: { login: 'rv' }, body: '', state: 'COMMENTED', submittedAt: '2026-10-09T00:00:00Z' },
       { author: { login: 'rv' }, body: '', state: 'APPROVED', submittedAt: '2026-10-09T00:00:01Z' },
@@ -101,6 +101,6 @@ test('toPrDetail は、会話のコメントとレビューを古い順に並べ
   });
   assert.deepEqual(detail.posts, [
     { author: 'rv', body: '', at: Date.parse('2026-10-09T00:00:01Z'), state: 'APPROVED' },
-    { author: 'ghost', body: '2 番目', at: Date.parse('2026-10-09T00:00:02Z') },
+    { author: 'ghost', body: '2 番目', at: Date.parse('2026-10-09T00:00:02Z'), url: 'https://github.com/o/r/pull/1#issuecomment-2' },
   ]);
 });

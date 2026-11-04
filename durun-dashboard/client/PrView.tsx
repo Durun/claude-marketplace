@@ -10,7 +10,7 @@ import { pickInWidget, useCached, usePicked } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
 
 export const PR_TITLE = 'PR';
 /** セッション内の「PR」ウィジェットの種類の名前。 */
@@ -89,7 +89,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
       {pr.posts.map((p) => (
         <li key={`${p.author}${p.at}`} class="pr-comment">
           <span class="muted">
-            {p.author} · <Time at={p.at} />
+            {p.author} · <Ext href={p.url ?? ''}><Time at={p.at} /></Ext>
             {p.state && REVIEW_STATE[p.state] && <> <Chip tone={REVIEW_STATE[p.state]?.tone}>{REVIEW_STATE[p.state]?.text}</Chip></>}
           </span>
           {p.body.trim() && <Markdown text={p.body} />}
