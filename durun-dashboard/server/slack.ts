@@ -13,8 +13,11 @@ const CHANNEL_LIMIT = 50;
 const THREAD_LIMIT = 1000;
 const TITLE_CHARS = 40;
 
-/** 読む先。thread はスレッドの親の ts で、無ければチャンネルを読む。name は # で始めて打ったチャンネルの名前で、読む前に ID を探す。 */
-export type SlackTarget = { channel: string; thread?: string } | { name: string };
+/**
+ * 読む先。thread はスレッドの親の ts で、無ければチャンネルを読む。domain は URL で指したときのワークスペースのドメイン。
+ * name は # で始めて打ったチャンネルの名前で、読む前に ID を探す。
+ */
+export type SlackTarget = { channel: string; thread?: string; domain?: string } | { name: string };
 
 const CHANNEL_ID = /^[CGD][A-Z0-9]{6,}$/;
 
@@ -37,7 +40,8 @@ export const slackTargetOf = (raw: string): SlackTarget | undefined => {
   if (!m) return undefined;
   const [, channel = '', sec, micro] = m;
   const thread = url.searchParams.get('thread_ts') ?? (sec ? `${sec}.${micro}` : undefined);
-  return thread ? { channel, thread } : { channel };
+  const domain = url.hostname.match(/^([\w-]+)\.slack\.com$/)?.[1];
+  return { channel, ...(thread ? { thread } : {}), ...(domain ? { domain } : {}) };
 };
 
 /** 同じ会話を指す参照を 1 つにまとめる鍵。返信のリンクと親のリンクは同じスレッドになる。 */
@@ -66,7 +70,8 @@ const decode = (s: string): string => s.replace(/&(?:lt|gt|amp|quot|#39);/g, (m)
 // どちらも次に Message TS: の行があり、その後が本文になる。本文の後ろに Thread / Reactions / Files の行が付くことがある。出る順は決まっていない。
 const BLOCK_START = /\n(?==== |--- )/;
 const AUTHOR = /^(?:=== Message from |From: )(.+?) \(([UB][A-Z0-9]+)\)/;
-const META = /^(?:Reactions: |Files: |Thread: \d+ repl)/;
+// スレッドの応答は、返信が無いと親の後ろに「No thread messsages」（Slack の綴りのまま）を付ける。
+const META = /^(?:Reactions: |Files: |Thread: \d+ repl|No thread mess+ages)/;
 
 /**
  * Slack の <URL|文字> のリンクを Markdown のリンクに、<@ユーザー|名前> と <#チャンネル|名前> を @名前 と #名前 にしてから、文字の参照を戻す。
@@ -75,6 +80,8 @@ const META = /^(?:Reactions: |Files: |Thread: \d+ repl)/;
 const toMarkdown = (s: string): string =>
   decode(
     s
+      // 箇条書きは「• 」で始まり、入れ子は 4 文字ずつ下げた「◦ 」「▪ 」になる。字下げを描かせるよう、Markdown のリストにする。
+      .replace(/^( *)[•◦▪▫] /gm, (_, indent: string) => `${'  '.repeat(Math.floor(indent.length / 4))}- `)
       .replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url: string, label?: string) => (label && label !== url ? `[${label}](${url})` : url))
       .replace(/<([@#])[A-Z0-9]+(?:\|([^>]*))?>/g, (m, mark: string, name?: string) => (name ? `${mark}${name}` : m.slice(1, -1))),
   );
@@ -90,7 +97,7 @@ export const parseSlackMessages = (text: string): SlackMessage[] =>
       if (tsAt < 0 || !author) return [];
       const body = lines.slice(tsAt + 1);
       let replies: number | undefined;
-      while (body.length && META.test(body.at(-1) ?? '')) replies = Number(body.pop()?.match(/^Thread: (\d+) repl/)?.[1]) || replies;
+      while (body.length && (META.test(body.at(-1) ?? '') || !body.at(-1)?.trim())) replies = Number(body.pop()?.match(/^Thread: (\d+) repl/)?.[1]) || replies;
       const user = decode(author[1] ?? '').replace(/\s*<[^>]*>$/, '');
       return [{ ts: lines[tsAt]?.slice('Message TS: '.length) ?? '', user, text: toMarkdown(body.join('\n')).trim(), ...(replies ? { replies } : {}) }];
     })
@@ -169,19 +176,51 @@ export const channelIdOf = async (name: string): Promise<string> => {
 /** チャンネルは名前を、スレッドは親の発言の先頭を見出しにする。 */
 const titleOf = (text: string, messages: SlackMessage[], thread: boolean): string | undefined => {
   if (!thread) return text.match(/^Channel: (#\S+) \(/m)?.[1];
-  const head = messages[0]?.text.split('\n')[0]?.trim();
+  // 絵文字の :名前: は文字のまま出るので、見出しからは外す。
+  const head = messages[0]?.text.split('\n')[0]?.replace(/:[\w+-]+:/g, '').trim();
   return head && (head.length > TITLE_CHARS ? `${head.slice(0, TITLE_CHARS)}…` : head);
 };
 
+const channelNameIn = (text: string): string | undefined => text.match(/^Channel: #(\S+) \(/m)?.[1];
+
+/** スレッドの応答はチャンネルの名前を持たないので、チャンネルの最新の 1 件を読んで名前を知る。 */
+const channelNameOf = (channel: string): Promise<string | undefined> =>
+  cached(`slack-channel-name-v1:${channel}`, { maxAge: CHANNELS_MAX_AGE_MS }, async () =>
+    channelNameIn(String((await callSlack('slack_read_channel', { channel_id: channel, limit: 1, response_format: 'concise' })).messages ?? '')),
+  );
+
+/** MCP がつながっているワークスペースのドメイン。どのツールも ID しか返さないので、検索の結果の permalink から読む。 */
+const mcpDomain = (): Promise<string | undefined> =>
+  cached('slack-domain-v1', { maxAge: CHANNELS_MAX_AGE_MS }, async () => {
+    const found = await callSlack('slack_search_public', { filters: 'after:2000-01-01', natural_language_query: '', limit: 1, include_context: false });
+    return String(found.results ?? '').match(/https:\/\/([\w-]+)\.slack\.com\//)?.[1];
+  });
+
+/** Slack のアプリが覚えているワークスペースから、ドメインに合うワークスペースの ID を探す。slack:// のリンクは ID で指すため。 */
+export const teamIdIn = (appState: string | undefined, domain: string): string | undefined => {
+  try {
+    const { workspaces } = JSON.parse(appState ?? '{}') as { workspaces?: Record<string, { id?: string; domain?: string }> };
+    return Object.values(workspaces ?? {}).find((w) => w.domain === domain)?.id;
+  } catch {
+    return undefined;
+  }
+};
+
+/** 名前とドメインは見出しとリンクに添えるだけなので、読めなくても会話は出す。 */
+const orUndefined = <T,>(p: Promise<T>): Promise<T | undefined> => p.catch(() => undefined);
+
 /** 登録したスレッドかチャンネルの会話を読む。 */
 export const slackConversation = async (target: SlackTarget, fresh = false): Promise<SlackConversation> => {
-  const { channel, thread } = 'name' in target ? { channel: await channelIdOf(target.name), thread: undefined } : target;
-  return cached(`slack-v3:${channel}:${thread ?? ''}`, { maxAge: MAX_AGE_MS, fresh }, async () => {
+  const { channel, thread, domain: given } = 'name' in target ? { channel: await channelIdOf(target.name), thread: undefined, domain: undefined } : target;
+  const read = cached(`slack-v5:${channel}:${thread ?? ''}`, { maxAge: MAX_AGE_MS, fresh }, async () => {
     const payload = thread
       ? await callSlack('slack_read_thread', { channel_id: channel, message_ts: thread, limit: THREAD_LIMIT, response_format: 'detailed' })
       : await callSlack('slack_read_channel', { channel_id: channel, limit: CHANNEL_LIMIT, response_format: 'detailed' });
     const text = String(payload.messages ?? '');
     const messages = parseSlackMessages(text);
-    return { title: titleOf(text, messages, !!thread), messages };
+    return { title: titleOf(text, messages, !!thread), channelName: channelNameIn(text), messages };
   });
+  const [conv, channelName, domain] = await Promise.all([read, thread ? orUndefined(channelNameOf(channel)) : undefined, given ?? orUndefined(mcpDomain())]);
+  const team = domain && teamIdIn(platform.slackAppState(), domain);
+  return { ...conv, channel, thread, channelName: conv.channelName ?? channelName, domain, team };
 };

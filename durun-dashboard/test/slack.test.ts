@@ -6,12 +6,12 @@ import { test } from 'node:test';
 
 // slack.ts は cache.ts を通して、import した時点でデータの置き場所を読む。本物のデータに触れないよう、一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-slack-'));
-const { parseSlackChannels, parseSlackMessages, slackKeyOf, slackLinksIn, slackTargetOf } = await import('../server/slack.ts');
+const { parseSlackChannels, parseSlackMessages, slackKeyOf, slackLinksIn, slackTargetOf, teamIdIn } = await import('../server/slack.ts');
 
 test('Slack のリンクから、メッセージならそのスレッドを、返信なら thread_ts の親を、チャンネルならチャンネルを読む先にする', () => {
-  assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000000123456'), { channel: 'C0AAA', thread: '1700000000.123456' });
-  assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000099000001?thread_ts=1700000000.123456&cid=C0AAA'), { channel: 'C0AAA', thread: '1700000000.123456' });
-  assert.deepEqual(slackTargetOf(' https://example.slack.com/archives/C0AAA '), { channel: 'C0AAA' });
+  assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000000123456'), { channel: 'C0AAA', thread: '1700000000.123456', domain: 'example' });
+  assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000099000001?thread_ts=1700000000.123456&cid=C0AAA'), { channel: 'C0AAA', thread: '1700000000.123456', domain: 'example' });
+  assert.deepEqual(slackTargetOf(' https://example.slack.com/archives/C0AAA '), { channel: 'C0AAA', domain: 'example' });
   assert.equal(slackTargetOf('https://example.slack.com/team/U0AAA'), undefined);
   assert.equal(slackTargetOf('C0AAA'), undefined);
 });
@@ -73,10 +73,25 @@ test('スレッドの応答は、親と返信の From の行から発言者を�
     'Time: 2026-11-03 19:38:49 JST',
     'Message TS: 1700000200.000002',
     '<https://example.com/a|https://example.com/a>',
+    'Reactions: kusa (1)',
     '',
+    'No thread messsages',
   ].join('\n');
   assert.deepEqual(parseSlackMessages(text), [
     { ts: '1700000100.000001', user: 'Slackbot', text: 'リマインダー' },
     { ts: '1700000200.000002', user: '山田', text: 'https://example.com/a' },
   ]);
+});
+
+test('Slack の箇条書きは、入れ子の字下げを保った Markdown のリストにする', () => {
+  const text = ['=== Message from 山田 (U0AAA) at 2026-11-03 19:00:00 JST ===', 'Message TS: 1700000100.000001', '①目標', '• 親', '    ◦ 子', '        ▪ 孫', '• 次'].join('\n');
+  assert.equal(parseSlackMessages(text)[0]?.text, '①目標\n- 親\n  - 子\n    - 孫\n- 次');
+});
+
+test('Slack のアプリの状態から、ドメインに合うワークスペースの ID を探す', () => {
+  const state = JSON.stringify({ workspaces: { T0AAA: { id: 'T0AAA', domain: 'example' }, T0BBB: { id: 'T0BBB', domain: 'other' } } });
+  assert.equal(teamIdIn(state, 'other'), 'T0BBB');
+  assert.equal(teamIdIn(state, 'missing'), undefined);
+  assert.equal(teamIdIn(undefined, 'example'), undefined);
+  assert.equal(teamIdIn('not json', 'example'), undefined);
 });

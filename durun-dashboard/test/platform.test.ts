@@ -294,6 +294,21 @@ test('Claude Code の認証情報は、Mac ではキーチェーンから、ほ�
   assert.equal(await platformFor('win32').claudeCredentials(run, missing), undefined);
 });
 
+test('Slack のアプリの状態は、OS ごとの置き場所の root-state.json から読み、読めなければ undefined を返す', () => {
+  const read: string[] = [];
+  const files: Files = { list: () => [], read: (file) => (read.push(file.replaceAll('\\', '/')), '{}') };
+  assert.equal(platformFor('darwin').slackAppState(files), '{}');
+  assert.equal(platformFor('other').slackAppState(files), '{}');
+  assert.equal(platformFor('win32').slackAppState(files, { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }), '{}');
+  assert.equal(platformFor('win32').slackAppState(files, {}), undefined);
+  assert.deepEqual(
+    read.map((f) => f.split('/').slice(-4).join('/')),
+    ['Application Support/Slack/storage/root-state.json', '.config/Slack/storage/root-state.json', 'Roaming/Slack/storage/root-state.json'],
+  );
+  const missing: Files = { list: () => [], read: () => { throw new Error('ENOENT'); } };
+  assert.equal(platformFor('darwin').slackAppState(missing), undefined);
+});
+
 test('claude は、偽物が指されていれば node でそれを動かし、なければ PATH の claude を起動する', () => {
   assert.deepEqual(claudeCommand(['--bg', '--', '依頼'], {}), { file: 'claude', args: ['--bg', '--', '依頼'] });
   assert.deepEqual(claudeCommand(['stop', 'j1'], { DURUN_DASHBOARD_FAKE_CLAUDE: '/tmp/fake.mjs' }), { file: process.execPath, args: ['/tmp/fake.mjs', 'stop', 'j1'] });

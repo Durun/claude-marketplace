@@ -113,8 +113,11 @@ export type GithubSearch = { items: GithubItem[]; total: number };
 
 /** Slack のメッセージ。ts は Slack の時刻の文字（秒.マイクロ秒）で、text は Markdown。replies はチャンネルの中のメッセージに付いたスレッドの返信の数。 */
 export type SlackMessage = { ts: string; user: string; text: string; replies?: number };
-/** 「スレッド」のウィジェットが読む会話。title は、チャンネルなら # で始めた名前、スレッドなら親の発言の先頭。 */
-export type SlackConversation = { title?: string; messages: SlackMessage[] };
+/**
+ * 「スレッド」のウィジェットが読む会話。title は、チャンネルなら # で始めた名前、スレッドなら親の発言の先頭。channel はチャンネルの ID、thread はスレッドの親の ts。
+ * domain はワークスペースのドメイン（example.slack.com の example）、team は slack:// のリンクに使うワークスペースの ID。どちらも分からなければ無い。
+ */
+export type SlackConversation = { title?: string; channel: string; thread?: string; channelName?: string; domain?: string; team?: string; messages: SlackMessage[] };
 /** チャンネルの名前を補うときの候補。 */
 export type SlackChannel = { name: string; id: string };
 /** GitHub Inbox のウィジェットに並べられる件数の上限。GitHub の検索は 1 回で 100 件まで返す。 */

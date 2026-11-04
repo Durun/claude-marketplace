@@ -89,6 +89,16 @@ export type Platform = {
   flProjectHints: (major: number, run?: Run) => Promise<FlProjectHints | undefined>;
   /** Claude Code の認証情報の JSON。/mcp で接続した MCP サーバーの OAuth のトークンを mcpOAuth に持つ。読めなければ undefined。 */
   claudeCredentials: (run?: Run, files?: Files) => Promise<string | undefined>;
+  /** Slack のデスクトップアプリが覚えている状態の JSON。ログインしたワークスペースの ID とドメインを workspaces に持つ。読めなければ undefined。 */
+  slackAppState: (files?: Files, env?: NodeJS.ProcessEnv) => string | undefined;
+};
+
+const readOrUndefined = (files: Files, file: string): string | undefined => {
+  try {
+    return files.read(file);
+  } catch {
+    return undefined;
+  }
 };
 
 // Mac 以外の Claude Code は、認証情報をキーチェーンでなくこのファイルに置く。
@@ -157,6 +167,7 @@ const posix = {
   // ponytail: Mac 版の FL が最近のファイルをどこに覚えているかは調べていない。広げるなら、FL の設定の plist を読む。
   flProjectHints: async () => undefined,
   claudeCredentials: (_run: Run = realRun, files: Files = realFiles) => credentialsFile(files, os.homedir()),
+  slackAppState: (files: Files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), '.config', 'Slack', 'storage', 'root-state.json')),
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -169,6 +180,7 @@ const darwin: Platform = {
   },
   // App Store と配布版の Tailscale は、CLI を PATH に置かず、アプリの中に持つ。
   tailnetHosts: tailnetHostsVia(['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']),
+  slackAppState: (files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), 'Library', 'Application Support', 'Slack', 'storage', 'root-state.json')),
   claudeCredentials: async (run = realRun) => {
     try {
       return await run('/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w']);
@@ -279,6 +291,7 @@ const win32: Platform = {
     }
   },
   claudeCredentials: (_run = realRun, files = realFiles) => credentialsFile(files, os.homedir()),
+  slackAppState: (files = realFiles, env = process.env) => (env.APPDATA ? readOrUndefined(files, path.win32.join(env.APPDATA, 'Slack', 'storage', 'root-state.json')) : undefined),
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);
