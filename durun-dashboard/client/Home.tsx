@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { HOME_KEY, layoutKeyOf, useDashboards } from './dashboards.ts';
-import { Dashboard, type EditProps, type Widget, type WidgetProps, WidgetPanel } from './Dashboard.tsx';
+import { Dashboard, type EditProps, type Widget, type WidgetProps } from './Dashboard.tsx';
 import { DesktopIcon } from './apps.tsx';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
 import { jiraSpaces } from './completion.ts';
@@ -175,12 +175,6 @@ export const NewSessionFloat = ({ f, snapshot }: HomeData & { f: Float }) => (
 type HomeData = { snapshot: Snapshot };
 export type HomeWidgetProps = WidgetProps<HomeData>;
 
-const InboxWidget = ({ snapshot }: HomeWidgetProps) => (
-  <WidgetPanel title="要対応" count={snapshot.attention.length}>
-    <Inbox snapshot={snapshot} />
-  </WidgetPanel>
-);
-
 const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
   const creating = useFloats((list) => isFloating(list, NEW_SESSION_KEY, '', NEW_SESSION_KEY));
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -212,7 +206,7 @@ const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
 };
 
 const WIDGETS: Record<string, Widget<HomeData>> = {
-  inbox: { title: '要対応', icon: '📥', Body: InboxWidget, size: { w: 10, h: ROWS }, sketch: 'list' },
+  inbox: { title: '要対応', icon: '📥', Body: Inbox, size: { w: 10, h: ROWS }, sketch: 'list' },
   sessions: { title: 'セッション', icon: '🗂️', Body: SessionsWidget, size: { w: 14, h: ROWS }, sketch: 'cards' },
   jira: { title: JIRA_TITLE, icon: JIRA_ICON, Body: JiraIssues, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: jiraControls },
   github: { title: GITHUB_INBOX_TITLE, icon: GITHUB_ICON, Body: GithubInbox, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: githubInboxControls },

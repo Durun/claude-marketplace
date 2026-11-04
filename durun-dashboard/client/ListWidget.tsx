@@ -38,7 +38,7 @@ export const keysOf = (value: string | undefined, fallback = ''): Set<string> =>
 const toggled = (all: readonly Field[], prev: Set<string>, key: string, on: boolean): Set<string> =>
   new Set(all.map((f) => f.key).filter((k) => (k === key ? on : prev.has(k))));
 
-const Checks = ({ legend, all, on, onToggle }: { legend: string; all: readonly Field[]; on: Set<string>; onToggle: (key: string, on: boolean) => void }) => (
+export const Checks = ({ legend, all, on, onToggle }: { legend: string; all: readonly Field[]; on: Set<string>; onToggle: (key: string, on: boolean) => void }) => (
   <fieldset class="jira-fields">
     <legend>{legend}</legend>
     {all.map((f) => (

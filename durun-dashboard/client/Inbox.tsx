@@ -1,8 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
-import type { AskedQuestion, Attention, AttentionKind, Session, Snapshot } from '../shared/types.ts';
+import type { AskedQuestion, Attention, AttentionKind, Session } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { fileLink, filePathMarks } from './Docs.tsx';
+import type { HomeWidgetProps } from './Home.tsx';
+import { Checks, keysOf } from './ListWidget.tsx';
 import { Markdown, MarkdownPreview } from './Markdown.tsx';
 import { toggled } from './explorerFavorites.ts';
 import { askAnswer } from './format.ts';
@@ -231,14 +233,50 @@ export const AttentionCard = ({ a, session }: { a: Attention; session?: Session 
   </article>
 );
 
-export const Inbox = ({ snapshot }: { snapshot: Snapshot }) => {
-  if (snapshot.attention.length === 0) return <Empty>対応が必要なものはありません。</Empty>;
+/** 設定で選ぶ種類。ask_human と AskUserQuestion の質問は、どちらも同じ「質問」として 1 つで選ぶ。 */
+const TYPES = KIND_ORDER.filter((k) => k !== 'ask').map((k) => ({ key: k, label: KIND_LABEL[k] }));
+const typeOf = (kind: AttentionKind): string => (kind === 'ask' ? 'question' : kind);
+
+/** 設定には外した種類を hidden に持つ。後から足した種類は、設定を変えなくても出す。 */
+export const Inbox = ({ snapshot, settings, onSettings }: HomeWidgetProps) => {
+  const [editing, setEditing] = useState(false);
+  const hidden = keysOf(settings.hidden);
+  const shown = snapshot.attention.filter((a) => !hidden.has(typeOf(a.kind)));
   const byId = new Map(snapshot.sessions.map((s) => [s.id, s]));
+  const toggle = (key: string, on: boolean) => {
+    const next = new Set(hidden);
+    on ? next.delete(key) : next.add(key);
+    onSettings({ ...settings, hidden: [...next].join(',') });
+  };
   return (
-    <div class="stack">
-      {sortAttention(snapshot.attention).map((a) => (
-        <AttentionCard key={a.id} a={a} session={byId.get(a.sessionId)} />
-      ))}
-    </div>
+    <>
+      <div class="section-head">
+        <h2 class="section-title">
+          要対応
+          <span class="count-pill">{shown.length}</span>
+        </h2>
+        <div class="actions">
+          <button class="btn btn-sm" data-icon="settings" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>設定</button>
+        </div>
+      </div>
+      <div class="widget-body">
+        {editing && (
+          <div class="card panel jira-settings">
+            <Checks legend="表示する種類" all={TYPES} on={new Set(TYPES.map((t) => t.key).filter((k) => !hidden.has(k)))} onToggle={toggle} />
+          </div>
+        )}
+        {snapshot.attention.length === 0 ? (
+          <Empty>対応が必要なものはありません。</Empty>
+        ) : shown.length === 0 ? (
+          <Empty>表示する種類の要対応はありません。</Empty>
+        ) : (
+          <div class="stack">
+            {sortAttention(shown).map((a) => (
+              <AttentionCard key={a.id} a={a} session={byId.get(a.sessionId)} />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 };
