@@ -1,0 +1,20 @@
+[package]
+name = "mm-nodes-basic"
+description = "段階 0 の動画オブジェクト: footage、solid、image、composition、text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-node-api = { workspace = true }
+mm-audio-api = { workspace = true }
+mm-text-api = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "mm-render"
+description = "描画器の実装。wgpu でレイヤーの変形と合成をし、GPU の時間を mm-trace に載せる"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-trace = { workspace = true }
+mm-doc = { workspace = true }
+mm-node-api = { workspace = true }
+mm-render-api = { workspace = true }
+mm-decode-api = { workspace = true }
+mm-audio-api = { workspace = true }
+wgpu = { workspace = true }
+half = { workspace = true }
+pollster = { workspace = true }
+bytemuck = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+mm-nodes-basic = { workspace = true }
+png = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
