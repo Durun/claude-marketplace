@@ -1,11 +1,14 @@
 //! CUDA と wgpu が共有する D3D12 のバッファの輪。cuvid のコマを 1 回コピーして wgpu に渡す。
+//!
+//! 各枠のフェンスは CUDA と wgpu が交互に進める。値は 1, 2, 3, ... と増え、
+//! 奇数が「CUDA がコピーを終えた」、偶数が「wgpu が読み終えた」。CUDA は次のコピーの前に
+//! 前の偶数まで待つので、wgpu が読んでいる最中の枠を上書きしない。
 
 use std::sync::Arc;
 
-use ffmpeg_next::frame;
 use mm_types::{MmError, Result};
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAG_SHARED, D3D12_HEAP_FLAG_SHARED,
     D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_DESC,
@@ -18,7 +21,6 @@ use crate::cuda::{
     CuContext, CuDevicePtr, CuExternalMemory, CuExternalSemaphore, CuStream, CudaApi, Memcpy2D,
     MEMORYTYPE_DEVICE,
 };
-use crate::gpu::GpuContext;
 
 /// `GENERIC_ALL`。共有ハンドルのアクセス権。
 const GENERIC_ALL: u32 = 0x1000_0000;
@@ -29,13 +31,32 @@ pub struct Slot {
     cu_ptr: CuDevicePtr,
     fence: ID3D12Fence,
     cu_sem: CuExternalSemaphore,
-    value: u64,
-    _cu_mem: CuExternalMemory,
+    /// これまでにコピーした回数。
+    copies: u64,
+    cu_mem: CuExternalMemory,
+}
+
+impl Slot {
+    /// 直近のコピーの完了を表すフェンスの値。
+    pub fn copy_done_value(&self) -> u64 {
+        2 * self.copies - 1
+    }
+
+    /// 直近のコピーを wgpu が読み終えたことを表すフェンスの値。
+    pub fn read_done_value(&self) -> u64 {
+        2 * self.copies
+    }
+
+    /// 共有フェンス。
+    pub fn fence(&self) -> &ID3D12Fence {
+        &self.fence
+    }
 }
 
 /// 共有バッファの輪。
 pub struct SharedRing {
-    gpu: Arc<GpuContext>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     cuda: Arc<CudaApi>,
     ctx: CuContext,
     stream: CuStream,
@@ -43,6 +64,10 @@ pub struct SharedRing {
     next: usize,
     width: u32,
     height: u32,
+    /// 1 成分のバイト数（8 bit は 1、10 bit は 2）。
+    bytes_per_sample: u32,
+    /// 検査で待ちを外した対照を作るための印。本番では常に `true`。
+    wait_for_reader: bool,
 }
 
 impl SharedRing {
@@ -51,22 +76,25 @@ impl SharedRing {
     /// # Safety
     /// `ctx` と `stream` は、復号器が使う有効な CUDA の文脈とストリーム。
     pub unsafe fn new(
-        gpu: Arc<GpuContext>,
+        (device, queue): (wgpu::Device, wgpu::Queue),
         cuda: Arc<CudaApi>,
-        ctx: CuContext,
-        stream: CuStream,
+        (ctx, stream): (CuContext, CuStream),
         (width, height): (u32, u32),
+        bytes_per_sample: u32,
         count: usize,
     ) -> Result<Self> {
-        let size = u64::from(width) * u64::from(height) * 3 / 2;
+        let size = u64::from(width) * u64::from(height) * 3 / 2 * u64::from(bytes_per_sample);
         let size = size.next_multiple_of(4);
         // SAFETY: 文脈を現在にしている間だけ CUDA を呼ぶ。
         unsafe { cuda.push(ctx)? };
-        let slots: Result<Vec<Slot>> = (0..count).map(|_| make_slot(&gpu, &cuda, size)).collect();
+        let slots: Result<Vec<Slot>> = (0..count)
+            .map(|_| make_slot(&device, &cuda, size))
+            .collect();
         // SAFETY: 上の push と対。
         unsafe { cuda.pop()? };
         Ok(Self {
-            gpu,
+            device,
+            queue,
             cuda,
             ctx,
             stream,
@@ -74,12 +102,24 @@ impl SharedRing {
             next: 0,
             width,
             height,
+            bytes_per_sample,
+            wait_for_reader: true,
         })
+    }
+
+    /// 1 行のバイト数。
+    pub fn pitch(&self) -> u32 {
+        self.width * self.bytes_per_sample
     }
 
     /// UV 面の先頭のバイト位置。
     pub fn uv_offset(&self) -> u32 {
-        self.width * self.height
+        self.pitch() * self.height
+    }
+
+    /// CUDA が wgpu の読み終えを待つかを切り替える（待ちが効いていることを確かめる対照の検査用）。
+    pub fn set_wait_for_reader(&mut self, on: bool) {
+        self.wait_for_reader = on;
     }
 
     /// 枠の数。
@@ -87,23 +127,23 @@ impl SharedRing {
         self.slots.len()
     }
 
-    /// 枠が無いか。
-    pub fn is_empty(&self) -> bool {
-        self.slots.is_empty()
-    }
-
     /// 枠の中身。
     pub fn slot(&self, index: usize) -> &Slot {
         &self.slots[index]
     }
 
-    /// cuvid のコマ（CUDA の NV12）を次の枠にコピーし、完了のフェンスを積む。CPU は待たない。
-    /// 戻り値は枠の番号。
-    pub fn copy_frame(&mut self, f: &frame::Video) -> Result<usize> {
+    /// cuvid のコマ（CUDA の NV12 か P010）を次の枠にコピーする。CPU は待たない。
+    /// その枠を wgpu が前に読んだ分の完了を CUDA のストリームの中で待ってからコピーし、
+    /// 終わったらフェンスを進める。戻り値は枠の番号。
+    pub fn copy_frame(&mut self, f: &ffmpeg_next::frame::Video) -> Result<usize> {
         let index = self.next;
         self.next = (self.next + 1) % self.slots.len();
+        let pitch = self.pitch() as usize;
+        let uv_offset = u64::from(self.uv_offset());
         let slot = &mut self.slots[index];
-        slot.value += 1;
+        let previous_read = 2 * slot.copies;
+        slot.copies += 1;
+        let copy_done = slot.copy_done_value();
         // SAFETY: cuvid のコマは CUDA のデバイスポインタを data[0] と data[1] に持つ。
         // 文脈を現在にしている間にだけ CUDA を呼ぶ。
         unsafe {
@@ -119,11 +159,14 @@ impl SharedRing {
                     (*raw).data[1] as CuDevicePtr,
                     (*raw).linesize[1],
                     self.height / 2,
-                    u64::from(self.width) * u64::from(self.height),
+                    uv_offset,
                 ),
             ];
             self.cuda.push(self.ctx)?;
-            for (src, pitch, rows, dst_offset) in planes {
+            if previous_read > 0 && self.wait_for_reader {
+                self.cuda.wait(slot.cu_sem, previous_read, self.stream)?;
+            }
+            for (src, src_pitch, rows, dst_offset) in planes {
                 let copy = Memcpy2D {
                     src_x_in_bytes: 0,
                     src_y: 0,
@@ -131,20 +174,20 @@ impl SharedRing {
                     src_host: std::ptr::null(),
                     src_device: src,
                     src_array: std::ptr::null_mut(),
-                    src_pitch: pitch as usize,
+                    src_pitch: src_pitch as usize,
                     dst_x_in_bytes: 0,
                     dst_y: 0,
                     dst_memory_type: MEMORYTYPE_DEVICE,
                     dst_host: std::ptr::null_mut(),
                     dst_device: slot.cu_ptr + dst_offset,
                     dst_array: std::ptr::null_mut(),
-                    dst_pitch: self.width as usize,
-                    width_in_bytes: self.width as usize,
+                    dst_pitch: pitch,
+                    width_in_bytes: pitch,
                     height: rows as usize,
                 };
                 self.cuda.memcpy2d_async(&copy, self.stream)?;
             }
-            self.cuda.signal(slot.cu_sem, slot.value, self.stream)?;
+            self.cuda.signal(slot.cu_sem, copy_done, self.stream)?;
             self.cuda.pop()?;
         }
         Ok(index)
@@ -154,10 +197,51 @@ impl SharedRing {
     pub fn wait_copy_on(&self, index: usize) -> Result<()> {
         let slot = &self.slots[index];
         // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
-        let queue = unsafe { self.gpu.queue.as_hal::<wgpu::hal::api::Dx12>() }
+        let queue = unsafe { self.queue.as_hal::<wgpu::hal::api::Dx12>() }
             .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
-        queue.add_wait_fence(slot.fence.clone(), slot.value);
+        queue.add_wait_fence(slot.fence.clone(), slot.copy_done_value());
         Ok(())
+    }
+
+    /// 枠を読む提出を終えたら、wgpu のキューに「読み終えた」値までフェンスを進めさせる。
+    /// 提出のあとに呼ぶ。CUDA は次のコピーの前にこれを待つ。
+    pub fn signal_read_done(&self, index: usize) -> Result<()> {
+        let slot = &self.slots[index];
+        // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
+        let queue = unsafe { self.queue.as_hal::<wgpu::hal::api::Dx12>() }
+            .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
+        // SAFETY: キューとフェンスは同じデバイスの有効なオブジェクト。
+        unsafe { queue.as_raw().Signal(&slot.fence, slot.read_done_value()) }
+            .map_err(|e| MmError::Internal(format!("フェンスの Signal: {e}")))
+    }
+
+    /// CUDA の取り込みを手放す。wgpu が読み終え、CUDA のコピーも終わっているときに呼ぶ。
+    fn release_imports(&mut self) {
+        // SAFETY: 文脈は復号器のもの。呼び出し側が GPU の仕事の完了を保証する。
+        unsafe {
+            if self.cuda.push(self.ctx).is_err() {
+                return;
+            }
+            let _ = self.cuda.sync(self.stream);
+            for slot in self.slots.drain(..) {
+                self.cuda
+                    .release_import(slot.cu_mem, slot.cu_ptr, slot.cu_sem);
+            }
+            let _ = self.cuda.pop();
+        }
+    }
+
+    /// wgpu のデバイス。
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+}
+
+impl Drop for SharedRing {
+    fn drop(&mut self) {
+        // wgpu 側の読み取りが残っていれば終わるまで待ってから CUDA の取り込みを外す。
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        self.release_imports();
     }
 }
 
@@ -165,11 +249,10 @@ fn d3d_err(what: &str, e: windows::core::Error) -> MmError {
     MmError::Internal(format!("{what}: {e}"))
 }
 
-fn make_slot(gpu: &GpuContext, cuda: &CudaApi, size: u64) -> Result<Slot> {
+fn make_slot(device: &wgpu::Device, cuda: &CudaApi, size: u64) -> Result<Slot> {
     // SAFETY: as_hal の参照はこの関数の間だけ使う。資源は wgpu と同じデバイスに作る。
     unsafe {
-        let hal = gpu
-            .device
+        let hal = device
             .as_hal::<wgpu::hal::api::Dx12>()
             .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
         let dev = hal.raw_device();
@@ -206,7 +289,10 @@ fn make_slot(gpu: &GpuContext, cuda: &CudaApi, size: u64) -> Result<Slot> {
         let res_handle: HANDLE = dev
             .CreateSharedHandle(&resource, None, GENERIC_ALL, PCWSTR::null())
             .map_err(|e| d3d_err("共有ハンドル", e))?;
-        let (cu_mem, cu_ptr) = cuda.import_buffer(res_handle.0, size)?;
+        let imported = cuda.import_buffer(res_handle.0, size);
+        // CUDA が取り込み時に自前の参照を持つので、ハンドルは閉じる。
+        let _ = CloseHandle(res_handle);
+        let (cu_mem, cu_ptr) = imported?;
 
         let fence: ID3D12Fence = dev
             .CreateFence(0, D3D12_FENCE_FLAG_SHARED)
@@ -214,13 +300,15 @@ fn make_slot(gpu: &GpuContext, cuda: &CudaApi, size: u64) -> Result<Slot> {
         let fence_handle: HANDLE = dev
             .CreateSharedHandle(&fence, None, GENERIC_ALL, PCWSTR::null())
             .map_err(|e| d3d_err("フェンスの共有ハンドル", e))?;
-        let cu_sem = cuda.import_fence(fence_handle.0)?;
+        let imported = cuda.import_fence(fence_handle.0);
+        let _ = CloseHandle(fence_handle);
+        let cu_sem = imported?;
 
         let hal_buffer = wgpu::hal::dx12::Device::buffer_from_raw(resource, size);
-        let buffer = gpu.device.create_buffer_from_hal::<wgpu::hal::api::Dx12>(
+        let buffer = device.create_buffer_from_hal::<wgpu::hal::api::Dx12>(
             hal_buffer,
             &wgpu::BufferDescriptor {
-                label: Some("cuvid shared nv12"),
+                label: Some("cuvid shared yuv420"),
                 size,
                 usage: wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
@@ -231,8 +319,8 @@ fn make_slot(gpu: &GpuContext, cuda: &CudaApi, size: u64) -> Result<Slot> {
             cu_ptr,
             fence,
             cu_sem,
-            value: 0,
-            _cu_mem: cu_mem,
+            copies: 0,
+            cu_mem: cu_mem,
         })
     }
 }

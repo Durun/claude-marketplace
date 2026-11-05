@@ -2566,6 +2566,11 @@ name = "mm-decode-cuvid"
 version = "0.1.0"
 dependencies = [
  "ffmpeg-next",
+ "mm-audio-api",
+ "mm-decode-api",
+ "mm-gpu",
+ "mm-node-api",
+ "mm-testkit",
  "mm-trace",
  "mm-types",
  "pollster",

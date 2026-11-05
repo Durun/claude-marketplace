@@ -49,6 +49,23 @@ impl Matrix {
     }
 }
 
+/// 素材のビット深度。NV12 と P010 に載る 4:2:0 の 8 bit と 10 bit だけ。
+pub fn stream_bit_depth(stream: &ff::format::stream::Stream<'_>) -> mm_types::Result<u32> {
+    use ff::ffi::AVPixelFormat as P;
+    // SAFETY: パラメーターは有効なストリームのもの。format は AVPixelFormat の整数値。
+    let raw = unsafe { (*stream.parameters().as_ptr()).format };
+    let is = |f: P| raw == f as i32;
+    if is(P::AV_PIX_FMT_YUV420P) || is(P::AV_PIX_FMT_YUVJ420P) {
+        Ok(8)
+    } else if is(P::AV_PIX_FMT_YUV420P10LE) {
+        Ok(10)
+    } else {
+        Err(mm_types::MmError::Unsupported(format!(
+            "4:2:0 の 8 bit と 10 bit だけ扱える（画素形式 {raw}）"
+        )))
+    }
+}
+
 /// フレームのレンジの宣言。未指定は tv レンジ。
 pub fn is_full_range(range: Range) -> bool {
     matches!(range, Range::JPEG)

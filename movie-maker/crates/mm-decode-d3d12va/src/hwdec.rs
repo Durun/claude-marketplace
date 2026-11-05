@@ -10,6 +10,7 @@ use windows::core::Interface;
 
 use crate::ffi::{AvD3d12vaDeviceContext, RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS};
 use crate::shared::reader::HwReader;
+use crate::shared::yuv::stream_bit_depth;
 
 /// 復号器が DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が握る面の数より大きくする。
 const EXTRA_HW_FRAMES: i32 = 16;
@@ -68,22 +69,6 @@ fn create_device_ref(device: &wgpu::Device) -> Result<*mut ffi::AVBufferRef> {
     }
 }
 
-/// 素材のビット深度。d3d12va の面（NV12 と P010）に載る 4:2:0 の 8 bit と 10 bit だけ。
-fn bit_depth(stream: &ff::format::stream::Stream<'_>) -> Result<u32> {
-    // SAFETY: パラメーターは有効なストリームのもの。format は AVPixelFormat の整数値。
-    let raw = unsafe { (*stream.parameters().as_ptr()).format };
-    let is = |f: ffi::AVPixelFormat| raw == f as i32;
-    if is(ffi::AVPixelFormat::AV_PIX_FMT_YUV420P) || is(ffi::AVPixelFormat::AV_PIX_FMT_YUVJ420P) {
-        Ok(8)
-    } else if is(ffi::AVPixelFormat::AV_PIX_FMT_YUV420P10LE) {
-        Ok(10)
-    } else {
-        Err(MmError::Unsupported(format!(
-            "d3d12va は 4:2:0 の 8 bit と 10 bit だけ（画素形式 {raw}）"
-        )))
-    }
-}
-
 /// 開いた素材。
 pub struct Opened {
     pub reader: HwReader,
@@ -107,7 +92,7 @@ pub fn open(path: &Path, device: &wgpu::Device) -> Result<Opened> {
         .best(ff::media::Type::Video)
         .ok_or_else(|| MmError::Unsupported("映像が無い".into()))?;
     let stream_index = stream.index();
-    let bits = bit_depth(&stream)?;
+    let bits = stream_bit_depth(&stream)?;
     let mut ctx = ff::codec::Context::from_parameters(stream.parameters())
         .map_err(|e| MmError::Unsupported(format!("映像のコーデック: {e}")))?;
     if !matches!(ctx.id(), ff::codec::Id::H264 | ff::codec::Id::HEVC) {

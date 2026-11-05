@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-cuvid"
-description = "試作。FFmpeg の cuvid（NVDEC）で復号した CUDA のメモリを、D3D12 の共有バッファへ 1 回コピーして wgpu に渡す"
+description = "FFmpeg の cuvid（NVDEC）で復号した CUDA のメモリを D3D12 の共有バッファへ 1 回コピーし、描画器と同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,13 @@ publish.workspace = true
 
 [features]
 # 既定で切る。FFmpeg の開発ファイル、libclang、NVIDIA のドライバーが無い環境でもワークスペースをビルドできるようにする。
-cuvid = ["dep:ffmpeg-next", "dep:wgpu", "dep:pollster", "dep:windows"]
+cuvid = ["dep:ffmpeg-next", "dep:wgpu", "dep:pollster", "dep:windows", "dep:mm-gpu"]
 
 [dependencies]
 mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+mm-decode-api = { workspace = true }
+mm-gpu = { workspace = true, optional = true }
 tracing = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
@@ -26,6 +29,10 @@ windows = { workspace = true, optional = true, features = [
 
 [dev-dependencies]
 mm-trace = { workspace = true }
+mm-testkit = { workspace = true }
+mm-gpu = { workspace = true }
+mm-node-api = { workspace = true }
+wgpu = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [[example]]
