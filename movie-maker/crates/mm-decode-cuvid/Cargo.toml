@@ -1,0 +1,36 @@
+[package]
+name = "mm-decode-cuvid"
+description = "試作。FFmpeg の cuvid（NVDEC）で復号した CUDA のメモリを、D3D12 の共有バッファへ 1 回コピーして wgpu に渡す"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# 既定で切る。FFmpeg の開発ファイル、libclang、NVIDIA のドライバーが無い環境でもワークスペースをビルドできるようにする。
+cuvid = ["dep:ffmpeg-next", "dep:wgpu", "dep:pollster", "dep:windows"]
+
+[dependencies]
+mm-types = { workspace = true }
+tracing = { workspace = true }
+ffmpeg-next = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+windows = { workspace = true, optional = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+mm-trace = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "bench_cuvid"
+required-features = ["cuvid"]
+
+[lints]
+workspace = true
