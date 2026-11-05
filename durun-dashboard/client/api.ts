@@ -1,5 +1,5 @@
 import type {
-  AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  CdMeta, AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -80,6 +80,12 @@ export const api = {
   cdripList: (text: string) => postJson('/api/cdrip/list', { text }),
   cdripAccepting: (on: boolean) => postJson('/api/cdrip/accepting', { on }),
   cdripInstall: (tool: string) => postJson<{ message: string }>(`/api/cdrip/tools/${seg(tool)}/install`),
+  cdripItem: (id: string, action: 'skip' | 'retry' | 'abort') => postJson(`/api/cdrip/items/${seg(id)}/${action}`),
+  cdripMeta: (id: string, meta: CdMeta) => postJson(`/api/cdrip/items/${seg(id)}/meta`, { meta }),
+  cdripExport: (id: string) => postJson(`/api/cdrip/items/${seg(id)}/export`),
+  cdripCover: (id: string, url: string) => postJson(`/api/cdrip/items/${seg(id)}/cover`, { url }),
+  cdripCoverUrl: (id: string, v: number) => `/api/cdrip/items/${seg(id)}/cover?v=${v}`,
+  cdripEject: () => postJson('/api/cdrip/eject'),
   cdripSettings: (settings: Record<string, unknown>) => postJson('/api/cdrip/settings', settings),
   chat: (id: string) => getJson<ChatEntry[]>(`${session(id)}/chat`),
   subagentChat: (id: string, agentId: string) => getJson<ChatEntry[]>(`${session(id)}/subagents/${seg(agentId)}/chat`),

@@ -3,9 +3,12 @@
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
-import type { CdFeatures, CdToolName, CdLogEntry, CdRipItem, CdRipSettings, CdRipView, CdTool } from '../shared/types.ts';
-import { applyList, parseList, recover } from './cdripQueue.ts';
-import { detectTools, installTool, knownOffset, TOOL_NAMES } from './cdripTools.ts';
+import type { CdFeatures, CdMeta, CdToolName, CdLogEntry, CdRipItem, CdRipSettings, CdRipView, CdTool } from '../shared/types.ts';
+import { appendAdded, type ExportTools, exportDisc } from './cdripExport.ts';
+import { fetchCover, matchTrackCount, skeletonMeta, validateMeta } from './cdripResearch.ts';
+import { applyList, nextWaiting, parseList, recover, transition } from './cdripQueue.ts';
+import { cyanripArgs, listFlacs, type ParsedRip, type RipResult, startRip, trackSamples } from './cdripRip.ts';
+import { detectTools, installTool, knownOffset, resolveTool, TOOL_NAMES } from './cdripTools.ts';
 import { platform } from './platform.ts';
 import { DATA_DIR } from './store.ts';
 
@@ -187,6 +190,7 @@ export const initCdRip = (): Promise<void> => {
     const storedQueue = readJson<Queue>(QUEUE_FILE);
     if (storedQueue) queue = { accepting: !!storedQueue.accepting, items: recover(storedQueue.items ?? [], probeStage, Date.now()) };
     await refreshTools();
+    if (queue.accepting) ensureWatching();
   })();
   return ready;
 };
@@ -222,7 +226,7 @@ const driveMessage = (s: CdRipSettings): string | undefined => {
 
 export const view = (): CdRipView => {
   const s = current();
-  return { tools, drive: { id: s.drive, model: s.driveModel, offset: s.offset, media, message: driveMessage(s) }, accepting: queue.accepting, settings: s, items: queue.items, log, drives };
+  return { tools, drive: { id: s.drive, model: s.driveModel, offset: s.offset, media, message: note ?? driveMessage(s) }, accepting: queue.accepting, settings: s, items: queue.items, log, drives };
 };
 
 let broadcastTimer: NodeJS.Timeout | undefined;
@@ -263,6 +267,7 @@ export const streamCdRip = async (res: ServerResponse): Promise<void> => {
     windows.delete(res);
   });
   await initCdRip();
+  ensureWatching();
   res.write(`event: view\ndata: ${JSON.stringify(view())}\n\n`);
 };
 
@@ -282,6 +287,7 @@ export const setCdRipAccepting = async (on: boolean): Promise<void> => {
   await initCdRip();
   if (on && !current().drive) throw new CdRipError(409, '光学ドライブが見つかりません。設定でドライブを選んでください');
   queue = { ...queue, accepting: on };
+  if (on) ensureWatching();
   logCdRip('accepting', on ? '受付を開始しました' : '受付を停止しました');
   scheduleSave();
   broadcast();
@@ -308,4 +314,247 @@ export const installCdTool = async (name: string): Promise<{ message: string }> 
   } finally {
     await refreshTools();
   }
+};
+
+// ─── 取り込み ───────────────────────────────────────────────────────────
+
+const WATCH_MS = 3000;
+const CD_SAMPLE_RATE = 44100;
+
+let note: string | undefined;
+let watchTimer: NodeJS.Timeout | undefined;
+let ticking = false;
+let active: { itemId: string; abort: () => void } | undefined;
+// 排出したか中断したディスクが抜かれるまでは、次の取り込みを始めない。同じ CD を二重に取り込まないため。
+let untilRemoved = false;
+
+const setNote = (next: string | undefined): void => {
+  if (note === next) return;
+  note = next;
+  broadcast();
+};
+
+const updateItem = (id: string, fn: (i: CdRipItem) => CdRipItem): void => mutateItems((items) => items.map((i) => (i.id === id ? fn(i) : i)));
+
+const findItem = (id: string): CdRipItem => {
+  const item = queue.items.find((i) => i.id === id);
+  if (!item) throw new CdRipError(404, `行がありません: ${id}`);
+  return item;
+};
+
+const eject = async (): Promise<void> => {
+  await platform.ejectDisc(current().drive);
+  untilRemoved = true;
+};
+
+/** 取り込みが終わった後の始末。曲数どおりの FLAC がそろっていれば取り込み済み、そうでなければ失敗にする。 */
+const finishRip = async (item: CdRipItem, dir: string, result: RipResult): Promise<void> => {
+  if (result.aborted) {
+    updateItem(item.id, (i) => transition(i, { type: 'abort' }, Date.now()));
+    logCdRip('rip', '取り込みを中断しました。ディスクを出して入れ直すと、次の取り込みを始めます', item.id);
+    untilRemoved = true;
+    return;
+  }
+  const discDir = path.join(dir, 'disc');
+  const flacs = fs.existsSync(discDir) ? listFlacs(discDir) : [];
+  const tracks = result.parsed.tracks ?? 0;
+  const failure = result.parsed.error ?? (result.code !== 0 ? `cyanrip が終了コード ${result.code} で終わりました（${path.join(dir, 'cyanrip.out')} を見てください）` : flacs.length !== tracks || !tracks ? `${tracks} 曲のはずが ${flacs.length} 曲しか取り込めていません` : undefined);
+  if (failure) {
+    updateItem(item.id, (i) => transition(i, { type: 'ripFailed', error: failure }, Date.now()));
+    logCdRip('rip', `取り込みに失敗しました: ${failure}`, item.id);
+  } else {
+    // 曲の長さの確定値は、取り込んだ FLAC のサンプル数から求める。
+    const metaflac = resolveTool('metaflac');
+    const durations = metaflac ? (await trackSamples(metaflac, flacs)).map((n) => Math.round((n / CD_SAMPLE_RATE) * 1000) / 1000) : result.parsed.durations;
+    updateItem(item.id, (i) => {
+      const disc = { ...(i.disc ?? { tracks }), tracks, durations };
+      const meta = i.meta ?? skeletonMeta(disc);
+      return transition({ ...i, disc, meta, ...(matchTrackCount(meta, tracks) ? { attention: matchTrackCount(meta, tracks) } : {}) }, { type: 'ripped', researched: true }, Date.now());
+    });
+    logCdRip('rip', `取り込みを終えました（${tracks} 曲）`, item.id);
+  }
+  await eject();
+};
+
+/** cyanrip が読み取った情報を、行の disc と progress に写す。変わらなければ配信しない。 */
+const applyParsed = (id: string, p: ParsedRip): void => {
+  updateItem(id, (i) => {
+    const disc = p.tracks === undefined ? i.disc : { tracks: p.tracks, durations: p.durations, totalSeconds: p.totalSeconds, cdText: p.cdText, tocId: p.tocId };
+    const progress = p.tracks !== undefined && p.progress ? { track: p.progress.track, total: p.tracks } : i.progress;
+    if (JSON.stringify([disc, progress]) === JSON.stringify([i.disc, i.progress])) return i;
+    return { ...i, disc, progress, updatedAt: Date.now() };
+  });
+};
+
+const ripNext = async (item: CdRipItem): Promise<void> => {
+  const s = current();
+  const cyanrip = resolveTool('cyanrip');
+  if (!cyanrip) return setNote('cyanrip が見つかりません。上の導入ボタンで入れてください');
+  setNote(undefined);
+  const dir = path.join(s.stageDir, item.id);
+  fs.rmSync(path.join(dir, 'disc'), { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  updateItem(item.id, (i) => transition(i, { type: 'start' }, Date.now()));
+  logCdRip('rip', `取り込みを始めます: ${item.hint}`, item.id);
+  const rip = startRip(cyanrip, cyanripArgs(s, await platform.cdDevice(s.drive)), dir, (p) => applyParsed(item.id, p));
+  active = { itemId: item.id, abort: rip.abort };
+  try {
+    await finishRip(item, dir, await rip.done);
+  } catch (e) {
+    updateItem(item.id, (i) => (i.status === 'ripping' ? transition(i, { type: 'ripFailed', error: (e as Error).message }, Date.now()) : i));
+    logCdRip('rip', `取り込みの後始末に失敗しました: ${(e as Error).message}`, item.id);
+  } finally {
+    active = undefined;
+  }
+};
+
+/** 3 秒ごとにディスクを見て、受付中で待機中の行があれば取り込む。 */
+const tick = async (): Promise<void> => {
+  if (ticking || !settings) return;
+  if (!queue.accepting && !windows.size && !active) return;
+  ticking = true;
+  try {
+    const loaded = await platform.mediaLoaded(settings.drive);
+    setMedia(loaded === undefined ? 'unknown' : loaded ? 'loaded' : 'none');
+    if (loaded === false) untilRemoved = false;
+    if (active || !queue.accepting || loaded !== true || untilRemoved) return;
+    const next = nextWaiting(queue.items);
+    setNote(next ? undefined : 'ディスクが入っていますが、待機中の行がありません。リストに足してください');
+    if (next) await ripNext(next);
+  } catch (e) {
+    console.error(`CD取り込みの見張りが失敗しました: ${(e as Error).message}`);
+  } finally {
+    ticking = false;
+  }
+};
+
+/** 見張りを始める。最後のウィンドウが閉じても止めない。サーバーが止まるまで 1 本だけ動く。 */
+const ensureWatching = (): void => {
+  watchTimer ??= setInterval(() => void tick(), WATCH_MS).unref();
+};
+
+export const skipCdItem = async (id: string): Promise<void> => {
+  await initCdRip();
+  findItem(id);
+  updateItem(id, (i) => transition(i, { type: 'skip' }, Date.now()));
+};
+
+/** 取り込みをやり直す。取り込み済みの FLAC は消して、待機中に戻す。 */
+export const retryCdItem = async (id: string): Promise<void> => {
+  await initCdRip();
+  const item = findItem(id);
+  if (!['review', 'failed'].includes(item.status)) throw new CdRipError(409, `${item.status} の行はやり直せません`);
+  fs.rmSync(path.join(current().stageDir, id, 'disc'), { recursive: true, force: true });
+  updateItem(id, (i) => transition(i, { type: 'retry' }, Date.now()));
+};
+
+export const abortCdItem = async (id: string): Promise<void> => {
+  await initCdRip();
+  if (active?.itemId !== id) throw new CdRipError(409, 'この行は取り込み中ではありません');
+  active.abort();
+};
+
+export const ejectCd = async (): Promise<void> => {
+  await initCdRip();
+  if (active) throw new CdRipError(409, '取り込み中は排出できません');
+  await platform.ejectDisc(current().drive);
+};
+
+// ─── 確認と書き出し ─────────────────────────────────────────────────────
+
+/** 行のフォルダー。書き出し済みの行は _done に移してあるので、なければそちらを見る。 */
+const itemDir = (id: string): string => {
+  const live = path.join(current().stageDir, id);
+  return fs.existsSync(live) ? live : path.join(current().stageDir, '_done', id);
+};
+
+/** 曲情報を保存する。状態は変えず、曲数が CD と合わなければ attention に残す。 */
+export const saveCdMeta = async (id: string, body: unknown): Promise<void> => {
+  await initCdRip();
+  const item = findItem(id);
+  if (!['review', 'researching'].includes(item.status)) throw new CdRipError(409, `${item.status} の行の曲情報は直せません`);
+  let meta: CdMeta;
+  try {
+    meta = validateMeta((body as { meta?: unknown } | undefined)?.meta);
+  } catch (e) {
+    throw new CdRipError(400, (e as Error).message);
+  }
+  const mismatch = matchTrackCount(meta, item.disc?.tracks);
+  updateItem(id, (i) => {
+    const { attention: _old, ...rest } = i;
+    return { ...rest, meta, updatedAt: Date.now(), ...(mismatch ? { attention: mismatch } : {}) };
+  });
+};
+
+const exportTools = (): ExportTools => {
+  const found = { flac: resolveTool('flac'), metaflac: resolveTool('metaflac'), ffmpeg: resolveTool('ffmpeg') };
+  const missing = Object.entries(found).filter(([, p]) => !p).map(([n]) => n);
+  if (missing.length) throw new CdRipError(409, `${missing.join('、')} が見つかりません。上の導入ボタンで入れてください`);
+  return found as ExportTools;
+};
+
+const runExport = async (item: CdRipItem, meta: CdMeta): Promise<void> => {
+  const s = current();
+  const dir = path.join(s.stageDir, item.id);
+  try {
+    const { files, rows } = await exportDisc({ dir, meta, settings: s, tools: exportTools() });
+    appendAdded(path.join(s.stageDir, 'added.tsv'), rows);
+    // 取り込み途中のフォルダーは、書き出したら _done に移す。移せなくても書き出しは済んでいる。
+    try {
+      fs.mkdirSync(path.join(s.stageDir, '_done'), { recursive: true });
+      fs.renameSync(dir, path.join(s.stageDir, '_done', item.id));
+    } catch (e) {
+      logCdRip('export', `取り込み先のフォルダーを _done に移せませんでした: ${(e as Error).message}`, item.id);
+    }
+    updateItem(item.id, (i) => transition(i, { type: 'exported', files }, Date.now()));
+    logCdRip('export', `書き出しました: ${meta.circle} / ${meta.album}（${files.length} ファイル）`, item.id);
+  } catch (e) {
+    const message = (e as Error).message.split('\n')[0] ?? '書き出しに失敗しました';
+    updateItem(item.id, (i) => transition(i, { type: 'exportFailed', error: message }, Date.now()));
+    logCdRip('export', `書き出しに失敗しました: ${message}`, item.id);
+  }
+};
+
+/** 確認待ちの行を書き出す。書き出しは裏で進み、結果は行の状態で知らせる。 */
+export const exportCdItem = async (id: string): Promise<void> => {
+  await initCdRip();
+  const item = findItem(id);
+  if (item.status !== 'review') throw new CdRipError(409, `${item.status} の行は書き出せません`);
+  if (!item.meta) throw new CdRipError(400, '曲情報がありません');
+  const mismatch = matchTrackCount(item.meta, item.disc?.tracks);
+  if (mismatch) throw new CdRipError(400, mismatch);
+  const { features } = current();
+  if (!features.flacImage && !features.mp3) throw new CdRipError(409, '設定で FLAC イメージと mp3 のどちらも切ってあります');
+  exportTools();
+  const meta = item.meta;
+  updateItem(id, (i) => transition(i, { type: 'export' }, Date.now()));
+  void runExport(item, meta);
+};
+
+/** ジャケットの画像を URL から取り込み、行のフォルダーに cover.<拡張子> として置いて、曲情報に結びつける。 */
+export const setCdCover = async (id: string, body: unknown): Promise<void> => {
+  await initCdRip();
+  const item = findItem(id);
+  if (!item.meta) throw new CdRipError(409, '曲情報がまだありません');
+  const url = (body as { url?: unknown } | undefined)?.url;
+  if (typeof url !== 'string') throw new CdRipError(400, 'url は文字列で渡してください');
+  let image: { bytes: Buffer; ext: string };
+  try {
+    image = await fetchCover(url);
+  } catch (e) {
+    throw new CdRipError(502, `ジャケットを取り込めません: ${(e as Error).message}`);
+  }
+  const dir = path.join(current().stageDir, id);
+  for (const old of fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^cover\./.test(f)) : []) fs.rmSync(path.join(dir, old), { force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `cover.${image.ext}`), image.bytes);
+  updateItem(id, (i) => (i.meta ? { ...i, meta: { ...i.meta, cover: `cover.${image.ext}`, coverUrl: url }, updatedAt: Date.now() } : i));
+};
+
+export const sendCdCover = (res: ServerResponse, id: string): void => {
+  const item = findItem(id);
+  const file = item.meta?.cover ? path.join(itemDir(id), item.meta.cover) : undefined;
+  if (!file || !fs.existsSync(file)) throw new CdRipError(404, 'ジャケットがありません');
+  const ext = path.extname(file).slice(1).toLowerCase();
+  res.writeHead(200, { 'content-type': `image/${ext === 'jpg' ? 'jpeg' : ext}`, 'cache-control': 'no-cache' }).end(fs.readFileSync(file));
 };

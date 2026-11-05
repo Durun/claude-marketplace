@@ -50,7 +50,7 @@ import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
-import { CdRipError, installCdTool, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
+import { abortCdItem, CdRipError, ejectCd, exportCdItem, saveCdMeta, sendCdCover, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
@@ -1259,6 +1259,11 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/cdrip\/list$/, (_, b) => setCdRipList(field<string>(b, 'text', 'string'))],
   [/^\/api\/cdrip\/accepting$/, (_, b) => setCdRipAccepting(field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/cdrip\/tools\/([\w-]+)\/install$/, ([, name = '']) => installCdTool(name), 10 * 60_000],
+  [/^\/api\/cdrip\/items\/([\w-]+)\/(skip|retry|abort)$/, ([, id = '', action], _) => ({ skip: skipCdItem, retry: retryCdItem, abort: abortCdItem })[action as 'skip' | 'retry' | 'abort'](id)],
+  [/^\/api\/cdrip\/items\/([\w-]+)\/meta$/, ([, id = ''], b) => saveCdMeta(id, b)],
+  [/^\/api\/cdrip\/items\/([\w-]+)\/export$/, ([, id = '']) => exportCdItem(id)],
+  [/^\/api\/cdrip\/items\/([\w-]+)\/cover$/, ([, id = ''], b) => setCdCover(id, b), WEB_API_MS],
+  [/^\/api\/cdrip\/eject$/, () => ejectCd(), WEB_API_MS],
   [/^\/api\/cdrip\/settings$/, (_, b) => saveCdRipSettings(b), WEB_API_MS],
   [/^\/api\/flconnect\/session$/, (_, b) => setFlSession(optionalString(b, 'session'))],
   [/^\/api\/flconnect\/settings$/, (_, b) => setFlSettings(flSettingsOf(b))],
@@ -1418,6 +1423,8 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
     return streamCdRip(res);
   }
+  const cdCover = req.method === 'GET' && /^\/api\/cdrip\/items\/([\w-]+)\/cover$/.exec(url.pathname);
+  if (cdCover) return sendCdCover(res, cdCover[1] ?? '');
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);

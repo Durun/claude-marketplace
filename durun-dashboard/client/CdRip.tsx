@@ -1,7 +1,7 @@
 // アプリ「CD取り込み」のウィンドウ。取り込みリストを貼って受付を始め、CD を順に入れると、取り込み・情報収集・書き出しが進む。
 // サーバーとは SSE でつなぎ、状態（view）を受け取る。切れたら、つなぎ直す。
 import { useEffect, useState } from 'preact/hooks';
-import type { CdFeatures, CdRipItem, CdRipSettings, CdRipView } from '../shared/types.ts';
+import type { CdFeatures, CdMeta, CdRipItem, CdRipSettings, CdRipView, CdTrack } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { type CdStep, nextSteps } from './cdripSteps.ts';
@@ -106,6 +106,7 @@ const DriveBar = ({ v, settingsOpen, onSettings }: { v: CdRipView; settingsOpen:
   <div class="cdrip-bar">
     <span class="cdrip-drive" title={`ドライブ ${v.drive.id || '（未設定）'}、読み取りオフセット ${v.drive.offset}`}>{v.drive.model || '光学ドライブ未設定'} {v.drive.id}</span>
     <Chip tone={v.drive.media === 'loaded' ? 'ok' : 'muted'}>{MEDIA[v.drive.media]}</Chip>
+    <button class="btn btn-sm" disabled={v.drive.media !== 'loaded'} title="ディスクを排出する" onClick={() => void attempt('排出', api.cdripEject)}>排出</button>
     <button class={`btn btn-sm ${v.accepting ? '' : 'btn-primary'}`} onClick={() => void attempt(v.accepting ? '受付の停止' : '受付の開始', () => api.cdripAccepting(!v.accepting))}>
       {v.accepting ? '受付停止' : '受付開始'}
     </button>
@@ -173,14 +174,126 @@ const ItemList = ({ v, selected, onSelect }: { v: CdRipView; selected?: string; 
   );
 };
 
+const mmss = (sec: number | undefined): string => (sec === undefined ? '' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`);
+
+const emptyMeta: CdMeta = { circle: '', album: '', artist: '', dest: 'CLUB', tracks: [] };
+
+/** 曲情報の入力。曲の数が CD と合わない行は赤くする。書き出すときは、保存してから書き出す。 */
+const MetaForm = ({ item }: { item: CdRipItem }) => {
+  const [draft, setDraft] = useState<CdMeta>(item.meta ?? emptyMeta);
+  const editable = item.status === 'review' || item.status === 'researching';
+  const discTracks = item.disc?.tracks;
+  const set = (patch: Partial<CdMeta>) => setDraft({ ...draft, ...patch });
+  const setTrack = (i: number, patch: Partial<CdTrack>) => set({ tracks: draft.tracks.map((t, k) => (k === i ? { ...t, ...patch } : t)) });
+  const save = (): Promise<unknown> => attempt('曲情報の保存', () => api.cdripMeta(item.id, draft));
+  const field = (label: string, key: 'circle' | 'album' | 'artist' | 'date' | 'genre' | 'catalog') => (
+    <label class="cdrip-field">
+      {label}
+      <input class="input input-sm" disabled={!editable} value={draft[key] ?? ''} onInput={(e) => set({ [key]: e.currentTarget.value })} />
+    </label>
+  );
+  const rows = Math.max(draft.tracks.length, discTracks ?? 0);
+  return (
+    <>
+      <div class="cdrip-meta">
+        {field('サークル', 'circle')}
+        {field('アルバム', 'album')}
+        {field('アーティスト', 'artist')}
+        {field('日付', 'date')}
+        {field('ジャンル', 'genre')}
+        {field('品番', 'catalog')}
+        <label class="cdrip-field">
+          置き場所
+          <select class="input input-sm" disabled={!editable} value={draft.dest} onChange={(e) => set({ dest: e.currentTarget.value as CdMeta['dest'] })}>
+            <option value="CLUB">CLUB</option>
+            <option value="Music">Music</option>
+          </select>
+        </label>
+        <label class="cdrip-field">
+          枚数（複数枚組のとき）
+          <span class="cdrip-disc">
+            <input class="input input-sm" type="number" min={1} disabled={!editable} value={draft.disc ?? ''} onInput={(e) => set({ disc: e.currentTarget.value ? Number(e.currentTarget.value) : undefined })} /> /
+            <input class="input input-sm" type="number" min={1} disabled={!editable} value={draft.totaldiscs ?? ''} onInput={(e) => set({ totaldiscs: e.currentTarget.value ? Number(e.currentTarget.value) : undefined })} />
+          </span>
+        </label>
+      </div>
+      <Cover item={item} editable={editable} />
+      <table class="cdrip-tracks">
+        <thead>
+          <tr><th>#</th><th>曲名</th><th>アーティスト</th><th>作曲</th><th>長さ</th></tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rows }, (_, i) => {
+            const t = draft.tracks[i];
+            const bad = discTracks !== undefined && (i >= discTracks || !t);
+            return (
+              <tr key={i} class={bad ? 'is-bad' : undefined}>
+                <td>{i + 1}</td>
+                <td><input class="input input-sm" disabled={!editable || !t} value={t?.title ?? ''} onInput={(e) => setTrack(i, { title: e.currentTarget.value })} /></td>
+                <td><input class="input input-sm" disabled={!editable || !t} value={t?.artist ?? ''} placeholder={draft.artist} onInput={(e) => setTrack(i, { artist: e.currentTarget.value })} /></td>
+                <td><input class="input input-sm" disabled={!editable || !t} value={t?.composer ?? ''} onInput={(e) => setTrack(i, { composer: e.currentTarget.value })} /></td>
+                <td class="cdrip-duration" title={t?.duration ? `曲情報の長さ ${mmss(t.duration)}` : undefined}>{mmss(item.disc?.durations[i])}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {editable && (
+        <div class="fl-actions">
+          <button class="btn btn-sm" onClick={() => set({ tracks: [...draft.tracks, { title: '' }] })}>曲を足す</button>
+          <button class="btn btn-sm" disabled={!draft.tracks.length} onClick={() => set({ tracks: draft.tracks.slice(0, -1) })}>最後の曲を消す</button>
+          <button class="btn btn-sm" onClick={() => void save()}>保存</button>
+          {item.status === 'review' && (
+            <button class="btn btn-sm btn-primary" disabled={!!discTracks && draft.tracks.length !== discTracks} onClick={() => void save().then((ok) => ok !== undefined && attempt('書き出し', () => api.cdripExport(item.id)))}>
+              書き出す
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+/** ジャケット。URL を貼って差し替える。 */
+const Cover = ({ item, editable }: { item: CdRipItem; editable: boolean }) => {
+  const [url, setUrl] = useState(item.meta?.coverUrl ?? '');
+  return (
+    <div class="cdrip-cover">
+      {item.meta?.cover ? <img src={api.cdripCoverUrl(item.id, item.updatedAt)} alt="ジャケット" width={96} height={96} /> : <div class="cdrip-nocover">ジャケットなし</div>}
+      {editable && (
+        <label class="cdrip-field">
+          ジャケットの画像の URL
+          <span class="cdrip-disc">
+            <input class="input input-sm" value={url} onInput={(e) => setUrl(e.currentTarget.value)} />
+            <button class="btn btn-sm" disabled={!url || !item.meta} onClick={() => void attempt('ジャケットの取り込み', () => api.cdripCover(item.id, url))}>差し替え</button>
+          </span>
+        </label>
+      )}
+    </div>
+  );
+};
+
 const Detail = ({ item }: { item?: CdRipItem }) => {
   if (!item) return <Empty>左の行を選ぶと、詳細を出します。</Empty>;
+  const act = (label: string, action: 'skip' | 'retry' | 'abort') => void attempt(label, () => api.cdripItem(item.id, action));
   return (
     <div class="cdrip-detail">
-      <h3>{item.meta?.album ?? item.hint}</h3>
+      <h3>{item.meta?.album || item.hint}</h3>
       <p class="fl-note">{item.hint}{item.group ? `（${item.group}）` : ''}</p>
       <p>{glyphOf(item)} {statusText(item)}</p>
       {item.attention && <p class="fl-warn" role="alert">{item.attention}</p>}
+      {item.meta && <MetaForm key={`${item.id}:${JSON.stringify(item.meta)}`} item={item} />}
+      {item.exported && (
+        <details>
+          <summary>書き出したファイル（{item.exported.files.length}）</summary>
+          <pre class="fl-pre">{item.exported.files.join('\n')}</pre>
+        </details>
+      )}
+      <div class="fl-actions">
+        {item.status === 'ripping' && <button class="btn btn-sm" onClick={() => act('取り込みの中断', 'abort')}>取り込みを中断</button>}
+        {['review', 'failed'].includes(item.status) && <button class="btn btn-sm" onClick={() => act('取り込みのやり直し', 'retry')}>取り込みをやり直す</button>}
+        {['waiting', 'researching', 'review', 'failed'].includes(item.status) && <button class="btn btn-sm" onClick={() => act('スキップ', 'skip')}>スキップ</button>}
+      </div>
     </div>
   );
 };
