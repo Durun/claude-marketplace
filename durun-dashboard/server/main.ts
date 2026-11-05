@@ -50,6 +50,7 @@ import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
+import { CdRipError, installCdTool, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
@@ -83,6 +84,7 @@ const STATIC: Record<string, string> = {
   '/proofread.svg': 'public/proofread.svg',
   '/terminal.svg': 'public/terminal.svg',
   '/flconnect.svg': 'public/flconnect.svg',
+  '/cdrip.svg': 'public/cdrip.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/recycle-bin.svg': 'public/recycle-bin.svg',
@@ -1253,6 +1255,11 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/jira\/issues\/([^/]+)\/transitions$/, ([, key = ''], b) => transitionIssue(key, b), WEB_API_MS],
   [/^\/api\/feedback$/, (_, b) => feedback(b)],
   [/^\/api\/proofread\/revise$/, (_, b) => reviseProof(b), READER_MS],
+  // 光学ドライブを動かし、音楽フォルダーに書くので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/cdrip\/list$/, (_, b) => setCdRipList(field<string>(b, 'text', 'string'))],
+  [/^\/api\/cdrip\/accepting$/, (_, b) => setCdRipAccepting(field<boolean>(b, 'on', 'boolean'))],
+  [/^\/api\/cdrip\/tools\/([\w-]+)\/install$/, ([, name = '']) => installCdTool(name), 10 * 60_000],
+  [/^\/api\/cdrip\/settings$/, (_, b) => saveCdRipSettings(b), WEB_API_MS],
   [/^\/api\/flconnect\/session$/, (_, b) => setFlSession(optionalString(b, 'session'))],
   [/^\/api\/flconnect\/settings$/, (_, b) => setFlSettings(flSettingsOf(b))],
   // FL のユーザーデータにスクリプトを書き、FL を起動し、ループバックを作るので、他のサイトから GET で起こされないよう POST で受ける。
@@ -1405,6 +1412,12 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
     return streamFlConnect(res, url.searchParams.get('session') || undefined);
   }
+  // 光学ドライブの状態と音楽フォルダーの中身を流すので、ダッシュボードの画面からの接続に限る。
+  if (req.method === 'GET' && url.pathname === '/api/cdrip/events') {
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+    return streamCdRip(res);
+  }
   if (req.method === 'GET' && url.pathname === GOOGLE_HOME_PATH) return sendRetro(res, Promise.resolve(OLD_GOOGLE_HOME), url);
   if (req.method === 'GET' && url.pathname === GOOGLE_SEARCH_PATH) return sendGoogle(req, res, url);
   if (req.method === 'GET' && url.pathname === WIKIPEDIA_PATH) return sendWikipedia(req, res, url);
@@ -1452,7 +1465,7 @@ const server = http.createServer(async (req, res) => {
   route(req, res).catch((e: unknown) => {
     // 入力の誤り（4xx）と、セッションの状態で断った操作（409）と、claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
     // 送り手が本文を送り終える前に切ったリクエストも集めない。フックの curl は、送っている途中でも 2 秒で打ち切る。
-    const status = e instanceof HttpError ? e.status : e instanceof SessionStateError ? 409 : e instanceof UpstreamError ? 502 : 500;
+    const status = e instanceof HttpError ? e.status : e instanceof SessionStateError ? 409 : e instanceof CdRipError ? e.status : e instanceof UpstreamError ? 502 : 500;
     if (status === 500 && e !== req.errored) {
       console.error(e);
       recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);
@@ -1522,6 +1535,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     save();
     saveCache();
+    saveCdRip();
     saveLogSummaries();
     process.exit(0);
   });
