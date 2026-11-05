@@ -12,11 +12,13 @@ const V1_TRANSFORM_PREFIX: &str = "transform.";
 /// 移行の始点（これより古い版は移行が無い）。
 const OLDEST_VERSION: u32 = 1;
 
-/// JSON の文字列を読み、古い版なら今の版に上げ、文書の不変条件（[`Project::validate`]）を確かめる。
+/// JSON の文字列を読み、古い版なら今の版に上げ、ID で引く列を ID の順に並べ（[`Project::normalize`]）、
+/// 文書の不変条件（[`Project::validate`]）を確かめる。
 pub fn load(json: &str) -> Result<Project> {
     let value: Value = serde_json::from_str(json)?;
     let value = migrate(value)?;
-    let project: Project = serde_json::from_value(value)?;
+    let mut project: Project = serde_json::from_value(value)?;
+    project.normalize();
     project.validate()?;
     Ok(project)
 }
@@ -37,6 +39,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
     while version < SCHEMA_VERSION {
         match version {
             1 => v1_to_v2(&mut value),
+            2 => v2_to_v3(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "文書の版 {version} からの移行が無い"
@@ -97,10 +100,28 @@ fn move_transform_params(layer: &mut Value) {
     layer["transform"] = Value::Object(transform);
 }
 
+/// v2 → v3: `sequences` と各コンポジションの `markers` を空で置く。
+/// レイヤーとキーフレームに増えた欄は serde の既定で埋まるので、ここでは触らない。
+fn v2_to_v3(value: &mut Value) {
+    if value.get("sequences").is_none() {
+        value["sequences"] = Value::Array(Vec::new());
+    }
+    let Some(comps) = value.get_mut("compositions").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for comp in comps {
+        if comp.get("markers").is_none() {
+            comp["markers"] = Value::Array(Vec::new());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_types::ParamValue;
+    use mm_types::{ParamValue, Rational, RationalTime};
+
+    use crate::{BlendMode, Ease, Interpolation};
 
     #[test]
     fn v1_の_transform_パラメータはレイヤーに移る() {
@@ -131,14 +152,70 @@ mod tests {
         );
     }
 
+    fn fixture(version: u32) -> Project {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../../fixtures/doc/v{version}/stage0.json"));
+        load(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
     #[test]
     fn 凍結した_v1_の文書が読める() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/doc/v1/stage0.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        let p = load(&text).unwrap();
+        let p = fixture(1);
         assert_eq!(p.schema_version, SCHEMA_VERSION);
         assert_eq!(p.compositions[0].layers.len(), 2);
+        assert_eq!(
+            p.compositions[0].layers[0].in_point,
+            RationalTime::new(1, 2).unwrap()
+        );
+        assert!(p.sequences.is_empty());
+    }
+
+    #[test]
+    fn 凍結した_v2_の文書は中身を保って_v3_に上がる() {
+        let p = fixture(2);
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        let text = &p.compositions[0].layers[1];
+        assert_eq!(text.transform.position.keyframes.len(), 2);
+        assert_eq!(
+            text.transform.position.keyframes[1].value,
+            ParamValue::Vec2([40.0, 0.0])
+        );
+        assert_eq!(text.transform.scale.value, ParamValue::Number(1.5));
+        assert_eq!(
+            text.opacity.keyframes[0].interpolation,
+            Interpolation::Bezier
+        );
+        assert_eq!(text.opacity.keyframes[0].ease, Ease::None);
+        assert!(text.opacity.keyframes[0].bezier.is_none());
+        assert_eq!(text.speed, Rational::integer(1));
+        assert!(text.enabled && text.time_remap.is_none() && text.effects.is_empty());
+        assert_eq!(text.blend, BlendMode::Normal);
+        assert_eq!(
+            p.compositions[0].layers[0].audio.as_ref().unwrap().role,
+            "voice"
+        );
+        assert_eq!(p.render_targets[0].codec, "h264");
+    }
+
+    #[test]
+    fn v1_と_v2_の見本は同じ文書になる() {
+        let mut v1 = fixture(1);
+        let v2 = fixture(2);
+        // v2 の見本は v1 にキーフレームと拡大を足したものなので、その 2 つを除いて同じ。
+        let text = &mut v1.compositions[0].layers[1];
+        text.transform.position = v2.compositions[0].layers[1].transform.position.clone();
+        text.transform.scale = v2.compositions[0].layers[1].transform.scale.clone();
+        text.opacity = v2.compositions[0].layers[1].opacity.clone();
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn 今の版の_json_は往復で変わらない() {
+        let p = fixture(2);
+        let s = serde_json::to_string_pretty(&p).unwrap();
+        let back = load(&s).unwrap();
+        assert_eq!(p, back);
+        assert_eq!(s, serde_json::to_string_pretty(&back).unwrap());
     }
 
     #[test]
@@ -162,7 +239,7 @@ mod tests {
 
     fn doc_with_duration(num: i64) -> String {
         format!(
-            r#"{{"schema_version": 2, "assets": [], "render_targets": [],
+            r#"{{"schema_version": 3, "assets": [], "render_targets": [],
               "compositions": [{{"id": "c", "width": 16, "height": 9,
                 "fps": {{"num": 30, "den": 1}}, "duration": {{"num": {num}, "den": 1}},
                 "layers": []}}]}}"#
