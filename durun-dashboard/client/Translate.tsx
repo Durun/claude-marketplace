@@ -17,10 +17,12 @@ export const openTranslate = (): void => floatUp(TRANSLATE_KEY, '', { id: TRANSL
 
 export const TranslateIcon = () => <DesktopIcon icon={TRANSLATE_ICON} title={TRANSLATE_TITLE} hint="PLaMo 3 Translate で、PC の中だけで翻訳します。ダブルクリックで開きます" onLaunch={openTranslate} />;
 
-// 自動は、日本語の字を含めば英語へ、含まなければ日本語へ訳す。
+// 自動は、日本語の字を含めば英語へ、含まなければ日本語へ訳す。再翻訳は、英語に訳した文を日本語に訳し直す。
 const AUTO = 'auto';
+const ROUND_TRIP = 'round-trip';
 const TARGETS: [string, string][] = [
   [AUTO, '自動（日本語 ⇄ 英語）'],
+  [ROUND_TRIP, '英語を経て日本語に再翻訳'],
   ['ja', '日本語'],
   ['en', '英語'],
   ['zh-hans', '中国語（簡体字）'],
@@ -69,7 +71,7 @@ export const TranslateFloat = ({ f }: { f: Float }) => {
   const run = async () => {
     if (busy || !source.trim()) return;
     setBusy(true);
-    const r = await attempt('翻訳', () => api.translate(source, targetOf(choice, source)));
+    const r = await attempt('翻訳', async () => (choice === ROUND_TRIP ? api.translate((await api.translate(source, 'en')).text, 'ja') : api.translate(source, targetOf(choice, source))));
     setBusy(false);
     if (r) update({ result: r.text });
   };
