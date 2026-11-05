@@ -28,7 +28,7 @@ impl GpuEval {
     /// アダプターを探す。無ければ None。
     pub fn new() -> Option<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        // 内蔵 GPU は共有テクスチャ系の試作で落ちたので、試験も外付けの GPU を優先する。
+        // 内蔵 GPU より外付けの GPU の方が compute の結果が安定するので、高性能の側を選ぶ。
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             ..Default::default()
@@ -58,7 +58,83 @@ impl GpuEval {
             .collect();
         let size = padded.len() as u64;
         let device = &self.device;
+        let pipeline = self.pipeline(wgsl)?;
+        let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: &padded,
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let output = self.buffer(
+            size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        );
+        let staging = self.buffer(
+            size,
+            wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        );
+        let group0 = self.io_group(&pipeline, &input, &output);
+        let lut_view = lut.map(|(n, data)| self.lut_texture(n, data));
+        let group1 = lut_view
+            .as_ref()
+            .map(|view| self.lut_group(&pipeline, view));
+        let groups = u32::try_from(inputs.len().div_ceil(64)).map_err(|e| e.to_string())?;
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &group0, &[]);
+            if let Some(g) = &group1 {
+                pass.set_bind_group(1, g, &[]);
+            }
+            pass.dispatch_workgroups(groups, 1, 1);
+        }
+        encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, size);
+        self.queue.submit([encoder.finish()]);
+        self.read(&staging)
+    }
 
+    /// bind group 0: 入力と出力のバッファ。
+    fn io_group(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        input: &wgpu::Buffer,
+        output: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: input.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: output.as_entire_binding(),
+                },
+            ],
+        })
+    }
+
+    /// bind group 1: LUT のテクスチャ。
+    fn lut_group(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.get_bind_group_layout(1),
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view),
+            }],
+        })
+    }
+
+    /// 枠と `wgsl` をつなげて compute のパイプラインにする。検証の失敗は文字列で返す。
+    fn pipeline(&self, wgsl: &str) -> Result<wgpu::ComputePipeline, String> {
+        let device = &self.device;
         let source = format!("{HARNESS}\n{wgsl}");
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -73,73 +149,29 @@ impl GpuEval {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
-        if let Some(err) = pollster::block_on(scope.pop()) {
-            return Err(format!("{err}"));
+        match pollster::block_on(scope.pop()) {
+            Some(err) => Err(format!("{err}")),
+            None => Ok(pipeline),
         }
+    }
 
-        let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: &padded,
-            usage: wgpu::BufferUsages::STORAGE,
-        });
-        let output = device.create_buffer(&wgpu::BufferDescriptor {
+    fn buffer(&self, size: u64, usage: wgpu::BufferUsages) -> wgpu::Buffer {
+        self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage,
             mapped_at_creation: false,
-        });
-        let staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let group0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: input.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: output.as_entire_binding(),
-                },
-            ],
-        });
-        let lut_view = lut.map(|(n, data)| self.lut_texture(n, data));
-        let group1 = lut_view.as_ref().map(|view| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &pipeline.get_bind_group_layout(1),
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(view),
-                }],
-            })
-        });
+        })
+    }
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &group0, &[]);
-            if let Some(g) = &group1 {
-                pass.set_bind_group(1, g, &[]);
-            }
-            let groups = u32::try_from(inputs.len().div_ceil(64)).map_err(|e| e.to_string())?;
-            pass.dispatch_workgroups(groups, 1, 1);
-        }
-        encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, size);
-        self.queue.submit([encoder.finish()]);
-
+    /// 読み戻し用のバッファを待って、RGB の並びにする。
+    fn read(&self, staging: &wgpu::Buffer) -> Result<Vec<[f32; 3]>, String> {
         let slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
-        device
+        self.device
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|e| e.to_string())?;
         rx.recv()
