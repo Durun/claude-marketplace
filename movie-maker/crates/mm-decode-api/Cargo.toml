@@ -1,0 +1,15 @@
+[package]
+name = "mm-decode-api"
+description = "デコーダーとエンコーダーの口。開く、シーク、コマを区間で、FrameSource"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

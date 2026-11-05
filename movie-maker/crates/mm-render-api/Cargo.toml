@@ -1,0 +1,18 @@
+[package]
+name = "mm-render-api"
+description = "描画器の口。コンポジションと t からコマ、Scheduler、コマのキャッシュのキー"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-node-api = { workspace = true }
+mm-audio-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

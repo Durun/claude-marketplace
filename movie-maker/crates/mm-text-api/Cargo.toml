@@ -1,0 +1,14 @@
+[package]
+name = "mm-text-api"
+description = "文字の口。整形と行組み（TextShaper）、描画（TextRasterizer）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true
