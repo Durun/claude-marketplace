@@ -1,6 +1,7 @@
 //! ミキサー。入力を役割ごとのバスに足し、バスの音量とダッキングをかけてマスターに足す。
 //!
-//! 状態を持つのはダッキングの滑らかな音量だけで、同じミキサーに同じ入力を同じ順に渡せば同じ出力になる。
+//! 状態を持つのはダッキングの検出と滑らかな音量だけで、同じミキサーに同じ入力を同じ順に渡せば同じ出力になる。
+//! 区間を分けて渡しても、ブロックの切れ目で状態が戻らない。
 
 use std::collections::BTreeMap;
 
@@ -37,6 +38,8 @@ impl MixerFactory for DspMixerFactory {
             channels,
             config: config.clone(),
             duck_gain: 1.0,
+            peak: 0.0,
+            hold_left: 0,
         }))
     }
 }
@@ -49,7 +52,14 @@ pub struct DspMixer {
     config: MixerConfig,
     /// ダッキング中の対象バスにかかっている、滑らかにした倍率（1.0 で下げていない）。
     duck_gain: f32,
+    /// トリガーの振幅の保持した最大値。ゼロ交差で鳴っていないと見なさないための検出値。
+    peak: f32,
+    /// `peak` を保持する残りのコマ数。
+    hold_left: usize,
 }
+
+/// トリガーの検出値を保持する時間（ms）。50 Hz より低い音の半周期より長く、ゼロ交差をまたぐ。
+const DUCK_HOLD_MS: f32 = 10.0;
 
 /// 中央で両方 1.0 になるパン（バランス型）。中央の素通しを保つため等電力則は使わない。
 fn pan_gains(pan: f32) -> (f32, f32) {
@@ -57,12 +67,12 @@ fn pan_gains(pan: f32) -> (f32, f32) {
     ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
 }
 
-/// 時間（ms）で 63% 動く 1 次の係数。0 ms は即時。
-fn smoothing(ms: f32, sample_rate: u32) -> f32 {
+/// 1 コマで動かす 0..1 の全幅に対する割合。`ms` で動ききる。0 ms は即時。
+fn slew_step(ms: f32, sample_rate: u32) -> f32 {
     if ms <= 0.0 {
-        return 1.0;
+        return f32::INFINITY;
     }
-    1.0 - (-1000.0 / (ms * sample_rate as f32)).exp()
+    1000.0 / (ms * sample_rate as f32)
 }
 
 impl DspMixer {
@@ -103,38 +113,51 @@ impl DspMixer {
         Ok(buses)
     }
 
+    /// トリガーの検出値を 1 コマ進める。大きい値は即座に取り、小さい値は保持時間が過ぎるまで待つ。
+    fn detect(&mut self, level: f32) -> f32 {
+        let hold = (DUCK_HOLD_MS * self.sample_rate as f32 / 1000.0) as usize;
+        if level >= self.peak || self.hold_left == 0 {
+            self.peak = level;
+            self.hold_left = hold;
+        } else {
+            self.hold_left -= 1;
+        }
+        self.peak
+    }
+
     /// 対象バスに、トリガーのバスの鳴り方に追従する倍率をかける。
+    /// 倍率は `attack_ms` / `release_ms` で 1.0 と下げた量の間を動ききる直線で動く。
     fn apply_ducking(&mut self, buses: &mut BTreeMap<&str, Vec<f32>>, frames: usize) {
         let Some(duck) = self.config.ducking.clone() else {
             return;
         };
         let ch = self.channels as usize;
         let floor = db_to_gain(duck.reduction_db);
-        let attack = smoothing(duck.attack_ms, self.sample_rate);
-        let release = smoothing(duck.release_ms, self.sample_rate);
+        let travel = 1.0 - floor;
+        let attack = slew_step(duck.attack_ms, self.sample_rate) * travel;
+        let release = slew_step(duck.release_ms, self.sample_rate) * travel;
         let trigger = buses.get(duck.trigger.as_str()).cloned();
-        let mut gain = self.duck_gain;
         for i in 0..frames {
             let level = trigger.as_ref().map_or(0.0, |t| {
                 t[i * ch..(i + 1) * ch]
                     .iter()
                     .fold(0.0f32, |m, s| m.max(s.abs()))
             });
-            let (goal, k) = if level > duck.threshold {
+            let (goal, step) = if self.detect(level) > duck.threshold {
                 (floor, attack)
             } else {
                 (1.0, release)
             };
-            gain += (goal - gain) * k;
+            let delta = goal - self.duck_gain;
+            self.duck_gain += delta.clamp(-step, step);
             for role in &duck.targets {
                 if let Some(bus) = buses.get_mut(role.as_str()) {
                     for s in &mut bus[i * ch..(i + 1) * ch] {
-                        *s *= gain;
+                        *s *= self.duck_gain;
                     }
                 }
             }
         }
-        self.duck_gain = gain;
     }
 }
 

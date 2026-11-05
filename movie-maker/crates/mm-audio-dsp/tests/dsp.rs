@@ -119,6 +119,107 @@ fn 声が鳴ると_bgm_が下がり止むと戻る() {
     assert!(end > 0.45, "1 秒後には戻っている（{end}）");
 }
 
+/// 一定の値の入力。倍率をそのまま読み取れる。
+fn constant(value: f32, frames: usize) -> AudioBlock {
+    AudioBlock::from_samples(RATE, 2, vec![value; frames * 2]).expect("形は合う")
+}
+
+/// 声（`voice`）と BGM（一定の 1.0）を混ぜて、BGM にかかった倍率の列を返す。
+fn duck_gains(voice: AudioBlock, config: DuckingConfig) -> Vec<f32> {
+    let frames = voice.frames();
+    let voice_left: Vec<f32> = voice.samples.iter().step_by(2).copied().collect();
+    let mut m = mixer(MixerConfig {
+        ducking: Some(config),
+        ..MixerConfig::default()
+    });
+    let out = m
+        .mix(
+            &[
+                input(constant(1.0, frames), "bgm", 0.0, 0.0),
+                input(voice, "voice", 0.0, 0.0),
+            ],
+            frames,
+        )
+        .expect("混ぜる");
+    out.samples
+        .iter()
+        .step_by(2)
+        .zip(&voice_left)
+        .map(|(o, v)| o - v)
+        .collect()
+}
+
+#[test]
+fn ダッキングの検出はゼロ交差で解除されない() {
+    // しきい値 0.01 のすぐ上の低い声。波形が 0 を通る間も鳴っている扱いで、倍率は一定に保たれる。
+    let frames = RATE as usize / 2;
+    let gains = duck_gains(sine(80.0, 0.012, frames), DuckingConfig::voice_over_bgm());
+    let (lo, hi) = gains[frames / 2..]
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), g| (lo.min(*g), hi.max(*g)));
+    let floor = db_to_gain(-12.0);
+    assert!(
+        (lo - floor).abs() < 1e-3 && (hi - floor).abs() < 1e-3,
+        "{lo} {hi}"
+    );
+}
+
+#[test]
+fn アタックは下がりきるまでの時間() {
+    let config = DuckingConfig::voice_over_bgm(); // attack 20 ms、-12 dB
+    let floor = db_to_gain(-12.0);
+    let frames = RATE as usize / 10;
+    let gains = duck_gains(constant(0.5, frames), config);
+    let bgm = |i: usize| gains[i];
+    let half = (1.0 + floor) / 2.0;
+    assert!(
+        (bgm(480) - half).abs() < 0.02,
+        "10 ms で半分（{}）",
+        bgm(480)
+    );
+    assert!((bgm(960 + 10) - floor).abs() < 0.01, "20 ms で下がりきる");
+}
+
+#[test]
+fn 区間を分けて混ぜても一度に混ぜた結果と同じ() {
+    let config = MixerConfig {
+        ducking: Some(DuckingConfig::voice_over_bgm()),
+        ..MixerConfig::default()
+    };
+    let frames = 9_600;
+    let mut voice = AudioBlock::silence(RATE, 2, frames);
+    voice.samples[4_000..]
+        .copy_from_slice(&constant(0.5, frames - 2_000).samples[..frames * 2 - 4_000]);
+    let bgm = constant(0.5, frames);
+    let whole = mixer(config.clone())
+        .mix(
+            &[
+                input(bgm.clone(), "bgm", 0.0, 0.0),
+                input(voice.clone(), "voice", 0.0, 0.0),
+            ],
+            frames,
+        )
+        .expect("混ぜる");
+    let mut m = mixer(config);
+    let mut pieces = AudioBlock::silence(RATE, 2, 0);
+    for start in (0..frames).step_by(1_200) {
+        let part = |b: &AudioBlock, role: &str| {
+            let s = b.samples[start * 2..(start + 1_200) * 2].to_vec();
+            input(
+                AudioBlock::from_samples(RATE, 2, s).unwrap(),
+                role,
+                0.0,
+                0.0,
+            )
+        };
+        let out = m
+            .mix(&[part(&bgm, "bgm"), part(&voice, "voice")], 1_200)
+            .expect("混ぜる");
+        pieces.append(&out).expect("つなげる");
+    }
+    assert_eq!(whole.max_diff(&pieces), Some(0.0));
+}
+
 #[test]
 fn ダッキングは同じ入力で同じ出力() {
     let config = MixerConfig {
