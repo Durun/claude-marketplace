@@ -130,8 +130,8 @@ impl WgpuRenderer {
         layer: &Layer,
         temps: &mut Vec<u64>,
     ) -> Result<Option<Prepared>> {
-        let (kind, mut params) = evaluate(cx.nodes, layer, cx.t)?;
-        let transform = LayerTransform::take_from(&mut params);
+        let (kind, params) = evaluate(cx.nodes, layer, cx.t)?;
+        let transform = LayerTransform::from_doc(&layer.transform, cx.t);
         let image = if kind.id() == NESTED_KIND {
             self.nested_image(encoder, cx, layer, &params)?
         } else {

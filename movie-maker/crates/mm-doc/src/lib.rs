@@ -1,7 +1,9 @@
 //! 文書の形。縦の 1 本に要る最小（Project、Asset、Composition、Layer、Node、Param、RenderTarget）。
 //!
-//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde だけを持つ。
+//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde と版の移行を持つ。
 //! 文書に浮動小数の秒を書かず、時刻は全部 [`RationalTime`]。
+//!
+//! 古い版の JSON は [`load`]（[`migrate`]）で今の版に上げてから読む。
 
 use std::collections::BTreeMap;
 
@@ -13,7 +15,14 @@ use mm_types::{
 };
 
 /// 文書のスキーマの版。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// - v1: 最初の形。レイヤーの変形は動画オブジェクトのパラメータ `transform.*` に書いていた。
+/// - v2: `Layer.transform`（位置・拡大・回転・アンカー、キーフレームつき）。
+pub const SCHEMA_VERSION: u32 = 2;
+
+mod migrate;
+
+pub use migrate::{load, migrate};
 
 /// プロジェクト。成果物（レンダーターゲット）は 1:N。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -114,10 +123,45 @@ pub struct Layer {
     #[serde(rename = "out")]
     pub out_point: RationalTime,
     pub opacity: Param,
+    /// 位置・拡大・回転・アンカー。描画器が合成で掛ける（種類には渡さない）。
+    #[serde(default)]
+    pub transform: Transform,
     #[serde(default)]
     pub audio: Option<LayerAudio>,
     #[serde(default)]
     pub lock: bool,
+}
+
+/// レイヤーの変形。値はコンポジションの画素と度。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Transform {
+    /// 動かす量（Vec2）。
+    pub position: Param,
+    /// 倍率（Number か Vec2）。1 が等倍。
+    pub scale: Param,
+    /// 度。正が時計回り。
+    pub rotation: Param,
+    /// 回転と拡大の中心（Vec2）。`None` はレイヤーの絵の中心。
+    pub anchor: Option<Param>,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            position: Param::constant(ParamValue::Vec2([0.0, 0.0])),
+            scale: Param::constant(ParamValue::Number(1.0)),
+            rotation: Param::constant(ParamValue::Number(0.0)),
+            anchor: None,
+        }
+    }
+}
+
+impl Transform {
+    /// 恒等か。
+    pub fn is_identity(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl Layer {
@@ -261,6 +305,7 @@ mod tests {
                 in_point: RationalTime::ZERO,
                 out_point: RationalTime::seconds(2),
                 opacity: Param::constant(ParamValue::Number(1.0)),
+                transform: Transform::default(),
                 audio: None,
                 lock: false,
             }],

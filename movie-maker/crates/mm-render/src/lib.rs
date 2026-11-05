@@ -5,8 +5,8 @@
 //! - `WgpuGpu`: 口の `GpuHelper`。種類は `as_any` で降りて wgpu のテクスチャを使える。
 //! - 計測: `render.frame` などの CPU のスパンと、パスごとの GPU の時間（wgpu のタイムスタンプ）を
 //!   `mm-trace` に載せる。
-//!
-//! 文書の `Layer` に変形の欄が無い間は、レイヤーの種類のパラメータ `transform.*` を読む（[`transform`]）。
+//! - 変形は文書の `Layer.transform` を読む（[`transform`]）。入れ子（種類 `composition`）は描画器が
+//!   展開する。種類の口からは文書が見えないため、種類自身は透明を返す（[`NESTED_KIND`]）。
 
 mod audio;
 mod compose;

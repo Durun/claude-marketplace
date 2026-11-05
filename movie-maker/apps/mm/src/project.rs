@@ -10,7 +10,7 @@ use mm_types::{MmError, Result};
 pub fn load_project(path: &Path) -> Result<Project> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| MmError::NotFound(format!("プロジェクト {}: {e}", path.display())))?;
-    let mut project: Project = serde_json::from_str(&text)?;
+    let mut project = mm_doc::load(&text)?;
     let base = path.parent().unwrap_or(Path::new("."));
     for asset in &mut project.assets {
         asset.path = rebase(base, &asset.path);

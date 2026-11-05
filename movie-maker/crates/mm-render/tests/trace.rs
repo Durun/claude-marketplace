@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mm_doc::{Composition, Layer, Node, Param, Project};
+use mm_doc::{Composition, Layer, Node, Param, Project, Transform};
 use mm_node_api::Quality;
 use mm_nodes_basic::all_kinds;
 use mm_render::{GpuContext, WgpuRenderer};
@@ -24,6 +24,7 @@ fn project() -> Project {
         in_point: RationalTime::ZERO,
         out_point: RationalTime::seconds(2),
         opacity: Param::constant(ParamValue::Number(1.0)),
+        transform: Transform::default(),
         audio: None,
         lock: false,
     };
