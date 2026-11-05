@@ -8,21 +8,24 @@ use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_node_api::{
     AudioCx, FrameCx, FrameRef, GpuHelper, InputFrames, NoInputs, NodeKind, Quality, Services,
 };
-use mm_types::{Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange};
+use mm_types::{MmError, Params, RationalTime, Rect, Result, RgbaImage, Size, TimeRange};
 
 use crate::decode::{DecoderFrameSource, SampleDecoderFactory, SampleMedia};
 use crate::gpu::CpuGpu;
 
-/// 入力 0 に決まった絵を返す `InputFrames`。`is_identity` の検査に使う。
-pub struct ConstInputs(pub Arc<RgbaImage>);
+/// 入力ごとに決まった絵を返す `InputFrames`。時刻によらず同じ絵。
+pub struct ConstInputs(pub Vec<Arc<RgbaImage>>);
 
 impl InputFrames for ConstInputs {
-    fn frame(&mut self, _index: usize, _t: RationalTime) -> Result<FrameRef> {
-        Ok(FrameRef::Cpu(self.0.clone()))
+    fn frame(&mut self, index: usize, _t: RationalTime) -> Result<FrameRef> {
+        self.0
+            .get(index)
+            .map(|img| FrameRef::Cpu(img.clone()))
+            .ok_or_else(|| MmError::NotFound(format!("入力 {index}")))
     }
 
     fn len(&self) -> usize {
-        1
+        self.0.len()
     }
 }
 
@@ -36,6 +39,9 @@ pub struct NodeFixture {
     pub size: Size,
     /// 端の検査に使う長さ。
     pub duration: RationalTime,
+    /// 入力の映像。入力を見る効果の種類が渡す。空なら入力なしで描く。
+    /// 全部の検査（描画、端、`is_identity` の問い合わせ）で同じ入力を使う。
+    pub inputs: Vec<Arc<RgbaImage>>,
 }
 
 impl Default for NodeFixture {
@@ -45,6 +51,18 @@ impl Default for NodeFixture {
             footage: None,
             size: Size::new(64, 36),
             duration: RationalTime::seconds(2),
+            inputs: Vec::new(),
+        }
+    }
+}
+
+impl NodeFixture {
+    /// 検査に渡す入力。`inputs` が空なら入力なし。
+    fn input_frames(&self) -> Box<dyn InputFrames> {
+        if self.inputs.is_empty() {
+            Box::new(NoInputs)
+        } else {
+            Box::new(ConstInputs(self.inputs.clone()))
         }
     }
 }
@@ -113,7 +131,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn NodeKind>, fx: &NodeFixture) {
         .validate(&params)
         .expect("既定値はスキーマに合う");
     let mut h = Harness::new(fx.footage.as_ref().map(open_footage));
-    let mut no_inputs = NoInputs;
+    let mut inputs = fx.input_frames();
 
     let (base, rod) = h
         .render(
@@ -122,7 +140,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn NodeKind>, fx: &NodeFixture) {
             RationalTime::ZERO,
             fx.size,
             1.0,
-            &mut no_inputs,
+            inputs.as_mut(),
         )
         .expect("既定値で描ける");
     assert_eq!(base.size(), fx.size, "絵の大きさは cx.size");
@@ -147,9 +165,9 @@ fn check_traits(
     rod: Rect,
 ) {
     let traits = kind.traits();
-    let mut no_inputs = NoInputs;
+    let mut inputs = fx.input_frames();
     let mut render = |t: RationalTime, size: Size, scale: f32| {
-        h.render(kind, params, t, size, scale, &mut no_inputs)
+        h.render(kind, params, t, size, scale, inputs.as_mut())
             .expect("描ける")
     };
     if traits.deterministic {
@@ -170,19 +188,55 @@ fn check_traits(
             rod2.width,
             rod.width
         );
+        check_vector_content(base, &big);
     }
 }
 
+/// 描かれた範囲（不透明な画素の外接矩形）の縁が、2 倍の絵で 2 倍の位置に来ること。
+/// 大きさだけ合わせて同じ絵を引き伸ばした実装は、縁の位置でなく太さや位置がずれる。
+fn check_vector_content(base: &RgbaImage, big: &RgbaImage) {
+    let (Some(small), Some(large)) = (painted_bounds(base), painted_bounds(big)) else {
+        return;
+    };
+    for (s, l) in small.iter().zip(&large) {
+        assert!(
+            (i64::from(*l) - 2 * i64::from(*s)).abs() <= VECTOR_EDGE_TOLERANCE_PX,
+            "ベクターの縁は 2 倍の位置（{small:?} → {large:?}）"
+        );
+    }
+}
+
+/// 縁の位置の許容差（画素）。アンチエイリアスの 1 画素ぶんの揺れ。
+const VECTOR_EDGE_TOLERANCE_PX: i64 = 3;
+
+/// 不透明度が 0 でない画素の外接矩形 `[左, 上, 右, 下]`（右と下は含まない）。無ければ `None`。
+fn painted_bounds(image: &RgbaImage) -> Option<[u32; 4]> {
+    let mut bounds: Option<[u32; 4]> = None;
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            if image.pixel(x, y).a > 0.0 {
+                let b = bounds.get_or_insert([x, y, x + 1, y + 1]);
+                *b = [b[0].min(x), b[1].min(y), b[2].max(x + 1), b[3].max(y + 1)];
+            }
+        }
+    }
+    bounds
+}
+
 fn check_edges(h: &mut Harness, kind: &dyn NodeKind, params: &Params, fx: &NodeFixture) {
-    let mut no_inputs = NoInputs;
+    let mut inputs = fx.input_frames();
+    let beyond_end = fx
+        .duration
+        .checked_add(RationalTime::seconds(1))
+        .expect("表せる");
     for t in [
         RationalTime::ZERO,
         fx.duration,
         RationalTime::seconds(-1),
-        fx.duration + RationalTime::seconds(1),
+        beyond_end,
     ] {
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            h.render(kind, params, t, fx.size, 1.0, &mut no_inputs)
+            h.render(kind, params, t, fx.size, 1.0, inputs.as_mut())
                 .map(|_| ())
         }));
         assert!(result.is_ok(), "t = {t} で panic しない");
@@ -203,11 +257,12 @@ fn check_outside_rod(image: &RgbaImage, rod: Rect) {
     }
 }
 
+/// `is_identity` が真なら、同じ入力で描いた結果は入力 0 と同じ。問い合わせも描画も `fx.inputs`
+/// （空なら入力なし）で行うので、入力を見て決める種類も検査される。
 fn check_identity(h: &mut Harness, kind: &dyn NodeKind, params: &Params, fx: &NodeFixture) {
-    let input = Arc::new(RgbaImage::filled(fx.size, Rgba::new(0.2, 0.4, 0.6, 1.0)));
-    let mut inputs = ConstInputs(input.clone());
+    let mut inputs = fx.input_frames();
     let is_identity = {
-        let mut probe = NoInputs;
+        let mut probe = fx.input_frames();
         let cx = FrameCx {
             time: RationalTime::ZERO,
             params,
@@ -215,7 +270,7 @@ fn check_identity(h: &mut Harness, kind: &dyn NodeKind, params: &Params, fx: &No
             region: fx.size.to_rect(),
             scale: 1.0,
             quality: Quality::Full,
-            inputs: &mut probe,
+            inputs: probe.as_mut(),
             footage: None,
             source_time: RationalTime::ZERO,
             gpu: &mut h.gpu,
@@ -226,10 +281,20 @@ fn check_identity(h: &mut Harness, kind: &dyn NodeKind, params: &Params, fx: &No
         kind.is_identity(&cx)
     };
     if is_identity {
+        let input = fx.inputs.first().expect(
+            "入力を見ない種類が is_identity を真にするのは契約外。入力のある fixture で検査する",
+        );
         let (out, _) = h
-            .render(kind, params, RationalTime::ZERO, fx.size, 1.0, &mut inputs)
+            .render(
+                kind,
+                params,
+                RationalTime::ZERO,
+                fx.size,
+                1.0,
+                inputs.as_mut(),
+            )
             .expect("描ける");
-        assert_eq!(*out, *input, "is_identity なら入力と同じ");
+        assert_eq!(*out, **input, "is_identity なら入力と同じ");
     }
 }
 

@@ -184,7 +184,7 @@ impl WgpuRenderer {
             quality: cx.quality,
             inputs: &mut inputs,
             footage,
-            source_time: layer.to_source_time(cx.t),
+            source_time: layer.to_source_time(cx.t)?,
             gpu: &mut *gpu,
             services,
         };
@@ -229,7 +229,7 @@ impl WgpuRenderer {
         let nested = cx.project.composition(&id)?;
         let child = CompCx {
             comp: nested,
-            t: layer.to_source_time(cx.t),
+            t: layer.to_source_time(cx.t)?,
             size: scaled(Size::new(nested.width, nested.height), cx.comp_to_out()),
             depth: cx.depth + 1,
             ..*cx

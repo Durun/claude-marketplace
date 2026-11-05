@@ -39,8 +39,8 @@ impl WgpuRenderer {
             return Ok(None);
         }
         let source_range = TimeRange::new(
-            layer.to_source_time(overlap.start),
-            layer.to_source_time(overlap.end),
+            layer.to_source_time(overlap.start)?,
+            layer.to_source_time(overlap.end)?,
         )?;
         let footage = self.sources.footage_for(
             self.decoders.as_ref(),

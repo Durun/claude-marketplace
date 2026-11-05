@@ -117,6 +117,20 @@ impl WgpuGpu {
             .textures
             .get(&id)
             .ok_or_else(|| MmError::NotFound(format!("テクスチャ {id}")))?;
+        // 行の幅と画素のバイト数を FRAME_FORMAT 前提で計算するので、合わないものは読まない。
+        if texture.format() != FRAME_FORMAT
+            || texture.width() != size.width
+            || texture.height() != size.height
+        {
+            return Err(MmError::Unsupported(format!(
+                "読み戻せるのは {FRAME_FORMAT:?} の {}x{} だけ（テクスチャ {id} は {:?} の {}x{}）",
+                size.width,
+                size.height,
+                texture.format(),
+                texture.width(),
+                texture.height()
+            )));
+        }
         let _span = tracing::debug_span!("render.readback").entered();
         let padded_row = (size.width * BYTES_PER_PIXEL).div_ceil(ROW_ALIGN) * ROW_ALIGN;
         let buffer = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {

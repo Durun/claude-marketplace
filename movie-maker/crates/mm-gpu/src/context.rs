@@ -36,6 +36,8 @@ pub struct GpuContext {
     pub adapter: GpuAdapterId,
     /// タイムスタンプのクエリが使えるか。
     pub timestamps: bool,
+    /// 作るときに求められた任意の機能。`shared` が後の求めと照合する。
+    requested_features: wgpu::Features,
 }
 
 impl GpuContext {
@@ -51,16 +53,36 @@ impl GpuContext {
 
     /// プロセスで 1 つの文脈を共有する。Device の生成と破棄が並行すると Windows の
     /// ドライバが終了時に落ちることがあるため、テストと書き出しはこちらを使う。
-    /// 2 回目以降の `request` は無視する（最初に決めたアダプターを使う）。
+    /// 2 回目以降は、作ってあるものが `request` に合えばそれを返し、合わなければ `Err`。
+    /// アダプターは指定があるときだけ、機能の希望は常に照合する。
     pub fn shared(request: &GpuRequest) -> Result<Arc<Self>> {
         static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
         let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = slot.as_ref() {
+            ctx.check_compatible(request)?;
             return Ok(ctx.clone());
         }
         let ctx = Self::with(request)?;
         *slot = Some(ctx.clone());
         Ok(ctx)
+    }
+
+    fn check_compatible(&self, request: &GpuRequest) -> Result<()> {
+        if let Some(wanted) = &request.adapter {
+            if !self.adapter.matches(wanted) {
+                return Err(MmError::InvalidArgument(format!(
+                    "共有の GPU は {} だが {} を求められた",
+                    self.adapter.name, wanted.name
+                )));
+            }
+        }
+        if self.requested_features != request.optional_features {
+            return Err(MmError::InvalidArgument(format!(
+                "共有の GPU は機能 {:?} で作ってあり、{:?} を求められた",
+                self.requested_features, request.optional_features
+            )));
+        }
+        Ok(())
     }
 
     /// 選んだアダプターの名前。Program に出す。
@@ -87,6 +109,7 @@ impl GpuContext {
             queue,
             adapter: adapter_id(&adapter),
             timestamps,
+            requested_features: request.optional_features,
         }))
     }
 }
@@ -125,12 +148,22 @@ async fn pick_adapter(
     wanted: Option<&GpuAdapterId>,
 ) -> Result<wgpu::Adapter> {
     if let Some(wanted) = wanted {
-        return instance
+        // 保存した識別子の LUID は古いことがあるので、機種で絞ってから同じ回の LUID を優先する。
+        let mut same_model: Vec<_> = instance
             .enumerate_adapters(wgpu::Backends::PRIMARY)
             .await
             .into_iter()
-            .find(|a| adapter_id(a).matches(wanted))
-            .ok_or_else(|| MmError::Unsupported(format!("GPU {} が無い", wanted.name)));
+            .filter(|a| adapter_id(a).matches(wanted))
+            .collect();
+        let exact = same_model
+            .iter()
+            .position(|a| adapter_id(a).is_same_instance(wanted))
+            .unwrap_or(0);
+        return if same_model.is_empty() {
+            Err(MmError::Unsupported(format!("GPU {} が無い", wanted.name)))
+        } else {
+            Ok(same_model.swap_remove(exact))
+        };
     }
     instance
         .request_adapter(&wgpu::RequestAdapterOptions {

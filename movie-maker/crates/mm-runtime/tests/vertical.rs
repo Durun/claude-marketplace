@@ -19,7 +19,7 @@ fn 切った素材のコマが_in_点からの番号で出る() {
     let size = Size::new(media.size.width, media.size.height);
 
     for frame in [0i64, 1, 29, 59] {
-        let t = RationalTime::from_frames(frame, media.fps);
+        let t = RationalTime::from_frames(frame, media.fps).expect("表せる");
         let img = engine
             .render_frame(&project, &comp, t, size, Quality::Full)
             .expect("描ける");
@@ -56,7 +56,7 @@ fn 音は無音でなく長さが合う() {
     let media = SampleMedia::default();
     let (project, comp, _) = vertical_project(&media, &output_path("audio"));
     let mut engine = assemble(&RuntimeConfig::sample()).expect("組める");
-    let range = project.composition(&comp).unwrap().range();
+    let range = project.composition(&comp).unwrap().range().unwrap();
     let audio = engine
         .render_audio(&project, &comp, range)
         .expect("音が出る");

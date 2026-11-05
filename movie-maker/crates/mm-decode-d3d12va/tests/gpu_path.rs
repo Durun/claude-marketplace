@@ -28,7 +28,7 @@ fn コマは_gpu_の参照で返り_シーク先の番号が出る() {
     assert!(first.image.is_none() && first.gpu.is_some());
 
     let target = 90;
-    dec.seek(RationalTime::from_frames(target, fps))
+    dec.seek(RationalTime::from_frames(target, fps).unwrap())
         .expect("seek");
     let f = dec.next_frame().expect("next").expect("frame");
     assert_eq!(f.index, target);

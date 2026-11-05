@@ -34,7 +34,7 @@ fn cfr_の全コマで焼いた番号と番号と時刻が一致する() {
     for (i, f) in drain(dec.as_mut()).iter().enumerate() {
         assert_eq!(f.index, i as i64);
         assert_eq!(number(f), i as i64, "コマ {i} の焼いた番号");
-        assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps));
+        assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps).unwrap());
     }
 }
 
@@ -44,7 +44,8 @@ fn シーク後も_in_点から正しい番号が出る() {
     let fps = Rational::integer(30);
     // キーフレーム間隔 12 の前後、先頭、末尾、後戻りを混ぜる
     for target in [59, 0, 30, 31, 13, 12, 11, 45, 44, 1, 58, 24, 23, 25] {
-        dec.seek(RationalTime::from_frames(target, fps)).unwrap();
+        dec.seek(RationalTime::from_frames(target, fps).unwrap())
+            .unwrap();
         let f = dec.next_frame().unwrap().expect("コマがある");
         assert_eq!(f.index, target);
         assert_eq!(number(&f), target, "シーク先 {target} の焼いた番号");
@@ -60,8 +61,8 @@ fn 区間の復号は_in_点の番号から並ぶ() {
     let mut dec = open("cfr.mp4");
     let fps = Rational::integer(30);
     let range = TimeRange::new(
-        RationalTime::from_frames(20, fps),
-        RationalTime::from_frames(27, fps),
+        RationalTime::from_frames(20, fps).unwrap(),
+        RationalTime::from_frames(27, fps).unwrap(),
     )
     .unwrap();
     let frames = dec.decode_range(range).unwrap();
@@ -88,9 +89,9 @@ fn 分数の_fps_でも番号がずれない() {
     assert_eq!(frames.len(), 30);
     for (i, f) in frames.iter().enumerate() {
         assert_eq!(number(f), i as i64);
-        assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps));
+        assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps).unwrap());
     }
-    let t = RationalTime::from_frames(17, fps);
+    let t = RationalTime::from_frames(17, fps).unwrap();
     dec.seek(t).unwrap();
     assert_eq!(number(&dec.next_frame().unwrap().unwrap()), 17);
 }
@@ -118,7 +119,9 @@ fn vfr_は_pts_の索引を持ち番号がずれない() {
         dec.seek(t).unwrap();
         assert_eq!(number(&dec.next_frame().unwrap().unwrap()), target as i64);
         if target < 59 {
-            let just_before_next = info.pts_index[target + 1] - RationalTime::new(1, 1000).unwrap();
+            let just_before_next = info.pts_index[target + 1]
+                .checked_sub(RationalTime::new(1, 1000).unwrap())
+                .unwrap();
             dec.seek(just_before_next).unwrap();
             assert_eq!(number(&dec.next_frame().unwrap().unwrap()), target as i64);
         }

@@ -9,38 +9,53 @@ use crate::{Project, SCHEMA_VERSION};
 /// v1 の `transform.*` パラメータの前置き。
 const V1_TRANSFORM_PREFIX: &str = "transform.";
 
-/// JSON の文字列を読み、古い版なら今の版に上げる。
+/// 移行の始点（これより古い版は移行が無い）。
+const OLDEST_VERSION: u32 = 1;
+
+/// JSON の文字列を読み、古い版なら今の版に上げ、文書の不変条件（[`Project::validate`]）を確かめる。
 pub fn load(json: &str) -> Result<Project> {
     let value: Value = serde_json::from_str(json)?;
     let value = migrate(value)?;
-    Ok(serde_json::from_value(value)?)
+    let project: Project = serde_json::from_value(value)?;
+    project.validate()?;
+    Ok(project)
 }
 
-/// JSON の値を今の版に上げる。今の版より新しければ `Unsupported`。
+/// JSON の値を今の版に上げる。始点より古い版と、今の版より新しい版は `Unsupported`。
 pub fn migrate(mut value: Value) -> Result<Value> {
     let mut version = schema_version(&value)?;
-    while version < SCHEMA_VERSION {
-        match version {
-            1 => v1_to_v2(&mut value),
-            _ => unreachable!("版 {version} の移行は上で尽きる"),
-        }
-        version += 1;
-        value["schema_version"] = Value::from(version);
+    if version < OLDEST_VERSION {
+        return Err(MmError::Unsupported(format!(
+            "文書の版 {version} は古すぎる（移行できるのは {OLDEST_VERSION} 以降）"
+        )));
     }
     if version > SCHEMA_VERSION {
         return Err(MmError::Unsupported(format!(
             "文書の版 {version} はこのビルド（{SCHEMA_VERSION}）より新しい"
         )));
     }
+    while version < SCHEMA_VERSION {
+        match version {
+            1 => v1_to_v2(&mut value),
+            _ => {
+                return Err(MmError::Unsupported(format!(
+                    "文書の版 {version} からの移行が無い"
+                )))
+            }
+        }
+        version += 1;
+        value["schema_version"] = Value::from(version);
+    }
     Ok(value)
 }
 
 fn schema_version(value: &Value) -> Result<u32> {
-    value
+    let raw = value
         .get("schema_version")
         .and_then(Value::as_u64)
-        .map(|v| v as u32)
-        .ok_or_else(|| MmError::InvalidArgument("schema_version が無い".into()))
+        .ok_or_else(|| MmError::InvalidArgument("schema_version が無い".into()))?;
+    u32::try_from(raw)
+        .map_err(|_| MmError::InvalidArgument(format!("schema_version {raw} は u32 に収まらない")))
 }
 
 /// v1 → v2: レイヤーの種類のパラメータ `transform.*` を `Layer.transform` に移す。
@@ -130,5 +145,42 @@ mod tests {
     fn 新しすぎる版は断る() {
         let v = serde_json::json!({"schema_version": SCHEMA_VERSION + 1});
         assert!(matches!(migrate(v), Err(MmError::Unsupported(_))));
+    }
+
+    #[test]
+    fn 版_0_は_panic_せず断る() {
+        let json =
+            r#"{"schema_version": 0, "assets": [], "compositions": [], "render_targets": []}"#;
+        assert!(matches!(load(json), Err(MmError::Unsupported(_))));
+    }
+
+    #[test]
+    fn u32_に収まらない版は_1_に丸めず断る() {
+        let v = serde_json::json!({"schema_version": (1u64 << 32) + 1});
+        assert!(matches!(migrate(v), Err(MmError::InvalidArgument(_))));
+    }
+
+    fn doc_with_duration(num: i64) -> String {
+        format!(
+            r#"{{"schema_version": 2, "assets": [], "render_targets": [],
+              "compositions": [{{"id": "c", "width": 16, "height": 9,
+                "fps": {{"num": 30, "den": 1}}, "duration": {{"num": {num}, "den": 1}},
+                "layers": []}}]}}"#
+        )
+    }
+
+    #[test]
+    fn 長さが負のコンポジションは読み込みで断る() {
+        assert!(load(&doc_with_duration(1)).is_ok());
+        assert!(matches!(
+            load(&doc_with_duration(-1)),
+            Err(MmError::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn fps_が_0_の文書は読み込みで断る() {
+        let json = doc_with_duration(1).replace(r#""num": 30, "den": 1"#, r#""num": 30, "den": 0"#);
+        assert!(load(&json).is_err());
     }
 }

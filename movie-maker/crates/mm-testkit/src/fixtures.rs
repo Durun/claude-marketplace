@@ -88,7 +88,7 @@ fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalT
             .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
         start: RationalTime::ZERO,
         in_point,
-        out_point: in_point + duration,
+        out_point: in_point.checked_add(duration).expect("見本の長さは表せる"),
         opacity: Param::constant(ParamValue::Number(1.0)),
         transform: Transform::default(),
         audio: Some(LayerAudio {

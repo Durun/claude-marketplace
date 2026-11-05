@@ -291,7 +291,10 @@ pub fn footage_ref<'a>(
 
 /// 区間に入る音のコマ数。`floor(end * rate) - floor(start * rate)` で、隣の区間と重ならない。
 pub fn audio_frames_in(range: TimeRange, sample_rate: u32) -> usize {
-    let rate = mm_types::Rational::integer(sample_rate);
+    // サンプルレート 0 は音が無いのと同じ。
+    let Ok(rate) = mm_types::Rational::new(sample_rate, 1) else {
+        return 0;
+    };
     let n = range.end.frame_index(rate) - range.start.frame_index(rate);
     n.max(0) as usize
 }

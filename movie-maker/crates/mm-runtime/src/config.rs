@@ -37,6 +37,14 @@ impl Backend {
     }
 }
 
+impl Backend {
+    /// この実装が GPU の文脈を使うか。GPU で復号する実装（`d3d12va`、`cuvid`）を選べるようにしたら
+    /// ここに足す。
+    pub fn uses_gpu(self) -> bool {
+        matches!(self, Backend::Wgpu)
+    }
+}
+
 impl FromStr for Backend {
     type Err = MmError;
 
@@ -75,6 +83,11 @@ impl RuntimeConfig {
         Self::default()
     }
 
+    /// GPU の文脈を作る要る組み合わせか。描画器かデコーダーのどちらかが GPU を使うとき。
+    pub fn needs_gpu(&self) -> bool {
+        self.render.uses_gpu() || self.decode.uses_gpu()
+    }
+
     /// 段階 0 の本物の組み合わせ。描画は wgpu、文字は glyphon、音は dsp、
     /// デコードとエンコードは ffmpeg。色とキャッシュは本物がまだ無いので見本のまま。
     pub fn real() -> Self {
@@ -98,6 +111,20 @@ mod tests {
         assert_eq!("sample".parse::<Backend>().unwrap(), Backend::Sample);
         assert_eq!("ffmpeg".parse::<Backend>().unwrap(), Backend::Ffmpeg);
         assert!("nvenc".parse::<Backend>().is_err());
+    }
+
+    #[test]
+    fn gpu_の要否は描画器の選択で決まる() {
+        assert!(!RuntimeConfig::sample().needs_gpu());
+        assert!(RuntimeConfig::real().needs_gpu());
+        let decode_only = RuntimeConfig {
+            decode: Backend::Wgpu,
+            ..RuntimeConfig::sample()
+        };
+        assert!(
+            decode_only.needs_gpu(),
+            "デコーダーが GPU を使う選択でも文脈は要る"
+        );
     }
 
     #[test]

@@ -8,8 +8,16 @@ use mm_types::{MmError, Result};
 /// 文書を読む。素材と出力の相対パスは、文書のあるディレクトリを基準にする
 /// （どこから `mm` を呼んでも同じ素材を指すため）。
 pub fn load_project(path: &Path) -> Result<Project> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| MmError::NotFound(format!("プロジェクト {}: {e}", path.display())))?;
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        let kind = e.kind();
+        let detail = format!("プロジェクト {}: {e}", path.display());
+        // 無いことと読めないこと（権限、ディレクトリ、壊れた文字コード）を区別して返す。
+        if kind == std::io::ErrorKind::NotFound {
+            MmError::NotFound(detail)
+        } else {
+            MmError::Io(std::io::Error::new(kind, detail))
+        }
+    })?;
     let mut project = mm_doc::load(&text)?;
     let base = path.parent().unwrap_or(Path::new("."));
     for asset in &mut project.assets {
@@ -43,6 +51,16 @@ mod tests {
         assert!(project.assets[0].path.ends_with("cfr.mp4"));
         assert!(Path::new(&project.assets[0].path).starts_with(path.parent().unwrap()));
         assert_eq!(project.render_targets[0].codec, "h264");
+    }
+
+    #[test]
+    fn 読めないファイルは_not_found_に畳まず_io_で返す() {
+        // ディレクトリは存在するが文書としては読めない。
+        let dir = std::env::temp_dir().join(format!("mm_project_dir_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = load_project(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(matches!(result, Err(MmError::Io(_))), "{result:?}");
     }
 
     #[test]

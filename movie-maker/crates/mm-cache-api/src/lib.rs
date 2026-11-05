@@ -33,10 +33,12 @@ pub enum CacheKind {
 pub struct ContentHash(pub String);
 
 impl ContentHash {
-    /// スパンのフィールドに付ける先頭 8 桁。
+    /// スパンのフィールドに付ける先頭 8 文字。16 進以外の文字が入っていても文字の途中では切らない。
     pub fn short(&self) -> &str {
-        let end = self.0.len().min(8);
-        &self.0[..end]
+        match self.0.char_indices().nth(8) {
+            Some((end, _)) => &self.0[..end],
+            None => &self.0,
+        }
     }
 }
 
@@ -75,4 +77,21 @@ pub trait CacheStore: Send + Sync {
     fn limit_bytes(&self) -> Option<u64>;
     /// 全部消す。
     fn clear(&self) -> Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_は文字の途中で切らない() {
+        assert_eq!(ContentHash("0123456789".into()).short(), "01234567");
+        assert_eq!(ContentHash("abc".into()).short(), "abc");
+        assert_eq!(ContentHash(String::new()).short(), "");
+        // 1 文字 3 バイトの文字が 8 文字を超えて並んでも panic しない。
+        assert_eq!(
+            ContentHash("あいうえおかきくけこ".into()).short(),
+            "あいうえおかきく"
+        );
+    }
 }

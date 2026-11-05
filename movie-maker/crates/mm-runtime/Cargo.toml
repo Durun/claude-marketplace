@@ -18,6 +18,7 @@ mm-audio-api = { workspace = true }
 mm-text-api = { workspace = true }
 mm-cache-api = { workspace = true }
 mm-testkit = { workspace = true }
+mm-gpu = { workspace = true }
 mm-render = { workspace = true }
 mm-nodes-basic = { workspace = true }
 mm-text-glyphon = { workspace = true }

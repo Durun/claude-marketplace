@@ -114,7 +114,7 @@ flowchart LR
 | 生で見る（開発中） | 同上をリアルタイムに | `tracing-tracy` の層で Tracy に送る（`ondemand` で、Tracy がつながるまで集めない。`only-localhost` で外に出さない）[41]。Tracy はスレッドをまたぐスパンと順序の入れ違うスパンを扱えないので、非同期のスパンは Chrome の形で見る [41] | Tracy のゾーン 1 つは数十 ns〔推。公式の現行の数は未確認〕 |
 | ETW（Windows で OS の中まで見る） | 同上を ETW に | `tracing-etw` の層 [54]。Windows Performance Analyzer で OS のスケジューラや DPC と並べて見る | 詳しくと同じ |
 
-- 切り替えは `mm-trace` の 1 つの状態（`TraceLevel::{Light, Detailed, Tracy, Etw}`）。`Program` の右上の印、`mm trace start/stop`、環境変数 `MM_TRACE`、設定ファイルで変える。`Layer` は `Option` で積み、実行時に有効無効を変える [39]。
+- 切り替えは `mm-trace` の 1 つの状態（段階 1 で足す。`Light`、`Detailed`、`Tracy`、`Etw`）。`Program` の右上の印、`mm trace start/stop`、環境変数 `MM_TRACE`、設定ファイルで変える。`Layer` は `Option` で積み、実行時に有効無効を変える [39]。
 - 詳しくの自動の 30 秒は、予算を超えたスパンが出たときに始め、その間に 1 回しか始めない（1 時間あたり上限 6 回）。
 - 形は Chrome の trace event に寄せる。Perfetto の Trace Processor が SQL で読め [43]、Claude が `mm trace query` で同じ SQL を打てる。Perfetto のプロトバッファ（`tracing-perfetto` [52]）は Chrome の形で足りなくなったら考える。
 

@@ -285,7 +285,7 @@ fn 区間を描いてもテクスチャが溜まらない() {
     let before = r.texture_count();
     let range = TimeRange::new(
         RationalTime::ZERO,
-        RationalTime::from_frames(30, Rational::integer(30)),
+        RationalTime::from_frames(30, Rational::integer(30)).expect("表せる"),
     )
     .expect("範囲");
     let mut seen = 0;
