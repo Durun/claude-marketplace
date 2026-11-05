@@ -5,7 +5,8 @@ import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { CdFeatures, CdMeta, CdToolName, CdLogEntry, CdRipItem, CdRipSettings, CdRipView, CdTool } from '../shared/types.ts';
 import { appendAdded, type ExportTools, exportDisc } from './cdripExport.ts';
-import { fetchCover, matchTrackCount, skeletonMeta, validateMeta } from './cdripResearch.ts';
+import { fetchCover, matchTrackCount, parseResearch, researchPrompt, researchSchema, skeletonMeta, validateMeta } from './cdripResearch.ts';
+import { askResearcher } from './haiku.ts';
 import { applyList, nextWaiting, parseList, recover, transition } from './cdripQueue.ts';
 import { cyanripArgs, listFlacs, type ParsedRip, type RipResult, startRip, trackSamples } from './cdripRip.ts';
 import { detectTools, installTool, knownOffset, resolveTool, TOOL_NAMES } from './cdripTools.ts';
@@ -190,6 +191,8 @@ export const initCdRip = (): Promise<void> => {
     const storedQueue = readJson<Queue>(QUEUE_FILE);
     if (storedQueue) queue = { accepting: !!storedQueue.accepting, items: recover(storedQueue.items ?? [], probeStage, Date.now()) };
     await refreshTools();
+    // 情報収集の途中で止まった行は、頼み直す。
+    for (const i of queue.items) if (i.status === 'researching') startResearch(i.id);
     if (queue.accepting) ensureWatching();
   })();
   return ready;
@@ -366,11 +369,16 @@ const finishRip = async (item: CdRipItem, dir: string, result: RipResult): Promi
     // 曲の長さの確定値は、取り込んだ FLAC のサンプル数から求める。
     const metaflac = resolveTool('metaflac');
     const durations = metaflac ? (await trackSamples(metaflac, flacs)).map((n) => Math.round((n / CD_SAMPLE_RATE) * 1000) / 1000) : result.parsed.durations;
+    const ai = current().features.ai;
     updateItem(item.id, (i) => {
       const disc = { ...(i.disc ?? { tracks }), tracks, durations };
       const meta = i.meta ?? skeletonMeta(disc);
-      return transition({ ...i, disc, meta, ...(matchTrackCount(meta, tracks) ? { attention: matchTrackCount(meta, tracks) } : {}) }, { type: 'ripped', researched: true }, Date.now());
+      const next = transition({ ...i, disc, meta }, { type: 'ripped', researched: !ai || !!i.research?.finishedAt }, Date.now());
+      // 曲数の不一致と、取り込み中に届いた情報収集の注意は、状態が変わっても残す。
+      const attention = matchTrackCount(meta, tracks) ?? i.attention;
+      return attention ? { ...next, attention } : next;
     });
+    if (ai && !queue.items.find((i) => i.id === item.id)?.research?.startedAt) startResearch(item.id);
     logCdRip('rip', `取り込みを終えました（${tracks} 曲）`, item.id);
   }
   await eject();
@@ -384,6 +392,8 @@ const applyParsed = (id: string, p: ParsedRip): void => {
     if (JSON.stringify([disc, progress]) === JSON.stringify([i.disc, i.progress])) return i;
     return { ...i, disc, progress, updatedAt: Date.now() };
   });
+  // 曲数が分かった時点で、取り込みを待たずに情報収集を始める。
+  if (p.tracks !== undefined && current().features.ai && !queue.items.find((i) => i.id === id)?.research) startResearch(id);
 };
 
 const ripNext = async (item: CdRipItem): Promise<void> => {
@@ -521,6 +531,7 @@ export const exportCdItem = async (id: string): Promise<void> => {
   const item = findItem(id);
   if (item.status !== 'review') throw new CdRipError(409, `${item.status} の行は書き出せません`);
   if (!item.meta) throw new CdRipError(400, '曲情報がありません');
+  if (pendingResearch.has(id)) throw new CdRipError(409, 'AI が情報を集めています。終わってから書き出してください');
   const mismatch = matchTrackCount(item.meta, item.disc?.tracks);
   if (mismatch) throw new CdRipError(400, mismatch);
   const { features } = current();
@@ -557,4 +568,78 @@ export const sendCdCover = (res: ServerResponse, id: string): void => {
   if (!file || !fs.existsSync(file)) throw new CdRipError(404, 'ジャケットがありません');
   const ext = path.extname(file).slice(1).toLowerCase();
   res.writeHead(200, { 'content-type': `image/${ext === 'jpg' ? 'jpeg' : ext}`, 'cache-control': 'no-cache' }).end(fs.readFileSync(file));
+};
+
+// ─── AI の情報収集 ──────────────────────────────────────────────────────
+
+// 同時に動かす情報収集は、行ごとに 1 つ。同じ行を重ねて頼まない。
+const pendingResearch = new Map<string, Promise<void>>();
+
+const writeCover = (id: string, image: { bytes: Buffer; ext: string }): string => {
+  const dir = path.join(current().stageDir, id);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const old of fs.readdirSync(dir).filter((f) => /^cover\./.test(f))) fs.rmSync(path.join(dir, old), { force: true });
+  fs.writeFileSync(path.join(dir, `cover.${image.ext}`), image.bytes);
+  return `cover.${image.ext}`;
+};
+
+/** 答えを行に反映する。取り込み中なら状態は変えず、情報収集中なら確認待ちに進める。確信が高く曲数が合えば、設定しだいで自動で書き出す。 */
+const applyResearch = (id: string, result: { meta?: CdMeta; error?: string; coverError?: string }): void => {
+  const now = Date.now();
+  updateItem(id, (i) => {
+    const mismatch = result.meta ? matchTrackCount(result.meta, i.disc?.tracks) : undefined;
+    const attention = result.error ? `AI の情報収集に失敗しました: ${result.error}` : (mismatch ?? result.coverError);
+    const research = { ...(i.research ?? { startedAt: now, sources: [] }), finishedAt: now, confidence: result.meta?.confidence, sources: result.meta?.sources ?? [], notes: result.meta?.notes, error: result.error };
+    const next: CdRipItem = { ...i, research, meta: result.meta ?? i.meta, updatedAt: now };
+    if (i.status === 'ripping' || i.status === 'researching') return transition(next, { type: 'researched', attention }, now);
+    const { attention: _old, ...rest } = next;
+    return attention ? { ...rest, attention } : rest;
+  });
+  const item = queue.items.find((i) => i.id === id);
+  if (item?.status === 'review' && !item.attention && item.meta?.confidence === 'high' && current().features.autoExport) {
+    exportCdItem(id).catch((e: unknown) => logCdRip('export', `自動の書き出しを始められません: ${(e as Error).message}`, id));
+  }
+};
+
+/** sonnet に曲情報とジャケットを集めさせる。取り込みと並行して動く。 */
+const startResearch = (id: string, retry?: { instruction?: string }): void => {
+  if (pendingResearch.has(id)) return;
+  const s = current();
+  const item = findItem(id);
+  const dir = path.join(s.stageDir, id, 'research');
+  fs.mkdirSync(dir, { recursive: true });
+  updateItem(id, (i) => ({ ...i, research: { startedAt: Date.now(), sources: [], ...(retry?.instruction ? { retryHint: retry.instruction } : {}) }, updatedAt: Date.now() }));
+  logCdRip('research', `情報収集を始めます: ${item.hint}`, id);
+  const prompt = researchPrompt({ hint: item.hint, group: item.group, disc: item.disc, video: s.features.aiVideo, ...(retry ? { retry: { instruction: retry.instruction, previous: item.meta } } : {}) });
+  const task = (async () => {
+    try {
+      const meta = parseResearch(await askResearcher(dir, prompt, researchSchema(), { video: s.features.aiVideo }));
+      let coverError: string | undefined;
+      if (meta.coverUrl) {
+        try {
+          meta.cover = writeCover(id, await fetchCover(meta.coverUrl));
+        } catch (e) {
+          coverError = `ジャケットを取り込めませんでした: ${(e as Error).message}。URL で差し替えてください`;
+        }
+      }
+      applyResearch(id, { meta, coverError });
+      logCdRip('research', `情報収集を終えました: ${meta.circle} / ${meta.album}（確信 ${meta.confidence ?? '不明'}）`, id);
+    } catch (e) {
+      applyResearch(id, { error: (e as Error).message.split('\n')[0] });
+      logCdRip('research', `情報収集に失敗しました: ${(e as Error).message.split('\n')[0]}`, id);
+    } finally {
+      pendingResearch.delete(id);
+    }
+  })();
+  pendingResearch.set(id, task);
+};
+
+/** AI に、人間の指示を添えてやり直させる。 */
+export const retryCdResearch = async (id: string, body: unknown): Promise<void> => {
+  await initCdRip();
+  const item = findItem(id);
+  if (!['review', 'researching'].includes(item.status)) throw new CdRipError(409, `${item.status} の行は AI にやり直させられません`);
+  if (pendingResearch.has(id)) throw new CdRipError(409, 'AI が情報を集めています');
+  const hint = (body as { hint?: unknown } | undefined)?.hint;
+  startResearch(id, { instruction: typeof hint === 'string' && hint.trim() ? hint.trim() : undefined });
 };

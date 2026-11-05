@@ -82,6 +82,7 @@ export const api = {
   cdripInstall: (tool: string) => postJson<{ message: string }>(`/api/cdrip/tools/${seg(tool)}/install`),
   cdripItem: (id: string, action: 'skip' | 'retry' | 'abort') => postJson(`/api/cdrip/items/${seg(id)}/${action}`),
   cdripMeta: (id: string, meta: CdMeta) => postJson(`/api/cdrip/items/${seg(id)}/meta`, { meta }),
+  cdripResearch: (id: string, hint: string) => postJson(`/api/cdrip/items/${seg(id)}/research`, { hint }),
   cdripExport: (id: string) => postJson(`/api/cdrip/items/${seg(id)}/export`),
   cdripCover: (id: string, url: string) => postJson(`/api/cdrip/items/${seg(id)}/cover`, { url }),
   cdripCoverUrl: (id: string, v: number) => `/api/cdrip/items/${seg(id)}/cover?v=${v}`,

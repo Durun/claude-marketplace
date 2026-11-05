@@ -1948,3 +1948,7 @@ table.data { width: 100%; border-collapse: collapse; }
 .cdrip-tracks .input { width: 100%; }
 .cdrip-tracks tr.is-bad td { background: color-mix(in srgb, var(--critical) 18%, transparent); }
 .cdrip-duration { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cdrip-research { display: flex; flex-direction: column; gap: 2px; }
+.cdrip-research a { margin-left: 6px; }
+.cdrip-redo { display: flex; gap: 6px; margin: 4px 0; }
+.cdrip-redo .input { flex: 1; }

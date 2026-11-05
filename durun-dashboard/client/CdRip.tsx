@@ -273,6 +273,37 @@ const Cover = ({ item, editable }: { item: CdRipItem; editable: boolean }) => {
   );
 };
 
+/** AI の情報収集。確信と出典と迷った点を見せ、指示を添えてやり直させる。 */
+const Research = ({ item }: { item: CdRipItem }) => {
+  const [hint, setHint] = useState('');
+  const r = item.research;
+  const running = !!r && !r.finishedAt;
+  const redo = item.status === 'review' || item.status === 'researching';
+  return (
+    <div class="cdrip-research">
+      {running && <p class="fl-note">AI が曲情報とジャケットを集めています…</p>}
+      {r?.finishedAt && (
+        <p class="fl-note">
+          AI の確信: {r.confidence ?? '不明'}
+          {r.sources.length ? ' / 出典: ' : ''}
+          {r.sources.map((u, k) => (
+            <a key={u} href={u} target="_blank" rel="noreferrer noopener">{k + 1}</a>
+          ))}
+        </p>
+      )}
+      {r?.notes && <p class="fl-note">{r.notes}</p>}
+      {redo && (
+        <div class="cdrip-redo">
+          <input class="input input-sm" value={hint} placeholder="AI へのヒント（例: Bandcamp の URL、正しいアルバム名）" onInput={(e) => setHint(e.currentTarget.value)} />
+          <button class="btn btn-sm" disabled={running} onClick={() => void attempt('AI のやり直し', () => api.cdripResearch(item.id, hint)).then(() => setHint(''))}>
+            AI にやり直させる
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Detail = ({ item }: { item?: CdRipItem }) => {
   if (!item) return <Empty>左の行を選ぶと、詳細を出します。</Empty>;
   const act = (label: string, action: 'skip' | 'retry' | 'abort') => void attempt(label, () => api.cdripItem(item.id, action));
@@ -282,6 +313,7 @@ const Detail = ({ item }: { item?: CdRipItem }) => {
       <p class="fl-note">{item.hint}{item.group ? `（${item.group}）` : ''}</p>
       <p>{glyphOf(item)} {statusText(item)}</p>
       {item.attention && <p class="fl-warn" role="alert">{item.attention}</p>}
+      <Research item={item} />
       {item.meta && <MetaForm key={`${item.id}:${JSON.stringify(item.meta)}`} item={item} />}
       {item.exported && (
         <details>

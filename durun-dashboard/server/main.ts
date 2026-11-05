@@ -50,7 +50,7 @@ import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
-import { abortCdItem, CdRipError, ejectCd, exportCdItem, saveCdMeta, sendCdCover, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
+import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
@@ -1261,6 +1261,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/cdrip\/tools\/([\w-]+)\/install$/, ([, name = '']) => installCdTool(name), 10 * 60_000],
   [/^\/api\/cdrip\/items\/([\w-]+)\/(skip|retry|abort)$/, ([, id = '', action], _) => ({ skip: skipCdItem, retry: retryCdItem, abort: abortCdItem })[action as 'skip' | 'retry' | 'abort'](id)],
   [/^\/api\/cdrip\/items\/([\w-]+)\/meta$/, ([, id = ''], b) => saveCdMeta(id, b)],
+  [/^\/api\/cdrip\/items\/([\w-]+)\/research$/, ([, id = ''], b) => retryCdResearch(id, b)],
   [/^\/api\/cdrip\/items\/([\w-]+)\/export$/, ([, id = '']) => exportCdItem(id)],
   [/^\/api\/cdrip\/items\/([\w-]+)\/cover$/, ([, id = ''], b) => setCdCover(id, b), WEB_API_MS],
   [/^\/api\/cdrip\/eject$/, () => ejectCd(), WEB_API_MS],
