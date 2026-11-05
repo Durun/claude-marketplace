@@ -100,7 +100,8 @@ flowchart TB
 | 音 | cpal、自前の DSP、`ebur128` |
 | 保存 | serde の JSON、`ops.jsonl`、rusqlite の索引、プロジェクトの配下の `cache/` |
 | クレートの構成 | Cargo のワークスペース（`crates/*`、`workspace.dependencies` で版を共有 [36]）。口のクレート `mm-*-api` と実装を分け、`mm-runtime` で組み立てる |
-| テスト | `cargo test`、proptest、`node --test` |
+| テスト | cargo-nextest、proptest、insta、divan、cargo-fuzz、Playwright（WebView2 を CDP で）。層は[テスト](11-testing.md) |
+| 計装 | `tracing` のスパンを全クレートで。常時は `metrics.jsonl`、詳しくは Chrome の trace event（Perfetto UI）、生で見るときは Tracy。GPU は wgpu のタイムスタンプ（[計装](17-instrumentation.md)） |
 | Claude の入口 | `mm`（CLI）、HTTP（axum）、MCP |
 
 

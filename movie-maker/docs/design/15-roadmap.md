@@ -2,9 +2,9 @@
 
 | 段階 | 中身 | 終わりの条件 | 並行に進められる話題 |
 |---|---|---|---|
-| 0 | 難所の試作（下）と、縦の 1 本: 素材 1 本を切って文字を載せ、音を付けて書き出す。口のクレートの最初の版と `mm-testkit` の見本の実装 | 難所の数字と可否がこの設計書に戻っている。書き出した MP4 が再生できる。口が固定されている | 難所は 5 つとも独立（窓、CEF、NVDEC、subsecond、OCIO）。縦の 1 本は見本の実装で先に通す |
+| 0 | 難所の試作（下）と、縦の 1 本: 素材 1 本を切って文字を載せ、音を付けて書き出す。口のクレートの最初の版と `mm-testkit` の見本の実装。`mm-trace` の最初の版（スパンの決まり、`metrics.jsonl`、Chrome の形の書き出し、wgpu のタイムスタンプ）と `mm perf run` の `startup` と `export` の場面。難所の数字は全部この計装で取る | 難所の数字と可否がこの設計書に戻っている（[計装の予算の表](17-instrumentation.md#予算の表)の〔推〕が実測に置き換わっている）。書き出した MP4 が再生できる。口が固定されている | 難所は 5 つとも独立（窓、CEF、NVDEC、subsecond、OCIO）。縦の 1 本は見本の実装で先に通す。`mm-trace` は基礎なので最初に |
 | 1 | 文書のスキーマ、パラメータとキーフレーム、命令（逆命令、`touches`、トランザクション）、保存と復旧、CLI | 命令の性質テストと移行テストが通る。落とした後に復旧できる | 文書と命令 ‖ デコード（d3d12va と cuvid を契約テストで） ‖ 色（OCIO の bindgen） ‖ 文字（glyphon） ‖ 音（DSP） ‖ `ui/theme` と `tasks` パネル |
-| 2 | 描画器（`footage`、`solid`、`image`、`composition`、`sequence`、`text`、`shader.wgsl`、`color.*`）、OCIO、ミキサー、プレビュー、コマのキャッシュ | 入れ子のコンポジションを窓で通して再生できる。見本の絵のテストが通る | 描画器と `mm-nodes-basic` ‖ `mm-cache-fs` ‖ `mm-ui-wgpu` ‖ 取り込み（`mm-ingest`、`tools/`） ‖ `Inspector`（スキーマから作る所） |
+| 2 | 描画器（`footage`、`solid`、`image`、`composition`、`sequence`、`text`、`shader.wgsl`、`color.*`）、OCIO、ミキサー、プレビュー、コマのキャッシュ。`mm perf` の `playback` と `scrub`、WebView の時計の補正、予算の自動の起票 | 入れ子のコンポジションを窓で通して再生できる。見本の絵のテストが通る。性能の回帰のゲートが CI で動いている | 描画器と `mm-nodes-basic` ‖ `mm-cache-fs` ‖ `mm-ui-wgpu` ‖ 取り込み（`mm-ingest`、`tools/`） ‖ `Inspector`（スキーマから作る所） |
 | 3 | `Media`、`Story`、`Source`、`Timeline` と取り込み | 長い素材から話題を切り出して並べ、そのまま再生できる | 各パネルは別々（`story`、`media`、`Timeline`） ‖ 書き出し（`mm-export`） ‖ `mm-serve` |
 | 4 | `Inspector`、`Graph`、`Mixer`、`Deliver`、書き出し（並行、音、ラウドネス、字幕、チャプター、ProRes）、本編とショートの参照 | 1 つのプロジェクトから本編とショートを書き出せ、プレビューと一致する | パネルごと ‖ エンコード（nvenc と ffmpeg） ‖ `mm-host-cef`（段階 6 の準備） |
 | 5 | `Review`、MCP と対応のまとまり、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` の写し） ‖ `packs/vlog` |

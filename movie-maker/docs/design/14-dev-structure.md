@@ -13,6 +13,8 @@ flowchart BT
     eval[mm-eval<br>パラメータの評価・時間の写像・sequence の配置]
     ops[mm-ops<br>命令・逆命令・touches・トランザクション]
     store[mm-store<br>保存・ops.jsonl・索引]
+    trace[mm-trace<br>スパンの決まり・カウンタ・出力の層]
+    trace --> types
     doc --> types
     eval --> doc
     ops --> doc
@@ -65,11 +67,12 @@ flowchart BT
   IMPL --> API
   runtime --> IMPL
   testkit[mm-testkit<br>見本・契約テスト・見本の絵] --> API
+  bench[mm-bench<br>ベンチと perf の場面] --> runtime
 ```
 
 図は矢印の元が先に依存する。規則は 4 つ。
 
-1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。
+1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の層だけを持つ。実装と組み立てはこれを使ってスパンを置き、口のクレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. 口は基礎だけに依存する。口と口の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
 3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。
 4. 実装を選ぶのは `mm-runtime` だけ。入口（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
@@ -88,6 +91,7 @@ movie-maker/
     mm-eval/            時刻 t でのパラメータの値、キーフレームの補間、時間の写像、sequence のカットの配置（純関数）
     mm-ops/             命令（1 命令 1 ファイル）、検証・適用・逆命令・touches、トランザクション、ops.jsonl の記録
     mm-store/           プロジェクトのディレクトリの読み書き、スナップショット、復旧、SQLite の索引
+    mm-trace/           計装。スパンの決まり（名前、レベル、フィールド）、counter!/gauge!、出力の層（metrics.jsonl、Chrome の trace、Tracy、ETW）、時計の補正、負担の見張り、JSON Schema。依存は tracing と tracing-subscriber だけ
     mm-node-api/        NodeKind、FrameCx、AudioCx、Traits、FrameRef、GPU のヘルパーのトレイト
     mm-render-api/      Renderer（コンポジションと t からコマ）、Scheduler、コマのキャッシュのキー
     mm-decode-api/      Decoder（開く、シーク、コマをテクスチャか CPU で）、Encoder、FrameSource
@@ -124,7 +128,10 @@ movie-maker/
     mm-ui-layout/       wgpu の面の計算（端のつまみ、スナップ、範囲）。純関数
     mm-ui-wgpu/         Program、Timeline、Graph、メーターの描画と入力
     mm-improve/         自動の改善の回（worktree、claude -p、検査、取り込み）
-    mm-testkit/         見本のプロジェクト、見本の素材の生成、契約テストの本体、見本の絵の比較
+    mm-testkit/         見本のプロジェクト、見本の素材の生成、契約テストの本体、見本の絵の比較、gpu_contract!、soak の実行ファイル
+    mm-bench/           性能。divan のベンチ（基礎の層）と、mm perf run の場面（playback、scrub、export、startup）。結果の比較と履歴は mm-trace の形で
+  fuzz/                 cargo-fuzz の目標（文書、ops.jsonl、付属ファイル、字幕、OTIO、壊れた動画）と corpus/
+  xtask/                開発の道具（golden-update、perf の履歴の整理）
   apps/
     movie-maker/        Tauri のアプリ。窓の組み立て、子 HWND、IPC
     mm/                 CLI（render、frame、op、ingest、serve）
@@ -143,7 +150,7 @@ movie-maker/
   tools/                言語を問わない外の道具（文字起こしの faster-whisper など）。mm-ingest-api の付属ファイルを書く
   packs/
     vlog/               DTM_Vlog のパック（マクロ、テンプレート、ダッキングの設定）
-  fixtures/             見本の素材（短い動画、音、画像）、見本のプロジェクト、見本の絵（裏ごと）
+  fixtures/             見本の素材（media/、media/broken/）、版ごとの文書（doc/vN/）、見本のプロジェクト（projects/）、見本の絵（golden/<裏>/）、音の見本（audio/）、ep03 の再現（ep03/）。作り方は Makefile（[テスト](11-testing.md#見本の素材)）
   docs/
     design/             設計書（話題ごとのファイル）
     rfcs/               口の変更の提案（NNNN-<題>.md）
@@ -194,12 +201,13 @@ movie-maker/
 | UI（各パネル） | `ui/panels/<パネル>/` | ほかのパネル、`ui/sdk` |
 | Claude の入口 | `crates/mm-serve`、`apps/mm` | |
 | 自動の改善 | `crates/mm-improve` | |
-| 見本 | `crates/mm-testkit`、`fixtures/` | |
+| 見本とベンチ | `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/` | |
+| 計装 | `crates/mm-trace`、`xtask/` | ほかのクレートのスパンの名前（名前は各話題が付け、`mm-trace` は決まりだけ持つ） |
 | 口と組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`docs/` | |
 
 - 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は統合の担当だけが書く。話題の worktree が外のクレートを足したいときは、PR に「`workspace.dependencies` に X を足す」と書き、統合の担当が足す。
 - 2 つ以上のエージェントが同じリポジトリを書くときは、各々を別の worktree に置く（この表の 1 行ずつ）。同じ話題を 2 人で書かない。
-- CI は、変えたクレートとそれに依存するクレートだけをテストする（`cargo test -p <crate>` と、依存の逆引き）。口を変えた PR は全部を回す。
+- CI は、変えたクレートとそれに依存するクレートだけをテストする（`cargo nextest run -p <crate>` と、依存の逆引き）。口を変えた PR は全部を回す。夜間は全部と、実機の GPU、性能、耐久、ファズ（[テスト](11-testing.md#層の一覧)）。
 
 ## 自動の改善の領域
 
@@ -210,7 +218,8 @@ movie-maker/
 | `ui/panels/*`、`ui/theme` | 書いて取り込む（検査が通れば） | 画面の直し。esbuild の束ね直しとリロードだけで反映 |
 | `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 命令の追加と直し、配置の計算。性質テストが守る |
 | `crates/mm-nodes-*`、`mm-text-*`、`mm-color-lut`、`mm-audio-dsp` | 書いて取り込む | 種類の追加、文字と色と音の実装。契約テストと見本の絵が守る |
-| `crates/mm-testkit`、`fixtures/`、`packs/`、`tools/` | 書いて取り込む | 見本とパックと外の道具 |
+| `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | 見本とベンチとパックと外の道具。見本の絵（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
+| `crates/mm-trace` | PR までで止める | 計装の決まりと出力の形。変えると比較の相手が変わる |
 | `crates/mm-*-api`、`mm-types`、`mm-doc`（スキーマの移行）、`mm-runtime` | PR までで止める | 口の変更、文書の形、組み立て。RFC が要る |
 | `crates/mm-render`、`mm-decode-*`、`mm-encode-*`、`mm-host-*`、`mm-color-ocio`、`mm-export` | PR までで止める | GPU と unsafe な裏、別プロセス、書き出しの一致。見本の絵で機械が検査しても人が見る |
 | `crates/mm-improve`、`mm-serve`、`apps/` | PR までで止める | 自分自身と入口の変更 |

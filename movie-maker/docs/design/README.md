@@ -58,11 +58,12 @@
 | [08-ui.md](08-ui.md) | UI のパネル、優先度と XP 風の採り方 |
 | [09-ingest-storage.md](09-ingest-storage.md) | 取り込み、保存の形 |
 | [10-review-improve.md](10-review-improve.md) | レビューと Claude の対応、自動の改善 |
-| [11-testing.md](11-testing.md) | テスト |
+| [11-testing.md](11-testing.md) | テストの層、契約テスト、見本の素材、GPU の扱い、性能の回帰のゲート |
 | [12-mobile.md](12-mobile.md) | モバイル版 |
 | [13-vlog-pack.md](13-vlog-pack.md) | vlog のパック |
 | [14-dev-structure.md](14-dev-structure.md) | 話題と依存、ディレクトリの木、口と実装の分け方、並行開発の境界 |
 | [15-roadmap.md](15-roadmap.md) | 進め方、段階 0 の難所 |
 | [16-open-questions.md](16-open-questions.md) | 決めてほしいこと |
+| [17-instrumentation.md](17-instrumentation.md) | 計装。何を測るか、予算、仕組み、使い方の記録、継続的改善とのつなぎ |
 | [references.md](references.md) | 出典 |
 | [reviews/](reviews/) | レビューと規格の調査の記録 |
