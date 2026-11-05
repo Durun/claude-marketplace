@@ -18,8 +18,18 @@ mm-audio-api = { workspace = true }
 mm-text-api = { workspace = true }
 mm-cache-api = { workspace = true }
 mm-testkit = { workspace = true }
+mm-render = { workspace = true }
+mm-nodes-basic = { workspace = true }
+mm-text-glyphon = { workspace = true }
+mm-audio-dsp = { workspace = true }
+mm-decode-ffmpeg = { workspace = true, optional = true }
+mm-encode-ffmpeg = { workspace = true, optional = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+
+[features]
+# FFmpeg の開発ファイルと libclang が要る（mm-decode-ffmpeg/README.md）。切ったときは ffmpeg の腕が Unsupported を返す。
+ffmpeg = ["dep:mm-decode-ffmpeg", "dep:mm-encode-ffmpeg", "mm-decode-ffmpeg/ffmpeg", "mm-encode-ffmpeg/ffmpeg"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

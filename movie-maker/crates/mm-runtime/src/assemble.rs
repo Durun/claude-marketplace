@@ -3,10 +3,12 @@
 use std::sync::Arc;
 
 use mm_audio_api::MixerFactory;
+use mm_audio_dsp::DspMixerFactory;
 use mm_cache_api::CacheStore;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{DecoderFactory, EncoderFactory};
 use mm_node_api::Services;
+use mm_render::{GpuContext, WgpuRenderer};
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::cache::MemoryCache;
@@ -16,7 +18,8 @@ use mm_testkit::node::{FootageKind, SolidKind, TextKind};
 use mm_testkit::render::SampleRenderer;
 use mm_testkit::text::{SampleRasterizer, SampleShaper};
 use mm_text_api::{TextRasterizer, TextShaper};
-use mm_types::Result;
+use mm_text_glyphon::TextEngine;
+use mm_types::{MmError, Result};
 
 use crate::config::{Backend, RuntimeConfig};
 use crate::engine::{Engine, EngineParts};
@@ -24,40 +27,27 @@ use crate::registry::Registry;
 
 /// 設定から実装を選んで `Engine` を作る。
 pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
-    let decoders: Arc<dyn DecoderFactory> = match config.decode {
-        Backend::Sample => Arc::new(SampleDecoderFactory::default()),
-    };
-    let encoders: Arc<dyn EncoderFactory> = match config.encode {
-        Backend::Sample => Arc::new(SampleEncoderFactory),
-    };
-    let mixers: Arc<dyn MixerFactory> = match config.audio {
-        Backend::Sample => Arc::new(SampleMixerFactory),
-    };
+    let decoders = decoders(config.decode)?;
+    let encoders = encoders(config.encode)?;
+    let mixers = mixers(config.audio)?;
     let color: Arc<dyn ColorTransform> = match config.color {
         Backend::Sample => Arc::new(SampleColor),
+        other => return Err(unsupported("color", other)),
     };
-    let (text_shaper, text_rasterizer): (Arc<dyn TextShaper>, Arc<dyn TextRasterizer>) =
-        match config.text {
-            Backend::Sample => (Arc::new(SampleShaper), Arc::new(SampleRasterizer)),
-        };
+    let (text_shaper, text_rasterizer) = text(config.text)?;
     let cache: Arc<dyn CacheStore> = match config.cache {
         Backend::Sample => Arc::new(MemoryCache::new(config.cache_limit_bytes)),
+        other => return Err(unsupported("cache", other)),
     };
     let services = Services {
         text_shaper,
         text_rasterizer,
         color,
     };
-    let renderer: Box<dyn Renderer> = match config.render {
-        Backend::Sample => Box::new(SampleRenderer::new(
-            decoders.clone(),
-            mixers.clone(),
-            services.clone(),
-        )),
-    };
+    let renderer = renderer(config.render, &decoders, &mixers, &services)?;
     Ok(Engine::from_parts(EngineParts {
         config: config.clone(),
-        registry: default_registry()?,
+        registry: registry(config.render)?,
         renderer,
         decoders,
         encoders,
@@ -67,11 +57,85 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
     }))
 }
 
-/// 最初から使える種類。実装のクレートが増えたらここに足す。
-fn default_registry() -> Result<Registry> {
+/// 口に合わない実装を選んだときの断り。
+fn unsupported(port: &str, backend: Backend) -> MmError {
+    MmError::Unsupported(format!(
+        "{port} に実装 {} は選べない（または feature が切ってある）",
+        backend.as_str()
+    ))
+}
+
+fn decoders(backend: Backend) -> Result<Arc<dyn DecoderFactory>> {
+    match backend {
+        Backend::Sample => Ok(Arc::new(SampleDecoderFactory::default())),
+        #[cfg(feature = "ffmpeg")]
+        Backend::Ffmpeg => Ok(Arc::new(mm_decode_ffmpeg::FfmpegDecoderFactory)),
+        other => Err(unsupported("decode", other)),
+    }
+}
+
+fn encoders(backend: Backend) -> Result<Arc<dyn EncoderFactory>> {
+    match backend {
+        Backend::Sample => Ok(Arc::new(SampleEncoderFactory)),
+        #[cfg(feature = "ffmpeg")]
+        Backend::Ffmpeg => Ok(Arc::new(mm_encode_ffmpeg::FfmpegEncoderFactory)),
+        other => Err(unsupported("encode", other)),
+    }
+}
+
+fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
+    match backend {
+        Backend::Sample => Ok(Arc::new(SampleMixerFactory)),
+        Backend::Dsp => Ok(Arc::new(DspMixerFactory::default())),
+        other => Err(unsupported("audio", other)),
+    }
+}
+
+/// 整形器と描画器の組。glyphon は同じ `TextEngine` から両方を取る（字形の台帳を共有するため）。
+fn text(backend: Backend) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer>)> {
+    match backend {
+        Backend::Sample => Ok((Arc::new(SampleShaper), Arc::new(SampleRasterizer))),
+        Backend::Glyphon => {
+            let engine = TextEngine::new();
+            Ok((engine.shaper(), engine.rasterizer()))
+        }
+        other => Err(unsupported("text", other)),
+    }
+}
+
+fn renderer(
+    backend: Backend,
+    decoders: &Arc<dyn DecoderFactory>,
+    mixers: &Arc<dyn MixerFactory>,
+    services: &Services,
+) -> Result<Box<dyn Renderer>> {
+    match backend {
+        Backend::Sample => Ok(Box::new(SampleRenderer::new(
+            decoders.clone(),
+            mixers.clone(),
+            services.clone(),
+        ))),
+        Backend::Wgpu => Ok(Box::new(WgpuRenderer::new(
+            GpuContext::shared()?,
+            decoders.clone(),
+            mixers.clone(),
+            services.clone(),
+        ))),
+        other => Err(unsupported("render", other)),
+    }
+}
+
+/// 描画器に合う種類の登録簿。見本の描画器は見本の種類、wgpu の描画器は `mm-nodes-basic`。
+fn registry(render: Backend) -> Result<Registry> {
     let mut r = Registry::new();
-    r.register(Arc::new(SolidKind))?;
-    r.register(Arc::new(FootageKind))?;
-    r.register(Arc::new(TextKind))?;
+    if render == Backend::Wgpu {
+        for kind in mm_nodes_basic::all_kinds() {
+            r.register(kind)?;
+        }
+    } else {
+        r.register(Arc::new(SolidKind))?;
+        r.register(Arc::new(FootageKind))?;
+        r.register(Arc::new(TextKind))?;
+    }
     Ok(r)
 }

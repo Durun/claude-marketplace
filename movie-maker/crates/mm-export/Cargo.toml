@@ -1,0 +1,20 @@
+[package]
+name = "mm-export"
+description = "書き出し。レンダーターゲットを区間として描き、エンコーダーへ渡して成果物にする"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-trace = { workspace = true }
+mm-doc = { workspace = true }
+mm-runtime = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true
