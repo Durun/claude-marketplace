@@ -25,3 +25,13 @@ test('アーカイブしたセッションは知らせない', () => {
   const seen = sessionsSeen(snapshot([session('a', 'busy')]));
   assert.deepEqual(sessionEvents(seen, snapshot([session('a', 'done', true)], [ask('q1', 'a')])), []);
 });
+
+test('デンジャラスモードで代わりに許可や実行をしたら、最後にしたことを、増えた件数を添えて知らせる', () => {
+  const auto = (id: string, count: number, last: string) => ({ ...session(id, 'busy'), autoActions: { count, last } }) as Session;
+  const seen = sessionsSeen(snapshot([auto('a', 1, '「Bash」を許可しました'), session('b', 'busy'), auto('c', 2, '「Bash」を許可しました')]));
+  const events = sessionEvents(seen, snapshot([auto('a', 3, 'コマンド「git push」を実行しました'), auto('b', 1, '「Edit」を許可しました'), auto('c', 2, '「Bash」を許可しました')]));
+  assert.deepEqual(events.map((e) => [e.kind, e.text]), [
+    ['auto', 'a: デンジャラスモードでコマンド「git push」を実行しました（ほか 1 件）'],
+    ['auto', 'b: デンジャラスモードで「Edit」を許可しました'],
+  ]);
+});

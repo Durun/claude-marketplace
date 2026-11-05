@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, saveLogSummaries, summarizeLog } from './claude.ts';
-import { allowPermission, allowPermissions, answerCommand, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { allowPermission, allowPermissions, answerCommand, runCommands, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -797,11 +797,14 @@ const setArchived = (id: string, body: unknown): { deferred?: boolean } => {
   return { deferred: archiveSession(meta) };
 };
 
-/** デンジャラスモードを切り替える。オンにしたら、もう待っている権限の確認も許可する。 */
+/** デンジャラスモードを切り替える。オンにしたら、もう待っている権限の確認も許可し、コマンドの実行の依頼も実行する。 */
 const setDangerous = (id: string, body: unknown): void => {
   const on = field<boolean>(body, 'dangerous', 'boolean');
   sessionMeta(id).dangerous = on || undefined;
-  if (on) allowPermissions(id);
+  if (on) {
+    allowPermissions(id);
+    void runCommands(id);
+  }
   touch();
 };
 

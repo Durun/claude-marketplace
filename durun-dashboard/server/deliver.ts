@@ -75,9 +75,26 @@ export const allowPermission = (attentionId: string): void => {
   settlePermission(attentionId, true);
 };
 
+/** デンジャラスモードで、ダッシュボードが人間に代わって許可や実行をした回数と、最後にしたこと。画面は回数が増えたらトーストで知らせる。 */
+const autoActions = new Map<string, { count: number; last: string }>();
+
+export const autoActionOf = (sessionId: string): { count: number; last: string } | undefined => autoActions.get(sessionId);
+
+const noteAutoAction = (sessionId: string, last: string): void => {
+  autoActions.set(sessionId, { count: (autoActions.get(sessionId)?.count ?? 0) + 1, last });
+  touch();
+};
+
+/** デンジャラスモードのセッションの権限の確認を、尋ねずに許可したことを残す。 */
+export const noteAutoAllow = (sessionId: string, tool: string): void => noteAutoAction(sessionId, `「${tool}」を許可しました`);
+
 /** デンジャラスモードにしたセッションが待っている権限の確認を、すべて許可する。 */
 export const allowPermissions = (sessionId: string): void => {
-  for (const [id, w] of permissionWaits) if (w.sessionId === sessionId) settlePermission(id, true);
+  for (const [id, w] of permissionWaits) {
+    if (w.sessionId !== sessionId) continue;
+    settlePermission(id, true);
+    noteAutoAllow(sessionId, w.tool ?? '権限の確認');
+  }
 };
 
 /** 端末や claude.ai/code で答え終えた権限の確認を、フックに何も返さずに片付ける。call を渡すと、そのツールの呼び出しへの確認だけを片付ける。 */
@@ -757,12 +774,11 @@ export const answerCommand = async (attentionId: string, run: boolean): Promise<
   const item = state.attention.find((a) => a.id === attentionId && a.kind === 'command');
   if (!item?.detail) throw new Error(`unknown command request: ${attentionId}`);
   if (!run) return void resolveAttention(attentionId, '人間はコマンドの実行を断りました。', `コマンド「${item.detail}」の実行の依頼への回答:`);
-  const live = readLiveSessions().get(item.sessionId);
-  if (live?.kind !== 'bg' || !live.jobId) throw new SessionStateError('動いているバックグラウンドのセッションでないと、`!` のコマンドを渡せません');
+  const jobId = commandJob(item.sessionId);
   // 続けて押されても二度実行しないよう、渡す前に片付ける。渡せなければ戻し、選び直せるようにする。
   removeAttention(attentionId);
   try {
-    await replyToJob(live.jobId, `! ${item.detail}`);
+    await replyToJob(jobId, `! ${item.detail}`);
   } catch (e) {
     state.attention.push(item);
     touch();
@@ -770,6 +786,33 @@ export const answerCommand = async (attentionId: string, run: boolean): Promise<
   }
   waiters.get(attentionId)?.(COMMAND_RUN_REPLY);
   waiters.delete(attentionId);
+};
+
+/** `!` のコマンドを渡せる、動いているバックグラウンドのセッションのジョブ。 */
+const commandJob = (sessionId: string): string => {
+  const live = readLiveSessions().get(sessionId);
+  if (live?.kind !== 'bg' || !live.jobId) throw new SessionStateError('動いているバックグラウンドのセッションでないと、`!` のコマンドを渡せません');
+  return live.jobId;
+};
+
+/** デンジャラスモードのセッションの request_command を、人間に尋ねずに実行する。待っている Claude に返す文を返す。 */
+export const autoRunCommand = async (sessionId: string, command: string): Promise<string> => {
+  await replyToJob(commandJob(sessionId), `! ${command}`);
+  noteAutoAction(sessionId, `コマンド「${command}」を実行しました`);
+  return COMMAND_RUN_REPLY;
+};
+
+/** デンジャラスモードにしたセッションが待っている request_command を、すべて実行する。渡せなかったものは要対応に残る。 */
+export const runCommands = async (sessionId: string): Promise<void> => {
+  const items = state.attention.filter((a) => a.sessionId === sessionId && a.kind === 'command');
+  for (const item of items) {
+    try {
+      await answerCommand(item.id, true);
+      noteAutoAction(sessionId, `コマンド「${item.detail ?? ''}」を実行しました`);
+    } catch {
+      // 渡せなかった依頼は要対応に戻っているので、人間が選び直せる。
+    }
+  }
 };
 
 /** branch は、人間がコードでブランチを表示して付けたコメントのとき。作業ツリーのファイルと取り違えないよう、どのブランチの行かを添える。 */

@@ -249,6 +249,8 @@ export type Session = {
   pinned: boolean;
   /** 人間がデンジャラスモードにした。権限の確認を尋ねずに許可する。前に受け取ったスナップショットには無いことがある。 */
   dangerous?: boolean;
+  /** デンジャラスモードで、ダッシュボードが人間に代わって許可や実行をした回数と、最後にしたこと。サーバーを起動し直すと数え直す。 */
+  autoActions?: { count: number; last: string };
   links: SavedLink[];
   /** 人間がエクスプローラーから資料に足したファイル。 */
   files: SavedFile[];

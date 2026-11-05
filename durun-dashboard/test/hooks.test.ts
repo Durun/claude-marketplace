@@ -19,6 +19,7 @@ useFakeClaude(
 process.stdout.write(lines([JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id, response: { rate_limits: null } } })]));`,
 );
 const { handleHook, holdPermission } = await import('../server/hooks.ts');
+const { autoActionOf } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 
 const toolUse = (name: string, input: object): string => `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } })}\n`;
@@ -270,6 +271,7 @@ test('デンジャラスモードのセッションは、サブエージェン�
   assert.deepEqual(answer({ ...push, agent_id: 'a1' }), allow);
   assert.deepEqual(answer({ ...push, tool_name: 'AskUserQuestion' }), { status: 204, body: undefined });
   assert.deepEqual(state.attention.filter((a) => a.sessionId === 'danger'), []);
+  assert.deepEqual(autoActionOf('danger'), { count: 2, last: '「Bash」を許可しました' });
 });
 
 test('SendUserFile で送ったファイルは、送ったときの説明を題名に添えて未読の資料にし、送り直したら同じ資料を未読に戻して、外していればまた並べる', () => {

@@ -6,7 +6,7 @@ import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../share
 import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '../shared/types.ts';
 import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
-import { dropStaleRequests, unwait, waitFor } from './deliver.ts';
+import { autoRunCommand, dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
@@ -543,6 +543,13 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       const live = readLiveSessions().get(sessionId);
       if (live?.kind !== 'bg' || !live.jobId) {
         return send(res, { id: rpcId, result: textResult(`ダッシュボードから \`!\` のコマンドを渡せるのは、claude --bg で動くバックグラウンドのセッションだけです。人間に、Claude Code の入力欄で \`! ${command}\` を打つよう頼んでください。`, true) });
+      }
+      // デンジャラスモードは人間が画面で切り替えるだけで、Claude には知らせない。Claude は人間が実行を選んだときと同じ返事を受け取る。
+      if (state.sessions[sessionId]?.dangerous) {
+        return void autoRunCommand(sessionId, command).then(
+          (text) => send(res, { id: rpcId, result: textResult(text) }),
+          (e: Error) => send(res, { id: rpcId, result: textResult(`コマンドを渡せませんでした。${e.message}`, true) }),
+        );
       }
       return waitForHuman(req, res, rpcId, params, upsertRequest(sessionId, 'command', str(args.reason), { detail: command }));
     }

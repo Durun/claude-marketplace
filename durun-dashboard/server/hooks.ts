@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
-import { dropStaleRequests, forgetPermission, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
+import { dropStaleRequests, forgetPermission, noteAutoAllow, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
 import { flHookContext } from './flconnect.ts';
 import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
@@ -303,7 +303,10 @@ const callDetail = (input: HookInput['tool_input']): string => {
  */
 export const holdPermission = (res: ServerResponse, input: HookInput): void => {
   const { session_id: sessionId, cwd, tool_name: tool } = input;
-  if (sessionId && tool && !OWN_DIALOG_TOOLS.has(tool) && state.sessions[sessionId]?.dangerous) return void res.writeHead(200, { 'content-type': 'application/json' }).end(ALLOW);
+  if (sessionId && tool && !OWN_DIALOG_TOOLS.has(tool) && state.sessions[sessionId]?.dangerous) {
+    noteAutoAllow(sessionId, tool);
+    return void res.writeHead(200, { 'content-type': 'application/json' }).end(ALLOW);
+  }
   if (!sessionId || !cwd || !tool || input.agent_id || OWN_DIALOG_TOOLS.has(tool) || readLiveSessions().get(sessionId)?.entrypoint !== 'cli') return void res.writeHead(204).end();
   // 通知から記録した権限の確認は、同じ確認なので置き換える。
   const id = pushDialog(ensureSession(sessionId, cwd), { kind: 'permission', title: tool, detail: callDetail(input.tool_input) }, (a) => isDialog(a, sessionId) && a.kind === 'permission');

@@ -5,7 +5,7 @@ import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usa
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
-import { isAllowable, trashOf } from './deliver.ts';
+import { autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { slackKeyOf, slackLinksIn } from './slack.ts';
@@ -228,6 +228,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     movedTo: meta.movedTo,
     pinned: !!meta.pinned,
     dangerous: !!meta.dangerous,
+    autoActions: autoActionOf(meta.id),
     links: meta.links ?? [],
     files: meta.files ?? [],
     proofFiles: meta.proofFiles ?? [],
