@@ -1,8 +1,12 @@
 //! `mm` コマンド。
 //!
-//! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。
+//! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
+//! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm perf run <場面>`: 性能の場面を回して予算と比べる（`startup`、`export`、`all`）。
 
+mod commands;
+mod describe;
+mod opargs;
 mod perf;
 mod project;
 mod scenes;
@@ -35,9 +39,57 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 空のプロジェクト（`project.mmdb`）を作る。
+    New { dir: PathBuf },
+    /// `versions/` のフォルダーか、1 つの JSON から `project.mmdb` を作る。
+    Import {
+        dir: PathBuf,
+        /// `versions/` のフォルダー、または 1 つのプロジェクトの JSON。
+        source: PathBuf,
+        /// すでにある `project.mmdb` を（写しを `backups/` に残して）置き換える。
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// `versions/` に決定的な JSON を書く。
+    Export {
+        dir: PathBuf,
+        /// 名前付きの版として残す。
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// 命令を当てる。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
+    ///
+    /// 引数は命令ごとの欄の名前（`mm op --schema` が一覧）。複雑な欄は `--json '{...}'`、
+    /// 元にした版は `--base <版>`、記録の名前は `--label <名前>`。
+    Op {
+        dir: Option<PathBuf>,
+        /// 命令の名前（addLayer、ripple、setParam など）。
+        op_name: Option<String>,
+        /// 全部の命令の JSON Schema を出す。
+        #[arg(long)]
+        schema: bool,
+        /// 複数の命令を 1 つのまとまりとして当てる（`Transaction` の JSON）。
+        #[arg(long)]
+        txn: Option<PathBuf>,
+        /// 命令の引数（`--欄 値` の並び）。
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// 直前のまとまりを取り消す。
+    Undo { dir: PathBuf },
+    /// 取り消したまとまりをやり直す。
+    Redo { dir: PathBuf },
+    /// 命令の記録を出す。
+    Log { dir: PathBuf },
+    /// 2 つの版の間の意味の差分を出す。版は番号、`head`、名前付きの版の名前。
+    Diff {
+        dir: PathBuf,
+        from: String,
+        to: String,
+    },
     /// プロジェクトのレンダーターゲットを MP4 に書き出す。
     Render {
-        /// プロジェクトの JSON。
+        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
         project: PathBuf,
         /// 出力先。省くと文書の output_path。
         #[arg(short, long)]
@@ -87,6 +139,32 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::New { dir } => commands::new_project(&dir),
+        Command::Import {
+            dir,
+            source,
+            overwrite,
+        } => commands::import(&dir, &source, overwrite),
+        Command::Export { dir, name } => commands::export(&dir, name.as_deref()),
+        Command::Op { schema: true, .. } => {
+            commands::schema();
+            Ok(())
+        }
+        Command::Op {
+            dir,
+            op_name,
+            txn,
+            args,
+            ..
+        } => {
+            let dir = dir
+                .ok_or_else(|| MmError::InvalidArgument("プロジェクトのフォルダーを渡す".into()))?;
+            commands::op(&dir, op_name.as_deref(), &args, txn.as_deref())
+        }
+        Command::Undo { dir } => commands::undo(&dir),
+        Command::Redo { dir } => commands::redo(&dir),
+        Command::Log { dir } => commands::log(&dir),
+        Command::Diff { dir, from, to } => commands::diff(&dir, &from, &to),
         Command::Render {
             project,
             output,

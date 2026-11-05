@@ -1,18 +1,8 @@
-//! 命令の記録まわりの型。命令と逆命令は JSON のまま持つ（`mm-ops` の型とは CLI の段でつなぐ）。
+//! 命令の記録まわりの型。命令 1 つの記録は `mm-ops` の [`OpRecord`] を、そのまま表に書く。
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-/// 命令 1 つの記録。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OpRecord {
-    /// 命令（`type` か `op` の文字があれば、それを命令の名前として表に抜く）。
-    pub op: Value,
-    /// 逆命令。
-    pub inverse: Value,
-    /// 触れた所（競合の判定に使う）。
-    pub touches: Vec<String>,
-}
+pub use mm_ops::OpRecord;
 
 /// 誰が。入口の種類（`gui`、`cli`、`claude`、`mcp`）と名前。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

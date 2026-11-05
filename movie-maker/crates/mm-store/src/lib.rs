@@ -2,11 +2,12 @@
 //! 文書の行と命令の記録を 1 つのトランザクションで書く。
 //!
 //! - [`Store`]: 開く、書く、取り消す、バックアップ、検索、`versions/` の書き出しと取り込み。
-//! - 命令の型は持たない。[`OpRecord`] は命令と逆命令を JSON で持ち、CLI の段で `mm-ops` の型とつなぐ。
+//! - 命令の記録は `mm-ops` の [`OpRecord`] をそのまま表に書く。命令を当てて書くまでは [`Store::apply_txn`] が受け持つ。
 //! - 書き手は 1 プロセスだけ（OS のファイルロック）。ほかのプロセスは読み取りだけで開く。
 
 mod backup;
 mod docio;
+mod edit;
 mod export;
 mod history;
 mod lock;
@@ -16,6 +17,7 @@ mod store;
 mod sync;
 
 pub use backup::{format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile};
+pub use edit::HistoryStep;
 pub use export::{ExportReport, VERSIONS_DIR};
 pub use lock::LockInfo;
 pub use records::{

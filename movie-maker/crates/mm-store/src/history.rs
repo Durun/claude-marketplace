@@ -63,16 +63,27 @@ impl Store {
     /// 版番号が `(from, to]` の間に当たったトランザクションを、命令つきで当てた順に返す。
     /// 取り消されたものは含めない。`mm diff` の元。
     pub fn txns_between(&self, from: i64, to: i64) -> Result<Vec<StoredTxn>> {
+        self.load_txns(
+            "WHERE doc_version > ?1 AND doc_version <= ?2 AND state = 'applied'",
+            params![from, to],
+        )
+    }
+
+    /// 取り消したものも含め、書いた順の全トランザクション（`mm log`）。
+    pub fn txn_log(&self) -> Result<Vec<StoredTxn>> {
+        self.load_txns("", params![])
+    }
+
+    fn load_txns(&self, filter: &str, args: impl rusqlite::Params) -> Result<Vec<StoredTxn>> {
         let mut st = self
             .conn
-            .prepare(
+            .prepare(&format!(
                 "SELECT id, name, actor_kind, actor_name, at_ms, state, doc_version FROM txns
-                 WHERE doc_version > ?1 AND doc_version <= ?2 AND state = 'applied'
-                 ORDER BY first_seq",
-            )
+                 {filter} ORDER BY first_seq"
+            ))
             .sql()?;
         let heads: Vec<(String, String, Actor, i64, String, i64)> = st
-            .query_map(params![from, to], |r| {
+            .query_map(args, |r| {
                 Ok((
                     r.get(0)?,
                     r.get(1)?,
