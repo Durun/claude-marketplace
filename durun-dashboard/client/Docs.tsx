@@ -756,7 +756,7 @@ const TextFile = ({ f }: { f: Float }) => {
     <>
       {file.error && <p class="card panel error-note">ファイルを読めませんでした（{file.error}）</p>}
       {file.data && (
-        <iframe ref={frame} class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content }, skin)} />
+        <iframe ref={frame} class={`file-frame ${format === 'html' || format === 'svg' ? 'is-raw' : ''}`} title={file.data.path} sandbox="allow-scripts" allow="clipboard-write" srcdoc={buildSrcdoc({ format, content: file.data.content, path: file.data.path }, skin)} />
       )}
     </>
   );

@@ -35,6 +35,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 .code-block pre { margin: 0; }
 .code-block button { position: absolute; top: 6px; right: 6px; padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 12px system-ui, sans-serif; cursor: pointer; opacity: 0.45; }
 .code-block:hover button, .code-block button:focus-visible { opacity: 1; }
+.sheet { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
+.sheet th { text-align: left; }
 .plain { white-space: pre-wrap; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: none; padding: 0; }
 .embedded, .embedded body { background: none; }
 .embedded body { margin: 0; padding: 0; }
@@ -64,6 +66,7 @@ table { width: max-content; max-width: 100%; border: 1px solid; border-color: #c
 th, td { padding: 1px; border: 1px solid; border-color: #808080 #c0c0c0 #c0c0c0 #808080; vertical-align: top; }
 th { background: none; }
 hr { border: 1px inset; margin: 0.5em 0; }
+.sheet th { background: #ece9d8; }
 .code-block { margin: 1em 0; }
 .code-block button { top: 0; right: 0; padding: 1px 6px; border: 2px outset #fff; border-radius: 0; background: #c0c0c0; color: #000; font: 12px "MS UI Gothic", "MS PGothic", sans-serif; opacity: 0.6; }
 .code-block button:active { border-style: inset; }
@@ -168,7 +171,15 @@ document.addEventListener('click', (e) => {
 // Markdown の本文に埋め込んだ図は、この高さに iframe を合わせてもらう。
 new ResizeObserver(() => parent.postMessage({ height: out.offsetHeight }, '*')).observe(out);
 
-if (data.format === 'text') {
+if (data.rows) {
+  const table = document.createElement('table');
+  table.className = 'sheet';
+  data.rows.forEach((cells, i) => {
+    const tr = table.insertRow();
+    cells.forEach((cell) => (tr.appendChild(document.createElement(i ? 'td' : 'th')).textContent = cell));
+  });
+  out.append(table);
+} else if (data.format === 'text') {
   const pre = document.createElement('pre');
   pre.className = 'plain';
   pre.textContent = data.content;
@@ -222,6 +233,38 @@ document.addEventListener('click', (e) => {
 });
 </script>`;
 
+const SEPARATORS: Record<string, string> = { csv: ',', tsv: '\t' };
+const extOf = (path: string): string => /\.(\w+)$/.exec(path)?.[1]?.toLowerCase() ?? '';
+
+/** CSV と TSV を行と欄に分ける。RFC 4180 に倣い、"" で囲んだ欄の中の区切りと改行は欄の文字とし、"" は " 1 文字に戻す。 */
+export const parseDelimited = (text: string, sep: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (text[i + 1] === '"') cell += text[++i];
+      else quoted = false;
+    } else if (c === '"' && cell === '') {
+      quoted = true;
+    } else if (c === sep || c === '\n') {
+      row.push(cell.replace(/\r$/, ''));
+      cell = '';
+      if (c === '\n') {
+        rows.push(row);
+        row = [];
+      }
+    } else {
+      cell += c;
+    }
+  }
+  if (cell || row.length) rows.push([...row, cell.replace(/\r$/, '')]);
+  return rows;
+};
+
 /**
  * 資料は Claude が書いた信頼できない内容なので、ダッシュボード本体の DOM には入れない。
  * 呼び出し側は、この文字列を sandbox="allow-scripts" の iframe の srcdoc にだけ渡す。
@@ -237,8 +280,9 @@ export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<
     return html + HASH_LINK_SCRIPT + skinStyle;
   }
   if (doc.format === 'svg') return doc.content + skinStyle;
+  const sep = doc.format === 'text' && doc.path ? SEPARATORS[extOf(doc.path)] : undefined;
   // '<' を Unicode エスケープにして、内容に含まれる </script> や <!-- で script 要素が終わらないようにする。
-  const data = JSON.stringify({ format: doc.format, content: doc.content }).replace(/</g, '\\u003c');
+  const data = JSON.stringify(sep ? { format: doc.format, rows: parseDelimited(doc.content, sep) } : { format: doc.format, content: doc.content }).replace(/</g, '\\u003c');
   return [
     `<!doctype html><html lang="ja"${embedded ? ' class="embedded"' : ''}><head><meta charset="utf-8">`,
     '<meta name="viewport" content="width=device-width, initial-scale=1">',

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildSrcdoc, linkPath } from '../client/docFrame.ts';
+import { buildSrcdoc, linkPath, parseDelimited } from '../client/docFrame.ts';
 import { docAsset, inlineAssets } from '../server/docAssets.ts';
 import { withBase } from '../shared/html.ts';
 import { tempDir } from './tmp.ts';
@@ -77,4 +77,14 @@ test('linkPath は、相対パスのリンクを資料のファイルがある�
   // セッションの作業ディレクトリからの相対パスで開いたファイルは、辿った先も作業ディレクトリからの相対パスにする。
   assert.equal(linkPath('docs/guide.md', '../README.md'), 'docs/../README.md');
   assert.equal(linkPath('README.md', 'docs/guide.md'), 'docs/guide.md');
+});
+
+test('parseDelimited は、"" で囲んだ欄の区切り・改行・"" を欄の文字として読み、CRLF と末尾の改行を落とす', () => {
+  assert.deepEqual(parseDelimited('a,b\r\n"x,1","line\n2 ""q"""\r\n', ','), [['a', 'b'], ['x,1', 'line\n2 "q"']]);
+  assert.deepEqual(parseDelimited('名前\t値\nA\t\n', '\t'), [['名前', '値'], ['A', '']]);
+});
+
+test('.csv と .tsv のファイルは表の行として渡し、ほかのテキストはそのまま渡す', () => {
+  assert.match(buildSrcdoc({ format: 'text', content: 'a\tb', path: '/x/r.TSV' }), /"rows":\[\["a","b"\]\]/);
+  assert.match(buildSrcdoc({ format: 'text', content: 'a,b', path: '/x/r.txt' }), /"content":"a,b"/);
 });
