@@ -21,9 +21,12 @@ use mm_testkit::render::SampleRenderer;
 use mm_testkit::text::{SampleRasterizer, SampleShaper};
 use mm_text_api::{TextRasterizer, TextShaper};
 use mm_text_glyphon::TextEngine;
-use mm_types::{MmError, Result};
+use mm_types::{GpuAdapterId, MmError, Result};
 
 use crate::config::{Backend, RuntimeConfig};
+use crate::decode_select::AutoDecoderFactory;
+#[cfg(any(feature = "d3d12va", feature = "cuvid"))]
+use crate::decode_select::WithAudio;
 use crate::engine::{Engine, EngineParts};
 use crate::registry::Registry;
 
@@ -71,8 +74,53 @@ fn decoders(backend: Backend) -> Result<Arc<dyn DecoderFactory>> {
         Backend::Sample => Ok(Arc::new(SampleDecoderFactory::default())),
         #[cfg(feature = "ffmpeg")]
         Backend::Ffmpeg => Ok(Arc::new(mm_decode_ffmpeg::FfmpegDecoderFactory)),
+        #[cfg(feature = "d3d12va")]
+        Backend::D3d12va => Ok(with_cpu_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory))),
+        #[cfg(feature = "cuvid")]
+        Backend::Cuvid => Ok(with_cpu_audio(Arc::new(mm_decode_cuvid::CuvidFactory))),
+        Backend::Auto => auto_decoders(),
         other => Err(unsupported("decode", other)),
     }
+}
+
+/// GPU の実装は音を持たないので、FFmpeg が入っていれば音と素材の情報をそちらから付ける。
+#[cfg(any(feature = "d3d12va", feature = "cuvid"))]
+fn with_cpu_audio(video: Arc<dyn DecoderFactory>) -> Arc<dyn DecoderFactory> {
+    #[cfg(feature = "ffmpeg")]
+    {
+        Arc::new(WithAudio::new(
+            video,
+            Arc::new(mm_decode_ffmpeg::FfmpegDecoderFactory),
+        ))
+    }
+    #[cfg(not(feature = "ffmpeg"))]
+    {
+        video
+    }
+}
+
+/// 入っている GPU の実装を、試す順（d3d12va、cuvid）に。
+fn gpu_decoders() -> Vec<Arc<dyn DecoderFactory>> {
+    vec![
+        #[cfg(feature = "d3d12va")]
+        with_cpu_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory)),
+        #[cfg(feature = "cuvid")]
+        with_cpu_audio(Arc::new(mm_decode_cuvid::CuvidFactory)),
+    ]
+}
+
+/// `auto`: 入っている GPU の実装を d3d12va、cuvid の順に並べ、最後に ffmpeg。何も入っていなければ断る。
+fn auto_decoders() -> Result<Arc<dyn DecoderFactory>> {
+    let gpu = gpu_decoders();
+    #[cfg(feature = "ffmpeg")]
+    let fallback: Option<Arc<dyn DecoderFactory>> =
+        Some(Arc::new(mm_decode_ffmpeg::FfmpegDecoderFactory));
+    #[cfg(not(feature = "ffmpeg"))]
+    let fallback: Option<Arc<dyn DecoderFactory>> = None;
+    if gpu.is_empty() && fallback.is_none() {
+        return Err(unsupported("decode", Backend::Auto));
+    }
+    Ok(Arc::new(AutoDecoderFactory::new(gpu, fallback)))
 }
 
 fn encoders(backend: Backend) -> Result<Arc<dyn EncoderFactory>> {
@@ -98,11 +146,39 @@ fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
     if !config.needs_gpu() {
         return Ok(None);
     }
-    let request = GpuRequest {
+    Ok(Some(GpuContext::shared(&gpu_request(config)?)?))
+}
+
+/// 文脈の頼み方。GPU で復号する実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
+/// 描画器もそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
+fn gpu_request(config: &RuntimeConfig) -> Result<GpuRequest> {
+    let default = GpuRequest {
         adapter: config.gpu.clone(),
         ..GpuRequest::default()
     };
-    Ok(Some(GpuContext::shared(&request)?))
+    if !config.decode.needs_d3d12() {
+        return Ok(default);
+    }
+    let request = d3d12_request(config.gpu.as_ref());
+    match (request, config.decode) {
+        (Some(r), Backend::Auto) => Ok(r.unwrap_or(default)),
+        (Some(r), _) => r,
+        (None, Backend::Auto) => Ok(default),
+        (None, other) => Err(unsupported("decode", other)),
+    }
+}
+
+/// 入っている GPU の実装の D3D12 での頼み方。どちらも入っていなければ `None`。
+fn d3d12_request(wanted: Option<&GpuAdapterId>) -> Option<Result<GpuRequest>> {
+    #[cfg(feature = "d3d12va")]
+    return Some(mm_decode_d3d12va::gpu_request(wanted));
+    #[cfg(all(feature = "cuvid", not(feature = "d3d12va")))]
+    return Some(mm_decode_cuvid::gpu_request(wanted));
+    #[cfg(not(any(feature = "d3d12va", feature = "cuvid")))]
+    {
+        let _ = wanted;
+        None
+    }
 }
 
 fn color(backend: Backend) -> Result<Arc<dyn ColorTransform>> {

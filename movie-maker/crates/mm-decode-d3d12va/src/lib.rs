@@ -1,4 +1,9 @@
-//! 試作: FFmpeg の d3d12va で復号した NV12 の `ID3D12Resource` を、コピーなしで wgpu のテクスチャに包む。
+//! FFmpeg の d3d12va で復号した NV12 / P010 の `ID3D12Resource` を、コピーなしで wgpu のテクスチャに包み、
+//! 描画器と同じデバイスの上で線形の `Rgba16Float` に変えて返すデコーダー。
+//!
+//! - デバイスは `DecoderFactory::open` で渡される描画器のもの（`mm-gpu` の `GpuContext`）。自前では作らない。
+//! - 復号した面は、変換を読み終えたことを wgpu のキューのフェンスで確かめるまで FFmpeg のプールに返さない。
+//! - 10 bit の素材（P010）は 8 bit に落とさず、`R16Unorm` と `Rg16Unorm` の面で読む。
 //!
 //! FFmpeg と D3D12 に触る所は feature `d3d12va`（既定で切る）の中にある。切り替え方は README。
 //! 結果は `docs/design/spikes/nvdec.md`。
@@ -16,19 +21,16 @@ mod convert;
 #[cfg(feature = "d3d12va")]
 mod decoder;
 #[cfg(feature = "d3d12va")]
-mod gpu;
-#[cfg(feature = "d3d12va")]
 mod hwdec;
+#[cfg(feature = "d3d12va")]
+mod probe;
+/// cuvid のクレートと同じソースを取り込む共有部。
+#[cfg(feature = "d3d12va")]
+pub mod shared;
 #[cfg(feature = "d3d12va")]
 mod wrap;
 
 #[cfg(feature = "d3d12va")]
-pub use convert::{Converter, CpuUploader};
+pub use decoder::{gpu_request, required_features, D3d12vaDecoder, D3d12vaFactory};
 #[cfg(feature = "d3d12va")]
-pub use decoder::{D3d12vaDecoder, D3d12vaFactory, HeldFrame, HeldFrameRef};
-#[cfg(feature = "d3d12va")]
-pub use gpu::GpuContext;
-#[cfg(feature = "d3d12va")]
-pub use hwdec::{init, HwDecoder};
-#[cfg(feature = "d3d12va")]
-pub use wrap::{GpuNv12, Wrapper};
+pub use probe::{PROBE_ENV, PROBE_FRAMES};

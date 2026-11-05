@@ -61,6 +61,18 @@ pub struct ExternalSemaphoreSignalParams {
     pub reserved: [u32; 16],
 }
 
+/// `CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS`。フェンスの値だけを使う。
+#[repr(C)]
+pub struct ExternalSemaphoreWaitParams {
+    pub fence_value: u64,
+    pub nvsci_sync: u64,
+    pub keyed_mutex_key: u64,
+    pub keyed_mutex_timeout_ms: u32,
+    pub params_reserved: [u32; 11],
+    pub flags: u32,
+    pub reserved: [u32; 16],
+}
+
 /// `CUDA_MEMCPY2D`。
 #[repr(C)]
 pub struct Memcpy2D {
@@ -102,6 +114,18 @@ type FnSignal = unsafe extern "system" fn(
     u32,
     CuStream,
 ) -> CuResult;
+type FnWait = unsafe extern "system" fn(
+    *const CuExternalSemaphore,
+    *const ExternalSemaphoreWaitParams,
+    u32,
+    CuStream,
+) -> CuResult;
+type FnFree = unsafe extern "system" fn(CuDevicePtr) -> CuResult;
+type FnDestroyMem = unsafe extern "system" fn(CuExternalMemory) -> CuResult;
+type FnDestroySem = unsafe extern "system" fn(CuExternalSemaphore) -> CuResult;
+type FnInit = unsafe extern "system" fn(u32) -> CuResult;
+type FnDeviceCount = unsafe extern "system" fn(*mut i32) -> CuResult;
+type FnDeviceLuid = unsafe extern "system" fn(*mut u8, *mut u32, i32) -> CuResult;
 type FnSync = unsafe extern "system" fn(CuStream) -> CuResult;
 
 /// 読み込んだ関数の表。
@@ -113,6 +137,13 @@ pub struct CudaApi {
     memcpy2d: FnMemcpy2D,
     import_sem: FnImportSem,
     signal: FnSignal,
+    wait: FnWait,
+    free: FnFree,
+    destroy_mem: FnDestroyMem,
+    destroy_sem: FnDestroySem,
+    init: FnInit,
+    device_count: FnDeviceCount,
+    device_luid: FnDeviceLuid,
     sync: FnSync,
 }
 
@@ -147,6 +178,13 @@ impl CudaApi {
             memcpy2d: load!(lib, "cuMemcpy2DAsync_v2", FnMemcpy2D),
             import_sem: load!(lib, "cuImportExternalSemaphore", FnImportSem),
             signal: load!(lib, "cuSignalExternalSemaphoresAsync", FnSignal),
+            wait: load!(lib, "cuWaitExternalSemaphoresAsync", FnWait),
+            free: load!(lib, "cuMemFree_v2", FnFree),
+            destroy_mem: load!(lib, "cuDestroyExternalMemory", FnDestroyMem),
+            destroy_sem: load!(lib, "cuDestroyExternalSemaphore", FnDestroySem),
+            init: load!(lib, "cuInit", FnInit),
+            device_count: load!(lib, "cuDeviceGetCount", FnDeviceCount),
+            device_luid: load!(lib, "cuDeviceGetLuid", FnDeviceLuid),
             sync: load!(lib, "cuStreamSynchronize", FnSync),
         })
     }
@@ -252,6 +290,70 @@ impl CudaApi {
         })
     }
 
+    /// ストリームのここから先を、フェンスが `value` に届くまで止める（GPU の中で待ち、CPU は待たない）。
+    ///
+    /// # Safety
+    /// 文脈が現在で、`sem` は取り込み済み。
+    pub unsafe fn wait(
+        &self,
+        sem: CuExternalSemaphore,
+        value: u64,
+        stream: CuStream,
+    ) -> Result<()> {
+        let params = ExternalSemaphoreWaitParams {
+            fence_value: value,
+            nvsci_sync: 0,
+            keyed_mutex_key: 0,
+            keyed_mutex_timeout_ms: 0,
+            params_reserved: [0; 11],
+            flags: 0,
+            reserved: [0; 16],
+        };
+        check("cuWaitExternalSemaphoresAsync", unsafe {
+            (self.wait)(&sem, &params, 1, stream)
+        })
+    }
+
+    /// 取り込んだ外部メモリと、そこに写したポインタ、取り込んだセマフォを手放す。失敗は無視する（後片付け）。
+    ///
+    /// # Safety
+    /// 文脈が現在で、引数はその文脈で取り込んだもの。GPU の仕事が終わっている。
+    pub unsafe fn release_import(
+        &self,
+        mem: CuExternalMemory,
+        ptr: CuDevicePtr,
+        sem: CuExternalSemaphore,
+    ) {
+        unsafe {
+            (self.destroy_sem)(sem);
+            (self.free)(ptr);
+            (self.destroy_mem)(mem);
+        }
+    }
+
+    /// LUID のアダプターに当たる CUDA のデバイスの番号。
+    pub fn device_for_luid(&self, luid: u64) -> Result<i32> {
+        // SAFETY: 引数はどれも有効な出力先。
+        unsafe {
+            check("cuInit", (self.init)(0))?;
+            let mut count = 0;
+            check("cuDeviceGetCount", (self.device_count)(&mut count))?;
+            for dev in 0..count {
+                let (mut bytes, mut mask) = ([0u8; 8], 0u32);
+                check(
+                    "cuDeviceGetLuid",
+                    (self.device_luid)(bytes.as_mut_ptr(), &mut mask, dev),
+                )?;
+                if u64::from_le_bytes(bytes) == luid {
+                    return Ok(dev);
+                }
+            }
+        }
+        Err(MmError::Unsupported(
+            "この GPU に当たる CUDA のデバイスが無い".into(),
+        ))
+    }
+
     /// ストリームの完了を待つ（比較用）。
     ///
     /// # Safety
@@ -272,6 +374,7 @@ mod tests {
         assert_eq!(size_of::<ExternalMemoryBufferDesc>(), 88);
         assert_eq!(size_of::<ExternalSemaphoreHandleDesc>(), 96);
         assert_eq!(size_of::<ExternalSemaphoreSignalParams>(), 144);
+        assert_eq!(size_of::<ExternalSemaphoreWaitParams>(), 144);
         assert_eq!(size_of::<Memcpy2D>(), 128);
     }
 }

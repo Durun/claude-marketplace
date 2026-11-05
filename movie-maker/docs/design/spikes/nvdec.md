@@ -6,7 +6,8 @@
 ## 結論
 
 - **d3d12va はコピーなしで wgpu に包めた。** 4K の H.264 と HEVC で、画素は CPU 経由の経路と一致した（比べた 21 コマで差の最大 0）。包むのにかかる時間は 1 µs ほど。
-- **速度は NVDEC 本体で決まり、経路で変わらない。** 4K で d3d12va は 540〜590 fps、cuvid の 1 コピーは 560〜600 fps。CPU 経由は 250〜265 fps（4K）で、半分以下。
+- **速度は NVDEC 本体で決まり、経路で変わらない。** 4K で d3d12va は 540〜590 fps、cuvid の 1 コピーは 560〜600 fps。CPU 経由は 250〜265 fps（4K）で、半分以下。段階 1 で `Decoder` の口に載せた実装（フェンスの待ちと `Rgba16Float` への変換つき）でも、d3d12va 584〜590、cuvid 570〜598 fps で変わらない（[段階 1 の測り直し](#4k-の-fps段階-1-の測り直し)）。
+- **段階 1 で分かった重い制約: NVIDIA の d3d12va が失敗するとプロセスの D3D12 のデバイスが全部消える。** 落ちる素材は別プロセスで試してから開く（[下](#段階-1-の実装で分かったこと)）。
 - **cuvid + CUDA の外部メモリの 1 コピーも通った。** コピーを積む時間は 18 µs で、速度は d3d12va と同じ。
 - **推奨は d3d12va を既定、cuvid を素材ごとの逃げ道、CPU 経由を最後に置く。** NVENC で作った 4K の HEVC が NVIDIA の d3d12va で復号できないため、逃げ道は飾りではなく要る（下の「詰まった所」）。
 
@@ -43,7 +44,21 @@ RTX 5090、ドライバー 616.92、FFmpeg 9.0（BtbN shared）、wgpu 30.0.1。
 
 「包むまで」は復号が返ってから、wgpu が NV12 → RGBA8 の描画パスを読み終えるまで。`inflight` は完了を待たずに積んでおく枚数。
 
-### 4K の fps
+### 4K の fps（段階 1 の測り直し）
+
+段階 1 で `Decoder` の口に載せた実装（描画器と同じデバイスで線形の `Rgba16Float` まで変換する。`bench_d3d12va` と `bench_cuvid` の `render` モード）を、同じ PC・同じ作りの素材（testsrc2、4K 60 fps、60 Mbps、GOP 120、B 2 枚、500 コマ）で測り直した。
+
+| 経路（口の実装、`Rgba16Float` まで） | H.264 | HEVC（x265） | HEVC（NVENC） |
+|---|---|---|---|
+| d3d12va（段階 0 の試作 → 段階 1） | 575 / 580 → **584** | 542 / 563 → **590** | 失敗 → 別プロセスの試し復号で断り、cuvid へ |
+| cuvid（段階 0 の試作 → 段階 1） | 599 / 599 → **598** | 567 / 560 → **587** | 569 → **570** |
+
+- 段階 0 の数字（下の表）は NV12 を RGBA8 に変えて inflight 0 / 4 で測ったもの。段階 1 は口の `next_frame` を回し、最後に GPU の完了を待つ。違いは誤差の内で、フェンスの待ち（面を GPU が読み終えるまで放さない）と `Rgba16Float` への変換は、4K の速度を落とさなかった。
+- 復号だけ（`decode` モードは変換の提出まで含む）は d3d12va 585 / 591、cuvid 599 fps で、`render`（`import` から `submit` まで）との差は 1 fps 未満。
+- シーク（4K、GOP 120、40 か所）の中央値は、d3d12va が H.264 114 ms、HEVC（x265）111 ms、cuvid（H.264）140 ms。段階 0 の d3d12va（114 / 109 ms）と変わらない。
+- 予算の表の「4K 700 fps 以上」には届かない。経路ではなく NVDEC 本体とこの素材の限りで、実素材（OBS の録画、スマホ）での測り直しは残る。
+
+以下は段階 0 の数字（試作の bench。RGBA8、inflight 0 / 4）。
 
 | 経路 | H.264 | HEVC（x265） | HEVC（NVENC） |
 |---|---|---|---|
@@ -97,11 +112,22 @@ RTX 5090、ドライバー 616.92、FFmpeg 9.0（BtbN shared）、wgpu 30.0.1。
 4. **HEVC のシーク後に `Could not get surface index. Using 0 instead.` が出る。** 40 回のシークのうち 1 回、目的の 1 コマ後が出た（先頭の RASL ピクチャの参照が無いときの動きと思われる）。コマ番号の契約テストで見る。
 5. **`create_texture_from_hal` の `initial_state`。** wgpu 30 は初期状態を要求する。`UNINITIALIZED` にすると最初の使用でゼロ埋めされる恐れがあるので、`RESOURCE` を渡した。
 
+## 段階 1 の実装で分かったこと
+
+実装は `Decoder` の契約（`mm_testkit::decode::contract` と VFR の `vfr_contract`、見本の素材は `fixtures/media/generate.sh`）を通した。
+
+1. **NVIDIA の d3d12va が復号に失敗すると、プロセスの D3D12 のデバイスが全部消える。** NVENC の 4K HEVC の 1 コマ目で `send_packet` が `EINVAL` になった直後、`GetDeviceRemovedReason` が `0x887A0020`（`DXGI_ERROR_DRIVER_INTERNAL_ERROR`）を返す。別に作った試し用のデバイスで失敗させても、描画器のデバイスが道連れで消え、以降の `request_adapter` は NVIDIA を返さなくなった。「開いた後に数コマ復号して `Err` なら次へ」は、同じプロセスの中では成り立たない。そこで d3d12va の `open` は、最初の復号の前に別プロセス（`mm-d3d12va-probe`）で先頭 4 コマを復号して確かめ、落ちる素材は `Err(Unsupported)` で断る（cuvid か CPU へ譲る）。結果は素材のパス・大きさ・更新時刻で覚える。実行ファイルが見つからなければ試さずに通し、警告を出す。復号の途中（5 コマ目以降）で落ちる素材はこれで防げない。
+2. **wgpu の既定は Vulkan を選ぶ。** この PC の RTX 5090 は Vulkan と D3D12 の両方で見え、`GpuContext` の既定は Vulkan だった。FFmpeg と CUDA に渡す `ID3D12Device` が要るので、`GpuRequest` に `backends` を足し、D3D12 のアダプター（LUID つき）を名指しして頼む。`mm_decode_d3d12va::gpu_request` が頼み方を作る。
+3. **面を GPU が読み終えるまで放さない。** d3d12va は、変換の提出のあとに wgpu のキューでフェンスを進め、フェンスが届くまで FFmpeg の面を握る（`ReleaseQueue`、上限 8）。cuvid は、共有バッファの枠ごとのフェンスを CUDA と wgpu が交互に進め、CUDA は次のコピーの前に wgpu の読み終えを待つ（`cuWaitExternalSemaphoresAsync`）。GPU を 600 ms 遅らせる負荷の下で 60 コマを復号するテストが、待ちを外すと別のコマが混ざり、付けると混ざらないことを確かめる。
+4. **コマは `Rgba16Float` に変えて返す。** 描画器が読める形式（線形、premultiplied）で渡すため、デコーダーが変換の 1 パスを持つ。変換は NV12 / P010 の符号語を浮動小数にして行列とレンジを当て、Rec.1886 の式（べき 2.4）で線形にする（CPU の経路と同じ式）。変換先は借りが終われば自動で置き場に戻る（`GpuFrameTexture` の返却）ので、`take_frame` のような取り出しは要らない。
+5. **10 bit は 8 bit に落とさない。** HEVC Main10 は d3d12va が P010（`R16Unorm` と `Rg16Unorm` の面）、cuvid が 16 bit のサンプルで渡る。デバイスに `TEXTURE_FORMAT_P010` と `TEXTURE_FORMAT_16BIT_NORM` が要る（`required_features()`）。契約の外の検査で、320 画素に 876 段で上がる傾きが 280 種類以上の値で出る（8 bit なら 219 段）。
+6. **同じデバイスに FFmpeg の d3d12va を同時に作ると `EINVAL`。** `open` を直列にして避けた。
+
 ## まだ測っていないこと
 
 - 並行 4 本（予算の表の「4 本の合計 1,400 fps」）。同じ `ID3D12Device` に複数のデコーダーを載せたときの動き。
 - 配列テクスチャのモード（`AV_D3D12VA_FRAME_FLAG_TEXTURE_ARRAY`）。層を `base_array_layer` に渡す作りは入れたが、今回の素材では資源ごとに別だったので通っていない。
-- 10 bit（P010）、HDR、AV1、VP9。
+- HDR（PQ と HLG の転送関数。変換は Rec.1886 の式だけ）、AV1、VP9。10 bit の cuvid と d3d12va は通った。
 - D3D12 のデバッグレイヤーを付けた確認。
 - 描画器の中での使い方（`mm-render` の合成に NV12 を直接読ませる）。ここでは RGBA8 に変える 1 パスだけ。
 
@@ -121,11 +147,11 @@ RTX 5090、ドライバー 616.92、FFmpeg 9.0（BtbN shared）、wgpu 30.0.1。
 
 d3d12va を選ぶ理由は、同じ速度で、コピーが無く、同期が素直で、実装が小さいこと。cuvid を逃げ道として残す理由は、d3d12va が落ちる素材が実在することと、OFX を足すときに CUDA の経路が要ること。決めるのは既定だけで、どちらも `mm-decode-api` の実装として残せる。
 
-逃げ道の切り替えは、`open` の後に最初の数コマを復号して `Err` なら次の実装を試す、という作りにする（上の 2 は 1 コマ目で落ちる）。実装は `mm-runtime` の設定で並べる。
+逃げ道の切り替えは `mm-runtime` の `auto`（`AutoDecoderFactory`）で、素材ごとに d3d12va → cuvid → ffmpeg の順に開く。d3d12va は上の「段階 1 の実装で分かったこと」の 1 のとおり、デバイスを守るため別プロセスで試してから開く。cuvid は開いた直後の 4 コマを復号して確かめる（cuvid の失敗は D3D12 のデバイスを消さない）。
 
-## 口に要る変更
+## 口に要る変更（RFC 0001 で解決済み）
 
-`mm-decode-api` の `GpuFrameHandle { id, size }` では、wgpu のテクスチャを描画器に渡せない。次を RFC で決める。
+`mm-decode-api` の `GpuFrameHandle { id, size }` では、wgpu のテクスチャを描画器に渡せない。次を RFC で決めた。
 
 1. **受け渡し。** `GpuFrameHandle` に型を消した中身（`Arc<dyn Any + Send + Sync>`）を持たせ、d3d12va の実装は「Y と UV の見え方 + 復号の完了を待たせる関数」を入れる。描画器が型を戻して使う。または、デコーダーと描画器が共有する登録簿を `id` で引く。
 2. **同じ GPU の文脈。** d3d12va は wgpu の `ID3D12Device` の上でしか動かない。`DecoderFactory::open(path)` は GPU の文脈を受け取る口が要る（試作は `D3d12vaFactory::new(gpu)` で持たせた）。
