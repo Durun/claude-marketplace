@@ -1,0 +1,22 @@
+[package]
+name = "mm-gpu"
+description = "GPU を触る実装の共有部。wgpu の文脈とアダプターの選び方、GpuHelper の wgpu 実装、GPU のコマの受け渡しの型"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-node-api = { workspace = true }
+mm-decode-api = { workspace = true }
+wgpu = { workspace = true }
+half = { workspace = true }
+pollster = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+
+[lints]
+workspace = true

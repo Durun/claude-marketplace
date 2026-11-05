@@ -165,9 +165,9 @@ fn write_results(args: &PerfArgs, items: &[Item], snapshot: &MetricsSnapshot) ->
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let adapter = mm_render::GpuContext::shared()
+    let adapter = mm_render::GpuContext::shared(&mm_render::GpuRequest::default())
         .ok()
-        .map(|c| c.adapter_name.clone());
+        .map(|c| c.adapter.name.clone());
     let scene = format!("{:?}", args.scene).to_lowercase();
     let metrics: Value = serde_json::from_str(&snapshot.to_jsonl_line())?;
     let doc = json!({

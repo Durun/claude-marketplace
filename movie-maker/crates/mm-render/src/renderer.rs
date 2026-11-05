@@ -10,11 +10,10 @@ use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::compose::Compositor;
-use crate::context::GpuContext;
-use crate::gpu::WgpuGpu;
 use crate::layers::CompCx;
 use crate::source::SourcePool;
 use crate::timer::GpuTimer;
+use mm_gpu::{GpuContext, WgpuGpu};
 
 /// 描画器の版。合成の式を変えたら上げる（コマのキャッシュのキーに入る）。
 pub const WGPU_RENDERER_VERSION: u32 = 1;
@@ -81,7 +80,7 @@ impl WgpuRenderer {
         self.outputs.push_back(id);
         while self.outputs.len() > KEPT_OUTPUTS {
             if let Some(old) = self.outputs.pop_front() {
-                self.gpu.release(old);
+                self.gpu.release_id(old);
             }
         }
     }
@@ -105,10 +104,13 @@ impl WgpuRenderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("render.frame"),
             });
-        let target = self.encode_comp(&mut encoder, &cx)?;
+        let target = self.encode_comp(&mut encoder, &cx);
         self.timer.resolve(&mut encoder);
+        // 借りた GPU のコマは、この提出が終わるまでの借り物（RFC 0001）。前に待ち、後に返す。
+        self.gpu.before_submit();
         ctx.queue.submit([encoder.finish()]);
-        Ok(target)
+        self.gpu.after_submit();
+        target
     }
 }
 
@@ -148,7 +150,7 @@ impl Renderer for WgpuRenderer {
             let frame = FrameRef::Gpu(GpuTexture { id, size: req.size });
             let sent = sink(index, frame, &mut self.gpu);
             // 区間のコマは受け取った側が読み戻して終わりなので、溜めずに捨てる。
-            self.gpu.release(id);
+            self.gpu.release_id(id);
             sent?;
             count += 1;
         }

@@ -18,7 +18,7 @@ mod video;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use mm_decode_api::{Decoder, DecoderFactory};
+use mm_decode_api::{Decoder, DecoderFactory, GpuContextRef};
 use mm_types::{MmError, Result};
 
 pub use video::FfmpegDecoder;
@@ -35,7 +35,8 @@ impl DecoderFactory for FfmpegDecoderFactory {
         ID
     }
 
-    fn open(&self, path: &Path) -> Result<Box<dyn Decoder>> {
+    /// CPU で復号するので GPU の文脈は使わない。
+    fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         init()?;
         Ok(Box::new(FfmpegDecoder::open(path)?))
     }

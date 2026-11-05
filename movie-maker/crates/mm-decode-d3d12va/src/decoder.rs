@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use ffmpeg_next::frame;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuFrameHandle, MediaInfo};
+use mm_decode_api::{
+    DecodedFrame, Decoder, DecoderFactory, GpuContextRef, GpuFrameHandle, MediaInfo,
+};
 use mm_types::{ColorSpace, MmError, Rational, RationalTime, Result, Size, TimeRange};
 
 use crate::gpu::GpuContext;
@@ -19,6 +21,17 @@ use crate::wrap::{GpuNv12, Wrapper};
 /// 無音を返すときの形式。
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
+
+/// 口の取っ手の中身。試作ではテクスチャの実体は [`D3d12vaDecoder::take_frame`] で番号から引く。
+pub struct HeldFrameRef {
+    pub id: u64,
+}
+
+impl mm_decode_api::GpuFrame for HeldFrameRef {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 /// 手元に残した、まだ使われていないコマ。FFmpeg のプールに返さないよう復号結果を握る。
 pub struct HeldFrame {
@@ -153,6 +166,7 @@ impl Decoder for D3d12vaDecoder {
         let handle = GpuFrameHandle {
             id,
             size: Size::new(nv12.width, nv12.height),
+            frame: Arc::new(HeldFrameRef { id }),
         };
         self.held.insert(id, HeldFrame { nv12, _hw: hw });
         Ok(Some(DecodedFrame {
@@ -193,7 +207,8 @@ impl DecoderFactory for D3d12vaFactory {
         "d3d12va"
     }
 
-    fn open(&self, path: &Path) -> Result<Box<dyn Decoder>> {
+    /// 試作は自前の D3D12 の文脈を使う。口の `gpu` と同じデバイスにそろえるのは段階 1。
+    fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         Ok(Box::new(D3d12vaDecoder::open(path, self.gpu.clone())?))
     }
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use mm_doc::{Composition, Layer, Node, Param, Project, Transform};
 use mm_node_api::Quality;
 use mm_nodes_basic::all_kinds;
-use mm_render::{GpuContext, WgpuRenderer};
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
 use mm_render_api::{RenderRequest, Renderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::SampleDecoderFactory;
@@ -42,7 +42,7 @@ fn project() -> Project {
 
 #[test]
 fn gpu_の時間が_mm_trace_に載る() {
-    let ctx = match GpuContext::shared() {
+    let ctx = match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => ctx,
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")

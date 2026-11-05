@@ -146,7 +146,7 @@ fn 書き出した_mp4_がコマ数と長さと番号と音で読み戻せる() 
         a["duration"]
     );
 
-    let mut dec = FfmpegDecoderFactory.open(&path).unwrap();
+    let mut dec = FfmpegDecoderFactory.open(&path, None).unwrap();
     assert_eq!(dec.info().fps, Some(fps));
     assert_eq!(dec.info().frame_count(), 60);
     let mut n = 0;
@@ -193,7 +193,7 @@ fn 分数の_fps_でもコマ数と時刻が合う() {
     let v = probe(&path, "v:0", "stream=nb_read_frames,avg_frame_rate");
     assert_eq!(v["nb_read_frames"], "30");
     assert_eq!(v["avg_frame_rate"], "30000/1001");
-    let mut dec = FfmpegDecoderFactory.open(&path).unwrap();
+    let mut dec = FfmpegDecoderFactory.open(&path, None).unwrap();
     assert_eq!(dec.info().fps, Some(fps));
     for n in 0..30 {
         let f = dec.next_frame().unwrap().expect("コマがある");
@@ -205,7 +205,7 @@ fn 分数の_fps_でもコマ数と時刻が合う() {
 #[test]
 fn 本物の素材を読んで書き直しても番号が保たれる() {
     let source = common::fixtures().join("cfr.mp4");
-    let mut dec = FfmpegDecoderFactory.open(&source).unwrap();
+    let mut dec = FfmpegDecoderFactory.open(&source, None).unwrap();
     let info = dec.info().clone();
     let fps = info.fps.unwrap();
     let path = out_path("reencode.mp4");
@@ -220,7 +220,7 @@ fn 本物の素材を読んで書き直しても番号が保たれる() {
     let report = enc.finish().unwrap();
     assert_eq!((report.frames, report.audio_frames), (60, 96_000));
 
-    let mut back = FfmpegDecoderFactory.open(&path).unwrap();
+    let mut back = FfmpegDecoderFactory.open(&path, None).unwrap();
     assert_eq!(back.info().frame_count(), 60);
     for n in [0, 29, 59] {
         back.seek(RationalTime::from_frames(n, fps)).unwrap();

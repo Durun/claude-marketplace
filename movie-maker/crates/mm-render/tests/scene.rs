@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use mm_doc::{Asset, Composition, Layer, Node, Param, Project, Transform};
 use mm_nodes_basic::all_kinds;
-use mm_render::{GpuContext, WgpuRenderer};
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
 use mm_render_api::{RangeRequest, RenderRequest, Renderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
@@ -25,7 +25,7 @@ const TOLERANCE: f32 = 3e-3;
 const RED: Rgba = Rgba::new(1.0, 0.0, 0.0, 1.0);
 
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::shared() {
+    match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")

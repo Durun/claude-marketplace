@@ -42,9 +42,12 @@ impl WgpuRenderer {
             layer.to_source_time(overlap.start),
             layer.to_source_time(overlap.end),
         )?;
-        let footage = self
-            .sources
-            .footage_for(self.decoders.as_ref(), req.project, &params)?;
+        let footage = self.sources.footage_for(
+            self.decoders.as_ref(),
+            self.gpu.context().as_ref(),
+            req.project,
+            &params,
+        )?;
         let mut cx = AudioCx {
             range: overlap,
             source_range,

@@ -14,9 +14,8 @@ mm-node-api = { workspace = true }
 mm-render-api = { workspace = true }
 mm-decode-api = { workspace = true }
 mm-audio-api = { workspace = true }
+mm-gpu = { workspace = true }
 wgpu = { workspace = true }
-half = { workspace = true }
-pollster = { workspace = true }
 bytemuck = { workspace = true }
 tracing = { workspace = true }
 

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mm_nodes_basic::all_kinds;
-use mm_render::{GpuContext, WgpuRenderer};
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
@@ -14,7 +14,7 @@ use mm_testkit::node::MapRegistry;
 use mm_testkit::render::{contract, RenderFixture};
 
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::shared() {
+    match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")

@@ -3,7 +3,7 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-use crate::context::{GpuContext, FRAME_FORMAT};
+use mm_gpu::{GpuContext, FRAME_FORMAT};
 
 /// 重ねる 1 枚。
 pub struct DrawItem<'a> {

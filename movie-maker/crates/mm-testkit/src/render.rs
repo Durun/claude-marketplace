@@ -70,7 +70,7 @@ impl SampleRenderer {
         }
         if !sources.contains_key(asset_id) {
             let asset = project.asset(asset_id)?;
-            let dec = decoders.open(std::path::Path::new(&asset.path))?;
+            let dec = decoders.open(std::path::Path::new(&asset.path), None)?;
             sources.insert(asset_id.clone(), Box::new(DecoderFrameSource::new(dec)));
         }
         Ok(mm_node_api::footage_ref(sources.get_mut(asset_id)))

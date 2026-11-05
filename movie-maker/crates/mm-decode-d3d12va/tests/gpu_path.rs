@@ -21,7 +21,7 @@ fn コマは_gpu_の参照で返り_シーク先の番号が出る() {
     let gpu = GpuContext::new().expect("D3D12 の GPU");
     let factory = D3d12vaFactory::new(gpu);
     assert_eq!(factory.id(), "d3d12va");
-    let mut dec = factory.open(&path).expect("open");
+    let mut dec = factory.open(&path, None).expect("open");
     let fps = dec.info().fps.expect("CFR");
     let first = dec.next_frame().expect("next").expect("frame");
     assert_eq!(first.index, 0);

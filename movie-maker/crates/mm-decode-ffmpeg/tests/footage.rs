@@ -9,7 +9,7 @@ use mm_types::{MmError, Rational, RationalTime, TimeRange};
 
 fn open(name: &str) -> Box<dyn Decoder> {
     let path = common::fixtures().join(name);
-    FfmpegDecoderFactory.open(&path).expect("開ける")
+    FfmpegDecoderFactory.open(&path, None).expect("開ける")
 }
 
 fn number(frame: &DecodedFrame) -> i64 {
@@ -141,17 +141,17 @@ fn 頭が_0_でない素材も最初のコマが_t_0_になる() {
 fn 壊れた素材と無い素材は落ちずにエラーを返す() {
     let dir = common::fixtures();
     assert!(matches!(
-        FfmpegDecoderFactory.open(&dir.join("broken.mp4")),
+        FfmpegDecoderFactory.open(&dir.join("broken.mp4"), None),
         Err(MmError::Corrupt(_))
     ));
     assert!(matches!(
-        FfmpegDecoderFactory.open(&dir.join("no_such_file.mp4")),
+        FfmpegDecoderFactory.open(&dir.join("no_such_file.mp4"), None),
         Err(MmError::NotFound(_))
     ));
     // 動画ではないファイル
     let garbage = dir.join("garbage.broken.bin");
     std::fs::write(&garbage, vec![0x5Au8; 4096]).unwrap();
-    assert!(FfmpegDecoderFactory.open(&garbage).is_err());
+    assert!(FfmpegDecoderFactory.open(&garbage, None).is_err());
 }
 
 fn zero_crossings(samples: &[f32], channels: usize) -> usize {

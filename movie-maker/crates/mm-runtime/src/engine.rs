@@ -7,12 +7,14 @@ use mm_audio_api::{AudioBlock, MixerFactory, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RA
 use mm_cache_api::CacheStore;
 use mm_decode_api::{
     AudioStreamInfo, DecoderFactory, EncodeReport, EncodeSettings, Encoder, EncoderFactory,
+    GpuContextRef,
 };
 use mm_doc::Project;
 use mm_node_api::{Quality, Services};
 use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
 use mm_types::{
-    CompositionId, MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange,
+    CompositionId, GpuAdapterId, MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size,
+    TimeRange,
 };
 
 use crate::config::RuntimeConfig;
@@ -38,6 +40,8 @@ pub struct EngineParts {
     pub mixers: Arc<dyn MixerFactory>,
     pub cache: Arc<dyn CacheStore>,
     pub services: Services,
+    /// 組み立てで 1 回決めた GPU の文脈。GPU を使わない組み合わせでは `None`。
+    pub gpu: Option<Arc<dyn GpuContextRef>>,
 }
 
 /// 組み立て済みのエンジン。
@@ -58,6 +62,36 @@ impl Engine {
     /// 種類の登録簿。
     pub fn registry(&self) -> &Registry {
         &self.parts.registry
+    }
+
+    /// 描画器。書き出し（`mm-export`）が段ごとに計測しながら呼ぶための口。
+    pub fn renderer(&mut self) -> &mut dyn Renderer {
+        self.parts.renderer.as_mut()
+    }
+
+    /// エンコーダーを作る口。
+    pub fn encoders(&self) -> &Arc<dyn EncoderFactory> {
+        &self.parts.encoders
+    }
+
+    /// デコーダーを開く口。
+    pub fn decoders(&self) -> &Arc<dyn DecoderFactory> {
+        &self.parts.decoders
+    }
+
+    /// ミキサーを作る口。
+    pub fn mixers(&self) -> &Arc<dyn MixerFactory> {
+        &self.parts.mixers
+    }
+
+    /// 種類が使うほかの口の束。
+    pub fn services(&self) -> &Services {
+        &self.parts.services
+    }
+
+    /// 組み立てで決めた GPU。別プロセスのホストの `HostSpec::gpu` に渡す。
+    pub fn gpu_adapter(&self) -> Option<&GpuAdapterId> {
+        self.parts.gpu.as_ref().map(|g| g.adapter())
     }
 
     /// 選ばれた実装の名前（Program に出す）。

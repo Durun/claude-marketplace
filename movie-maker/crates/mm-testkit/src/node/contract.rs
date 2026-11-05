@@ -100,7 +100,7 @@ fn open_footage(media: &SampleMedia) -> Box<dyn FrameSource> {
         media: media.clone(),
     };
     let dec = factory
-        .open(std::path::Path::new("sample.mp4"))
+        .open(std::path::Path::new("sample.mp4"), None)
         .expect("見本は開ける");
     Box::new(DecoderFrameSource::new(dec))
 }

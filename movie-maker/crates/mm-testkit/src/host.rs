@@ -131,6 +131,8 @@ impl HostFixture {
                 executable: "mm-host-sample".into(),
                 args: Vec::new(),
                 default_timeout: Duration::from_millis(100),
+                gpu: None,
+                client_pid: None,
             },
             prepare_params: serde_json::json!({}),
             slow_params: serde_json::json!({ DELAY_PARAM: 10_000 }),
