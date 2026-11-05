@@ -39,77 +39,8 @@ impl Compositor {
     /// パイプラインを作る。
     pub fn new(ctx: &GpuContext) -> Self {
         let device = &ctx.device;
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mm-render compose"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("compose.wgsl").into()),
-        });
-        let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility,
-            ty,
-            count: None,
-        };
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("mm-render compose layout"),
-            entries: &[
-                entry(
-                    0,
-                    wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
-                entry(
-                    1,
-                    wgpu::ShaderStages::FRAGMENT,
-                    wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                ),
-                entry(
-                    2,
-                    wgpu::ShaderStages::FRAGMENT,
-                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                ),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("mm-render compose pipeline layout"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mm-render compose"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: FRAME_FORMAT,
-                    blend: Some(wgpu::BlendState {
-                        color: OVER,
-                        alpha: OVER,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let layout = bind_group_layout(device);
+        let pipeline = create_pipeline(device, &layout);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("mm-render layer sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -193,4 +124,82 @@ impl Compositor {
             ],
         })
     }
+}
+
+/// 0 が 1 枚分の uniform、1 が絵、2 が標本化。
+fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility,
+        ty,
+        count: None,
+    };
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("mm-render compose layout"),
+        entries: &[
+            entry(
+                0,
+                wgpu::ShaderStages::VERTEX_FRAGMENT,
+                wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+            ),
+            entry(
+                1,
+                wgpu::ShaderStages::FRAGMENT,
+                wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+            ),
+            entry(
+                2,
+                wgpu::ShaderStages::FRAGMENT,
+                wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            ),
+        ],
+    })
+}
+
+fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("mm-render compose"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("compose.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("mm-render compose pipeline layout"),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("mm-render compose"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: FRAME_FORMAT,
+                blend: Some(wgpu::BlendState {
+                    color: OVER,
+                    alpha: OVER,
+                }),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
 }
