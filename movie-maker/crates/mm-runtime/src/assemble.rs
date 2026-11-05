@@ -6,6 +6,7 @@ use mm_audio_api::MixerFactory;
 use mm_audio_dsp::DspMixerFactory;
 use mm_cache_api::CacheStore;
 use mm_color_api::ColorTransform;
+use mm_color_lut::LutColor;
 use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_node_api::Services;
@@ -31,11 +32,9 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
     let decoders = decoders(config.decode)?;
     let encoders = encoders(config.encode)?;
     let mixers = mixers(config.audio)?;
-    let color: Arc<dyn ColorTransform> = match config.color {
-        Backend::Sample => Arc::new(SampleColor),
-        other => return Err(unsupported("color", other)),
-    };
-    let (text_shaper, text_rasterizer) = text(config.text)?;
+    let color = color(config.color)?;
+    let gpu = gpu_context(config)?;
+    let (text_shaper, text_rasterizer) = text(config.text, gpu.as_ref())?;
     let cache: Arc<dyn CacheStore> = match config.cache {
         Backend::Sample => Arc::new(MemoryCache::new(config.cache_limit_bytes)),
         other => return Err(unsupported("cache", other)),
@@ -45,7 +44,6 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
         text_rasterizer,
         color,
     };
-    let gpu = gpu_context(config)?;
     let renderer = renderer(config.render, gpu.as_ref(), &decoders, &mixers, &services)?;
     Ok(Engine::from_parts(EngineParts {
         config: config.clone(),
@@ -107,13 +105,32 @@ fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
     Ok(Some(GpuContext::shared(&request)?))
 }
 
-/// 整形器と描画器の組。glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
-fn text(backend: Backend) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer>)> {
+fn color(backend: Backend) -> Result<Arc<dyn ColorTransform>> {
+    match backend {
+        Backend::Sample => Ok(Arc::new(SampleColor)),
+        Backend::Lut => Ok(Arc::new(LutColor)),
+        #[cfg(feature = "ocio")]
+        Backend::Ocio => Ok(Arc::new(mm_color_ocio::OcioColor::builtin()?)),
+        other => Err(unsupported("color", other)),
+    }
+}
+
+/// 整形器と描画器の組。cpu と glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
+/// glyphon は GPU の文脈が要る（`RuntimeConfig::needs_gpu` が文脈を作らせる）。
+fn text(
+    backend: Backend,
+    gpu: Option<&Arc<GpuContext>>,
+) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer>)> {
     match backend {
         Backend::Sample => Ok((Arc::new(SampleShaper), Arc::new(SampleRasterizer))),
-        Backend::Glyphon => {
+        Backend::Cpu => {
             let engine = TextEngine::new();
             Ok((engine.shaper(), engine.rasterizer()))
+        }
+        Backend::Glyphon => {
+            let gpu = gpu.ok_or_else(|| unsupported("text", backend))?;
+            let engine = TextEngine::new();
+            Ok((engine.shaper(), engine.gpu_rasterizer(gpu.clone())))
         }
         other => Err(unsupported("text", other)),
     }
