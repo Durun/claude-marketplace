@@ -5,6 +5,9 @@
 //! - 無音の入力は無音を返す。
 //! - 入力 1 本、0 dB、パン中央は素通し（許容差 1e-6）。
 //! - 返すブロックの `frames()` は頼んだ `frames` と一致する。
+//! - バスの音量（`buses[role].gain_db`）とマスター（`master_db`）は全実装が効かせる。ダッキングは実装が省いてよい（見本は省く）。
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -107,12 +110,66 @@ pub trait Mixer: Send {
     fn mix(&mut self, inputs: &[MixInput], frames: usize) -> Result<AudioBlock>;
 }
 
+/// バス 1 本の設定。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BusConfig {
+    /// バスの音量（dB）。
+    pub gain_db: f32,
+}
+
+/// ダッキング。`trigger` のバスが鳴っている間、`targets` のバスを `reduction_db` だけ下げる。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DuckingConfig {
+    /// 鳴ると他を下げるバスの役割（例: `voice`）。
+    pub trigger: String,
+    /// 下げられるバスの役割（例: `bgm`）。
+    pub targets: Vec<String>,
+    /// 下げる量（dB）。負の値。
+    pub reduction_db: f32,
+    /// 鳴っていると見なす振幅（線形）。
+    pub threshold: f32,
+    /// 下がり始めてから下がりきるまでの時間（ms）。
+    pub attack_ms: f32,
+    /// 戻り始めてから戻りきるまでの時間（ms）。
+    pub release_ms: f32,
+}
+
+impl DuckingConfig {
+    /// 声が鳴ったら BGM を 12 dB 下げる、字幕動画向けの既定。
+    pub fn voice_over_bgm() -> Self {
+        Self {
+            trigger: "voice".into(),
+            targets: vec!["bgm".into()],
+            reduction_db: -12.0,
+            threshold: 0.01,
+            attack_ms: 20.0,
+            release_ms: 300.0,
+        }
+    }
+}
+
+/// ミキサーの設定。既定ではダッキングは無効で、バスは全て 0 dB。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MixerConfig {
+    /// 役割ごとのバス。載っていない役割は 0 dB。
+    pub buses: BTreeMap<String, BusConfig>,
+    /// ダッキング。`None` で無効。
+    pub ducking: Option<DuckingConfig>,
+    /// マスターの音量（dB）。
+    pub master_db: f32,
+}
+
 /// ミキサーを作る口。`mm-runtime` が設定で選ぶ。
 pub trait MixerFactory: Send + Sync {
     /// 実装の名前（`dsp`、見本は `sample`）。
     fn id(&self) -> &'static str;
-    /// ミキサーを作る。
-    fn create(&self, sample_rate: u32, channels: u16) -> Result<Box<dyn Mixer>>;
+    /// 設定を渡してミキサーを作る。
+    fn create(
+        &self,
+        sample_rate: u32,
+        channels: u16,
+        config: &MixerConfig,
+    ) -> Result<Box<dyn Mixer>>;
 }
 
 /// 音の出口。プレビュー（cpal）と書き出し（WAV）が実装する。

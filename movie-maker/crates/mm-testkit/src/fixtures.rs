@@ -3,7 +3,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget};
+use mm_doc::{
+    Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget, Transform,
+};
 use mm_node_api::Services;
 use mm_types::{
     AssetId, ColorSpace, CompositionId, Id, ParamValue, Rational, RationalTime, RenderTargetId,
@@ -88,6 +90,7 @@ fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalT
         in_point,
         out_point: in_point + duration,
         opacity: Param::constant(ParamValue::Number(1.0)),
+        transform: Transform::default(),
         audio: Some(LayerAudio {
             role: "voice".into(),
             gain_db: Param::constant(ParamValue::Number(0.0)),
@@ -110,6 +113,7 @@ fn text_layer(duration: RationalTime) -> Layer {
         in_point: RationalTime::ZERO,
         out_point: duration,
         opacity: Param::constant(ParamValue::Number(1.0)),
+        transform: Transform::default(),
         audio: None,
         lock: false,
     }

@@ -1,7 +1,7 @@
 //! 日本語と英語の混在、折り返し、揃えを実際に描いて確かめる。
 
-use mm_text_api::{TextRasterizer, TextShaper, TextStyle};
-use mm_text_glyphon::{TextAlign, TextEngine};
+use mm_text_api::{TextAlign, TextRasterizer, TextShaper, TextStyle};
+use mm_text_glyphon::{GlyphonRasterizer, TextEngine};
 use mm_types::{Rgba, RgbaImage};
 
 /// 線形の値を sRGB の 8 bit に。
@@ -105,23 +105,36 @@ fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
     std::fs::write(dir.join("text_mixed.png"), encode_png(&a, bg)).expect("書ける");
 
+    let centered = TextStyle {
+        align: TextAlign::Center,
+        ..st.clone()
+    };
     let sh = shaper
-        .shape_aligned("短い\nもう少し長い行です", &st, TextAlign::Center)
+        .shape("短い\nもう少し長い行です", &centered)
         .expect("整形");
     assert!(
         sh.lines[0].rect.x > sh.lines[1].rect.x,
         "短い行ほど中央に寄る"
     );
-    let img = raster.rasterize(&sh, &st, 2.0).expect("描く");
+    let img = raster.rasterize(&sh, &centered, 2.0).expect("描く");
     assert_eq!(img.width(), (sh.bounds.width * 2.0).ceil() as u32);
     std::fs::write(dir.join("text_center_x2.png"), encode_png(&img, bg)).expect("書ける");
 }
 
 #[test]
-fn 整形していない結果は描かずに断る() {
+fn 別に作った描画器でも同じ絵になる() {
     let engine = TextEngine::new();
-    let other = TextEngine::new();
+    let other = GlyphonRasterizer::new();
     let st = style(None);
-    let shaped = engine.shaper().shape("abc", &st).expect("整形");
-    assert!(other.rasterizer().rasterize(&shaped, &st, 1.0).is_err());
+    let shaped = engine.shaper().shape("abc 日本語", &st).expect("整形");
+    let a = engine
+        .rasterizer()
+        .rasterize(&shaped, &st, 1.0)
+        .expect("描く");
+    let b = other.rasterize(&shaped, &st, 1.0).expect("描く");
+    assert_eq!(
+        a, b,
+        "字体と字形の番号だけで描けるので、同じ字体があれば同じ絵"
+    );
+    assert!(ink(&a) > 10.0);
 }

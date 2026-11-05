@@ -178,10 +178,11 @@ impl MetricsLayer {
     }
 }
 
-struct MetricVisitor {
-    kind: Option<String>,
-    name: Option<String>,
-    value: Option<f64>,
+#[derive(Default)]
+pub(crate) struct MetricVisitor {
+    pub(crate) kind: Option<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) value: Option<f64>,
 }
 
 impl Visit for MetricVisitor {
@@ -237,14 +238,14 @@ where
         if event.metadata().target() != crate::METRICS_TARGET {
             return;
         }
-        let mut v = MetricVisitor {
-            kind: None,
-            name: None,
-            value: None,
-        };
+        let mut v = MetricVisitor::default();
         event.record(&mut v);
         if let (Some(kind), Some(name), Some(value)) = (v.kind, v.name, v.value) {
-            self.handle.record_metric(&kind, &name, value);
+            if kind == "span" {
+                self.handle.record_span(&name, value as u64);
+            } else {
+                self.handle.record_metric(&kind, &name, value);
+            }
         }
     }
 }
@@ -275,6 +276,19 @@ mod tests {
         assert_eq!(snap.gauges["memory.rss_bytes"], 42.0);
         let line = snap.to_jsonl_line();
         assert!(line.starts_with('{') && line.ends_with('}') && !line.contains('\n'));
+    }
+
+    #[test]
+    fn 外で測ったスパンが分布に載る() {
+        let (layer, handle) = MetricsLayer::new();
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            for _ in 0..2 {
+                crate::record_span("render.gpu_frame", std::time::Duration::from_micros(1500));
+            }
+        });
+        let s = &handle.snapshot().spans["render.gpu_frame"];
+        assert_eq!((s.count, s.p50_us), (2, 1500));
     }
 
     #[test]

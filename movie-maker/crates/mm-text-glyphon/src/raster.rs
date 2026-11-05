@@ -1,8 +1,11 @@
-//! 行組みをもう一度引いて、字形を CPU で RGBA に描く。
+//! `ShapedText` の字形を、字体の名前と字形の番号で引いて CPU で RGBA に描く。
 
-use cosmic_text::{Buffer, FontSystem, SwashCache, SwashContent};
+use std::collections::HashMap;
 
-use mm_text_api::{ShapedText, TextStyle};
+use cosmic_text::fontdb::{Weight, ID};
+use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem, SwashCache, SwashContent};
+
+use mm_text_api::{FaceRef, ShapedText, TextStyle};
 use mm_types::{Rgba, RgbaImage, Size};
 
 /// 絵の大きさは `bounds * scale` を切り上げた大きさ（口の契約）。
@@ -49,47 +52,89 @@ fn pixel_color(content: SwashContent, data: &[u8], index: usize, color: Rgba) ->
     }
 }
 
-/// `buffer` の字形を `scale` 倍で `size` の絵に描く。`origin` は 1 倍の座標での絵の左上。
+/// `faces` の各字体を fontdb の ID に引く。無い字体は `None`（その字形は描かない）。
+fn resolve_faces(fs: &FontSystem, faces: &[FaceRef]) -> Vec<Option<(ID, Weight)>> {
+    let mut by_name: HashMap<&str, ID> = HashMap::new();
+    for face in fs.db().faces() {
+        by_name
+            .entry(face.post_script_name.as_str())
+            .or_insert(face.id);
+    }
+    faces
+        .iter()
+        .map(|f| {
+            by_name
+                .get(f.post_script_name.as_str())
+                .map(|id| (*id, Weight(f.weight)))
+        })
+        .collect()
+}
+
+/// 字形の絵を `img` に重ねる。`left`/`top` は絵の中の左上。
+fn blend_glyph(
+    img: &mut RgbaImage,
+    image: &cosmic_text::SwashImage,
+    left: i32,
+    top: i32,
+    color: Rgba,
+) {
+    let (w, h) = (
+        image.placement.width as usize,
+        image.placement.height as usize,
+    );
+    for row in 0..h {
+        for col in 0..w {
+            let Some(src) = pixel_color(image.content, &image.data, row * w + col, color) else {
+                continue;
+            };
+            let (x, y) = (left + col as i32, top + row as i32);
+            if x < 0 || y < 0 || x as u32 >= img.width() || y as u32 >= img.height() {
+                continue;
+            }
+            let (x, y) = (x as u32, y as u32);
+            let under = img.pixel(x, y);
+            img.set_pixel(x, y, under.over(src));
+        }
+    }
+}
+
+/// `shaped` の字形を `scale` 倍で描く。絵の原点は `shaped.bounds` の左上。
 pub(crate) fn draw(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
-    buffer: &Buffer,
+    shaped: &ShapedText,
     style: &TextStyle,
     scale: f32,
-    origin: (f32, f32),
-    size: Size,
 ) -> RgbaImage {
+    let size = raster_size(shaped, scale);
     let mut img = RgbaImage::transparent(size);
-    for run in buffer.layout_runs() {
-        let offset = (-origin.0 * scale, (run.line_y - origin.1) * scale);
-        for glyph in run.glyphs {
-            let phys = glyph.physical(offset, scale);
-            let Some(image) = cache.get_image(fs, phys.cache_key).as_ref() else {
-                continue;
-            };
-            let (w, h) = (
-                image.placement.width as usize,
-                image.placement.height as usize,
-            );
-            let left = phys.x + image.placement.left;
-            let top = phys.y - image.placement.top;
-            for row in 0..h {
-                for col in 0..w {
-                    let Some(src) =
-                        pixel_color(image.content, &image.data, row * w + col, style.color)
-                    else {
-                        continue;
-                    };
-                    let (x, y) = (left + col as i32, top + row as i32);
-                    if x < 0 || y < 0 {
-                        continue;
-                    }
-                    let (x, y) = (x as u32, y as u32);
-                    let under = img.pixel(x, y);
-                    img.set_pixel(x, y, under.over(src));
-                }
-            }
-        }
+    let faces = resolve_faces(fs, &shaped.faces);
+    let origin = (shaped.bounds.x, shaped.bounds.y);
+    for glyph in shaped.lines.iter().flat_map(|l| &l.glyphs) {
+        let Some(Some((font_id, weight))) = faces.get(glyph.face as usize) else {
+            continue;
+        };
+        let px = (glyph.origin[0] - origin.0) * scale;
+        // Y はヒンティングのため整数に切る（cosmic-text の physical と同じ）。
+        let py = ((glyph.origin[1] - origin.1) * scale).trunc();
+        let (key, x, y) = CacheKey::new(
+            *font_id,
+            glyph.glyph_id,
+            style.size_px.max(1.0) * scale,
+            (px, py),
+            *weight,
+            CacheKeyFlags::empty(),
+        );
+        let Some(image) = cache.get_image(fs, key).as_ref() else {
+            continue;
+        };
+        blend_glyph(
+            &mut img,
+            image,
+            x + image.placement.left,
+            y - image.placement.top,
+            style.color,
+        );
     }
     img
 }

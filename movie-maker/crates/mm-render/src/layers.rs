@@ -91,7 +91,7 @@ impl WgpuRenderer {
         mm_trace::counter!("render.layers_drawn", prepared.len());
         // 命令がテクスチャを握っているので、提出の前に置き場から外してよい。
         for id in temps {
-            self.gpu.release(id);
+            self.gpu.release_id(id);
         }
         Ok(target)
     }
@@ -130,8 +130,8 @@ impl WgpuRenderer {
         layer: &Layer,
         temps: &mut Vec<u64>,
     ) -> Result<Option<Prepared>> {
-        let (kind, mut params) = evaluate(cx.nodes, layer, cx.t)?;
-        let transform = LayerTransform::take_from(&mut params);
+        let (kind, params) = evaluate(cx.nodes, layer, cx.t)?;
+        let transform = LayerTransform::from_doc(&layer.transform, cx.t);
         let image = if kind.id() == NESTED_KIND {
             self.nested_image(encoder, cx, layer, &params)?
         } else {
@@ -167,7 +167,12 @@ impl WgpuRenderer {
             services,
             ..
         } = self;
-        let footage = sources.footage_for(decoders.as_ref(), cx.project, params)?;
+        let footage = sources.footage_for(
+            decoders.as_ref(),
+            gpu.context().as_ref(),
+            cx.project,
+            params,
+        )?;
         let mut inputs = NoInputs;
         let size = scaled(cx.size, boost);
         let mut frame_cx = FrameCx {

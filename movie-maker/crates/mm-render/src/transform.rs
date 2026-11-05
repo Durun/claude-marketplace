@@ -1,16 +1,13 @@
 //! レイヤーの変形（位置・拡大・回転）を 2D のアフィン行列にする。
 //!
-//! 文書の `Layer` にはまだ変形の欄が無いので、レイヤーの動画オブジェクトのパラメータのうち
-//! `transform.` で始まる名前を描画器が先に取り除いて読む（種類には渡さない）。
-//! - `transform.position`（Vec2）: 動かす量。コンポジションの画素。既定は動かさない。
-//! - `transform.scale`（Number か Vec2）: 倍率。1 が等倍。
-//! - `transform.rotation`（Number）: 度。正が時計回り。
-//! - `transform.anchor`（Vec2）: 回転と拡大の中心。既定はレイヤーの絵の中心。
+//! 値は文書の `Layer.transform`（`mm_doc::Transform`）から時刻 t で読む。
+//! - `position`（Vec2）: 動かす量。コンポジションの画素。
+//! - `scale`（Number か Vec2）: 倍率。1 が等倍。
+//! - `rotation`（Number）: 度。正が時計回り。
+//! - `anchor`（Vec2）: 回転と拡大の中心。無ければレイヤーの絵の中心。
 
-use mm_types::{ParamValue, Params};
-
-/// 描画器が読む変形のパラメータの前置き。
-pub const TRANSFORM_PREFIX: &str = "transform.";
+use mm_doc::Transform;
+use mm_types::{ParamValue, RationalTime};
 
 /// 2D のアフィン変換 `(x, y) -> (a x + c y + tx, b x + d y + ty)`。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,29 +93,26 @@ impl Default for LayerTransform {
 }
 
 impl LayerTransform {
-    /// `params` から `transform.` の値を取り除いて読む。
-    pub fn take_from(params: &mut Params) -> Self {
-        let names: Vec<String> = params
-            .0
-            .keys()
-            .filter(|k| k.starts_with(TRANSFORM_PREFIX))
-            .cloned()
-            .collect();
-        let mut t = Self::default();
-        for name in names {
-            let Some(value) = params.0.remove(&name) else {
-                continue;
-            };
-            match (&name[TRANSFORM_PREFIX.len()..], value) {
-                ("position", ParamValue::Vec2(v)) => t.position = [v[0] as f32, v[1] as f32],
-                ("scale", ParamValue::Number(n)) => t.scale = [n as f32, n as f32],
-                ("scale", ParamValue::Vec2(v)) => t.scale = [v[0] as f32, v[1] as f32],
-                ("rotation", ParamValue::Number(n)) => t.rotation_deg = n as f32,
-                ("anchor", ParamValue::Vec2(v)) => t.anchor = Some([v[0] as f32, v[1] as f32]),
-                _ => {}
-            }
+    /// 文書の変形を時刻 `t` で評価する（ホールド）。
+    pub fn from_doc(doc: &Transform, t: RationalTime) -> Self {
+        let mut out = Self::default();
+        if let Some(v) = doc.position.hold_value_at(t).as_vec2() {
+            out.position = [v[0] as f32, v[1] as f32];
         }
-        t
+        match doc.scale.hold_value_at(t) {
+            ParamValue::Number(n) => out.scale = [n as f32, n as f32],
+            ParamValue::Vec2(v) => out.scale = [v[0] as f32, v[1] as f32],
+            _ => {}
+        }
+        if let Some(n) = doc.rotation.hold_value_at(t).as_number() {
+            out.rotation_deg = n as f32;
+        }
+        out.anchor = doc
+            .anchor
+            .as_ref()
+            .and_then(|a| a.hold_value_at(t).as_vec2())
+            .map(|v| [v[0] as f32, v[1] as f32]);
+        out
     }
 
     /// 恒等か。
@@ -245,14 +239,15 @@ mod tests {
     }
 
     #[test]
-    fn パラメータから読んで取り除く() {
-        let mut p = Params::new();
-        p.set("transform.scale", ParamValue::Number(2.0));
-        p.set("transform.rotation", ParamValue::Number(30.0));
-        p.set("color", ParamValue::Number(1.0));
-        let t = LayerTransform::take_from(&mut p);
+    fn 文書の変形を読む() {
+        let doc = Transform {
+            scale: mm_doc::Param::constant(ParamValue::Number(2.0)),
+            rotation: mm_doc::Param::constant(ParamValue::Number(30.0)),
+            ..Transform::default()
+        };
+        let t = LayerTransform::from_doc(&doc, RationalTime::ZERO);
         assert_eq!(t.scale, [2.0, 2.0]);
         assert_eq!(t.rotation_deg, 30.0);
-        assert_eq!(p.0.len(), 1, "種類に渡す分だけ残る");
+        assert!(t.anchor.is_none());
     }
 }

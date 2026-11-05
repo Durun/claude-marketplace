@@ -15,12 +15,13 @@ pub trait NodeKind: Send + Sync {
     fn frames_needed(&self, cx: &FrameCx) -> Vec<TimeRange>;        // 入力のどの時刻が要るか
     fn region_of_definition(&self, cx: &FrameCx) -> Rect;
     fn is_identity(&self, cx: &FrameCx) -> bool;
-    fn render(&self, cx: &FrameCx, enc: &mut wgpu::CommandEncoder) -> Result<FrameRef>;   // 時刻 t のコマ（テクスチャ）
+    fn render(&self, cx: &mut FrameCx) -> Result<FrameRef>;   // 時刻 t のコマ。GPU は cx.gpu（GpuHelper）で触る
     fn render_audio(&self, cx: &AudioCx) -> Result<AudioBlock>;
 }
 ```
 
-- `FrameCx` は、時刻 t、評価済みのパラメータ、描く大きさ、要る領域、入力の映像（時刻で引ける）、カメラ、描画先とヘルパー（テクスチャの確保、パイプラインのキャッシュ、CPU の絵を写す）。`wgpu::Device` そのものは渡さず、ヘルパーで囲う。
+- `FrameCx` は、時刻 t、評価済みのパラメータ、描く大きさ、要る領域、入力の映像（時刻で引ける）、素材、GPU のヘルパー（`GpuHelper`: CPU の絵を載せる、読み戻す、確保する、捨てる、デコーダーの GPU のコマを借りる）、ほかの口の束（文字、色）。カメラは 3D を足すときに空ける。
+- 口に wgpu の型を出さない（RFC 0001）。`GpuHelper` は型を消したトレイトで、契約テストと縦の 1 本は CPU の実装（`mm-testkit`）で回る。wgpu の `CommandEncoder` が要る種類は `GpuHelper::as_any` で実装の共有部 `mm-gpu` の `WgpuGpu` に降りる。デコーダーが返した GPU のコマは `GpuHelper::import` で借り、描画器が合成の `submit` の前に待ちを登録し、後に返す。
 - 返すコマは `Rgba16Float`、premultiplied の線形のテクスチャ。CPU で描く種類（Lottie、SVG）はヘルパーでアップロードする。
 - 隔離（`traits.isolation`）: `in_process`（Rust の種類。`render` の `Err` と panic は `catch_unwind` で受け、そのレイヤーだけ透明にしてエラーの印）、`out_of_process`（CEF、OFX、VST3、CLAP。別プロセスで動かし、落ちたら印を出して起動し直す。時間切れつき）。
 - `deterministic` の自己申告は、契約テストで 2 回描いて同じかを確かめる。
@@ -32,7 +33,7 @@ pub trait NodeKind: Send + Sync {
 |---|---|---|
 | `footage`、`audio`、`image`、`solid` | 撮影素材（プレビューはプレビュー動画、書き出しは原本）、音、静止画、単色 | 最初 |
 | `shape`、`svg` | 図形と SVG。ベクターのまま持ち、vello か resvg で描く | 最初 |
-| `composition`、`sequence` | 入れ子と磁気の並び | 最初 |
+| `composition`、`sequence` | 入れ子と磁気の並び。`composition` の展開は描画器が行う（下の「入れ子」） | 最初 |
 | `text` | 字幕と短い文字。ネイティブの文字の描画（下の「文字の描き方」）。多くの字幕はこれで足りる | 最初 |
 | `shader.wgsl` | WGSL のフラグメントか compute。uniform がパラメータになる。効果とトランジションもこれで書ける | 最初 |
 | `color.cdl`、`color.lut`、`color.ocio` | ASC CDL、`.cube`、OCIO の変換 | 最初 |
@@ -42,6 +43,10 @@ pub trait NodeKind: Send + Sync {
 | `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4] | 後 |
 | `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 後 |
 | `gen.ai` | 生成 AI。`offline`。費用のかかる API は命令の側で見積もりを強制し、自動の改善の回からは呼べない | 後 |
+
+## 入れ子
+
+種類 `composition`（パラメータ `composition` に中のコンポジションの ID）は口の `NodeKind` として登録するが、中身の展開は描画器が行う（RFC 0004）。種類の口（`FrameCx`）からは文書が見えず、入れ子の中のベクターを出力の解像度で 1 回だけラスタにするには、描画器が親の変形を知っている必要があるため。種類自身は透明を返し、描画器の外で単独に呼ばれても安全。描画器は深さ 8 で止める（循環の疑い）。レイヤーの変形（位置・拡大・回転・アンカー）は文書の `Layer.transform` にあり、種類のパラメータには混ぜない。
 
 ## ベクターの解像度
 

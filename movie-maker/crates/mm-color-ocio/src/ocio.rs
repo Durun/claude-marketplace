@@ -22,11 +22,13 @@ const ENTRY: &str = "OCIOConvert";
 const DEFAULT_LUT_SIZE: u32 = 33;
 
 /// mm の色空間名と OCIO の名前の対応。ここに無い名前は OCIO の名前としてそのまま引く。
-const ALIASES: [(&str, &str); 3] = [
+const ALIASES: [(&str, &str); 4] = [
     ("lin_rec709", "Linear Rec.709 (sRGB)"),
     ("srgb", "sRGB Encoded Rec.709 (sRGB)"),
     // 映像の Rec.709 は表示側の Rec.1886（ガンマ 2.4）で見るので、その色空間に当てる。
     ("bt709", "Rec.1886 Rec.709 - Display"),
+    // カメラの OETF（シーン参照）。組み込みの studio-config にある名前。
+    ("bt709_oetf", "Camera Rec.709"),
 ];
 
 /// `known_spaces` に出す OCIO の名前。契約は「符号化値 (1,1,1) が白」を前提にするので、

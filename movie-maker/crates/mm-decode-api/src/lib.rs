@@ -1,7 +1,15 @@
 //! デコーダーとエンコーダーの口。
 //!
-//! 段階 0 のコマは CPU の [`RgbaImage`] で受け渡す。GPU のテクスチャ（d3d12va、cuvid）で
-//! 渡す道は [`DecodedFrame::gpu`] の欄で足し、`image` を `None` にする（RFC で決める）。
+//! コマは CPU の [`RgbaImage`] か、GPU のテクスチャ（[`GpuFrameHandle`]）で受け渡す。
+//! GPU のコマの中身（wgpu のテクスチャ）は口に出さず、[`GpuFrame`] の型を消した値として運ぶ。
+//! 描画器が `GpuHelper::import` で受け、`as_any` で実装の共有部（`mm-gpu`）の型に戻す。
+//!
+//! GPU のコマの寿命（RFC 0001）:
+//! - `FrameSource::frame_at` が返す GPU のコマは、描画器の次の `submit` が終わるまでの借り物。
+//!   描画器はそれより長く持たず、キャッシュに置くなら中間形式（`Rgba16Float`）に写す。
+//! - デコーダーは、復号の完了を待たせる手続きをコマに付ける。描画器は `submit` の前にそれを呼ぶ。
+//! - デコーダーが GPU で復号するには、描画器と同じデバイスが要る。`DecoderFactory::open` に
+//!   [`GpuContextRef`] を渡し、`None` なら CPU のコマを返す。
 //!
 //! 契約（`mm_testkit::decode::contract`）:
 //! - `info()` の `duration` と `fps` から数えたコマ数だけ `next_frame` が出て、その後 `None`。
@@ -11,12 +19,17 @@
 //! - 壊れたファイルは `Err(Corrupt)` を返し、panic しない。
 //! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のコマ数が押した数と一致する。
 
+use std::any::Any;
+use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
-use mm_types::{ColorSpace, Rational, RationalTime, Result, RgbaImage, Size, TimeRange};
+use mm_types::{
+    ColorSpace, GpuAdapterId, Rational, RationalTime, Result, RgbaImage, Size, TimeRange,
+};
 
 /// 開いた素材の情報。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,11 +75,43 @@ pub struct AudioStreamInfo {
     pub channels: u16,
 }
 
-/// GPU の上にあるコマへの参照。中身の解釈は実装の組（decode と render）で合わせる。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// GPU の文脈への口。中身は実装の共有部（`mm-gpu`）の型で、`as_any` で降りる。
+pub trait GpuContextRef: Send + Sync {
+    /// 使っているアダプター。
+    fn adapter(&self) -> &GpuAdapterId;
+    /// 実装の型に降りる口。
+    fn as_any(&self) -> &dyn Any;
+}
+
+/// GPU の上にあるコマの中身。wgpu の型は口に出さず、実装の共有部の型を `as_any` で戻す。
+/// 復号の完了を待たせる手続きも中身が持つ（描画器が `submit` の前に呼ぶ）。
+pub trait GpuFrame: Send + Sync {
+    /// 実装の型に降りる口。
+    fn as_any(&self) -> &dyn Any;
+}
+
+/// GPU の上にあるコマへの参照。`id` はデコーダーの中で一意。
+#[derive(Clone)]
 pub struct GpuFrameHandle {
     pub id: u64,
     pub size: Size,
+    /// 型を消した中身。持っている間は復号器のプールを 1 つ占める。
+    pub frame: Arc<dyn GpuFrame>,
+}
+
+impl fmt::Debug for GpuFrameHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GpuFrameHandle")
+            .field("id", &self.id)
+            .field("size", &self.size)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for GpuFrameHandle {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.size == other.size && Arc::ptr_eq(&self.frame, &other.frame)
+    }
 }
 
 /// 復号した 1 コマ。
@@ -124,8 +169,9 @@ pub trait Decoder: Send {
 pub trait DecoderFactory: Send + Sync {
     /// 実装の名前（`ffmpeg`、`d3d12va`、`cuvid`、見本は `sample`）。
     fn id(&self) -> &'static str;
-    /// 素材を開く。壊れていれば `Err(Corrupt)`。
-    fn open(&self, path: &Path) -> Result<Box<dyn Decoder>>;
+    /// 素材を開く。壊れていれば `Err(Corrupt)`。`gpu` が `Some` なら、同じデバイスの上の
+    /// GPU のコマを返してよい。`None` か GPU の復号に向かない素材では CPU のコマを返す。
+    fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>>;
 }
 
 /// 時刻で引けるコマの供給元。`FrameCx` が動画オブジェクトに渡す。描画のスレッドに移すので `Send`。

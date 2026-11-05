@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use mm_audio_api::AudioBlock;
 use mm_node_api::{AudioCx, FrameCx, FrameRef, NodeKind, NodeRegistry, Traits};
-use mm_text_api::TextStyle;
+use mm_text_api::{TextAlign, TextStyle};
 use mm_types::{
     Id, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage,
 };
@@ -146,6 +146,12 @@ impl TextKind {
                 .and_then(ParamValue::as_color)
                 .unwrap_or(Rgba::WHITE),
             max_width: (max_width > 0.0).then_some(max_width as f32),
+            align: TextAlign::parse(
+                params
+                    .get("align")
+                    .and_then(ParamValue::as_text)
+                    .unwrap_or("left"),
+            ),
             ..TextStyle::default()
         }
     }
@@ -188,6 +194,7 @@ impl NodeKind for TextKind {
                 },
                 ParamValue::Number(0.0),
             ),
+            ParamSpec::new("align", ParamType::Text, ParamValue::Text("left".into())),
         ])
     }
 

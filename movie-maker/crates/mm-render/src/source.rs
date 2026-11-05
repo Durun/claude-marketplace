@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, FrameSource, MediaInfo};
+use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, FrameSource, GpuContextRef, MediaInfo};
 use mm_doc::Project;
 use mm_types::{AssetId, MmError, ParamValue, Params, RationalTime, Result, TimeRange};
 
@@ -64,6 +64,7 @@ impl SourcePool {
     pub fn footage_for<'s>(
         &'s mut self,
         decoders: &dyn DecoderFactory,
+        gpu: &dyn GpuContextRef,
         project: &Project,
         params: &Params,
     ) -> Result<Option<&'s mut (dyn FrameSource + 's)>> {
@@ -75,7 +76,7 @@ impl SourcePool {
         }
         if !self.sources.contains_key(asset_id) {
             let asset = project.asset(asset_id)?;
-            let decoder = decoders.open(Path::new(&asset.path))?;
+            let decoder = decoders.open(Path::new(&asset.path), Some(gpu))?;
             self.sources
                 .insert(asset_id.clone(), Box::new(DecoderSource::new(decoder)));
         }

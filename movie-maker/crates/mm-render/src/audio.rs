@@ -1,6 +1,6 @@
 //! 音。レイヤーごとに種類の `render_audio` を呼び、置く位置をそろえてミキサーに渡す。
 
-use mm_audio_api::{AudioBlock, MixInput};
+use mm_audio_api::{AudioBlock, MixInput, MixerConfig};
 use mm_doc::{Layer, Param};
 use mm_node_api::{audio_frames_in, AudioCx};
 use mm_render_api::AudioRequest;
@@ -22,7 +22,9 @@ impl WgpuRenderer {
                 inputs.push(input);
             }
         }
-        let mut mixer = self.mixers.create(req.sample_rate, req.channels)?;
+        let mut mixer =
+            self.mixers
+                .create(req.sample_rate, req.channels, &MixerConfig::default())?;
         mixer.mix(&inputs, audio_frames_in(req.range, req.sample_rate))
     }
 
@@ -40,9 +42,12 @@ impl WgpuRenderer {
             layer.to_source_time(overlap.start),
             layer.to_source_time(overlap.end),
         )?;
-        let footage = self
-            .sources
-            .footage_for(self.decoders.as_ref(), req.project, &params)?;
+        let footage = self.sources.footage_for(
+            self.decoders.as_ref(),
+            self.gpu.context().as_ref(),
+            req.project,
+            &params,
+        )?;
         let mut cx = AudioCx {
             range: overlap,
             source_range,

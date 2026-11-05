@@ -6,11 +6,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use tracing::span::{Attributes, Id};
-use tracing::Subscriber;
+use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::json;
+use crate::metrics::MetricVisitor;
 
 /// 1 つの complete event。
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +111,29 @@ where
         }
     }
 
+    // `record_span` のイベントは終わった時点で届くので、今から長さを引いた所を開始とする。
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        if event.metadata().target() != crate::METRICS_TARGET {
+            return;
+        }
+        let mut v = MetricVisitor::default();
+        event.record(&mut v);
+        if let (Some(kind), Some(name), Some(value)) = (v.kind, v.name, v.value) {
+            if kind != "span" {
+                return;
+            }
+            let dur_us = value as u64;
+            let now_us = self.handle.origin.elapsed().as_micros() as u64;
+            self.handle.push(ChromeEvent {
+                name,
+                target: crate::METRICS_TARGET.to_owned(),
+                ts_us: now_us.saturating_sub(dur_us),
+                dur_us,
+                tid: thread_id(),
+            });
+        }
+    }
+
     fn on_close(&self, id: Id, ctx: Context<'_, S>) {
         let Some(span) = ctx.span(&id) else {
             return;
@@ -135,6 +159,22 @@ where
 mod tests {
     use super::*;
     use tracing_subscriber::prelude::*;
+
+    #[test]
+    fn 外で測ったスパンが_x_イベントになる() {
+        let (layer, handle) = ChromeTraceLayer::new();
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            crate::record_span("render.gpu_frame", std::time::Duration::from_micros(1500));
+            crate::gauge!("memory.rss_bytes", 1);
+        });
+        let events = handle.events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            (events[0].name.as_str(), events[0].dur_us),
+            ("render.gpu_frame", 1500)
+        );
+    }
 
     #[test]
     fn 入れ子のスパンが_x_イベントになる() {

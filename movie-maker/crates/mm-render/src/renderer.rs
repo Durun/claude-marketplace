@@ -10,11 +10,10 @@ use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::compose::Compositor;
-use crate::context::GpuContext;
-use crate::gpu::WgpuGpu;
 use crate::layers::CompCx;
 use crate::source::SourcePool;
 use crate::timer::GpuTimer;
+use mm_gpu::{GpuContext, WgpuGpu};
 
 /// 描画器の版。合成の式を変えたら上げる（コマのキャッシュのキーに入る）。
 pub const WGPU_RENDERER_VERSION: u32 = 1;
@@ -67,23 +66,21 @@ impl WgpuRenderer {
 
     /// 前のコマの GPU の時間を読んで `mm-trace` に載せる。
     ///
-    /// `mm-trace` のスパンは CPU の経過時間を測るので、GPU の時間はスパン `render.gpu_frame` の
-    /// フィールドとゲージ `render.gpu_frame_us` の両方で出す。
+    /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
+    /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
     fn report_gpu_time(&mut self) {
         let Some(ns) = self.timer.collect() else {
             return;
         };
-        let us = ns / 1_000;
-        tracing::info_span!("render.gpu_frame", gpu_us = us).in_scope(|| {
-            mm_trace::gauge!("render.gpu_frame_us", us);
-        });
+        mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
+        mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
     }
 
     fn keep_output(&mut self, id: u64) {
         self.outputs.push_back(id);
         while self.outputs.len() > KEPT_OUTPUTS {
             if let Some(old) = self.outputs.pop_front() {
-                self.gpu.release(old);
+                self.gpu.release_id(old);
             }
         }
     }
@@ -107,10 +104,13 @@ impl WgpuRenderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("render.frame"),
             });
-        let target = self.encode_comp(&mut encoder, &cx)?;
+        let target = self.encode_comp(&mut encoder, &cx);
         self.timer.resolve(&mut encoder);
+        // 借りた GPU のコマは、この提出が終わるまでの借り物（RFC 0001）。前に待ち、後に返す。
+        self.gpu.before_submit();
         ctx.queue.submit([encoder.finish()]);
-        Ok(target)
+        self.gpu.after_submit();
+        target
     }
 }
 
@@ -150,7 +150,7 @@ impl Renderer for WgpuRenderer {
             let frame = FrameRef::Gpu(GpuTexture { id, size: req.size });
             let sent = sink(index, frame, &mut self.gpu);
             // 区間のコマは受け取った側が読み戻して終わりなので、溜めずに捨てる。
-            self.gpu.release(id);
+            self.gpu.release_id(id);
             sent?;
             count += 1;
         }

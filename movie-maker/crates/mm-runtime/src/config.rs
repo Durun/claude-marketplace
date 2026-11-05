@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use mm_types::MmError;
+use mm_types::{GpuAdapterId, MmError};
 
 /// 実装の名前。`FromStr` で設定ファイルと環境変数から読む。
 /// 口ごとに選べる名前は決まっていて、合わない組み合わせは `assemble` が `Unsupported` で断る。
@@ -65,6 +65,8 @@ pub struct RuntimeConfig {
     pub cache: Backend,
     /// キャッシュの大きさの上限（バイト）。`None` は無制限。
     pub cache_limit_bytes: Option<u64>,
+    /// 使う GPU。`None` なら高性能のアダプター。描画器・デコーダー・別プロセスのホストが同じものを使う。
+    pub gpu: Option<GpuAdapterId>,
 }
 
 impl RuntimeConfig {

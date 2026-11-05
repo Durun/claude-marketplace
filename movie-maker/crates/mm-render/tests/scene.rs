@@ -4,9 +4,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{Asset, Composition, Layer, Node, Param, Project};
+use mm_doc::{Asset, Composition, Layer, Node, Param, Project, Transform};
 use mm_nodes_basic::all_kinds;
-use mm_render::{GpuContext, WgpuRenderer};
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
 use mm_render_api::{RangeRequest, RenderRequest, Renderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
@@ -25,7 +25,7 @@ const TOLERANCE: f32 = 3e-3;
 const RED: Rgba = Rgba::new(1.0, 0.0, 0.0, 1.0);
 
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::shared() {
+    match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
@@ -54,7 +54,20 @@ fn renderer(ctx: &Arc<GpuContext>) -> WgpuRenderer {
     )
 }
 
-fn layer(id: &str, source: Node) -> Layer {
+/// 種類のパラメータ `transform.*` を `Layer.transform` に移してレイヤーを作る（テストの書きやすさのため）。
+fn layer(id: &str, mut source: Node) -> Layer {
+    let mut transform = Transform::default();
+    for (name, param) in std::mem::take(&mut source.params) {
+        match name.as_str() {
+            "transform.position" => transform.position = param,
+            "transform.scale" => transform.scale = param,
+            "transform.rotation" => transform.rotation = param,
+            "transform.anchor" => transform.anchor = Some(param),
+            _ => {
+                source.params.insert(name, param);
+            }
+        }
+    }
     Layer {
         id: Id::new(id),
         source,
@@ -62,6 +75,7 @@ fn layer(id: &str, source: Node) -> Layer {
         in_point: RationalTime::ZERO,
         out_point: RationalTime::seconds(2),
         opacity: Param::constant(ParamValue::Number(1.0)),
+        transform,
         audio: None,
         lock: false,
     }

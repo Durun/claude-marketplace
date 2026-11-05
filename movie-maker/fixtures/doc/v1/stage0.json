@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "clip",
+      "path": "../../media/out/cfr.mp4",
+      "content_hash": "stage0-cfr",
+      "color_space": "bt709",
+      "duration": {
+        "num": 2,
+        "den": 1
+      },
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "timebase_offset": {
+        "num": 0,
+        "den": 1
+      }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main",
+      "width": 320,
+      "height": 180,
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "duration": {
+        "num": 1,
+        "den": 1
+      },
+      "layers": [
+        {
+          "id": "l-footage",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 1,
+            "den": 2
+          },
+          "out": {
+            "num": 3,
+            "den": 2
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-text",
+          "source": {
+            "kind": "text",
+            "version": 1,
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              },
+              "position": {
+                "value": {
+                  "type": "vec2",
+                  "value": [
+                    16.0,
+                    120.0
+                  ]
+                },
+                "keyframes": []
+              },
+              "size": {
+                "value": {
+                  "type": "number",
+                  "value": 22.0
+                },
+                "keyframes": []
+              },
+              "text": {
+                "value": {
+                  "type": "text",
+                  "value": "こんにちは Movie Maker"
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 1,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": null,
+          "lock": false
+        }
+      ]
+    }
+  ],
+  "render_targets": [
+    {
+      "id": "mp4",
+      "composition": "main",
+      "width": 320,
+      "height": 180,
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "codec": "h264",
+      "output_path": ".mm/out/stage0.mp4",
+      "loudness_lufs": null
+    }
+  ]
+}

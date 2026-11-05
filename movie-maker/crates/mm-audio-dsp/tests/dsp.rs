@@ -2,10 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use mm_audio_api::{AudioBlock, LoudnessMeter, MixInput, Mixer, MixerFactory};
-use mm_audio_dsp::{
-    db_to_gain, BusConfig, DspLoudnessMeter, DspMixerFactory, DuckingConfig, MixerConfig,
+use mm_audio_api::{
+    AudioBlock, BusConfig, DuckingConfig, LoudnessMeter, MixInput, Mixer, MixerConfig, MixerFactory,
 };
+use mm_audio_dsp::{db_to_gain, DspLoudnessMeter, DspMixerFactory};
 
 const RATE: u32 = 48_000;
 
@@ -28,9 +28,7 @@ fn input(block: AudioBlock, role: &str, gain_db: f32, pan: f32) -> MixInput {
 }
 
 fn mixer(config: MixerConfig) -> Box<dyn Mixer> {
-    DspMixerFactory::new(config)
-        .create(RATE, 2)
-        .expect("作れる")
+    DspMixerFactory.create(RATE, 2, &config).expect("作れる")
 }
 
 fn peak(b: &AudioBlock, channel: usize) -> f32 {

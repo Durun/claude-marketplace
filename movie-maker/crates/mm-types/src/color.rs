@@ -66,9 +66,24 @@ impl ColorSpace {
         Self("lin_rec709".into())
     }
 
-    /// 映像の既定の入力。Rec.709、tv レンジ。
+    /// 映像の既定。Rec.1886 の表示の式（べき 2.4）、Rec.709 の原色。
     pub fn bt709() -> Self {
         Self("bt709".into())
+    }
+
+    /// BT.709 のカメラの OETF、Rec.709 の原色。シーン参照の素材だけに使う。
+    pub fn bt709_oetf() -> Self {
+        Self("bt709_oetf".into())
+    }
+
+    /// Rec.1886 の表示の式、Rec.601（SMPTE 170M）の原色。
+    pub fn bt601() -> Self {
+        Self("bt601".into())
+    }
+
+    /// Rec.1886 の表示の式、Rec.2020 の原色（SDR）。
+    pub fn bt2020() -> Self {
+        Self("bt2020".into())
     }
 
     /// 画像の既定の入力。

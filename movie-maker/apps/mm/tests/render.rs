@@ -89,7 +89,7 @@ fn 書き出した_mp4_のコマ数と長さとコーデックが合う() {
 #[test]
 fn 切った区間のコマ番号と音が読み戻せる() {
     let path = render_stage0("readback.mp4");
-    let mut decoder = FfmpegDecoderFactory.open(&path).expect("開ける");
+    let mut decoder = FfmpegDecoderFactory.open(&path, None).expect("開ける");
     let info = decoder.info().clone();
     assert_eq!(info.frame_count(), FRAMES);
 

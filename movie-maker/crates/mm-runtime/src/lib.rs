@@ -10,5 +10,5 @@ mod registry;
 
 pub use assemble::assemble;
 pub use config::{Backend, RuntimeConfig};
-pub use engine::{Engine, EngineParts, ExportReport, EXPORT_BATCH_FRAMES};
+pub use engine::{Engine, EngineParts};
 pub use registry::Registry;

@@ -2628,12 +2628,32 @@ dependencies = [
 name = "mm-export"
 version = "0.1.0"
 dependencies = [
+ "mm-audio-api",
+ "mm-decode-api",
  "mm-doc",
+ "mm-node-api",
+ "mm-render-api",
  "mm-runtime",
  "mm-testkit",
  "mm-trace",
  "mm-types",
+ "serde_json",
  "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "mm-gpu"
+version = "0.1.0"
+dependencies = [
+ "half",
+ "mm-decode-api",
+ "mm-node-api",
+ "mm-types",
+ "pollster",
+ "tracing",
+ "wgpu",
+ "windows",
 ]
 
 [[package]]
@@ -2697,10 +2717,10 @@ name = "mm-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "half",
  "mm-audio-api",
  "mm-decode-api",
  "mm-doc",
+ "mm-gpu",
  "mm-node-api",
  "mm-nodes-basic",
  "mm-render-api",
@@ -2708,7 +2728,6 @@ dependencies = [
  "mm-trace",
  "mm-types",
  "png",
- "pollster",
  "tracing",
  "tracing-subscriber",
  "wgpu",

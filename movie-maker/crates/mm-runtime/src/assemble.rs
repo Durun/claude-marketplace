@@ -6,9 +6,9 @@ use mm_audio_api::MixerFactory;
 use mm_audio_dsp::DspMixerFactory;
 use mm_cache_api::CacheStore;
 use mm_color_api::ColorTransform;
-use mm_decode_api::{DecoderFactory, EncoderFactory};
+use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_node_api::Services;
-use mm_render::{GpuContext, WgpuRenderer};
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::cache::MemoryCache;
@@ -44,7 +44,8 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
         text_rasterizer,
         color,
     };
-    let renderer = renderer(config.render, &decoders, &mixers, &services)?;
+    let gpu = gpu_context(config)?;
+    let renderer = renderer(config.render, gpu.as_ref(), &decoders, &mixers, &services)?;
     Ok(Engine::from_parts(EngineParts {
         config: config.clone(),
         registry: registry(config.render)?,
@@ -54,6 +55,7 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
         mixers,
         cache,
         services,
+        gpu: gpu.map(|g| g as Arc<dyn GpuContextRef>),
     }))
 }
 
@@ -86,12 +88,24 @@ fn encoders(backend: Backend) -> Result<Arc<dyn EncoderFactory>> {
 fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
     match backend {
         Backend::Sample => Ok(Arc::new(SampleMixerFactory)),
-        Backend::Dsp => Ok(Arc::new(DspMixerFactory::default())),
+        Backend::Dsp => Ok(Arc::new(DspMixerFactory)),
         other => Err(unsupported("audio", other)),
     }
 }
 
-/// 整形器と描画器の組。glyphon は同じ `TextEngine` から両方を取る（字形の台帳を共有するため）。
+/// GPU を使う実装があるときだけ、文脈を 1 回作る。設定のアダプターが無ければ高性能のもの。
+fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
+    if config.render != Backend::Wgpu {
+        return Ok(None);
+    }
+    let request = GpuRequest {
+        adapter: config.gpu.clone(),
+        ..GpuRequest::default()
+    };
+    Ok(Some(GpuContext::shared(&request)?))
+}
+
+/// 整形器と描画器の組。glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
 fn text(backend: Backend) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer>)> {
     match backend {
         Backend::Sample => Ok((Arc::new(SampleShaper), Arc::new(SampleRasterizer))),
@@ -105,6 +119,7 @@ fn text(backend: Backend) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer
 
 fn renderer(
     backend: Backend,
+    gpu: Option<&Arc<GpuContext>>,
     decoders: &Arc<dyn DecoderFactory>,
     mixers: &Arc<dyn MixerFactory>,
     services: &Services,
@@ -116,7 +131,7 @@ fn renderer(
             services.clone(),
         ))),
         Backend::Wgpu => Ok(Box::new(WgpuRenderer::new(
-            GpuContext::shared()?,
+            gpu.ok_or_else(|| unsupported("render", backend))?.clone(),
             decoders.clone(),
             mixers.clone(),
             services.clone(),

@@ -25,7 +25,7 @@ mod wrap;
 #[cfg(feature = "d3d12va")]
 pub use convert::{Converter, CpuUploader};
 #[cfg(feature = "d3d12va")]
-pub use decoder::{D3d12vaDecoder, D3d12vaFactory, HeldFrame};
+pub use decoder::{D3d12vaDecoder, D3d12vaFactory, HeldFrame, HeldFrameRef};
 #[cfg(feature = "d3d12va")]
 pub use gpu::GpuContext;
 #[cfg(feature = "d3d12va")]

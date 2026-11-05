@@ -1,5 +1,5 @@
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
-use mm_text_api::TextStyle;
+use mm_text_api::{TextAlign, TextStyle};
 use mm_types::{
     ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage,
 };
@@ -22,6 +22,12 @@ impl TextKind {
                 .and_then(ParamValue::as_color)
                 .unwrap_or(Rgba::WHITE),
             max_width: (max_width > 0.0).then_some(max_width as f32),
+            align: TextAlign::parse(
+                params
+                    .get("align")
+                    .and_then(ParamValue::as_text)
+                    .unwrap_or("left"),
+            ),
             ..TextStyle::default()
         }
     }
@@ -63,6 +69,7 @@ impl NodeKind for TextKind {
             ParamSpec::new("color", ParamType::Color, ParamValue::Color(Rgba::WHITE)),
             ParamSpec::new("position", ParamType::Vec2, ParamValue::Vec2([0.0, 0.0])),
             ParamSpec::new("max_width", number(0.0), ParamValue::Number(0.0)),
+            ParamSpec::new("align", ParamType::Text, ParamValue::Text("left".into())),
         ])
     }
 

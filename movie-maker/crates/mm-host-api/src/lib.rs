@@ -4,6 +4,11 @@
 //! 制御はパイプで [`HostRequest`]/[`HostResponse`] の JSON を 1 行ずつ。絵は共有テクスチャの
 //! ハンドル（[`SharedFrame::SharedTexture`]）で渡し、ハンドルを開く所は実装のクレートに閉じる。
 //!
+//! 共有テクスチャの同期（RFC 0001）: ホストは [`HostSpec::gpu`] のアダプターでテクスチャを作り、
+//! [`HostSpec::client_pid`] のプロセスへ複製したハンドルを返す。`fence` が `None` ならホストが
+//! 描画の完了を待ってから返しており、アプリはすぐ開ける。`Some` ならアプリが `submit` の前に
+//! そのフェンスの値を待つ。
+//!
 //! 契約（`mm_testkit::host::contract`）:
 //! - `spawn` 直後に `Ping` → `Pong`。
 //! - `RenderFrame` → `Frame` で、頼んだ大きさの絵が返る。
@@ -16,7 +21,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use mm_types::{RationalTime, Result, RgbaImage, Size};
+use mm_types::{GpuAdapterId, RationalTime, Result, RgbaImage, Size};
 
 /// プロトコルの版。要求と応答の形を変えたら上げる。
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -29,6 +34,21 @@ pub struct HostSpec {
     pub args: Vec<String>,
     /// 1 要求の既定の期限。
     pub default_timeout: Duration,
+    /// 使う GPU。`None` なら高性能のアダプター。アプリと同じでないと共有テクスチャを開けない。
+    #[serde(default)]
+    pub gpu: Option<GpuAdapterId>,
+    /// ハンドルを複製して渡す相手（アプリ）のプロセス ID。`None` なら CPU の絵で返す。
+    #[serde(default)]
+    pub client_pid: Option<u32>,
+}
+
+/// 共有テクスチャの描き終わりを知らせるフェンス。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SharedFence {
+    /// D3D12 の共有フェンスの NT ハンドル（受け取る側のプロセスで有効）。
+    pub handle: u64,
+    /// この値になれば描き終わっている。
+    pub value: u64,
 }
 
 /// アプリからホストへ。
@@ -69,8 +89,14 @@ pub enum SharedFrame {
         /// RGBA f32、premultiplied、線形。
         data: Vec<f32>,
     },
-    /// D3D12 の共有テクスチャの NT ハンドル。受け取った側がコピーして閉じる。
-    SharedTexture { handle: u64, size: Size },
+    /// D3D12 の共有テクスチャの NT ハンドル（受け取る側のプロセスで有効）。受け取った側がコピーして閉じる。
+    SharedTexture {
+        handle: u64,
+        size: Size,
+        /// `None` ならホストが完了を待ってから返している。
+        #[serde(default)]
+        fence: Option<SharedFence>,
+    },
 }
 
 impl SharedFrame {

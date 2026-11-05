@@ -10,7 +10,7 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_decode_api::{
     AudioStreamInfo, DecodedFrame, Decoder, DecoderFactory, EncodeReport, EncodeSettings, Encoder,
-    EncoderFactory, FrameSource, MediaInfo,
+    EncoderFactory, FrameSource, GpuContextRef, MediaInfo,
 };
 use mm_types::{
     ColorSpace, MmError, Rational, RationalTime, Result, Rgba, RgbaImage, Size, TimeRange,
@@ -85,7 +85,7 @@ impl DecoderFactory for SampleDecoderFactory {
         crate::SAMPLE_ID
     }
 
-    fn open(&self, path: &Path) -> Result<Box<dyn Decoder>> {
+    fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         if path.to_string_lossy().contains(BROKEN_MARKER) {
             return Err(MmError::Corrupt(format!("{}", path.display())));
         }
@@ -293,7 +293,7 @@ impl DecodeFixture {
 /// デコーダーの契約。`make` は毎回新しい口を作る。
 pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) {
     let factory = make();
-    let mut dec = factory.open(&fx.path).expect("開ける");
+    let mut dec = factory.open(&fx.path, None).expect("開ける");
     assert_eq!(dec.info().duration, fx.duration, "duration が合う");
     assert_eq!(dec.info().fps, Some(fx.fps), "fps が合う");
 
@@ -320,7 +320,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
 
     if let Some(broken) = &fx.broken_path {
         assert!(
-            matches!(make().open(broken), Err(MmError::Corrupt(_))),
+            matches!(make().open(broken, None), Err(MmError::Corrupt(_))),
             "壊れたファイルは Corrupt"
         );
     }

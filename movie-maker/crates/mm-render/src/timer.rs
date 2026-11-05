@@ -4,8 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::context::GpuContext;
-use crate::gpu::map_blocking;
+use mm_gpu::{map_blocking, GpuContext};
 
 /// 1 コマに積めるパスの数。入れ子が深いとき超えた分は計らない。
 const MAX_PASSES: u32 = 32;

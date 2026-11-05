@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerFactory};
+use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig, MixerFactory};
 use mm_types::{MmError, Result};
 
 /// dB を倍率に。
@@ -12,74 +12,21 @@ pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-/// バス 1 本の設定。
-#[derive(Debug, Clone, PartialEq)]
-pub struct BusConfig {
-    /// バスの音量（dB）。
-    pub gain_db: f32,
-}
-
-/// ダッキング。`trigger` のバスが鳴っている間、`targets` のバスを `reduction_db` だけ下げる。
-#[derive(Debug, Clone, PartialEq)]
-pub struct DuckingConfig {
-    /// 鳴ると他を下げるバスの役割（例: `voice`）。
-    pub trigger: String,
-    /// 下げられるバスの役割（例: `bgm`）。
-    pub targets: Vec<String>,
-    /// 下げる量（dB）。負の値。
-    pub reduction_db: f32,
-    /// 鳴っていると見なす振幅（線形）。
-    pub threshold: f32,
-    /// 下がり始めてから下がりきるまでの時間（ms）。
-    pub attack_ms: f32,
-    /// 戻り始めてから戻りきるまでの時間（ms）。
-    pub release_ms: f32,
-}
-
-impl DuckingConfig {
-    /// 声が鳴ったら BGM を 12 dB 下げる、字幕動画向けの既定。
-    pub fn voice_over_bgm() -> Self {
-        Self {
-            trigger: "voice".into(),
-            targets: vec!["bgm".into()],
-            reduction_db: -12.0,
-            threshold: 0.01,
-            attack_ms: 20.0,
-            release_ms: 300.0,
-        }
-    }
-}
-
-/// ミキサーの設定。
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct MixerConfig {
-    /// 役割ごとのバス。載っていない役割は 0 dB。
-    pub buses: BTreeMap<String, BusConfig>,
-    /// ダッキング。`None` で無効。
-    pub ducking: Option<DuckingConfig>,
-    /// マスターの音量（dB）。
-    pub master_db: f32,
-}
-
-/// ミキサーを作る口。既定の設定ではダッキングは無効で、バスは全て 0 dB。
-#[derive(Debug, Clone, Default)]
-pub struct DspMixerFactory {
-    config: MixerConfig,
-}
-
-impl DspMixerFactory {
-    /// 設定を決めて作る。
-    pub fn new(config: MixerConfig) -> Self {
-        Self { config }
-    }
-}
+/// ミキサーを作る口。設定は `create` で受ける。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DspMixerFactory;
 
 impl MixerFactory for DspMixerFactory {
     fn id(&self) -> &'static str {
         "dsp"
     }
 
-    fn create(&self, sample_rate: u32, channels: u16) -> Result<Box<dyn Mixer>> {
+    fn create(
+        &self,
+        sample_rate: u32,
+        channels: u16,
+        config: &MixerConfig,
+    ) -> Result<Box<dyn Mixer>> {
         if sample_rate == 0 || channels == 0 {
             return Err(MmError::InvalidArgument(
                 "サンプルレートとチャンネル数は 1 以上".into(),
@@ -88,7 +35,7 @@ impl MixerFactory for DspMixerFactory {
         Ok(Box::new(DspMixer {
             sample_rate,
             channels,
-            config: self.config.clone(),
+            config: config.clone(),
             duck_gain: 1.0,
         }))
     }

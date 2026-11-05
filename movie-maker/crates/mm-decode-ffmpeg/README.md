@@ -1,12 +1,16 @@
 # FFmpeg のライブラリの用意（mm-decode-ffmpeg / mm-encode-ffmpeg）
 
 2 つのクレートの実装と契約テストは feature `ffmpeg` の下にあり、既定では切ってある。FFmpeg も libclang も無い環境（CI、ほかの担当）では、feature なしで `cargo fmt` / `clippy` / `test --workspace` が通る（この 2 クレートは空になる）。
-FFmpeg を使うときは下の用意をして、`--features ffmpeg`（ワークスペース全体なら `--all-features`）を付ける。
+FFmpeg を使うときは下の用意をして、`--features ffmpeg` を付ける。ワークスペース全体の検査は feature を明示する（`--all-features` は OCIO の SDK と CEF の配布物も要る）。
 
 ```sh
 cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings \
+  --features mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-runtime/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
 ```
+
+ワークスペースのビルドでは `ffmpeg-sys-next` の build script が主スレッドのスタックを使い切って落ちる（`STATUS_STACK_OVERFLOW`）。
+`.cargo/config.toml` が MSVC のリンカーにスタック 32 MB を要求して防ぐ（`x86_64-pc-windows-msvc` のみ。リンクする全バイナリに効く）。
 
 feature ありのビルドは `ffmpeg-next`（FFmpeg 9.0 の系）でビルドする。必要なのは FFmpeg の shared ビルド（ヘッダー、import ライブラリ、DLL）と libclang。
 テストの素材づくりと検証には ffmpeg / ffprobe の CLI も PATH に要る。

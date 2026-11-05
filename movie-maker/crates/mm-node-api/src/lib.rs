@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
 use mm_color_api::ColorTransform;
-use mm_decode_api::FrameSource;
+use mm_decode_api::{FrameSource, GpuFrameHandle};
 use mm_text_api::{TextRasterizer, TextShaper};
 use mm_types::{ParamSchema, Params, RationalTime, Rect, Result, RgbaImage, Size, TimeRange};
 
@@ -141,7 +141,10 @@ impl FrameRef {
     }
 }
 
-/// GPU のヘルパー。`wgpu::Device` そのものは渡さず、要る操作だけを出す。
+/// GPU のヘルパー。`wgpu::Device` そのものは渡さず、要る操作だけを出す（RFC 0001）。
+///
+/// テクスチャの寿命: `upload` / `allocate` / `import` が返した `Gpu` のコマはヘルパーが持ち、
+/// `release` で捨てる。描画器は合成を提出したら、そのコマで使ったテクスチャを `release` する。
 pub trait GpuHelper {
     /// CPU の絵をテクスチャにする。
     fn upload(&mut self, image: &RgbaImage) -> Result<FrameRef>;
@@ -149,6 +152,17 @@ pub trait GpuHelper {
     fn download(&mut self, frame: &FrameRef) -> Result<Arc<RgbaImage>>;
     /// 透明のテクスチャを確保する。
     fn allocate(&mut self, size: Size) -> Result<FrameRef>;
+    /// テクスチャを捨てる。`Cpu` と `Transparent` は何もしない。
+    fn release(&mut self, frame: &FrameRef);
+    /// デコーダーの GPU のコマを、このヘルパーのテクスチャとして使えるようにする。
+    /// 返すコマは次の `submit` が終わるまでの借り物で、描画器が `submit` の後に `release` する。
+    /// 中身の型を知らないヘルパーは `Err(Unsupported)`。
+    fn import(&mut self, frame: &GpuFrameHandle) -> Result<FrameRef> {
+        Err(mm_types::MmError::Unsupported(format!(
+            "GPU のコマ {} を受けられない",
+            frame.id
+        )))
+    }
     /// 実装の型に降りる口。wgpu の `CommandEncoder` が要る種類だけが使う。
     fn as_any(&mut self) -> &mut dyn Any;
 }

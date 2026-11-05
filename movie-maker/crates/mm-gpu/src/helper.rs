@@ -1,14 +1,17 @@
 //! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の絵との行き来は f32 と f16 の変換で行う。
+//! デコーダーから借りたコマは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use half::f16;
+use mm_decode_api::GpuFrameHandle;
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::context::{GpuContext, FRAME_FORMAT};
+use crate::frame::GpuFrameTexture;
 
 /// 1 画素のバイト数（RGBA の f16）。
 const BYTES_PER_PIXEL: u32 = 8;
@@ -20,6 +23,8 @@ pub struct WgpuGpu {
     ctx: Arc<GpuContext>,
     next_id: u64,
     textures: HashMap<u64, wgpu::Texture>,
+    /// 借りているコマ。`after_submit` で捨てる。
+    borrowed: Vec<(u64, Arc<dyn mm_decode_api::GpuFrame>)>,
 }
 
 impl WgpuGpu {
@@ -29,6 +34,7 @@ impl WgpuGpu {
             ctx,
             next_id: 0,
             textures: HashMap::new(),
+            borrowed: Vec::new(),
         }
     }
 
@@ -48,15 +54,33 @@ impl WgpuGpu {
     }
 
     /// 番号のテクスチャを捨てる。
-    pub fn release(&mut self, id: u64) {
+    pub fn release_id(&mut self, id: u64) {
         self.textures.remove(&id);
     }
 
-    /// `Gpu` のコマなら捨てる。
-    pub fn release_frame(&mut self, frame: &FrameRef) {
-        if let FrameRef::Gpu(tex) = frame {
-            self.release(tex.id);
+    /// `submit` の直前。借りたコマの復号の完了を待たせる。
+    pub fn before_submit(&self) {
+        for (_, frame) in &self.borrowed {
+            if let Some(wait) =
+                GpuFrameTexture::of_frame(frame.as_ref()).and_then(|t| t.wait.as_ref())
+            {
+                wait(&self.ctx.queue);
+            }
         }
+    }
+
+    /// `submit` の直後。借りたコマを返す（デコーダーのプールが空く）。
+    pub fn after_submit(&mut self) {
+        for (id, _) in self.borrowed.drain(..) {
+            self.textures.remove(&id);
+        }
+    }
+
+    fn insert(&mut self, texture: wgpu::Texture) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.textures.insert(id, texture);
+        id
     }
 
     /// 透明の（中身が未定の）テクスチャを作って番号を返す。
@@ -69,7 +93,7 @@ impl WgpuGpu {
             )));
         }
         let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("mm-render frame"),
+            label: Some("mm-gpu frame"),
             size: wgpu::Extent3d {
                 width: size.width,
                 height: size.height,
@@ -85,10 +109,7 @@ impl WgpuGpu {
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        let id = self.next_id;
-        self.next_id += 1;
-        self.textures.insert(id, texture);
-        Ok(id)
+        Ok(self.insert(texture))
     }
 
     fn read_back(&self, id: u64, size: Size) -> Result<RgbaImage> {
@@ -99,7 +120,7 @@ impl WgpuGpu {
         let _span = tracing::debug_span!("render.readback").entered();
         let padded_row = (size.width * BYTES_PER_PIXEL).div_ceil(ROW_ALIGN) * ROW_ALIGN;
         let buffer = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("mm-render readback"),
+            label: Some("mm-gpu readback"),
             size: u64::from(padded_row) * u64::from(size.height),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
@@ -141,7 +162,7 @@ impl WgpuGpu {
 }
 
 /// バッファの読み取りを頼み、終わるまで待つ。
-pub(crate) fn map_blocking(device: &wgpu::Device, buffer: &wgpu::Buffer) -> Result<()> {
+pub fn map_blocking(device: &wgpu::Device, buffer: &wgpu::Buffer) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
         // 受け手が先に落ちていても困らない。
@@ -194,7 +215,7 @@ impl GpuHelper for WgpuGpu {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let view = self.textures[&id].create_view(&wgpu::TextureViewDescriptor::default());
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("mm-render clear"),
+            label: Some("mm-gpu clear"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
                 depth_slice: None,
@@ -208,6 +229,27 @@ impl GpuHelper for WgpuGpu {
         });
         self.ctx.queue.submit([encoder.finish()]);
         Ok(FrameRef::Gpu(GpuTexture { id, size }))
+    }
+
+    fn release(&mut self, frame: &FrameRef) {
+        if let FrameRef::Gpu(tex) = frame {
+            self.release_id(tex.id);
+        }
+    }
+
+    fn import(&mut self, frame: &GpuFrameHandle) -> Result<FrameRef> {
+        let texture = GpuFrameTexture::of(frame).ok_or_else(|| {
+            MmError::Unsupported(format!(
+                "GPU のコマ {} は wgpu のテクスチャでない",
+                frame.id
+            ))
+        })?;
+        let id = self.insert(texture.texture.clone());
+        self.borrowed.push((id, frame.frame.clone()));
+        Ok(FrameRef::Gpu(GpuTexture {
+            id,
+            size: frame.size,
+        }))
     }
 
     fn as_any(&mut self) -> &mut dyn Any {

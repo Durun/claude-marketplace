@@ -55,6 +55,12 @@ impl GpuHelper for CpuGpu {
         Ok(self.insert(Arc::new(RgbaImage::transparent(size))))
     }
 
+    fn release(&mut self, frame: &FrameRef) {
+        if let FrameRef::Gpu(tex) = frame {
+            self.textures.remove(&tex.id);
+        }
+    }
+
     fn as_any(&mut self) -> &mut dyn Any {
         self
     }

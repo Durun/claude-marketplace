@@ -34,7 +34,11 @@ flowchart BT
   end
   subgraph IMPL[実装（差し替えられる）]
     direction BT
+    gpu[mm-gpu<br>wgpu の文脈・GpuHelper の実装・GPU のコマの型（実装の共有部）]
     render[mm-render]
+    render --> gpu
+    decode --> gpu
+    hosts --> gpu
     nodes[mm-nodes-basic / -cef / -ofx / -lottie]
     decode[mm-decode-ffmpeg / -d3d12va / -cuvid<br>mm-encode-nvenc / -ffmpeg]
     color[mm-color-ocio / -lut]
@@ -74,7 +78,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の層だけを持つ。実装と組み立てはこれを使ってスパンを置き、口のクレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. 口は基礎だけに依存する。口と口の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。
+3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は 1 つで、GPU を触る実装は「実装の共有部」`mm-gpu`（wgpu の文脈とアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のコマの中身の型）に依存してよい（RFC 0001）。口は wgpu を出さないので、wgpu の型を合わせる場所がここになる。`mm-gpu` は口と基礎にだけ依存し、ほかの実装には依存しない。
 4. 実装を選ぶのは `mm-runtime` だけ。入口（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 循環は `cargo` が断る（クレート間の循環依存はビルドできない）ので、この図のとおりに分けていれば起きない。クレートの中のモジュールの循環は、口と実装を別のクレートに置くことで防ぐ。
@@ -101,6 +105,7 @@ movie-maker/
     mm-host-api/        別プロセスのプロトコル（起動、共有テクスチャの受け渡し、時間切れ、再起動）
     mm-cache-api/       CacheStore（キーで引く、置く、大きさ、消す）
     mm-ingest-api/      付属ファイルの JSON Schema と型
+    mm-gpu/             実装の共有部。wgpu の Device と Queue（アダプターを 1 回選ぶ、LUID）、GpuHelper の wgpu 実装、デコーダーの GPU のコマの型
     mm-render/          描画器の実装（wgpu、compute の合成、変形の折りたたみ、ベクターの倍率）
     mm-nodes-basic/     footage、audio、image、solid、shape、svg、composition、sequence、text、shader.wgsl、color.*
     mm-nodes-cef/       web.cef（mm-host-cef に頼む側）
@@ -159,12 +164,12 @@ movie-maker/
 
 ## 口と実装の分け方
 
-- 口のクレートは、トレイト、入出力の型、エラーの型、契約（文書化した約束）だけを持つ。`impl` を持たない。依存は基礎と、必要な外の型（`wgpu` の型、`serde`）だけ。
+- 口のクレートは、トレイト、入出力の型、エラーの型、契約（文書化した約束）だけを持つ。`impl` を持たない。依存は基礎と `serde` だけで、wgpu の型は出さない（GPU は `GpuHelper` などの型を消したトレイトで囲い、`as_any` で `mm-gpu` の型に降りる。RFC 0001）。
 - 実装のクレートは 1 つの口を 1 つの方式で実装する。名前は `mm-<話題>-<方式>`。同じ口の実装が複数あってよい（`mm-decode-d3d12va` と `mm-decode-cuvid`、`mm-text-glyphon` と `mm-text-cef`、`mm-color-ocio` と `mm-color-lut`）。
 - 動画オブジェクトの種類は `mm-node-api` の実装で、`mm-nodes-*` にまとめて置く。種類を足すのは実装のクレートの追加で、口は変わらない。
 - 別プロセスのホストは、口（`mm-host-api` のプロトコル）を挟んで 2 つに分かれる。アプリの側の `mm-nodes-cef` が頼み、実行ファイルの `mm-host-cef` が描く。OpenFX がホストとプラグインを版つきの関数の表で切り離しているのと同じ型 [32]。
 - 組み立ては `mm-runtime::assemble(config) -> Engine` の 1 か所。設定で実装を選ぶ（`decode = "d3d12va" | "cuvid" | "ffmpeg"`、`text = "glyphon" | "cef"`）。Bevy が `Plugin::build` で `App` に部品を足し、`PluginGroup` の `set` で中の部品を差し替えるのと同じ型 [33]。入口は `Engine` を受け取るだけで、実装のクレートに依存しない。
-- 実装の裏が安全でない所（D3D12 のハンドル、CUDA、CEF、OFX の C API）は実装のクレートの中に閉じ、口の型には `unsafe` を出さない。wgpu が `wgpu-hal`（unsafe な裏）と `wgpu-core`（検証）を分けているのと同じ [31]。
+- 実装の裏が安全でない所（D3D12 のハンドル、CUDA、CEF、OFX の C API、`mm-gpu` の LUID の読み）は実装のクレートの中に閉じ、口の型には `unsafe` を出さない。wgpu が `wgpu-hal`（unsafe な裏）と `wgpu-core`（検証）を分けているのと同じ [31]。
 - 口を通すと遅くなる所（毎コマの呼び出し）は、口の粒度を「コマ 1 枚」でなく「区間」や「バッチ」にして、動的ディスパッチの回数を減らす。トレイトオブジェクトの呼び出しの費用は 1 コマあたり数十回なら問題にならない〔推〕。
 - 先行事例から採るもの: ports and adapters（核を UI やデータベースなしで動かし、テストも人も同じ口から駆動する）[30] を全体の型に、wgpu の hal と core の分け方 [31] を裏の隔離に、OpenFX の host と plugin の切り離し [32] を別プロセスの口に、Bevy の Plugin [33] を組み立てに、Zed の小さなクレートの多いワークスペース [34] と Cargo の `workspace.dependencies` [36] を木に。rustc のクエリ（結果のメモ化と提供者の差し替え）[37] はコマのキャッシュと `mm-render-api` の `Scheduler` の参考にする（時刻とキーで引く計算と、その提供者を差し替えられる形）。
 
@@ -203,7 +208,7 @@ movie-maker/
 | 自動の改善 | `crates/mm-improve` | |
 | 見本とベンチ | `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/` | |
 | 計装 | `crates/mm-trace`、`xtask/` | ほかのクレートのスパンの名前（名前は各話題が付け、`mm-trace` は決まりだけ持つ） |
-| 口と組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`docs/` | |
+| 口と組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-gpu`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`docs/` | |
 
 - 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は統合の担当だけが書く。話題の worktree が外のクレートを足したいときは、PR に「`workspace.dependencies` に X を足す」と書き、統合の担当が足す。
 - 2 つ以上のエージェントが同じリポジトリを書くときは、各々を別の worktree に置く（この表の 1 行ずつ）。同じ話題を 2 人で書かない。
