@@ -12,4 +12,4 @@ pub mod ffi;
 mod ocio;
 
 #[cfg(feature = "native")]
-pub use ocio::{OcioColor, DEFAULT_CONFIG, OCIO_ID};
+pub use ocio::{OcioColor, DEFAULT_CONFIG, DISPLAY_SPACE, OCIO_ID};

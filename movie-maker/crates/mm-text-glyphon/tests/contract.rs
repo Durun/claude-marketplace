@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use mm_testkit::text::contract;
-use mm_text_glyphon::{CosmicShaper, GlyphonRasterizer, TextEngine};
+use mm_text_glyphon::{CosmicShaper, CpuRasterizer, TextEngine};
 
 #[test]
 fn 文字の契約を満たす() {
@@ -15,6 +15,6 @@ fn 文字の契約を満たす() {
 fn 別々に作った整形器と描画器でも契約を満たす() {
     contract(
         || Arc::new(CosmicShaper::new()),
-        || Arc::new(GlyphonRasterizer::new()),
+        || Arc::new(CpuRasterizer::new()),
     );
 }

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "mm-color-ocio",
+  "version-string": "0.1.0",
+  "builtin-baseline": "29718cfec805208b4e2d80ed91e681143b488dd7",
+  "dependencies": [
+    "opencolorio"
+  ],
+  "overrides": [
+    {
+      "name": "opencolorio",
+      "version-semver": "2.6.0"
+    }
+  ]
+}

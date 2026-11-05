@@ -50,6 +50,7 @@ pollster = "1.0"
 # wgpu-hal の D3D12 が使う版にそろえる（ID3D12Resource などの型を受け渡すため）。
 windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
+glyphon = { version = "0.12", default-features = false }
 ebur128 = "0.1"
 half = "2.7"
 bytemuck = { version = "1.20", features = ["derive"] }
@@ -62,6 +63,7 @@ naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgs
 bindgen = "0.73"
 cc = "1.2"
 mm-color-lut = { path = "crates/mm-color-lut" }
+mm-color-ocio = { path = "crates/mm-color-ocio" }
 # apps/movie-maker（窓の試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"

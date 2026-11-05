@@ -1,7 +1,7 @@
 [package]
 name = "mm-text-api"
 description = "文字の口。整形と行組み（TextShaper）、描画（TextRasterizer）"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true

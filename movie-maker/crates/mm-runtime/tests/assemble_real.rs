@@ -30,6 +30,39 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
 }
 
 #[test]
+fn 文字の_cpu_と色の_lut_はgpuなしで選べる() {
+    let config = RuntimeConfig {
+        text: Backend::Cpu,
+        color: Backend::Lut,
+        ..RuntimeConfig::sample()
+    };
+    assert!(!config.needs_gpu());
+    let engine = assemble(&config).expect("組める");
+    assert!(engine.backend_names().contains(&("color", "lut")));
+}
+
+#[cfg(not(feature = "ocio"))]
+#[test]
+fn ocio_は_feature_が無いと断る() {
+    let config = RuntimeConfig {
+        color: Backend::Ocio,
+        ..RuntimeConfig::sample()
+    };
+    assert!(matches!(assemble(&config), Err(MmError::Unsupported(_))));
+}
+
+#[cfg(feature = "ocio")]
+#[test]
+fn ocio_を選べる() {
+    let config = RuntimeConfig {
+        color: Backend::Ocio,
+        ..RuntimeConfig::sample()
+    };
+    let engine = assemble(&config).expect("組める");
+    assert!(engine.backend_names().contains(&("color", "ocio")));
+}
+
+#[test]
 fn 口に合わない実装は断る() {
     let config = RuntimeConfig {
         audio: Backend::Wgpu,

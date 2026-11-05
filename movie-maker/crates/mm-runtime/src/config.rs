@@ -16,8 +16,14 @@ pub enum Backend {
     Sample,
     /// `mm-render`（描画）。
     Wgpu,
-    /// `mm-text-glyphon`（文字）。
+    /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU の文脈を使う。
     Glyphon,
+    /// `mm-text-glyphon` の CPU（swash）の描画。
+    Cpu,
+    /// `mm-color-lut`（伝達関数の WGSL と 3D LUT。OCIO なしで動く）。
+    Lut,
+    /// `mm-color-ocio`（OpenColorIO）。feature `ocio` のときだけ組める。
+    Ocio,
     /// `mm-audio-dsp`（音）。
     Dsp,
     /// `mm-decode-ffmpeg` と `mm-encode-ffmpeg`。feature `ffmpeg` のときだけ組める。
@@ -31,6 +37,9 @@ impl Backend {
             Backend::Sample => mm_testkit::SAMPLE_ID,
             Backend::Wgpu => "wgpu",
             Backend::Glyphon => "glyphon",
+            Backend::Cpu => "cpu",
+            Backend::Lut => "lut",
+            Backend::Ocio => "ocio",
             Backend::Dsp => "dsp",
             Backend::Ffmpeg => "ffmpeg",
         }
@@ -53,6 +62,9 @@ impl FromStr for Backend {
             mm_testkit::SAMPLE_ID => Ok(Backend::Sample),
             "wgpu" => Ok(Backend::Wgpu),
             "glyphon" => Ok(Backend::Glyphon),
+            "cpu" => Ok(Backend::Cpu),
+            "lut" => Ok(Backend::Lut),
+            "ocio" => Ok(Backend::Ocio),
             "dsp" => Ok(Backend::Dsp),
             "ffmpeg" => Ok(Backend::Ffmpeg),
             other => Err(MmError::Unsupported(format!("実装 {other} は無い"))),
@@ -83,20 +95,21 @@ impl RuntimeConfig {
         Self::default()
     }
 
-    /// GPU の文脈を作る要る組み合わせか。描画器かデコーダーのどちらかが GPU を使うとき。
+    /// GPU の文脈を作る要る組み合わせか。描画器、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
     pub fn needs_gpu(&self) -> bool {
-        self.render.uses_gpu() || self.decode.uses_gpu()
+        self.render.uses_gpu() || self.decode.uses_gpu() || self.text == Backend::Glyphon
     }
 
-    /// 段階 0 の本物の組み合わせ。描画は wgpu、文字は glyphon、音は dsp、
-    /// デコードとエンコードは ffmpeg。色とキャッシュは本物がまだ無いので見本のまま。
+    /// 本物の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
+    /// デコードとエンコードは ffmpeg。キャッシュは本物がまだ無いので見本のまま。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
             decode: Backend::Ffmpeg,
             encode: Backend::Ffmpeg,
             audio: Backend::Dsp,
-            text: Backend::Glyphon,
+            text: Backend::Cpu,
+            color: Backend::Lut,
             ..Self::default()
         }
     }
@@ -133,6 +146,9 @@ mod tests {
             Backend::Sample,
             Backend::Wgpu,
             Backend::Glyphon,
+            Backend::Cpu,
+            Backend::Lut,
+            Backend::Ocio,
             Backend::Dsp,
             Backend::Ffmpeg,
         ] {
