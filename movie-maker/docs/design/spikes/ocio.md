@@ -8,14 +8,14 @@
 |---|---|
 | OCIO を `bindgen` で Rust から呼べるか | 呼べる。OCIO は C++ の API だけなので、C の薄い橋（`native/mm_ocio.{h,cpp}`、約 150 行）を `build.rs` で `cc` ビルドし、その C のヘッダーに `bindgen` をかける。Windows 11 + MSVC で通った |
 | GLSL を naga で WGSL にできるか | 式だけのシェーダー（行列、ガンマ、sRGB の曲線）は通る。ACES 2.0 の表示変換のようにテクスチャを持つシェーダーは通らない（下記） |
-| WGSL と OCIO の CPU は合うか | 合う。GPU（wgpu、AMD Radeon）で実行して最大差 2.4e-5（許容差 2e-4） |
+| WGSL と OCIO の CPU は合うか | 合う。GPU（wgpu、NVIDIA GeForce RTX 5090）で実行して最大差 2.4e-5（許容差 2e-4） |
 | 逃げ道は要るか | テクスチャ付きの変換には要る。CPU の変換を 3D LUT に焼いて `TransformProgram::Lut3d` で返す |
 
 実装の方針: `OcioColor::program` は、OCIO のシェーダーがテクスチャも動的な値も持たなければ naga で WGSL にし、持つ（または naga が読めない）ときは 3D LUT に焼く。呼ぶ側は `TransformProgram` の型で見分ける。
 
 ## 実測
 
-環境: Windows 11、MSVC 2022、Rust 1.95、OCIO 2.6.0（vcpkg）、naga / wgpu 30.0.1、GPU は AMD Radeon（内蔵）。
+環境: Windows 11、MSVC 2022、Rust 1.95、OCIO 2.6.0（vcpkg）、naga / wgpu 30.0.1、GPU は NVIDIA GeForce RTX 5090（アダプターは `PowerPreference::HighPerformance` で選ぶ。内蔵の AMD Radeon は共有テクスチャの試作で落ちた）。測り直しても最大差は同じ値だった。
 
 ### 精度（WGSL を GPU で実行 vs OCIO の CPU、10 色）
 

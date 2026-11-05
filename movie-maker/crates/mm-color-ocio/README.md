@@ -39,5 +39,5 @@ cargo test --release -p mm-color-ocio --features native --test timing -- --nocap
 ```
 
 - `build.rs` が `OpenColorIO*.dll` などを `target/<profile>/` と `deps/` に写すので、PATH は触らなくてよい。
-- `gpu-eval` は wgpu でアダプターを探し、無ければその試験を飛ばす。
+- `gpu-eval` は wgpu で高性能側のアダプターを探し、無ければその試験を飛ばす。
 - `native` を付けて `OCIO_ROOT` が無いとビルドが止まり、理由を表示する。
