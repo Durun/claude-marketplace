@@ -52,6 +52,8 @@ mm-color-lut = { path = "crates/mm-color-lut" }
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
 windows = "0.62"
+# CEF ホスト（mm-host-cef の `cef` feature）。wgpu の版は cef クレートが要る版に合わせる。
+cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
 
 [workspace.lints.clippy]
 all = "warn"
