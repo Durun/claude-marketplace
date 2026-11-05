@@ -18,11 +18,12 @@
     project.json      索引と設定（スキーマの版、素材とコンポジションの一覧、レンダーターゲット、colorConfig）
     comps/<id>.json   コンポジションごと（レイヤーを含む）
     assets/<id>.json  素材ごと
-    transcripts/<assetId>.json
+    sequences/<id>.json  sequence ごと
+    transcripts/<assetId>.json   文字起こし（段階 2。段階 1 は書かない）
     review.json       コメント
   backups/            自動のバックアップ（project.<時刻>.mmdb）。消してよい
   media/              プロジェクトの中に写した素材（設定で選ぶ。既定は元の場所を参照）
-  .mm/                動作中の印（lock に pid と HTTP のポート）。消してよい
+  .mm/                動作中の印（lock は書き手の OS のファイルロック、lock.info に pid と HTTP のポート）。消してよい
   cache/              消してよい。作り直せるものだけ（下）
     preview/<contentHash>/   プレビュー動画（540p.mp4、要れば 1080p.mp4）
     audio/<contentHash>/     トラックごとの PCM、波形
@@ -49,18 +50,21 @@
 | 表 | 中身 | 鍵 |
 |---|---|---|
 | `meta` | プロジェクトの ID、作った日時、文書の版番号（`doc_version`。命令を当てるたびに進む）、取り消しの位置 | `key` |
-| `project` | 1 行。設定（レンダーターゲット、`colorConfig`、`bins`）の JSON | |
+| `project` | 1 行。文書のスキーマの版（`schema_version`）の JSON。設定（`colorConfig`、`bins`）は文書に入った段で足す | |
+| `sequences` | sequence ごとに 1 行。JSON | `id` |
+| `render_targets` | レンダーターゲットごとに 1 行。JSON | `id` |
 | `assets` | 素材ごとに 1 行。JSON（原本のパス、色空間、時間軸、PTS の索引）と、検索用に抜いた `content_hash`、`path` | `id` |
 | `compositions` | コンポジションごとに 1 行。大きさ、fps、長さ、背景、マーカーの JSON | `id` |
 | `layers` | レイヤーごとに 1 行。`comp_id`、重なりの順 `z`、レイヤーの JSON（`source` の動画オブジェクト、時間、変形、効果、音、ロック） | `(comp_id, id)` |
-| `ops` | 命令の記録。通し番号、トランザクションの ID、誰が、いつ、命令の名前、引数、逆命令、`touches`、どのコメントへの対応か、当てた後の `doc_version` | `seq` |
-| `txns` | トランザクションごとに 1 行。ID、始めと終わりの `seq`、名前（「ドラッグ」「Claude の対応」）、状態（`applied` / `undone`） | `id` |
+| `ops` | 命令の記録。通し番号、トランザクションの ID、誰が、いつ、命令の名前、引数、逆命令、`touches`、どのコメントへの対応か、当てた後の `doc_version`（命令ごとに 1 進む） | `seq` |
+| `txns` | トランザクションごとに 1 行。ID、始めと終わりの `seq`、名前（「ドラッグ」「Claude の対応」）、状態（`applied` / `undone`）、誰が、いつ、今当たっている `doc_version`（取り消しとやり直しで進む）。`mm diff` は `doc_version` が範囲に入る `applied` の行を読む | `id` |
 | `undo_stack` | 取り消しの列。トランザクションの ID の並びと、今の位置（`meta`）。取り消しで位置が戻り、新しい命令で先が捨てられる | `pos` |
 | `versions` | 名前付きの版。名前、日時、誰が、そのときの `doc_version` と `ops.seq`、書き出した JSON のハッシュ、git のコミット（あれば） | `id` |
 | `comments` | レビューのコメント。時刻か範囲、描き込み、返信、状態（`open` → `fresh` → `done`、`wontfix`）の JSON と、検索用の `state`、`comp_id` | `id` |
-| `transcripts` | 素材ごとの文字起こしの元（道具の名前と版、言語、区切り） | `asset_id` |
-| `words` | 単語ごとに 1 行。`asset_id`、`word_id`（ハッシュ + 開始の時刻）、始めと終わりの時刻、文字、信頼度 | `(asset_id, word_id)` |
-| `words_fts` | `words` の文字を引く FTS5 の仮想表。外部コンテンツ（`content=words`）でトリガーで同期。トークナイザーは `trigram`（日本語は空白で切れない）[76] | |
+| `search` | 段階 1 の検索。FTS5 の仮想表（`text`、`kind`、`owner`）。レイヤーの ID と動画オブジェクトの種類と文字のパラメータ、マーカーの名前、コンポジションの ID、素材のパスを、文書の行を書くたびに同じトランザクションで入れ替える。トークナイザーは `trigram`（3 文字未満の語は部分一致で探す） | |
+| `transcripts` | （段階 2）素材ごとの文字起こしの元（道具の名前と版、言語、区切り） | `asset_id` |
+| `words` | （段階 2）単語ごとに 1 行。`asset_id`、`word_id`（ハッシュ + 開始の時刻）、始めと終わりの時刻、文字、信頼度 | `(asset_id, word_id)` |
+| `words_fts` | （段階 2）`words` の文字を引く FTS5 の仮想表。外部コンテンツ（`content=words`）でトリガーで同期。トークナイザーは `trigram`（日本語は空白で切れない）[76] | |
 
 - 文書の部分は JSON の列で持ち、SQLite の JSON 関数で中を引く（3.38 から組み込み [77]）。検索や結合に使う値（`content_hash`、`state`、`comp_id`）だけ列に抜く。
 - 版番号 `doc_version` は 1 つ。古い版を元にした命令は、元にした `doc_version` より後の `ops` の `touches` と比べて当てるか断るかを決める。
@@ -73,14 +77,14 @@
 |---|---|
 | ジャーナル | WAL。読みと書きが互いを待たない。設定は DB に残る [73][74] |
 | 同期 | `synchronous=NORMAL`。WAL では一貫性を保ち、電源断で最後の数トランザクションが戻ることだけを許す [74]。版の書き出し、バックアップ、閉じるときは `wal_checkpoint(TRUNCATE)` で WAL を本体に戻す |
-| 書き手 | アプリ（か、アプリが動いていないときの `mm`）の 1 プロセスだけ。開くときに `.mm/lock`（pid、HTTP のポート）を置き、`mm` はそれを見てアプリに命令を送る。ほかのプロセスの書き込みは `mm-store` が断る。読むだけの道具（`sqlite3`、DB Browser）は締め出さない |
+| 書き手 | アプリ（か、アプリが動いていないときの `mm`）の 1 プロセスだけ。開くときに `.mm/lock` に OS のファイルロックをかけ（落ちたプロセスのロックは OS が解く）、pid と HTTP のポートを `.mm/lock.info` に書く。`mm` は `lock.info` を見てアプリに命令を送る。ロックを取れなかったプロセスは読み取りだけで開き、書き込みは `mm-store` が断る。読むだけの道具（`sqlite3`、DB Browser）は締め出さない |
 | トランザクションの単位 | 命令 1 つ。文書の行、`ops`、`txns`、`undo_stack`、`meta.doc_version` を 1 つのトランザクションで書く。ドラッグ、マクロ、Claude の対応 1 回は、複数の命令を 1 つのトランザクションにまとめる（ドラッグ中はメモリの上で当てて画面に出し、離したときに書く）。取り消しもまとまりの単位 |
 | 外部キー | `foreign_keys=ON`（rusqlite の bundled の既定 [78]）。レイヤーはコンポジションに従う |
 | 予算 | 命令 1 つの書き込みは 20 ms 以下（[計装の予算の表](17-instrumentation.md#予算の表)） |
 
 ### バックアップと復旧
 
-- 自動のバックアップ: 編集中は 15 分ごと（FCP と同じ）、閉じるとき、スキーマの移行の前に、`VACUUM INTO 'backups/project.<時刻>.mmdb'` で一貫した写しを作る（`synchronous` が NORMAL 以上なら書いた後に fsync される [75]）。直近 10 個と、日ごとの 1 個を 30 日〔推〕残す。本体が 1 GB を超えるプロジェクトはオンラインバックアップ API で小分けに写す（同じ接続からの書き込みは写しに追いつく [75]）。
+- 自動のバックアップ: 編集中は 15 分ごと（FCP と同じ）、閉じるとき、スキーマの移行の前に、`VACUUM INTO 'backups/project.<UTC の時刻 YYYYMMDDThhmmssmmmZ>.mmdb'` で一貫した写しを作る（`synchronous` が NORMAL 以上なら書いた後に fsync される [75]）。直近 10 個と、日ごとの 1 個を 30 日〔推〕残す。本体が 1 GB を超えるプロジェクトはオンラインバックアップ API で小分けに写す（同じ接続からの書き込みは写しに追いつく [75]）。
 - クラッシュからの戻り方: SQLite がトランザクションの途中を WAL から巻き戻す。開くときに `PRAGMA quick_check` を通し、通らなければ `backups/` の新しいものと `versions/` からの `mm import` を選ばせる。書き終えていなかったドラッグ（1 つのトランザクション）は消える。それでよい。
 - `project.mmdb` を写すときは `-wal` と `-shm` も一緒に写す。別々に写すと確定した変更を失う [73]。UI の「別名で保存」は `VACUUM INTO` で 1 ファイルにする。
 - 命令の記録は切り詰めずに全部残す。どの命令からでも取り消しと意味の差分を出せるようにするため。大きさは下の見積もりのとおりで、`Media` に DB の大きさを出す。
@@ -106,8 +110,8 @@
 
 ### JSON の書き出し（`mm export`）
 
-- 形は上の木のとおり。`project.json` が索引と設定、`comps/<id>.json` がコンポジション（レイヤーを `z` の順に含む）、`assets/<id>.json`、`transcripts/<assetId>.json`、`review.json`。
-- 決定的に書く。キーはスキーマの順、配列は ID か時刻の順、時刻は有理数のまま（`{"num":…,"den":…}`）、浮動小数は書かない、インデントは 2、改行は LF、末尾に改行 1 つ。同じ文書からは同じバイト列になり、`versions` のハッシュと git の差分がそれで決まる。
+- 形は上の木のとおり。`project.json` が索引と設定、`comps/<id>.json` がコンポジション（レイヤーを `z` の順に含む）、`assets/<id>.json`、`sequences/<id>.json`、`review.json`（段階 2 で `transcripts/<assetId>.json`）。ファイル名の ID は英数字と `-_.` 以外を `%XX` にする。
+- 決定的に書く。キーは辞書順（入れ子も。構造体の順にすると、キーが変わる版で差分が散る）、配列は ID か時刻の順、時刻は有理数のまま（`{"num":…,"den":…}`）、時刻に浮動小数は使わない（パラメータの数は最短で往復する表記）、インデントは 2、改行は LF、末尾に改行 1 つ。同じ文書からは同じバイト列になり、`versions` のハッシュと git の差分がそれで決まる。
 - ファイルの分け方は git の差分の読みやすさで決める。コンポジションごと、素材ごとに分け、1 行に 1 つの値が来るようにする。文字起こしは単語ごとに 1 行。
 - `mm export` は固定の場所（`versions/`）に上書きし、git のコミットが版になる。名前を付けるとき（`mm export --name v3`）は `versions` の表に行を足し、git があれば `git tag` も打つ。
 - `mm import <versions/>` は JSON から DB を作り直す。文書、コメント、文字起こしが入る。命令の記録は入らない（JSON には無い）ので `ops` は空から始まり、`versions` に「ここから import」の行が付く。export → import → export が同じバイト列になることをテストで守る（[テスト](11-testing.md#層の一覧)）。
@@ -122,7 +126,7 @@
 ### 同期のフォルダーの検出
 
 - OneDrive、Dropbox、Google Drive、iCloud の同期のフォルダーに置くと、同期の道具が DB の鍵を守らずにファイルを書き換え、壊れることがある（Zotero が同じ理由で禁じている [80]）。
-- プロジェクトを作るときと開くときに、パスが同期のフォルダーの下か（Windows は `%OneDrive%`、`%USERPROFILE%/Dropbox`、Google Drive の既定の場所、ファイルの属性 `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`〔推。確かめる〕）を見て、当たれば警告して別の場所を勧める。開くのは断らない。それでも置くなら、バックアップの間隔を 5 分に縮め、閉じるたびに `versions/` を書き出す。
+- プロジェクトを作るときと開くときに、パスが同期のフォルダーの下か（Windows は `%OneDrive%`、`%USERPROFILE%/Dropbox`、Google Drive の既定の場所）か、UNC のパス（ネットワーク）かを、パスの部品の名前で見て、当たれば警告して別の場所を勧める。開くのは断らない。それでも置くなら、バックアップの間隔を 5 分に縮め、閉じるたびに `versions/` を書き出す。
 - ネットワークのファイルシステム（SMB、NFS）も同じ扱い。WAL は同じホストの中でしか動かない [73]。
 
 ### Rust のクレート
