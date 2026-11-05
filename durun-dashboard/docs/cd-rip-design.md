@@ -129,8 +129,7 @@ type CdRipItem = {
   group?: string;          // 直前の ## 行
   status: CdRipStatus;
   attention?: string;      // ⚠ の理由（曲数不一致、AI 失敗、書き出し失敗）
-  ripId?: string;
-  disc?: { tracks: number; durations: number[]; cdText?: { album?: string; artist?: string; titles?: string[] }; tocId?: string };
+  disc?: { tracks: number; durations: number[]; totalSeconds?: number; cdText?: { album?: string; artist?: string; titles?: string[] }; tocId?: string };
   progress?: { track: number; total: number };
   meta?: CdMeta;           // AI の答え or 人間の編集。review で確定
   research?: { startedAt: number; finishedAt?: number; confidence?: 'high' | 'medium' | 'low'; sources: string[]; notes?: string; error?: string; retryHint?: string };
@@ -177,7 +176,7 @@ stateDiagram-v2
   failed --> waiting: 取り込みをやり直す
 ```
 
-- 研究は取り込みと並行。材料（disc）は cyanrip が最初に出す曲一覧から取る（`cyanrip.out` を逐次読む）。
+- 研究は取り込みと並行。材料（disc）は cyanrip が最初に出す `Disc tracks`（曲数）と `Total time`（全体の長さ）から取る。曲ごとの長さは、曲を取り込むたびに出る `Duration` で分かるので、研究を始める時点では空で、プロンプトに「未確定」と書く。
 - 「次の行」は `items` の中で最初の `waiting`。
 - 排出は「cyanrip が終わったとき」だけ。中断・受付停止・サーバー停止では排出しない。
 - 起動時の復旧 `recover(items, stage)`: `ripping`/`exporting` のまま残った項目は、stage の中身で判定。`disc/*.flac` の数が `disc.tracks` と一致し完了していれば `researching` か `review`、そうでなければ `failed`（attention「ダッシュボードが止まったため中断」）。`researching` のまま残ったものは研究をやり直す。
@@ -294,3 +293,16 @@ GPL/LGPL のバイナリを同梱すると、ソースの提供とライセン�
 - 取り込み先（stage）は、音楽フォルダの `CD/_rip/`（`<musicDir>/CD/_rip/`）。今の `added.tsv` と `_done/` を引き継ぐ
 - XFD 動画のフレームの切り出し（`aiVideo`、yt-dlp と、AI への ffmpeg / ffprobe / yt-dlp / curl の実行の許可）は、最初の版から入れて設定で切り替える。既定は off
 - 書き出しの確認は既定で毎枚「書き出す」を押す（`autoExport` off）。設定で自動に切り替えられる
+
+## 10. 実装で設計から変えた点
+
+- `CdRipItem.ripId` は持たない。取り込み先のフォルダー名は行の `id` で足りる。`disc.totalSeconds`（全体の長さ）を足した。
+- 本物の `cyanrip.out` には、取り込み前の曲一覧（曲ごとの長さ）が無い。研究は曲数が分かった時点で始め、曲の長さは取り込み後に `metaflac` のサンプル数から確定する（3.3）。
+- 中断した取り込みと排出した取り込みは、ディスクが抜かれるまで次を始めない。中断した行をすぐ取り込み直すと、同じ CD を読み直し続けるため。
+- 書き出した行のフォルダーは、元の `cdrip finish` と同じく `<stageDir>/_done/<itemId>/` に移す。書き出しに失敗したときは、その呼び出しで作ったファイルとフォルダーを消し、同じ内容でやり直せるようにする。
+- 取り込みが終わったとき、AI がまだ答えていなければ `researching` に、答えていれば `review` に進む。AI を切っているときは CD-Text だけの下書きの `meta` で `review` に進み、人間が埋める。
+- ジャケットの画像は `cover.<拡張子>` として置き、jpg 以外は書き出し時に ffmpeg で jpg にする。
+- AI の答えと人間の編集は、外部の情報源の読み取りではなく利用者のデータなので、`cached` ではなく `queue.json` に残す。`cached` に通すのは依存ツールの検出だけ（キー `cdrip-tool:v1:<名前>`、1 分）。
+- GET の `/api/cdrip/items/:id/cover` と `/api/cdrip/rekordbox.xml` は、本文が JSON でないので、経路の表ではなく `main.ts` の個別の分岐で受ける。後者は状態を変えるので `sec-fetch-site` を検査する。
+- macOS のドライブの id は `drutil list` の番号で、cyanrip に渡すデバイスは `drutil status` の `Name:` から引く（ディスクが入っているときだけ分かる）。設定の drive に `/dev/diskN` を書けば、それを使う。macOS と Linux の実機では確かめていない。
+- `pnpm check` と `pnpm test` のほかに lint と format のスクリプトは無い。
