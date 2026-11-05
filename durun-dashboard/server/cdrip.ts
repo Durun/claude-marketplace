@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { CdFeatures, CdMeta, CdToolName, CdLogEntry, CdRipItem, CdRipSettings, CdRipView, CdTool } from '../shared/types.ts';
 import { appendAdded, type ExportTools, exportDisc } from './cdripExport.ts';
 import { fetchCover, matchTrackCount, parseResearch, researchPrompt, researchSchema, skeletonMeta, validateMeta } from './cdripResearch.ts';
+import { rekordboxEntries, rekordboxXml } from './cdripRekordbox.ts';
 import { askResearcher } from './haiku.ts';
 import { applyList, nextWaiting, parseList, recover, transition } from './cdripQueue.ts';
 import { cyanripArgs, listFlacs, type ParsedRip, type RipResult, startRip, trackSamples } from './cdripRip.ts';
@@ -642,4 +643,21 @@ export const retryCdResearch = async (id: string, body: unknown): Promise<void> 
   if (pendingResearch.has(id)) throw new CdRipError(409, 'AI が情報を集めています');
   const hint = (body as { hint?: unknown } | undefined)?.hint;
   startResearch(id, { instruction: typeof hint === 'string' && hint.trim() ? hint.trim() : undefined });
+};
+
+// ─── rekordbox ──────────────────────────────────────────────────────────
+
+/**
+ * 書き出した mp3 を rekordbox に取り込む XML として送る。new は rekordbox 用にまだ渡していない行だけで、送ったらその行に渡した時刻を残す。
+ */
+export const sendCdRekordbox = async (res: ServerResponse, scope: string | null): Promise<void> => {
+  await initCdRip();
+  if (!current().features.rekordbox) throw new CdRipError(409, '設定で rekordbox への記録を切ってあります');
+  if (scope !== 'new' && scope !== 'all') throw new CdRipError(400, 'scope は new か all にしてください');
+  const { entries, itemIds } = rekordboxEntries(queue.items, scope);
+  if (!entries.length) throw new CdRipError(404, scope === 'new' ? 'rekordbox にまだ渡していない書き出しはありません' : '書き出した mp3 がありません');
+  res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'content-disposition': 'attachment; filename=rekordbox_import.xml', 'cache-control': 'no-store' }).end(rekordboxXml(entries));
+  const at = Date.now();
+  if (scope === 'new') mutateItems((items) => items.map((i) => (itemIds.includes(i.id) && i.exported ? { ...i, exported: { ...i.exported, rekordboxAt: at } } : i)));
+  logCdRip('rekordbox', `rekordbox 用の XML を渡しました（${entries.length} 曲）`);
 };

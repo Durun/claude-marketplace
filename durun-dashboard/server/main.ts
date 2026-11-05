@@ -50,7 +50,7 @@ import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
-import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
+import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, sendCdRekordbox, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
@@ -1423,6 +1423,12 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     const fetchSite = req.headers['sec-fetch-site'];
     if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
     return streamCdRip(res);
+  }
+  // 渡したことを記録するので、ほかのサイトから GET で起こされないよう、ダッシュボードの画面からの要求に限る。
+  if (req.method === 'GET' && url.pathname === '/api/cdrip/rekordbox.xml') {
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+    return sendCdRekordbox(res, url.searchParams.get('scope') ?? 'new');
   }
   const cdCover = req.method === 'GET' && /^\/api\/cdrip\/items\/([\w-]+)\/cover$/.exec(url.pathname);
   if (cdCover) return sendCdCover(res, cdCover[1] ?? '');

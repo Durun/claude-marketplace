@@ -396,6 +396,23 @@ const Settings = ({ v }: { v: CdRipView }) => {
   );
 };
 
+/** 書き出し済みの枚数と、rekordbox 用 XML のダウンロード。 */
+const Footer = ({ v }: { v: CdRipView }) => {
+  const done = v.items.filter((i) => i.status === 'done');
+  const fresh = done.filter((i) => !i.exported?.rekordboxAt).length;
+  return (
+    <div class="cdrip-footer">
+      <span>書き出し済み {done.length} 枚（rekordbox 未登録 {fresh} 枚）</span>
+      {v.settings.features.rekordbox && (
+        <>
+          <a class={`btn btn-sm${fresh ? ' btn-primary' : ''}`} href="/api/cdrip/rekordbox.xml?scope=new" download="rekordbox_import.xml" aria-disabled={!fresh}>rekordbox XML をダウンロード</a>
+          <a class="btn btn-sm" href="/api/cdrip/rekordbox.xml?scope=all" download="rekordbox_import.xml" title="渡した分も含めて、書き出し済みの全部">全部</a>
+        </>
+      )}
+    </div>
+  );
+};
+
 const Log = ({ v }: { v: CdRipView }) => (
   <details class="cdrip-log">
     <summary>ログ（{v.log.length}）</summary>
@@ -433,6 +450,7 @@ export const CdRipFloat = ({ f }: { f: Float }) => {
               </div>
               <div class="cdrip-right">{settingsOpen ? <Settings v={v} /> : <Detail item={item} />}</div>
             </div>
+            <Footer v={v} />
             <Log v={v} />
           </>
         )}

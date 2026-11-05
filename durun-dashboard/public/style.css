@@ -1952,3 +1952,7 @@ table.data { width: 100%; border-collapse: collapse; }
 .cdrip-research a { margin-left: 6px; }
 .cdrip-redo { display: flex; gap: 6px; margin: 4px 0; }
 .cdrip-redo .input { flex: 1; }
+.cdrip-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cdrip-footer > span { flex: 1; min-width: 0; }
+.cdrip-footer a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.cdrip-footer a[aria-disabled="true"] { opacity: .7; }
