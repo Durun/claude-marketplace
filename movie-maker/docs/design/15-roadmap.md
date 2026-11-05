@@ -44,9 +44,19 @@
 | 段階 | 注意 |
 |---|---|
 | 1 デコード | `d3d12va` を既定にする。`open` の後に最初の数コマを復号して `Err` なら `cuvid`、最後は CPU 経由に切り替える（NVENC で作った 4K の HEVC は 1 コマ目で落ちる）。この素材（NVENC の 4K、CTB 32）を契約テストの見本に入れ、OBS の NVENC の録画が同じ形かを確かめる。FFmpeg の既定のアダプターは内蔵 GPU なので、wgpu の `ID3D12Device` を渡して同じ GPU で復号する。実素材で 4K の fps を測り直す。[nvdec](spikes/nvdec.md#詰まった所) |
+| 1 デコード | d3d12va と cuvid に「wgpu が読み終えた」フェンスが無く（`mm-decode-d3d12va`、`mm-decode-cuvid`）、GPU が遅れると別のコマが混ざる。段階 1 で直す。 |
+| 1 デコード | d3d12va を `Decoder` の口だけで使うと壊れる（`take_frame` を呼ばないと `held` が増えてプールが尽きる、長さを整数秒で切り捨てる、シークにコンテナの絶対時刻を使う、渡された `gpu` を無視する）。`mm-decode-cuvid` の `convert.rs` は 50 行を超える。段階 1 で直す。 |
+| 1 デコード | 10 bit の素材も 8 bit の RGBA を経由し、バンディングと HDR の喪失が出る（`mm-decode-ffmpeg` の `convert.rs`）。段階 1 で直す。 |
 | 1 色 | `bt709` は Rec.1886 の表示の式を指す（2026-11-06 の決定）。BT.709 の OETF は別の名前で持ち、`mm-color-lut` の見本もそれに合わせる。契約の「白は白」はログと PQ の空間に合わないので、空間ごとに期待値を持たせる。OCIO の環境（vcpkg、LLVM、`OCIO_ROOT`、DLL の同梱）は `mm-color-ocio` の README。[ocio](spikes/ocio.md#詰まった所) |
 | 2 描画器 | NVDEC のコマは `submit` が終わるまでの借り物にし、`Queue::submit` の前に使うコマすべての待ちを登録する。コマのキャッシュは NV12 のままにせず RGBA で置く。ACES 2.0 の表示変換を WGSL で出すなら、結合サンプラーの書き換えと `TransformProgram` のテクスチャの置き場が要る。 |
+| 2 描画器 | ベクターの倍率をコンポ全体のキャンバスに掛けるため、1080p で scale 4 は毎コマ 530 MB、4K で 2.13 倍を超えると 8192 の上限で文字が消える（`mm-render` の `layers.rs`、`mm-nodes-basic` の `text.rs`）。`region_of_definition` の大きさだけ描き、位置は行列で決める。 |
+| 2 描画器 | 素材を CPU で双線形に縮小し、GPU でも mip なしの双線形で標本化し直す（`mm-nodes-basic` の `util.rs`、`footage.rs`、`mm-render` の `compose.rs`）。[04-nodes](04-nodes.md) の「1 回だけ、線形の光で、面積平均か Lanczos」に反する。縮小を 1 回にまとめる。 |
+| 2 描画器 | 毎コマの無駄が多い（`DecodedFrame` の clone 33 MB、u8 から f32 と premultiply のスカラーのループ、swscale の精度優先のフラグ、フレームの毎コマ確保）。YUV のままアップロードしてシェーダーで変換し、書き出しも GPU で YUV にしてから読み戻す。復号、描画、符号化をスレッドで並べ、読み戻しを 2〜3 枚先行させる。 |
+| 2 描画器 | 開くたびに全パケットを読み（1 時間の 4K 50 Mbps で約 22 GB）、`invalidate` が全部の素材を閉じる（`mm-decode-ffmpeg` の `timeline.rs`、`mm-render` の `renderer.rs`）。コンテナの索引を持ち、該当する素材だけ閉じる。 |
+| 2 描画器 | `time_varying: false` の文字を毎コマ 2 回整形し、コンポの大きさのキャンバスを確保する（`mm-nodes-basic` の `text.rs`）。パラメータをキーにキャッシュする。 |
 | 2 窓 | Tauri のコマンドは `async` にする（同期だと 60 Hz の通知がメッセージループを塞ぐ）。面の大きさと WebView の矩形は物理ピクセルから 1 か所で決める。キーは面の `WM_KEYDOWN` と WebView の `keydown` を 1 つの入口に入れる。面を取れなかったとき（`Outdated`、`Lost`）の経路は未試験。150% の DPI と倍率の違うモニター間を人が確かめる。連続で大きさを変えると WebView の同期が最大 0.25 秒遅れる。[window](spikes/window.md#実装のとき気をつける所) |
+| 2〜3 アプリ | 描画スレッドを止める前提が守られず、終了時に破棄された HWND に present し続ける（`apps/movie-maker` の `app.rs`、`gpu.rs`）。`WindowEvent::Destroyed` で取り出して drop する。 |
+| 2〜3 アプリ | Fifo の垂直同期に加えて自前で 60 Hz に sleep と spin し、120/144 Hz でうなって CPU も使う（`apps/movie-maker` の `gpu.rs`）。画面の同期か音の時計の一方に寄せる。`gpu.rs` と `app.rs` は行数の目安を超えているので、分けるときに合わせて直す。 |
 | 4 書き出し | 1080p で 13.2 fps（予算 120 fps）。CPU の読み戻しと libx264 を NVENC と GPU 上の NV12 変換に替えて測り直す。段ごとの計測のため、`Engine` から実装の束を取り出せる口が要る。 |
 | 4 `mm-host-cef`（段階 6 の準備） | CEF と wgpu を同じ GPU に揃える（既定は内蔵の AMD を選び、`OpenSharedHandle` が `E_INVALIDARG` で落ちる）。`windowless_frame_rate` は 240 以上にする（既定の 60 だと BeginFrame から絵が来るまで p50 35 ms）。BeginFrame は捨てられることがあるので、絵が来るまで送り直し、`seq` の印で古い絵を検出する。別プロセスのアプリへは、`DuplicateHandle` で複製するか、ホストが自前の D3D12 共有テクスチャへ写して渡す。1280x720 で p95 が 26 ms に跳ねた原因を調べる。[cef](spikes/cef.md#つまずいた所) |
 | 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 コマの時間を取り直す。CEF を落としたときの再起動と複数ブラウザの同時描画を試す。 |
