@@ -17,6 +17,15 @@ test('ファイルを指すコードだけを見分け、相対パス、絶対�
   assert.equal(findFocus(files, 'server/haiku.ts'), undefined);
 });
 
+test('Windows のパスも、ドライブ名と \\ の区切りを含めてファイルとみなし、地の文から切り出す', () => {
+  assert.deepEqual(['D:\\dev\\mm-export-out\\stage0.mp4', 'C:/Users/me/a.ts:3', 'client\\Home.tsx'].map(isFileRef), [true, true, true]);
+  assert.deepEqual(['a:b.ts', 'D:\\dev\\out dir\\a.mp4'].map(isFileRef), [false, false]);
+  const text = '書き出し先は D:\\dev\\mm-export-out\\stage0.mp4（再生できる）';
+  assert.deepEqual(splitFilePaths(text).filter((p) => p.file).map((p) => p.text), ['D:\\dev\\mm-export-out\\stage0.mp4']);
+  const files = ['client/Home.tsx'].map((path) => ({ path }) as DiffFile);
+  assert.deepEqual(findFocus(files, 'E:\\repo\\client\\Home.tsx:5'), { index: 0, line: 5 });
+});
+
 test('地の文のファイルパスを、空白を置かずに続く日本語や文末の句点と分けて切り出す', () => {
   const text = 'ファイル: ~/.claude/jobs/1/report-1521.md（校正済み）と client/Home.tsx:32、e.g. Node 22 で README.md.';
   const pieces = splitFilePaths(text);

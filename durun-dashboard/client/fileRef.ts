@@ -2,8 +2,8 @@
 import { type DiffFile, MEDIA_TYPES } from '../shared/types.ts';
 import { languageOf } from './highlight.ts';
 
-// 空白を含まず、拡張子と、省略できる行番号で終わるもの。
-const FILE_REF = /^[^\s:]+\.\w+(?::\d+(?:-\d+)?)?$/;
+// 空白を含まず、拡張子と、省略できる行番号で終わるもの。Windows の絶対パス（D:\dev\a.mp4）は、先頭のドライブ名にだけコロンを置ける。
+const FILE_REF = /^(?:[a-z]:[\\/])?[^\s:]+\.\w+(?::\d+(?:-\d+)?)?$/i;
 // スキームを省いた URL（example.com/main.js）。最初の区切りがドメイン名に見えるものは、ファイルとみなさない。
 const HOST_PREFIX = /^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\//i;
 
@@ -20,7 +20,7 @@ export const isFileRef = (code: string): boolean => {
 };
 
 // 日本語の文では、パスの後ろに空白を置かずに文を続けるので、パスに使う ASCII の文字が続くところまでをパスとみなす。
-const TEXT_PATH = /([\w./~@+-]+\.\w+(?::\d+(?:-\d+)?)?)/;
+const TEXT_PATH = /((?:\b[a-z]:\\)?[\w./\\~@+-]+\.\w+(?::\d+(?:-\d+)?)?)/i;
 
 /** 地の文を、ファイルを指すパスとそれ以外に分ける。 */
 export const splitFilePaths = (text: string): { text: string; file: boolean }[] =>
@@ -30,9 +30,9 @@ export const splitFilePaths = (text: string): { text: string; file: boolean }[] 
 /** 開くファイルと行。index は差分のファイルの並びでの位置。 */
 export type Focus = { index: number; line?: number };
 
-/** 絶対パスやファイル名だけの指定は、末尾が合うファイルを選ぶ。 */
+/** 絶対パスやファイル名だけの指定は、末尾が合うファイルを選ぶ。差分のパスに合わせ、Windows の区切りの \ は / として比べる。 */
 export const findFocus = (files: DiffFile[], ref: string): Focus | undefined => {
-  const [, path = ref, line] = /^(.*?)(?::(\d+)(?:-\d+)?)?$/.exec(ref) ?? [];
+  const [, path = ref, line] = /^(.*?)(?::(\d+)(?:-\d+)?)?$/.exec(ref.replaceAll('\\', '/')) ?? [];
   const exact = files.findIndex((f) => f.path === path);
   const index = exact >= 0 ? exact : files.findIndex((f) => path.endsWith(`/${f.path}`) || f.path.endsWith(`/${path}`));
   return index >= 0 ? { index, line: line ? Number(line) : undefined } : undefined;
