@@ -2,6 +2,9 @@
 //!
 //! H.264（libx264）+ AAC を MP4 に書く。コマは RGBA の f32 で受け取り、Rec.709・tv レンジの
 //! YUV420P にして押す。コマの時刻は 1 コマごとに `1 / fps` 進める（書き出しは CFR）。
+//!
+//! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
+#![cfg(feature = "ffmpeg")]
 
 mod audio;
 mod video;

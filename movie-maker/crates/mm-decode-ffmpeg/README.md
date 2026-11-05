@@ -1,6 +1,14 @@
 # FFmpeg のライブラリの用意（mm-decode-ffmpeg / mm-encode-ffmpeg）
 
-2 つのクレートは `ffmpeg-next`（FFmpeg 9.0 の系）でビルドする。必要なのは FFmpeg の shared ビルド（ヘッダー、import ライブラリ、DLL）と libclang。
+2 つのクレートの実装と契約テストは feature `ffmpeg` の下にあり、既定では切ってある。FFmpeg も libclang も無い環境（CI、ほかの担当）では、feature なしで `cargo fmt` / `clippy` / `test --workspace` が通る（この 2 クレートは空になる）。
+FFmpeg を使うときは下の用意をして、`--features ffmpeg`（ワークスペース全体なら `--all-features`）を付ける。
+
+```sh
+cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+feature ありのビルドは `ffmpeg-next`（FFmpeg 9.0 の系）でビルドする。必要なのは FFmpeg の shared ビルド（ヘッダー、import ライブラリ、DLL）と libclang。
 テストの素材づくりと検証には ffmpeg / ffprobe の CLI も PATH に要る。
 
 ## Windows
@@ -19,7 +27,7 @@
 export FFMPEG_DIR=D:/dev/ffmpeg-dev/ffmpeg-n9.0-latest-win64-gpl-shared-9.0
 export LIBCLANG_PATH="C:/Program Files/LLVM/bin"
 export PATH="$PATH:$FFMPEG_DIR/bin"
-cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg
+cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg
 ```
 
 ## Linux / macOS

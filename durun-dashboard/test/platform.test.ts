@@ -331,3 +331,112 @@ test('OS の判定と claude の起動は、互換レイヤーの外に書かな
   }
   assert.deepEqual(offenders, []);
 });
+
+test('光学ドライブを、Windows は PowerShell の JSON から（1 台でも配列にそろえて）、macOS は drutil list から、Linux は lsblk から読む', async () => {
+  const win = fakeRun({ 'powershell.exe': '{"Drive":"F:","Name":"PIONEER  BD-RW   BDR-UD04 1.11"}' });
+  assert.deepEqual(await platformFor('win32').opticalDrives(win.run), [{ id: 'F:', model: 'PIONEER BD-RW BDR-UD04 1.11' }]);
+  assert.match(win.calls[0] ?? '', /Win32_CDROMDrive/);
+  const two = fakeRun({ 'powershell.exe': '[{"Drive":"D:","Name":"A"},{"Drive":"E:","Name":"B"}]' });
+  assert.deepEqual((await platformFor('win32').opticalDrives(two.run)).map((d) => d.id), ['D:', 'E:']);
+  assert.deepEqual(await platformFor('win32').opticalDrives(fakeRun({}).run), []);
+
+  const mac = fakeRun({ drutil: ' Vendor   Product           Rev   Bus       SupportLevel\n 1  MATSHITA DVD-R   UJ-868    HA13  USB       Unsupported\n' });
+  assert.deepEqual(await platformFor('darwin').opticalDrives(mac.run), [{ id: '1', model: 'MATSHITA DVD-R UJ-868' }]);
+
+  const lsblk = JSON.stringify({ blockdevices: [{ name: 'sda', type: 'disk', model: 'SSD' }, { name: 'sr0', type: 'rom', model: 'BDR-UD04       ' }] });
+  assert.deepEqual(await platformFor('linux').opticalDrives(fakeRun({ lsblk }).run), [{ id: '/dev/sr0', model: 'BDR-UD04' }]);
+});
+
+test('ディスクが入っているかを、Windows は MediaLoaded、macOS は drutil status の Type:、Linux は udevadm の ID_CDROM_MEDIA から読み、読めなければ undefined', async () => {
+  const win = fakeRun({ 'powershell.exe': 'True\r\n' });
+  assert.equal(await platformFor('win32').mediaLoaded('F:', win.run), true);
+  assert.match(win.calls[0] ?? '', /Drive='F:'/);
+  assert.equal(await platformFor('win32').mediaLoaded('F:', fakeRun({ 'powershell.exe': 'False\r\n' }).run), false);
+  const failing: Run = async () => {
+    throw new Error('x');
+  };
+  assert.equal(await platformFor('win32').mediaLoaded('F:', failing), undefined);
+
+  const mac = platformFor('darwin');
+  assert.equal(await mac.mediaLoaded('1', fakeRun({ drutil: '           Type: CD-ROM               Name: /dev/disk4\n' }).run), true);
+  assert.equal(await mac.mediaLoaded('1', fakeRun({ drutil: '           Type: No Media Inserted\n' }).run), false);
+  assert.equal(await mac.cdDevice('1', fakeRun({ drutil: '           Name: /dev/disk4\n' }).run), '/dev/disk4');
+  assert.equal(await mac.cdDevice('/dev/disk9'), '/dev/disk9');
+
+  const other = platformFor('linux');
+  assert.equal(await other.mediaLoaded('/dev/sr0', fakeRun({ udevadm: 'E: ID_CDROM=1\nE: ID_CDROM_MEDIA=1\n' }).run), true);
+  assert.equal(await other.mediaLoaded('/dev/sr0', fakeRun({ udevadm: 'E: ID_CDROM=1\n' }).run), false);
+});
+
+test('排出は OS ごとのコマンドで行い、失敗しても投げず、cyanrip に渡すデバイスは Windows と Linux ではドライブのまま', async () => {
+  const win = fakeRun({});
+  await platformFor('win32').ejectDisc('F:', win.run);
+  assert.match(win.calls[0] ?? '', /ParseName\('F:'\)\.InvokeVerb\('Eject'\)/);
+  const mac = fakeRun({});
+  await platformFor('darwin').ejectDisc('1', mac.run);
+  assert.deepEqual(mac.calls, ['drutil -drive 1 eject']);
+  const linux = fakeRun({});
+  await platformFor('linux').ejectDisc('/dev/sr0', linux.run);
+  assert.deepEqual(linux.calls, ['eject /dev/sr0']);
+  await platformFor('linux').ejectDisc('/dev/sr0', async () => {
+    throw new Error('busy');
+  });
+  assert.equal(await platformFor('win32').cdDevice('F:'), 'F:');
+  assert.equal(await platformFor('linux').cdDevice('/dev/sr0'), '/dev/sr0');
+});
+
+test('音楽フォルダーを、Windows は既知のフォルダーから UTF-8 で引き、読めなければホームの Music にする', async () => {
+  const win = fakeRun({ 'powershell.exe': 'D:\\Music\r\n' });
+  assert.equal(await platformFor('win32').musicDir(win.run), 'D:\\Music');
+  assert.match(win.calls[0] ?? '', /GetFolderPath\('MyMusic'\)/);
+  assert.match(await platformFor('win32').musicDir(fakeRun({}).run), /Music$/);
+  assert.match(await platformFor('darwin').musicDir(), /Music$/);
+});
+
+/** winget のパッケージの置き場所を、ファイルの一覧で表す偽物。 */
+const wingetDirs = (files: string[]): { exists: (f: string) => boolean; list: (d: string) => string[] } => {
+  const all = new Set(files);
+  return {
+    exists: (f) => all.has(f),
+    list: (dir) => [...new Set(files.filter((f) => f.startsWith(`${dir}\\`)).map((f) => f.slice(dir.length + 1).split('\\')[0] ?? ''))],
+  };
+};
+
+test('Windows では、winget のパッケージの下から、版の階層を * で広げて依存ツールを探し、新しい版を先に返す', () => {
+  const root = 'C:\\L\\Microsoft\\WinGet\\Packages';
+  const cyan = `${root}\\cyanreg.cyanrip_Microsoft.Winget.Source_8wekyb3d8bbwe`;
+  const flac = `${root}\\Xiph.FLAC_Microsoft.Winget.Source_8wekyb3d8bbwe`;
+  const dirs = wingetDirs([
+    `${cyan}\\cyanrip.exe`,
+    `${flac}\\flac-1.4.0-win\\Win64\\flac.exe`,
+    `${flac}\\flac-1.5.0-win\\Win64\\flac.exe`,
+    `${flac}\\flac-1.5.0-win\\Win64\\metaflac.exe`,
+    `${root}\\yt-dlp.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-N-1-win64-gpl\\bin\\ffmpeg.exe`,
+  ]);
+  const win = platformFor('win32');
+  const env = { LOCALAPPDATA: 'C:\\L' };
+  assert.deepEqual(win.toolCandidates('cyanrip', env, dirs), [`${cyan}\\cyanrip.exe`]);
+  assert.deepEqual(win.toolCandidates('flac', env, dirs), [`${flac}\\flac-1.5.0-win\\Win64\\flac.exe`, `${flac}\\flac-1.4.0-win\\Win64\\flac.exe`]);
+  assert.equal(win.toolCandidates('metaflac', env, dirs).length, 1);
+  assert.equal(win.toolCandidates('ffmpeg', env, dirs).length, 1);
+  assert.deepEqual(win.toolCandidates('ffprobe', env, dirs), []);
+  assert.equal(win.executableName('flac'), 'flac.exe');
+  assert.equal(platformFor('darwin').executableName('flac'), 'flac');
+});
+
+test('macOS と Linux では、パッケージ管理が置くディレクトリから依存ツールを探す', () => {
+  const dirs = { exists: (f: string) => f === '/opt/homebrew/bin/flac' || f === '/usr/bin/flac', list: () => [] };
+  assert.deepEqual(platformFor('darwin').toolCandidates('flac', {}, dirs), ['/opt/homebrew/bin/flac']);
+  assert.deepEqual(platformFor('linux').toolCandidates('flac', {}, dirs), ['/usr/bin/flac']);
+});
+
+test('依存ツールを入れるコマンドを、Windows は winget、macOS は brew、Linux は apt（管理者権限が要るので実行せず見せるだけ）で返し、metaflac は flac のパッケージを入れる', () => {
+  const win = platformFor('win32').toolInstall('metaflac');
+  assert.deepEqual([win.file, win.runnable], ['winget', true]);
+  assert.equal(win.command, 'winget install --id Xiph.FLAC -e --accept-source-agreements --accept-package-agreements');
+  assert.equal(platformFor('win32').toolInstall('cyanrip').args[2], 'cyanreg.cyanrip');
+  const mac = platformFor('darwin').toolInstall('ffprobe');
+  assert.deepEqual([mac.command, mac.runnable], ['brew install ffmpeg', true]);
+  const apt = platformFor('linux').toolInstall('yt-dlp');
+  assert.deepEqual([apt.command, apt.runnable], ['sudo apt install yt-dlp', false]);
+});

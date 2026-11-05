@@ -6,6 +6,9 @@
 //! - 固定フレームレート（CFR）なら `fps` を返し、コマの `pts` は `index / fps`。
 //!   そうでなければ VFR として `pts_index` に各コマの時刻を返す。
 //! - 壊れた素材は `Err(Corrupt)`。
+//!
+//! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
+#![cfg(feature = "ffmpeg")]
 
 mod audio;
 mod convert;

@@ -1,4 +1,5 @@
 //! `mm-testkit` のエンコーダーの契約を通す。
+#![cfg(feature = "ffmpeg")]
 
 use std::sync::Arc;
 

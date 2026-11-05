@@ -1,4 +1,5 @@
 //! 本物の素材（CFR、NTSC の分数、VFR、頭が 0 でない素材、音）のコマの番号と時刻。
+#![cfg(feature = "ffmpeg")]
 
 mod common;
 

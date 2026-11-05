@@ -1,0 +1,397 @@
+Checking F: for cdrom...
+		CDROM sensed: PIONEER  BD-RW   BDR-UD04 1.11
+Opening drive...
+Unable to get AccuRIP DB data: missing entry!
+cyanrip 0.9.3 (063d848)
+System device:  F:
+Device model:   PIONEER  BD-RW   BDR-UD04 1.11
+Offset:         +667 samples
+Overread:       +2 frames
+Overread mode:  fill with silence in lead-in/lead-out
+Speed:          default (unchangeable)
+C2 errors:      unsupported by drive
+Paranoia level: max
+Frame retries:  10
+HDCD decoding:  disabled
+Album Art:      none
+Outputs:        flac
+Disc tracks:    8
+Tracks to rip:  all
+DiscID:         v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+CDDB ID:        6705ED08
+Album:          Unknown disc (V7ZY)
+AccurateRip:    not found
+Total time:     00:25:17.150
+Gaps:
+    None signalled
+Tracks:
+Ripping and encoding track 1, progress - 0.01%, ETA - 272h 54m
+Flushing encoders...
+Track 1 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -29.3 LUFS
+    Threshold: -39.6 LUFS
+  Loudness range:
+    LRA:         6.9 LU
+    Threshold: -49.5 LUFS
+    LRA low:   -33.6 LUFS
+    LRA high:  -26.7 LUFS
+  True peak:
+    Peak:      -20.2 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:03:43.180
+    Samples:     9859584
+    Frames:      16768
+    Pregap LSN:  none
+    Start LSN:   0 (with offset: 1)
+    End LSN:     16767 (with offset: 16769)
+  EAC CRC32:     80E5BD5F
+  Accurip:       not found
+    Accurip v1:  834E4B59
+    Accurip v2:  8554DB7D
+    Accurip 450: 51171823
+  Metadata:
+    track:                         1
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:09:41
+    REPLAYGAIN_TRACK_GAIN:         11.32 dB
+    R128_TRACK_GAIN:               4179
+    REPLAYGAIN_TRACK_RANGE:        6.94 dB
+    REPLAYGAIN_TRACK_PEAK:         0.098083
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/1.flac
+Ripping and encoding track 2, progress - 0.01%, ETA - 14m
+Flushing encoders...
+Track 2 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -29.4 LUFS
+    Threshold: -39.6 LUFS
+  Loudness range:
+    LRA:         8.5 LU
+    Threshold: -49.5 LUFS
+    LRA low:   -36.0 LUFS
+    LRA high:  -27.6 LUFS
+  True peak:
+    Peak:      -20.1 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:03:03.180
+    Samples:     8079708
+    Frames:      13741
+    Pregap LSN:  none
+    Start LSN:   16768 (with offset: 16769)
+    End LSN:     30508 (with offset: 30510)
+  EAC CRC32:     6F1BBA15
+  Accurip:       not found
+    Accurip v1:  F21649DF
+    Accurip v2:  31FDC044
+    Accurip 450: 06D86031
+  Metadata:
+    track:                         2
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:12:15
+    REPLAYGAIN_TRACK_GAIN:         11.44 dB
+    R128_TRACK_GAIN:               4209
+    REPLAYGAIN_TRACK_RANGE:        8.47 dB
+    REPLAYGAIN_TRACK_PEAK:         0.099226
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/2.flac
+Ripping and encoding track 3, progress - 0.01%, ETA - 12m
+Flushing encoders...
+Track 3 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -28.9 LUFS
+    Threshold: -39.0 LUFS
+  Loudness range:
+    LRA:         8.9 LU
+    Threshold: -48.9 LUFS
+    LRA low:   -35.3 LUFS
+    LRA high:  -26.4 LUFS
+  True peak:
+    Peak:      -20.3 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:03:19.180
+    Samples:     8787072
+    Frames:      14944
+    Pregap LSN:  none
+    Start LSN:   30509 (with offset: 30510)
+    End LSN:     45452 (with offset: 45454)
+  EAC CRC32:     1F5602CB
+  Accurip:       not found
+    Accurip v1:  ADA934BA
+    Accurip v2:  4A1DA6C4
+    Accurip 450: 503FC864
+  Metadata:
+    track:                         3
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:14:10
+    REPLAYGAIN_TRACK_GAIN:         10.88 dB
+    R128_TRACK_GAIN:               4065
+    REPLAYGAIN_TRACK_RANGE:        8.93 dB
+    REPLAYGAIN_TRACK_PEAK:         0.096418
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/3.flac
+Ripping and encoding track 4, progress - 0.01%, ETA - 9m
+Flushing encoders...
+Track 4 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -27.9 LUFS
+    Threshold: -38.2 LUFS
+  Loudness range:
+    LRA:         7.2 LU
+    Threshold: -48.2 LUFS
+    LRA low:   -33.5 LUFS
+    LRA high:  -26.3 LUFS
+  True peak:
+    Peak:      -20.0 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:02:37.120
+    Samples:     6963096
+    Frames:      11842
+    Pregap LSN:  none
+    Start LSN:   45453 (with offset: 45454)
+    End LSN:     57294 (with offset: 57296)
+  EAC CRC32:     8BCCA780
+  Accurip:       not found
+    Accurip v1:  85BBEFA1
+    Accurip v2:  6D0D8D8D
+    Accurip 450: 0ACD68D6
+  Metadata:
+    track:                         4
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:16:14
+    REPLAYGAIN_TRACK_GAIN:         9.85 dB
+    R128_TRACK_GAIN:               3802
+    REPLAYGAIN_TRACK_RANGE:        7.17 dB
+    REPLAYGAIN_TRACK_PEAK:         0.100438
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/4.flac
+Ripping and encoding track 5, progress - 0.01%, ETA - 7m
+Flushing encoders...
+Track 5 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -27.7 LUFS
+    Threshold: -38.2 LUFS
+  Loudness range:
+    LRA:        10.1 LU
+    Threshold: -48.2 LUFS
+    LRA low:   -35.8 LUFS
+    LRA high:  -25.7 LUFS
+  True peak:
+    Peak:      -20.7 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:02:32.120
+    Samples:     6725544
+    Frames:      11438
+    Pregap LSN:  none
+    Start LSN:   57295 (with offset: 57296)
+    End LSN:     68732 (with offset: 68734)
+  EAC CRC32:     47386781
+  Accurip:       not found
+    Accurip v1:  A7AAC3DF
+    Accurip v2:  B002AA91
+    Accurip 450: E72C1865
+  Metadata:
+    track:                         5
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:17:49
+    REPLAYGAIN_TRACK_GAIN:         9.73 dB
+    R128_TRACK_GAIN:               3771
+    REPLAYGAIN_TRACK_RANGE:        10.06 dB
+    REPLAYGAIN_TRACK_PEAK:         0.092382
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/5.flac
+Ripping and encoding track 6, progress - 0.02%, ETA - 6m
+Flushing encoders...
+Track 6 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -35.2 LUFS
+    Threshold: -46.6 LUFS
+  Loudness range:
+    LRA:        19.3 LU
+    Threshold: -56.4 LUFS
+    LRA low:   -51.2 LUFS
+    LRA high:  -31.9 LUFS
+  True peak:
+    Peak:      -22.1 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:01:05.060
+    Samples:     2866500
+    Frames:      4875
+    Pregap LSN:  none
+    Start LSN:   68733 (with offset: 68734)
+    End LSN:     73607 (with offset: 73609)
+  EAC CRC32:     360A70A6
+  Accurip:       not found
+    Accurip v1:  D58FF430
+    Accurip v2:  3160F7C4
+    Accurip 450: C154B81B
+  Metadata:
+    track:                         6
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:19:20
+    REPLAYGAIN_TRACK_GAIN:         17.22 dB
+    R128_TRACK_GAIN:               5689
+    REPLAYGAIN_TRACK_RANGE:        19.33 dB
+    REPLAYGAIN_TRACK_PEAK:         0.078304
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/6.flac
+Ripping and encoding track 7, progress - 0.01%, ETA - 5m
+Flushing encoders...
+Track 7 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -30.3 LUFS
+    Threshold: -40.7 LUFS
+  Loudness range:
+    LRA:         8.2 LU
+    Threshold: -50.6 LUFS
+    LRA low:   -36.0 LUFS
+    LRA high:  -27.8 LUFS
+  True peak:
+    Peak:      -20.0 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:03:44.180
+    Samples:     9890748
+    Frames:      16821
+    Pregap LSN:  none
+    Start LSN:   73608 (with offset: 73609)
+    End LSN:     90428 (with offset: 90430)
+  EAC CRC32:     D77BB0EF
+  Accurip:       not found
+    Accurip v1:  D7BAF416
+    Accurip v2:  F3B79424
+    Accurip 450: CBFB46F9
+  Metadata:
+    track:                         7
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:20:02
+    REPLAYGAIN_TRACK_GAIN:         12.30 dB
+    R128_TRACK_GAIN:               4428
+    REPLAYGAIN_TRACK_RANGE:        8.23 dB
+    REPLAYGAIN_TRACK_PEAK:         0.099442
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/7.flac
+Ripping and encoding track 8, progress - 0.00%, ETA - 3m
+Flushing encoders...
+Track 8 ripped and encoded successfully!
+Summary:
+  Integrated loudness:
+    I:         -28.8 LUFS
+    Threshold: -38.9 LUFS
+  Loudness range:
+    LRA:         9.5 LU
+    Threshold: -48.9 LUFS
+    LRA low:   -35.3 LUFS
+    LRA high:  -25.9 LUFS
+  True peak:
+    Peak:      -20.2 dBFS
+  Preemphasis:   none detected
+  Properties:
+    Duration:    00:05:11.300
+    Samples:     13733916
+    Frames:      23357
+    Pregap LSN:  none
+    Start LSN:   90429 (with offset: 90430)
+    End LSN:     113785
+    Appended:    2 frames of silence
+  EAC CRC32:     C888D2CE
+  Accurip:       not found
+    Accurip v1:  871C61E9
+    Accurip v2:  4BA89E3B
+    Accurip 450: 790155A0
+  Metadata:
+    track:                         8
+    tracktotal:                    8
+    discid:                        v7ZYUHTTYFdt.wXk07cnmAsD8TU-
+    cddb:                          6705ED08
+    media_type:                    CD
+    comment:                       cyanrip 0.9.3
+    album:                         Unknown disc (V7ZY)
+    title:                         Unknown track
+    creation_time:                 2026-10-27T00:22:13
+    REPLAYGAIN_TRACK_GAIN:         10.80 dB
+    R128_TRACK_GAIN:               4044
+    REPLAYGAIN_TRACK_RANGE:        9.47 dB
+    REPLAYGAIN_TRACK_PEAK:         0.097454
+    REPLAYGAIN_REFERENCE_LOUDNESS: -18.00 LUFS
+  File(s):
+    disc/8.flac
+Album Loudness Summary:
+  Integrated loudness:
+    I:         -29.0 LUFS
+    Threshold: -39.3 LUFS
+  Loudness range:
+    LRA:        10.2 LU
+    Threshold: -49.3 LUFS
+    LRA low:   -36.3 LUFS
+    LRA high:  -26.1 LUFS
+  True peak:
+    Peak:      -20.0 dBFS
+Paranoia status counts:
+  READ:          35413
+  VERIFY:        7269
+  OVERLAP:       1479
+Ripping errors: 0
+Ripping finished at 2026-10-27T00:25:10

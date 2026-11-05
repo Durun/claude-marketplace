@@ -1,0 +1,18 @@
+[package]
+name = "mm-audio-dsp"
+description = "音の実装。音量・パン・バス・ダッキングのミキサーと、BS.1770 のラウドネスメーター"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+ebur128 = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true

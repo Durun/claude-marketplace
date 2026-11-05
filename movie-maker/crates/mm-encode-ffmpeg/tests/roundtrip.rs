@@ -1,4 +1,5 @@
 //! 書き出した MP4 を ffprobe で読み、デコーダーで読み戻して、コマ数・長さ・番号・音を確かめる。
+#![cfg(feature = "ffmpeg")]
 
 #[path = "../../mm-decode-ffmpeg/tests/common/mod.rs"]
 mod common;

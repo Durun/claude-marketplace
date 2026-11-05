@@ -1,4 +1,5 @@
 //! `mm-testkit` のデコーダーの契約を、本物の素材で通す。
+#![cfg(feature = "ffmpeg")]
 
 mod common;
 
