@@ -33,6 +33,13 @@
 - UI は混成にする。Tauri（WebView2 + Rust）で Rust の核を持ち、ビューアーとタイムラインは wgpu で描いた面を窓に直接置く。文字の多い画面（Story、Review、Inspector、Feedback）は WebView で作る。全部ネイティブ（egui か Slint）は対案として残す。
 - HTML の文字や Three.js など「Web の UI で映像を作る」種類は、OBS のブラウザソースと同じ型で残す。Chromium を埋め込み（CEF のオフスクリーン描画）、GPU の共有テクスチャで受け取る。
 
+## 決まったこと（2026-11-06、ユーザー。段階 0 の試作の結果を受けて）
+
+- 色空間の名前 `bt709` は Rec.1886 の表示の式を指す。BT.709 の OETF は別の名前で持つ（[ocio](spikes/ocio.md#詰まった所)）。
+- NVDEC の既定は `d3d12va`。開いた直後の数コマで失敗する素材（NVENC で作った 4K の HEVC など）は `cuvid` に切り替え、最後は CPU 経由（[nvdec](spikes/nvdec.md)）。
+- 口に wgpu の型を出さず、`GpuHelper` トレイトで囲う形を正式にする。RFC と `04-nodes.md` と `14-dev-structure.md` の直しは別の担当が進めている。
+- wgpu の面と WebView2 は並べられた。Tauri の構成を保つ（[window](spikes/window.md)）。
+
 ## 中心の考え方
 
 1. プロジェクトとコンポジション: 1 つのプロジェクトに複数のコンポジションを持つ。書き出しの対象（レンダーターゲット）は複数選べるので、プロジェクトと成果物は 1 対 N になる。コンポジションはほかのコンポジションに入れられる（入れ子）。
@@ -64,8 +71,8 @@
 | [12-mobile.md](12-mobile.md) | モバイル版 |
 | [13-vlog-pack.md](13-vlog-pack.md) | vlog のパック |
 | [14-dev-structure.md](14-dev-structure.md) | 話題と依存、ディレクトリの木、口と実装の分け方、並行開発の境界 |
-| [15-roadmap.md](15-roadmap.md) | 進め方、段階 0 の難所 |
-| [16-open-questions.md](16-open-questions.md) | 決めてほしいこと |
+| [15-roadmap.md](15-roadmap.md) | 進め方、段階 0 の難所と結果、終わりの条件の判定、後の段階の注意 |
+| [16-open-questions.md](16-open-questions.md) | 決めてほしいことと、決まったこと |
 | [17-instrumentation.md](17-instrumentation.md) | 計装。何を測るか、予算、仕組み、使い方の記録、継続的改善とのつなぎ |
 | [references.md](references.md) | 出典 |
 | [reviews/](reviews/) | レビューと規格の調査の記録 |
