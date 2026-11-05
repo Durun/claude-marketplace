@@ -14,6 +14,7 @@ import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, o
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
 import { CDRIP_ICON, CDRIP_KEY, CDRIP_TITLE, CdRipIcon, openCdRip } from './CdRip.tsx';
+import { TRANSLATE_ICON, TRANSLATE_KEY, TRANSLATE_TITLE, TranslateIcon, openTranslate } from './Translate.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatUp, isFloating, useFloats } from './Float.tsx';
 import { GITHUB_INBOX_TITLE, GithubInbox, githubInboxControls } from './GithubInbox.tsx';
 import { Inbox } from './Inbox.tsx';
@@ -221,6 +222,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   // ホームから開いたときは、ウィンドウでセッションを選ぶまで、どのセッションにもつながない。
   [FL_KEY]: { title: FL_TITLE, icon: FL_ICON, Body: () => <FlConnectIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openFlConnect() },
   [CDRIP_KEY]: { title: CDRIP_TITLE, icon: CDRIP_ICON, Body: () => <CdRipIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openCdRip() },
+  [TRANSLATE_KEY]: { title: TRANSLATE_TITLE, icon: TRANSLATE_ICON, Body: () => <TranslateIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTranslate() },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   [RECYCLE_BIN_KEY]: { title: RECYCLE_BIN_TITLE, icon: RECYCLE_BIN_ICON, Body: ({ snapshot }) => <RecycleBinIcon full={!!snapshot.trash?.length} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openRecycleBin() },
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },

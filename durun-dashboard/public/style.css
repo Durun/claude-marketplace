@@ -1909,6 +1909,14 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .wmp-volume { position: absolute; bottom: 100%; left: 50%; display: none; width: 90px; margin: 0 0 8px -45px; accent-color: #3d9bff; }
 [data-skin="xp"] .wmp-vol:is(:hover, :focus-within) .wmp-volume { display: block; }
 [data-skin="xp"] .wmp-full { justify-self: end; }
+/* 翻訳。上に訳す先の言語とボタン、下に原文と訳文を左右に並べる。 */
+.translate { display: flex; flex-direction: column; gap: 8px; min-height: 0; font-size: 13px; }
+.translate-bar { display: flex; align-items: center; gap: 8px; }
+.translate-hint, .translate-license { color: var(--muted); font-size: 12px; }
+.translate-panes { display: flex; flex: 1; gap: 8px; min-height: 0; }
+.translate-panes .input { flex: 1; min-width: 0; resize: none; }
+.translate-install { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.translate-install ul { margin: 0; padding-left: 20px; }
 /* CD取り込み。左に取り込みリスト、右に選んだ行の詳細か設定を並べる。 */
 .cdrip { display: flex; flex-direction: column; gap: 8px; min-height: 0; font-size: 13px; }
 .cdrip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

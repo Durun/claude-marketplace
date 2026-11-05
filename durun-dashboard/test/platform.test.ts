@@ -440,3 +440,12 @@ test('依存ツールを入れるコマンドを、Windows は winget、macOS �
   const apt = platformFor('linux').toolInstall('yt-dlp');
   assert.deepEqual([apt.command, apt.runnable], ['sudo apt install yt-dlp', false]);
 });
+
+test('翻訳アプリの llama-server は、どの OS でも llama.cpp のパッケージから入れ、Windows では winget のパッケージの直下から探す', () => {
+  assert.equal(platformFor('win32').toolInstall('llama-server').command, 'winget install --id ggml.llamacpp -e --accept-source-agreements --accept-package-agreements');
+  assert.equal(platformFor('darwin').toolInstall('llama-server').command, 'brew install llama.cpp');
+  assert.equal(platformFor('linux').toolInstall('llama-server').command, 'sudo apt install llama.cpp');
+  const base = 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages';
+  const exe = `${base}\\ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe\\llama-server.exe`;
+  assert.deepEqual(platformFor('win32').toolCandidates('llama-server', { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, wingetDirs([exe])), [exe]);
+});

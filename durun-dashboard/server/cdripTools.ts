@@ -1,7 +1,7 @@
 // CD取り込みが使う外部コマンド（cyanrip、flac、ffmpeg など）の検出と導入。同梱せず、利用者がパッケージ管理で入れる。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CdTool, CdToolName } from '../shared/types.ts';
+import type { CdTool, CdToolName, ToolName } from '../shared/types.ts';
 import { cached, forgetCached } from './cache.ts';
 import { type DirLookup, type Platform, platform as hostPlatform, type Run } from './platform.ts';
 import { run as runOffThread } from './run.ts';
@@ -19,14 +19,14 @@ export const knownOffset = (model: string): number | undefined => {
 };
 
 /** 環境変数で場所を指すときの名前。yt-dlp なら CDRIP_YT_DLP_PATH。 */
-export const toolEnvName = (name: CdToolName): string => `CDRIP_${name.toUpperCase().replaceAll('-', '_')}_PATH`;
+export const toolEnvName = (name: ToolName): string => `CDRIP_${name.toUpperCase().replaceAll('-', '_')}_PATH`;
 
 export type ResolveOptions = { env?: NodeJS.ProcessEnv; platform?: Platform; dirs?: DirLookup };
 
 const realExists = (file: string): boolean => fs.existsSync(file);
 
 /** 環境変数、PATH、パッケージ管理が置く場所の順に探す。見つからなければ undefined。 */
-export const resolveTool = (name: CdToolName, { env = process.env, platform = hostPlatform, dirs }: ResolveOptions = {}): string | undefined => {
+export const resolveTool = (name: ToolName, { env = process.env, platform = hostPlatform, dirs }: ResolveOptions = {}): string | undefined => {
   const exists = dirs?.exists ?? realExists;
   const pinned = env[toolEnvName(name)];
   if (pinned && exists(pinned)) return pinned;
@@ -73,7 +73,7 @@ export const detectTools = (aiVideo: boolean, platform: Platform = hostPlatform,
   Promise.all(TOOL_NAMES.filter((n) => aiVideo || n !== 'yt-dlp').map((n) => detectOne(n, platform, run)));
 
 /** 画面の導入ボタンから入れる。runnable でないツールは、コマンドを返すだけで実行しない。 */
-export const installTool = async (name: CdToolName, platform: Platform = hostPlatform): Promise<{ message: string; ran: boolean }> => {
+export const installTool = async (name: ToolName, platform: Platform = hostPlatform): Promise<{ message: string; ran: boolean }> => {
   const install = platform.toolInstall(name);
   if (!install.runnable) return { message: `管理者権限が要るので、端末で次を実行してください。\n${install.command}`, ran: false };
   try {

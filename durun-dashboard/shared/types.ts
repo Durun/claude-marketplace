@@ -812,6 +812,9 @@ export type FlConnectView = {
 /** 取り込みと書き出しが使う外部コマンド。metaflac は flac の、ffprobe は ffmpeg のパッケージに入っている。 */
 export type CdToolName = 'cyanrip' | 'flac' | 'metaflac' | 'ffmpeg' | 'ffprobe' | 'yt-dlp';
 
+/** パッケージ管理で入れる外部コマンド。llama-server は翻訳アプリが使う。 */
+export type ToolName = CdToolName | 'llama-server';
+
 /** 依存ツール 1 つの検出結果。install があれば、無いツールを入れるコマンドを見せる。runnable が偽のコマンドは、画面から実行せず見せるだけ。 */
 export type CdTool = { name: CdToolName; path?: string; version?: string; install?: { label: string; command: string; runnable: boolean } };
 
@@ -894,3 +897,8 @@ export type CdRipView = {
   log: CdLogEntry[];
   drives: { id: string; model: string }[];
 };
+
+// ─── アプリ「翻訳」 ──────────────────────────────────────────────
+
+/** 翻訳に要るものが揃っているか。runtime は llama-server、model は PLaMo 3 Translate の GGUF。install は llama-server を入れるコマンド。 */
+export type TranslateStatus = { runtime: boolean; model: boolean; installing: boolean; install: string };

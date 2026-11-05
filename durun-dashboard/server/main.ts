@@ -46,6 +46,7 @@ import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
 import { MINES_ROW, minesHint } from './minesweeper.ts';
+import { TranslateError, installTranslate, translate, translateStatus } from './translate.ts';
 import { fetchRetro } from './retro.ts';
 import { fetchWikipedia } from './wikipedia.ts';
 import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
@@ -80,6 +81,7 @@ const STATIC: Record<string, string> = {
   '/claude-open.svg': 'public/claude-open.svg',
   '/explorer.svg': 'public/explorer.svg',
   '/notepad.svg': 'public/notepad.svg',
+  '/translate.svg': 'public/translate.svg',
   '/bookmark.svg': 'public/bookmark.svg',
   '/proofread.svg': 'public/proofread.svg',
   '/terminal.svg': 'public/terminal.svg',
@@ -1285,6 +1287,9 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/local-file$/, (_, b, url) => saveLocalFile(url, b)],
   // 作るたびに Jev を使うので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/minesweeper\/hint$/, (_, b) => minesHintOf(b), WEB_API_MS],
+  // llama.cpp とモデル（0.57 GB）を入れる。
+  [/^\/api\/translate\/install$/, () => installTranslate(), 10 * 60_000],
+  [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
@@ -1298,6 +1303,7 @@ const memoryNow = latestMemory(() => platform.readMemory());
 
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  [/^\/api\/translate\/status$/, () => translateStatus()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
   [/^\/api\/jira$/, (_, __, url) => jiraSearch(url), WEB_API_MS],
@@ -1482,7 +1488,7 @@ const server = http.createServer(async (req, res) => {
   route(req, res).catch((e: unknown) => {
     // 入力の誤り（4xx）と、セッションの状態で断った操作（409）と、claude の失敗（502）は、ダッシュボードの不具合ではないので集めない。
     // 送り手が本文を送り終える前に切ったリクエストも集めない。フックの curl は、送っている途中でも 2 秒で打ち切る。
-    const status = e instanceof HttpError ? e.status : e instanceof SessionStateError ? 409 : e instanceof CdRipError ? e.status : e instanceof UpstreamError ? 502 : 500;
+    const status = e instanceof HttpError ? e.status : e instanceof SessionStateError ? 409 : e instanceof CdRipError || e instanceof TranslateError ? e.status : e instanceof UpstreamError ? 502 : 500;
     if (status === 500 && e !== req.errored) {
       console.error(e);
       recordError('server', (e as Error).message ?? String(e), (e as Error).stack, `${req.method} ${req.url}`);

@@ -1,5 +1,5 @@
 import type {
-  CdMeta, AssistantMessage, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -217,6 +217,9 @@ export const api = {
   /** 無いファイルは null。 */
   proofFile: (id: string) => getJson<ProofFile | null>(`/api/proofread/files/${seg(id)}`),
   saveProofFile: (file: ProofFile) => postJson(`/api/proofread/files/${seg(file.id)}`, file),
+  translateStatus: () => getJson<TranslateStatus>('/api/translate/status'),
+  translateInstall: () => postJson<{ message: string }>('/api/translate/install'),
+  translate: (text: string, target: string) => postJson<{ text: string }>('/api/translate', { text, target }),
   minesHint: (rows: string[], mines: number) => postJson<{ odds: (number | null)[] }>('/api/minesweeper/hint', { rows, mines }),
   reviseProof: (text: string, glossary: string, fixed: number[], notes: ReviseNote[], mode: ProofMode) => postJson<{ text: string }>('/api/proofread/revise', { text, glossary, fixed, notes, mode }),
   /** 画像は JSON にせず、そのまま本文で送る。 */

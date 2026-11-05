@@ -38,6 +38,7 @@ import { EDIT_SHORTCUT, HOME_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
 import { FL_KEY, FlConnectFloat } from './FlConnect.tsx';
 import { CDRIP_KEY, CdRipFloat } from './CdRip.tsx';
+import { TRANSLATE_KEY, TranslateFloat } from './Translate.tsx';
 import { Toasts } from './toast.tsx';
 import { Loading } from './ui.tsx';
 import { DIAGRAM_PROMPT_KEY, DiagramPromptFloat } from './Overview.tsx';
@@ -64,7 +65,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [CDRIP_KEY]: CdRipFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [CDRIP_KEY]: CdRipFloat, [TRANSLATE_KEY]: TranslateFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 

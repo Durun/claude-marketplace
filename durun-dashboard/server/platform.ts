@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { CdToolName, HostOs, MemoryStatus } from '../shared/types.ts';
+import type { HostOs, MemoryStatus, ToolName } from '../shared/types.ts';
 import { toMemoryStatus, toMemoryUsage } from './memory.ts';
 import { run as runOffThread } from './run.ts';
 
@@ -77,9 +77,9 @@ export const drutilMediaLoaded = (status: string): boolean => {
   return !!type && !/no media/i.test(type);
 };
 
-// metaflac は flac のパッケージに、ffprobe は ffmpeg のパッケージに入っている。
-const WINGET_IDS: Record<CdToolName, string> = { cyanrip: 'cyanreg.cyanrip', flac: 'Xiph.FLAC', metaflac: 'Xiph.FLAC', ffmpeg: 'Gyan.FFmpeg', ffprobe: 'Gyan.FFmpeg', 'yt-dlp': 'yt-dlp.yt-dlp' };
-const PACKAGE_NAMES: Record<CdToolName, string> = { cyanrip: 'cyanrip', flac: 'flac', metaflac: 'flac', ffmpeg: 'ffmpeg', ffprobe: 'ffmpeg', 'yt-dlp': 'yt-dlp' };
+// metaflac は flac のパッケージに、ffprobe は ffmpeg のパッケージに、llama-server は llama.cpp のパッケージに入っている。
+const WINGET_IDS: Record<ToolName, string> = { cyanrip: 'cyanreg.cyanrip', flac: 'Xiph.FLAC', metaflac: 'Xiph.FLAC', ffmpeg: 'Gyan.FFmpeg', ffprobe: 'Gyan.FFmpeg', 'yt-dlp': 'yt-dlp.yt-dlp', 'llama-server': 'ggml.llamacpp' };
+const PACKAGE_NAMES: Record<ToolName, string> = { cyanrip: 'cyanrip', flac: 'flac', metaflac: 'flac', ffmpeg: 'ffmpeg', ffprobe: 'ffmpeg', 'yt-dlp': 'yt-dlp', 'llama-server': 'llama.cpp' };
 
 /** 名前に * を含む階層を、実在するものに広げる。新しい版を先に返す。 */
 const expandWild = (base: string, segments: string[], dirs: DirLookup, join: (...p: string[]) => string): string[] => {
@@ -96,13 +96,14 @@ const expandWild = (base: string, segments: string[], dirs: DirLookup, join: (..
 };
 
 // winget のパッケージの中の置き場所。版や配布元の名前が付く階層は * で書く。
-const WINGET_LAYOUT: Record<CdToolName, string[][]> = {
+const WINGET_LAYOUT: Record<ToolName, string[][]> = {
   cyanrip: [['cyanreg.cyanrip_*', 'cyanrip.exe']],
   flac: [['Xiph.FLAC_*', 'flac-*-win', 'Win64', 'flac.exe']],
   metaflac: [['Xiph.FLAC_*', 'flac-*-win', 'Win64', 'metaflac.exe']],
   ffmpeg: [['Gyan.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffmpeg.exe'], ['yt-dlp.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffmpeg.exe']],
   ffprobe: [['Gyan.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffprobe.exe'], ['yt-dlp.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffprobe.exe']],
   'yt-dlp': [['yt-dlp.yt-dlp_*', 'yt-dlp.exe']],
+  'llama-server': [['ggml.llamacpp_*', 'llama-server.exe']],
 };
 
 export type Platform = {
@@ -179,9 +180,9 @@ export type Platform = {
   /** 実行ファイルの名前（Windows では .exe を付ける）。 */
   executableName: (tool: string) => string;
   /** パッケージ管理が置く場所にある依存ツールの候補。新しい版を先に返す。 */
-  toolCandidates: (tool: CdToolName, env: NodeJS.ProcessEnv, dirs?: DirLookup) => string[];
+  toolCandidates: (tool: ToolName, env: NodeJS.ProcessEnv, dirs?: DirLookup) => string[];
   /** 依存ツールを入れるコマンド。 */
-  toolInstall: (tool: CdToolName) => ToolInstall;
+  toolInstall: (tool: ToolName) => ToolInstall;
 };
 
 const readOrUndefined = (files: Files, file: string): string | undefined => {
@@ -231,7 +232,7 @@ const tailnetHostsVia =
 
 const SYSCTL_NAMES = ['kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level', 'hw.memsize', 'vm.swapusage'];
 
-const brewInstall = (tool: CdToolName): ToolInstall => ({ label: `brew install ${PACKAGE_NAMES[tool]}`, command: `brew install ${PACKAGE_NAMES[tool]}`, file: 'brew', args: ['install', PACKAGE_NAMES[tool]], runnable: true });
+const brewInstall = (tool: ToolName): ToolInstall => ({ label: `brew install ${PACKAGE_NAMES[tool]}`, command: `brew install ${PACKAGE_NAMES[tool]}`, file: 'brew', args: ['install', PACKAGE_NAMES[tool]], runnable: true });
 
 const posix = {
   shellPath: (file: string) => file,
