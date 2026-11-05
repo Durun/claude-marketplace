@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-# cargo は 1 つも合わない glob を断るので、最初のアプリ（apps/mm）が入る PR で "apps/*" を足す。
-members = ["crates/*"]
+# apps/* はアプリ（Tauri の窓など）。
+members = ["crates/*", "apps/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -31,6 +31,13 @@ serde_json = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+
+# apps/movie-maker（窓の試作）が使う。
+tauri = { version = "2", features = ["unstable"] }
+tauri-build = "2"
+wgpu = "30"
+pollster = "0.4"
+windows = "0.62"
 
 [workspace.lints.clippy]
 all = "warn"
