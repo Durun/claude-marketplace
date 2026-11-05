@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mm_doc::{Composition, Layer, Node, Param, Project, Transform};
+use mm_doc::{Composition, Layer, Node, Project};
 use mm_node_api::Quality;
 use mm_nodes_basic::all_kinds;
 use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
@@ -17,17 +17,13 @@ use tracing_subscriber::prelude::*;
 const SIZE: Size = Size::new(64, 36);
 
 fn project() -> Project {
-    let layer = Layer {
-        id: Id::new("a"),
-        source: Node::new("solid", 1).with_param("color", ParamValue::Color(Rgba::WHITE)),
-        start: RationalTime::ZERO,
-        in_point: RationalTime::ZERO,
-        out_point: RationalTime::seconds(2),
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
-        audio: None,
-        lock: false,
-    };
+    let layer = Layer::new(
+        "a",
+        Node::new("solid", 1).with_param("color", ParamValue::Color(Rgba::WHITE)),
+        RationalTime::ZERO,
+        RationalTime::ZERO,
+        RationalTime::seconds(2),
+    );
     let mut p = Project::new();
     p.compositions.push(Composition {
         id: Id::new("main"),
@@ -36,6 +32,7 @@ fn project() -> Project {
         fps: Rational::integer(30),
         duration: RationalTime::seconds(2),
         layers: vec![layer],
+        markers: Vec::new(),
     });
     p
 }

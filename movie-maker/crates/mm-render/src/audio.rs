@@ -2,7 +2,8 @@
 //! 入れ子（種類 `composition`）は、中のコンポジションを同じ手順で混ぜた音を 1 本の入力にする。
 
 use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig};
-use mm_doc::{Composition, Layer, Param};
+use mm_doc::{Composition, Layer};
+use mm_eval::{evaluate_audio, source_time};
 use mm_node_api::{audio_frames_in, AudioCx};
 use mm_render_api::AudioRequest;
 use mm_types::{CompositionId, Id, Params, RationalTime, Result, TimeRange};
@@ -97,8 +98,8 @@ impl WgpuRenderer {
             return Ok(None);
         }
         let source_range = TimeRange::new(
-            layer.to_source_time(overlap.start)?,
-            layer.to_source_time(overlap.end)?,
+            source_time(layer, overlap.start)?,
+            source_time(layer, overlap.end)?,
         )?;
         let block = if kind.id() == NESTED_KIND {
             match self.nested_audio(scope, &params, source_range)? {
@@ -173,11 +174,8 @@ impl WgpuRenderer {
 
 /// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。設定が無ければ素通し。
 fn mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
-    let Some(a) = &layer.audio else {
-        return ("voice".into(), 0.0, 0.0);
-    };
-    let number = |p: &Param| p.hold_value_at(t).as_number().unwrap_or(0.0) as f32;
-    (a.role.clone(), number(&a.gain_db), number(&a.pan))
+    let a = evaluate_audio(layer, t);
+    (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
 }
 
 /// `block` を `offset` コマ目から置き、全体を `total` コマにそろえる。
