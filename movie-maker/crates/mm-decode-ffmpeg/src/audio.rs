@@ -90,7 +90,7 @@ impl AudioReader {
 
     /// 素材の時間軸の区間の音。外は無音。
     pub fn read(&mut self, range: TimeRange) -> Result<AudioBlock> {
-        let rate = Rational::integer(self.rate);
+        let rate = Rational::new(self.rate, 1)?;
         let first = range.start.frame_index(rate);
         let count = (range.end.frame_index(rate) - first).max(0) as usize;
         let channels = self.channels as usize;
@@ -108,7 +108,7 @@ impl AudioReader {
         let mut resampler: Option<Resampler> = None;
         let mut packet = Packet::empty();
         let mut draining = false;
-        let origin_samples = round_to_samples(self.origin, self.rate);
+        let origin_samples = round_to_samples(self.origin, self.rate)?;
         loop {
             let mut decoded = frame::Audio::empty();
             match self.decoder.receive_frame(&mut decoded) {
@@ -155,8 +155,9 @@ impl AudioReader {
 
     /// `first` サンプルの少し前のパケットから読み直せるようにする。
     fn seek(&mut self, first: i64) -> Result<()> {
-        let t = RationalTime::from_frames(first, Rational::integer(self.rate)) + self.origin
-            - RationalTime::seconds(PREROLL_SECONDS);
+        let t = RationalTime::from_frames(first, Rational::new(self.rate, 1)?)?
+            .checked_add(self.origin)?
+            .checked_sub(RationalTime::seconds(PREROLL_SECONDS))?;
         let ts = self.tb.ticks_floor(t.max(RationalTime::ZERO));
         unsafe {
             let ret = ff::ffi::av_seek_frame(
@@ -208,9 +209,9 @@ impl AudioReader {
     }
 }
 
-fn round_to_samples(t: RationalTime, rate: u32) -> i64 {
-    let scaled = t.scale(Rational::integer(rate));
-    (scaled.num() * 2 + scaled.den() as i128).div_euclid(scaled.den() as i128 * 2) as i64
+fn round_to_samples(t: RationalTime, rate: u32) -> Result<i64> {
+    let scaled = t.scale(Rational::new(rate, 1)?)?;
+    Ok((scaled.num() * 2 + scaled.den() as i128).div_euclid(scaled.den() as i128 * 2) as i64)
 }
 
 /// フレーム（`start` から並ぶ）のうち、`[first, end)` に入る分を `out` に写す。

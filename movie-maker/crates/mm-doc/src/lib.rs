@@ -60,6 +60,30 @@ impl Project {
             .ok_or_else(|| MmError::NotFound(format!("composition {id}")))
     }
 
+    /// 文書の不変条件を確かめる。素材とコンポジションの長さが負でなく、レイヤーの範囲
+    /// （`in <= out`）が作れること。fps が正であることは [`Rational`] の型が保つ。
+    pub fn validate(&self) -> Result<()> {
+        for asset in &self.assets {
+            if asset.duration.is_negative() {
+                return Err(MmError::InvalidArgument(format!(
+                    "素材 {} の長さが負",
+                    asset.id
+                )));
+            }
+        }
+        for comp in &self.compositions {
+            comp.range().map_err(|e| {
+                MmError::InvalidArgument(format!("コンポジション {} の長さ: {e}", comp.id))
+            })?;
+            for layer in &comp.layers {
+                layer.range().map_err(|e| {
+                    MmError::InvalidArgument(format!("レイヤー {} の範囲: {e}", layer.id))
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// レンダーターゲットを ID で引く。
     pub fn render_target(&self, id: &RenderTargetId) -> Result<&RenderTarget> {
         self.render_targets
@@ -103,9 +127,9 @@ pub struct Composition {
 }
 
 impl Composition {
-    /// コンポジション全体の範囲 `[0, duration)`。
-    pub fn range(&self) -> TimeRange {
-        TimeRange::new(RationalTime::ZERO, self.duration).expect("duration は非負")
+    /// コンポジション全体の範囲 `[0, duration)`。長さが負なら `InvalidArgument`。
+    pub fn range(&self) -> Result<TimeRange> {
+        TimeRange::new(RationalTime::ZERO, self.duration)
     }
 }
 
@@ -167,12 +191,12 @@ impl Transform {
 impl Layer {
     /// コンポジションの時間軸での範囲。
     pub fn range(&self) -> Result<TimeRange> {
-        TimeRange::from_start_duration(self.start, self.out_point - self.in_point)
+        TimeRange::from_start_duration(self.start, self.out_point.checked_sub(self.in_point)?)
     }
 
     /// コンポジションの時刻を素材の時刻に写す（速さ 1 のみ。タイムリマップは `mm-eval`）。
-    pub fn to_source_time(&self, t: RationalTime) -> RationalTime {
-        t - self.start + self.in_point
+    pub fn to_source_time(&self, t: RationalTime) -> Result<RationalTime> {
+        t.checked_sub(self.start)?.checked_add(self.in_point)
     }
 }
 

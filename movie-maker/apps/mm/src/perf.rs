@@ -99,21 +99,29 @@ pub struct PerfArgs {
     pub size: (u32, u32),
 }
 
+/// 場面を回して分かった、測った環境。
+#[derive(Debug, Default)]
+pub struct Environment {
+    /// 使った GPU の名前。`Engine::gpu_adapter` から取る。
+    pub adapter: Option<String>,
+}
+
 /// 場面を回して結果を書く。
 pub fn run(args: &PerfArgs, metrics: &MetricsHandle) -> Result<()> {
     if args.repeat == 0 {
         return Err(MmError::InvalidArgument("--repeat は 1 以上".into()));
     }
     let mut items = Vec::new();
+    let mut env = Environment::default();
     if matches!(args.scene, Scene::Startup | Scene::All) {
         items.extend(scenes::startup(args)?);
     }
     if matches!(args.scene, Scene::Export | Scene::All) {
-        items.extend(scenes::export(args)?);
+        items.extend(scenes::export(args, &mut env)?);
     }
     let snapshot = metrics.snapshot();
     print_table(&items);
-    let path = write_results(args, &items, &snapshot)?;
+    let path = write_results(args, &items, &env, &snapshot)?;
     println!("結果: {}", path.display());
     Ok(())
 }
@@ -160,14 +168,17 @@ fn item_json(item: &Item) -> Value {
 }
 
 /// 結果の JSON と `metrics.jsonl` を書き、JSON のパスを返す。
-fn write_results(args: &PerfArgs, items: &[Item], snapshot: &MetricsSnapshot) -> Result<PathBuf> {
+fn write_results(
+    args: &PerfArgs,
+    items: &[Item],
+    env: &Environment,
+    snapshot: &MetricsSnapshot,
+) -> Result<PathBuf> {
     std::fs::create_dir_all(&args.out_dir)?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let adapter = mm_render::GpuContext::shared(&mm_render::GpuRequest::default())
-        .ok()
-        .map(|c| c.adapter.name.clone());
+    let adapter = env.adapter.clone();
     let scene = format!("{:?}", args.scene).to_lowercase();
     let metrics: Value = serde_json::from_str(&snapshot.to_jsonl_line())?;
     let doc = json!({

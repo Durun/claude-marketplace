@@ -15,7 +15,9 @@
 //! - `info()` の `duration` と `fps` から数えたコマ数だけ `next_frame` が出て、その後 `None`。
 //! - `seek(t)` の直後の `next_frame` は `index == t.frame_index(fps)`、`pts` はそのコマの時刻。
 //! - 同じ時刻にシークし直すと同じコマが出る（bit 一致）。
-//! - `decode_range(r)` は `r.frame_indices(fps)` と同じ番号の列を返す。
+//! - `decode_range(r)` は `info().frame_range(r)` と同じ番号の列を返す。CFR は
+//!   `r.frame_indices(fps)`、VFR は PTS が `[start, end)` に入るコマ全部（最後のコマも落とさない）。
+//! - `frame_index_at(t)` は最初のコマより前の `t` で CFR も VFR も -1。
 //! - 壊れたファイルは `Err(Corrupt)` を返し、panic しない。
 //! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のコマ数が押した数と一致する。
 
@@ -48,14 +50,12 @@ pub struct MediaInfo {
 }
 
 impl MediaInfo {
-    /// `t` のコマの番号。CFR は `frame_index` の規則、VFR は PTS の索引で `t` 以下の最後。
+    /// `t` に映っているコマの番号。CFR は `frame_index` の規則、VFR は PTS の索引で `t` 以下の最後。
+    /// 最初のコマより前の `t` は、CFR も VFR も -1。
     pub fn frame_index_at(&self, t: RationalTime) -> i64 {
         match self.fps {
             Some(fps) => t.frame_index(fps),
-            None => self
-                .pts_index
-                .partition_point(|pts| *pts <= t)
-                .saturating_sub(1) as i64,
+            None => self.pts_index.partition_point(|pts| *pts <= t) as i64 - 1,
         }
     }
 
@@ -64,6 +64,20 @@ impl MediaInfo {
         match self.fps {
             Some(fps) => self.duration.frame_index(fps),
             None => self.pts_index.len() as i64,
+        }
+    }
+
+    /// 区間 `[start, end)` に含まれるコマの番号。`decode_range` が返す番号の列。
+    /// CFR は `TimeRange::frame_indices`、VFR は PTS が区間に入るコマ
+    /// （`end` より前の PTS の数 − `start` より前の PTS の数）。
+    pub fn frame_range(&self, range: TimeRange) -> std::ops::Range<i64> {
+        match self.fps {
+            Some(fps) => range.frame_indices(fps),
+            None => {
+                let before =
+                    |t: RationalTime| self.pts_index.partition_point(|pts| *pts < t) as i64;
+                before(range.start)..before(range.end)
+            }
         }
     }
 }
@@ -145,18 +159,19 @@ pub trait Decoder: Send {
     fn seek(&mut self, t: RationalTime) -> Result<()>;
     /// 次のコマ。終わりなら `None`。
     fn next_frame(&mut self) -> Result<Option<DecodedFrame>>;
-    /// 区間のコマをまとめて返す（毎コマの口の呼び出しを避ける）。
+    /// 区間のコマをまとめて返す（毎コマの口の呼び出しを避ける）。番号は `MediaInfo::frame_range`
+    /// と同じ（VFR は PTS が区間に入るコマ全部）。素材の終わりで足りなければそこまで。
     fn decode_range(&mut self, range: TimeRange) -> Result<Vec<DecodedFrame>> {
-        let count = self
-            .info()
-            .frame_index_at(range.end)
-            .saturating_sub(self.info().frame_index_at(range.start));
+        let wanted = self.info().frame_range(range);
         self.seek(range.start)?;
-        let mut out = Vec::with_capacity(count.max(0) as usize);
-        for _ in 0..count {
-            match self.next_frame()? {
-                Some(f) => out.push(f),
-                None => break,
+        let mut out = Vec::new();
+        while let Some(f) = self.next_frame()? {
+            if f.index >= wanted.end {
+                break;
+            }
+            // 区間の頭が PTS の途中だと、シーク先は頭より前のコマ。区間の外なので捨てる。
+            if f.index >= wanted.start {
+                out.push(f);
             }
         }
         Ok(out)
@@ -248,5 +263,70 @@ mod tests {
         assert_eq!(info.frame_index_at(RationalTime::new(1, 2).unwrap()), 1);
         assert_eq!(info.frame_index_at(RationalTime::seconds(1)), 2);
         assert_eq!(info.frame_count(), 3);
+    }
+
+    fn vfr_info() -> MediaInfo {
+        MediaInfo {
+            duration: RationalTime::seconds(1),
+            fps: None,
+            size: Size::new(1, 1),
+            color_space: ColorSpace::bt709(),
+            timebase_offset: RationalTime::ZERO,
+            audio: None,
+            pts_index: vec![
+                RationalTime::ZERO,
+                RationalTime::new(1, 2).unwrap(),
+                RationalTime::new(3, 4).unwrap(),
+            ],
+        }
+    }
+
+    fn range(a: (i128, u32), b: (i128, u32)) -> TimeRange {
+        TimeRange::new(
+            RationalTime::new(a.0, a.1).unwrap(),
+            RationalTime::new(b.0, b.1).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn vfr_の区間は最後のコマも含む() {
+        let info = vfr_info();
+        assert_eq!(info.frame_range(range((0, 1), (1, 1))), 0..3);
+        assert_eq!(
+            info.frame_range(range((0, 1), (3, 4))),
+            0..2,
+            "end ちょうどの PTS は含まない"
+        );
+        assert_eq!(info.frame_range(range((1, 2), (1, 1))), 1..3);
+        assert_eq!(
+            info.frame_range(range((1, 4), (1, 1))),
+            1..3,
+            "頭が PTS の途中なら次のコマから"
+        );
+    }
+
+    #[test]
+    fn vfr_の最初のコマより前は_cfr_と同じ_マイナス_1() {
+        let info = vfr_info();
+        assert_eq!(info.frame_index_at(RationalTime::new(-1, 10).unwrap()), -1);
+        let cfr = MediaInfo {
+            fps: Some(Rational::integer(30)),
+            pts_index: Vec::new(),
+            ..vfr_info()
+        };
+        assert_eq!(cfr.frame_index_at(RationalTime::new(-1, 100).unwrap()), -1);
+    }
+
+    #[test]
+    fn cfr_の区間は_frame_indices_と同じ() {
+        let fps = Rational::integer(30);
+        let info = MediaInfo {
+            fps: Some(fps),
+            pts_index: Vec::new(),
+            ..vfr_info()
+        };
+        let r = range((0, 1), (1, 6));
+        assert_eq!(info.frame_range(r), r.frame_indices(fps));
     }
 }

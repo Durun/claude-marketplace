@@ -171,14 +171,14 @@ impl Decoder for D3d12vaDecoder {
         self.held.insert(id, HeldFrame { nv12, _hw: hw });
         Ok(Some(DecodedFrame {
             index,
-            pts: RationalTime::from_frames(index, self.fps),
+            pts: RationalTime::from_frames(index, self.fps)?,
             image: None,
             gpu: Some(handle),
         }))
     }
 
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock> {
-        let frames = (range.duration().to_f64() * f64::from(SILENCE_RATE)).round() as usize;
+        let frames = (range.duration()?.to_f64() * f64::from(SILENCE_RATE)).round() as usize;
         Ok(AudioBlock::silence(SILENCE_RATE, SILENCE_CHANNELS, frames))
     }
 }

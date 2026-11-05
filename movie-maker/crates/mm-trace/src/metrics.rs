@@ -91,23 +91,14 @@ pub struct MetricsHandle {
 impl MetricsHandle {
     /// 今の集計。
     pub fn snapshot(&self) -> MetricsSnapshot {
-        let inner = self.inner.lock().expect("metrics lock");
-        let spans = inner
-            .durations_us
-            .iter()
-            .map(|(name, d)| (name.clone(), stats_of(d)))
-            .collect();
-        MetricsSnapshot {
-            spans,
-            counters: inner.counters.clone(),
-            gauges: inner.gauges.clone(),
-        }
+        snapshot_of(&self.inner.lock().expect("metrics lock"))
     }
 
-    /// 集計を取り出して空にする（1 分ごとの 1 行に使う）。
+    /// 集計を取り出して空にする（1 分ごとの 1 行に使う）。読む間もロックを離さないので、
+    /// 取り出しと消去の間に入ったイベントは落ちない。
     pub fn drain(&self) -> MetricsSnapshot {
-        let snap = self.snapshot();
         let mut inner = self.inner.lock().expect("metrics lock");
+        let snap = snapshot_of(&inner);
         inner.durations_us.clear();
         inner.counters.clear();
         snap
@@ -131,6 +122,18 @@ impl MetricsHandle {
             }
             _ => {}
         }
+    }
+}
+
+fn snapshot_of(inner: &Inner) -> MetricsSnapshot {
+    MetricsSnapshot {
+        spans: inner
+            .durations_us
+            .iter()
+            .map(|(name, d)| (name.clone(), stats_of(d)))
+            .collect(),
+        counters: inner.counters.clone(),
+        gauges: inner.gauges.clone(),
     }
 }
 
@@ -276,6 +279,42 @@ mod tests {
         assert_eq!(snap.gauges["memory.rss_bytes"], 42.0);
         let line = snap.to_jsonl_line();
         assert!(line.starts_with('{') && line.ends_with('}') && !line.contains('\n'));
+    }
+
+    #[test]
+    fn drain_の最中に入ったイベントも落ちない() {
+        const THREADS: usize = 4;
+        const PER_THREAD: usize = 20_000;
+        let (_layer, handle) = MetricsLayer::new();
+        let writers: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let h = handle.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..PER_THREAD {
+                        h.record_metric("counter", "events", 1.0);
+                    }
+                })
+            })
+            .collect();
+        let mut drained = 0.0;
+        while !writers.iter().all(|w| w.is_finished()) {
+            drained += handle
+                .drain()
+                .counters
+                .get("events")
+                .copied()
+                .unwrap_or(0.0);
+        }
+        for w in writers {
+            w.join().unwrap();
+        }
+        drained += handle
+            .drain()
+            .counters
+            .get("events")
+            .copied()
+            .unwrap_or(0.0);
+        assert_eq!(drained, (THREADS * PER_THREAD) as f64);
     }
 
     #[test]

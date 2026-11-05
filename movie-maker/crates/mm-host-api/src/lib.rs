@@ -24,7 +24,8 @@ use serde::{Deserialize, Serialize};
 use mm_types::{GpuAdapterId, RationalTime, Result, RgbaImage, Size};
 
 /// プロトコルの版。要求と応答の形を変えたら上げる。
-pub const PROTOCOL_VERSION: u32 = 1;
+/// - 2: `SharedFrame` のタグを `type` から `kind` に（`HostResponse::Frame` で重なっていた）。
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// ホストの起動の指定。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,9 +80,10 @@ pub enum HostResponse {
     Error { message: String },
 }
 
-/// ホストが描いたコマ。
+/// ホストが描いたコマ。`HostResponse::Frame` の中身で外側のタグが `type` なので、こちらは
+/// `kind` にする（同じ名前だと JSON のキーが重なって読めない）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SharedFrame {
     /// CPU の絵（パイプで渡す逃げ道。遅い）。
     Cpu {
@@ -155,5 +157,59 @@ mod tests {
         let back: HostRequest = serde_json::from_str(&s).unwrap();
         assert_eq!(req, back);
         assert!(s.contains("\"type\":\"render_frame\""));
+    }
+
+    fn roundtrip(res: &HostResponse) -> String {
+        let s = serde_json::to_string(res).unwrap();
+        let back: HostResponse = serde_json::from_str(&s).unwrap();
+        assert_eq!(*res, back, "{s}");
+        s
+    }
+
+    #[test]
+    fn 応答は全部の形が_json_を往復する() {
+        roundtrip(&HostResponse::Pong {
+            protocol_version: PROTOCOL_VERSION,
+        });
+        roundtrip(&HostResponse::Prepared);
+        roundtrip(&HostResponse::Error {
+            message: "x".into(),
+        });
+        let cpu = SharedFrame::Cpu {
+            size: Size::new(1, 1),
+            data: vec![0.0, 0.5, 1.0, 1.0],
+        };
+        let s = roundtrip(&HostResponse::Frame(cpu));
+        assert!(
+            s.contains("\"type\":\"frame\"") && s.contains("\"kind\":\"cpu\""),
+            "{s}"
+        );
+        for fence in [
+            None,
+            Some(SharedFence {
+                handle: 7,
+                value: 3,
+            }),
+        ] {
+            roundtrip(&HostResponse::Frame(SharedFrame::SharedTexture {
+                handle: 42,
+                size: Size::new(16, 9),
+                fence,
+            }));
+        }
+    }
+
+    #[test]
+    fn 要求は全部の形が_json_を往復する() {
+        for req in [
+            HostRequest::Ping,
+            HostRequest::Prepare {
+                params: serde_json::json!({"html": "x"}),
+            },
+            HostRequest::Shutdown,
+        ] {
+            let s = serde_json::to_string(&req).unwrap();
+            assert_eq!(serde_json::from_str::<HostRequest>(&s).unwrap(), req);
+        }
     }
 }

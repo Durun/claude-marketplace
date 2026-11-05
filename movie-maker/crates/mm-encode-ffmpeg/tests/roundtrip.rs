@@ -197,7 +197,7 @@ fn 分数の_fps_でもコマ数と時刻が合う() {
     assert_eq!(dec.info().fps, Some(fps));
     for n in 0..30 {
         let f = dec.next_frame().unwrap().expect("コマがある");
-        assert_eq!(f.pts, RationalTime::from_frames(n, fps));
+        assert_eq!(f.pts, RationalTime::from_frames(n, fps).unwrap());
         assert_eq!(common::read_frame_number(f.image.as_ref().unwrap()), n);
     }
 }
@@ -223,7 +223,8 @@ fn 本物の素材を読んで書き直しても番号が保たれる() {
     let mut back = FfmpegDecoderFactory.open(&path, None).unwrap();
     assert_eq!(back.info().frame_count(), 60);
     for n in [0, 29, 59] {
-        back.seek(RationalTime::from_frames(n, fps)).unwrap();
+        back.seek(RationalTime::from_frames(n, fps).unwrap())
+            .unwrap();
         let f = back.next_frame().unwrap().unwrap();
         assert_eq!(common::read_frame_number(f.image.as_ref().unwrap()), n);
     }

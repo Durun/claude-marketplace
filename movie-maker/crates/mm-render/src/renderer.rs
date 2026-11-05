@@ -18,7 +18,7 @@ use mm_gpu::{GpuContext, WgpuGpu};
 /// 描画器の版。合成の式を変えたら上げる（コマのキャッシュのキーに入る）。
 pub const WGPU_RENDERER_VERSION: u32 = 1;
 /// `render_frame` が返したテクスチャを持っておく数。これより古いコマの `FrameRef` は無効になる。
-const KEPT_OUTPUTS: usize = 8;
+const KEPT_OUTPUTS: usize = mm_render_api::KEPT_RENDERED_FRAMES;
 
 /// wgpu の描画器。
 pub struct WgpuRenderer {
@@ -141,7 +141,7 @@ impl Renderer for WgpuRenderer {
             let frame_req = RenderRequest {
                 project: req.project,
                 composition: req.composition,
-                time: RationalTime::from_frames(index, req.fps),
+                time: RationalTime::from_frames(index, req.fps)?,
                 size: req.size,
                 quality: req.quality,
                 nodes: req.nodes,

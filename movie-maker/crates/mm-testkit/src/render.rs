@@ -19,6 +19,8 @@ use mm_types::{
 
 use crate::decode::DecoderFrameSource;
 use crate::gpu::CpuGpu;
+use crate::render_cases;
+use crate::xform::apply_transform;
 
 /// 見本の描画器の版。
 pub const SAMPLE_RENDERER_VERSION: u32 = 1;
@@ -96,7 +98,7 @@ impl SampleRenderer {
     ) -> Result<Option<Arc<RgbaImage>>> {
         let (kind, params) = Self::evaluate(req.nodes, layer, req.time)?;
         let scale = req.size.width as f32 / comp.width as f32;
-        let source_time = layer.to_source_time(req.time);
+        let source_time = layer.to_source_time(req.time)?;
         let Self {
             sources,
             decoders,
@@ -126,7 +128,15 @@ impl SampleRenderer {
             .map_err(|_| MmError::Internal(format!("{} が panic", kind.id())))??;
         match rendered {
             FrameRef::Transparent { .. } => Ok(None),
-            other => Ok(Some(gpu.download(&other)?)),
+            other => {
+                let image = gpu.download(&other)?;
+                Ok(Some(Arc::new(apply_transform(
+                    &image,
+                    &layer.transform,
+                    req.time,
+                    f64::from(scale),
+                ))))
+            }
         }
     }
 
@@ -141,8 +151,8 @@ impl SampleRenderer {
             return Ok(None);
         }
         let source_range = TimeRange::new(
-            layer.to_source_time(overlap.start),
-            layer.to_source_time(overlap.end),
+            layer.to_source_time(overlap.start)?,
+            layer.to_source_time(overlap.end)?,
         )?;
         let footage = Self::footage_for(
             &mut self.sources,
@@ -258,12 +268,10 @@ pub struct NearestFirstScheduler;
 
 impl Scheduler for NearestFirstScheduler {
     fn prioritize(&mut self, playhead: RationalTime, dirty: &[TimeRange]) -> Vec<TimeRange> {
+        // 距離は並べ替えにだけ使うので浮動小数でよい。
+        let distance = |r: &TimeRange| (r.start.to_f64() - playhead.to_f64()).abs();
         let mut v = dirty.to_vec();
-        v.sort_by(|a, b| {
-            let da = (a.start - playhead).to_f64().abs();
-            let db = (b.start - playhead).to_f64().abs();
-            da.total_cmp(&db)
-        });
+        v.sort_by(|a, b| distance(a).total_cmp(&distance(b)));
         v
     }
 }
@@ -280,7 +288,7 @@ pub struct RenderFixture<'a> {
 pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     let comp = fx.project.composition(fx.composition).expect("ある");
     let mut r = make();
-    let t = RationalTime::from_frames(1, comp.fps);
+    let t = RationalTime::from_frames(1, comp.fps).expect("表せる");
     let req = RenderRequest {
         project: fx.project,
         composition: fx.composition,
@@ -296,7 +304,8 @@ pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     let b = r.gpu().download(&b).expect("読み戻し");
     assert_eq!(*a, *b, "同じ入力で bit 一致");
 
-    let range = TimeRange::new(RationalTime::ZERO, RationalTime::from_frames(3, comp.fps)).unwrap();
+    let end = RationalTime::from_frames(3, comp.fps).expect("表せる");
+    let range = TimeRange::new(RationalTime::ZERO, end).unwrap();
     let got = render_range_frames(r.as_mut(), fx, range, comp.fps);
     let indices: Vec<i64> = got.iter().map(|(i, _)| *i).collect();
     assert_eq!(indices, vec![0, 1, 2], "区間のコマの番号");
@@ -311,6 +320,8 @@ pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     assert_eq!(*a, *c, "invalidate の後も同じ絵");
 
     check_audio(r.as_mut(), fx, range);
+    render_cases::check_frame_lifetime(r.as_mut(), &req);
+    render_cases::check_transform_and_failed_layer(make().as_mut(), fx);
 }
 
 fn render_range_frames(

@@ -180,12 +180,59 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
 
     bus_and_master_contract(factory.as_ref(), &tone, rate, ch, frames);
 
+    length_contract(mixer.as_mut(), &tone, rate, ch, frames);
+}
+
+/// 入力が頼んだ長さより短ければ後ろを無音で埋め、長ければ頭から切る。中身の位置まで見る。
+fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, frames: usize) {
+    let samples_per_frame = ch as usize;
+    let half = frames / 2;
     let short = MixInput {
-        block: AudioBlock::silence(rate, ch, frames / 2),
-        ..tone
+        block: tone_block_head(tone, half, rate, ch),
+        ..tone.clone()
     };
     let out = mixer.mix(&[short], frames).expect("混ぜる");
-    assert_eq!(out.frames(), frames, "短い入力は無音で埋める");
+    assert_eq!(out.frames(), frames, "短い入力でも頼んだコマ数");
+    let cut = half * samples_per_frame;
+    let expected_head = &tone.block.samples[..cut];
+    let diff = out.samples[..cut]
+        .iter()
+        .zip(expected_head)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        diff <= PASSTHROUGH_TOLERANCE,
+        "短い入力は頭に置かれる（差 {diff}）"
+    );
+    assert!(
+        out.samples[cut..].iter().all(|s| *s == 0.0),
+        "短い入力の後ろは無音で埋める"
+    );
+
+    let long_block = tone_block_head(tone, frames, rate, ch);
+    let doubled: Vec<f32> = long_block
+        .samples
+        .iter()
+        .chain(long_block.samples.iter())
+        .copied()
+        .collect();
+    let long = MixInput {
+        block: AudioBlock::from_samples(rate, ch, doubled).expect("形は合う"),
+        ..tone.clone()
+    };
+    let out = mixer.mix(&[long], frames).expect("混ぜる");
+    assert_eq!(out.frames(), frames, "長い入力は頼んだコマ数に切る");
+    let diff = out.max_diff(&long_block).expect("同じ形");
+    assert!(
+        diff <= PASSTHROUGH_TOLERANCE,
+        "長い入力は頭から切る（差 {diff}）"
+    );
+}
+
+/// `tone` の頭から `frames` コマ。
+fn tone_block_head(tone: &MixInput, frames: usize, rate: u32, ch: u16) -> AudioBlock {
+    let n = frames * ch as usize;
+    AudioBlock::from_samples(rate, ch, tone.block.samples[..n].to_vec()).expect("形は合う")
 }
 
 /// voice バス -6 dB とマスター -6 dB で、トーンが合わせて -12 dB になる。

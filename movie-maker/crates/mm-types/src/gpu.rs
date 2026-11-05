@@ -12,22 +12,27 @@ pub struct GpuAdapterId {
     pub device: u32,
     /// ドライバが返す名前（`NVIDIA GeForce RTX 5090`）。
     pub name: String,
-    /// D3D12 の LUID。別プロセスのホストが同じアダプターを開くのに使う。取れない裏では `None`。
+    /// D3D12 の LUID。起動のたびに変わるので設定には残さず、その回のホストへの受け渡しにだけ使う。
+    /// 取れない裏では `None`。
     #[serde(default)]
     pub luid: Option<u64>,
 }
 
 impl GpuAdapterId {
-    /// 同じアダプターか。LUID が両方にあればそれで、無ければベンダー・デバイス・名前で決める。
+    /// 同じ機種か。ベンダー・デバイス・名前で決める。LUID は見ないので、設定に保存した識別子を
+    /// 再起動後の PC の一覧と照合できる。この関係は推移的。
     pub fn matches(&self, other: &Self) -> bool {
-        match (self.luid, other.luid) {
-            (Some(a), Some(b)) => a == b,
-            _ => {
-                self.vendor == other.vendor
-                    && self.device == other.device
-                    && self.name == other.name
+        self.vendor == other.vendor && self.device == other.device && self.name == other.name
+    }
+
+    /// 同じ機種で、LUID が両方にあれば LUID も等しいか。同じ機種を 2 枚挿した PC で、
+    /// 動いている回の中の 1 枚を指すのに使う。
+    pub fn is_same_instance(&self, other: &Self) -> bool {
+        self.matches(other)
+            && match (self.luid, other.luid) {
+                (Some(a), Some(b)) => a == b,
+                _ => true,
             }
-        }
     }
 }
 
@@ -35,23 +40,32 @@ impl GpuAdapterId {
 mod tests {
     use super::*;
 
-    #[test]
-    fn luid_があればそれで決める() {
-        let a = GpuAdapterId {
+    fn adapter(luid: Option<u64>) -> GpuAdapterId {
+        GpuAdapterId {
             vendor: 1,
             device: 2,
             name: "x".into(),
-            luid: Some(10),
+            luid,
+        }
+    }
+
+    #[test]
+    fn 機種の照合は_luid_を見ない() {
+        // 再起動で LUID が変わっても、保存した識別子は同じ GPU とみなす。
+        assert!(adapter(Some(10)).matches(&adapter(Some(11))));
+        assert!(adapter(Some(10)).matches(&adapter(None)));
+        assert!(adapter(None).matches(&adapter(Some(10))));
+        let other = GpuAdapterId {
+            device: 3,
+            ..adapter(None)
         };
-        let b = GpuAdapterId {
-            luid: Some(11),
-            ..a.clone()
-        };
-        assert!(!a.matches(&b));
-        let c = GpuAdapterId {
-            luid: None,
-            ..a.clone()
-        };
-        assert!(a.matches(&c));
+        assert!(!adapter(None).matches(&other));
+    }
+
+    #[test]
+    fn 同じ回の中では_luid_で見分ける() {
+        assert!(adapter(Some(10)).is_same_instance(&adapter(Some(10))));
+        assert!(!adapter(Some(10)).is_same_instance(&adapter(Some(11))));
+        assert!(adapter(Some(10)).is_same_instance(&adapter(None)));
     }
 }

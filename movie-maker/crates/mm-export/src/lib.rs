@@ -14,7 +14,7 @@ use mm_doc::Project;
 use mm_node_api::Quality;
 use mm_render_api::RangeRequest;
 use mm_runtime::Engine;
-use mm_types::{MmError, RenderTargetId, Result, RgbaImage, Size};
+use mm_types::{MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange};
 
 /// エンコーダーに一度に押すコマの数。口の呼び出しを毎コマにしない。
 pub const EXPORT_BATCH_FRAMES: usize = 8;
@@ -125,34 +125,36 @@ fn export_target(
     };
     let mut encoder = encoders.create()?;
     encoder.begin(&settings)?;
-    let range = comp.range();
-    export_frames(
+    let frames = export_frames(
         engine,
         project,
         &target.composition,
         &settings,
         encoder.as_mut(),
     )?;
-    let audio = engine.render_audio(project, &target.composition, range)?;
+    // 29.97 fps の 1 秒のように映像の長さが半端なコマで切れるとき、音も同じ長さで切って揃える。
+    let audio_end = RationalTime::from_frames(frames as i64, target.fps)?;
+    let audio_range = TimeRange::new(comp.range()?.start, audio_end)?;
+    let audio = engine.render_audio(project, &target.composition, audio_range)?;
     encoder.push_audio(&audio)?;
     encoder.finish()
 }
 
 /// 区間を描き、`EXPORT_BATCH_FRAMES` ずつエンコーダーに押す。
 /// 描画器は区間を一息に描くので、1 コマの描画の時間は sink が呼ばれる間隔で測り `export.render` に載せる。
+/// エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したコマの数を返す。
 fn export_frames(
     engine: &mut Engine,
     project: &Project,
     composition: &mm_types::CompositionId,
     settings: &EncodeSettings,
     encoder: &mut dyn Encoder,
-) -> Result<()> {
+) -> Result<usize> {
     let registry = engine.registry().clone();
-    let range = project.composition(composition)?.range();
+    let range = project.composition(composition)?.range()?;
     let mut batch: Vec<RgbaImage> = Vec::with_capacity(EXPORT_BATCH_FRAMES);
-    let mut push_error: Option<MmError> = None;
     let mut last = Instant::now();
-    engine.renderer().render_range(
+    let count = engine.renderer().render_range(
         &RangeRequest {
             project,
             composition,
@@ -168,24 +170,19 @@ fn export_frames(
             if batch.len() == EXPORT_BATCH_FRAMES {
                 let span = tracing::info_span!("export.encode", frames = batch.len());
                 let _g = span.enter();
-                if let Err(e) = encoder.push_frames(&batch) {
-                    push_error = Some(e);
-                }
+                encoder.push_frames(&batch)?;
                 batch.clear();
             }
             last = Instant::now();
             Ok(())
         },
     )?;
-    if let Some(e) = push_error {
-        return Err(e);
-    }
     if !batch.is_empty() {
         let span = tracing::info_span!("export.encode", frames = batch.len());
         let _g = span.enter();
         encoder.push_frames(&batch)?;
     }
-    Ok(())
+    Ok(count)
 }
 
 #[cfg(test)]
@@ -201,14 +198,20 @@ mod tests {
         std::env::temp_dir().join(format!("mm_export_{name}_{}", std::process::id()))
     }
 
+    /// 全部のテストをスパンを集める購読者の下で走らせる。購読者なしのテストが並行に走ると、
+    /// tracing が呼び出し点を「誰も見ない」と覚えてしまい、集める側のテストが数え落とす。
+    fn with_metrics<T>(f: impl FnOnce() -> T) -> (T, mm_trace::MetricsHandle) {
+        let (layer, metrics) = MetricsLayer::new();
+        let subscriber = tracing_subscriber::registry().with(layer);
+        (tracing::subscriber::with_default(subscriber, f), metrics)
+    }
+
     #[test]
     fn 出力先を上書きして書き出し段ごとのスパンが出る() {
         let media = SampleMedia::default();
         let (project, _, _) = vertical_project(&media, &temp("unused.json"));
         let out = temp("dir").join("nested").join("out.json");
-        let (layer, metrics) = MetricsLayer::new();
-        let subscriber = tracing_subscriber::registry().with(layer);
-        let summary = tracing::subscriber::with_default(subscriber, || {
+        let (summary, metrics) = with_metrics(|| {
             let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
             export_project(
                 &mut engine,
@@ -240,6 +243,87 @@ mod tests {
         );
         assert_eq!(snap.counters["export.frames"], frames as f64);
         let _ = std::fs::remove_dir_all(temp("dir"));
+    }
+
+    #[test]
+    fn 半端なコマで切れる_fps_では音を映像の長さに揃える() {
+        let media = SampleMedia {
+            fps: mm_types::Rational::new(30_000, 1001).unwrap(),
+            ..SampleMedia::default()
+        };
+        let (project, _, _) = vertical_project(&media, &temp("unused.json"));
+        let out = temp("ntsc").join("out.json");
+        let (summary, _) = with_metrics(|| {
+            let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+            export_project(
+                &mut engine,
+                &project,
+                &ExportOptions {
+                    output: Some(out.clone()),
+                    target: None,
+                },
+            )
+            .unwrap()
+        });
+        // 2 秒は 59.94 コマ。59 コマ（1.9686 秒）で切れ、音も同じ長さ。
+        assert_eq!(summary.frames, 59);
+        let video_end = RationalTime::from_frames(59, media.fps).unwrap();
+        let expected = mm_node_api::audio_frames_in(
+            TimeRange::new(RationalTime::ZERO, video_end).unwrap(),
+            DEFAULT_SAMPLE_RATE,
+        ) as u64;
+        assert_eq!(summary.audio_frames, expected, "音は映像の長さに揃う");
+        assert!(summary.audio_frames < 2 * DEFAULT_SAMPLE_RATE as u64);
+        let _ = std::fs::remove_dir_all(temp("ntsc"));
+    }
+
+    /// 押すたびに失敗し、何回呼ばれたかと最初のエラーを残す。
+    #[derive(Default)]
+    struct FailingEncoder {
+        pushes: usize,
+    }
+
+    impl Encoder for FailingEncoder {
+        fn begin(&mut self, _settings: &EncodeSettings) -> Result<()> {
+            Ok(())
+        }
+
+        fn push_frames(&mut self, _frames: &[RgbaImage]) -> Result<()> {
+            self.pushes += 1;
+            Err(MmError::Corrupt(format!("push {}", self.pushes)))
+        }
+
+        fn push_audio(&mut self, _block: &mm_audio_api::AudioBlock) -> Result<()> {
+            Ok(())
+        }
+
+        fn finish(&mut self) -> Result<EncodeReport> {
+            Err(MmError::Internal("finish は呼ばれない".into()))
+        }
+    }
+
+    #[test]
+    fn エンコーダーの失敗は最初のエラーで止まる() {
+        let media = SampleMedia::default();
+        let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+        let settings = EncodeSettings {
+            size: media.size,
+            fps: media.fps,
+            codec: "sample".into(),
+            output_path: temp("fail.json"),
+            audio: None,
+        };
+        let mut encoder = FailingEncoder::default();
+        let (result, _) = with_metrics(|| {
+            let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+            export_frames(&mut engine, &project, &comp, &settings, &mut encoder)
+        });
+        let err = result.expect_err("失敗する");
+        assert!(
+            matches!(&err, MmError::Corrupt(m) if m == "push 1"),
+            "最初のエラー: {err}"
+        );
+        assert_eq!(encoder.pushes, 1, "失敗の後は描き続けない");
     }
 
     #[test]

@@ -8,9 +8,6 @@
 //! - `FrameCacheKey::digest` は同じ入力で同じ値、どの欄を変えても別の値。
 //! - `invalidate` の後も同じ絵（キャッシュを捨てても結果は変わらない）。
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
@@ -22,6 +19,9 @@ pub use mm_node_api::Quality as RenderQuality;
 
 /// 画面上の大きさを丸める段階。キャッシュのキーに入れる。
 pub const SIZE_BUCKETS: [f32; 7] = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
+
+/// 有効に保つ、直近の `render_frame` の返り値の数。実装はこれ以上保つ。
+pub const KEPT_RENDERED_FRAMES: usize = 8;
 
 /// 倍率を段階に丸める（切り上げ）。最大の段階を超えたら最大。
 pub fn size_bucket(scale: f32) -> f32 {
@@ -51,20 +51,65 @@ pub struct FrameCacheKey {
 }
 
 impl FrameCacheKey {
-    /// 全欄を畳んだ 64 bit。同じ入力で同じ値。
+    /// 全欄を畳んだ 64 bit。同じ入力で同じ値で、Rust の版やプロセスをまたいでも変わらない
+    /// （ディスクのキャッシュの名前に使える）。FNV-1a で、可変長の欄は長さを先に畳む。
     pub fn digest(&self) -> u64 {
-        let mut h = DefaultHasher::new();
-        self.kind.hash(&mut h);
-        self.kind_version.hash(&mut h);
-        self.renderer_version.hash(&mut h);
-        self.params_json.hash(&mut h);
-        self.input_keys.hash(&mut h);
-        self.content_hash.hash(&mut h);
-        self.frame_index.hash(&mut h);
-        self.quality.hash(&mut h);
-        self.color_config.hash(&mut h);
-        self.size_bucket_milli.hash(&mut h);
-        h.finish()
+        let mut h = Fnv1a::new();
+        h.str(&self.kind);
+        h.u64(self.kind_version.into());
+        h.u64(self.renderer_version.into());
+        h.str(&self.params_json);
+        h.u64(self.input_keys.len() as u64);
+        for key in &self.input_keys {
+            h.u64(*key);
+        }
+        h.opt(self.content_hash.as_deref(), Fnv1a::str);
+        h.opt(self.frame_index, |h, v| h.u64(v as u64));
+        h.u64(match self.quality {
+            Quality::Preview => 0,
+            Quality::Full => 1,
+        });
+        h.str(&self.color_config);
+        h.u64(self.size_bucket_milli.into());
+        h.0
+    }
+}
+
+/// FNV-1a の 64 bit。`DefaultHasher` と違い、値が実装の版で変わらない。
+struct Fnv1a(u64);
+
+impl Fnv1a {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    fn new() -> Self {
+        Self(Self::OFFSET)
+    }
+
+    fn bytes(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.0 = (self.0 ^ u64::from(*b)).wrapping_mul(Self::PRIME);
+        }
+    }
+
+    fn u64(&mut self, v: u64) {
+        self.bytes(&v.to_le_bytes());
+    }
+
+    fn str(&mut self, s: &str) {
+        self.u64(s.len() as u64);
+        self.bytes(s.as_bytes());
+    }
+
+    /// 有無の印を先に畳むので、`None` と空の値が混ざらない。
+    fn opt<T>(&mut self, v: Option<T>, put: impl FnOnce(&mut Self, T)) {
+        match v {
+            Some(v) => {
+                self.u64(1);
+                put(self, v);
+            }
+            None => self.u64(0),
+        }
     }
 }
 
@@ -106,9 +151,17 @@ pub trait Renderer: Send {
     /// 描画器の版。合成の式を変えたら上げる（キャッシュのキーに入る）。
     fn version(&self) -> u32;
     /// 時刻 t のコマ。
+    ///
+    /// 返す `FrameRef::Gpu` の寿命: 実装は直近 [`KEPT_RENDERED_FRAMES`] 回の `render_frame` が返した
+    /// コマを有効に保つ（古いほうから捨ててよい）。長く持つ側は `GpuHelper::download` で CPU に写す。
+    /// 実装を捨てた後は無効。
     fn render_frame(&mut self, req: &RenderRequest<'_>) -> Result<FrameRef>;
     /// 区間のコマを順に `sink` に渡す。`sink` は読み戻しのために GPU のヘルパーも受け取る。
     /// 返すのは渡したコマの数。
+    ///
+    /// `sink` に渡す `FrameRef::Gpu` は、その `sink` の呼び出しの中だけ有効。`sink` が返ったら
+    /// 実装が捨てるので、残したいときは `sink` の中で `download` する。`sink` が `Err` を返したら
+    /// そこで止め、その `Err` をそのまま返す。
     fn render_range(
         &mut self,
         req: &RangeRequest<'_>,
@@ -119,7 +172,7 @@ pub trait Renderer: Send {
             let frame = self.render_frame(&RenderRequest {
                 project: req.project,
                 composition: req.composition,
-                time: RationalTime::from_frames(index, req.fps),
+                time: RationalTime::from_frames(index, req.fps)?,
                 size: req.size,
                 quality: req.quality,
                 nodes: req.nodes,
@@ -171,13 +224,53 @@ mod tests {
     }
 
     #[test]
-    fn キーは同じ入力で同じで欄を変えると変わる() {
+    fn キーは同じ入力で同じ値になる() {
         assert_eq!(key().digest(), key().digest());
-        let mut k = key();
-        k.frame_index = Some(4);
-        assert_ne!(k.digest(), key().digest());
-        let mut k = key();
-        k.quality = Quality::Full;
-        assert_ne!(k.digest(), key().digest());
+    }
+
+    #[test]
+    fn キーは全欄のどれを変えても変わる() {
+        let base = key().digest();
+        type Edit = fn(&mut FrameCacheKey);
+        let edits: Vec<(&str, Edit)> = vec![
+            ("kind", |k| k.kind = "text".into()),
+            ("kind_version", |k| k.kind_version = 2),
+            ("renderer_version", |k| k.renderer_version = 2),
+            ("params_json", |k| k.params_json = "{\"a\":1}".into()),
+            ("input_keys", |k| k.input_keys = vec![7]),
+            ("content_hash", |k| k.content_hash = Some("abc".into())),
+            ("frame_index", |k| k.frame_index = Some(4)),
+            ("frame_index None", |k| k.frame_index = None),
+            ("quality", |k| k.quality = Quality::Full),
+            ("color_config", |k| k.color_config = "aces".into()),
+            ("size_bucket_milli", |k| k.size_bucket_milli = 2000),
+        ];
+        for (name, edit) in edits {
+            let mut k = key();
+            edit(&mut k);
+            assert_ne!(k.digest(), base, "{name} を変えると値が変わる");
+        }
+    }
+
+    #[test]
+    fn 欄の境目をまたぐ移し替えは別の値になる() {
+        let mut a = key();
+        a.kind = "ab".into();
+        a.params_json = "c".into();
+        let mut b = key();
+        b.kind = "a".into();
+        b.params_json = "bc".into();
+        assert_ne!(a.digest(), b.digest());
+        let mut none = key();
+        none.content_hash = None;
+        let mut empty = key();
+        empty.content_hash = Some(String::new());
+        assert_ne!(none.digest(), empty.digest());
+    }
+
+    #[test]
+    fn キーの値は実装の版によらず固定() {
+        // ディスクのキャッシュの名前になるので、この値を変える変更はキャッシュの版を上げる変更。
+        assert_eq!(key().digest(), 0x8c3f_77f0_eb41_6954);
     }
 }

@@ -7,8 +7,9 @@ use mm_audio_dsp::DspMixerFactory;
 use mm_cache_api::CacheStore;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
+use mm_gpu::{GpuContext, GpuRequest};
 use mm_node_api::Services;
-use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
+use mm_render::WgpuRenderer;
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::cache::MemoryCache;
@@ -94,8 +95,9 @@ fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
 }
 
 /// GPU を使う実装があるときだけ、文脈を 1 回作る。設定のアダプターが無ければ高性能のもの。
+/// 要否は描画器とデコーダーの両方の選択で決まる（GPU で復号する実装は描画器と同じデバイスが要る）。
 fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
-    if config.render != Backend::Wgpu {
+    if !config.needs_gpu() {
         return Ok(None);
     }
     let request = GpuRequest {

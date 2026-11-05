@@ -100,10 +100,10 @@ impl FfmpegDecoder {
     }
 
     /// 番号のコマの時刻。
-    fn pts_of(&self, index: i64) -> RationalTime {
+    fn pts_of(&self, index: i64) -> Result<RationalTime> {
         match self.fps {
             Some(fps) => RationalTime::from_frames(index, fps),
-            None => self.info.pts_index[index as usize],
+            None => Ok(self.info.pts_index[index as usize]),
         }
     }
 
@@ -232,7 +232,7 @@ impl Decoder for FfmpegDecoder {
             }
             let image = self.converter.convert(&raw)?;
             self.next_index = index + 1;
-            return Ok(Some(DecodedFrame::cpu(index, self.pts_of(index), image)));
+            return Ok(Some(DecodedFrame::cpu(index, self.pts_of(index)?, image)));
         }
     }
 
@@ -268,7 +268,10 @@ fn build_info(
     origin: RationalTime,
 ) -> Result<MediaInfo> {
     let (duration, pts_index) = match fps {
-        Some(fps) => (RationalTime::from_frames(raw.len() as i64, fps), Vec::new()),
+        Some(fps) => (
+            RationalTime::from_frames(raw.len() as i64, fps)?,
+            Vec::new(),
+        ),
         None => {
             let index = raw
                 .iter()
@@ -280,16 +283,20 @@ fn build_info(
                 _ => RationalTime::new(FALLBACK_FRAME_SECONDS.0, FALLBACK_FRAME_SECONDS.1)?,
             };
             let last = *index.last().expect("raw は空でない");
-            (last + tail, index)
+            (last.checked_add(tail)?, index)
         }
     };
     let matrix = Matrix::from_frame(decoder.color_space(), decoder.height());
+    let timebase_offset = match audio {
+        Some(a) => origin.checked_sub(a.start)?,
+        None => RationalTime::ZERO,
+    };
     Ok(MediaInfo {
         duration,
         fps,
         size: Size::new(decoder.width(), decoder.height()),
         color_space: matrix.color_space(),
-        timebase_offset: audio.map_or(RationalTime::ZERO, |a| origin - a.start),
+        timebase_offset,
         audio: audio.map(|a| AudioStreamInfo {
             sample_rate: a.rate,
             channels: a.channels,

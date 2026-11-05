@@ -20,9 +20,10 @@ use tracing_subscriber::prelude::*;
 use crate::perf::{PerfArgs, Scene};
 use crate::project::load_project;
 
-/// 見本のプロジェクト。`--project` を省くと、ソースの位置から探す。
+/// 見本のプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
+/// ビルドした場所の絶対パスを埋め込まないので、別の場所に置いた実行ファイルでも同じ規則で動く。
 fn default_project() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage0/project.json")
+    PathBuf::from("fixtures/projects/stage0/project.json")
 }
 
 #[derive(Parser)]
@@ -142,4 +143,14 @@ fn render(
         summary.fps
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 既定のプロジェクトはビルドした場所の絶対パスでない() {
+        assert!(default_project().is_relative());
+    }
 }

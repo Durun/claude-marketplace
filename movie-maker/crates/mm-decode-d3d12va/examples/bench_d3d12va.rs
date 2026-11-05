@@ -223,7 +223,7 @@ fn seek_bench(a: &Args, gpu: &Arc<GpuContext>) {
     for k in 0..40i64 {
         // 素数で散らす。
         let target = (k * 97 + 13) % (count - 5);
-        let t = RationalTime::from_frames(target, fps);
+        let t = RationalTime::from_frames(target, fps).unwrap();
         let _s = tracing::info_span!("decode.seek").entered();
         dec.seek(t).expect("seek");
         let f = dec.next_frame().expect("next").expect("frame");

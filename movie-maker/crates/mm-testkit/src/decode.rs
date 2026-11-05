@@ -124,7 +124,7 @@ impl Decoder for SampleDecoder {
         let image = RgbaImage::filled(self.media.size, frame_color(self.media.base_color, index));
         Ok(Some(DecodedFrame::cpu(
             index,
-            RationalTime::from_frames(index, self.media.fps),
+            RationalTime::from_frames(index, self.media.fps)?,
             image,
         )))
     }
@@ -304,7 +304,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
     }
     assert_eq!(n, count, "コマの数が duration と fps から数えた数と合う");
 
-    let t = RationalTime::from_frames(count / 2, fx.fps);
+    let t = RationalTime::from_frames(count / 2, fx.fps).expect("表せる");
     dec.seek(t).expect("シーク");
     let f1 = dec.next_frame().expect("復号").expect("コマがある");
     assert_eq!(f1.index, t.frame_index(fx.fps), "シーク先のコマの番号");
@@ -313,10 +313,16 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
     let f2 = dec.next_frame().expect("復号").expect("コマがある");
     assert_eq!(f1, f2, "同じ時刻にシークし直すと同じコマ");
 
-    let range = TimeRange::new(RationalTime::ZERO, RationalTime::from_frames(5, fx.fps)).unwrap();
+    let end = RationalTime::from_frames(5, fx.fps).expect("表せる");
+    let range = TimeRange::new(RationalTime::ZERO, end).unwrap();
     let frames = dec.decode_range(range).expect("区間");
     let indices: Vec<i64> = frames.iter().map(|f| f.index).collect();
     assert_eq!(indices, range.frame_indices(fx.fps).collect::<Vec<_>>());
+    assert_eq!(
+        indices,
+        dec.info().frame_range(range).collect::<Vec<_>>(),
+        "口の frame_range と同じ番号"
+    );
 
     if let Some(broken) = &fx.broken_path {
         assert!(

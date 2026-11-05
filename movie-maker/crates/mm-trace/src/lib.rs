@@ -20,34 +20,6 @@ pub use metrics::{MetricsHandle, MetricsLayer, MetricsSnapshot, SpanStats};
 /// `counter!` と `gauge!` のイベントの target。[`MetricsLayer`] はこの target だけを見る。
 pub const METRICS_TARGET: &str = "mm.metrics";
 
-/// 出力の段。実行時に切り替える（`MM_TRACE`、`mm trace start/stop`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TraceLevel {
-    /// 常時。`INFO` のスパンの分布とカウンタを 1 分ごとに 1 行。
-    #[default]
-    Light,
-    /// 全部のスパンを Chrome trace に残す。30 秒で止める。
-    Detailed,
-    /// Tracy に送る（層は `mm-trace` の外で積む）。
-    Tracy,
-    /// ETW に送る（層は `mm-trace` の外で積む）。
-    Etw,
-}
-
-impl std::str::FromStr for TraceLevel {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "light" => Ok(Self::Light),
-            "detailed" => Ok(Self::Detailed),
-            "tracy" => Ok(Self::Tracy),
-            "etw" => Ok(Self::Etw),
-            other => Err(format!("知らない TraceLevel: {other}")),
-        }
-    }
-}
-
 /// カウンタを加算する。`counter!("cache.hit", 1)`。名前は `<種類>.<何>`。
 #[macro_export]
 macro_rules! counter {

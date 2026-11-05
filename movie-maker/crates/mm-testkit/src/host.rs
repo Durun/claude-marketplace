@@ -167,12 +167,22 @@ pub fn contract(make: impl Fn() -> Arc<dyn HostLauncher>, fx: &HostFixture) {
         size,
         params: serde_json::json!({}),
     };
-    match host.request(&render, timeout).expect("描ける") {
+    let response = host.request(&render, timeout).expect("描ける");
+    assert_wire_roundtrip(&response);
+    match response {
         HostResponse::Frame(frame) => assert_eq!(frame.size(), size, "頼んだ大きさ"),
         other => panic!("Frame のはずが {other:?}"),
     }
 
     check_timeout_and_restart(host.as_mut(), fx, size);
+}
+
+/// パイプに流す JSON を経由しても同じ応答に戻る（外と中のタグが重なると読めなくなる）。
+fn assert_wire_roundtrip(response: &HostResponse) {
+    let wire = serde_json::to_string(response).expect("JSON にできる");
+    let back: HostResponse = serde_json::from_str(&wire)
+        .unwrap_or_else(|e| panic!("応答が JSON の往復で読めない（{e}）: {wire}"));
+    assert_eq!(*response, back, "JSON の往復で変わらない");
 }
 
 fn check_timeout_and_restart(host: &mut dyn HostProcess, fx: &HostFixture, size: Size) {
