@@ -6,7 +6,7 @@
 - GPU の選択: wgpu の `request_adapter` に `HighPerformance` を指定し、選ばれたアダプターの名前を Program に出す。
 - 計測: 1 コマの描画、レイヤーごとの評価、パスごとの GPU の時間（wgpu のタイムスタンプ）、デコードとシーク、キャッシュの当たり率、書き出しの fps を `tracing` のスパンとカウンタで取る。測る項目と予算は[計装](17-instrumentation.md)。
 - デコード: FFmpeg のライブラリ（`ffmpeg-the-third`。FFmpeg 5.1〜8.1 に対応 [17]）を `mm-decode-ffmpeg` で囲い、口は `mm-decode-api`。H.264、HEVC、AV1 は NVDEC（`hwaccel`）で復号し、ProRes、DNxHR、MXF、DPX、OpenEXR はそのまま読める。デコーダは素材ごとに 1 つを使い回すプール（同時 4〜6 本。NVDEC は 2 基で約 1,450 fps が上限）。
-- NVDEC からの受け渡しは 3 段で、段階 0 で 3 つとも動いた（2026-11-06）。既定は (1)。開いた直後の数コマで失敗する素材は (2) に切り替え、最後は (3)（ユーザーの決定。切り替えは `open` の後に最初の数コマを復号して `Err` なら次を試す形で、順は `mm-runtime` の設定）。4K の速度は (1) 540〜590 fps、(2) 560〜600 fps、(3) 250〜265 fps [nvdec](spikes/nvdec.md)。
+- NVDEC からの受け渡しは 3 段で、段階 0 で 3 つとも動いた（2026-11-06）。既定は (1)。開いた直後の数コマで失敗する素材は (2) に切り替え、最後は (3)（ユーザーの決定。順は `mm-runtime` の設定 `auto`）。NVIDIA の d3d12va が復号に失敗すると、プロセスの D3D12 のデバイスが全部消え、描画器のデバイスも使えなくなる。そのため d3d12va は、素材を開く前に別プロセスの `mm-d3d12va-probe` で先頭の 4 コマを試し、落ちる素材を断って (2) に回す。結果は素材ごとに覚える。5 コマ目より後の失敗はこれで防げないので、段階 2 で描画器のデバイスの作り直しを入れてから `auto` を既定にする。プローブの実行ファイルは配布物に同梱する。4K の速度は (1) 540〜590 fps、(2) 560〜600 fps、(3) 250〜265 fps [nvdec](spikes/nvdec.md)。
   1. FFmpeg の `d3d12va` で復号し（FFmpeg 7.0 から [18]）、D3D12 のテクスチャを `wgpu_hal::dx12::Device::texture_from_raw` → `create_texture_from_hal` で wgpu に包む [2][3]（コピーなし）。FFmpeg には wgpu の `ID3D12Device` を渡し、同期は `Queue::add_wait_fence` で待つ。NVENC で作った 4K の HEVC は復号できない（原因は未調査）。
   2. CUDA の `cuvid` で復号し、D3D12 の共有バッファに `cuMemcpy2DAsync` で 1 回コピーし、共有フェンスで同期する（`cudarc` の `import_external_memory` は Win32 のハンドルを受けるが D3D12 の種類は生の `sys` で指定する [19]）。
   3. `nv12` を CPU に下ろしてアップロードする（最後の手段）。
