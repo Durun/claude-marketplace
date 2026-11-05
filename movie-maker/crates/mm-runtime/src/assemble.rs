@@ -86,7 +86,7 @@ fn encoders(backend: Backend) -> Result<Arc<dyn EncoderFactory>> {
 fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
     match backend {
         Backend::Sample => Ok(Arc::new(SampleMixerFactory)),
-        Backend::Dsp => Ok(Arc::new(DspMixerFactory::default())),
+        Backend::Dsp => Ok(Arc::new(DspMixerFactory)),
         other => Err(unsupported("audio", other)),
     }
 }

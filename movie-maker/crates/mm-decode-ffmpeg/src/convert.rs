@@ -45,18 +45,13 @@ impl Matrix {
         }
     }
 
-    /// 文書に出す色空間の名前。フルレンジには `_full` を付ける。
-    pub fn color_space(self, full_range: bool) -> ColorSpace {
-        let base = match self {
-            Self::Bt601 => "bt601",
-            Self::Bt709 => "bt709",
-            Self::Bt2020 => "bt2020",
-        };
-        ColorSpace(if full_range {
-            format!("{base}_full")
-        } else {
-            base.to_owned()
-        })
+    /// 文書に出す色空間の名前。レンジは RGBA への変換で展開済みなので名前に入れない。
+    pub fn color_space(self) -> ColorSpace {
+        match self {
+            Self::Bt601 => ColorSpace::bt601(),
+            Self::Bt709 => ColorSpace::bt709(),
+            Self::Bt2020 => ColorSpace::bt2020(),
+        }
     }
 }
 

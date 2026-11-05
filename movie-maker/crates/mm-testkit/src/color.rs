@@ -1,8 +1,8 @@
-//! 色の見本と契約テスト。見本は bt709 と srgb を作業空間（線形）へ、正確な伝達関数で変換する。
+//! 色の見本と契約テスト。見本は bt709（Rec.1886）、srgb、bt709_oetf を作業空間（線形）へ変換する。
 
 use std::sync::Arc;
 
-use mm_color_api::{ColorTransform, TransformProgram};
+use mm_color_api::{ColorTransform, TransformProgram, UNIT_WHITE_SPACES};
 use mm_types::{ColorSpace, MmError, Result};
 
 /// 往復の許容差。
@@ -26,7 +26,33 @@ fn linear_to_srgb(v: f32) -> f32 {
     }
 }
 
-/// 見本の色の変換。bt709 と srgb は同じ伝達関数として扱う（見本の範囲では十分）。
+/// Rec.1886 の表示の式。符号を保つ。
+fn bt1886_to_linear(v: f32) -> f32 {
+    v.signum() * v.abs().powf(2.4)
+}
+
+fn linear_to_bt1886(v: f32) -> f32 {
+    v.signum() * v.abs().powf(1.0 / 2.4)
+}
+
+/// BT.709 のカメラの OETF の逆。
+fn bt709_oetf_to_linear(v: f32) -> f32 {
+    if v < 0.081 {
+        v / 4.5
+    } else {
+        ((v + 0.099) / 1.099).powf(1.0 / 0.45)
+    }
+}
+
+fn linear_to_bt709_oetf(v: f32) -> f32 {
+    if v < 0.018 {
+        v * 4.5
+    } else {
+        1.099 * v.powf(0.45) - 0.099
+    }
+}
+
+/// 見本の色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
 #[derive(Debug, Clone, Default)]
 pub struct SampleColor;
 
@@ -34,7 +60,9 @@ impl SampleColor {
     fn to_linear(&self, from: &ColorSpace, v: f32) -> Result<f32> {
         match from.0.as_str() {
             "lin_rec709" => Ok(v),
-            "bt709" | "srgb" => Ok(srgb_to_linear(v)),
+            "srgb" => Ok(srgb_to_linear(v)),
+            "bt709" => Ok(bt1886_to_linear(v)),
+            "bt709_oetf" => Ok(bt709_oetf_to_linear(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }
@@ -42,7 +70,9 @@ impl SampleColor {
     fn encode(&self, to: &ColorSpace, v: f32) -> Result<f32> {
         match to.0.as_str() {
             "lin_rec709" => Ok(v),
-            "bt709" | "srgb" => Ok(linear_to_srgb(v)),
+            "srgb" => Ok(linear_to_srgb(v)),
+            "bt709" => Ok(linear_to_bt1886(v)),
+            "bt709_oetf" => Ok(linear_to_bt709_oetf(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }
@@ -78,8 +108,9 @@ impl ColorTransform for SampleColor {
     fn known_spaces(&self) -> Vec<ColorSpace> {
         vec![
             ColorSpace::working(),
-            ColorSpace::bt709(),
             ColorSpace::srgb(),
+            ColorSpace::bt709(),
+            ColorSpace::bt709_oetf(),
         ]
     }
 }
@@ -109,12 +140,15 @@ pub fn contract(make: impl Fn() -> Arc<dyn ColorTransform>) {
                 space.0
             );
         }
-        let white = ct.apply(space, &working, [1.0; 3]).expect("白");
-        for c in white {
-            assert!(
-                (c - 1.0).abs() <= ROUNDTRIP_TOLERANCE,
-                "白は白のまま（{c}）"
-            );
+        if UNIT_WHITE_SPACES.contains(&space.0.as_str()) {
+            let white = ct.apply(space, &working, [1.0; 3]).expect("白");
+            for c in white {
+                assert!(
+                    (c - 1.0).abs() <= ROUNDTRIP_TOLERANCE,
+                    "{} の白は白のまま（{c}）",
+                    space.0
+                );
+            }
         }
         ct.program(space, &working).expect("GPU の形が作れる");
     }

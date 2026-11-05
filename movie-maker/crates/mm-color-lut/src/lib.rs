@@ -1,6 +1,6 @@
 //! 色の変換の逃げ道。OCIO が無くても `mm-color-api` の契約を満たす。
 //!
-//! - [`LutColor`]: `lin_rec709`（作業空間）、`srgb`、`bt709` の相互変換。式を WGSL に書く。
+//! - [`LutColor`]: `lin_rec709`（作業空間）、`srgb`、`bt709`（Rec.1886）、`bt709_oetf` の相互変換。式を WGSL に書く。
 //! - [`Cdl`]: ASC CDL。WGSL を返す。
 //! - [`Cube3d`]: `.cube` の 3D LUT。`TransformProgram::Lut3d` と、それを引く WGSL（[`LUT3D_APPLY_WGSL`]）。
 //! - [`bake_lut3d`]: 任意の変換を 3D LUT に焼く（OCIO の逃げ道の道具）。
@@ -28,6 +28,7 @@ enum Space {
     Working,
     Srgb,
     Bt709,
+    Bt709Oetf,
 }
 
 impl Space {
@@ -36,6 +37,7 @@ impl Space {
             "lin_rec709" => Ok(Self::Working),
             "srgb" => Ok(Self::Srgb),
             "bt709" => Ok(Self::Bt709),
+            "bt709_oetf" => Ok(Self::Bt709Oetf),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }
@@ -44,7 +46,8 @@ impl Space {
         match self {
             Self::Working => v,
             Self::Srgb => transfer::srgb_to_linear(v),
-            Self::Bt709 => transfer::bt709_to_linear(v),
+            Self::Bt709 => transfer::bt1886_to_linear(v),
+            Self::Bt709Oetf => transfer::bt709_to_linear(v),
         }
     }
 
@@ -52,7 +55,8 @@ impl Space {
         match self {
             Self::Working => v,
             Self::Srgb => transfer::linear_to_srgb(v),
-            Self::Bt709 => transfer::linear_to_bt709(v),
+            Self::Bt709 => transfer::linear_to_bt1886(v),
+            Self::Bt709Oetf => transfer::linear_to_bt709(v),
         }
     }
 
@@ -61,7 +65,8 @@ impl Space {
         match self {
             Self::Working => arg.to_owned(),
             Self::Srgb => format!("mm_srgb_to_linear({arg})"),
-            Self::Bt709 => format!("mm_bt709_to_linear({arg})"),
+            Self::Bt709 => format!("mm_bt1886_to_linear({arg})"),
+            Self::Bt709Oetf => format!("mm_bt709_to_linear({arg})"),
         }
     }
 
@@ -70,12 +75,13 @@ impl Space {
         match self {
             Self::Working => arg.to_owned(),
             Self::Srgb => format!("mm_linear_to_srgb({arg})"),
-            Self::Bt709 => format!("mm_linear_to_bt709({arg})"),
+            Self::Bt709 => format!("mm_linear_to_bt1886({arg})"),
+            Self::Bt709Oetf => format!("mm_linear_to_bt709({arg})"),
         }
     }
 }
 
-/// 伝達関数だけの色の変換。3 つの空間は primaries が同じ（Rec.709）なので、チャンネルごとに閉じる。
+/// 伝達関数だけの色の変換。4 つの空間は primaries が同じ（Rec.709）なので、チャンネルごとに閉じる。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LutColor;
 
@@ -119,6 +125,7 @@ impl ColorTransform for LutColor {
             ColorSpace::working(),
             ColorSpace::srgb(),
             ColorSpace::bt709(),
+            ColorSpace::bt709_oetf(),
         ]
     }
 }

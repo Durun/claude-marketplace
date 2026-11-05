@@ -67,16 +67,14 @@ impl WgpuRenderer {
 
     /// 前のコマの GPU の時間を読んで `mm-trace` に載せる。
     ///
-    /// `mm-trace` のスパンは CPU の経過時間を測るので、GPU の時間はスパン `render.gpu_frame` の
-    /// フィールドとゲージ `render.gpu_frame_us` の両方で出す。
+    /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
+    /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
     fn report_gpu_time(&mut self) {
         let Some(ns) = self.timer.collect() else {
             return;
         };
-        let us = ns / 1_000;
-        tracing::info_span!("render.gpu_frame", gpu_us = us).in_scope(|| {
-            mm_trace::gauge!("render.gpu_frame_us", us);
-        });
+        mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
+        mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
     }
 
     fn keep_output(&mut self, id: u64) {

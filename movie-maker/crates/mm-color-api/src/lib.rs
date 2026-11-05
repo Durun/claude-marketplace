@@ -1,15 +1,39 @@
 //! 色空間の変換の口。描画器は [`ColorTransform::program`] で GPU の形を受け取り、
 //! 契約テストと CPU の経路は [`ColorTransform::apply`] で同じ変換を数で確かめる。
 //!
+//! # 色空間の名前の決まり
+//!
+//! 小文字のスネークケース。レンジ（tv / full）は名前に入れない（デコーダーが RGB へ変換する時点で展開済み）。
+//!
+//! | 名前 | 伝達関数 | 原色 |
+//! |---|---|---|
+//! | `lin_rec709` | 線形（作業空間） | Rec.709 |
+//! | `srgb` | IEC 61966-2-1 の区分（静止画の既定） | Rec.709 |
+//! | `bt709` | Rec.1886 の表示の式（`linear = v^2.4`、映像の既定。OCIO の `Rec.1886 Rec.709 - Display`） | Rec.709 |
+//! | `bt709_oetf` | BT.709 のカメラの OETF（シーン参照の素材だけ） | Rec.709 |
+//! | `bt601` | Rec.1886 の表示の式 | Rec.601（SMPTE 170M） |
+//! | `bt2020` | Rec.1886 の表示の式 | Rec.2020（SDR） |
+//!
 //! 契約（`mm_testkit::color::contract`）:
 //! - 往復（from → to → from）が許容差 1e-3 に入る。
 //! - 作業空間から作業空間への変換は恒等。
-//! - Rec.709 の白 (1,1,1) は作業空間でも白。
+//! - 符号化値 (1,1,1) が白になる空間（名前の表の全部、[`UNIT_WHITE_SPACES`]）では、(1,1,1) は作業空間でも白。
+//!   それ以外の空間（`acescg` など）は白の確認を飛ばし、往復と `program` だけ確かめる。
 //! - `program` と `apply` は同じ変換を表す（実装の組で見本の絵が守る）。
 
 use serde::{Deserialize, Serialize};
 
 use mm_types::{ColorSpace, Result};
+
+/// 符号化値 (1,1,1) が白になる空間の名前（名前の表の全部）。契約テストはこの空間だけ白を確かめる。
+pub const UNIT_WHITE_SPACES: &[&str] = &[
+    "lin_rec709",
+    "srgb",
+    "bt709",
+    "bt709_oetf",
+    "bt601",
+    "bt2020",
+];
 
 /// GPU で当てる変換の形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

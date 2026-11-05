@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use mm_text_api::{GlyphBox, ShapedLine, ShapedText, TextRasterizer, TextShaper, TextStyle};
+use mm_text_api::{
+    FaceRef, GlyphBox, ShapedLine, ShapedText, TextAlign, TextRasterizer, TextShaper, TextStyle,
+};
 use mm_types::{Rect, Result, RgbaImage, Size};
 
 /// 字の大きさに対する 1 文字の幅の比。
@@ -22,17 +24,9 @@ impl SampleShaper {
     fn line_height(style: &TextStyle) -> f32 {
         style.size_px * style.line_height
     }
-}
 
-impl TextShaper for SampleShaper {
-    fn id(&self) -> &'static str {
-        crate::SAMPLE_ID
-    }
-
-    fn shape(&self, text: &str, style: &TextStyle) -> Result<ShapedText> {
-        if text.is_empty() {
-            return Ok(ShapedText::empty());
-        }
+    /// 文字を矩形として行に並べる（折り返しと改行）。
+    fn break_lines(text: &str, style: &TextStyle) -> Vec<Vec<GlyphBox>> {
         let adv = Self::advance(style);
         let lh = Self::line_height(style);
         let max_width = style.max_width.unwrap_or(f32::INFINITY);
@@ -53,22 +47,67 @@ impl TextShaper for SampleShaper {
             lines.last_mut().expect("1 行はある").push(GlyphBox {
                 rect: Rect::new(x, y, adv, style.size_px),
                 byte_offset: offset,
+                byte_len: ch.len_utf8(),
+                face: 0,
+                glyph_id: ch as u32 as u16,
+                origin: [x, y + style.size_px],
             });
             x += adv;
         }
-        let lines: Vec<ShapedLine> = lines
+        lines
+    }
+
+    /// 揃えの分だけ行を右へずらす量。基準の幅は折り返し幅か、いちばん長い行。
+    fn shift(align: TextAlign, line_width: f32, base_width: f32) -> f32 {
+        match align {
+            TextAlign::Left | TextAlign::Justified => 0.0,
+            TextAlign::Center => ((base_width - line_width) / 2.0).max(0.0),
+            TextAlign::Right => (base_width - line_width).max(0.0),
+        }
+    }
+}
+
+impl TextShaper for SampleShaper {
+    fn id(&self) -> &'static str {
+        crate::SAMPLE_ID
+    }
+
+    fn shape(&self, text: &str, style: &TextStyle) -> Result<ShapedText> {
+        if text.is_empty() {
+            return Ok(ShapedText::empty());
+        }
+        let adv = Self::advance(style);
+        let lh = Self::line_height(style);
+        let raw = Self::break_lines(text, style);
+        let widest = raw.iter().map(|l| l.len() as f32 * adv).fold(0.0, f32::max);
+        let base = style.max_width.unwrap_or(widest);
+        let lines: Vec<ShapedLine> = raw
             .into_iter()
             .enumerate()
-            .map(|(i, glyphs)| {
+            .map(|(i, mut glyphs)| {
                 let width = glyphs.len() as f32 * adv;
+                let dx = Self::shift(style.align, width, base);
+                for g in &mut glyphs {
+                    g.rect.x += dx;
+                    g.origin[0] += dx;
+                }
                 ShapedLine {
                     glyphs,
-                    rect: Rect::new(0.0, i as f32 * lh, width, lh),
+                    rect: Rect::new(dx, i as f32 * lh, width, lh),
                 }
             })
             .collect();
         let bounds = lines.iter().fold(Rect::EMPTY, |acc, l| acc.union(&l.rect));
-        Ok(ShapedText { lines, bounds })
+        let mut shaped = ShapedText {
+            lines,
+            bounds,
+            faces: Vec::new(),
+        };
+        shaped.intern_face(FaceRef {
+            post_script_name: crate::SAMPLE_ID.into(),
+            weight: 400,
+        });
+        Ok(shaped)
     }
 }
 
@@ -115,10 +154,12 @@ pub fn contract(
     let raster = make_rasterizer();
     let style = TextStyle::default();
 
-    let a = shaper.shape("Hello, world", &style).expect("整形");
-    let b = shaper.shape("Hello, world", &style).expect("整形");
+    let text = "Hello, world";
+    let a = shaper.shape(text, &style).expect("整形");
+    let b = shaper.shape(text, &style).expect("整形");
     assert_eq!(a, b, "同じ文字列と字で同じ行組み");
     assert_eq!(a.lines.len(), 1, "折り返し無しは 1 行");
+    check_glyph_refs(&a, text);
 
     let empty = shaper.shape("", &style).expect("整形");
     assert!(
@@ -143,12 +184,58 @@ pub fn contract(
         .expect("合字と絵文字で落ちない");
     assert!(hard.lines.len() >= 2, "改行で行が増える");
 
+    check_align(shaper.as_ref(), &style);
+
+    let via_json: ShapedText =
+        serde_json::from_str(&serde_json::to_string(&a).expect("書ける")).expect("読める");
     for scale in [1.0, 2.0] {
         let img = raster.rasterize(&a, &style, scale).expect("描ける");
         assert_eq!(
             img.size(),
             raster_size(&a, scale),
             "絵の大きさは bounds * scale"
+        );
+        let again = raster
+            .rasterize(&via_json, &style, scale)
+            .expect("往復した結果も描ける");
+        assert_eq!(again.size(), img.size());
+    }
+}
+
+/// 字形の参照が `faces` と文字列の中を指す。
+fn check_glyph_refs(shaped: &ShapedText, text: &str) {
+    for g in shaped.lines.iter().flat_map(|l| &l.glyphs) {
+        assert!(
+            (g.face as usize) < shaped.faces.len(),
+            "face {} は faces の中",
+            g.face
+        );
+        assert!(
+            g.byte_offset + g.byte_len <= text.len() && text.is_char_boundary(g.byte_offset),
+            "文字の範囲 {}..{} は文字列の中",
+            g.byte_offset,
+            g.byte_offset + g.byte_len
+        );
+    }
+}
+
+/// 中央と右の揃えでは、短い行が長い行より右から始まる。
+fn check_align(shaper: &dyn TextShaper, style: &TextStyle) {
+    let text = "Hello, world\nHi";
+    for align in [TextAlign::Center, TextAlign::Right] {
+        let s = shaper
+            .shape(
+                text,
+                &TextStyle {
+                    align,
+                    ..style.clone()
+                },
+            )
+            .expect("整形");
+        assert_eq!(s.lines.len(), 2);
+        assert!(
+            s.lines[1].rect.x > s.lines[0].rect.x,
+            "{align:?}: 短い行は右から始まる"
         );
     }
 }

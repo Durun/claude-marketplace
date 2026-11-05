@@ -1,5 +1,5 @@
-//! 伝達関数（sRGB と BT.709）の CPU 実装と、同じ式の WGSL。
-//! 作業空間は線形の Rec.709 なので、この 2 つで入出力の 3 つの空間が閉じる。
+//! 伝達関数（sRGB、Rec.1886、BT.709 の OETF）の CPU 実装と、同じ式の WGSL。
+//! 作業空間は線形の Rec.709 なので、これらで入出力の 4 つの空間が閉じる。
 
 /// sRGB の符号化値から線形へ。
 pub fn srgb_to_linear(v: f32) -> f32 {
@@ -19,7 +19,17 @@ pub fn linear_to_srgb(v: f32) -> f32 {
     }
 }
 
-/// BT.709 の OETF の逆。符号化値から線形へ。
+/// Rec.1886 の表示の式。符号化値から線形へ（べき 2.4、負は符号を保つ）。
+pub fn bt1886_to_linear(v: f32) -> f32 {
+    v.signum() * v.abs().powf(2.4)
+}
+
+/// Rec.1886 の表示の式の逆。線形から符号化値へ。
+pub fn linear_to_bt1886(v: f32) -> f32 {
+    v.signum() * v.abs().powf(1.0 / 2.4)
+}
+
+/// BT.709 のカメラの OETF の逆（`bt709_oetf`）。符号化値から線形へ。
 pub fn bt709_to_linear(v: f32) -> f32 {
     if v < 0.081 {
         v / 4.5
@@ -52,6 +62,14 @@ fn mm_linear_to_srgb(v: f32) -> f32 {
     let a = abs(v);
     if a <= 0.0031308 { return s * a * 12.92; }
     return s * (1.055 * pow(a, 1.0 / 2.4) - 0.055);
+}
+
+fn mm_bt1886_to_linear(v: f32) -> f32 {
+    return sign(v) * pow(abs(v), 2.4);
+}
+
+fn mm_linear_to_bt1886(v: f32) -> f32 {
+    return sign(v) * pow(abs(v), 1.0 / 2.4);
 }
 
 fn mm_bt709_to_linear(v: f32) -> f32 {

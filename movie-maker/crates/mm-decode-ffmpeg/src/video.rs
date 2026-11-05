@@ -10,7 +10,7 @@ use mm_decode_api::{AudioStreamInfo, DecodedFrame, Decoder, MediaInfo};
 use mm_types::{MmError, Rational, RationalTime, Result, Size, TimeRange};
 
 use crate::audio::{self, AudioProbe, AudioReader};
-use crate::convert::{is_full_range, Matrix, RgbaConverter};
+use crate::convert::{Matrix, RgbaConverter};
 use crate::timeline::{detect_fps, scan_video, TimeBase};
 
 /// PTS の索引を作れなかった素材の 1 コマの長さの仮定（秒）。コマが 1 つだけのときに使う。
@@ -288,7 +288,7 @@ fn build_info(
         duration,
         fps,
         size: Size::new(decoder.width(), decoder.height()),
-        color_space: matrix.color_space(is_full_range(decoder.color_range())),
+        color_space: matrix.color_space(),
         timebase_offset: audio.map_or(RationalTime::ZERO, |a| origin - a.start),
         audio: audio.map(|a| AudioStreamInfo {
             sample_rate: a.rate,

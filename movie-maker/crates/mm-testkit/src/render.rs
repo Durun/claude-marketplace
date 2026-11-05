@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use mm_audio_api::{AudioBlock, MixInput, MixerFactory};
+use mm_audio_api::{AudioBlock, MixInput, MixerConfig, MixerFactory};
 use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_doc::{Composition, Layer, Project};
 use mm_node_api::{
@@ -237,7 +237,9 @@ impl Renderer for SampleRenderer {
                 inputs.push(input);
             }
         }
-        let mut mixer = self.mixers.create(req.sample_rate, req.channels)?;
+        let mut mixer =
+            self.mixers
+                .create(req.sample_rate, req.channels, &MixerConfig::default())?;
         mixer.mix(&inputs, audio_frames_in(req.range, req.sample_rate))
     }
 

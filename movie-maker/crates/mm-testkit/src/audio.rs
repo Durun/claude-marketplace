@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use mm_audio_api::{AudioBlock, AudioSink, MixInput, Mixer, MixerFactory};
+use std::collections::BTreeMap;
+
+use mm_audio_api::{AudioBlock, AudioSink, BusConfig, MixInput, Mixer, MixerConfig, MixerFactory};
 use mm_types::{MmError, Result};
 
 /// 素通しの判定に使う許容差。
@@ -22,19 +24,26 @@ impl MixerFactory for SampleMixerFactory {
         crate::SAMPLE_ID
     }
 
-    fn create(&self, sample_rate: u32, channels: u16) -> Result<Box<dyn Mixer>> {
+    fn create(
+        &self,
+        sample_rate: u32,
+        channels: u16,
+        config: &MixerConfig,
+    ) -> Result<Box<dyn Mixer>> {
         Ok(Box::new(SampleMixer {
             sample_rate,
             channels,
+            config: config.clone(),
         }))
     }
 }
 
-/// 見本のミキサー。
+/// 見本のミキサー。バスとマスターの音量だけ効かせ、ダッキングは省く。
 #[derive(Debug)]
 pub struct SampleMixer {
     sample_rate: u32,
     channels: u16,
+    config: MixerConfig,
 }
 
 impl Mixer for SampleMixer {
@@ -54,7 +63,12 @@ impl Mixer for SampleMixer {
             {
                 return Err(MmError::InvalidArgument("入力の形がミキサーと違う".into()));
             }
-            let gain = db_to_gain(input.gain_db);
+            let bus_db = self
+                .config
+                .buses
+                .get(&input.role)
+                .map_or(0.0, |b| b.gain_db);
+            let gain = db_to_gain(input.gain_db + bus_db + self.config.master_db);
             let (l, r) = pan_gains(input.pan);
             let n = input.block.frames().min(frames);
             for i in 0..n {
@@ -130,7 +144,9 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
     let ch = mm_audio_api::DEFAULT_CHANNELS;
     let frames = 4_800;
     let factory = make();
-    let mut mixer = factory.create(rate, ch).expect("作れる");
+    let mut mixer = factory
+        .create(rate, ch, &MixerConfig::default())
+        .expect("作れる");
     assert_eq!((mixer.sample_rate(), mixer.channels()), (rate, ch));
 
     let silence = MixInput {
@@ -162,10 +178,36 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
         "0 dB・中央は素通し（差 {diff}）"
     );
 
+    bus_and_master_contract(factory.as_ref(), &tone, rate, ch, frames);
+
     let short = MixInput {
         block: AudioBlock::silence(rate, ch, frames / 2),
         ..tone
     };
     let out = mixer.mix(&[short], frames).expect("混ぜる");
     assert_eq!(out.frames(), frames, "短い入力は無音で埋める");
+}
+
+/// voice バス -6 dB とマスター -6 dB で、トーンが合わせて -12 dB になる。
+fn bus_and_master_contract(
+    factory: &dyn MixerFactory,
+    tone: &MixInput,
+    rate: u32,
+    ch: u16,
+    frames: usize,
+) {
+    let config = MixerConfig {
+        buses: BTreeMap::from([("voice".into(), BusConfig { gain_db: -6.0 })]),
+        master_db: -6.0,
+        ..MixerConfig::default()
+    };
+    let mut mixer = factory.create(rate, ch, &config).expect("作れる");
+    let out = mixer
+        .mix(std::slice::from_ref(tone), frames)
+        .expect("混ぜる");
+    let gain = db_to_gain(-12.0);
+    let expected: Vec<f32> = tone.block.samples.iter().map(|s| s * gain).collect();
+    let expected = AudioBlock::from_samples(rate, ch, expected).expect("形は合う");
+    let diff = out.max_diff(&expected).expect("同じ形");
+    assert!(diff <= 1e-5, "バスとマスターの音量が効く（差 {diff}）");
 }

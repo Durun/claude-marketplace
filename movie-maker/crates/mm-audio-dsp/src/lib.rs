@@ -6,4 +6,4 @@ mod meter;
 mod mixer;
 
 pub use meter::DspLoudnessMeter;
-pub use mixer::{db_to_gain, BusConfig, DspMixer, DspMixerFactory, DuckingConfig, MixerConfig};
+pub use mixer::{db_to_gain, DspMixer, DspMixerFactory};
