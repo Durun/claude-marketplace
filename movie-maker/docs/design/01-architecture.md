@@ -37,7 +37,7 @@ flowchart TB
   subgraph APP[movie-maker のアプリ（Tauri、Rust、1 プロセス）]
     direction LR
     OPS[命令の層<br>検証・適用・逆命令]
-    DOC[(文書と記録<br>JSON、ops.jsonl、SQLite)]
+    DOC[(文書と記録<br>project.mmdb（SQLite）)]
     ENG[描画器 mm-render<br>wgpu、compute、OCIO]
     DEC[デコード<br>FFmpeg + NVDEC]
     MIX[音のミキサー<br>cpal]
@@ -67,7 +67,7 @@ flowchart TB
 |---|---|---|---|---|
 | 受け持つもの | 命令の層、文書の保存、索引、描画器、デコード、ミキサー、wgpu の面、Claude の入口（HTTP、MCP）、自動の改善の起動、ホストの管理 | 同じ描画器で書き出し（`render`）と 1 コマ（`frame`）。GUI なし | Story、Source、Media、Inspector、Review、Deliver、Feedback | CEF（HTML、Three.js の種類）、OFX、VST3、CLAP |
 | 言語 | Rust | Rust（同じクレート） | TypeScript（Preact、esbuild） | Rust（CEF と OFX の C API を呼ぶ） |
-| つなぎ | | 文書のファイル | Tauri の IPC（命令とイベント） | 共有テクスチャ（D3D12 の NT ハンドル）、共有メモリ、制御はパイプ |
+| つなぎ | | アプリが動いていれば HTTP、動いていなければ `project.mmdb` | Tauri の IPC（命令とイベント） | 共有テクスチャ（D3D12 の NT ハンドル）、共有メモリ、制御はパイプ |
 | 描画器 | プレビュー | 書き出しと Claude の目 | 描かない | 描いた結果を渡す |
 
 クレートの分け方は[開発のしやすさ](14-dev-structure.md)に書く。要点は、話題ごとに口のクレート（`mm-*-api`。トレイトと型だけ）と実装のクレートを分け、実装を選んで組み立てる所を `mm-runtime` の 1 か所にすること。文書と命令のクレート（`mm-doc`、`mm-ops`）は GPU に依存せず、テストが速い。
@@ -98,7 +98,7 @@ flowchart TB
 | Web の種類 | CEF（`cef` クレート、tauri-apps/cef-rs [1]）。オフスクリーン描画の共有テクスチャを wgpu に取り込む |
 | プラグインのホスト | `openfx-sys` の上に自前、`clack-host`、`vst3`（coupler-rs） |
 | 音 | cpal、自前の DSP、`ebur128` |
-| 保存 | serde の JSON、`ops.jsonl`、rusqlite の索引、プロジェクトの配下の `cache/` |
+| 保存 | 正本は `project.mmdb`（SQLite、`rusqlite` の `bundled`、WAL、FTS5）。版管理は `mm export` の決定的な JSON（`versions/`）。プロジェクトの配下の `cache/`（[保存の形](09-ingest-storage.md#保存の形)） |
 | クレートの構成 | Cargo のワークスペース（`crates/*`、`workspace.dependencies` で版を共有 [36]）。口のクレート `mm-*-api` と実装を分け、`mm-runtime` で組み立てる |
 | テスト | cargo-nextest、proptest、insta、divan、cargo-fuzz、Playwright（WebView2 を CDP で）。層は[テスト](11-testing.md) |
 | 計装 | `tracing` のスパンを全クレートで。常時は `metrics.jsonl`、詳しくは Chrome の trace event（Perfetto UI）、生で見るときは Tracy。GPU は wgpu のタイムスタンプ（[計装](17-instrumentation.md)） |

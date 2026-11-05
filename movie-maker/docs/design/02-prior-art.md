@@ -20,8 +20,10 @@
 | Web の UI を映像の素材にする。Chromium のオフスクリーン描画を共有テクスチャで受ける | OBS のブラウザソース、CEF の `OnAcceleratedPaint`（`shared_texture_enabled`）[6][7] | `web.cef` の種類と `mm-host-cef` |
 | Rust のバインディングで CEF の共有テクスチャを wgpu に取り込む | `cef` クレートの `osr_texture_import`（D3D12 は `OpenSharedHandle` → `texture_from_raw` → `create_texture_from_hal`、Vulkan は外部メモリ）[2] | 同上 |
 | 先回りの描画、プレビュー動画、中身で引くキャッシュ | Resolve の Smart Cache、FCP のバックグラウンドレンダリング、Premiere の Media Cache | コマのキャッシュと `cache/` |
-| 文書を分けて保存し、変わった所だけ書く | FCP の `.fcpbundle`、Unity の `.meta` | プロジェクトのディレクトリ |
-| スナップショットと操作の記録からの復旧 | Redis の RDB と AOF、SQLite の WAL | `ops.jsonl` の再生 |
+| プロジェクトを 1 つの SQLite の DB で持ち、変えたページだけ書く。定期的に写しを取る | FCP の `.fcpbundle` の中のライブラリの DB（15 分ごとの `Backups/`）、Resolve の disk database、Lightroom の `.lrcat` [81]、SQLite 公式の「アプリのファイル形式」[71] | `project.mmdb`（[保存の形](09-ingest-storage.md#保存の形)） |
+| 文書と操作の記録を 1 つのトランザクションで書き、クラッシュは DB が巻き戻す | SQLite の WAL [73]、Redis の AOF | `ops` の表と WAL |
+| 作業中は DB、版管理には決定的な書き出し | Lightroom のカタログと XMP のサイドカー、Unity の `.meta` と Force Text のシリアライズ | `versions/` の JSON と `mm export` |
+| 操作の記録から意味の差分を読む | Perforce の changelist、Figma の version history | `mm diff` |
 | 人の UI と AI のスクリプトが同じデータを書く | Resolve の Python API、Descript の API | 命令の層 |
 | 口（ポート）と実装（アダプター）を分け、核を UI やデータベースなしでテストする | ports and adapters（Cockburn）[30] | `mm-*-api` と実装のクレート、`mm-runtime` の組み立て |
 | 安全でない裏と、検証する核を別のクレートに | wgpu の `wgpu-hal`（裏ごとの unsafe な抽象）と `wgpu-core`（検証）[31] | `mm-decode-api` の裏（d3d12va、cuvid）と描画器 |

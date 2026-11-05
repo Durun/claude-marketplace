@@ -12,7 +12,7 @@ flowchart BT
     doc[mm-doc<br>文書のスキーマと移行]
     eval[mm-eval<br>パラメータの評価・時間の写像・sequence の配置]
     ops[mm-ops<br>命令・逆命令・touches・トランザクション]
-    store[mm-store<br>保存・ops.jsonl・索引]
+    store[mm-store<br>SQLite の正本・ops・バックアップ・export/import]
     trace[mm-trace<br>スパンの決まり・カウンタ・出力の層]
     trace --> types
     doc --> types
@@ -89,8 +89,8 @@ movie-maker/
     mm-types/           時刻（有理数）、色、矩形、ID、ParamSchema、エラー。依存なし
     mm-doc/             文書（Project、Composition、Layer、Node、Param）の serde、スキーマの版と移行
     mm-eval/            時刻 t でのパラメータの値、キーフレームの補間、時間の写像、sequence のカットの配置（純関数）
-    mm-ops/             命令（1 命令 1 ファイル）、検証・適用・逆命令・touches、トランザクション、ops.jsonl の記録
-    mm-store/           プロジェクトのディレクトリの読み書き、スナップショット、復旧、SQLite の索引
+    mm-ops/             命令（1 命令 1 ファイル）、検証・適用・逆命令・touches、トランザクション
+    mm-store/           project.mmdb（rusqlite）の読み書き。表と DDL の移行、ops と undo_stack の記録、1 つの書き手の印（.mm/lock）、WAL とチェックポイント、バックアップ（VACUUM INTO）、FTS5 の検索、決定的な JSON の export と import、mm diff、同期のフォルダーの検出
     mm-trace/           計装。スパンの決まり（名前、レベル、フィールド）、counter!/gauge!、出力の層（metrics.jsonl、Chrome の trace、Tracy、ETW）、時計の補正、負担の見張り、JSON Schema。依存は tracing と tracing-subscriber だけ
     mm-node-api/        NodeKind、FrameCx、AudioCx、Traits、FrameRef、GPU のヘルパーのトレイト
     mm-render-api/      Renderer（コンポジションと t からコマ）、Scheduler、コマのキャッシュのキー
@@ -130,7 +130,7 @@ movie-maker/
     mm-improve/         自動の改善の回（worktree、claude -p、検査、取り込み）
     mm-testkit/         見本のプロジェクト、見本の素材の生成、契約テストの本体、見本の絵の比較、gpu_contract!、soak の実行ファイル
     mm-bench/           性能。divan のベンチ（基礎の層）と、mm perf run の場面（playback、scrub、export、startup）。結果の比較と履歴は mm-trace の形で
-  fuzz/                 cargo-fuzz の目標（文書、ops.jsonl、付属ファイル、字幕、OTIO、壊れた動画）と corpus/
+  fuzz/                 cargo-fuzz の目標（versions/ の JSON、命令の引数、壊した project.mmdb、付属ファイル、字幕、OTIO、壊れた動画）と corpus/
   xtask/                開発の道具（golden-update、perf の履歴の整理）
   apps/
     movie-maker/        Tauri のアプリ。窓の組み立て、子 HWND、IPC
