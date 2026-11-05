@@ -1,24 +1,31 @@
-//! 文字の実装。cosmic-text で整形（行組み）し、swash で CPU に描く。
+//! 文字の実装。cosmic-text で整形（行組み）し、描画は 2 通り持つ。
+//!
+//! - [`CpuRasterizer`]（`cpu`）: swash で CPU に描く。
+//! - [`GlyphonRasterizer`]（`glyphon`）: glyphon（wgpu）の字形の atlas とパイプラインで描く。
 //!
 //! `ShapedText` が字体の名前と字形の番号を持つので、描画は行組みをやり直さず字形を引くだけ。
 //! 整形器と描画器は別々に作れる。フォントの読み込みは重いので、同じプロセスでは
 //! [`TextEngine`] を共有して両方を取り出すと速い。
 
+mod gpu;
 mod layout;
 mod raster;
+
+pub use gpu::GlyphonRasterizer;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use cosmic_text::{FontSystem, SwashCache};
+use mm_gpu::GpuContext;
 
 use mm_text_api::{ShapedText, TextRasterizer, TextShaper, TextStyle};
 use mm_types::{MmError, Result, RgbaImage};
 
-struct Inner {
-    fonts: Mutex<(FontSystem, SwashCache)>,
+pub(crate) struct Inner {
+    pub(crate) fonts: Mutex<(FontSystem, SwashCache)>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     m.lock()
         .map_err(|_| MmError::Internal("文字エンジンの鍵が壊れている".into()))
 }
@@ -47,10 +54,15 @@ impl TextEngine {
     }
 
     /// 描画器。
-    pub fn rasterizer(&self) -> Arc<GlyphonRasterizer> {
-        Arc::new(GlyphonRasterizer {
+    pub fn rasterizer(&self) -> Arc<CpuRasterizer> {
+        Arc::new(CpuRasterizer {
             inner: self.inner.clone(),
         })
+    }
+
+    /// glyphon（wgpu）の描画器。フォントの読み込みは CPU の描画器と共有する。
+    pub fn gpu_rasterizer(&self, gpu: Arc<GpuContext>) -> Arc<GlyphonRasterizer> {
+        Arc::new(GlyphonRasterizer::with_fonts(self.inner.clone(), gpu))
     }
 }
 
@@ -103,11 +115,11 @@ impl TextShaper for CosmicShaper {
 }
 
 /// swash による CPU の描画。出力は線形・premultiplied の RGBA。
-pub struct GlyphonRasterizer {
+pub struct CpuRasterizer {
     inner: Arc<Inner>,
 }
 
-impl GlyphonRasterizer {
+impl CpuRasterizer {
     /// 自前のフォントの読み込みで作る。
     pub fn new() -> Self {
         Self {
@@ -116,15 +128,15 @@ impl GlyphonRasterizer {
     }
 }
 
-impl Default for GlyphonRasterizer {
+impl Default for CpuRasterizer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TextRasterizer for GlyphonRasterizer {
+impl TextRasterizer for CpuRasterizer {
     fn id(&self) -> &'static str {
-        "glyphon"
+        "cpu"
     }
 
     fn rasterize(&self, shaped: &ShapedText, style: &TextStyle, scale: f32) -> Result<RgbaImage> {

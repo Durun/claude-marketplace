@@ -1,7 +1,7 @@
 //! 日本語と英語の混在、折り返し、揃えを実際に描いて確かめる。
 
 use mm_text_api::{TextAlign, TextRasterizer, TextShaper, TextStyle};
-use mm_text_glyphon::{GlyphonRasterizer, TextEngine};
+use mm_text_glyphon::{CpuRasterizer, TextEngine};
 use mm_types::{Rgba, RgbaImage};
 
 /// 線形の値を sRGB の 8 bit に。
@@ -124,7 +124,7 @@ fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
 #[test]
 fn 別に作った描画器でも同じ絵になる() {
     let engine = TextEngine::new();
-    let other = GlyphonRasterizer::new();
+    let other = CpuRasterizer::new();
     let st = style(None);
     let shaped = engine.shaper().shape("abc 日本語", &st).expect("整形");
     let a = engine

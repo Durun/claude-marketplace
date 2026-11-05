@@ -23,7 +23,10 @@ fn 名前の表の空間を全部知っている() {
 #[test]
 fn aces_の表示変換は_3d_lut_で返り格子の値がapplyと一致する() {
     let ocio = OcioColor::builtin().expect("設定").with_lut_size(9);
-    let (from, to) = (ColorSpace("ACEScg".into()), ColorSpace(DISPLAY_SPACE.into()));
+    let (from, to) = (
+        ColorSpace("ACEScg".into()),
+        ColorSpace(DISPLAY_SPACE.into()),
+    );
     let TransformProgram::Lut3d { size, data } = ocio.program(&from, &to).expect("変換") else {
         panic!("ACES の表示変換は 3D LUT になるはず");
     };
@@ -36,7 +39,14 @@ fn aces_の表示変換は_3d_lut_で返り格子の値がapplyと一致する()
     let want = ocio.apply(&from, &to, rgb).expect("CPU");
     let at = ((7 * n + 5) * n + 2) * 3;
     for (i, w) in want.iter().enumerate() {
-        assert!((data[at + i] - w).abs() < 1e-6, "ch{i}: {} vs {w}", data[at + i]);
+        assert!(
+            (data[at + i] - w).abs() < 1e-6,
+            "ch{i}: {} vs {w}",
+            data[at + i]
+        );
     }
-    assert!(!ocio.known_spaces().contains(&to), "逆変換が無いので known_spaces に出さない");
+    assert!(
+        !ocio.known_spaces().contains(&to),
+        "逆変換が無いので known_spaces に出さない"
+    );
 }
