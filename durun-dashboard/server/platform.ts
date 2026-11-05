@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { HostOs, MemoryStatus } from '../shared/types.ts';
+import type { CdToolName, HostOs, MemoryStatus } from '../shared/types.ts';
 import { toMemoryStatus, toMemoryUsage } from './memory.ts';
 import { run as runOffThread } from './run.ts';
 
@@ -29,6 +29,81 @@ export const parseFlProjectHints = (json: string): FlProjectHints => {
 export type Files = { list: (dir: string) => string[]; read: (file: string) => string };
 
 const realFiles: Files = { list: (dir) => fs.readdirSync(dir), read: (file) => fs.readFileSync(file, 'utf8') };
+
+/** 光学ドライブ 1 台。id は設定の drive に書く値（Windows ではドライブ文字、macOS では drutil の番号、Linux ではデバイスのパス）。 */
+export type OpticalDrive = { id: string; model: string };
+
+/** 依存ツールを入れるコマンド。runnable が偽なら、管理者権限が要るので実行せず、見せるだけにする。 */
+export type ToolInstall = { label: string; command: string; file: string; args: string[]; runnable: boolean };
+
+/** ファイルの有無とディレクトリの一覧。テストでは偽物に差し替える。 */
+export type DirLookup = { exists: (file: string) => boolean; list: (dir: string) => string[] };
+
+const realDirs: DirLookup = {
+  exists: fs.existsSync,
+  list: (dir) => {
+    try {
+      return fs.readdirSync(dir);
+    } catch {
+      return [];
+    }
+  },
+};
+
+/** PowerShell が JSON で書いた光学ドライブを読む。1 台だと配列にならないので、配列にそろえる。 */
+export const parseWindowsDrives = (json: string): OpticalDrive[] => {
+  if (!json.trim()) return [];
+  const v = JSON.parse(json) as unknown;
+  const rows = (Array.isArray(v) ? v : [v]) as { Drive?: unknown; Name?: unknown }[];
+  return rows.flatMap((r) => (typeof r?.Drive === 'string' && r.Drive ? [{ id: r.Drive, model: String(r.Name ?? '').replace(/\s+/g, ' ').trim() }] : []));
+};
+
+/** drutil list の表から、番号と機種を読む。 */
+export const parseDrutilList = (text: string): OpticalDrive[] =>
+  text.split('\n').flatMap((line) => {
+    const m = /^\s*(\d+)\s+(\S.*?)\s{2,}\S+\s+\S+\s+\S+\s*$/.exec(line);
+    return m ? [{ id: m[1] ?? '', model: (m[2] ?? '').replace(/\s+/g, ' ').trim() }] : [];
+  });
+
+/** lsblk -J の出力から、光学ドライブを読む。 */
+export const parseLsblk = (json: string): OpticalDrive[] => {
+  const v = JSON.parse(json) as { blockdevices?: { name?: string; type?: string; model?: string | null }[] };
+  return (v.blockdevices ?? []).flatMap((d) => (d.type === 'rom' && d.name ? [{ id: `/dev/${d.name}`, model: (d.model ?? '').trim() }] : []));
+};
+
+/** drutil status の表から、ディスクが入っているかを読む。Type: の行が No Media Inserted でなければ入っている。 */
+export const drutilMediaLoaded = (status: string): boolean => {
+  const type = /^\s*Type:\s*(.*)$/m.exec(status)?.[1]?.trim();
+  return !!type && !/no media/i.test(type);
+};
+
+// metaflac は flac のパッケージに、ffprobe は ffmpeg のパッケージに入っている。
+const WINGET_IDS: Record<CdToolName, string> = { cyanrip: 'cyanreg.cyanrip', flac: 'Xiph.FLAC', metaflac: 'Xiph.FLAC', ffmpeg: 'Gyan.FFmpeg', ffprobe: 'Gyan.FFmpeg', 'yt-dlp': 'yt-dlp.yt-dlp' };
+const PACKAGE_NAMES: Record<CdToolName, string> = { cyanrip: 'cyanrip', flac: 'flac', metaflac: 'flac', ffmpeg: 'ffmpeg', ffprobe: 'ffmpeg', 'yt-dlp': 'yt-dlp' };
+
+/** 名前に * を含む階層を、実在するものに広げる。新しい版を先に返す。 */
+const expandWild = (base: string, segments: string[], dirs: DirLookup, join: (...p: string[]) => string): string[] => {
+  const [head, ...rest] = segments;
+  if (head === undefined) return dirs.exists(base) ? [base] : [];
+  if (!head.includes('*')) return expandWild(join(base, head), rest, dirs, join);
+  const pattern = new RegExp(`^${head.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i');
+  return dirs
+    .list(base)
+    .filter((n) => pattern.test(n))
+    .sort()
+    .reverse()
+    .flatMap((n) => expandWild(join(base, n), rest, dirs, join));
+};
+
+// winget のパッケージの中の置き場所。版や配布元の名前が付く階層は * で書く。
+const WINGET_LAYOUT: Record<CdToolName, string[][]> = {
+  cyanrip: [['cyanreg.cyanrip_*', 'cyanrip.exe']],
+  flac: [['Xiph.FLAC_*', 'flac-*-win', 'Win64', 'flac.exe']],
+  metaflac: [['Xiph.FLAC_*', 'flac-*-win', 'Win64', 'metaflac.exe']],
+  ffmpeg: [['Gyan.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffmpeg.exe'], ['yt-dlp.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffmpeg.exe']],
+  ffprobe: [['Gyan.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffprobe.exe'], ['yt-dlp.FFmpeg_*', 'ffmpeg-*', 'bin', 'ffprobe.exe']],
+  'yt-dlp': [['yt-dlp.yt-dlp_*', 'yt-dlp.exe']],
+};
 
 export type Platform = {
   name: 'darwin' | 'win32' | 'other';
@@ -91,6 +166,22 @@ export type Platform = {
   claudeCredentials: (run?: Run, files?: Files) => Promise<string | undefined>;
   /** Slack のデスクトップアプリが覚えている状態の JSON。ログインしたワークスペースの ID とドメインを workspaces に持つ。読めなければ undefined。 */
   slackAppState: (files?: Files, env?: NodeJS.ProcessEnv) => string | undefined;
+  /** つながっている光学ドライブ。調べられなければ空。 */
+  opticalDrives: (run?: Run) => Promise<OpticalDrive[]>;
+  /** ドライブにディスクが入っているか。調べられなければ undefined。 */
+  mediaLoaded: (drive: string, run?: Run) => Promise<boolean | undefined>;
+  /** ディスクを排出する。排出できなくても投げない（人間が手で出せる）。 */
+  ejectDisc: (drive: string, run?: Run) => Promise<void>;
+  /** cyanrip の -d に渡す、ドライブのデバイス。 */
+  cdDevice: (drive: string, run?: Run) => Promise<string>;
+  /** 音楽フォルダー。Windows では、OneDrive に移したときも追えるよう、既知のフォルダーから引く。 */
+  musicDir: (run?: Run) => Promise<string>;
+  /** 実行ファイルの名前（Windows では .exe を付ける）。 */
+  executableName: (tool: string) => string;
+  /** パッケージ管理が置く場所にある依存ツールの候補。新しい版を先に返す。 */
+  toolCandidates: (tool: CdToolName, env: NodeJS.ProcessEnv, dirs?: DirLookup) => string[];
+  /** 依存ツールを入れるコマンド。 */
+  toolInstall: (tool: CdToolName) => ToolInstall;
 };
 
 const readOrUndefined = (files: Files, file: string): string | undefined => {
@@ -140,6 +231,8 @@ const tailnetHostsVia =
 
 const SYSCTL_NAMES = ['kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level', 'hw.memsize', 'vm.swapusage'];
 
+const brewInstall = (tool: CdToolName): ToolInstall => ({ label: `brew install ${PACKAGE_NAMES[tool]}`, command: `brew install ${PACKAGE_NAMES[tool]}`, file: 'brew', args: ['install', PACKAGE_NAMES[tool]], runnable: true });
+
 const posix = {
   shellPath: (file: string) => file,
   // sh の $PPID が claude の PID になる。
@@ -168,6 +261,8 @@ const posix = {
   flProjectHints: async () => undefined,
   claudeCredentials: (_run: Run = realRun, files: Files = realFiles) => credentialsFile(files, os.homedir()),
   slackAppState: (files: Files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), '.config', 'Slack', 'storage', 'root-state.json')),
+  musicDir: async () => path.posix.join(os.homedir(), 'Music'),
+  executableName: (tool: string) => tool,
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
@@ -188,6 +283,31 @@ const darwin: Platform = {
       return undefined;
     }
   },
+  opticalDrives: async (run = realRun) => {
+    try {
+      return parseDrutilList(await run('drutil', ['list']));
+    } catch {
+      return [];
+    }
+  },
+  mediaLoaded: async (drive, run = realRun) => {
+    try {
+      return drutilMediaLoaded(await run('drutil', ['-drive', drive, 'status']));
+    } catch {
+      return undefined;
+    }
+  },
+  ejectDisc: async (drive, run = realRun) => {
+    await run('drutil', ['-drive', drive, 'eject']).catch(() => undefined);
+  },
+  // ponytail: macOS のデバイスのパスは、ディスクが入っているときの drutil status の Name: からしか分からない。設定の drive に /dev/diskN と書けば、それを使う。
+  cdDevice: async (drive, run = realRun) => {
+    if (drive.startsWith('/dev/')) return drive;
+    const status = await run('drutil', ['-drive', drive, 'status']).catch(() => '');
+    return /^\s*Name:\s*(\S+)/m.exec(status)?.[1] ?? drive;
+  },
+  toolCandidates: (tool, _env, dirs = realDirs) => ['/opt/homebrew/bin', '/usr/local/bin'].map((d) => path.posix.join(d, tool)).filter((f) => dirs.exists(f)),
+  toolInstall: brewInstall,
 };
 
 // ponytail: Linux ではメモリを読まない。広げるなら /proc/pressure/memory と /proc/meminfo から読む。
@@ -196,6 +316,27 @@ const other: Platform = {
   name: 'other',
   defaultChromePath: () => undefined,
   readMemory: async () => null,
+  opticalDrives: async (run = realRun) => {
+    try {
+      return parseLsblk(await run('lsblk', ['-J', '-o', 'NAME,TYPE,MODEL']));
+    } catch {
+      return [];
+    }
+  },
+  mediaLoaded: async (drive, run = realRun) => {
+    try {
+      return /^E: ID_CDROM_MEDIA=1$/m.test(await run('udevadm', ['info', drive]));
+    } catch {
+      return undefined;
+    }
+  },
+  ejectDisc: async (drive, run = realRun) => {
+    await run('eject', [drive]).catch(() => undefined);
+  },
+  cdDevice: async (drive) => drive,
+  toolCandidates: (tool, _env, dirs = realDirs) => ['/usr/bin', '/usr/local/bin'].map((d) => path.posix.join(d, tool)).filter((f) => dirs.exists(f)),
+  // apt は管理者権限が要るので、画面からは実行せず、コマンドを見せる。
+  toolInstall: (tool) => ({ label: `sudo apt install ${PACKAGE_NAMES[tool]}`, command: `sudo apt install ${PACKAGE_NAMES[tool]}`, file: 'sudo', args: ['apt', 'install', PACKAGE_NAMES[tool]], runnable: false }),
 };
 
 /** netstat -ano の行から、clientPort から serverPort へ張った TCP 接続を持つプロセスの PID を探す。 */
@@ -292,6 +433,45 @@ const win32: Platform = {
   },
   claudeCredentials: (_run = realRun, files = realFiles) => credentialsFile(files, os.homedir()),
   slackAppState: (files = realFiles, env = process.env) => (env.APPDATA ? readOrUndefined(files, path.win32.join(env.APPDATA, 'Slack', 'storage', 'root-state.json')) : undefined),
+  // 機種名の日本語が化けないよう、PowerShell に UTF-8 の JSON で書かせる。
+  opticalDrives: async (run = realRun) => {
+    try {
+      return parseWindowsDrives(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-CimInstance Win32_CDROMDrive | Select-Object Drive,Name | ConvertTo-Json -Compress']));
+    } catch {
+      return [];
+    }
+  },
+  mediaLoaded: async (drive, run = realRun) => {
+    try {
+      const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_CDROMDrive -Filter "Drive='${drive}'").MediaLoaded`]);
+      return out.trim() === 'True';
+    } catch {
+      return undefined;
+    }
+  },
+  ejectDisc: async (drive, run = realRun) => {
+    await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(New-Object -ComObject Shell.Application).Namespace(17).ParseName('${drive}').InvokeVerb('Eject')`]).catch(() => undefined);
+  },
+  // cyanrip は Windows では F: の形のドライブ文字を受ける。
+  cdDevice: async (drive) => drive,
+  musicDir: async (run = realRun) => {
+    const fallback = path.win32.join(os.homedir(), 'Music');
+    try {
+      const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Environment]::GetFolderPath('MyMusic')"]);
+      return out.trim() || fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  executableName: (tool) => `${tool}.exe`,
+  toolCandidates: (tool, env, dirs = realDirs) => {
+    const base = path.win32.join(env.LOCALAPPDATA ?? path.win32.join(os.homedir(), 'AppData', 'Local'), 'Microsoft', 'WinGet', 'Packages');
+    return WINGET_LAYOUT[tool].flatMap((segments) => expandWild(base, segments, dirs, path.win32.join));
+  },
+  toolInstall: (tool) => {
+    const args = ['install', '--id', WINGET_IDS[tool], '-e', '--accept-source-agreements', '--accept-package-agreements'];
+    return { label: `winget install ${WINGET_IDS[tool]}`, command: `winget ${args.join(' ')}`, file: 'winget', args, runnable: true };
+  },
 };
 
 export const platformFor = (name: string): Platform => (name === 'darwin' ? darwin : name === 'win32' ? win32 : other);

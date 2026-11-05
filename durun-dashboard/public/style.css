@@ -1909,3 +1909,50 @@ table.data { width: 100%; border-collapse: collapse; }
 [data-skin="xp"] .wmp-volume { position: absolute; bottom: 100%; left: 50%; display: none; width: 90px; margin: 0 0 8px -45px; accent-color: #3d9bff; }
 [data-skin="xp"] .wmp-vol:is(:hover, :focus-within) .wmp-volume { display: block; }
 [data-skin="xp"] .wmp-full { justify-self: end; }
+/* CD取り込み。左に取り込みリスト、右に選んだ行の詳細か設定を並べる。 */
+.cdrip { display: flex; flex-direction: column; gap: 8px; min-height: 0; font-size: 13px; }
+.cdrip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cdrip-drive { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdrip-main { display: flex; flex: 1; gap: 10px; min-height: 0; }
+.cdrip-left { display: flex; flex: 0 0 340px; flex-direction: column; gap: 6px; min-height: 0; }
+.cdrip-right { flex: 1; min-width: 0; overflow: auto; }
+.cdrip-items { flex: 1; min-height: 80px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.cdrip-group { padding: 6px 4px 2px; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.cdrip-item { display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cdrip-item:hover { background: var(--surface-2); }
+.cdrip-item.is-selected { border-color: var(--accent); }
+.cdrip-item.is-done, .cdrip-item.is-skipped { color: var(--muted); }
+.cdrip-item.is-failed { color: var(--critical); }
+.cdrip-glyph { flex: none; width: 1.2em; text-align: center; }
+.cdrip-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdrip-state { flex: none; color: var(--muted); font-size: 12px; }
+.cdrip-input { display: flex; flex-direction: column; gap: 4px; }
+.cdrip-input textarea { resize: vertical; font-size: 12.5px; }
+.cdrip-input .btn { align-self: flex-end; }
+.cdrip-detail h3, .cdrip-settings h3 { margin: 0 0 4px; font-size: 14px; }
+.cdrip-settings { display: flex; flex-direction: column; gap: 6px; }
+.cdrip-field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-2); }
+.cdrip-field .input { width: 100%; max-width: 480px; }
+.cdrip-flags { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; }
+.cdrip-log summary { cursor: pointer; color: var(--text-2); }
+.cdrip-log .fl-log { max-height: 160px; margin-top: 4px; }
+.cdrip-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin: 6px 0; }
+.cdrip-disc { display: flex; align-items: center; gap: 4px; }
+.cdrip-disc .input { width: 100%; }
+.cdrip-cover { display: flex; align-items: flex-end; gap: 10px; margin: 6px 0; }
+.cdrip-cover img { object-fit: cover; border: 1px solid var(--border); border-radius: 4px; }
+.cdrip-nocover { display: grid; place-items: center; width: 96px; height: 96px; border: 1px dashed var(--border); border-radius: 4px; color: var(--muted); font-size: 12px; }
+.cdrip-tracks { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cdrip-tracks th { padding: 2px 4px; color: var(--text-2); font-weight: 600; text-align: left; }
+.cdrip-tracks td { padding: 1px 2px; }
+.cdrip-tracks .input { width: 100%; }
+.cdrip-tracks tr.is-bad td { background: color-mix(in srgb, var(--critical) 18%, transparent); }
+.cdrip-duration { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cdrip-research { display: flex; flex-direction: column; gap: 2px; }
+.cdrip-research a { margin-left: 6px; }
+.cdrip-redo { display: flex; gap: 6px; margin: 4px 0; }
+.cdrip-redo .input { flex: 1; }
+.cdrip-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cdrip-footer > span { flex: 1; min-width: 0; }
+.cdrip-footer a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.cdrip-footer a[aria-disabled="true"] { opacity: .7; }

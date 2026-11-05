@@ -43,6 +43,13 @@ const pluginArgs = (dir: string): string[] => ['--setting-sources', '', '--stric
 // 作業ディレクトリと Read が求める絶対パスが分かるよう、Claude Code の既定のシステムプロンプトのまま動かす。
 const READER_ARGS = [SAFE_MODE, '--model', 'sonnet', '--tools', 'Read,Grep,Glob', '--permission-prompts', 'none'];
 
+// 同人 CD の情報を Web で探させるので、sonnet に検索と読み出しのツールを渡す。確認の要る操作は断る。
+// XFD の動画を読むときだけ、動画の取得と画像の切り出しに使うコマンドに限って Bash を許す。
+const RESEARCHER_ARGS = [SAFE_MODE, '--model', 'sonnet', '--tools', 'Read,Glob,WebSearch,WebFetch', '--permission-prompts', 'none'];
+const VIDEO_ARGS = [SAFE_MODE, '--model', 'sonnet', '--tools', 'Read,Glob,WebSearch,WebFetch,Bash', '--allowedTools', 'Bash(ffmpeg *),Bash(ffprobe *),Bash(yt-dlp *),Bash(curl *)', '--permission-prompts', 'none'];
+// 検索を重ねるので、数分から十数分かかることがある。
+const RESEARCHER_TIMEOUT_MS = 15 * 60_000;
+
 /** claude の失敗や、求めた形でない答え。ダッシュボードの不具合ではないので、改善要望にはしない。 */
 export class UpstreamError extends Error {}
 
@@ -118,6 +125,10 @@ export const askOpus = (prompt: string, schema: object, plugin?: string): Promis
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>
   askClaude(prompt, schema, READER_ARGS, READER_TIMEOUT_MS, cwd);
+
+/** cwd を作業場所にして、Web を調べて答えさせる。video を真にすると、動画の取得とフレームの切り出しを許す。 */
+export const askResearcher = (cwd: string, prompt: string, schema: object, { video = false }: { video?: boolean } = {}): Promise<Record<string, unknown>> =>
+  askClaude(prompt, schema, video ? VIDEO_ARGS : RESEARCHER_ARGS, RESEARCHER_TIMEOUT_MS, cwd);
 
 /** get_usage が返す、使用制限の 1 つの枠。枠の無いプランでは null。 */
 type RawWindow = { utilization?: number | null; resets_at?: string | null } | null;

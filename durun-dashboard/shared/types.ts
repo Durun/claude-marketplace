@@ -804,3 +804,91 @@ export type FlConnectView = {
   logFile?: string;
   removal?: FlRemoval;
 };
+
+// ─── アプリ「CD取り込み」 ──────────────────────────────────────────────
+
+/** 取り込みと書き出しが使う外部コマンド。metaflac は flac の、ffprobe は ffmpeg のパッケージに入っている。 */
+export type CdToolName = 'cyanrip' | 'flac' | 'metaflac' | 'ffmpeg' | 'ffprobe' | 'yt-dlp';
+
+/** 依存ツール 1 つの検出結果。install があれば、無いツールを入れるコマンドを見せる。runnable が偽のコマンドは、画面から実行せず見せるだけ。 */
+export type CdTool = { name: CdToolName; path?: string; version?: string; install?: { label: string; command: string; runnable: boolean } };
+
+/** 機能の切り替え。 */
+export type CdFeatures = {
+  flacImage: boolean;
+  mp3: boolean;
+  mp3Bitrate: '320k' | '256k' | 'V0';
+  embedCover: boolean;
+  mp3Gain: boolean;
+  ai: boolean;
+  aiVideo: boolean;
+  autoExport: boolean;
+  rekordbox: boolean;
+  /** cyanrip の -Z。0 なら 1 回だけ読む。 */
+  verify: number;
+};
+
+/** PC ごとの設定。 */
+export type CdRipSettings = {
+  drive: string;
+  driveModel: string;
+  offset: number;
+  paranoia: number;
+  musicDir: string;
+  stageDir: string;
+  dest: { cd: string; club: string; music: string };
+  features: CdFeatures;
+};
+
+export type CdTrack = { title: string; artist?: string; composer?: string; duration?: number };
+
+/** 曲情報。AI の答えか人間の編集で、書き出しの入力になる。meta.json と同じ形。 */
+export type CdMeta = {
+  circle: string;
+  album: string;
+  artist: string;
+  date?: string;
+  genre?: string;
+  catalog?: string;
+  dest: 'CLUB' | 'Music';
+  cover?: string;
+  coverUrl?: string;
+  disc?: number;
+  totaldiscs?: number;
+  tracks: CdTrack[];
+  confidence?: 'high' | 'medium' | 'low';
+  sources?: string[];
+  notes?: string;
+};
+
+export type CdRipStatus = 'waiting' | 'ripping' | 'researching' | 'review' | 'exporting' | 'done' | 'failed' | 'skipped';
+
+/** 取り込みリストの 1 行。キューの保存にも、画面へ送る状態にも、この形を使う。 */
+export type CdRipItem = {
+  id: string;
+  hint: string;
+  group?: string;
+  status: CdRipStatus;
+  attention?: string;
+  ripId?: string;
+  disc?: { tracks: number; durations: number[]; totalSeconds?: number; cdText?: { album?: string; artist?: string; titles?: string[] }; tocId?: string };
+  progress?: { track: number; total: number };
+  meta?: CdMeta;
+  research?: { startedAt: number; finishedAt?: number; confidence?: 'high' | 'medium' | 'low'; sources: string[]; notes?: string; error?: string; retryHint?: string };
+  exported?: { at: number; files: string[]; rekordboxAt?: number };
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CdLogEntry = { at: number; kind: string; itemId?: string; text: string };
+
+/** CD取り込みのウィンドウに描くもの。 */
+export type CdRipView = {
+  tools: CdTool[];
+  drive: { id: string; model: string; offset: number; media: 'none' | 'loaded' | 'unknown'; message?: string };
+  accepting: boolean;
+  settings: CdRipSettings;
+  items: CdRipItem[];
+  log: CdLogEntry[];
+  drives: { id: string; model: string }[];
+};

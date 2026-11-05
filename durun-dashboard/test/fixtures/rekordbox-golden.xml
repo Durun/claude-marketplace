@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="7.2.18" Company="AlphaTheta"/>
+  <COLLECTION Entries="4">
+    <TRACK TrackID="1" Name="aquamarine" Artist="Synthion" Album="aquamarine" Kind="MP3 File" Location="file://localhost/D:/Music/CLUB/Synthion/aquamarine/01.Synthion%20-%20aquamarine.mp3"/>
+    <TRACK TrackID="2" Name="曲 (feat. X) !*" Artist="D'Artist" Album='Rock "n" Roll &lt;x&gt;' Kind="MP3 File" Location="file://localhost/D:/Music/CLUB/A%26B/Rock%20%22n%22%20Roll%20%3Cx%3E/02.D%27Artist%20-%20%E6%9B%B2%20%28feat.%20X%29%20%21%2A.mp3"/>
+    <TRACK TrackID="3" Name="It's &quot;Y&quot;" Artist="X" Album="Void of the Suppliant(DLC)" Kind="MP3 File" Location="file://localhost/D:/Music/CLUB/bandcamp/BC/Void%20of%20the%20Suppliant%28DLC%29/03.X%20-%20Y.mp3"/>
+    <TRACK TrackID="4" Name="Z" Artist="X" Album="Other" Kind="MP3 File" Location="file://localhost/D:/Music/CLUB/bandcamp/BC/Other/01.X%20-%20Z.mp3"/>
+  </COLLECTION>
+  <PLAYLISTS>
+  <NODE Type="0" Name="ROOT" Count="2">
+    <NODE Name="M3で買ったもの" Type="1" KeyType="0" Entries="3">
+      <TRACK Key="1"/>
+      <TRACK Key="2"/>
+      <TRACK Key="3"/>
+    </NODE>
+    <NODE Name="それ以外の追加" Type="1" KeyType="0" Entries="1">
+      <TRACK Key="4"/>
+    </NODE>
+  </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>
