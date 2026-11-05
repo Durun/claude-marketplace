@@ -25,11 +25,19 @@ mm-cache-api = { path = "crates/mm-cache-api" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-runtime = { path = "crates/mm-runtime" }
+mm-decode-d3d12va = { path = "crates/mm-decode-d3d12va" }
+mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# FFmpeg のバインディング。ビルドには FFmpeg の開発ファイルと libclang が要る（crates/mm-decode-ffmpeg/README.md）。
+ffmpeg-next = { version = "9.0", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 thiserror = "2.0"
 tracing = "0.1"
+wgpu = "30.0.1"
+pollster = "1.0"
+# wgpu-hal の D3D12 が使う版にそろえる（ID3D12Resource などの型を受け渡すため）。
+windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
 ebur128 = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
