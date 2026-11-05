@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use mm_audio_api::{AudioBlock, Mixer, MixerConfig, MixerFactory};
-use mm_doc::{Asset, Composition, Layer, Node, Param, Project, Transform};
+use mm_doc::{Asset, Composition, Layer, Node, Param, Project};
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Quality, Traits};
 use mm_nodes_basic::all_kinds;
 use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
@@ -106,17 +106,7 @@ fn renderer(ctx: &Arc<GpuContext>, mixers: Arc<dyn MixerFactory>) -> WgpuRendere
 }
 
 fn layer(id: &str, source: Node, start: RationalTime, length: RationalTime) -> Layer {
-    Layer {
-        id: Id::new(id),
-        source,
-        start,
-        in_point: RationalTime::ZERO,
-        out_point: length,
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
-        audio: None,
-        lock: false,
-    }
+    Layer::new(id, source, start, RationalTime::ZERO, length)
 }
 
 fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
@@ -127,6 +117,7 @@ fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
         fps: Rational::integer(30),
         duration: RationalTime::seconds(4),
         layers,
+        markers: Vec::new(),
     }
 }
 

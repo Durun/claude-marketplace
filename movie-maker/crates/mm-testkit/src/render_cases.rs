@@ -28,15 +28,14 @@ pub(crate) fn check_frame_lifetime(r: &mut dyn Renderer, req: &RenderRequest<'_>
 
 fn layer(kind: &str, version: u32, transform: Transform) -> Layer {
     Layer {
-        id: Id::new(format!("case-{kind}")),
-        source: Node::new(kind, version),
-        start: RationalTime::ZERO,
-        in_point: RationalTime::ZERO,
-        out_point: RationalTime::seconds(1),
-        opacity: Param::constant(ParamValue::Number(1.0)),
         transform,
-        audio: None,
-        lock: false,
+        ..Layer::new(
+            format!("case-{kind}"),
+            Node::new(kind, version),
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(1),
+        )
     }
 }
 
@@ -55,6 +54,7 @@ fn render_layers(
         fps: base.fps,
         duration: RationalTime::seconds(1),
         layers,
+        markers: Vec::new(),
     });
     let frame = r
         .render_frame(&RenderRequest {

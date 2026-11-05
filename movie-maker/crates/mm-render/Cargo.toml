@@ -10,6 +10,7 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-trace = { workspace = true }
 mm-doc = { workspace = true }
+mm-eval = { workspace = true }
 mm-node-api = { workspace = true }
 mm-render-api = { workspace = true }
 mm-decode-api = { workspace = true }
