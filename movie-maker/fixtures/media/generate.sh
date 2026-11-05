@@ -58,6 +58,26 @@ x264="-c:v libx264 -preset veryfast -crf 12 -pix_fmt yuv420p -color_primaries bt
 "$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
   $x264 -g 10 -bf 0 -output_ts_offset 0.5 -avoid_negative_ts disabled -video_track_timescale 90000 "$out/offset.mp4"
 
+# B フレームがあり、頭が 0.5 秒ずれた素材
+"$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
+  $x264 -g 10 -bf 2 -output_ts_offset 0.5 -avoid_negative_ts disabled -video_track_timescale 90000 "$out/offset_bf.mp4"
+
+# B フレームがある VFR
+"$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 60)" \
+  -vf "settb=1/90000,setpts='(N/30+0.012*mod(N,3))/TB'" \
+  $x264 -g 12 -bf 2 -fps_mode passthrough -enc_time_base 1/90000 -video_track_timescale 90000 "$out/vfr_bf.mp4"
+
+# 再エンコードしない切り出し。キーフレームの手前から始まり、edit list の外のパケットが DISCARD になる。
+"$FFMPEG" -y -v error -ss 0.5 -i "$out/cfr.mp4" -c copy -an "$out/editlist.mp4"
+
+# 48 kHz・ステレオでない音（44.1 kHz のモノラル、32 kHz の 5.1）
+"$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
+  -f lavfi -i "sine=frequency=440:sample_rate=44100:duration=1,aformat=channel_layouts=mono" \
+  $x264 -g 10 -bf 0 -c:a aac -b:a 96k -shortest "$out/mono44.mp4"
+"$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
+  -f lavfi -i "sine=frequency=440:sample_rate=32000:duration=1,aformat=channel_layouts=5.1" \
+  $x264 -g 10 -bf 0 -c:a aac -b:a 192k -shortest "$out/surround.mp4"
+
 # トーンだけの音
 "$FFMPEG" -y -v error -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=2,aformat=channel_layouts=stereo" \
   -c:a pcm_s16le "$out/tone.wav"
@@ -66,4 +86,4 @@ x264="-c:v libx264 -preset veryfast -crf 12 -pix_fmt yuv420p -color_primaries bt
 size=$(wc -c <"$out/cfr.mp4")
 head -c $((size / 3)) "$out/cfr.mp4" >"$out/broken.mp4"
 
-date >"$out/.stamp"
+date >"$out/.stamp-2"

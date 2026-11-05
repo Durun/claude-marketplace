@@ -264,3 +264,46 @@ fn 使い方の誤りは_panic_せずエラーになる() {
         "finish の後"
     );
 }
+
+/// 線形の値 -> 符号化 -> 復号で、符号化値の 1/255 を単位に何段ずれるかの上限。
+/// 4:2:0 の間引きと tv レンジの量子化、H.264 の圧縮（crf 18）の分。
+const ROUNDTRIP_CODE_TOLERANCE: f32 = 3.0;
+
+#[test]
+fn 線形の色を書き出して読み戻しても明るさがずれない() {
+    let size = Size::new(64, 32);
+    let fps = Rational::integer(30);
+    let path = out_path("color.mp4");
+    // 暗部、中間、明部。チャンネルごとに別の値にして、取り違えも拾う
+    let colors = [
+        Rgba::new(0.02, 0.2, 0.6, 1.0),
+        Rgba::new(0.6, 0.02, 0.2, 1.0),
+        Rgba::new(0.2, 0.2, 0.2, 1.0),
+        Rgba::new(0.9, 0.9, 0.9, 1.0),
+    ];
+    let mut enc = FfmpegEncoderFactory.create().unwrap();
+    enc.begin(&settings(path.clone(), size, fps, false))
+        .unwrap();
+    for c in colors {
+        enc.push_frames(&[RgbaImage::filled(size, c)]).unwrap();
+    }
+    enc.finish().unwrap();
+
+    let mut dec = FfmpegDecoderFactory.open(&path, None).unwrap();
+    for c in colors {
+        let f = dec.next_frame().unwrap().expect("コマがある");
+        let p = f
+            .image
+            .as_ref()
+            .unwrap()
+            .pixel(size.width / 2, size.height / 2);
+        for (got, want) in [(p.r, c.r), (p.g, c.g), (p.b, c.b)] {
+            let code = |v: f32| v.max(0.0).powf(1.0 / 2.4) * 255.0;
+            let diff = (code(got) - code(want)).abs();
+            assert!(
+                diff <= ROUNDTRIP_CODE_TOLERANCE,
+                "線形 {want} が {got} に戻った（符号化値で {diff} 段のずれ）"
+            );
+        }
+    }
+}

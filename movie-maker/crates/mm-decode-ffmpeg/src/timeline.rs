@@ -3,6 +3,7 @@
 //! 番号を「時刻 × fps」から逆算せず索引の位置にするのは、B フレームや VFR でも
 //! デコーダーが返す順序に依らず、シーク後も同じ番号が付くため。
 
+use ff::packet::Ref as _;
 use ffmpeg_next as ff;
 use mm_types::{MmError, Rational, RationalTime, Result};
 
@@ -52,22 +53,31 @@ pub struct VideoScan {
     pub raw_pts: Vec<i64>,
     /// 最後のコマの長さ（ticks）。分からなければ 0。
     pub last_duration: i64,
+    /// キーフレームのコマの番号（昇順）。
+    pub keyframes: Vec<i64>,
 }
 
 /// 映像ストリームの PTS を全部読む。パケットが 1 つも無ければ `Corrupt`。
+///
+/// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）は復号しても絵が出ないので、
+/// 索引に入れない。入れるとコマの番号が出るコマからずれる。
 pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoScan> {
     let mut input = ff::format::input(&path)
         .map_err(|e| MmError::Corrupt(format!("{}: {e}", path.display())))?;
     let mut pts = Vec::new();
+    let mut key_pts = Vec::new();
     let mut packet = ff::Packet::empty();
     loop {
         match packet.read(&mut input) {
             Ok(()) => {
-                if packet.stream() != stream_index {
+                if packet.stream() != stream_index || is_discarded(&packet) {
                     continue;
                 }
                 if let Some(p) = packet.pts().or(packet.dts()) {
                     pts.push((p, packet.duration()));
+                    if packet.is_key() {
+                        key_pts.push(p);
+                    }
                 }
             }
             Err(ff::Error::Eof) => break,
@@ -85,10 +95,35 @@ pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoSc
     pts.sort_by_key(|(p, _)| *p);
     pts.dedup_by_key(|(p, _)| *p);
     let last_duration = pts.last().map_or(0, |(_, d)| (*d).max(0));
+    let raw_pts: Vec<i64> = pts.into_iter().map(|(p, _)| p).collect();
+    let mut keyframes: Vec<i64> = key_pts
+        .iter()
+        .filter_map(|p| raw_pts.binary_search(p).ok())
+        .map(|i| i as i64)
+        .collect();
+    keyframes.sort_unstable();
+    keyframes.dedup();
     Ok(VideoScan {
-        raw_pts: pts.into_iter().map(|(p, _)| p).collect(),
+        raw_pts,
         last_duration,
+        keyframes,
     })
+}
+
+fn is_discarded(packet: &ff::Packet) -> bool {
+    // ffmpeg-next の `Flags` は DISCARD を持たず、`flags()` が未知のビットを落とすので生で読む
+    let raw = unsafe { (*packet.as_ptr()).flags };
+    raw & ff::ffi::AV_PKT_FLAG_DISCARD != 0
+}
+
+/// 次に出すコマ `next` の位置から `target` へ、シークせず読み進めてよいか。
+/// `next..=target` の間に（`next` の次以降の）キーフレームが無ければ、同じ GOP の中なので読み進めるほうが速い。
+pub fn can_read_forward(keyframes: &[i64], next: i64, target: i64) -> bool {
+    if target < next {
+        return false;
+    }
+    let after = keyframes.partition_point(|k| *k <= next);
+    keyframes.get(after).is_none_or(|k| *k > target)
 }
 
 /// PTS の列が固定フレームレートなら、その fps。
@@ -125,4 +160,26 @@ fn fits(raw: &[i64], tb: TimeBase, fps: Rational) -> bool {
         let expected = i as i128 * tb.den as i128 * fps.den() as i128;
         (actual - expected).abs() <= tick
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::can_read_forward;
+
+    #[test]
+    fn 同じ_gop_の前方は読み進める() {
+        let keys = [0, 12, 24];
+        assert!(can_read_forward(&keys, 3, 3));
+        assert!(can_read_forward(&keys, 3, 11));
+        assert!(can_read_forward(&keys, 12, 23));
+        assert!(can_read_forward(&keys, 30, 59));
+    }
+
+    #[test]
+    fn キーフレームをまたぐ前方と後戻りはシークする() {
+        let keys = [0, 12, 24];
+        assert!(!can_read_forward(&keys, 3, 12));
+        assert!(!can_read_forward(&keys, 3, 40));
+        assert!(!can_read_forward(&keys, 5, 4));
+    }
 }

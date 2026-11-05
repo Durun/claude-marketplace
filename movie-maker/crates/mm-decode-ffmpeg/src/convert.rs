@@ -7,6 +7,8 @@ use ff::{ffi, frame};
 use ffmpeg_next as ff;
 use mm_types::{ColorSpace, MmError, Result, RgbaImage, Size};
 
+use crate::transfer::decode_table;
+
 /// 変換器の作り直しが要るかを決める、入力の性質。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SourceKey {
@@ -61,10 +63,21 @@ pub fn is_full_range(range: Range) -> bool {
 }
 
 /// swscale を 1 つ持ち、入力の性質が変わったときだけ作り直す。
-#[derive(Default)]
 pub struct RgbaConverter {
     scaler: Option<(SourceKey, Scaler)>,
     out: Option<frame::Video>,
+    /// 符号化値 → 線形。作業空間は線形の premultiplied なので、アルファを掛ける前に当てる。
+    linear: [f32; 256],
+}
+
+impl Default for RgbaConverter {
+    fn default() -> Self {
+        Self {
+            scaler: None,
+            out: None,
+            linear: decode_table(),
+        }
+    }
 }
 
 // swscale の文脈は生ポインタを持つため自動では Send にならない。所有は 1 つのデコーダーだけで、
@@ -92,7 +105,7 @@ impl RgbaConverter {
         scaler
             .run(src, out)
             .map_err(|e| MmError::Corrupt(format!("RGBA への変換: {e}")))?;
-        to_image(out, Size::new(key.width, key.height))
+        to_image(out, Size::new(key.width, key.height), &self.linear)
     }
 }
 
@@ -124,7 +137,8 @@ fn make_scaler(key: &SourceKey) -> Result<Scaler> {
     Ok(scaler)
 }
 
-fn to_image(frame: &frame::Video, size: Size) -> Result<RgbaImage> {
+/// 8 ビットの RGBA（ストレート）を、線形の premultiplied の f32 にする。
+fn to_image(frame: &frame::Video, size: Size, linear: &[f32; 256]) -> Result<RgbaImage> {
     let (w, h) = (size.width as usize, size.height as usize);
     let stride = frame.stride(0);
     let data = frame.data(0);
@@ -133,9 +147,9 @@ fn to_image(frame: &frame::Video, size: Size) -> Result<RgbaImage> {
         let row = &data[y * stride..y * stride + w * 4];
         for px in row.chunks_exact(4) {
             let a = px[3] as f32 / 255.0;
-            out.push(px[0] as f32 / 255.0 * a);
-            out.push(px[1] as f32 / 255.0 * a);
-            out.push(px[2] as f32 / 255.0 * a);
+            out.push(linear[px[0] as usize] * a);
+            out.push(linear[px[1] as usize] * a);
+            out.push(linear[px[2] as usize] * a);
             out.push(a);
         }
     }
