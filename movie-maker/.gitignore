@@ -1,0 +1,6 @@
+target/
+*.mmdb
+*.mmdb-wal
+*.mmdb-shm
+cache/
+.mm/
