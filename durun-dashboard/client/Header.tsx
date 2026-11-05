@@ -26,6 +26,7 @@ import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 import { XpPrompt } from './XpConfirm.tsx';
 import { XpDropdown } from './XpMenu.tsx';
+import { TranslateTray } from './TranslateTray.tsx';
 
 // 使用率の数字を、四角の左上の角から離す距離。
 const VALUE_INSET = 5;
@@ -552,6 +553,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
         <NotifyButton />
         <StatusCount status="idle" label="回答待ち" snapshot={snapshot} live={live} tray />
         <FeedbackTray improve={snapshot?.improve} onClick={onFeedback} />
+        <TranslateTray />
         <MicTray />
         <LoginTray login={snapshot?.claudeLogin} />
         <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} loading={!snapshot} />

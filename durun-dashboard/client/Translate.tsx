@@ -18,7 +18,7 @@ export const openTranslate = (): void => floatUp(TRANSLATE_KEY, '', { id: TRANSL
 export const TranslateIcon = () => <DesktopIcon icon={TRANSLATE_ICON} title={TRANSLATE_TITLE} hint="PLaMo 3 Translate で、PC の中だけで翻訳します。ダブルクリックで開きます" onLaunch={openTranslate} />;
 
 // 自動は、日本語の字を含めば英語へ、含まなければ日本語へ訳す。再翻訳は、英語に訳した文を日本語に訳し直す。
-const AUTO = 'auto';
+export const AUTO = 'auto';
 const ROUND_TRIP = 'round-trip';
 const TARGETS: [string, string][] = [
   [AUTO, '自動（日本語 ⇄ 英語）'],
@@ -32,6 +32,10 @@ const TARGETS: [string, string][] = [
 
 const JAPANESE = /[぀-ヿ㐀-鿿]/;
 export const targetOf = (choice: string, text: string): string => (choice !== AUTO ? choice : JAPANESE.test(text) ? 'en' : 'ja');
+
+/** choice は訳す先の選択肢の値。窓と、右クリックの「翻訳」が同じ訳し方をする。 */
+export const translateIn = async (choice: string, text: string): Promise<string> =>
+  (choice === ROUND_TRIP ? await api.translate((await api.translate(text, 'en')).text, 'ja') : await api.translate(text, targetOf(choice, text))).text;
 
 const Install = ({ status, onDone }: { status: TranslateStatus; onDone: () => void }) => {
   const [busy, setBusy] = useState(false);
@@ -71,13 +75,13 @@ export const TranslateFloat = ({ f }: { f: Float }) => {
   const run = async () => {
     if (busy || !source.trim()) return;
     setBusy(true);
-    const r = await attempt('翻訳', async () => (choice === ROUND_TRIP ? api.translate((await api.translate(source, 'en')).text, 'ja') : api.translate(source, targetOf(choice, source))));
+    const r = await attempt('翻訳', () => translateIn(choice, source));
     setBusy(false);
-    if (r) update({ result: r.text });
+    if (r !== undefined) update({ result: r });
   };
   const ready = status.data?.runtime && status.data.model;
   return (
-    <FloatFrame f={f} title={TRANSLATE_TITLE} icon={TRANSLATE_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) }]}>
+    <FloatFrame f={f} title={TRANSLATE_TITLE} icon={TRANSLATE_ICON} tray controls={[{ kind: 'close', label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) }]}>
       <div class="widget-body translate">
         {!status.data ? (
           <Empty>{status.error ?? '確かめています…'}</Empty>

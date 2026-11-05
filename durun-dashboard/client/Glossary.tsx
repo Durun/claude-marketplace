@@ -7,6 +7,7 @@ import { useCached } from './hooks.ts';
 import { useLightMode } from './lightMode.ts';
 import type { MarkText } from './Markdown.tsx';
 import { Empty } from './ui.tsx';
+import { Translatable } from './TranslateTray.tsx';
 
 /** 発言が増えたときと、Claude が止まったときに、用語集を拾い直す。on が偽なら読まない。 */
 const useGlossary = (s: Session, on = true) => {
@@ -91,7 +92,7 @@ export const Glossary = ({ s }: { s: Session }) => {
                     ×
                   </button>
                 </dt>
-                <dd>{t.description}</dd>
+                <dd><Translatable text={t.description}>{(d) => d}</Translatable></dd>
               </div>
             ))}
           </dl>

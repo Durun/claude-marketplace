@@ -21,6 +21,7 @@ import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
+import { Translatable } from './TranslateTray.tsx';
 
 const TASK_LABEL: Record<ObservedTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -345,9 +346,9 @@ export const Summary = ({ s }: { s: Session }) => {
       {data ? (
         <dl class={`summary ${loading || data.stale ? 'is-loading' : ''}`}>
           <dt>やっていること</dt>
-          <dd>{data.doing}</dd>
+          <dd><Translatable text={data.doing}>{(t) => t}</Translatable></dd>
           <dt>いま</dt>
-          <dd>{data.now}</dd>
+          <dd><Translatable text={data.now}>{(t) => t}</Translatable></dd>
         </dl>
       ) : (
         <Empty>{!ready ? 'まだやり取りがありません。' : error ? `まとめられませんでした（${error}）` : 'まとめています…'}</Empty>
@@ -447,12 +448,12 @@ const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmar
       {star}
       {/* チャットは会話ログから作るので、並んでいる依頼はどれも Claude が受け取って読んだもの。 */}
       <span class="chat-meta">既読{time}</span>
-      <p class={`chat-human plain${focused ? ' is-focused' : ''}`}>{markText ? markText(e.text) : e.text}</p>
+      <p class={`chat-human plain${focused ? ' is-focused' : ''}`}><Translatable text={e.text}>{(t) => (markText ? markText(t) : t)}</Translatable></p>
     </div>
   ) : (
     <div class="chat-row">
       <span class="chat-meta">{star}{time}</span>
-      <div class={`card chat-claude${focused ? ' is-focused' : ''}`}><Markdown text={e.text} codeLink={codeLink} markText={markText} /></div>
+      <div class={`card chat-claude${focused ? ' is-focused' : ''}`}><Translatable text={e.text}>{(t) => <Markdown text={t} codeLink={codeLink} markText={markText} />}</Translatable></div>
     </div>
   );
 };

@@ -11,6 +11,7 @@ import { Markdown } from './Markdown.tsx';
 import { CommentForm, RelatedSessions } from './PrView.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time } from './ui.tsx';
+import { Translatable } from './TranslateTray.tsx';
 
 export const JIRA_VIEW_TITLE = 'JIRA';
 /** セッション内の「JIRA」ウィジェットの種類の名前。 */
@@ -76,7 +77,7 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
       {issue.dueDate && <span>期限 {issue.dueDate}</span>}
       {issue.updatedAt !== undefined && <span>更新 <Time at={issue.updatedAt} /></span>}
     </div>
-    {issue.description ? <Markdown text={issue.description} /> : <Empty>説明はありません。</Empty>}
+    {issue.description ? <Translatable text={issue.description}>{(t) => <Markdown text={t} />}</Translatable> : <Empty>説明はありません。</Empty>}
     {issue.children.length > 0 && (
       <ul class="jira-list">{issue.children.map((c) => <IssueRow key={c.key} issue={c} fields={CHILD_FIELDS} />)}</ul>
     )}
@@ -84,7 +85,7 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
       {issue.comments.map((c) => (
         <li key={`${c.author}${c.at}`} class="pr-comment">
           <span class="muted">{c.author} · <Time at={c.at} /></span>
-          <Markdown text={c.body} />
+          <Translatable text={c.body}>{(t) => <Markdown text={t} />}</Translatable>
         </li>
       ))}
     </ul>

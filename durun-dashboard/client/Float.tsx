@@ -185,9 +185,10 @@ const fitMedia = (f: Float, el: EventTarget | null): void => {
  * 最大化のボタンは、最大化している間は出さない。
  * 最大化している間は、動かすことも大きさを変えることもできない。
  * 最大化している間は、押しても手前に出さない。上に重ねたほかのウィンドウを、後ろに隠さないためである。
+ * tray のウィンドウは、最小化している間はタスクバーにボタンを置かない。通知領域のアイコンが代わりに出る。
  * 画像や動画を見せるウィンドウは、読めたときに中身の縦横比に合わせる。load と loadedmetadata はバブリングしないので、中身からキャプチャで受け取る。
  */
-export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; children: ComponentChildren }) => {
+export const FloatFrame = ({ f, title, icon, controls, onDock, tray, children }: { f: Float; title: string; icon: string; controls: Control[]; onDock?: () => void; tray?: boolean; children: ComponentChildren }) => {
   const drag = useRef<DragStart>();
   const [taskbar, setTaskbar] = useState<Element | null>(null);
   useEffect(() => setTaskbar(document.querySelector('.taskbar-windows')), []);
@@ -241,7 +242,7 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, children }: { f: 
       <div class="widget-tab-panel" onLoadCapture={(e) => fitMedia(f, e.target)} onLoadedMetadataCapture={(e) => fitMedia(f, e.target)}>{children}</div>
       <WindowControls controls={all} />
       {!f.max && EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
-      {taskbar && createPortal(
+      {taskbar && !(tray && f.min) && createPortal(
         <button class="taskbar-window" title={title} style={iconVar(icon)} aria-pressed={active} onClick={() => toggleTask(f)}>{title}</button>,
         taskbar,
       )}

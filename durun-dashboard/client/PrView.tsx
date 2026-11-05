@@ -11,6 +11,7 @@ import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
+import { Translatable } from './TranslateTray.tsx';
 
 export const PR_TITLE = 'PR';
 /** セッション内の「PR」ウィジェットの種類の名前。 */
@@ -73,7 +74,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
       <button class="btn btn-sm" data-icon="refresh" disabled={loading} title="GitHub から読み直します" onClick={reload}>更新</button>
     </div>
     <PrMeta pr={pr} />
-    {pr.body.trim() ? <Markdown text={pr.body} /> : <Empty>本文はありません。</Empty>}
+    {pr.body.trim() ? <Translatable text={pr.body}>{(t) => <Markdown text={t} />}</Translatable> : <Empty>本文はありません。</Empty>}
     <details class="pr-view-files">
       <summary>変更したファイル（{pr.files.length}）</summary>
       <ul>
@@ -92,7 +93,7 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
             {p.author} · <Ext href={p.url ?? ''}><Time at={p.at} /></Ext>
             {p.state && REVIEW_STATE[p.state] && <> <Chip tone={REVIEW_STATE[p.state]?.tone}>{REVIEW_STATE[p.state]?.text}</Chip></>}
           </span>
-          {p.body.trim() && <Markdown text={p.body} />}
+          {p.body.trim() && <Translatable text={p.body}>{(t) => <Markdown text={t} />}</Translatable>}
         </li>
       ))}
     </ul>
