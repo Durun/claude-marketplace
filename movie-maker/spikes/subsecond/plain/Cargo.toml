@@ -1,0 +1,14 @@
+[package]
+name = "spike-plain"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-doc = { workspace = true }
+ops-sample = { path = "../ops-sample" }
+subsecond = { workspace = true }
+dioxus-devtools = { workspace = true }
+
+[lints]
+workspace = true

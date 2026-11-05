@@ -1,0 +1,19 @@
+# 本体のワークスペースの外。subsecond の試作が本体の依存と lint に混ざらないようにする。
+[workspace]
+resolver = "2"
+members = ["ops-sample", "plain"]
+exclude = ["tauri-app"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+mm-doc = { path = "../../crates/mm-doc" }
+mm-types = { path = "../../crates/mm-types" }
+subsecond = "0.7"
+dioxus-devtools = "0.7"
+
+[workspace.lints.clippy]
+all = "warn"
