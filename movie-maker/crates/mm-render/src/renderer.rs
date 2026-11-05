@@ -9,6 +9,7 @@ use mm_node_api::{FrameRef, GpuHelper, GpuTexture, Services};
 use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
+use crate::audio::AudioStream;
 use crate::compose::Compositor;
 use crate::layers::CompCx;
 use crate::source::SourcePool;
@@ -30,6 +31,7 @@ pub struct WgpuRenderer {
     pub(crate) services: Services,
     pub(crate) sources: SourcePool,
     pub(crate) errors: Vec<String>,
+    pub(crate) audio: Option<AudioStream>,
     outputs: VecDeque<u64>,
 }
 
@@ -50,6 +52,7 @@ impl WgpuRenderer {
             services,
             sources: SourcePool::default(),
             errors: Vec::new(),
+            audio: None,
             outputs: VecDeque::new(),
         }
     }
@@ -164,6 +167,8 @@ impl Renderer for WgpuRenderer {
 
     fn invalidate(&mut self, _composition: &CompositionId, _range: TimeRange) {
         self.sources.clear();
+        // 編集で音が変わるので、ダッキングなどの持ち越しも捨てる。
+        self.audio = None;
     }
 
     fn gpu(&mut self) -> &mut dyn GpuHelper {

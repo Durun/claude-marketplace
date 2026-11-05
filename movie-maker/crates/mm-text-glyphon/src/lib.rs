@@ -90,8 +90,15 @@ impl TextShaper for CosmicShaper {
             return Ok(ShapedText::empty());
         }
         let mut fonts = lock(&self.inner.fonts)?;
-        let buffer = layout::layout(&mut fonts.0, text, style);
-        Ok(layout::to_shaped(&fonts.0, &buffer, text, style))
+        let (fs, cache) = &mut *fonts;
+        let buffer = layout::layout(fs, text, style);
+        let mut shaped = layout::to_shaped(fs, &buffer, text, style);
+        if !shaped.bounds.is_empty() {
+            // 送り幅と行の高さの矩形に、字形のインクの張り出しを足す（斜体、アクセント、絵文字）。
+            let ink = raster::ink_bounds(fs, cache, &shaped, style);
+            shaped.bounds = shaped.bounds.union(&ink);
+        }
+        Ok(shaped)
     }
 }
 

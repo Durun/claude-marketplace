@@ -16,9 +16,11 @@ pub const NESTED_KIND: &str = "composition";
 /// 入れ子の種類がコンポジションの ID を持つパラメータの名前。
 pub const NESTED_PARAM: &str = "composition";
 /// 入れ子の深さの上限。循環した参照で止まらなくなるのを防ぐ。
-const MAX_DEPTH: u32 = 8;
+pub(crate) const MAX_DEPTH: u32 = 8;
 /// ベクターを描き直す倍率の上限。
 const MAX_VECTOR_SCALE: f32 = 4.0;
+/// 入れ子のテクスチャの一辺の上限（wgpu の既定の 2D の上限）。
+const MAX_TEXTURE_SIDE: u32 = 8192;
 
 /// 1 つのコンポジションを 1 つの時刻で描くための入力。
 #[derive(Clone, Copy)]
@@ -133,7 +135,7 @@ impl WgpuRenderer {
         let (kind, params) = evaluate(cx.nodes, layer, cx.t)?;
         let transform = LayerTransform::from_doc(&layer.transform, cx.t);
         let image = if kind.id() == NESTED_KIND {
-            self.nested_image(encoder, cx, layer, &params)?
+            self.nested_image(encoder, cx, layer, &params, &transform)?
         } else {
             self.kind_image(cx, kind.as_ref(), layer, &params, &transform)?
         };
@@ -205,13 +207,15 @@ impl WgpuRenderer {
         Ok(Some(LayerImage { texture, logical }))
     }
 
-    /// 入れ子のコンポジションを、親と同じ画面の倍率で別のテクスチャに描く。
+    /// 入れ子のコンポジションを別のテクスチャに描く。中にベクターがあるときは、入れ子のレイヤーを
+    /// 拡大する分だけ大きく描き、中のベクターの倍率が親の拡大を含むようにする。
     fn nested_image(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         cx: &CompCx<'_>,
         layer: &Layer,
         params: &Params,
+        transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
         let name = params
             .get(NESTED_PARAM)
@@ -227,10 +231,18 @@ impl WgpuRenderer {
         }
         let id: CompositionId = Id::new(name);
         let nested = cx.project.composition(&id)?;
+        let boost = if has_vector(cx, nested, cx.depth + 1) {
+            nested_boost(transform, cx, nested)
+        } else {
+            1.0
+        };
         let child = CompCx {
             comp: nested,
             t: layer.to_source_time(cx.t)?,
-            size: scaled(Size::new(nested.width, nested.height), cx.comp_to_out()),
+            size: scaled(
+                Size::new(nested.width, nested.height),
+                cx.comp_to_out() * boost,
+            ),
             depth: cx.depth + 1,
             ..*cx
         };
@@ -249,6 +261,40 @@ fn vector_boost(kind: &dyn NodeKind, transform: &LayerTransform) -> f32 {
     } else {
         1.0
     }
+}
+
+/// 入れ子を描く倍率。拡大は `MAX_VECTOR_SCALE` までで、テクスチャの一辺が上限を超えない。
+fn nested_boost(transform: &LayerTransform, cx: &CompCx<'_>, nested: &Composition) -> f32 {
+    let base = cx.comp_to_out() * nested.width.max(nested.height) as f32;
+    let room = MAX_TEXTURE_SIDE as f32 / base.max(1.0);
+    transform
+        .max_scale()
+        .clamp(1.0, MAX_VECTOR_SCALE)
+        .min(room.max(1.0))
+}
+
+/// コンポジションの中（入れ子の先も）にベクターの種類があるか。
+fn has_vector(cx: &CompCx<'_>, comp: &Composition, depth: u32) -> bool {
+    if depth > MAX_DEPTH {
+        return false;
+    }
+    comp.layers.iter().any(|layer| {
+        let Ok((kind, params)) = evaluate(cx.nodes, layer, cx.t) else {
+            return false;
+        };
+        if kind.id() != NESTED_KIND {
+            return kind.traits().vector;
+        }
+        let child: CompositionId = Id::new(
+            params
+                .get(NESTED_PARAM)
+                .and_then(|v| v.as_text())
+                .unwrap_or(""),
+        );
+        cx.project
+            .composition(&child)
+            .is_ok_and(|c| has_vector(cx, c, depth + 1))
+    })
 }
 
 fn scaled(size: Size, k: f32) -> Size {

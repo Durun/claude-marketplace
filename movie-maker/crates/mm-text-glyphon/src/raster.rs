@@ -6,7 +6,10 @@ use cosmic_text::fontdb::{Weight, ID};
 use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem, SwashCache, SwashContent};
 
 use mm_text_api::{FaceRef, ShapedText, TextStyle};
-use mm_types::{Rgba, RgbaImage, Size};
+use mm_types::{Rect, Rgba, RgbaImage, Size};
+
+/// インクの矩形に足す余白（1 倍の画素）。倍率ごとのヒンティングのずれで端が切れないようにする。
+const INK_MARGIN: f32 = 1.0;
 
 /// 絵の大きさは `bounds * scale` を切り上げた大きさ（口の契約）。
 pub(crate) fn raster_size(shaped: &ShapedText, scale: f32) -> Size {
@@ -108,8 +111,61 @@ pub(crate) fn draw(
 ) -> RgbaImage {
     let size = raster_size(shaped, scale);
     let mut img = RgbaImage::transparent(size);
-    let faces = resolve_faces(fs, &shaped.faces);
     let origin = (shaped.bounds.x, shaped.bounds.y);
+    for_each_glyph_image(
+        fs,
+        cache,
+        shaped,
+        style,
+        scale,
+        origin,
+        |image, left, top| {
+            blend_glyph(&mut img, image, left, top, style.color);
+        },
+    );
+    img
+}
+
+/// 字形のインクが 1 倍で占める矩形の和。行の送り幅や高さを越える部分（斜体の張り出し、
+/// 行より高いアクセントや絵文字）を絵の範囲に含めるために使う。
+pub(crate) fn ink_bounds(
+    fs: &mut FontSystem,
+    cache: &mut SwashCache,
+    shaped: &ShapedText,
+    style: &TextStyle,
+) -> Rect {
+    let mut bounds = Rect::EMPTY;
+    for_each_glyph_image(
+        fs,
+        cache,
+        shaped,
+        style,
+        1.0,
+        (0.0, 0.0),
+        |image, left, top| {
+            let ink = Rect::new(
+                left as f32 - INK_MARGIN,
+                top as f32 - INK_MARGIN,
+                image.placement.width as f32 + INK_MARGIN * 2.0,
+                image.placement.height as f32 + INK_MARGIN * 2.0,
+            );
+            bounds = bounds.union(&ink);
+        },
+    );
+    bounds
+}
+
+/// 各字形の絵を引き、絵の左上の位置（`origin` を原点とする `scale` 倍の画素）と一緒に `f` に渡す。
+fn for_each_glyph_image(
+    fs: &mut FontSystem,
+    cache: &mut SwashCache,
+    shaped: &ShapedText,
+    style: &TextStyle,
+    scale: f32,
+    origin: (f32, f32),
+    mut f: impl FnMut(&cosmic_text::SwashImage, i32, i32),
+) {
+    let faces = resolve_faces(fs, &shaped.faces);
     for glyph in shaped.lines.iter().flat_map(|l| &l.glyphs) {
         let Some(Some((font_id, weight))) = faces.get(glyph.face as usize) else {
             continue;
@@ -128,13 +184,6 @@ pub(crate) fn draw(
         let Some(image) = cache.get_image(fs, key).as_ref() else {
             continue;
         };
-        blend_glyph(
-            &mut img,
-            image,
-            x + image.placement.left,
-            y - image.placement.top,
-            style.color,
-        );
+        f(image, x + image.placement.left, y - image.placement.top);
     }
-    img
 }

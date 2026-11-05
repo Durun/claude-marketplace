@@ -138,3 +138,48 @@ fn 別に作った描画器でも同じ絵になる() {
     );
     assert!(ink(&a) > 10.0);
 }
+
+/// 絵の範囲を四方に広げて描き直しても、インクの量が変わらないこと（範囲で切れていない）。
+fn assert_no_clipping(name: &str, text: &str, st: &TextStyle, scale: f32) {
+    let engine = TextEngine::new();
+    let (shaper, raster) = (engine.shaper(), engine.rasterizer());
+    let shaped = shaper.shape(text, st).expect("整形");
+    let mut wide = shaped.clone();
+    let pad = 24.0;
+    wide.bounds = mm_types::Rect::new(
+        shaped.bounds.x - pad,
+        shaped.bounds.y - pad,
+        shaped.bounds.width + pad * 2.0,
+        shaped.bounds.height + pad * 2.0,
+    );
+    let image = raster.rasterize(&shaped, st, scale).expect("描く");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let bg = Rgba::new(0.02, 0.02, 0.05, 1.0);
+    std::fs::write(dir.join(format!("{name}.png")), encode_png(&image, bg)).expect("書ける");
+    let tight = ink(&image);
+    let loose = ink(&raster.rasterize(&wide, st, scale).expect("描く"));
+    assert!(tight > 10.0, "字が描かれている");
+    assert!(
+        (loose - tight).abs() <= loose * 0.002,
+        "{text:?} が範囲で切れている: 範囲内 {tight}、広げた範囲 {loose}"
+    );
+}
+
+#[test]
+fn 行より高いアクセントや絵文字も絵の範囲で切れない() {
+    let tight_lines = TextStyle {
+        font_family: "Yu Gothic".into(),
+        size_px: 48.0,
+        line_height: 0.6,
+        ..TextStyle::default()
+    };
+    assert_no_clipping("text_accent_x1", "ÅÉÑ Ǻ ǘ jgyp", &tight_lines, 1.0);
+    assert_no_clipping("text_accent_x2", "ÅÉÑ Ǻ ǘ jgyp", &tight_lines, 2.0);
+    assert_no_clipping("text_emoji", "😀🎉 絵文字", &tight_lines, 1.0);
+    let wide_glyphs = TextStyle {
+        font_family: "Segoe UI".into(),
+        size_px: 64.0,
+        ..TextStyle::default()
+    };
+    assert_no_clipping("text_overhang", "fjfjf  WAVE ff", &wide_glyphs, 1.0);
+}

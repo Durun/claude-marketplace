@@ -33,6 +33,15 @@ impl Cube3d {
                 Some("LUT_1D_SIZE") => return Err(MmError::Unsupported("1D LUT".into())),
                 Some("DOMAIN_MIN") => domain_min = parse_triple(words)?,
                 Some("DOMAIN_MAX") => domain_max = parse_triple(words)?,
+                Some("LUT_3D_INPUT_RANGE") => {
+                    // Resolve の書き方で、3 チャンネル共通の DOMAIN_MIN / DOMAIN_MAX と同じ意味。
+                    let low = parse_number(words.next())?;
+                    let high = parse_number(words.next())?;
+                    domain_min = [low; 3];
+                    domain_max = [high; 3];
+                }
+                // 知らないキーワードの行は読み飛ばす。値の行は数字・符号・小数点で始まる。
+                Some(first) if first.starts_with(|c: char| c.is_ascii_alphabetic()) => {}
                 Some(first) => {
                     let row = parse_triple(std::iter::once(first).chain(words))?;
                     data.extend_from_slice(&row);
@@ -123,6 +132,11 @@ fn parse_size(word: Option<&str>) -> Result<u32> {
     Ok(size)
 }
 
+fn parse_number(word: Option<&str>) -> Result<f32> {
+    word.and_then(|w| w.parse().ok())
+        .ok_or_else(|| MmError::Corrupt("数が読めない行".into()))
+}
+
 fn parse_triple<'a>(mut words: impl Iterator<Item = &'a str>) -> Result<[f32; 3]> {
     let mut out = [0.0_f32; 3];
     for slot in &mut out {
@@ -180,6 +194,17 @@ mod tests {
                 assert!((a - b).abs() < 1e-5, "{a} {b}");
             }
         }
+    }
+
+    #[test]
+    fn resolveの入力範囲の行は領域として読み知らない行は読み飛ばす() {
+        let text = to_text(&identity(2)).replace(
+            "LUT_3D_SIZE 2",
+            "LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.0 2.0\nFOO bar",
+        );
+        let lut = Cube3d::parse(&text).unwrap();
+        assert_eq!(lut.domain_max, [2.0; 3]);
+        assert_eq!(lut.data.len(), 24);
     }
 
     #[test]
