@@ -1,6 +1,6 @@
 //! wgpu の Device と Queue を持つ文脈。headless（面なし）で作る。
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use mm_types::{MmError, Result};
 
@@ -21,6 +21,19 @@ impl GpuContext {
     /// 高性能のアダプターを選んで作る。GPU が無ければ `Err(Unsupported)`。
     pub fn new() -> Result<Arc<Self>> {
         pollster::block_on(Self::new_async())
+    }
+
+    /// プロセスで 1 つの文脈を共有する。Device の生成と破棄が並行すると Windows の
+    /// ドライバが終了時に落ちることがあるため、テストと書き出しはこちらを使う。
+    pub fn shared() -> Result<Arc<Self>> {
+        static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
+        let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ctx) = slot.as_ref() {
+            return Ok(ctx.clone());
+        }
+        let ctx = Self::new()?;
+        *slot = Some(ctx.clone());
+        Ok(ctx)
     }
 
     async fn new_async() -> Result<Arc<Self>> {
@@ -53,5 +66,14 @@ impl GpuContext {
             adapter_name: adapter.get_info().name,
             timestamps,
         }))
+    }
+}
+
+impl Drop for GpuContext {
+    /// プロセスの終了と GPU の後片付けが重ならないよう、未完の仕事を待ってから Device を壊す。
+    fn drop(&mut self) {
+        // 待ちに失敗しても片付けは続ける。
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        self.device.destroy();
     }
 }

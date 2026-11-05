@@ -14,7 +14,7 @@ use mm_testkit::node::MapRegistry;
 use mm_testkit::render::{contract, RenderFixture};
 
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::new() {
+    match GpuContext::shared() {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")

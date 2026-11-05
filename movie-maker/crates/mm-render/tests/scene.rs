@@ -25,7 +25,7 @@ const TOLERANCE: f32 = 3e-3;
 const RED: Rgba = Rgba::new(1.0, 0.0, 0.0, 1.0);
 
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::new() {
+    match GpuContext::shared() {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")

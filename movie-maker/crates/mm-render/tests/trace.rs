@@ -41,7 +41,7 @@ fn project() -> Project {
 
 #[test]
 fn gpu_の時間が_mm_trace_に載る() {
-    let ctx = match GpuContext::new() {
+    let ctx = match GpuContext::shared() {
         Ok(ctx) => ctx,
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
