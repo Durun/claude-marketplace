@@ -2628,12 +2628,18 @@ dependencies = [
 name = "mm-export"
 version = "0.1.0"
 dependencies = [
+ "mm-audio-api",
+ "mm-decode-api",
  "mm-doc",
+ "mm-node-api",
+ "mm-render-api",
  "mm-runtime",
  "mm-testkit",
  "mm-trace",
  "mm-types",
+ "serde_json",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
