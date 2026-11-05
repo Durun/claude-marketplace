@@ -32,5 +32,13 @@ thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
+# 色の試作用。OCIO の橋（bindgen、cc）、GLSL → WGSL（naga）、WGSL を GPU で確かめる試験（wgpu、pollster）。
+naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgsl-in", "wgsl-out"] }
+wgpu = { version = "30.0", default-features = false, features = ["wgsl", "dx12", "vulkan"] }
+pollster = "0.4"
+bindgen = "0.73"
+cc = "1.2"
+mm-color-lut = { path = "crates/mm-color-lut" }
+
 [workspace.lints.clippy]
 all = "warn"
