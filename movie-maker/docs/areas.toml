@@ -1,0 +1,113 @@
+# 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」の表と同じ中身。
+# worktree やエージェントに任せるときは、この表の 1 つの [[area]] を渡す。
+# 自動の改善の回は、`git diff --name-only` を `write` と突き合わせ、外のファイルを変えた PR を落とす。
+# パスは movie-maker/ からの相対で、末尾の "/" はその配下の全部。glob は "*" だけ。
+
+[[area]]
+name = "doc-and-ops"
+title = "文書と命令"
+write = ["crates/mm-doc/", "crates/mm-eval/", "crates/mm-ops/", "crates/mm-store/"]
+avoid = ["crates/mm-*-api/"]
+
+[[area]]
+name = "render"
+title = "描画器"
+write = ["crates/mm-render/", "crates/mm-nodes-basic/"]
+avoid = ["crates/mm-node-api/", "crates/mm-render-api/"]
+
+[[area]]
+name = "decode"
+title = "デコードとエンコード"
+write = ["crates/mm-decode-*/", "crates/mm-encode-*/"]
+avoid = ["crates/mm-decode-api/"]
+
+[[area]]
+name = "color"
+title = "色"
+write = ["crates/mm-color-*/"]
+avoid = ["crates/mm-color-api/"]
+
+[[area]]
+name = "audio"
+title = "音"
+write = ["crates/mm-audio-*/"]
+avoid = ["crates/mm-audio-api/"]
+
+[[area]]
+name = "text"
+title = "文字"
+write = ["crates/mm-text-*/"]
+avoid = ["crates/mm-text-api/"]
+
+[[area]]
+name = "hosts"
+title = "Web の種類と OFX のホスト"
+write = ["crates/mm-host-*/", "crates/mm-nodes-cef/", "crates/mm-nodes-ofx/"]
+avoid = ["crates/mm-host-api/"]
+
+[[area]]
+name = "ingest"
+title = "取り込み"
+write = ["crates/mm-ingest/", "tools/"]
+avoid = ["crates/mm-ingest-api/"]
+
+[[area]]
+name = "export"
+title = "書き出し"
+write = ["crates/mm-export/"]
+avoid = []
+
+[[area]]
+name = "ui-wgpu"
+title = "UI（wgpu の面）"
+write = ["crates/mm-ui-layout/", "crates/mm-ui-wgpu/"]
+avoid = ["ui/"]
+
+[[area]]
+name = "ui-panels"
+title = "UI（各パネル）"
+write = ["ui/panels/*/"]
+avoid = ["ui/sdk/"]
+note = "1 つの worktree は 1 つのパネルだけを書く。ほかのパネルは触らない"
+
+[[area]]
+name = "claude-entry"
+title = "Claude の入口"
+write = ["crates/mm-serve/", "apps/mm/"]
+avoid = []
+
+[[area]]
+name = "improve"
+title = "自動の改善"
+write = ["crates/mm-improve/"]
+avoid = []
+
+[[area]]
+name = "testkit-and-bench"
+title = "見本とベンチ"
+write = ["crates/mm-testkit/", "crates/mm-bench/", "fixtures/", "fuzz/"]
+avoid = []
+
+[[area]]
+name = "instrumentation"
+title = "計装"
+write = ["crates/mm-trace/", "xtask/"]
+avoid = []
+note = "ほかのクレートのスパンの名前は各話題が付ける。mm-trace は決まりだけ持つ"
+
+[[area]]
+name = "integration"
+title = "口と組み立て（統合の担当）"
+write = [
+  "crates/mm-*-api/",
+  "crates/mm-types/",
+  "crates/mm-runtime/",
+  "ui/sdk/",
+  "ui/theme/",
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  "docs/",
+]
+avoid = []
+note = "共有のファイル（Cargo.toml、Cargo.lock、mm-runtime/src/assemble.rs、ui/sdk）はこの担当だけが書く。外のクレートを足したいときは PR に「workspace.dependencies に X を足す」と書く"
