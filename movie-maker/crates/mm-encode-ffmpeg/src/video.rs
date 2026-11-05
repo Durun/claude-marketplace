@@ -9,6 +9,8 @@ use ffmpeg_next as ff;
 use mm_decode_api::EncodeSettings;
 use mm_types::{MmError, Result, RgbaImage, Size};
 
+use crate::transfer::EncodeTable;
+
 /// x264 の品質（小さいほど高画質）。編集の途中の確認と配信の両方に足りる値。
 const CRF: &str = "18";
 const PRESET: &str = "medium";
@@ -22,6 +24,8 @@ pub struct VideoTrack {
     stream_tb: Rational,
     size: Size,
     next_pts: i64,
+    /// 線形 → 符号化値。スケーラーに渡す前に符号化し直す。
+    table: EncodeTable,
 }
 
 impl VideoTrack {
@@ -53,30 +57,8 @@ impl VideoTrack {
             .add_stream(codec)
             .map_err(|e| MmError::Internal(format!("映像ストリーム: {e}")))?;
         let stream_index = stream.index();
-
-        let mut enc = codec::context::Context::new_with_codec(codec)
-            .encoder()
-            .video()
-            .map_err(|e| MmError::Internal(format!("映像の符号化器: {e}")))?;
-        enc.set_width(size.width);
-        enc.set_height(size.height);
-        enc.set_format(Pixel::YUV420P);
         let encoder_tb = Rational::new(den, num);
-        enc.set_time_base(encoder_tb);
-        enc.set_frame_rate(Some(Rational::new(num, den)));
-        enc.set_colorspace(Space::BT709);
-        enc.set_color_range(Range::MPEG);
-        enc.set_color_primaries(ff::color::Primaries::BT709);
-        enc.set_color_transfer_characteristic(TransferCharacteristic::BT709);
-        if global_header {
-            enc.set_flags(codec::Flags::GLOBAL_HEADER);
-        }
-        let mut options = ff::Dictionary::new();
-        options.set("crf", CRF);
-        options.set("preset", PRESET);
-        let opened = enc
-            .open_with(options)
-            .map_err(|e| MmError::Internal(format!("libx264 を開けない: {e}")))?;
+        let opened = open_encoder(codec, size, encoder_tb, global_header)?;
         stream.set_parameters(&opened);
         stream.set_time_base(encoder_tb);
 
@@ -88,6 +70,7 @@ impl VideoTrack {
             stream_tb: encoder_tb,
             size,
             next_pts: 0,
+            table: EncodeTable::new(),
         })
     }
 
@@ -105,7 +88,7 @@ impl VideoTrack {
             return Err(MmError::InvalidArgument("コマの大きさが設定と違う".into()));
         }
         let mut rgba = frame::Video::new(Pixel::RGBA, self.size.width, self.size.height);
-        fill_rgba(&mut rgba, image);
+        fill_rgba(&mut rgba, image, &self.table);
         // 符号化器が参照を持ち続けるので、コマごとに新しい YUV の領域を使う
         let mut yuv = frame::Video::new(Pixel::YUV420P, self.size.width, self.size.height);
         self.scaler
@@ -139,6 +122,45 @@ impl VideoTrack {
     }
 }
 
+/// libx264 を Rec.709・tv レンジの YUV420P で開く。スレッド数は自動（0）にする。
+fn open_encoder(
+    codec: ff::Codec,
+    size: Size,
+    time_base: Rational,
+    global_header: bool,
+) -> Result<codec::encoder::video::Encoder> {
+    let mut context = codec::context::Context::new_with_codec(codec);
+    // 1 スレッドだと 1080p で数倍遅い。フレームの並列は x264 側のスレッドで効く。
+    context.set_threading(ff::threading::Config {
+        kind: ff::threading::Type::Frame,
+        ..Default::default()
+    });
+    let mut enc = context
+        .encoder()
+        .video()
+        .map_err(|e| MmError::Internal(format!("映像の符号化器: {e}")))?;
+    enc.set_width(size.width);
+    enc.set_height(size.height);
+    enc.set_format(Pixel::YUV420P);
+    enc.set_time_base(time_base);
+    enc.set_frame_rate(Some(Rational::new(
+        time_base.denominator(),
+        time_base.numerator(),
+    )));
+    enc.set_colorspace(Space::BT709);
+    enc.set_color_range(Range::MPEG);
+    enc.set_color_primaries(ff::color::Primaries::BT709);
+    enc.set_color_transfer_characteristic(TransferCharacteristic::BT709);
+    if global_header {
+        enc.set_flags(codec::Flags::GLOBAL_HEADER);
+    }
+    let mut options = ff::Dictionary::new();
+    options.set("crf", CRF);
+    options.set("preset", PRESET);
+    enc.open_with(options)
+        .map_err(|e| MmError::Internal(format!("libx264 を開けない: {e}")))
+}
+
 fn too_large(what: &str) -> MmError {
     MmError::InvalidArgument(format!("{what} が大きすぎる"))
 }
@@ -162,22 +184,19 @@ fn make_scaler(size: Size) -> Result<Scaler> {
     Ok(scaler)
 }
 
-/// f32 の画素を 8 ビットに丸めて RGBA のフレームへ写す。アルファは使わず不透明として書く。
-fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage) {
+/// 線形の f32 の画素を Rec.1886 の 8 ビットに符号化して RGBA のフレームへ写す。
+/// アルファは使わず不透明として書く（premultiplied なので黒の上に置いた色と同じ）。
+fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
     let width = image.width() as usize;
     let stride = dst.stride(0);
     let data = dst.data_mut(0);
     for (y, row) in image.data().chunks_exact(width * 4).enumerate() {
         let out = &mut data[y * stride..y * stride + width * 4];
         for (o, px) in out.chunks_exact_mut(4).zip(row.chunks_exact(4)) {
-            o[0] = to_u8(px[0]);
-            o[1] = to_u8(px[1]);
-            o[2] = to_u8(px[2]);
+            o[0] = table.encode(px[0]);
+            o[1] = table.encode(px[1]);
+            o[2] = table.encode(px[2]);
             o[3] = 255;
         }
     }
-}
-
-fn to_u8(v: f32) -> u8 {
-    (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }

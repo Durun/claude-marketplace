@@ -11,7 +11,7 @@ use mm_types::{MmError, Rational, RationalTime, Result, Size, TimeRange};
 
 use crate::audio::{self, AudioProbe, AudioReader};
 use crate::convert::{Matrix, RgbaConverter};
-use crate::timeline::{detect_fps, scan_video, TimeBase};
+use crate::timeline::{can_read_forward, detect_fps, scan_video, TimeBase};
 
 /// PTS の索引を作れなかった素材の 1 コマの長さの仮定（秒）。コマが 1 つだけのときに使う。
 const FALLBACK_FRAME_SECONDS: (i128, u32) = (1, 30);
@@ -25,6 +25,8 @@ pub struct FfmpegDecoder {
     decoder: ff::decoder::Video,
     /// 昇順で重複のない映像の PTS（ストリームの ticks）。位置がコマの番号。
     raw_pts: Vec<i64>,
+    /// キーフレームのコマの番号（昇順）。シークするか読み進めるかの判断に使う。
+    keyframes: Vec<i64>,
     /// CFR のとき、コマの時刻を `index / fps` にする。
     fps: Option<Rational>,
     converter: RgbaConverter,
@@ -56,8 +58,13 @@ impl FfmpegDecoder {
         let stream_index = stream.index();
         let tb = TimeBase::new(stream.time_base())?;
         let declared = [stream.avg_frame_rate(), stream.rate()];
-        let ctx = ff::codec::Context::from_parameters(stream.parameters())
+        let mut ctx = ff::codec::Context::from_parameters(stream.parameters())
             .map_err(|e| MmError::Unsupported(format!("映像のコーデック: {e}")))?;
+        // 1 スレッドだと 1080p の復号が数倍遅い。0 は FFmpeg が CPU の数で決める。
+        ctx.set_threading(ff::threading::Config {
+            kind: ff::threading::Type::Frame,
+            ..Default::default()
+        });
         let decoder = ctx
             .decoder()
             .video()
@@ -83,6 +90,7 @@ impl FfmpegDecoder {
             stream_index,
             decoder,
             raw_pts: scan.raw_pts,
+            keyframes: scan.keyframes,
             fps,
             converter: RgbaConverter::default(),
             next_index: 0,
@@ -114,8 +122,11 @@ impl FfmpegDecoder {
             let mut decoded = frame::Video::empty();
             match self.decoder.receive_frame(&mut decoded) {
                 Ok(()) => {
-                    let pts = decoded.timestamp().or(decoded.pts());
-                    return Ok(pts.map(|p| (self.index_of(p), decoded)));
+                    // PTS の無いコマは番号を決められないので読み飛ばす
+                    if let Some(p) = decoded.timestamp().or(decoded.pts()) {
+                        return Ok(Some((self.index_of(p), decoded)));
+                    }
+                    continue;
                 }
                 Err(ff::Error::Eof) => return Ok(None),
                 Err(ff::Error::Other { errno }) if errno == ff::error::EAGAIN => {}
@@ -146,6 +157,29 @@ impl FfmpegDecoder {
         match self.raw_pts.binary_search(&pts) {
             Ok(i) => i as i64,
             Err(i) => i.saturating_sub(1) as i64,
+        }
+    }
+
+    /// 同じ GOP の中で、復号器を進めながら `index` より前のコマを捨てる。
+    /// シークは次のキーフレームへ戻って復号し直すので、ここで読み進めるほうが少ない仕事で済む。
+    fn skip_to(&mut self, index: i64) -> Result<()> {
+        self.next_index = index;
+        loop {
+            let next = match self.held.take() {
+                Some(h) => Some(h),
+                None => self.receive_indexed()?,
+            };
+            match next {
+                Some((i, _)) if i < index => {}
+                Some(first) => {
+                    self.held = Some(first);
+                    return Ok(());
+                }
+                None => {
+                    self.ended = true;
+                    return Ok(());
+                }
+            }
         }
     }
 
@@ -184,6 +218,10 @@ impl Decoder for FfmpegDecoder {
         let index = self.info.frame_index_at(t).clamp(0, count);
         if index == self.next_index {
             return Ok(());
+        }
+        if index < count && !self.ended && can_read_forward(&self.keyframes, self.next_index, index)
+        {
+            return self.skip_to(index);
         }
         self.held = None;
         self.next_index = index;
@@ -297,9 +335,10 @@ fn build_info(
         size: Size::new(decoder.width(), decoder.height()),
         color_space: matrix.color_space(),
         timebase_offset,
-        audio: audio.map(|a| AudioStreamInfo {
-            sample_rate: a.rate,
-            channels: a.channels,
+        // 音は素材の形によらず、読むときに既定のレートとチャンネル数へそろえる
+        audio: audio.map(|_| AudioStreamInfo {
+            sample_rate: DEFAULT_SAMPLE_RATE,
+            channels: DEFAULT_CHANNELS,
         }),
         pts_index,
     })
