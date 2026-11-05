@@ -59,9 +59,9 @@
 
 `crates/mm-color-ocio/README.md` に手順と環境変数がある。要点:
 
-- OCIO: `vcpkg install opencolorio:x64-windows`（2.6.0。ロードマップの 2.5 以上で、組み込み設定 `ocio://default` は 2.6 では CG 設定 v5 / ACES 2.1）。ビルドは 1.6 分。
+- OCIO: `crates/mm-color-ocio/vcpkg.json`（`builtin-baseline` と `overrides` で 2.6.0 に固定）で `vcpkg install --x-manifest-root`。2.6.0 を採る（ロードマップの 2.5 以上を満たし、vcpkg の最新で、試験を通した版）。組み込み設定は `ocio://studio-config-latest`（`ocio://default` の CG 設定には `bt709_oetf` に当てる `Camera Rec.709` が無い）。初回のビルドは 1.6 分。
 - bindgen のために LLVM（`winget install LLVM.LLVM`）と `LIBCLANG_PATH`。
-- `OCIO_ROOT` に vcpkg の `installed/x64-windows`。`cargo test -p mm-color-ocio --features native`。
+- `OCIO_ROOT` にマニフェストの `--x-install-root` の下の `x64-windows`。`cargo test -p mm-color-ocio --features native`。
 - OCIO が無い既定の環境は feature を付けない。変換器の試験と `mm-color-lut` だけが走る。
 - DLL は `build.rs` が `target/<profile>/` に写す。配布では `OpenColorIO_2_6.dll` と依存の 7 つ（`yaml-cpp`、`Imath`、`libexpat`、`z`、`zstd`、`liblzma`、`bz2`）を同梱する。静的リンク（`x64-windows-static-md`）は試していない。
 

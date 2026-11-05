@@ -12,8 +12,13 @@ use tracing::info_span;
 use crate::ffi::{self, Config, Processor};
 use crate::glsl::glsl_to_wgsl;
 
-/// 既定の設定。OCIO の組み込みの CG 設定（ACES 2.x を含む）。
-pub const DEFAULT_CONFIG: &str = "ocio://default";
+/// 既定の設定。OCIO の組み込みの studio 設定。`ocio://default`（CG 設定）には
+/// `bt709_oetf` に当てるカメラの Rec.709（`Camera Rec.709`）が無く、studio 設定には ACES 2.0 の
+/// 表示変換もそろっている。
+pub const DEFAULT_CONFIG: &str = "ocio://studio-config-latest";
+/// `to` にこの名前を渡すと、設定の既定の display と view で見る変換になる。
+/// ACES 2.0 のトーンマップを含むので逆変換が無く、`known_spaces` には出さない。
+pub const DISPLAY_SPACE: &str = "display";
 /// 実装の名前。
 pub const OCIO_ID: &str = "ocio";
 /// OCIO の GLSL の入口の関数名。
@@ -95,16 +100,9 @@ impl OcioColor {
         display: Option<&str>,
         view: Option<&str>,
     ) -> Result<TransformProgram> {
-        let mut inner = self.lock();
-        let src = resolve(&inner.config, from)?;
-        let key = format!("{src}|{display:?}|{view:?}");
-        if !inner.processors.contains_key(&key) {
-            let p = info_span!("color_ocio.make_processor")
-                .in_scope(|| inner.config.display_processor(&src, display, view))?;
-            inner.processors.insert(key.clone(), p);
-        }
         let size = self.lut_size;
-        let p = inner.processors.get_mut(&key).expect("入れたばかり");
+        let mut inner = self.lock();
+        let p = display_processor_for(&mut inner, from, display, view)?;
         program_of(p, size)
     }
 
@@ -117,13 +115,7 @@ impl OcioColor {
         rgb: [f32; 3],
     ) -> Result<[f32; 3]> {
         let mut inner = self.lock();
-        let src = resolve(&inner.config, from)?;
-        let key = format!("{src}|{display:?}|{view:?}");
-        if !inner.processors.contains_key(&key) {
-            let p = inner.config.display_processor(&src, display, view)?;
-            inner.processors.insert(key.clone(), p);
-        }
-        inner.processors[&key].apply_rgb(rgb)
+        display_processor_for(&mut inner, from, display, view)?.apply_rgb(rgb)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -149,11 +141,30 @@ fn processor_for<'a>(
     from: &ColorSpace,
     to: &ColorSpace,
 ) -> Result<&'a mut Processor> {
+    if to.0 == DISPLAY_SPACE {
+        return display_processor_for(inner, from, None, None);
+    }
     let (src, dst) = (resolve(&inner.config, from)?, resolve(&inner.config, to)?);
     let key = format!("{src}|{dst}");
     if !inner.processors.contains_key(&key) {
         let p = info_span!("color_ocio.make_processor")
             .in_scope(|| inner.config.processor(&src, &dst))?;
+        inner.processors.insert(key.clone(), p);
+    }
+    Ok(inner.processors.get_mut(&key).expect("入れたばかり"))
+}
+
+fn display_processor_for<'a>(
+    inner: &'a mut Inner,
+    from: &ColorSpace,
+    display: Option<&str>,
+    view: Option<&str>,
+) -> Result<&'a mut Processor> {
+    let src = resolve(&inner.config, from)?;
+    let key = format!("{src}|{display:?}|{view:?}");
+    if !inner.processors.contains_key(&key) {
+        let p = info_span!("color_ocio.make_processor")
+            .in_scope(|| inner.config.display_processor(&src, display, view))?;
         inner.processors.insert(key.clone(), p);
     }
     Ok(inner.processors.get_mut(&key).expect("入れたばかり"))
@@ -196,7 +207,10 @@ impl ColorTransform for OcioColor {
 
     fn known_spaces(&self) -> Vec<ColorSpace> {
         let inner = self.lock();
-        let aliases = ALIASES.iter().map(|(mm, _)| *mm);
+        let aliases = ALIASES
+            .iter()
+            .filter(|(_, ocio)| inner.config.has_colorspace(ocio))
+            .map(|(mm, _)| *mm);
         let ocio = KNOWN_OCIO
             .iter()
             .copied()
