@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "font": {
+    "family": ["Tahoma", "MS UI Gothic", "Meiryo UI", "Hiragino Sans", "Noto Sans JP", "sans-serif"],
+    "mono": ["Consolas", "monospace"],
+    "size": { "sm": 11, "base": 12, "lg": 14 }
+  },
+  "shape": {
+    "radius": { "sm": 3, "md": 4, "lg": 6 },
+    "borderWidth": 1,
+    "space": { "xs": 4, "sm": 6, "md": 10, "lg": 16 }
+  },
+  "modes": {
+    "light": {
+      "color": {
+        "bg": "#ece9d8",
+        "surface": "#ffffff",
+        "border": "#aca899",
+        "border-strong": "#7f9db9",
+        "text": "#000000",
+        "text-muted": "#5c5c5c",
+        "accent": "#316ac5",
+        "accent-text": "#ffffff",
+        "focus": "#316ac5",
+        "task-title-text": "#215dc6",
+        "task-body-bg": "#d6dff7",
+        "task-body-border": "#ffffff",
+        "task-link": "#215dc6",
+        "task-link-hover": "#428eff",
+        "task-link-disabled": "#8c9bc8"
+      },
+      "gradient": {
+        "task-title": { "direction": "horizontal", "from": "#ffffff", "to": "#c6d3f7" },
+        "button": { "direction": "vertical", "from": "#ffffff", "to": "#e6e4da" }
+      }
+    },
+    "dark": {
+      "color": {
+        "bg": "#1f2430",
+        "surface": "#171b24",
+        "border": "#3b4458",
+        "border-strong": "#55627d",
+        "text": "#e6e9f0",
+        "text-muted": "#98a1b5",
+        "accent": "#5b8def",
+        "accent-text": "#ffffff",
+        "focus": "#8ab4ff",
+        "task-title-text": "#a9c4ff",
+        "task-body-bg": "#2a3248",
+        "task-body-border": "#3b4660",
+        "task-link": "#8ab4ff",
+        "task-link-hover": "#c2d6ff",
+        "task-link-disabled": "#5f6a86"
+      },
+      "gradient": {
+        "task-title": { "direction": "horizontal", "from": "#33405c", "to": "#26304a" },
+        "button": { "direction": "vertical", "from": "#323a4d", "to": "#262c3a" }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@mm/tasks",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "preact": "^10.27.0"
+  }
+}
