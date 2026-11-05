@@ -14,8 +14,8 @@ const SAMPLES = [9859584, 8079708, 8787072, 6963096, 6725544, 2866500, 9890748, 
 const TITLES = ['aquamarine', 'flow', 'high tide', 'asphyxia', 'thalassophobia', 'yunseul', 'stasis', 'deep sea adventure'];
 const AQUA: CdMeta = { circle: 'Synthion', album: 'aquamarine', artist: 'Synthion', date: '2026-10-25', genre: 'Electronic', dest: 'CLUB', cover: 'cover.jpg', tracks: TITLES.map((title) => ({ title, artist: 'Synthion' })) };
 const SETTINGS: CdRipSettings = {
-  drive: 'F:', driveModel: '', offset: 667, paranoia: 3, musicDir: path.join(path.sep, 'm'), stageDir: path.join(path.sep, 'm', 'stage'),
-  dest: { cd: path.join(path.sep, 'm', 'CD'), club: path.join(path.sep, 'm', 'CLUB'), music: path.join(path.sep, 'm', 'Music') },
+  drive: 'F:', driveModel: '', offset: 667, paranoia: 3, musicDir: path.join('m'), stageDir: path.join('m', 'stage'),
+  dest: { cd: path.join('m', 'CD'), club: path.join('m', 'CLUB'), music: path.join('m', 'Music') },
   features: { ...DEFAULT_FEATURES },
 };
 
