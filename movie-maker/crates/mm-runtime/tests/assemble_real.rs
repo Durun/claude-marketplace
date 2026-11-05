@@ -1,0 +1,63 @@
+//! 本物の実装を選ぶ腕。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+
+use mm_runtime::{assemble, Backend, RuntimeConfig};
+use mm_types::MmError;
+
+/// 描画を wgpu、文字を glyphon、音を dsp にし、デコードとエンコードは見本のままにした設定。
+fn gpu_config() -> RuntimeConfig {
+    RuntimeConfig {
+        render: Backend::Wgpu,
+        text: Backend::Glyphon,
+        audio: Backend::Dsp,
+        ..RuntimeConfig::sample()
+    }
+}
+
+#[test]
+fn wgpu_と_glyphon_と_dsp_を選べる() {
+    let engine = match assemble(&gpu_config()) {
+        Ok(e) => e,
+        Err(MmError::Unsupported(e)) if std::env::var_os("MM_REQUIRE_GPU").is_none() => {
+            eprintln!("GPU が無いので飛ばす: {e}");
+            return;
+        }
+        Err(e) => panic!("組めない: {e}"),
+    };
+    let names: Vec<_> = engine.backend_names();
+    assert!(names.contains(&("render", "wgpu")), "{names:?}");
+    assert!(names.contains(&("audio", "dsp")), "{names:?}");
+    assert_eq!(engine.registry().len(), 5, "mm-nodes-basic の種類");
+}
+
+#[test]
+fn 口に合わない実装は断る() {
+    let config = RuntimeConfig {
+        audio: Backend::Wgpu,
+        ..RuntimeConfig::sample()
+    };
+    assert!(matches!(assemble(&config), Err(MmError::Unsupported(_))));
+}
+
+#[cfg(not(feature = "ffmpeg"))]
+#[test]
+fn ffmpeg_は_feature_が切ってあれば断る() {
+    let config = RuntimeConfig {
+        decode: Backend::Ffmpeg,
+        ..RuntimeConfig::sample()
+    };
+    assert!(matches!(assemble(&config), Err(MmError::Unsupported(_))));
+}
+
+#[cfg(feature = "ffmpeg")]
+#[test]
+fn ffmpeg_を選べる() {
+    let config = RuntimeConfig {
+        decode: Backend::Ffmpeg,
+        encode: Backend::Ffmpeg,
+        ..RuntimeConfig::sample()
+    };
+    let engine = assemble(&config).expect("組める");
+    let names = engine.backend_names();
+    assert!(names.contains(&("decode", "ffmpeg")), "{names:?}");
+    assert!(names.contains(&("encode", "ffmpeg")), "{names:?}");
+}

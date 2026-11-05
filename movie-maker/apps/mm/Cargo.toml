@@ -1,0 +1,36 @@
+[package]
+name = "mm"
+description = "movie-maker の CLI。mm render、mm perf run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mm"
+path = "src/main.rs"
+
+[dependencies]
+mm-types = { workspace = true }
+mm-trace = { workspace = true }
+mm-doc = { workspace = true }
+mm-node-api = { workspace = true }
+mm-runtime = { workspace = true }
+mm-export = { workspace = true }
+mm-render = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+# FFmpeg が要る。切ったときは mm render が「ffmpeg が切ってある」と断る（mm-decode-ffmpeg/README.md）。
+ffmpeg = ["mm-runtime/ffmpeg", "mm-decode-ffmpeg/ffmpeg"]
+
+[dev-dependencies]
+mm-decode-api = { workspace = true }
+# 書き出した MP4 を読み戻してコマの番号を確かめる。feature ffmpeg のときだけテストが使う。
+mm-decode-ffmpeg = { workspace = true }
+
+[lints]
+workspace = true
