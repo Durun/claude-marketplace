@@ -1,0 +1,23 @@
+[package]
+name = "mm-decode-ffmpeg"
+description = "FFmpeg のライブラリによるデコーダー。CPU の RGBA でコマを返す"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+mm-decode-api = { workspace = true }
+ffmpeg-next = { workspace = true, optional = true }
+
+[features]
+# FFmpeg の開発ファイルと libclang が要る。既定では切ってあり、切ったときは実装も契約テストもビルドしない。
+ffmpeg = ["dep:ffmpeg-next"]
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true
