@@ -7,6 +7,7 @@ classDiagram
     assets
     bins
     compositions
+    sequences
     renderTargets
     colorConfig
   }
@@ -25,15 +26,26 @@ classDiagram
   class Layer {
     source: Node
     start, in, out: Time
-    timeRemap: Param
+    speed: Rational
+    timeRemap
     transform: Transform
     parent: Layer
-    attachTo: Clip
+    attachTo: Cut
     blend, opacity: Param
-    effects: Node[]
-    masks
+    effects: Effect[]
+    masks, trackMatte
     audio: role, gain, pan
-    lock
+    enabled, lock
+  }
+  class Sequence {
+    cuts: Cut[]
+    origin
+  }
+  class Cut {
+    source: Node
+    in, out: Time
+    speed, enabled
+    transitionIn
   }
   class Node {
     kind
@@ -43,8 +55,7 @@ classDiagram
   }
   class Param {
     value
-    keyframes
-    ease
+    keyframes: time, value, interpolation, ease, bezier
   }
   class RenderTarget {
     composition
@@ -57,6 +68,10 @@ classDiagram
   Project --> Asset
   Project --> Composition
   Project --> RenderTarget
+  Project --> Sequence
+  Sequence --> Cut
+  Layer ..> Cut : attachTo
+  Node ..> Sequence : kind=sequence
   RenderTarget --> Composition
   Composition --> Layer
   Layer --> Node
@@ -95,20 +110,31 @@ classDiagram
 ## コンポジションとレイヤー
 
 - コンポジションは、大きさ、画素の縦横比、fps、長さ、背景、レイヤーの重なり、マーカーを持つ。
-- レイヤーは動画オブジェクト（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、速さ、タイムリマップ）、接続（`attachTo`。カットがリップルで動くと一緒に動く）、形（変形と親）、重ね方（合成モード、マスク、トラックマット）、効果の列、音（役割、音量、パン）、ロック（人が直した所を AI が上書きしない印）。
-- 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ絵の中心）。どれもキーフレームを持てる。描画器が合成で掛け、動画オブジェクトの種類には渡さない。スキーマの版は 2（v1 は種類のパラメータ `transform.*` に書いていた。`mm_doc::load` が上げる）。3D はカメラの欄を足すときに広げる。
-- マーカーはコンポジションに持ち、YouTube のチャプターの書き出しに使う。
+- レイヤーは動画オブジェクト（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、`speed`、`timeRemap`）、接続（`attachTo`。カットの ID。カットがリップルで動くと一緒に動く）、形（変形と `parent`）、重ね方（`blend`、`masks`、`trackMatte`）、効果の列（`effects`。ID つきの動画オブジェクト）、音（役割、音量、パン）、`enabled`、ロック（人が直した所を AI が上書きしない印）。
+- レイヤーのコンポジション上の範囲は `[start, start + (out - in) / speed)`。`speed` は正の有理数（型が 0 を断る。逆再生は後で足す）。`timeRemap` はレイヤーの始まりからの時刻を素材の時刻に写す折れ線（補間はホールドと直線。有理数のまま写す）で、あれば `in` と `speed` の代わりに使うが範囲は変えない。
+- 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ絵の中心）。どれもキーフレームを持てる。描画器が合成で掛け、動画オブジェクトの種類には渡さない。3D はカメラの欄を足すときに広げる。
+- 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。マスク（頂点の列を `Json` のパラメータで）とトラックマット（同じコンポジションのレイヤーのアルファか輝度）は段階 1 では型だけ。
+- マーカーはコンポジションに持ち（ID、時刻、長さ、名前。時刻の順）、YouTube のチャプターの書き出しに使う。
+- スキーマの版は 3。v1 は種類のパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各版の見本を凍結している。
 
 ## パラメータ（時間変化）
 
-- どのパラメータも、固定の値か、キーフレームの列を持てる。キーフレームは時刻、値、補間（ホールド、直線、ベジェ）、イージング。
-- 型: 数、2・3 次元の数、色、真偽、文字、選択肢、素材の参照、JSON。数の型は補間でき、それ以外はホールドだけ。
+- どのパラメータも、固定の値か、キーフレームの列（時刻の昇順）を持てる。キーフレームは時刻、値、補間（`hold`、`linear`、`bezier`）、イージング（`ease`: none、in、out、in_out。`linear` の進み具合に掛ける 2 次）、ベジェの制御点（`bezier`: CSS の `cubic-bezier(x1, y1, x2, y2)` と同じ。無ければ ease-in-out）。区間の形は始点のキーフレームで決まる。
+- キーフレームがあるとき `value` は使わず、最初より前は最初の値、最後より後は最後の値。
+- 型: 数、2・3 次元の数、色、真偽、文字、選択肢、素材の参照、JSON。数の型は補間でき（色は線形の premultiplied の値を成分ごとに）、それ以外はホールドだけ。
+- 評価は `mm-eval`（`eval_param`、`source_time`、`place_cuts`）。文書（`mm-doc`）は形と不変条件だけ持つ。
 - エクスプレッションは後で足す。「時刻 t で値を返す」形を保つ。
 
 ## 入れ子と本編とショートの関係
 
-- コンポジションも動画オブジェクト（`kind: composition`）。循環は命令の検証で断る。外の時間を中の時間に写す。
-- ショートは本編の `sequence` の一部を参照する（本編を直すとショートも変わる。カットの in/out だけショートで上書きでき、印が付く）か、複製して分岐する（元との対応を残し、元が変わったら知らせる）。どのカットがどのショートで使われているかを本編に印で出す。再フレーミングと字幕の置き場所は、コンポジションごとに別の値を持つ。
+- コンポジションも動画オブジェクト（`kind: composition`、パラメータ `composition` に ID）。磁気の並びも動画オブジェクト（`kind: sequence`、パラメータ `sequence` に `Project.sequences` の ID）。循環と無い参照は `Project::validate` が断る。外の時間を中の時間に写す。
+- ショートは本編の `sequence` の一部を参照する（本編を直すとショートも変わる。カットの in/out だけショートで上書きでき、印が付く）か、複製して分岐する（元との対応を残し、元が変わったら知らせる）。どのカットがどのショートで使われているかを本編に印で出す。再フレーミングと字幕の置き場所は、コンポジションごとに別の値を持つ。置き場は `Sequence.origin`（元の sequence と、参照か複製か）と `Cut.origin`（元のカット）。段階 1 は型だけ。
+
+## 保存の形に効く決まり
+
+- ID は文字列で、種類ごとにプロジェクトの中で重複しない（レイヤー、カット、マーカー、効果、マスクもプロジェクト全体で）。命令の `touches` と `mm diff` が ID で指す。
+- `assets`、`compositions`、`sequences`、`renderTargets` は順に意味が無い列で、`Project::normalize` が ID の順に並べる（読み込みと保存の前に通す）。レイヤー（下から上）、カット（頭から）、マーカー（時刻の順）は順が意味なので触らない。種類のパラメータは名前順のマップ。
+- 省ける欄（`speed` の 1、空の `effects` など）も JSON に全部書く。
 
 
 ---

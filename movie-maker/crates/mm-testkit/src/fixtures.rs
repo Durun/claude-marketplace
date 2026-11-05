@@ -3,9 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{
-    Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget, Transform,
-};
+use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget};
 use mm_node_api::Services;
 use mm_types::{
     AssetId, ColorSpace, CompositionId, Id, ParamValue, Rational, RationalTime, RenderTargetId,
@@ -66,6 +64,7 @@ pub fn vertical_project(
         fps: media.fps,
         duration,
         layers: vec![footage, text],
+        markers: Vec::new(),
     });
     project.render_targets.push(RenderTarget {
         id: target_id.clone(),
@@ -83,40 +82,35 @@ pub fn vertical_project(
 /// 素材を `in_point` から `duration` だけ切り、音を `voice` の役割で付けたレイヤー。
 fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalTime) -> Layer {
     Layer {
-        id: Id::new("l-footage"),
-        source: Node::new("footage", SAMPLE_KIND_VERSION)
-            .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
-        start: RationalTime::ZERO,
-        in_point,
-        out_point: in_point.checked_add(duration).expect("見本の長さは表せる"),
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
         audio: Some(LayerAudio {
             role: "voice".into(),
             gain_db: Param::constant(ParamValue::Number(0.0)),
             pan: Param::constant(ParamValue::Number(0.0)),
         }),
-        lock: false,
+        ..Layer::new(
+            "l-footage",
+            Node::new("footage", SAMPLE_KIND_VERSION)
+                .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
+            RationalTime::ZERO,
+            in_point,
+            in_point.checked_add(duration).expect("見本の長さは表せる"),
+        )
     }
 }
 
 /// `VERTICAL_TEXT` を左下に載せるレイヤー。
 fn text_layer(duration: RationalTime) -> Layer {
-    Layer {
-        id: Id::new("l-text"),
-        source: Node::new("text", SAMPLE_KIND_VERSION)
+    Layer::new(
+        "l-text",
+        Node::new("text", SAMPLE_KIND_VERSION)
             .with_param("text", ParamValue::Text(VERTICAL_TEXT.into()))
             .with_param("size", ParamValue::Number(24.0))
             .with_param("position", ParamValue::Vec2([16.0, 120.0]))
             .with_param("color", ParamValue::Color(Rgba::WHITE)),
-        start: RationalTime::ZERO,
-        in_point: RationalTime::ZERO,
-        out_point: duration,
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
-        audio: None,
-        lock: false,
-    }
+        RationalTime::ZERO,
+        RationalTime::ZERO,
+        duration,
+    )
 }
 
 /// 縦の 1 本の既定の fps。

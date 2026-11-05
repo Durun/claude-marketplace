@@ -4,6 +4,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use mm_doc::{Composition, Layer, Project};
+use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry, Quality};
 use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Result, Size};
 
@@ -64,7 +65,7 @@ pub(crate) fn evaluate(
     let kind = nodes
         .get(&layer.source.kind)
         .ok_or_else(|| MmError::NotFound(format!("種類 {}", layer.source.kind)))?;
-    let params = layer.source.params_at(t).with_defaults(&kind.params());
+    let params = node_params_at(&layer.source, t).with_defaults(&kind.params());
     Ok((kind, params))
 }
 
@@ -143,7 +144,7 @@ impl WgpuRenderer {
             return Ok(None);
         };
         temps.push(image.texture);
-        let opacity = layer.opacity.hold_value_at(cx.t).as_number().unwrap_or(1.0) as f32;
+        let opacity = evaluate_opacity(layer, cx.t) as f32;
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {
             texture: image.texture,
@@ -186,7 +187,7 @@ impl WgpuRenderer {
             quality: cx.quality,
             inputs: &mut inputs,
             footage,
-            source_time: layer.to_source_time(cx.t)?,
+            source_time: source_time(layer, cx.t)?,
             gpu: &mut *gpu,
             services,
         };
@@ -238,7 +239,7 @@ impl WgpuRenderer {
         };
         let child = CompCx {
             comp: nested,
-            t: layer.to_source_time(cx.t)?,
+            t: source_time(layer, cx.t)?,
             size: scaled(
                 Size::new(nested.width, nested.height),
                 cx.comp_to_out() * boost,

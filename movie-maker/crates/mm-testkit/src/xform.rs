@@ -5,37 +5,8 @@
 //! 画素の境目に揃う拡大）で、契約テストが見本と実装を同じ値で比べられる。
 
 use mm_doc::Transform;
-use mm_types::{ParamValue, RationalTime, RgbaImage};
-
-/// 時刻 `t` で評価した変形。
-struct Evaluated {
-    position: [f64; 2],
-    scale: [f64; 2],
-    rotation_deg: f64,
-    anchor: Option<[f64; 2]>,
-}
-
-fn evaluate(doc: &Transform, t: RationalTime) -> Evaluated {
-    let position = doc
-        .position
-        .hold_value_at(t)
-        .as_vec2()
-        .unwrap_or([0.0, 0.0]);
-    let scale = match doc.scale.hold_value_at(t) {
-        ParamValue::Number(n) => [n, n],
-        ParamValue::Vec2(v) => v,
-        _ => [1.0, 1.0],
-    };
-    Evaluated {
-        position,
-        scale,
-        rotation_deg: doc.rotation.hold_value_at(t).as_number().unwrap_or(0.0),
-        anchor: doc
-            .anchor
-            .as_ref()
-            .and_then(|a| a.hold_value_at(t).as_vec2()),
-    }
-}
+use mm_eval::evaluate_transform;
+use mm_types::{RationalTime, RgbaImage};
 
 /// `image`（コンポジションを `comp_to_out` 倍した大きさ）に変形を掛けた絵。
 /// 恒等ならそのまま返す。逆行列が無い（拡大が 0）ときは透明。
@@ -48,7 +19,7 @@ pub fn apply_transform(
     if doc.is_identity() {
         return image.clone();
     }
-    let tr = evaluate(doc, t);
+    let tr = evaluate_transform(doc, t);
     let (w, h) = (
         f64::from(image.width()) / comp_to_out,
         f64::from(image.height()) / comp_to_out,

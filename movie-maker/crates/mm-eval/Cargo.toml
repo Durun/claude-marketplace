@@ -1,0 +1,17 @@
+[package]
+name = "mm-eval"
+description = "時刻 t でのパラメータの値、キーフレームの補間、時間の写像、sequence のカットの配置（純関数）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

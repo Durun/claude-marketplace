@@ -119,7 +119,7 @@ pub(crate) fn draw(
         style,
         scale,
         origin,
-        |image, left, top| {
+        |_key, image, left, top| {
             blend_glyph(&mut img, image, left, top, style.color);
         },
     );
@@ -142,7 +142,7 @@ pub(crate) fn ink_bounds(
         style,
         1.0,
         (0.0, 0.0),
-        |image, left, top| {
+        |_key, image, left, top| {
             let ink = Rect::new(
                 left as f32 - INK_MARGIN,
                 top as f32 - INK_MARGIN,
@@ -156,14 +156,14 @@ pub(crate) fn ink_bounds(
 }
 
 /// 各字形の絵を引き、絵の左上の位置（`origin` を原点とする `scale` 倍の画素）と一緒に `f` に渡す。
-fn for_each_glyph_image(
+pub(crate) fn for_each_glyph_image(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
     shaped: &ShapedText,
     style: &TextStyle,
     scale: f32,
     origin: (f32, f32),
-    mut f: impl FnMut(&cosmic_text::SwashImage, i32, i32),
+    mut f: impl FnMut(CacheKey, &cosmic_text::SwashImage, i32, i32),
 ) {
     let faces = resolve_faces(fs, &shaped.faces);
     for glyph in shaped.lines.iter().flat_map(|l| &l.glyphs) {
@@ -184,6 +184,11 @@ fn for_each_glyph_image(
         let Some(image) = cache.get_image(fs, key).as_ref() else {
             continue;
         };
-        f(image, x + image.placement.left, y - image.placement.top);
+        f(
+            key,
+            image,
+            x + image.placement.left,
+            y - image.placement.top,
+        );
     }
 }

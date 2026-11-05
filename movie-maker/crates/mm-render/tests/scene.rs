@@ -69,15 +69,14 @@ fn layer(id: &str, mut source: Node) -> Layer {
         }
     }
     Layer {
-        id: Id::new(id),
-        source,
-        start: RationalTime::ZERO,
-        in_point: RationalTime::ZERO,
-        out_point: RationalTime::seconds(2),
-        opacity: Param::constant(ParamValue::Number(1.0)),
         transform,
-        audio: None,
-        lock: false,
+        ..Layer::new(
+            id,
+            source,
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(2),
+        )
     }
 }
 
@@ -97,6 +96,7 @@ fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
         fps: Rational::integer(30),
         duration: RationalTime::seconds(2),
         layers,
+        markers: Vec::new(),
     }
 }
 

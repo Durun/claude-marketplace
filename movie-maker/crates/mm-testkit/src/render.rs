@@ -7,6 +7,7 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixInput, MixerConfig, MixerFactory};
 use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_doc::{Composition, Layer, Project};
+use mm_eval::{evaluate_audio, evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{
     audio_frames_in, AudioCx, FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry,
     Quality, Services,
@@ -86,7 +87,7 @@ impl SampleRenderer {
         let kind = nodes
             .get(&layer.source.kind)
             .ok_or_else(|| MmError::NotFound(format!("種類 {}", layer.source.kind)))?;
-        let params = layer.source.params_at(t).with_defaults(&kind.params());
+        let params = node_params_at(&layer.source, t).with_defaults(&kind.params());
         Ok((kind, params))
     }
 
@@ -98,7 +99,7 @@ impl SampleRenderer {
     ) -> Result<Option<Arc<RgbaImage>>> {
         let (kind, params) = Self::evaluate(req.nodes, layer, req.time)?;
         let scale = req.size.width as f32 / comp.width as f32;
-        let source_time = layer.to_source_time(req.time)?;
+        let source_time = source_time(layer, req.time)?;
         let Self {
             sources,
             decoders,
@@ -151,8 +152,8 @@ impl SampleRenderer {
             return Ok(None);
         }
         let source_range = TimeRange::new(
-            layer.to_source_time(overlap.start)?,
-            layer.to_source_time(overlap.end)?,
+            source_time(layer, overlap.start)?,
+            source_time(layer, overlap.end)?,
         )?;
         let footage = Self::footage_for(
             &mut self.sources,
@@ -186,11 +187,8 @@ impl SampleRenderer {
 
 /// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければ素通し。
 fn layer_mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
-    let Some(a) = &layer.audio else {
-        return ("voice".into(), 0.0, 0.0);
-    };
-    let number = |p: &mm_doc::Param| p.hold_value_at(t).as_number().unwrap_or(0.0) as f32;
-    (a.role.clone(), number(&a.gain_db), number(&a.pan))
+    let a = evaluate_audio(layer, t);
+    (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
 }
 
 /// `block` を `offset` コマ目から置き、全体を `total` コマにそろえる。
@@ -222,11 +220,7 @@ impl Renderer for SampleRenderer {
             if !layer.range()?.contains(req.time) {
                 continue;
             }
-            let opacity = layer
-                .opacity
-                .hold_value_at(req.time)
-                .as_number()
-                .unwrap_or(1.0) as f32;
+            let opacity = evaluate_opacity(layer, req.time) as f32;
             match self.render_layer(req, comp, layer) {
                 Ok(Some(img)) => canvas.blit_over(&img, 0, 0, opacity),
                 Ok(None) => {}
