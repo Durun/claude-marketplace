@@ -1,0 +1,266 @@
+//! プロジェクトのフォルダー（`project.mmdb`）に対する `mm` のサブコマンド。
+//! 書く命令は書き手のロックを取れたときだけ受け、別のプロセスが書いているときは断る。
+
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use mm_doc::Project;
+use mm_ops::{Entry, OpContext, OpError, Transaction};
+use mm_store::{format_timestamp, Actor, OpenMode, Store, StoreWarning, TxnState};
+use mm_types::{MmError, Result};
+
+use crate::describe::describe_txns;
+use crate::opargs::{parse_op, usage};
+use crate::project::load_json_absolute;
+
+/// 記録に残す入口の種類と名前。
+const ACTOR_KIND: &str = "cli";
+const ACTOR_NAME: &str = "mm";
+
+/// 今の時刻（UNIX のミリ秒）。
+pub fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+fn actor() -> Actor {
+    Actor {
+        kind: ACTOR_KIND.into(),
+        name: ACTOR_NAME.into(),
+    }
+}
+
+/// CLI は Claude の入口として、ロックの付いた所に触る命令を断る。
+fn cli_context() -> OpContext {
+    OpContext::new(Entry::Cli)
+}
+
+/// 命令の層の断りを、`mm` のエラーにする。
+fn op_error(e: OpError) -> MmError {
+    match e {
+        OpError::Doc(inner) => inner,
+        other => MmError::InvalidArgument(format!("命令を断った: {other}")),
+    }
+}
+
+/// 書き手として開く。別のプロセスが書き手なら、知らせて断る。
+fn open_writer(dir: &Path) -> Result<Store> {
+    let store = Store::open(dir, now_ms())?;
+    if store.mode() == OpenMode::Writer {
+        return Ok(store);
+    }
+    Err(MmError::InvalidArgument(writer_elsewhere(&store)))
+}
+
+fn writer_elsewhere(store: &Store) -> String {
+    let info = store.warnings().iter().find_map(|w| match w {
+        StoreWarning::WriterElsewhere(info) => info.as_ref(),
+        _ => None,
+    });
+    let who = match info {
+        Some(i) => match i.http_port {
+            Some(port) => format!("pid {}、HTTP ポート {port}", i.pid),
+            None => format!("pid {}", i.pid),
+        },
+        None => "pid 不明".to_owned(),
+    };
+    format!(
+        "別のプロセスが書いている（{who}）ので書けない。読み取りだけできる（mm log、mm diff、mm export）。\
+         アプリへの HTTP での転送は mm-serve まで無い"
+    )
+}
+
+/// 読むだけの用途で開く。別のプロセスが書き手でもそのまま読む。
+fn open_reader(dir: &Path) -> Result<Store> {
+    let store = Store::open(dir, now_ms())?;
+    if store.mode() == OpenMode::ReadOnly {
+        eprintln!("注意: {}", writer_elsewhere(&store));
+    }
+    Ok(store)
+}
+
+/// 書き終えて閉じる（チェックポイントとバックアップ）。
+fn finish(store: Store) -> Result<()> {
+    store.close(now_ms())
+}
+
+/// `mm new`: 空のプロジェクトを作る。
+pub fn new_project(dir: &Path) -> Result<()> {
+    let store = Store::create(dir, &Project::new(), now_ms())?;
+    println!("{}: 空のプロジェクトを作った", dir.display());
+    finish(store)
+}
+
+/// `mm import`: `versions/` のフォルダーか、1 つの JSON から `project.mmdb` を作る。
+pub fn import(dir: &Path, source: &Path, overwrite: bool) -> Result<()> {
+    let store = if source.is_dir() {
+        Store::import_versions(dir, source, overwrite, now_ms())?
+    } else {
+        if overwrite {
+            return Err(MmError::InvalidArgument(
+                "--overwrite は versions/ のフォルダーからの取り込みだけ".into(),
+            ));
+        }
+        Store::create(dir, &load_json_absolute(source)?, now_ms())?
+    };
+    println!("{}: {} から取り込んだ", dir.display(), source.display());
+    finish(store)
+}
+
+/// `mm export`: `versions/` に決定的な JSON を書く。`name` があれば名前付きの版にする。
+pub fn export(dir: &Path, name: Option<&str>) -> Result<()> {
+    let store = open_reader(dir)?;
+    let report = match name {
+        Some(n) => store.export_named_version(n, ACTOR_KIND, now_ms(), None)?,
+        None => store.export_versions()?,
+    };
+    println!(
+        "{}: {} ファイル（{} 件を書いた）、ハッシュ {}",
+        dir.join(mm_store::VERSIONS_DIR).display(),
+        report.files.len(),
+        report.written,
+        report.hash
+    );
+    Ok(())
+}
+
+/// `mm op`: 命令 1 つか、まとまり（`--txn`）を当てる。
+pub fn op(
+    dir: &Path,
+    name: Option<&str>,
+    tokens: &[String],
+    txn_file: Option<&Path>,
+) -> Result<()> {
+    let txn = match (name, txn_file) {
+        (Some(_), Some(_)) => {
+            return Err(MmError::InvalidArgument(
+                "命令の名前と --txn は同時に渡せない".into(),
+            ))
+        }
+        (None, None) => {
+            return Err(MmError::InvalidArgument(format!(
+                "命令の名前か --txn を渡す。{}",
+                usage()
+            )))
+        }
+        (Some(n), None) => {
+            let parsed = parse_op(n, tokens)?;
+            let label = parsed.label.unwrap_or_else(|| n.to_owned());
+            let mut t = Transaction::new(label, vec![parsed.op]);
+            t.base_version = parsed.base;
+            t
+        }
+        (None, Some(file)) => read_txn(file, tokens)?,
+    };
+    let mut store = open_writer(dir)?;
+    let name = txn.name.clone();
+    let info = store
+        .apply_txn(txn, &cli_context(), actor(), now_ms())
+        .map_err(op_error)?;
+    println!("版 {}: {name}", info.doc_version);
+    for line in describe_txns(&store.txns_between(info.doc_version - 1, info.doc_version)?) {
+        println!("  {line}");
+    }
+    finish(store)
+}
+
+/// `--txn` のファイル（`Transaction` の JSON）を読む。`--base` で元にした版を上書きできる。
+fn read_txn(file: &Path, tokens: &[String]) -> Result<Transaction> {
+    let text = std::fs::read_to_string(file)
+        .map_err(|e| MmError::NotFound(format!("{}: {e}", file.display())))?;
+    let mut txn: Transaction = serde_json::from_str(&text)?;
+    if let [flag, value] = tokens {
+        if flag != "--base" {
+            return Err(MmError::InvalidArgument(format!(
+                "--txn と使えない: {flag}"
+            )));
+        }
+        txn.base_version = Some(
+            value
+                .parse()
+                .map_err(|_| MmError::InvalidArgument(format!("版の番号でない: {value}")))?,
+        );
+    } else if !tokens.is_empty() {
+        return Err(MmError::InvalidArgument(
+            "--txn に使えるのは --base <版> だけ".into(),
+        ));
+    }
+    Ok(txn)
+}
+
+/// `mm op --schema`: 全部の命令の JSON Schema。
+pub fn schema() {
+    print!("{}", mm_ops::ops_schema_json());
+}
+
+/// `mm undo`。
+pub fn undo(dir: &Path) -> Result<()> {
+    let mut store = open_writer(dir)?;
+    match store.undo_last(&cli_context()).map_err(op_error)? {
+        Some(step) => println!("版 {}: 取り消した: {}", step.doc_version, step.name),
+        None => println!("取り消すものが無い"),
+    }
+    finish(store)
+}
+
+/// `mm redo`。
+pub fn redo(dir: &Path) -> Result<()> {
+    let mut store = open_writer(dir)?;
+    match store.redo_last(&cli_context()).map_err(op_error)? {
+        Some(step) => println!("版 {}: やり直した: {}", step.doc_version, step.name),
+        None => println!("やり直すものが無い"),
+    }
+    finish(store)
+}
+
+/// `mm log`: 命令の記録（取り消したものも含む）。
+pub fn log(dir: &Path) -> Result<()> {
+    let store = open_reader(dir)?;
+    for txn in store.txn_log()? {
+        let state = match txn.state {
+            TxnState::Applied => "適用",
+            TxnState::Undone => "取消",
+        };
+        let names: Vec<&str> = txn.ops.iter().map(|o| o.name.as_str()).collect();
+        println!(
+            "版 {:>4}  {state}  {}  {}（{}）  [{}]",
+            txn.doc_version,
+            format_timestamp(txn.at_ms),
+            txn.name,
+            txn.actor.kind,
+            names.join(", ")
+        );
+    }
+    Ok(())
+}
+
+/// `mm diff`: 2 つの版の間の意味の差分。版は番号、`head`、名前付きの版の名前。
+pub fn diff(dir: &Path, from: &str, to: &str) -> Result<()> {
+    let store = open_reader(dir)?;
+    let (a, b) = (resolve_version(&store, from)?, resolve_version(&store, to)?);
+    if a > b {
+        return Err(MmError::InvalidArgument(format!(
+            "from（版 {a}）が to（版 {b}）より先"
+        )));
+    }
+    let lines = describe_txns(&store.txns_between(a, b)?);
+    println!("版 {a} から版 {b}: {} 件", lines.len());
+    for line in lines {
+        println!("- {line}");
+    }
+    Ok(())
+}
+
+fn resolve_version(store: &Store, spec: &str) -> Result<i64> {
+    if let Ok(n) = spec.parse::<i64>() {
+        return Ok(n);
+    }
+    if spec.eq_ignore_ascii_case("head") {
+        return Ok(store.doc_version());
+    }
+    store
+        .version_by_name(spec)?
+        .map(|v| v.doc_version)
+        .ok_or_else(|| MmError::NotFound(format!("版 {spec}（番号か head か名前付きの版）")))
+}

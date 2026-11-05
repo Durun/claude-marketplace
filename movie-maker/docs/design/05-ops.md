@@ -10,8 +10,10 @@
 - パラメータは `ParamRef`（`layer` か `cut` の ID と、`.` 区切りの道筋）で指す。道筋は `opacity`、`transform.position|scale|rotation|anchor`、`source.<名前>`、`effects.<ID>.<名前>`、`masks.<ID>.path|feather|opacity`、`audio.gain_db|pan`。
 - 当てた後は必ず `Project::validate` を通す。通らなければ命令は失敗で、文書は変わらない。
 - 逆命令が元の文書をバイトで戻せるよう、命令は形を絞る。`precompose` は重なりの上で続いた範囲だけ、`unprecompose` は `precompose` が作った形だけ、`join` は `split` が作った続きだけ、`addMarker` は同じ時刻が無いときだけ受ける。
-- 入口は 4 つで、どれも同じ命令を呼ぶ。wgpu の面（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。アプリが動いていれば HTTP で、動いていなければ `project.mmdb` を直接開く）、Claude の MCP（命令ごとのツール。引数の型はスキーマから作る）。
+- 入口は 4 つで、どれも同じ命令を呼ぶ。wgpu の面（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。動いていなければ `project.mmdb` を直接開く。別のプロセス（アプリ）が書き手のときは、HTTP で転送する形を `mm-serve`（段階 3）で足すまで、「別のプロセスが書いている」と断って読み取りだけにする）、Claude の MCP（命令ごとのツール。引数の型はスキーマから作る）。
 - 全部の命令の JSON Schema は `mm_ops::ops_schema()` が出し、`crates/mm-ops/schema/ops.json` に凍結する（テストが最新かを確かめる。`MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test schema` で書き直す）。`mm op --schema`、MCP、`ui/sdk` の型の生成の元。
+- CLI の引数は、このスキーマの欄の名前から作る（`--cut c12 --edge out --by -0.4`）。時刻の欄は `-0.4` と `3/2` を受け、パラメータの指し方は `layer:<ID>:<道筋>` と略せ、複雑な欄は `--json '{...}'` で渡す。元にした版は `--base <版>`、複数の命令は `--txn <file.json>`（`Transaction` の JSON）で 1 つのまとまりにする。CLI の入口は `Entry::Cli` で、ロックの付いた所に触る命令（ロックを外す取り消しも）は断る。
+- 命令を当てて書くのは `mm_store::Store::apply_txn`（取り消しとやり直しは `undo_last`、`redo_last`）。古い版を元にした命令の判定は、保存した記録の `touches` で行う（別のプロセスが書いた命令も含む）。`mm-store` は `mm-ops` の `OpRecord` をそのまま表に書く。
 
 ## `touches`
 

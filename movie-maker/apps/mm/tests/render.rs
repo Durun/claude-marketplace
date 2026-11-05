@@ -110,3 +110,47 @@ fn 切った区間のコマ番号と音が読み戻せる() {
     let audio = decoder.decode_audio(range).expect("音が読める");
     assert!(!audio.is_silent(), "トーンが乗っている");
 }
+
+fn mm_ok(args: &[&str]) {
+    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+        .args(args)
+        .output()
+        .expect("mm を実行できる");
+    assert!(
+        out.status.success(),
+        "mm {args:?} が失敗した: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// 段階 0 の JSON を `mm import` で `project.mmdb` にし、`mm op` でレイヤーを動かして `mm render` で書き出す。
+#[test]
+fn 取り込んだ_mmdb_のレイヤーを動かして書き出せる() {
+    common::fixtures();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("p");
+    let dir_s = dir.to_str().unwrap();
+    mm_ok(&["import", dir_s, project_path().to_str().unwrap()]);
+
+    let before = tmp.path().join("before.mp4");
+    mm_ok(&["render", dir_s, "-o", before.to_str().unwrap()]);
+    mm_ok(&[
+        "op",
+        dir_s,
+        "setParam",
+        "--target",
+        "layer:l-text:transform.position",
+        "--json",
+        r#"{"value":{"type":"vec2","value":[160.0,20.0]}}"#,
+    ]);
+    let after = tmp.path().join("after.mp4");
+    mm_ok(&["render", dir_s, "-o", after.to_str().unwrap()]);
+
+    let (b, a) = (
+        std::fs::read(&before).unwrap(),
+        std::fs::read(&after).unwrap(),
+    );
+    assert!(!b.is_empty() && !a.is_empty());
+    assert_ne!(b, a, "レイヤーを動かした書き出しが変わっていない");
+}

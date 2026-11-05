@@ -2630,10 +2630,13 @@ dependencies = [
  "mm-doc",
  "mm-export",
  "mm-node-api",
+ "mm-ops",
  "mm-runtime",
+ "mm-store",
  "mm-trace",
  "mm-types",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2964,6 +2967,7 @@ name = "mm-store"
 version = "0.1.0"
 dependencies = [
  "mm-doc",
+ "mm-ops",
  "mm-types",
  "rusqlite",
  "serde",

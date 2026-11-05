@@ -1,6 +1,6 @@
 [package]
 name = "mm"
-description = "movie-maker の CLI。mm render、mm perf run"
+description = "movie-maker の CLI。mm new、import、export、op、undo、redo、log、diff、render、perf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,8 @@ mm-doc = { workspace = true }
 mm-node-api = { workspace = true }
 mm-runtime = { workspace = true }
 mm-export = { workspace = true }
+mm-ops = { workspace = true }
+mm-store = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -30,6 +32,8 @@ ffmpeg = ["mm-runtime/ffmpeg", "mm-decode-ffmpeg/ffmpeg"]
 mm-decode-api = { workspace = true }
 # 書き出した MP4 を読み戻してコマの番号を確かめる。feature ffmpeg のときだけテストが使う。
 mm-decode-ffmpeg = { workspace = true }
+# CLI の結合テストの作業フォルダー。
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
