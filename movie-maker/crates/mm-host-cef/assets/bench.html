@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>init</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #101820; font-family: "Segoe UI", sans-serif; }
+  #bg { position: absolute; inset: 0; background: linear-gradient(115deg, #1b2a4a, #7a3b6e 55%, #e98b4f); }
+  #bar { position: absolute; top: 760px; height: 120px; width: 420px; border-radius: 24px; background: #ffffffcc; box-shadow: 0 24px 64px #0008; }
+  #disc { position: absolute; top: 200px; left: 200px; width: 360px; height: 360px; border-radius: 50%; background: conic-gradient(#ff5d73, #ffd166, #06d6a0, #118ab2, #ff5d73); filter: blur(2px); }
+  #label { position: absolute; left: 120px; top: 880px; font-size: 96px; color: #fff; letter-spacing: 2px; text-shadow: 0 4px 24px #0009; }
+  #frame { position: absolute; right: 80px; top: 60px; font: 700 64px/1 monospace; color: #fff; }
+  #grid { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, #ffffff14 0 2px, transparent 2px 120px); }
+</style>
+<div id="bg"></div><div id="grid"></div><div id="disc"></div><div id="bar"></div>
+<div id="mark" style="position:absolute;left:0;top:0;width:16px;height:16px"></div><div id="label">movie-maker · CEF</div><div id="frame">t=0.000</div>
+<script>
+  // 描く時刻はホストが決める。requestAnimationFrame や CSS アニメーションを使わず、
+  // 時刻の関数としてだけ画面を作ると、同じ時刻から同じ絵になる。
+  window.mmSetTime = (t, seq) => {
+    const x = 120 + (1920 - 120 * 2 - 420) * (0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 4));
+    document.getElementById('bar').style.left = x + 'px';
+    document.getElementById('disc').style.transform = `translateX(${x * 0.6}px) rotate(${t * 90}deg)`;
+    document.getElementById('bg').style.filter = `hue-rotate(${(t * 30) % 360}deg)`;
+    document.getElementById('frame').textContent = 't=' + t.toFixed(3);
+    document.getElementById("mark").style.background = `rgb(${seq & 255},${(seq >> 8) & 255},${(seq >> 16) & 255})`;
+    // 反映済みの合図。タイトルの変更はブラウザ側へ届くので、ホストはこれを待ってから描かせる。
+    document.title = "ready:" + seq;
+  };
+</script>

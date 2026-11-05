@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "試作の WebView が使う権限",
+  "windows": ["*"],
+  "webviews": ["*"],
+  "permissions": ["core:default"]
+}

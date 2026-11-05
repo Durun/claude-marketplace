@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+# apps/* はアプリ（Tauri の窓など）。
 members = ["crates/*", "apps/*"]
 
 [workspace.package]
@@ -26,6 +27,8 @@ mm-testkit = { path = "crates/mm-testkit" }
 mm-runtime = { path = "crates/mm-runtime" }
 mm-render = { path = "crates/mm-render" }
 mm-nodes-basic = { path = "crates/mm-nodes-basic" }
+mm-decode-d3d12va = { path = "crates/mm-decode-d3d12va" }
+mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
 mm-text-glyphon = { path = "crates/mm-text-glyphon" }
 mm-audio-dsp = { path = "crates/mm-audio-dsp" }
 mm-decode-ffmpeg = { path = "crates/mm-decode-ffmpeg" }
@@ -38,15 +41,28 @@ serde_json = "1.0"
 ffmpeg-next = { version = "9.0", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 thiserror = "2.0"
 tracing = "0.1"
+wgpu = "30.0.1"
+pollster = "1.0"
+# wgpu-hal の D3D12 が使う版にそろえる（ID3D12Resource などの型を受け渡すため）。
+windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
 ebur128 = "0.1"
-wgpu = "30.0.1"
 half = "2.7"
-pollster = "1.0"
 bytemuck = { version = "1.20", features = ["derive"] }
 png = "0.18"
 clap = { version = "4.5", features = ["derive"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+
+# 色の試作用。OCIO の橋（bindgen、cc）、GLSL → WGSL（naga）、WGSL を GPU で確かめる試験（wgpu、pollster）。
+naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgsl-in", "wgsl-out"] }
+bindgen = "0.73"
+cc = "1.2"
+mm-color-lut = { path = "crates/mm-color-lut" }
+# apps/movie-maker（窓の試作）が使う。
+tauri = { version = "2", features = ["unstable"] }
+tauri-build = "2"
+# CEF ホスト（mm-host-cef の `cef` feature）。wgpu の版は cef クレートが要る版に合わせる。
+cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
 
 [workspace.lints.clippy]
 all = "warn"
