@@ -320,7 +320,7 @@ fn make_slot(device: &wgpu::Device, cuda: &CudaApi, size: u64) -> Result<Slot> {
             fence,
             cu_sem,
             copies: 0,
-            cu_mem: cu_mem,
+            cu_mem,
         })
     }
 }

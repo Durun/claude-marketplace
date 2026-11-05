@@ -150,7 +150,7 @@ impl Sequencer {
     }
 
     /// 次のコマ。終わりなら `None`。
-    pub fn next(&mut self) -> Result<Option<IndexedFrame>> {
+    pub fn next_frame(&mut self) -> Result<Option<IndexedFrame>> {
         loop {
             if self.next_index >= self.timeline.count() || (self.ended && self.held.is_none()) {
                 return Ok(None);

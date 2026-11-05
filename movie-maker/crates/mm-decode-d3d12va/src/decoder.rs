@@ -179,7 +179,7 @@ impl Decoder for D3d12vaDecoder {
     fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
         let _span = tracing::info_span!("decode.next_frame", backend = "d3d12va").entered();
         self.release.reap();
-        let Some(IndexedFrame { index, pts, frame }) = self.seq.next()? else {
+        let Some(IndexedFrame { index, pts, frame }) = self.seq.next_frame()? else {
             return Ok(None);
         };
         self.present(index, pts, frame).map(Some)
