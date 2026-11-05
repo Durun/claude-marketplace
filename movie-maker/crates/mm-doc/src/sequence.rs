@@ -22,6 +22,7 @@ pub type CutId = Id<CutMarker>;
 
 /// 磁気の並び。OTIO の `Track` に写せる形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Sequence {
     pub id: SequenceId,
     /// 頭から順。
@@ -33,6 +34,7 @@ pub struct Sequence {
 
 /// カット。素材の範囲を 1 つ切り出す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Cut {
     pub id: CutId,
     pub source: Node,
@@ -90,6 +92,7 @@ impl Cut {
 
 /// カットの間のトランジション。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Transition {
     pub node: Node,
     pub duration: RationalTime,
@@ -97,6 +100,7 @@ pub struct Transition {
 
 /// ショートと本編の関係。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SequenceOrigin {
     pub sequence: SequenceId,
     pub relation: OriginRelation,
@@ -104,6 +108,7 @@ pub struct SequenceOrigin {
 
 /// 参照（本編を直すとショートも変わる）か、複製（分岐。元が変わったら知らせる）か。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum OriginRelation {
     Reference,

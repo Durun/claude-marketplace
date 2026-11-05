@@ -10,6 +10,11 @@ publish.workspace = true
 mm-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+schemars = { workspace = true, optional = true }
+
+[features]
+# JSON Schema の導出。mm-ops が命令の引数のスキーマを書き出すために使う。
+schema = ["dep:schemars", "mm-types/schema"]
 
 [lints]
 workspace = true

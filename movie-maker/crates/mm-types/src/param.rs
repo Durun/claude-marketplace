@@ -43,6 +43,7 @@ impl ParamType {
 /// 評価済みのパラメータの値（時刻 t での値）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ParamValue {
     Number(f64),
     Vec2([f64; 2]),

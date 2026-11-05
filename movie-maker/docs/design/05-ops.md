@@ -1,13 +1,41 @@
 # 命令の層
 
-- 文書を変えるのは命令だけ。命令は `mm-ops/src/ops/` に 1 つずつ置き、引数の型（serde + JSON Schema）、検証、適用、逆命令、`touches` を持つ。
-- 汎用の命令: `addLayer`、`removeLayer`、`moveLayer`、`setParam`、`setKeyframe`、`removeKeyframe`、`setEase`、`parentLayer`、`attachLayer`、`lockLayer`、`precompose`、`addComposition`、`forkSequence`、`addRenderTarget`、`addMarker`。
-- 編集の命令: `insert`、`overwrite`、`lift`、`extract`、`split`、`ripple`、`roll`、`slip`、`slide`、`disable`。選別: `markIn`・`markOut`、`addSelection`、`rate`、`tag`、`addTopic`。文字起こし: `deleteWords`、`fixTranscript`。
-- 入口は 4 つで、どれも同じ命令を呼ぶ。wgpu の面（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --clip c12 --edge out --by -0.4`。アプリが動いていれば HTTP で、動いていなければ `project.mmdb` を直接開く）、Claude の MCP（命令ごとのツール。引数の型はスキーマから作る）。
-- トランザクション: 複数の命令を 1 つのまとまりとして当てる。ドラッグの連続、マクロ、AI の対応 1 回。取り消しもまとまりの単位。文書の変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。
-- 逆命令を記録に残し、取り消しは逆命令、やり直しは元の命令を当て直す。
-- 同時書き込み: 1 本の列で順に当て、文書の版番号を進め、変わった所を開いているすべての画面に送る。古い版を元にした命令は、`touches` が重ならなければ当て、重なれば断る。CRDT は使わない。
-- ロック: `lock` の付いた所に触る命令は、Claude の入口からは断る。
-- 記録: `project.mmdb` の `ops` の表（誰が、いつ、何を、どのコメントへの対応として、逆命令、`touches`）。版の比較は `mm diff` がこの記録から意味の差分を出す（[保存の形](09-ingest-storage.md#mm-diff)）。
-- マクロ: 命令の列を作る手順。vlog の編集の好みは、マクロとテンプレートの組（パック）として持つ。
+文書を変えるのは命令だけ。実装は `crates/mm-ops`（基礎の層。口のクレートではない）。
 
+## 命令
+
+- 命令は `mm_ops::Op` の 1 つの枝で、`mm-ops/src/ops/` に 1 つ 1 ファイル。引数の型（serde + JSON Schema）、検証、適用、逆命令、`touches` を持つ。JSON では `op` の欄に名前（camelCase）、残りの欄に引数（`{"op":"ripple","cut":"k1","edge":"out","by":{"num":-2,"den":5}}`）。知らない欄は断る。
+- 汎用の命令: `addLayer`、`removeLayer`、`moveLayer`、`setParam`、`removeParam`、`setKeyframe`、`removeKeyframe`、`setEase`、`parentLayer`、`attachLayer`、`lockLayer`、`precompose`、`unprecompose`、`addComposition`、`removeComposition`、`addSequence`、`forkSequence`、`removeSequence`、`addRenderTarget`、`removeRenderTarget`、`addMarker`、`removeMarker`。`remove*` と `unprecompose` は `add*` と `precompose` の逆命令で、人も呼べる。
+- 編集の命令（磁気の並び）: `insert`、`overwrite`、`extract`、`split`、`join`、`ripple`、`roll`、`slip`、`slide`、`disable`。`by` と `at` は並びの時間軸の長さで、素材の時間には `speed` を掛けて写す。`lift`（抜いた所に隙間を残す）は隙間の動画オブジェクトの種類を決めてから足す。選別（`markIn`・`markOut`、`addSelection`、`rate`、`tag`、`addTopic`）と文字起こし（`deleteWords`、`fixTranscript`）は段階 3。
+- パラメータは `ParamRef`（`layer` か `cut` の ID と、`.` 区切りの道筋）で指す。道筋は `opacity`、`transform.position|scale|rotation|anchor`、`source.<名前>`、`effects.<ID>.<名前>`、`masks.<ID>.path|feather|opacity`、`audio.gain_db|pan`。
+- 当てた後は必ず `Project::validate` を通す。通らなければ命令は失敗で、文書は変わらない。
+- 逆命令が元の文書をバイトで戻せるよう、命令は形を絞る。`precompose` は重なりの上で続いた範囲だけ、`unprecompose` は `precompose` が作った形だけ、`join` は `split` が作った続きだけ、`addMarker` は同じ時刻が無いときだけ受ける。
+- 入口は 4 つで、どれも同じ命令を呼ぶ。wgpu の面（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。アプリが動いていれば HTTP で、動いていなければ `project.mmdb` を直接開く）、Claude の MCP（命令ごとのツール。引数の型はスキーマから作る）。
+- 全部の命令の JSON Schema は `mm_ops::ops_schema()` が出し、`crates/mm-ops/schema/ops.json` に凍結する（テストが最新かを確かめる。`MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test schema` で書き直す）。`mm op --schema`、MCP、`ui/sdk` の型の生成の元。
+
+## `touches`
+
+- 命令が読む・書く所の ID の集合（文字列）。書く所だけでなく、参照先（親、接続先、入れ子のコンポジション）、参照元（レンダーターゲット、接続したレイヤー）、並びの隣のカットも含める。
+- 守る性質: `touches` が重ならない 2 つの命令は、順を入れ替えても同じ文書になる（両方とも失敗するか、同じ文書）。性質テスト（`crates/mm-ops/tests/props.rs`）が守る。
+- 同時書き込みの判定と `mm diff` がこれで指す。
+
+## トランザクション
+
+- 複数の命令を 1 つのまとまり（`Transaction { name, base_version, ops }`）として当てる。ドラッグの連続、マクロ、Claude の対応 1 回。途中で失敗したら全部戻す（`apply_transaction`）。
+- `Editor` が文書と版番号を持つ。命令 1 つで版が 1 進み、まとまりの記録 `TxnRecord { id, kind, name, base_version, version, ops }` を残す。`ops` の各要素は `OpRecord { op, inverse, touches }`（命令と逆命令は JSON の値、`touches` は ID の列）。
+- 取り消しもまとまりの単位。逆命令を逆の順に当て、`kind = undo { of }` のまとまりとして記録する。やり直しは元の命令を当て直し `kind = redo { of }`。取り消した後に新しい命令を当てると、やり直しの先は捨てる。
+- 文書の変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。保存の層は `TxnRecord` を `txns` の 1 行と `ops` の複数行に写し、`version` を `meta.doc_version` に置く。
+
+## 同時書き込み
+
+- 1 本の列で順に当て、文書の版番号を進め、変わった所を開いているすべての画面に送る。
+- 古い版を元にした命令（`base_version` が今の版より前）は、その後に当てた命令の `touches` と重ならなければ当て、重なれば `Conflict` で断る（呼ぶ側が今の文書で作り直す）。今の版より先を元にしていれば `FutureBase`。CRDT は使わない。
+
+## ロック
+
+- `Layer.lock` の付いたレイヤー（とその効果・マスク）に `touches` が触る命令は、Claude の入口（`Entry::Cli`、`Entry::Mcp`）からは `Locked` で断る。ロックを外すのも断る。入口の種類は `OpContext` で渡す。
+
+## 記録と差分
+
+- `project.mmdb` の `ops` の表（誰が、いつ、何を、どのコメントへの対応として、逆命令、`touches`）。版の比較は `mm diff` がこの記録から意味の差分を出す（[保存の形](09-ingest-storage.md#mm-diff)）。
+- マクロ: 命令の列を作る手順。vlog の編集の好みは、マクロとテンプレートの組（パック）として持つ。

@@ -35,6 +35,7 @@ pub fn default_true() -> bool {
 /// コンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。
 /// `time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Layer {
     pub id: LayerId,
     pub source: Node,
@@ -133,12 +134,14 @@ impl Layer {
 /// タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に写す折れ線。
 /// 最初より前と最後より後は端の値を保つ。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TimeRemap {
     pub keyframes: Vec<TimeKeyframe>,
 }
 
 /// タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま写す）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TimeKeyframe {
     /// レイヤーの始まりからの時刻。
     pub time: RationalTime,
@@ -149,6 +152,7 @@ pub struct TimeKeyframe {
 
 /// 合成モード。式は W3C Compositing and Blending Level 1。`Add` は線形の加算（linear dodge）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BlendMode {
     #[default]
@@ -173,6 +177,7 @@ pub enum BlendMode {
 
 /// レイヤーの変形。値はコンポジションの画素と度。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct Transform {
     /// 動かす量（Vec2）。
@@ -212,6 +217,7 @@ impl Transform {
 
 /// マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Mask {
     pub id: MaskId,
     /// 頂点の列（コンポジションの画素）。キーフレームで形を動かせる。
@@ -227,6 +233,7 @@ pub struct Mask {
 
 /// マスクの組み合わせ方。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MaskMode {
     #[default]
@@ -237,6 +244,7 @@ pub enum MaskMode {
 
 /// トラックマット。同じコンポジションの別のレイヤーのアルファか輝度で切り抜く。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TrackMatte {
     pub layer: LayerId,
     pub kind: MatteKind,
@@ -246,6 +254,7 @@ pub struct TrackMatte {
 
 /// マットに使う成分。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MatteKind {
     Alpha,
@@ -254,6 +263,7 @@ pub enum MatteKind {
 
 /// 効果。動画オブジェクトの種類を 1 つ、レイヤーの絵を入力にして掛ける。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Effect {
     pub id: EffectId,
     pub node: Node,
@@ -263,6 +273,7 @@ pub struct Effect {
 
 /// レイヤーの音の設定。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct LayerAudio {
     /// 役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。
     pub role: String,
