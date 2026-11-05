@@ -11,7 +11,7 @@ use common::{
     busy_gpu, distinct_in_row, fixtures, gpu, read_frame_number, FrameReader, ReadbackFactory,
 };
 use mm_decode_api::{Decoder, DecoderFactory};
-use mm_decode_d3d12va::{gpu_request, D3d12vaDecoder, D3d12vaFactory};
+use mm_decode_d3d12va::{gpu_request, D3d12vaDecoder, D3d12vaFactory, PROBE_ENV};
 use mm_gpu::GpuContext;
 use mm_testkit::decode::{contract, DecodeFixture};
 use mm_testkit::decode_vfr::vfr_contract;
@@ -27,6 +27,7 @@ const FILES: [&str; 6] = [
 ];
 
 fn ctx() -> Arc<GpuContext> {
+    std::env::set_var(PROBE_ENV, env!("CARGO_BIN_EXE_mm-d3d12va-probe"));
     gpu(gpu_request(None).expect("D3D12 のアダプター"))
 }
 
@@ -187,6 +188,33 @@ fn gpu_が遅れても別のコマが混ざらない() {
     for _ in 0..3 {
         assert_eq!(mixed_frames(true), 0);
     }
+}
+
+/// NVIDIA の d3d12va が落とす素材（NVENC の 4K HEVC）は、描画器のデバイスで復号する前に別プロセスで断られ、
+/// デバイスが消えない。ドライバーが直って復号できるなら開けてもよい。
+#[test]
+fn 落ちる素材は別プロセスで断られデバイスを守る() {
+    let ctx = ctx();
+    let dir = fixtures(&FILES);
+    let nvenc = dir.join("nvenc4k.mp4");
+    if !nvenc.exists() {
+        eprintln!("nvenc4k.mp4 が無いので飛ばす");
+        return;
+    }
+    let opened = factory().open(&nvenc, None);
+    eprintln!("nvenc4k.mp4 の d3d12va: {:?}", opened.as_ref().err());
+    if let Err(e) = &opened {
+        assert!(matches!(e, MmError::Unsupported(_)), "{e}");
+    }
+    drop(opened);
+    // SAFETY: as_hal の参照はこの文の間だけ使う。
+    let hal = unsafe { ctx.device.as_hal::<wgpu::hal::api::Dx12>() }.expect("D3D12");
+    assert!(
+        unsafe { hal.raw_device().GetDeviceRemovedReason() }.is_ok(),
+        "描画器のデバイスが消えていない"
+    );
+    let mut dec = open("cfr.mp4");
+    assert!(dec.next_frame().expect("復号").is_some());
 }
 
 #[test]

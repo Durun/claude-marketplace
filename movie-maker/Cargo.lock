@@ -2763,6 +2763,8 @@ dependencies = [
  "mm-cache-api",
  "mm-color-api",
  "mm-decode-api",
+ "mm-decode-cuvid",
+ "mm-decode-d3d12va",
  "mm-decode-ffmpeg",
  "mm-doc",
  "mm-encode-ffmpeg",

@@ -22,12 +22,21 @@ pub enum Backend {
     Dsp,
     /// `mm-decode-ffmpeg` と `mm-encode-ffmpeg`。feature `ffmpeg` のときだけ組める。
     Ffmpeg,
+    /// `mm-decode-d3d12va`（デコードだけ）。feature `d3d12va` のときだけ組める。描画器と同じ D3D12 のデバイスが要る。
+    D3d12va,
+    /// `mm-decode-cuvid`（デコードだけ）。feature `cuvid` のときだけ組める。NVIDIA の GPU が要る。
+    Cuvid,
+    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数コマで判断する。
+    Auto,
 }
 
 impl Backend {
     /// 設定ファイルに書く名前。
     pub fn as_str(self) -> &'static str {
         match self {
+            Backend::D3d12va => "d3d12va",
+            Backend::Cuvid => "cuvid",
+            Backend::Auto => "auto",
             Backend::Sample => mm_testkit::SAMPLE_ID,
             Backend::Wgpu => "wgpu",
             Backend::Glyphon => "glyphon",
@@ -38,10 +47,18 @@ impl Backend {
 }
 
 impl Backend {
-    /// この実装が GPU の文脈を使うか。GPU で復号する実装（`d3d12va`、`cuvid`）を選べるようにしたら
-    /// ここに足す。
+    /// この実装が GPU の文脈を使うか。GPU で復号する実装（`d3d12va`、`cuvid`、それを試す `auto`）は
+    /// 描画器と同じデバイスが要る。
     pub fn uses_gpu(self) -> bool {
-        matches!(self, Backend::Wgpu)
+        matches!(
+            self,
+            Backend::Wgpu | Backend::D3d12va | Backend::Cuvid | Backend::Auto
+        )
+    }
+
+    /// 復号に D3D12 のデバイスが要る実装か（描画器のデバイスを D3D12 のアダプターで作る）。
+    pub fn needs_d3d12(self) -> bool {
+        matches!(self, Backend::D3d12va | Backend::Cuvid | Backend::Auto)
     }
 }
 
@@ -55,6 +72,9 @@ impl FromStr for Backend {
             "glyphon" => Ok(Backend::Glyphon),
             "dsp" => Ok(Backend::Dsp),
             "ffmpeg" => Ok(Backend::Ffmpeg),
+            "d3d12va" => Ok(Backend::D3d12va),
+            "cuvid" => Ok(Backend::Cuvid),
+            "auto" => Ok(Backend::Auto),
             other => Err(MmError::Unsupported(format!("実装 {other} は無い"))),
         }
     }
@@ -114,6 +134,27 @@ mod tests {
     }
 
     #[test]
+    fn gpu_で復号する実装は_gpu_を使う() {
+        for b in [
+            Backend::D3d12va,
+            Backend::Cuvid,
+            Backend::Auto,
+            Backend::Wgpu,
+        ] {
+            assert!(b.uses_gpu(), "{b:?}");
+        }
+        for b in [
+            Backend::Sample,
+            Backend::Ffmpeg,
+            Backend::Dsp,
+            Backend::Glyphon,
+        ] {
+            assert!(!b.uses_gpu(), "{b:?}");
+        }
+        assert!(Backend::Auto.needs_d3d12() && !Backend::Wgpu.needs_d3d12());
+    }
+
+    #[test]
     fn gpu_の要否は描画器の選択で決まる() {
         assert!(!RuntimeConfig::sample().needs_gpu());
         assert!(RuntimeConfig::real().needs_gpu());
@@ -135,6 +176,9 @@ mod tests {
             Backend::Glyphon,
             Backend::Dsp,
             Backend::Ffmpeg,
+            Backend::D3d12va,
+            Backend::Cuvid,
+            Backend::Auto,
         ] {
             assert_eq!(b.as_str().parse::<Backend>().unwrap(), b);
         }

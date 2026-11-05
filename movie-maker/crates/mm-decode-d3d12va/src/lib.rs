@@ -22,6 +22,8 @@ mod convert;
 mod decoder;
 #[cfg(feature = "d3d12va")]
 mod hwdec;
+#[cfg(feature = "d3d12va")]
+mod probe;
 /// cuvid のクレートと同じソースを取り込む共有部。
 #[cfg(feature = "d3d12va")]
 pub mod shared;
@@ -30,3 +32,5 @@ mod wrap;
 
 #[cfg(feature = "d3d12va")]
 pub use decoder::{gpu_request, required_features, D3d12vaDecoder, D3d12vaFactory};
+#[cfg(feature = "d3d12va")]
+pub use probe::{PROBE_ENV, PROBE_FRAMES};

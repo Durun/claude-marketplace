@@ -7,6 +7,23 @@
 use mm_gpu::{adapter_id, GpuRequest};
 use mm_types::{GpuAdapterId, MmError, Result};
 
+/// LUID のアダプターを指す `GpuRequest`。別プロセスで親と同じ GPU を選ぶのに使う。
+pub fn dx12_request_for_luid(luid: u64, features: wgpu::Features) -> Result<GpuRequest> {
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::DX12;
+    let instance = wgpu::Instance::new(desc);
+    let id = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::DX12))
+        .iter()
+        .map(adapter_id)
+        .find(|id| id.luid == Some(luid))
+        .ok_or_else(|| MmError::Unsupported(format!("LUID {luid} の D3D12 のアダプターが無い")))?;
+    Ok(GpuRequest {
+        adapter: Some(id),
+        optional_features: wgpu::Features::TIMESTAMP_QUERY | features,
+        backends: wgpu::Backends::DX12,
+    })
+}
+
 /// D3D12 のアダプターを指す `GpuRequest`。`wanted` があればその機種、なければ D3D12 での高性能のアダプター。
 /// `features` は描画器のデバイスに求める機能（`TIMESTAMP_QUERY` は常に求める）。
 pub fn dx12_request(wanted: Option<&GpuAdapterId>, features: wgpu::Features) -> Result<GpuRequest> {

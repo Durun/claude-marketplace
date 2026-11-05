@@ -205,6 +205,14 @@ impl DecoderFactory for D3d12vaFactory {
         let ctx = gpu
             .and_then(|g| g.as_any().downcast_ref::<GpuContext>())
             .ok_or_else(|| MmError::Unsupported("d3d12va は GPU の文脈が要る".into()))?;
-        Ok(Box::new(D3d12vaDecoder::open(path, ctx)?))
+        // 開くだけなら復号しないので安全（壊れた素材はここで Corrupt になる）。落ちる素材は
+        // ドライバーが D3D12 のデバイスを全部消すので、最初の復号の前に別プロセスで試す。
+        let decoder = D3d12vaDecoder::open(path, ctx)?;
+        let luid = ctx
+            .adapter
+            .luid
+            .ok_or_else(|| MmError::Unsupported("D3D12 のアダプターでない".into()))?;
+        crate::probe::probe(path, luid)?;
+        Ok(Box::new(decoder))
     }
 }

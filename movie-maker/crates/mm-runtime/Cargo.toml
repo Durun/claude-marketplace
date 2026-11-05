@@ -24,6 +24,8 @@ mm-nodes-basic = { workspace = true }
 mm-text-glyphon = { workspace = true }
 mm-audio-dsp = { workspace = true }
 mm-decode-ffmpeg = { workspace = true, optional = true }
+mm-decode-d3d12va = { workspace = true, optional = true }
+mm-decode-cuvid = { workspace = true, optional = true }
 mm-encode-ffmpeg = { workspace = true, optional = true }
 serde = { workspace = true }
 tracing = { workspace = true }
@@ -31,6 +33,9 @@ tracing = { workspace = true }
 [features]
 # FFmpeg の開発ファイルと libclang が要る（mm-decode-ffmpeg/README.md）。切ったときは ffmpeg の腕が Unsupported を返す。
 ffmpeg = ["dep:mm-decode-ffmpeg", "dep:mm-encode-ffmpeg", "mm-decode-ffmpeg/ffmpeg", "mm-encode-ffmpeg/ffmpeg"]
+# 描画器と同じ D3D12 のデバイスの上で復号する。実機の NVIDIA が要る。ffmpeg も入れると音が付く。
+d3d12va = ["dep:mm-decode-d3d12va", "mm-decode-d3d12va/d3d12va"]
+cuvid = ["dep:mm-decode-cuvid", "mm-decode-cuvid/cuvid"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
