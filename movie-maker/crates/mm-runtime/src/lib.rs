@@ -1,7 +1,7 @@
 //! 組み立て。実装を選ぶのはこのクレートだけで、入口（アプリ、CLI、サーバー）は [`Engine`] を受け取る。
 //!
-//! 今は見本の実装（`mm-testkit`）しか無いので、設定の各欄は `sample` だけを受け付ける。
-//! 本物の実装のクレートが入ったら、[`assemble`] に選択肢を足す（口は変えない）。
+//! 設定の各欄は見本（`sample`）か本物（`wgpu`、`glyphon`、`dsp`、`ffmpeg`）を選ぶ。
+//! `ffmpeg` は feature `ffmpeg` のときだけ組める。本物の実装が増えたら [`assemble`] に腕を足す（口は変えない）。
 
 mod assemble;
 mod config;
