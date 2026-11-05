@@ -1,0 +1,25 @@
+# plain とは別のワークスペース。dx は変えたクレートに依存する全メンバーの patch を作ろうとし、
+# ビルドしていないメンバー（相手のアプリ）で失敗するため。
+[workspace]
+
+[package]
+name = "spike-tauri"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+mm-doc = { path = "../../../crates/mm-doc" }
+ops-sample = { path = "../ops-sample" }
+subsecond = "0.7"
+dioxus-devtools = "0.7"
+
+[lints.clippy]
+all = "warn"
+
+[patch.crates-io]
+tauri-build = { path = "patches/tauri-build" }

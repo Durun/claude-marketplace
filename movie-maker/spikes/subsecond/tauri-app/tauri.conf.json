@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "spike-tauri",
+  "version": "0.0.0",
+  "identifier": "dev.durun.mm.spike",
+  "build": { "frontendDist": "./dist" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{ "title": "subsecond spike", "width": 640, "height": 240 }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.png", "icons/icon.ico"] }
+}
