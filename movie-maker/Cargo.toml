@@ -32,5 +32,11 @@ thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
+# CEF ホスト（mm-host-cef の `cef` feature）。wgpu の版は cef クレートが要る版に合わせる。
+cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
+wgpu = { version = "30", default-features = false, features = ["dx12", "wgsl"] }
+pollster = "0.4"
+png = "0.18"
+
 [workspace.lints.clippy]
 all = "warn"
