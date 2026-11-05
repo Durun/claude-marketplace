@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-# cargo は 1 つも合わない glob を断るので、最初のアプリ（apps/mm）が入る PR で "apps/*" を足す。
-members = ["crates/*"]
+# apps/* はアプリ（Tauri の窓など）。
+members = ["crates/*", "apps/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -48,6 +48,10 @@ naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgs
 bindgen = "0.73"
 cc = "1.2"
 mm-color-lut = { path = "crates/mm-color-lut" }
+# apps/movie-maker（窓の試作）が使う。
+tauri = { version = "2", features = ["unstable"] }
+tauri-build = "2"
+windows = "0.62"
 
 [workspace.lints.clippy]
 all = "warn"
