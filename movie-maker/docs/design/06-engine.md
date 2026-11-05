@@ -6,8 +6,12 @@
 - GPU の選択: wgpu の `request_adapter` に `HighPerformance` を指定し、選ばれたアダプターの名前を Program に出す。
 - 計測: 1 コマの描画、レイヤーごとの評価、パスごとの GPU の時間（wgpu のタイムスタンプ）、デコードとシーク、キャッシュの当たり率、書き出しの fps を `tracing` のスパンとカウンタで取る。測る項目と予算は[計装](17-instrumentation.md)。
 - デコード: FFmpeg のライブラリ（`ffmpeg-the-third`。FFmpeg 5.1〜8.1 に対応 [17]）を `mm-decode-ffmpeg` で囲い、口は `mm-decode-api`。H.264、HEVC、AV1 は NVDEC（`hwaccel`）で復号し、ProRes、DNxHR、MXF、DPX、OpenEXR はそのまま読める。デコーダは素材ごとに 1 つを使い回すプール（同時 4〜6 本。NVDEC は 2 基で約 1,450 fps が上限）。
-- NVDEC からの受け渡しは 3 段で試す（段階 0）。(1) FFmpeg の `d3d12va` で復号し（FFmpeg 7.0 から [18]）、D3D12 のテクスチャを `wgpu_hal::dx12::Device::texture_from_raw` → `create_texture_from_hal` で wgpu に包む [2][3]（コピーなし）。(2) CUDA の `cuvid` で復号し、wgpu の D3D12 のテクスチャを共有ヒープで作って CUDA の外部メモリに取り込み、`cuMemcpy2D` で 1 回コピーする（`cudarc` の `import_external_memory` は Win32 のハンドルを受けるが D3D12 の種類は生の `sys` で指定する [19]）。(3) `nv12` を CPU に下ろしてアップロードする（最後の手段）。
-- エンコード: NVENC（FFmpeg の `h264_nvenc`、`hevc_nvenc`、`av1_nvenc`）。描画器が compute で NV12 にしたテクスチャを、(1) と同じ外部メモリの経路で渡す。ダメなら読み戻して渡す。
+- NVDEC からの受け渡しは 3 段で、段階 0 で 3 つとも動いた（2026-11-06）。既定は (1)。開いた直後の数コマで失敗する素材は (2) に切り替え、最後は (3)（ユーザーの決定。切り替えは `open` の後に最初の数コマを復号して `Err` なら次を試す形で、順は `mm-runtime` の設定）。4K の速度は (1) 540〜590 fps、(2) 560〜600 fps、(3) 250〜265 fps [nvdec](spikes/nvdec.md)。
+  1. FFmpeg の `d3d12va` で復号し（FFmpeg 7.0 から [18]）、D3D12 のテクスチャを `wgpu_hal::dx12::Device::texture_from_raw` → `create_texture_from_hal` で wgpu に包む [2][3]（コピーなし）。FFmpeg には wgpu の `ID3D12Device` を渡し、同期は `Queue::add_wait_fence` で待つ。NVENC で作った 4K の HEVC は復号できない（原因は未調査）。
+  2. CUDA の `cuvid` で復号し、D3D12 の共有バッファに `cuMemcpy2DAsync` で 1 回コピーし、共有フェンスで同期する（`cudarc` の `import_external_memory` は Win32 のハンドルを受けるが D3D12 の種類は生の `sys` で指定する [19]）。
+  3. `nv12` を CPU に下ろしてアップロードする（最後の手段）。
+- NVDEC のコマは、描画器の `submit` が終わるまでの借り物にする。握っている間は FFmpeg のプールが詰まるので、キャッシュに置くコマは RGBA にする。
+- エンコード: NVENC（FFmpeg の `h264_nvenc`、`hevc_nvenc`、`av1_nvenc`）。描画器が compute で NV12 にしたテクスチャを、上の (2) と同じ共有バッファの経路で渡す。ダメなら読み戻して渡す。段階 0 の書き出しは libx264 と CPU の読み戻しで、1080p 13.2 fps（[計装の予算の表](17-instrumentation.md#予算の表)）。
 
 ## キャッシュ
 

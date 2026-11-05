@@ -17,14 +17,40 @@
 
 ## 段階 0 で最初に確かめる難所
 
-| 難所 | 確かめること | ダメだったときの逃げ道 |
-|---|---|---|
-| Tauri の窓に wgpu の面と WebView2 | 子 HWND に `wgpu::Surface` を張り、`unstable` の子 WebView と並べる。大きさの変更、DPI、フォーカス、キーの振り分け。再生中に WebView の画面を更新しても面が落ちないか。再生位置の同期の遅れ（Rust の状態 → IPC → 画面）を測る | wry の `wgpu.rs` の例 [28] から始める。並べられなければ、wgpu の面を別の窓にする。それもダメなら対案 C |
-| CEF の共有テクスチャを wgpu へ | `cef` クレートの `osr_texture_import` で、`OnAcceleratedPaint` の D3D11 の共有ハンドルを D3D12 の `OpenSharedHandle` → `texture_from_raw` → `create_texture_from_hal` で包み、コピーして描く [2][3]。CEF はハンドルをコールバックの外で使えないので、その中でコピーする [7]。1080p で何 ms か、`SendExternalBeginFrame` で時刻を決められるか | CEF の `OnPaint`（CPU の BGRA）でアップロードする。遅ければ `web.cef` はパラメータごとに 1 回描くキャッシュに限る |
-| NVDEC → wgpu をコピーなしで | FFmpeg の `d3d12va` で復号した `ID3D12Resource`（NV12）を wgpu に包めるか（面の配列、フォーマット、同期） | `cuvid` + CUDA の外部メモリで 1 コピー。最後は CPU 経由（実測 4K で 700〜800 fps の NVDEC に対して、CPU のコピーがどこまで落とすかを測る） |
-| Rust の関数の差し替え | subsecond で `mm-ops` の命令と WebView の裏の関数を差し替え、リロードが何秒で済むか。Tauri のアプリで動くか（対応の表は Android、iOS、Linux で、Windows は未確認 [8]） | 差し替えは WebView 側だけにし、Rust は `cargo build` の増分と再起動（文書は自動保存から復元） |
-| OCIO のシェーダー | OCIO 2.5 を `bindgen` で呼び、GLSL を naga で WGSL にできるか | 3D LUT に焼いて WGSL で当てる |
+結果は 2026-11-06 に試作（[spikes/](spikes/)）で取った。5 つとも可。逃げ道に下がったのは、NVDEC の一部の素材と OCIO の一部の変換だけ。
 
+| 難所 | 確かめること | ダメだったときの逃げ道 | 結果 |
+|---|---|---|---|
+| Tauri の窓に wgpu の面と WebView2 | 子 HWND に `wgpu::Surface` を張り、`unstable` の子 WebView と並べる。大きさの変更、DPI、フォーカス、キーの振り分け。再生中に WebView の画面を更新しても面が落ちないか。再生位置の同期の遅れ（Rust の状態 → IPC → 画面）を測る | wry の `wgpu.rs` の例 [28] から始める。並べられなければ、wgpu の面を別の窓にする。それもダメなら対案 C | 可。逃げ道に下がっていない。Tauri 2.12.5 の `Window::add_child` と自前の子 HWND の面。wry の例は使っていない。面は 60 秒の連続で 59.97 fps、面を取れなかった数 0。通知が WebView の rAF に届くまで中央値 9.5 ms、99% 11.6 ms。大きさを変え続けると WebView の同期が最大 0.25 秒遅れ、面は 1 コマ落ちる程度。未確認は 150% の DPI、倍率の違うモニター間、複数の子 WebView。[window](spikes/window.md) |
+| CEF の共有テクスチャを wgpu へ | `cef` クレートの `osr_texture_import` で、`OnAcceleratedPaint` の D3D11 の共有ハンドルを D3D12 の `OpenSharedHandle` → `texture_from_raw` → `create_texture_from_hal` で包み、コピーして描く [2][3]。CEF はハンドルをコールバックの外で使えないので、その中でコピーする [7]。1080p で何 ms か、`SendExternalBeginFrame` で時刻を決められるか | CEF の `OnPaint`（CPU の BGRA）でアップロードする。遅ければ `web.cef` はパラメータごとに 1 回描くキャッシュに限る | 可。共有テクスチャを採る。写しは 1080p で p50 0.60 ms、p95 0.79 ms（予算 3 ms）。1 コマの全体は p50 4.84 ms、約 190 fps で、描く時刻を決められ、同じ入力の画素は一致した。`OnPaint` の逃げ道も動き、1080p で 9.18 ms、4K で 22.6 ms（共有テクスチャは 4.74 ms）。保険として残し、下がってはいない。未確かめは別プロセスのアプリへの受け渡し。[cef](spikes/cef.md) |
+| NVDEC → wgpu をコピーなしで | FFmpeg の `d3d12va` で復号した `ID3D12Resource`（NV12）を wgpu に包めるか（面の配列、フォーマット、同期） | `cuvid` + CUDA の外部メモリで 1 コピー。最後は CPU 経由（実測 4K で 700〜800 fps の NVDEC に対して、CPU のコピーがどこまで落とすかを測る） | 可。`d3d12va` をコピーなしで包めた（包む費用 1 µs、画素は CPU 経由と一致）。既定は `d3d12va`。NVENC で作った 4K の HEVC は `d3d12va` で復号できず、その素材だけ `cuvid`（1 コピー、18 µs）に下がる。最後は CPU 経由。4K は `d3d12va` 540〜590 fps、`cuvid` 560〜600 fps、CPU 経由 250〜265 fps で、700 fps には届かない。[nvdec](spikes/nvdec.md) |
+| Rust の関数の差し替え | subsecond で `mm-ops` の命令と WebView の裏の関数を差し替え、リロードが何秒で済むか。Tauri のアプリで動くか（対応の表は Android、iOS、Linux で、Windows は未確認 [8]） | 差し替えは WebView 側だけにし、Rust は `cargo build` の増分と再起動（文書は自動保存から復元） | 可。Windows 11 で素の実行ファイルでも Tauri でも動き、メモリの中の文書は残った。保存から反映まで素の実行ファイルで中央値 0.7 秒、Tauri で 1.5 秒（逃げ道の増分ビルドと再起動は 1.1 秒と 2.8 秒）。速さより状態と窓を落とさないことが利点。Tauri は `tauri-build` と `dx` の Windows のリソースが二重になり、手当てが要る。逃げ道には下がっていない。[subsecond](spikes/subsecond.md) |
+| OCIO のシェーダー | OCIO 2.5 を `bindgen` で呼び、GLSL を naga で WGSL にできるか | 3D LUT に焼いて WGSL で当てる | 可。ただし一部は逃げ道。C の薄い橋（約 150 行）に `bindgen` をかけて呼べた。式だけの変換は naga で WGSL になり、GPU で OCIO の CPU と最大差 2.4e-5。テクスチャを持つ ACES 2.0 の表示変換は naga が読めず、3D LUT に焼く（65³ で最大差 1.3e-3）。OCIO は 2.6.0 で確かめた。[ocio](spikes/ocio.md) |
+
+## 段階 0 の終わりの条件の判定
+
+2026-11-06 時点。
+
+| 条件 | 判定 | 残り |
+|---|---|---|
+| 難所の数字と可否がこの設計書に戻っている（[計装の予算の表](17-instrumentation.md#予算の表)の〔推〕が実測に置き換わっている） | 難所に当たる行は満たした。5 つの可否と数字は上の表と [spikes/](spikes/) に戻り、予算の表は 26 行のうち 5 行を実測に置き換えた（CEF、起動、デコード 1080p が達成、デコード 4K と書き出しが超過）。6 行は条件が違う参考値だけを足し、15 行は〔推〕のまま | 超過の 2 行は段階 1（デコードの実素材）と段階 4（NVENC）で測り直す。残りの行は、測る対象（命令、キャッシュ、取り込み、保存など）が段階 1 以降で出来るので、そこで置き換える。窓の 150% の DPI などは人が確かめる |
+| 書き出した MP4 が再生できる | 機械的には満たした。`mm render` の出力を、統合テスト（`apps/mm/tests/render.rs`）が ffprobe と `mm-decode-ffmpeg` で読み戻す（PR #15） | 人が再生ソフトで見た記録が無い。書き出しは libx264 と CPU の読み戻しで、NVENC は未接続 |
+| 口が固定されている | 未了。口のクレートの最初の版と `mm-testkit` の見本の実装はあるが、試作で口の変更が必要と分かった | 口の変更を RFC で決めて直す（別の担当が進めている）。決まった方針は `GpuHelper` トレイトで wgpu を囲うこと。ほかに、NVDEC のコマの受け渡しと GPU の文脈と寿命と同期（`mm-decode-api`）、CEF のホストへの GPU の指定と共有ハンドルの受け渡し（`mm-host-api`）、`TransformProgram` のテクスチャの置き場（`mm-color-api`）、`Engine` から実装の束を取り出す口 |
+
+縦の 1 本（素材を切って文字を載せ、音を付けて書き出す）、`mm-trace`、`mm perf run` の `startup` と `export` は動いている（PR #15）。
+
+## 試作で分かった、後の段階の注意
+
+| 段階 | 注意 |
+|---|---|
+| 1 デコード | `d3d12va` を既定にする。`open` の後に最初の数コマを復号して `Err` なら `cuvid`、最後は CPU 経由に切り替える（NVENC で作った 4K の HEVC は 1 コマ目で落ちる）。この素材（NVENC の 4K、CTB 32）を契約テストの見本に入れ、OBS の NVENC の録画が同じ形かを確かめる。FFmpeg の既定のアダプターは内蔵 GPU なので、wgpu の `ID3D12Device` を渡して同じ GPU で復号する。実素材で 4K の fps を測り直す。[nvdec](spikes/nvdec.md#詰まった所) |
+| 1 色 | `bt709` は Rec.1886 の表示の式を指す（2026-11-06 の決定）。BT.709 の OETF は別の名前で持ち、`mm-color-lut` の見本もそれに合わせる。契約の「白は白」はログと PQ の空間に合わないので、空間ごとに期待値を持たせる。OCIO の環境（vcpkg、LLVM、`OCIO_ROOT`、DLL の同梱）は `mm-color-ocio` の README。[ocio](spikes/ocio.md#詰まった所) |
+| 2 描画器 | NVDEC のコマは `submit` が終わるまでの借り物にし、`Queue::submit` の前に使うコマすべての待ちを登録する。コマのキャッシュは NV12 のままにせず RGBA で置く。ACES 2.0 の表示変換を WGSL で出すなら、結合サンプラーの書き換えと `TransformProgram` のテクスチャの置き場が要る。 |
+| 2 窓 | Tauri のコマンドは `async` にする（同期だと 60 Hz の通知がメッセージループを塞ぐ）。面の大きさと WebView の矩形は物理ピクセルから 1 か所で決める。キーは面の `WM_KEYDOWN` と WebView の `keydown` を 1 つの入口に入れる。面を取れなかったとき（`Outdated`、`Lost`）の経路は未試験。150% の DPI と倍率の違うモニター間を人が確かめる。連続で大きさを変えると WebView の同期が最大 0.25 秒遅れる。[window](spikes/window.md#実装のとき気をつける所) |
+| 4 書き出し | 1080p で 13.2 fps（予算 120 fps）。CPU の読み戻しと libx264 を NVENC と GPU 上の NV12 変換に替えて測り直す。段ごとの計測のため、`Engine` から実装の束を取り出せる口が要る。 |
+| 4 `mm-host-cef`（段階 6 の準備） | CEF と wgpu を同じ GPU に揃える（既定は内蔵の AMD を選び、`OpenSharedHandle` が `E_INVALIDARG` で落ちる）。`windowless_frame_rate` は 240 以上にする（既定の 60 だと BeginFrame から絵が来るまで p50 35 ms）。BeginFrame は捨てられることがあるので、絵が来るまで送り直し、`seq` の印で古い絵を検出する。別プロセスのアプリへは、`DuplicateHandle` で複製するか、ホストが自前の D3D12 共有テクスチャへ写して渡す。1280x720 で p95 が 26 ms に跳ねた原因を調べる。[cef](spikes/cef.md#つまずいた所) |
+| 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 コマの時間を取り直す。CEF を落としたときの再起動と複数ブラウザの同時描画を試す。 |
+| 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` を `[patch.crates-io]` で写し、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。実物の大きさで測り直す。[subsecond](spikes/subsecond.md#詰まった所) |
 
 ---
 
