@@ -16,6 +16,8 @@ pub struct GpuRequest {
     pub adapter: Option<GpuAdapterId>,
     /// あれば有効にする機能。無いアダプターでは落とさずに外す。
     pub optional_features: wgpu::Features,
+    /// 選べるバックエンド。D3D12 の資源を FFmpeg や CUDA と共有するデコーダーは D3D12 だけにする。
+    pub backends: wgpu::Backends,
 }
 
 impl Default for GpuRequest {
@@ -24,6 +26,7 @@ impl Default for GpuRequest {
         Self {
             adapter: None,
             optional_features: wgpu::Features::TIMESTAMP_QUERY,
+            backends: wgpu::Backends::all(),
         }
     }
 }
@@ -38,6 +41,7 @@ pub struct GpuContext {
     pub timestamps: bool,
     /// 作るときに求められた任意の機能。`shared` が後の求めと照合する。
     requested_features: wgpu::Features,
+    requested_backends: wgpu::Backends,
 }
 
 impl GpuContext {
@@ -76,6 +80,12 @@ impl GpuContext {
                 )));
             }
         }
+        if self.requested_backends != request.backends {
+            return Err(MmError::InvalidArgument(format!(
+                "共有の GPU はバックエンド {:?} で作ってあり、{:?} を求められた",
+                self.requested_backends, request.backends
+            )));
+        }
         if self.requested_features != request.optional_features {
             return Err(MmError::InvalidArgument(format!(
                 "共有の GPU は機能 {:?} で作ってあり、{:?} を求められた",
@@ -91,7 +101,9 @@ impl GpuContext {
     }
 
     async fn new_async(request: &GpuRequest) -> Result<Arc<Self>> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = request.backends;
+        let instance = wgpu::Instance::new(desc);
         let adapter = pick_adapter(&instance, request.adapter.as_ref()).await?;
         let required_features = request.optional_features & adapter.features();
         let timestamps = required_features.contains(wgpu::Features::TIMESTAMP_QUERY);
@@ -110,6 +122,7 @@ impl GpuContext {
             adapter: adapter_id(&adapter),
             timestamps,
             requested_features: request.optional_features,
+            requested_backends: request.backends,
         }))
     }
 }

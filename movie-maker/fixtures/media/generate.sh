@@ -86,4 +86,21 @@ x264="-c:v libx264 -preset veryfast -crf 12 -pix_fmt yuv420p -color_primaries bt
 size=$(wc -c <"$out/cfr.mp4")
 head -c $((size / 3)) "$out/cfr.mp4" >"$out/broken.mp4"
 
+# 10 bit の HEVC（Main10）。コマの番号の箱と、左から右へ 876 段で上がる輝度の傾き。
+# 8 bit に落とすと段が 219 に減るので、デコード後の段の数で 10 bit のまま運んだかを確かめられる。
+"$FFMPEG" -y -v error -f lavfi \
+  -i "color=c=black:s=${SIZE}:r=30,format=yuv420p10le,geq=lum='if(lt(Y,16)*lt(X,256),64+876*mod(floor(N/pow(2,floor(X/16))),2),64+876*X/319)':cb=512:cr=512,trim=end_frame=30" \
+  -c:v libx265 -preset veryfast -x265-params "crf=6:keyint=10:bframes=2:log-level=error" \
+  -pix_fmt yuv420p10le -tag:v hvc1 -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv \
+  "$out/p10.mp4" || rm -f "$out/p10.mp4"
+
+# NVENC で作った 4K の HEVC（CTB 32）。NVIDIA の d3d12va が 1 コマ目で落とす形で、cuvid や CPU に切り替える検査に使う。
+# NVENC が無い PC では作らない（テストは飛ばす）。箱は 320x180 の絵を整数倍に拡大して 192 画素の箱にする。
+if "$FFMPEG" -hide_banner -encoders 2>/dev/null | grep -q hevc_nvenc; then
+  "$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 24),scale=3840:2160:flags=neighbor" \
+    -c:v hevc_nvenc -preset p4 -b:v 30M -g 12 -bf 2 -pix_fmt yuv420p -tag:v hvc1 \
+    -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv \
+    "$out/nvenc4k.mp4" || rm -f "$out/nvenc4k.mp4"
+fi
+
 date >"$out/.stamp-2"

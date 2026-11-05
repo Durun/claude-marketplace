@@ -1,180 +1,188 @@
-//! `mm-decode-api` の `Decoder` の実装（試作）。コマは GPU のテクスチャの参照で返す。
+//! `mm-decode-api` の `Decoder` の実装。コマは描画器の wgpu のデバイスの上の `Rgba16Float`
+//! （`GpuFrameTexture`）で返す。復号した面は変換の完了までだけ握り、借りが長引いてもプールは尽きない。
 //!
-//! 試作の範囲: 固定フレームレートだけを扱い、音は無音を返す。`next_frame` が返す
-//! `GpuFrameHandle` の中身は [`D3d12vaDecoder::take_frame`] で引く。
+//! 音は無音を返す。音は `mm-runtime` が FFmpeg のデコーダーと組み合わせる。
 
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
 
-use ffmpeg_next::frame;
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{
     DecodedFrame, Decoder, DecoderFactory, GpuContextRef, GpuFrameHandle, MediaInfo,
 };
-use mm_types::{ColorSpace, MmError, Rational, RationalTime, Result, Size, TimeRange};
+use mm_gpu::{GpuContext, GpuRequest};
+use mm_types::{GpuAdapterId, MmError, RationalTime, Result, TimeRange};
+use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, D3D12_FENCE_FLAG_NONE};
 
-use crate::gpu::GpuContext;
-use crate::hwdec::HwDecoder;
-use crate::wrap::{GpuNv12, Wrapper};
+use crate::convert::YuvConverter;
+use crate::hwdec;
+use crate::shared::adapter::dx12_request;
+use crate::shared::pool::FramePool;
+use crate::shared::reader::{IndexedFrame, Sequencer};
+use crate::shared::release::ReleaseQueue;
+use crate::shared::yuv::{is_full_range, Matrix, YuvParams};
+use crate::wrap::Wrapper;
 
 /// 無音を返すときの形式。
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
 
-/// 口の取っ手の中身。試作ではテクスチャの実体は [`D3d12vaDecoder::take_frame`] で番号から引く。
-pub struct HeldFrameRef {
-    pub id: u64,
+/// 実装の名前。
+pub const ID: &str = "d3d12va";
+
+/// この実装が描画器のデバイスに求める機能。`GpuRequest::optional_features` に足す。
+pub fn required_features() -> wgpu::Features {
+    wgpu::Features::TEXTURE_FORMAT_NV12 | ten_bit_features()
 }
 
-impl mm_decode_api::GpuFrame for HeldFrameRef {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
+/// 10 bit の素材（P010 と、その面を読む 16 bit の形式）に要る機能。
+fn ten_bit_features() -> wgpu::Features {
+    wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
 }
 
-/// 手元に残した、まだ使われていないコマ。FFmpeg のプールに返さないよう復号結果を握る。
-pub struct HeldFrame {
-    pub nv12: GpuNv12,
-    _hw: frame::Video,
+/// 描画器の GPU の文脈を、d3d12va が使える形（D3D12 のアダプター、必要な機能つき）で頼む。
+/// `wanted` が `None` なら D3D12 での高性能のアダプター。
+pub fn gpu_request(wanted: Option<&GpuAdapterId>) -> Result<GpuRequest> {
+    dx12_request(wanted, required_features())
 }
 
 /// d3d12va のデコーダー。
 pub struct D3d12vaDecoder {
-    gpu: Arc<GpuContext>,
-    hw: HwDecoder,
+    seq: Sequencer,
+    bits: u32,
+    queue: wgpu::Queue,
     wrapper: Wrapper,
-    info: MediaInfo,
-    fps: Rational,
-    start_ticks: i64,
-    tick_seconds: (i64, i64),
+    converter: YuvConverter,
+    pool: FramePool,
+    release: ReleaseQueue,
+    /// wgpu のキューが変換を読み終えたことを知らせるフェンス。
+    fence: ID3D12Fence,
+    fence_value: u64,
     next_id: u64,
-    held: HashMap<u64, HeldFrame>,
-    pending: Option<(i64, frame::Video)>,
 }
 
 impl D3d12vaDecoder {
-    /// 素材を開く。
-    pub fn open(path: &Path, gpu: Arc<GpuContext>) -> Result<Self> {
-        let hw = HwDecoder::open(path, &gpu)?;
-        let (info, fps, start_ticks, tick_seconds) = {
-            let stream = hw.stream();
-            let avg = stream.avg_frame_rate();
-            let fps = Rational::new(avg.numerator() as u32, avg.denominator() as u32)
-                .map_err(|e| MmError::Unsupported(format!("フレームレート: {e}")))?;
-            let tb = stream.time_base();
-            let start = if stream.start_time() == i64::MIN {
-                0
-            } else {
-                stream.start_time()
-            };
-            let duration_s = stream.duration().max(0) * i64::from(tb.numerator())
-                / i64::from(tb.denominator().max(1));
-            let size = Size::new(hw.decoder.width(), hw.decoder.height());
-            let info = MediaInfo {
-                duration: RationalTime::seconds(duration_s),
-                fps: Some(fps),
-                size,
-                color_space: ColorSpace::bt709(),
-                timebase_offset: RationalTime::ZERO,
-                audio: None,
-                pts_index: Vec::new(),
-            };
-            (
-                info,
-                fps,
-                start,
-                (
-                    i64::from(tb.numerator()),
-                    i64::from(tb.denominator().max(1)),
-                ),
-            )
-        };
+    /// 素材を開く。`gpu` は描画器と同じデバイスで、D3D12 でなければ `Err(Unsupported)`。
+    pub fn open(path: &Path, gpu: &GpuContext) -> Result<Self> {
+        let features = gpu.device.features();
+        if !features.contains(wgpu::Features::TEXTURE_FORMAT_NV12) {
+            return Err(MmError::Unsupported(
+                "デバイスが NV12 のテクスチャを持たない".into(),
+            ));
+        }
+        let opened = hwdec::open(path, &gpu.device)?;
+        if opened.bits == 10 && !features.contains(ten_bit_features()) {
+            return Err(MmError::Unsupported(
+                "デバイスが P010 と 16 bit のテクスチャを持たない".into(),
+            ));
+        }
+        let fence = create_fence(&gpu.device)?;
+        let seq = Sequencer::new(path, opened.reader)?;
+        let pool = FramePool::new(gpu.device.clone(), seq.info().size);
         Ok(Self {
-            wrapper: Wrapper::new(gpu.clone()),
-            gpu,
-            hw,
-            info,
-            fps,
-            start_ticks,
-            tick_seconds,
+            seq,
+            bits: opened.bits,
+            queue: gpu.queue.clone(),
+            wrapper: Wrapper::new(gpu.device.clone()),
+            converter: YuvConverter::new(gpu.device.clone(), gpu.queue.clone()),
+            pool,
+            release: ReleaseQueue::new(),
+            fence,
+            fence_value: 0,
             next_id: 0,
-            held: HashMap::new(),
-            pending: None,
         })
     }
 
-    /// `next_frame` が返した参照のコマを取り出す。取り出したら呼び出し側が持つ。
-    pub fn take_frame(&mut self, handle: &GpuFrameHandle) -> Option<HeldFrame> {
-        self.held.remove(&handle.id)
+    /// 復号した面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    pub fn set_gpu_wait(&mut self, on: bool) {
+        self.release.set_wait_for_gpu(on);
     }
 
-    fn index_of(&self, pts: i64) -> i64 {
-        let ticks = pts - self.start_ticks;
-        let seconds = ticks as f64 * self.tick_seconds.0 as f64 / self.tick_seconds.1 as f64;
-        (seconds * f64::from(self.fps.num()) / f64::from(self.fps.den())).round() as i64
+    /// 握っている面の数。
+    pub fn pending_surfaces(&self) -> usize {
+        self.release.len()
     }
 
-    fn next_decoded(&mut self) -> Result<Option<(i64, frame::Video)>> {
-        if let Some(p) = self.pending.take() {
-            return Ok(Some(p));
-        }
-        let Some(hw) = self.hw.next_hw_frame()? else {
-            return Ok(None);
-        };
-        let pts = hw.timestamp().or(hw.pts()).unwrap_or(self.start_ticks);
-        Ok(Some((self.index_of(pts), hw)))
+    /// 包んだ資源の数。
+    pub fn resource_count(&self) -> usize {
+        self.wrapper.resource_count()
+    }
+
+    /// wgpu のキューに、いまの提出までの読み取りが終わったらフェンスを進めさせる。値を返す。
+    fn signal_after_submit(&mut self) -> Result<u64> {
+        // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
+        let hal = unsafe { self.queue.as_hal::<wgpu::hal::api::Dx12>() }
+            .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
+        self.fence_value += 1;
+        // SAFETY: キューとフェンスは同じデバイスの有効なオブジェクト。
+        unsafe { hal.as_raw().Signal(&self.fence, self.fence_value) }
+            .map_err(|e| MmError::Internal(format!("フェンスの Signal: {e}")))?;
+        Ok(self.fence_value)
+    }
+
+    fn present(
+        &mut self,
+        index: i64,
+        pts: RationalTime,
+        hw: ffmpeg_next::frame::Video,
+    ) -> Result<DecodedFrame> {
+        let _wrap = tracing::info_span!("decode.wrap").entered();
+        let planes = self.wrapper.wrap(&hw)?;
+        let matrix = Matrix::from_frame(hw.color_space(), hw.height());
+        let params = YuvParams::new(
+            matrix,
+            is_full_range(hw.color_range()),
+            self.bits,
+            YuvParams::texture_code_scale(self.bits),
+        );
+        planes.wait_decode_on(&self.queue)?;
+        let target = self.pool.take();
+        self.converter.submit(&planes, params, &target);
+        let value = self.signal_after_submit()?;
+        self.release.push(self.fence.clone(), value, hw)?;
+        let id = self.next_id;
+        self.next_id += 1;
+        let handle: GpuFrameHandle = self.pool.lend(target).into_handle(id);
+        Ok(DecodedFrame {
+            index,
+            pts,
+            image: None,
+            gpu: Some(handle),
+        })
+    }
+}
+
+fn create_fence(device: &wgpu::Device) -> Result<ID3D12Fence> {
+    // SAFETY: as_hal の参照はこの関数の間だけ使う。
+    let hal = unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }
+        .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
+    // SAFETY: 有効なデバイスに、初期値 0 のフェンスを作る。
+    unsafe { hal.raw_device().CreateFence(0, D3D12_FENCE_FLAG_NONE) }
+        .map_err(|e| MmError::Internal(format!("フェンスの作成: {e}")))
+}
+
+impl Drop for D3d12vaDecoder {
+    fn drop(&mut self) {
+        // GPU が読み終える前に面とデバイスの資源を壊さない。
+        self.release.wait_all();
     }
 }
 
 impl Decoder for D3d12vaDecoder {
     fn info(&self) -> &MediaInfo {
-        &self.info
+        self.seq.info()
     }
 
     fn seek(&mut self, t: RationalTime) -> Result<()> {
-        let target = t.frame_index(self.fps);
-        self.held.clear();
-        self.pending = None;
-        let av_time = (t.to_f64() * 1_000_000.0) as i64;
-        self.hw
-            .input
-            .seek(av_time, ..av_time + 1)
-            .map_err(|e| MmError::Corrupt(format!("シーク: {e}")))?;
-        self.hw.decoder.flush();
-        // キーフレームから目的のコマまで復号して捨てる。
-        while let Some((index, hw)) = self.next_decoded()? {
-            if index >= target {
-                self.pending = Some((index, hw));
-                break;
-            }
-        }
-        Ok(())
+        self.seq.seek(t)
     }
 
     fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
         let _span = tracing::info_span!("decode.next_frame", backend = "d3d12va").entered();
-        let Some((index, hw)) = self.next_decoded()? else {
+        self.release.reap();
+        let Some(IndexedFrame { index, pts, frame }) = self.seq.next()? else {
             return Ok(None);
         };
-        let nv12 = {
-            let _wrap = tracing::info_span!("decode.wrap").entered();
-            self.wrapper.wrap(&hw)?
-        };
-        let id = self.next_id;
-        self.next_id += 1;
-        let handle = GpuFrameHandle {
-            id,
-            size: Size::new(nv12.width, nv12.height),
-            frame: Arc::new(HeldFrameRef { id }),
-        };
-        self.held.insert(id, HeldFrame { nv12, _hw: hw });
-        Ok(Some(DecodedFrame {
-            index,
-            pts: RationalTime::from_frames(index, self.fps)?,
-            image: None,
-            gpu: Some(handle),
-        }))
+        self.present(index, pts, frame).map(Some)
     }
 
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock> {
@@ -183,32 +191,20 @@ impl Decoder for D3d12vaDecoder {
     }
 }
 
-impl D3d12vaDecoder {
-    /// この復号器が使う wgpu の文脈。
-    pub fn gpu(&self) -> &Arc<GpuContext> {
-        &self.gpu
-    }
-}
-
-/// `DecoderFactory`。wgpu の文脈を 1 つ持ち、開いた復号器で共有する。
-pub struct D3d12vaFactory {
-    gpu: Arc<GpuContext>,
-}
-
-impl D3d12vaFactory {
-    /// 既存の文脈で。
-    pub fn new(gpu: Arc<GpuContext>) -> Self {
-        Self { gpu }
-    }
-}
+/// `DecoderFactory`。デバイスは `open` で渡される描画器のものを使い、自前では作らない。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct D3d12vaFactory;
 
 impl DecoderFactory for D3d12vaFactory {
     fn id(&self) -> &'static str {
-        "d3d12va"
+        ID
     }
 
-    /// 試作は自前の D3D12 の文脈を使う。口の `gpu` と同じデバイスにそろえるのは段階 1。
-    fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
-        Ok(Box::new(D3d12vaDecoder::open(path, self.gpu.clone())?))
+    /// `gpu` が無い、または `mm-gpu` の文脈でなければ `Err(Unsupported)`（GPU の外には出せない）。
+    fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
+        let ctx = gpu
+            .and_then(|g| g.as_any().downcast_ref::<GpuContext>())
+            .ok_or_else(|| MmError::Unsupported("d3d12va は GPU の文脈が要る".into()))?;
+        Ok(Box::new(D3d12vaDecoder::open(path, ctx)?))
     }
 }

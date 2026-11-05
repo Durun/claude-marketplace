@@ -1,37 +1,33 @@
-//! FFmpeg の `ID3D12Resource`（NV12）を wgpu のテクスチャに包む。コピーはしない。
+//! FFmpeg の `ID3D12Resource`（NV12 か P010）を wgpu のテクスチャに包む。コピーはしない。
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::Arc;
 
 use ffmpeg_next::frame;
 use mm_types::{MmError, Result};
 use windows::core::Interface;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, ID3D12Resource};
 
-use crate::ffi::{AvD3d12vaFrame, DXGI_FORMAT_NV12};
-use crate::gpu::GpuContext;
+use crate::ffi::{AvD3d12vaFrame, DXGI_FORMAT_NV12, DXGI_FORMAT_P010};
 
-/// 包んだコマ。`y` と `uv` が NV12 の 2 つの面の見え方。
+/// 包んだコマ。`y` と `uv` が 2 つの面の見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
+/// 10 bit は `R16Unorm` と `Rg16Unorm`。
 #[derive(Clone)]
-pub struct GpuNv12 {
+pub struct PlaneViews {
     pub y: wgpu::TextureView,
     pub uv: wgpu::TextureView,
-    /// コマの大きさ（資源の大きさは符号化の境界で大きいことがある）。
-    pub width: u32,
-    pub height: u32,
     /// 復号の完了を知らせるフェンスと値。
-    fence: ID3D12Fence,
-    fence_value: u64,
+    pub fence: ID3D12Fence,
+    pub fence_value: u64,
 }
 
-impl GpuNv12 {
+impl PlaneViews {
     /// 次の `Queue::submit` の頭で、復号の完了までキューを待たせる（CPU は待たない）。
-    pub fn wait_decode_on(&self, gpu: &GpuContext) -> Result<()> {
+    pub fn wait_decode_on(&self, queue: &wgpu::Queue) -> Result<()> {
         // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
-        let queue = unsafe { gpu.queue.as_hal::<wgpu::hal::api::Dx12>() }
+        let hal = unsafe { queue.as_hal::<wgpu::hal::api::Dx12>() }
             .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
-        queue.add_wait_fence(self.fence.clone(), self.fence_value);
+        hal.add_wait_fence(self.fence.clone(), self.fence_value);
         Ok(())
     }
 }
@@ -41,19 +37,20 @@ struct Entry {
     texture: wgpu::Texture,
     views: HashMap<u32, (wgpu::TextureView, wgpu::TextureView)>,
     layers: u32,
+    bits: u32,
 }
 
 /// 包む係。
 pub struct Wrapper {
-    gpu: Arc<GpuContext>,
+    device: wgpu::Device,
     cache: HashMap<usize, Entry>,
 }
 
 impl Wrapper {
     /// 空の係。
-    pub fn new(gpu: Arc<GpuContext>) -> Self {
+    pub fn new(device: wgpu::Device) -> Self {
         Self {
-            gpu,
+            device,
             cache: HashMap::new(),
         }
     }
@@ -64,7 +61,7 @@ impl Wrapper {
     }
 
     /// d3d12va のコマを包む。
-    pub fn wrap(&mut self, frame: &frame::Video) -> Result<GpuNv12> {
+    pub fn wrap(&mut self, frame: &frame::Video) -> Result<PlaneViews> {
         // SAFETY: d3d12va のコマは data[0] に AVD3D12VAFrame を持つ。コマが生きている間だけ読む。
         let (resource_ptr, layer, fence_ptr, fence_value) = unsafe {
             let f = frame.as_ptr();
@@ -91,8 +88,9 @@ impl Wrapper {
         if layer >= entry.layers {
             return Err(MmError::Corrupt(format!("配列の番号 {layer} が範囲外")));
         }
+        let bits = entry.bits;
         if !entry.views.contains_key(&layer) {
-            let views = make_views(&entry.texture, layer);
+            let views = make_views(&entry.texture, layer, bits);
             entry.views.insert(layer, views);
         }
         let (y, uv) = entry.views[&layer].clone();
@@ -100,11 +98,9 @@ impl Wrapper {
         let fence = unsafe { ID3D12Fence::from_raw_borrowed(&fence_ptr) }
             .ok_or_else(|| MmError::Corrupt("フェンスが無い".into()))?
             .clone();
-        Ok(GpuNv12 {
+        Ok(PlaneViews {
             y,
             uv,
-            width: frame.width(),
-            height: frame.height(),
             fence,
             fence_value,
         })
@@ -117,12 +113,15 @@ impl Wrapper {
             .clone();
         // SAFETY: 引数なしの問い合わせ。
         let desc = unsafe { resource.GetDesc() };
-        if desc.Format.0 as u32 != DXGI_FORMAT_NV12 {
-            return Err(MmError::Unsupported(format!(
-                "NV12 ではない資源: DXGI {}",
-                desc.Format.0
-            )));
-        }
+        let (format, bits) = match desc.Format.0 as u32 {
+            DXGI_FORMAT_NV12 => (wgpu::TextureFormat::NV12, 8),
+            DXGI_FORMAT_P010 => (wgpu::TextureFormat::P010, 10),
+            other => {
+                return Err(MmError::Unsupported(format!(
+                    "NV12 と P010 以外の資源: DXGI {other}"
+                )))
+            }
+        };
         let layers = u32::from(desc.DepthOrArraySize);
         let size = wgpu::Extent3d {
             width: desc.Width as u32,
@@ -130,43 +129,54 @@ impl Wrapper {
             depth_or_array_layers: layers,
         };
         let wgpu_desc = wgpu::TextureDescriptor {
-            label: Some("d3d12va nv12"),
+            label: Some("d3d12va yuv420"),
             size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::NV12,
+            format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
-        // SAFETY: 資源は wgpu と同じ ID3D12Device の上にあり、NV12 の 2D で、中身は復号済み。
+        // SAFETY: 資源は wgpu と同じ ID3D12Device の上にあり、2D で、中身は復号済み。
         // 同時アクセスのフラグ付きなので、暗黙の昇格で SRV として読める（初期状態は RESOURCE）。
         let texture = unsafe {
             let hal = wgpu::hal::dx12::Device::texture_from_raw(
                 resource,
-                wgpu::TextureFormat::NV12,
+                format,
                 wgpu::TextureDimension::D2,
                 size,
                 1,
                 1,
             );
-            self.gpu
-                .device
-                .create_texture_from_hal::<wgpu::hal::api::Dx12>(
-                    hal,
-                    &wgpu_desc,
-                    wgpu::TextureUses::RESOURCE,
-                )
+            self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
+                hal,
+                &wgpu_desc,
+                wgpu::TextureUses::RESOURCE,
+            )
         };
         Ok(Entry {
             texture,
             views: HashMap::new(),
             layers,
+            bits,
         })
     }
 }
 
-fn make_views(texture: &wgpu::Texture, layer: u32) -> (wgpu::TextureView, wgpu::TextureView) {
+fn make_views(
+    texture: &wgpu::Texture,
+    layer: u32,
+    bits: u32,
+) -> (wgpu::TextureView, wgpu::TextureView) {
+    let (luma, chroma) = if bits == 8 {
+        (wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm)
+    } else {
+        (
+            wgpu::TextureFormat::R16Unorm,
+            wgpu::TextureFormat::Rg16Unorm,
+        )
+    };
     let view = |format, aspect| {
         texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("d3d12va plane"),
@@ -181,7 +191,7 @@ fn make_views(texture: &wgpu::Texture, layer: u32) -> (wgpu::TextureView, wgpu::
         })
     };
     (
-        view(wgpu::TextureFormat::R8Unorm, wgpu::TextureAspect::Plane0),
-        view(wgpu::TextureFormat::Rg8Unorm, wgpu::TextureAspect::Plane1),
+        view(luma, wgpu::TextureAspect::Plane0),
+        view(chroma, wgpu::TextureAspect::Plane1),
     )
 }

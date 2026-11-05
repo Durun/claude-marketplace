@@ -12,6 +12,9 @@ pub const RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS: u32 = 0x20;
 /// `DXGI_FORMAT_NV12`。
 pub const DXGI_FORMAT_NV12: u32 = 103;
 
+/// `DXGI_FORMAT_P010`。
+pub const DXGI_FORMAT_P010: u32 = 104;
+
 #[repr(C)]
 pub struct AvD3d12vaDeviceContext {
     pub device: *mut c_void,
