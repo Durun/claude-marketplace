@@ -1,7 +1,7 @@
 [package]
 name = "mm-color-api"
 description = "色空間の変換の口。入力 → 作業空間 → 表示・出力。WGSL か 3D LUT を返す"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
