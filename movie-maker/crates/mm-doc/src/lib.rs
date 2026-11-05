@@ -51,6 +51,7 @@ pub type MarkerId = Id<MarkerMarker>;
 /// `assets`、`compositions`、`sequences`、`render_targets` は ID で引く列で、順に意味が無い。
 /// [`Project::normalize`] が ID の順に並べ、[`load`] も通す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Project {
     pub schema_version: u32,
     pub assets: Vec<Asset>,
@@ -120,6 +121,64 @@ impl Project {
             .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
     }
 
+    /// コンポジションを ID で引く（書き換え用）。
+    pub fn composition_mut(&mut self, id: &CompositionId) -> Result<&mut Composition> {
+        self.compositions
+            .iter_mut()
+            .find(|c| &c.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("composition {id}")))
+    }
+
+    /// sequence を ID で引く（書き換え用）。
+    pub fn sequence_mut(&mut self, id: &SequenceId) -> Result<&mut Sequence> {
+        self.sequences
+            .iter_mut()
+            .find(|s| &s.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("sequence {id}")))
+    }
+
+    /// レイヤーの置き場所（コンポジションの ID と、下から数えた位置）。
+    pub fn layer_index(&self, id: &mm_types::LayerId) -> Result<(CompositionId, usize)> {
+        self.compositions
+            .iter()
+            .find_map(|c| {
+                c.layers
+                    .iter()
+                    .position(|l| &l.id == id)
+                    .map(|i| (c.id.clone(), i))
+            })
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
+    }
+
+    /// レイヤーを ID で引く（書き換え用）。
+    pub fn layer_mut(&mut self, id: &mm_types::LayerId) -> Result<&mut Layer> {
+        self.compositions
+            .iter_mut()
+            .find_map(|c| c.layers.iter_mut().find(|l| &l.id == id))
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
+    }
+
+    /// カットの置き場所（sequence の ID と、頭から数えた位置）。
+    pub fn cut_index(&self, id: &CutId) -> Result<(SequenceId, usize)> {
+        self.sequences
+            .iter()
+            .find_map(|s| {
+                s.cuts
+                    .iter()
+                    .position(|c| &c.id == id)
+                    .map(|i| (s.id.clone(), i))
+            })
+            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+    }
+
+    /// カットを ID で引く（書き換え用）。
+    pub fn cut_mut(&mut self, id: &CutId) -> Result<&mut Cut> {
+        self.sequences
+            .iter_mut()
+            .find_map(|s| s.cuts.iter_mut().find(|c| &c.id == id))
+            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+    }
+
     /// ID で引く列を ID の順に並べる。保存の前に通すと JSON がバイトで決まる。
     /// レイヤーとカットとマーカーの順は意味を持つので触らない。
     pub fn normalize(&mut self) {
@@ -138,6 +197,7 @@ impl Default for Project {
 
 /// 素材。原本のパス、中身のハッシュ、色空間、時間軸。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Asset {
     pub id: AssetId,
     pub path: String,
@@ -153,6 +213,7 @@ pub struct Asset {
 
 /// コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Composition {
     pub id: CompositionId,
     pub width: u32,
@@ -183,6 +244,7 @@ impl Composition {
 
 /// マーカー。YouTube のチャプターの書き出しに使う。`duration` が 0 なら点。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Marker {
     pub id: MarkerId,
     pub time: RationalTime,
@@ -193,6 +255,7 @@ pub struct Marker {
 
 /// レンダーターゲット。成果物の形式。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RenderTarget {
     pub id: RenderTargetId,
     pub composition: CompositionId,

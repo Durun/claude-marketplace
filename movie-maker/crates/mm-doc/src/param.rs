@@ -7,6 +7,7 @@ use mm_types::{ParamValue, RationalTime};
 /// キーフレームの補間。区間 `[k_i, k_{i+1})` の形は始点 `k_i` の補間で決まる。
 /// 数の型（数、2・3 次元の数、色）だけ `Linear` と `Bezier` が効き、ほかはホールド。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Interpolation {
     /// 次のキーフレームまで値を保つ。
@@ -19,6 +20,7 @@ pub enum Interpolation {
 
 /// `Linear` の進み具合に掛けるイージングの型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Ease {
     /// 等速。
@@ -35,6 +37,7 @@ pub enum Ease {
 /// 進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。
 /// `x1`、`x2` は `[0,1]` に収める（時間が単調になる）。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CubicBezier {
     pub x1: f64,
     pub y1: f64,
@@ -65,6 +68,7 @@ impl Default for CubicBezier {
 
 /// キーフレーム。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Keyframe {
     pub time: RationalTime,
     pub value: ParamValue,
@@ -95,6 +99,7 @@ impl Keyframe {
 /// キーフレームがあるときは `value` を使わず、最初のキーフレームより前は最初の値、
 /// 最後より後は最後の値になる（`mm-eval`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Param {
     pub value: ParamValue,
     #[serde(default)]

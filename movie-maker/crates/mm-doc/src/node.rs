@@ -19,6 +19,7 @@ pub const SEQUENCE_PARAM: &str = "sequence";
 
 /// 動画オブジェクト。種類の名前と版、パラメータ、入力。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Node {
     pub kind: String,
     pub version: u32,

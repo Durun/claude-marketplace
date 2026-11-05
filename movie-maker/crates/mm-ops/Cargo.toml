@@ -1,0 +1,21 @@
+[package]
+name = "mm-ops"
+description = "命令の層。命令ごとの引数の型（serde + JSON Schema）、検証、適用、逆命令、touches、トランザクション、同時書き込みの判定、ロック"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true, features = ["schema"] }
+mm-doc = { workspace = true, features = ["schema"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

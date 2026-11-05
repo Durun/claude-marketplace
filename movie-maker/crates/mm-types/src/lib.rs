@@ -10,6 +10,8 @@ pub mod gpu;
 pub mod id;
 pub mod image;
 pub mod param;
+#[cfg(feature = "schema")]
+mod schema;
 pub mod time;
 
 pub use color::{ColorSpace, Rgba};
