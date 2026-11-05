@@ -1,0 +1,11 @@
+{
+  "name": "@mm/shell",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@mm/sdk": "workspace:*",
+    "@mm/tasks": "workspace:*",
+    "@mm/theme": "workspace:*",
+    "preact": "^10.27.0"
+  }
+}

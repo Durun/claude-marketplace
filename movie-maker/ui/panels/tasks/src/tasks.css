@@ -1,0 +1,92 @@
+/* 値は全部 theme の変数から取り、ここでは色や角丸を持たない。影は使わず border と背景で立体感を出す。 */
+.mm-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-tasks-title {
+  margin: 0;
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-tasks-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+  width: 100%;
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-md) var(--mm-radius-md) 0 0;
+  background: var(--mm-gradient-task-title);
+  color: var(--mm-color-task-title-text);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-tasks-group[data-open="false"] .mm-tasks-toggle {
+  border-radius: var(--mm-radius-md);
+}
+
+.mm-tasks-chevron {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentcolor;
+  border-bottom: 2px solid currentcolor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.mm-tasks-group[data-open="false"] .mm-tasks-chevron {
+  transform: translateX(-2px) rotate(-45deg);
+}
+
+.mm-tasks-body {
+  display: grid;
+  gap: var(--mm-space-sm);
+  margin: 0;
+  padding: var(--mm-space-md);
+  list-style: none;
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-top: 0;
+  border-radius: 0 0 var(--mm-radius-md) var(--mm-radius-md);
+  background: var(--mm-color-task-body-bg);
+}
+
+.mm-tasks-link {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mm-color-task-link);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-tasks-link:hover {
+  color: var(--mm-color-task-link-hover);
+  text-decoration: underline;
+}
+
+.mm-tasks-bullet {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: var(--mm-border-width) solid var(--mm-color-accent);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-gradient-button);
+}
+
+.mm-tasks-toggle:focus-visible,
+.mm-tasks-link:focus-visible {
+  outline: 2px solid var(--mm-color-focus);
+  outline-offset: 1px;
+}

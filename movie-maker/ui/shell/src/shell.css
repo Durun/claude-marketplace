@@ -1,0 +1,18 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--mm-color-bg);
+  color: var(--mm-color-text);
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+}
+
+.mm-shell-left {
+  box-sizing: border-box;
+  width: 260px;
+  height: 100%;
+  padding: var(--mm-space-md);
+  overflow-y: auto;
+  border-right: var(--mm-border-width) solid var(--mm-color-border);
+}
