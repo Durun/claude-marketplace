@@ -20,9 +20,15 @@ pub struct AddRenderTarget {
 }
 
 impl Apply for AddRenderTarget {
-    fn touches(&self, _: &Project) -> Result<Touches> {
+    fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.target.id);
         t.add(&self.target.composition);
+        if self.index.is_some() {
+            // 位置を指す足し方は、並びの長さに頼るので、ほかのレンダーターゲットの足し引きと順が入れ替わると結果が変わる。
+            for other in &project.render_targets {
+                t.add(&other.id);
+            }
+        }
         Ok(t)
     }
 

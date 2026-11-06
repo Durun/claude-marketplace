@@ -219,9 +219,11 @@ fn 字幕を出すレンダーターゲットはアプリの書き出しで文�
     let dir = temp("subtitles");
     let state = subtitle_state(&dir);
     let (emit, rx) = collect();
-    // sequence のレイヤーを描けるのは wgpu のレンダラーだけ（モックは持たない）。
+    // sequence のレイヤーを描けるのは wgpu のレンダラーだけ（モックは持たない）。共有の GPU は最初に作った
+    // バックエンドで固定されるので、再生の試験と同じ D3D12（`present`）を求める。
     let config = RuntimeConfig {
         render: Backend::Wgpu,
+        present: true,
         ..RuntimeConfig::sample()
     };
     state.start(request(&["mp4"]), config, emit).unwrap();
