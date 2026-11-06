@@ -4,4 +4,5 @@ mod basic;
 mod common;
 mod crash;
 mod export;
+mod history;
 mod scale;

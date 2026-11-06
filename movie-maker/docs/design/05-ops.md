@@ -13,7 +13,7 @@
 - 入口は 4 つで、どれも同じ命令を呼ぶ。wgpu の面（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。動いていなければ `project.mmdb` を直接開く。別のプロセス（アプリ）が書き手のときは、HTTP で転送する形を `mm-serve`（段階 3）で足すまで、「別のプロセスが書いている」と断って読み取りだけにする）、Claude の MCP（命令ごとのツール。引数の型はスキーマから作る）。
 - 全部の命令の JSON Schema は `mm_ops::ops_schema()` が出し、`crates/mm-ops/schema/ops.json` に凍結する（テストが最新かを確かめる。`MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test schema` で書き直す）。`mm op --schema`、MCP、`ui/sdk` の型の生成の元。
 - CLI の引数は、このスキーマの欄の名前から作る（`--cut c12 --edge out --by -0.4`）。時刻の欄は `-0.4` と `3/2` を受け、パラメータの指し方は `layer:<ID>:<道筋>` と略せ、複雑な欄は `--json '{...}'` で渡す。元にした版は `--base <版>`、複数の命令は `--txn <file.json>`（`Transaction` の JSON）で 1 つのまとまりにする。CLI の入口は `Entry::Cli` で、ロックの付いた所に触る命令（ロックを外す取り消しも）は断る。
-- 命令を当てて書くのは `mm_store::Store::apply_txn`（取り消しとやり直しは `undo_last`、`redo_last`）。古い版を元にした命令の判定は、保存した記録の `touches` で行う（別のプロセスが書いた命令も含む）。`mm-store` は `mm-ops` の `OpRecord` をそのまま表に書く。
+- 命令を当てて書くのは `mm_store::Store::apply_txn`（取り消しとやり直しは `undo_last`、`redo_last`）。古い版を元にした命令の判定は、保存した記録の `touches` で行う（別のプロセスが書いた命令も、取り消しとやり直しの記録も含む）。`mm-store` は `mm-ops` の `OpRecord` と `TxnRecord` の形をそのまま表に書く。
 
 ## `touches`
 
@@ -24,9 +24,9 @@
 ## トランザクション
 
 - 複数の命令を 1 つのまとまり（`Transaction { name, base_version, ops }`）として当てる。ドラッグの連続、マクロ、Claude の対応 1 回。途中で失敗したら全部戻す（`apply_transaction`）。
-- `Editor` が文書と版番号を持つ。命令 1 つで版が 1 進み、まとまりの記録 `TxnRecord { id, kind, name, base_version, version, ops }` を残す。`ops` の各要素は `OpRecord { op, inverse, touches }`（命令と逆命令は JSON の値、`touches` は ID の列）。
-- 取り消しもまとまりの単位。逆命令を逆の順に当て、`kind = undo { of }` のまとまりとして記録する。やり直しは元の命令を当て直し `kind = redo { of }`。取り消した後に新しい命令を当てると、やり直しの先は捨てる。
-- 文書の変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。保存の層は `TxnRecord` を `txns` の 1 行と `ops` の複数行に写し、`version` を `meta.doc_version` に置く。
+- 文書と版番号を持つのは、メモリの上では `Editor`、保存では `mm_store::Store`。どちらも同じ数え方で、命令 1 つで版が 1 進み、まとまりの記録 `TxnRecord { id, kind, name, base_version, version, ops }` を残す（`id` は 1 からの通し番号）。`ops` の各要素は `OpRecord { op, inverse, touches }`（命令と逆命令は JSON の値、`touches` は ID の列）。
+- 取り消しもまとまりの単位。逆命令を逆の順に当て、その記録（`op` は逆命令、`touches` は当てたときのもの）を `kind = undo { of }` のまとまりとして残す。やり直しは元の命令を当て直し `kind = redo { of }`。版はどちらも命令の数だけ進み、元のまとまりの行は書き換えない。取り消した後に新しい命令を当てると、やり直しの先は捨てる。
+- 文書の変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。保存の層は `TxnRecord` に誰が・いつ・どのコメントへの対応かを足して `txns` の 1 行と `ops` の複数行に写し、`version` を `meta.doc_version` に置く。
 
 ## 同時書き込み
 
@@ -39,5 +39,5 @@
 
 ## 記録と差分
 
-- `project.mmdb` の `ops` の表（誰が、いつ、何を、どのコメントへの対応として、逆命令、`touches`）。版の比較は `mm diff` がこの記録から意味の差分を出す（[保存の形](09-ingest-storage.md#mm-diff)）。
+- `project.mmdb` の `txns`（誰が、いつ、どのコメントへの対応として、どの種類で）と `ops`（何を、逆命令、`touches`）の表。版の比較は `mm diff` がこの記録から意味の差分を出し、取り消しと元のまとまりは対で畳む（[保存の形](09-ingest-storage.md#mm-diff)）。
 - マクロ: 命令の列を作る手順。vlog の編集の好みは、マクロとテンプレートの組（パック）として持つ。

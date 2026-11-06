@@ -139,6 +139,22 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::Render {
+            project,
+            output,
+            target,
+        } => render(&project, output, target),
+        Command::Perf {
+            command: PerfCommand::Run { .. },
+        } => run_perf(cli.command),
+        Command::ProbeStartup { project } => scenes::probe_child(&project),
+        other => run_store_command(other),
+    }
+}
+
+/// `project.mmdb` のフォルダーを扱うサブコマンド。
+fn run_store_command(command: Command) -> Result<()> {
+    match command {
         Command::New { dir } => commands::new_project(&dir),
         Command::Import {
             dir,
@@ -165,35 +181,47 @@ fn run(cli: Cli) -> Result<()> {
         Command::Redo { dir } => commands::redo(&dir),
         Command::Log { dir } => commands::log(&dir),
         Command::Diff { dir, from, to } => commands::diff(&dir, &from, &to),
-        Command::Render {
-            project,
-            output,
-            target,
-        } => render(&project, output, target),
-        Command::Perf {
-            command:
-                PerfCommand::Run {
-                    scene,
-                    repeat,
-                    out_dir,
-                    project,
-                    size,
-                },
-        } => {
-            let (layer, metrics) = MetricsLayer::new();
-            tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
-                .map_err(|e| MmError::Internal(format!("購読者を置けない: {e}")))?;
-            let args = PerfArgs {
+        other => Err(MmError::Internal(format!(
+            "保存のコマンドでない: {}",
+            command_name(&other)
+        ))),
+    }
+}
+
+fn command_name(command: &Command) -> &'static str {
+    match command {
+        Command::Render { .. } => "render",
+        Command::Perf { .. } => "perf",
+        Command::ProbeStartup { .. } => "probe-startup",
+        _ => "store",
+    }
+}
+
+fn run_perf(command: Command) -> Result<()> {
+    let Command::Perf {
+        command:
+            PerfCommand::Run {
                 scene,
                 repeat,
                 out_dir,
-                project: project.unwrap_or_else(default_project),
+                project,
                 size,
-            };
-            perf::run(&args, &metrics)
-        }
-        Command::ProbeStartup { project } => scenes::probe_child(&project),
-    }
+            },
+    } = command
+    else {
+        return Err(MmError::Internal("perf のコマンドでない".into()));
+    };
+    let (layer, metrics) = MetricsLayer::new();
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
+        .map_err(|e| MmError::Internal(format!("購読者を置けない: {e}")))?;
+    let args = PerfArgs {
+        scene,
+        repeat,
+        out_dir,
+        project: project.unwrap_or_else(default_project),
+        size,
+    };
+    perf::run(&args, &metrics)
 }
 
 fn render(

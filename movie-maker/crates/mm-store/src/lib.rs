@@ -2,7 +2,9 @@
 //! 文書の行と命令の記録を 1 つのトランザクションで書く。
 //!
 //! - [`Store`]: 開く、書く、取り消す、バックアップ、検索、`versions/` の書き出しと取り込み。
-//! - 命令の記録は `mm-ops` の [`OpRecord`] をそのまま表に書く。命令を当てて書くまでは [`Store::apply_txn`] が受け持つ。
+//! - 命令の記録は `mm-ops` の [`OpRecord`] と [`TxnRecord`] の形で表に書く。取り消しとやり直しも
+//!   逆命令（元の命令）を当てたまとまりとして同じ表に残り、版は命令の数だけ進む。
+//!   命令を当てて書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。
 //! - 書き手は 1 プロセスだけ（OS のファイルロック）。ほかのプロセスは読み取りだけで開く。
 
 mod backup;
@@ -11,21 +13,24 @@ mod edit;
 mod export;
 mod history;
 mod lock;
+mod open;
 mod records;
 mod schema;
 mod store;
 mod sync;
+mod wal;
 
 pub use backup::{format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile};
-pub use edit::HistoryStep;
 pub use export::{ExportReport, VERSIONS_DIR};
+pub use history::fold_history;
 pub use lock::LockInfo;
 pub use records::{
-    Actor, CommitInfo, OpRecord, StoredOp, StoredTxn, TxnInput, TxnState, UndoPlan, VersionRow,
+    Actor, OpRecord, StoredOp, StoredTxn, TxnInput, TxnKind, TxnRecord, UndoPlan, VersionRow,
 };
 pub use schema::{APPLICATION_ID, SCHEMA_VERSION};
 pub use store::{OpenMode, SearchHit, Store, StoreWarning};
 pub use sync::{detect_sync_folder, SyncFolder, SyncKind};
+pub use wal::uncommitted_frames;
 
 use mm_types::MmError;
 

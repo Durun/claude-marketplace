@@ -1,12 +1,13 @@
 //! プロジェクトのフォルダー（`project.mmdb`）に対する `mm` のサブコマンド。
 //! 書く命令は書き手のロックを取れたときだけ受け、別のプロセスが書いているときは断る。
+//! 読むだけのコマンド（`log`、`diff`、`export`）はロックを取らずに開き、アプリの邪魔をしない。
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mm_doc::Project;
 use mm_ops::{Entry, OpContext, OpError, Transaction};
-use mm_store::{format_timestamp, Actor, OpenMode, Store, StoreWarning, TxnState};
+use mm_store::{format_timestamp, Actor, OpenMode, Store, StoreWarning, TxnKind};
 use mm_types::{MmError, Result};
 
 use crate::describe::describe_txns;
@@ -71,18 +72,14 @@ fn writer_elsewhere(store: &Store) -> String {
     )
 }
 
-/// 読むだけの用途で開く。別のプロセスが書き手でもそのまま読む。
+/// 読むだけの用途で開く。ロックを取らず、別のプロセスが書き手でもそのまま読む。
 fn open_reader(dir: &Path) -> Result<Store> {
-    let store = Store::open(dir, now_ms())?;
-    if store.mode() == OpenMode::ReadOnly {
-        eprintln!("注意: {}", writer_elsewhere(&store));
-    }
-    Ok(store)
+    Store::open_read_only(dir)
 }
 
-/// 書き終えて閉じる（チェックポイントとバックアップ）。
+/// 書き終えて閉じる。WAL の書き戻しと、間隔が過ぎていればバックアップ。
 fn finish(store: Store) -> Result<()> {
-    store.close(now_ms())
+    store.close_brief(now_ms())
 }
 
 /// `mm new`: 空のプロジェクトを作る。
@@ -108,12 +105,16 @@ pub fn import(dir: &Path, source: &Path, overwrite: bool) -> Result<()> {
     finish(store)
 }
 
-/// `mm export`: `versions/` に決定的な JSON を書く。`name` があれば名前付きの版にする。
+/// `mm export`: `versions/` に決定的な JSON を書く。`name` があれば名前付きの版にする（表に書くので書き手で開く）。
 pub fn export(dir: &Path, name: Option<&str>) -> Result<()> {
-    let store = open_reader(dir)?;
     let report = match name {
-        Some(n) => store.export_named_version(n, ACTOR_KIND, now_ms(), None)?,
-        None => store.export_versions()?,
+        Some(n) => {
+            let store = open_writer(dir)?;
+            let report = store.export_named_version(n, ACTOR_KIND, now_ms(), None)?;
+            finish(store)?;
+            report
+        }
+        None => open_reader(dir)?.export_versions()?,
     };
     println!(
         "{}: {} ファイル（{} 件を書いた）、ハッシュ {}",
@@ -154,12 +155,11 @@ pub fn op(
         (None, Some(file)) => read_txn(file, tokens)?,
     };
     let mut store = open_writer(dir)?;
-    let name = txn.name.clone();
-    let info = store
-        .apply_txn(txn, &cli_context(), actor(), now_ms())
+    let stored = store
+        .apply_txn(txn, &cli_context(), actor(), now_ms(), None)
         .map_err(op_error)?;
-    println!("版 {}: {name}", info.doc_version);
-    for line in describe_txns(&store.txns_between(info.doc_version - 1, info.doc_version)?) {
+    println!("版 {}: {}", stored.doc_version, stored.name);
+    for line in describe_txns(std::slice::from_ref(&stored)) {
         println!("  {line}");
     }
     finish(store)
@@ -197,8 +197,11 @@ pub fn schema() {
 /// `mm undo`。
 pub fn undo(dir: &Path) -> Result<()> {
     let mut store = open_writer(dir)?;
-    match store.undo_last(&cli_context()).map_err(op_error)? {
-        Some(step) => println!("版 {}: 取り消した: {}", step.doc_version, step.name),
+    match store
+        .undo_last(&cli_context(), actor(), now_ms())
+        .map_err(op_error)?
+    {
+        Some(t) => println!("版 {}: {}", t.doc_version, t.name),
         None => println!("取り消すものが無い"),
     }
     finish(store)
@@ -207,24 +210,28 @@ pub fn undo(dir: &Path) -> Result<()> {
 /// `mm redo`。
 pub fn redo(dir: &Path) -> Result<()> {
     let mut store = open_writer(dir)?;
-    match store.redo_last(&cli_context()).map_err(op_error)? {
-        Some(step) => println!("版 {}: やり直した: {}", step.doc_version, step.name),
+    match store
+        .redo_last(&cli_context(), actor(), now_ms())
+        .map_err(op_error)?
+    {
+        Some(t) => println!("版 {}: {}", t.doc_version, t.name),
         None => println!("やり直すものが無い"),
     }
     finish(store)
 }
 
-/// `mm log`: 命令の記録（取り消したものも含む）。
+/// `mm log`: まとまりの記録。取り消しとやり直しも、当てた版と種類を添えて 1 行ずつ出す。
 pub fn log(dir: &Path) -> Result<()> {
     let store = open_reader(dir)?;
     for txn in store.txn_log()? {
-        let state = match txn.state {
-            TxnState::Applied => "適用",
-            TxnState::Undone => "取消",
+        let kind = match txn.kind {
+            TxnKind::Normal => "適用",
+            TxnKind::Undo { .. } => "取消",
+            TxnKind::Redo { .. } => "再適用",
         };
         let names: Vec<&str> = txn.ops.iter().map(|o| o.name.as_str()).collect();
         println!(
-            "版 {:>4}  {state}  {}  {}（{}）  [{}]",
+            "版 {:>4}  {kind}  {}  {}（{}）  [{}]",
             txn.doc_version,
             format_timestamp(txn.at_ms),
             txn.name,

@@ -1,7 +1,8 @@
 //! 文書を 1 本の列で編む [`Editor`]。版番号、同時書き込みの判定、取り消しとやり直し。
 //!
-//! 保存の層は、当てたまとまりの [`TxnRecord`] を `txns` と `ops` の表に写し、`version` を
-//! `meta.doc_version` に置く。読み込みは [`Editor::with_version`] で版を引き継ぐ。
+//! メモリの上の見本の実装。保存の層（`mm_store::Store`）は同じ数え方（命令 1 つで版が 1 進み、
+//! 取り消しとやり直しも [`TxnRecord`] として記録する）を SQLite の上で行い、
+//! 読み込みは [`Editor::with_version`] で版を引き継ぐ。
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,25 @@ pub enum TxnKind {
     Undo { of: u64 },
     /// `of` のまとまりのやり直し（元の命令を当て直す）。
     Redo { of: u64 },
+}
+
+impl TxnKind {
+    /// 記録に残す名前。取り消しとやり直しは、元のまとまりの名前に印を付ける。
+    pub fn record_name(self, original: &str) -> String {
+        match self {
+            TxnKind::Normal => original.to_string(),
+            TxnKind::Undo { .. } => format!("取り消し: {original}"),
+            TxnKind::Redo { .. } => format!("やり直し: {original}"),
+        }
+    }
+
+    /// 取り消しかやり直しの元のまとまりの ID。
+    pub fn of(self) -> Option<u64> {
+        match self {
+            TxnKind::Normal => None,
+            TxnKind::Undo { of } | TxnKind::Redo { of } => Some(of),
+        }
+    }
 }
 
 /// 当てたまとまりの記録。保存の層が `txns` の 1 行と `ops` の複数行に写す。
@@ -142,8 +162,8 @@ impl Editor {
             .map(OpRecord::inverse)
             .collect::<Result<_, _>>()
             .map_err(json_error)?;
-        let name = format!("取り消し: {}", target.name);
         let kind = TxnKind::Undo { of: target.id };
+        let name = kind.record_name(&target.name);
         let outcome = apply_transaction(&mut self.project, &ops, ctx)?;
         self.record(kind, name, outcome.records);
         self.undo_pos -= 1;
@@ -162,8 +182,8 @@ impl Editor {
             .map(OpRecord::op)
             .collect::<Result<_, _>>()
             .map_err(json_error)?;
-        let name = format!("やり直し: {}", target.name);
         let kind = TxnKind::Redo { of: target.id };
+        let name = kind.record_name(&target.name);
         let outcome = apply_transaction(&mut self.project, &ops, ctx)?;
         self.record(kind, name, outcome.records);
         self.undo_pos += 1;

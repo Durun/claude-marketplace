@@ -1,6 +1,6 @@
 //! 表の DDL と `user_version` による移行。
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use mm_types::{MmError, Result};
 
@@ -10,10 +10,10 @@ use crate::SqlExt;
 pub const APPLICATION_ID: i32 = 0x4d4d_4442;
 
 /// DDL を 1 つずつ当てた先の版。`MIGRATIONS` の長さと一致する。
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// 版 `i` から `i + 1` に上げる DDL。文書の JSON の形の移行は `mm_doc::migrate` が持つ。
-pub(crate) const MIGRATIONS: &[&str] = &[V1];
+pub(crate) const MIGRATIONS: &[&str] = &[V1, V2];
 
 const V1: &str = "
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -79,6 +79,61 @@ CREATE VIRTUAL TABLE search USING fts5(
 );
 ";
 
+/// 版 2: まとまりの ID を整数にし、種類（`normal` / `undo` / `redo`）と元のまとまり、当てる前の版を持つ。
+/// 当てた後の版は書き換えないので `state` は要らない。`txns` と `ops` と `undo_stack` を作り直す。
+const V2: &str = "
+CREATE TABLE txn_ids (old TEXT PRIMARY KEY, new INTEGER NOT NULL) WITHOUT ROWID;
+INSERT INTO txn_ids(old, new)
+  SELECT id, row_number() OVER (ORDER BY first_seq) FROM txns;
+CREATE TABLE txns_v2 (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('normal', 'undo', 'redo')),
+  of_txn INTEGER REFERENCES txns_v2(id),
+  name TEXT NOT NULL,
+  actor_kind TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  at_ms INTEGER NOT NULL,
+  responds_to TEXT,
+  base_version INTEGER NOT NULL,
+  doc_version INTEGER NOT NULL,
+  first_seq INTEGER NOT NULL,
+  last_seq INTEGER NOT NULL
+);
+INSERT INTO txns_v2(id, kind, of_txn, name, actor_kind, actor_name, at_ms, responds_to,
+                    base_version, doc_version, first_seq, last_seq)
+  SELECT m.new, 'normal', NULL, t.name, t.actor_kind, t.actor_name, t.at_ms,
+         (SELECT responds_to FROM ops WHERE ops.txn_id = t.id ORDER BY seq LIMIT 1),
+         (SELECT min(doc_version) - 1 FROM ops WHERE ops.txn_id = t.id),
+         (SELECT max(doc_version) FROM ops WHERE ops.txn_id = t.id),
+         t.first_seq, t.last_seq
+  FROM txns t JOIN txn_ids m ON m.old = t.id;
+CREATE TABLE ops_v2 (
+  seq INTEGER PRIMARY KEY,
+  txn_id INTEGER NOT NULL REFERENCES txns_v2(id),
+  name TEXT NOT NULL,
+  op TEXT NOT NULL,
+  inverse TEXT NOT NULL,
+  touches TEXT NOT NULL,
+  doc_version INTEGER NOT NULL
+);
+INSERT INTO ops_v2(seq, txn_id, name, op, inverse, touches, doc_version)
+  SELECT o.seq, m.new, o.name, o.op, o.inverse, o.touches, o.doc_version
+  FROM ops o JOIN txn_ids m ON m.old = o.txn_id;
+CREATE TABLE undo_stack_v2 (pos INTEGER PRIMARY KEY, txn_id INTEGER NOT NULL REFERENCES txns_v2(id));
+INSERT INTO undo_stack_v2(pos, txn_id)
+  SELECT u.pos, m.new FROM undo_stack u JOIN txn_ids m ON m.old = u.txn_id;
+DROP TABLE undo_stack;
+DROP TABLE ops;
+DROP TABLE txns;
+DROP TABLE txn_ids;
+ALTER TABLE txns_v2 RENAME TO txns;
+ALTER TABLE ops_v2 RENAME TO ops;
+ALTER TABLE undo_stack_v2 RENAME TO undo_stack;
+CREATE INDEX txns_doc_version ON txns(doc_version);
+CREATE INDEX ops_txn ON ops(txn_id);
+CREATE INDEX ops_doc_version ON ops(doc_version);
+";
+
 /// DB の `user_version`。
 pub(crate) fn user_version(conn: &Connection) -> Result<u32> {
     let v: u32 = conn
@@ -105,16 +160,33 @@ fn check_not_newer(v: u32, steps: &[&str]) -> Result<()> {
 }
 
 /// 版を 1 つずつ最後まで上げる。全体を 1 つのトランザクションで囲み、失敗したら戻る。
+/// 表の作り直しで親の表を落とすため、外部キーの検査は止めて、終わりに `foreign_key_check` で確かめる。
 pub(crate) fn migrate(conn: &mut Connection, steps: &[&str]) -> Result<()> {
     let current = user_version(conn)?;
     check_not_newer(current, steps)?;
+    conn.pragma_update(None, "foreign_keys", false).sql()?;
+    let result = migrate_in_tx(conn, steps, current as usize);
+    conn.pragma_update(None, "foreign_keys", true).sql()?;
+    result
+}
+
+fn migrate_in_tx(conn: &mut Connection, steps: &[&str], from: usize) -> Result<()> {
     let tx = conn.transaction().sql()?;
-    for (i, ddl) in steps.iter().enumerate().skip(current as usize) {
+    for (i, ddl) in steps.iter().enumerate().skip(from) {
         tx.execute_batch(ddl).sql()?;
         tx.pragma_update(None, "user_version", i as u32 + 1).sql()?;
     }
     tx.pragma_update(None, "application_id", APPLICATION_ID)
         .sql()?;
+    let broken: Option<String> = tx
+        .query_row("PRAGMA foreign_key_check", [], |r| r.get(0))
+        .optional()
+        .sql()?;
+    if let Some(table) = broken {
+        return Err(MmError::Corrupt(format!(
+            "移行の後に外部キーが壊れている: {table}"
+        )));
+    }
     tx.commit().sql()
 }
 
@@ -142,6 +214,7 @@ mod tests {
         assert!(needs_migration(&conn, &[V1, V2_TEST]).unwrap());
         migrate(&mut conn, &[V1, V2_TEST]).unwrap();
         assert_eq!(user_version(&conn).unwrap(), 2);
+        assert!(!needs_migration(&conn, &[V1, V2_TEST]).unwrap());
         assert_eq!(extra_tables(&conn), ["extra"]);
     }
 
@@ -160,6 +233,55 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn 版_1_のまとまりと命令は整数の_id_に写り_undo_stack_が追う() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn, &[V1]).unwrap();
+        conn.execute_batch(
+            "INSERT INTO txns VALUES ('b', 3, 3, 'B', 'applied', 'cli', 'mm', 20, 3);
+             INSERT INTO txns VALUES ('a', 1, 2, 'A', 'applied', 'gui', 'app', 10, 2);
+             INSERT INTO ops(txn_id, actor_kind, actor_name, at_ms, name, op, inverse, touches, responds_to, doc_version)
+               VALUES ('a', 'gui', 'app', 10, 'x', '{}', '{}', '[]', 'r1', 1),
+                      ('a', 'gui', 'app', 10, 'x', '{}', '{}', '[]', 'r1', 2),
+                      ('b', 'cli', 'mm', 20, 'y', '{}', '{}', '[]', NULL, 3);
+             INSERT INTO undo_stack VALUES (1, 'a'), (2, 'b');",
+        )
+        .unwrap();
+        migrate(&mut conn, &[V1, V2]).unwrap();
+        let rows: Vec<(i64, String, i64, i64, Option<String>)> = conn
+            .prepare(
+                "SELECT id, kind, base_version, doc_version, responds_to FROM txns ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                (1, "normal".into(), 0, 2, Some("r1".into())),
+                (2, "normal".into(), 2, 3, None)
+            ]
+        );
+        let stack: Vec<(i64, i64)> = conn
+            .prepare("SELECT pos, txn_id FROM undo_stack ORDER BY pos")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(stack, [(1, 1), (2, 2)]);
+        let ops_of_b: i64 = conn
+            .query_row("SELECT count(*) FROM ops WHERE txn_id = 2", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(ops_of_b, 1);
     }
 
     #[test]

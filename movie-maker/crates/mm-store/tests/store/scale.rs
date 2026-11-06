@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use mm_store::Store;
 
-use crate::common::{project_with, txn, NOW};
+use crate::common::{locked, project_with, NOW};
 
 const TOTAL_OPS: usize = 100_000;
 /// ドラッグ 1 回ぶんの命令の数。
@@ -24,10 +24,9 @@ fn 命令_10_万件の大きさと開く時間() {
         let ops: Vec<usize> = (0..OPS_PER_TXN)
             .map(|i| (t * OPS_PER_TXN + i) % LAYERS)
             .collect();
-        let layer = &mut project.compositions[0].layers[t % LAYERS];
-        layer.lock = !layer.lock;
+        let input = locked(&mut project, &format!("t{t}"), &ops);
         let at = Instant::now();
-        s.commit(&project, &txn(&format!("t{t}"), &ops)).unwrap();
+        s.commit(&project, &input).unwrap();
         worst = worst.max(at.elapsed());
     }
     let wrote = start.elapsed();

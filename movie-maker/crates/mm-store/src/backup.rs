@@ -7,12 +7,17 @@ use rusqlite::Connection;
 
 use mm_types::Result;
 
+use crate::store::DB_FILE;
 use crate::SqlExt;
 
 /// バックアップの置き場（プロジェクトの下）。
 pub(crate) const BACKUPS_DIR: &str = "backups";
 const PREFIX: &str = "project.";
 const SUFFIX: &str = ".mmdb";
+/// 壊れた DB を生のまま移すときの名前。`list` の形に合わないので、世代の整理では消さない。
+const BROKEN_SUFFIX: &str = ".broken.mmdb";
+/// 書きかけの写しの拡張子。
+const TMP_EXT: &str = "tmp";
 const MS_PER_DAY: i64 = 86_400_000;
 /// 新しい順に無条件で残す個数。
 const KEEP_RECENT: usize = 10;
@@ -115,23 +120,59 @@ pub(crate) fn list(project_dir: &Path) -> Vec<BackupFile> {
 }
 
 /// 一貫した写しを `backups/project.<時刻>.mmdb` に作り、世代を整理する。
+/// 途中で落ちても壊れた写しが最新として残らないよう、`.tmp` に書いてから名前を変える。
 pub(crate) fn run(conn: &Connection, project_dir: &Path, now_ms: i64) -> Result<PathBuf> {
     let dir = project_dir.join(BACKUPS_DIR);
     fs::create_dir_all(&dir)?;
-    let mut at = now_ms;
-    let path = loop {
-        let candidate = dir.join(format!("{PREFIX}{}{SUFFIX}", format_timestamp(at)));
-        if !candidate.exists() {
-            break candidate;
-        }
-        at += 1;
-    };
-    conn.execute("VACUUM INTO ?1", [path.to_string_lossy().as_ref()])
+    remove_stale_tmp(&dir);
+    let path = fresh_path(&dir, now_ms, SUFFIX);
+    let tmp = path.with_extension(TMP_EXT);
+    conn.execute("VACUUM INTO ?1", [tmp.to_string_lossy().as_ref()])
         .sql()?;
+    fs::rename(&tmp, &path)?;
     for f in select_backups_to_delete(&list(project_dir), now_ms) {
         let _ = fs::remove_file(f.path);
     }
     Ok(path)
+}
+
+/// 写しを作れない壊れた DB を、生のファイルのまま `backups/project.<時刻>.broken.mmdb`（と `-wal`、`-shm`）に移す。
+pub(crate) fn move_broken(project_dir: &Path, now_ms: i64) -> Result<()> {
+    let dir = project_dir.join(BACKUPS_DIR);
+    fs::create_dir_all(&dir)?;
+    let base = fresh_path(&dir, now_ms, BROKEN_SUFFIX);
+    for suffix in ["", "-wal", "-shm"] {
+        let from = project_dir.join(format!("{DB_FILE}{suffix}"));
+        if from.exists() {
+            fs::rename(&from, PathBuf::from(format!("{}{suffix}", base.display())))?;
+        }
+    }
+    Ok(())
+}
+
+/// まだ無い名前。同じミリ秒に 2 回呼ばれたら 1 ミリ秒ずらす。
+fn fresh_path(dir: &Path, now_ms: i64, suffix: &str) -> PathBuf {
+    let mut at = now_ms;
+    loop {
+        let candidate = dir.join(format!("{PREFIX}{}{suffix}", format_timestamp(at)));
+        if !candidate.exists() && !candidate.with_extension(TMP_EXT).exists() {
+            return candidate;
+        }
+        at += 1;
+    }
+}
+
+/// 前に落ちたときの書きかけ（`.tmp` と、`VACUUM INTO` が作る `.tmp-journal`）を消す。
+fn remove_stale_tmp(dir: &Path) {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for path in rd.filter_map(|e| e.ok()).map(|e| e.path()) {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if name.contains(&format!(".{TMP_EXT}")) {
+            let _ = fs::remove_file(path);
+        }
+    }
 }
 
 #[cfg(test)]
