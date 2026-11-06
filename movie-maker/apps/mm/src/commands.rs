@@ -25,7 +25,7 @@ pub fn now_ms() -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
-fn actor() -> Actor {
+pub(crate) fn actor() -> Actor {
     Actor {
         kind: ACTOR_KIND.into(),
         name: ACTOR_NAME.into(),
@@ -33,12 +33,12 @@ fn actor() -> Actor {
 }
 
 /// CLI は Claude の操作経路として、ロックの付いた所に触る操作を拒否する。
-fn cli_context() -> OpContext {
+pub(crate) fn cli_context() -> OpContext {
     OpContext::new(Entry::Cli)
 }
 
 /// 操作の層の拒否を、`mm` のエラーにする。
-fn op_error(e: OpError) -> MmError {
+pub(crate) fn op_error(e: OpError) -> MmError {
     match e {
         OpError::Doc(inner) => inner,
         other => MmError::InvalidArgument(format!("操作を拒否した: {other}")),
@@ -46,7 +46,7 @@ fn op_error(e: OpError) -> MmError {
 }
 
 /// 書き手として開く。別のプロセスが書き手なら、知らせて拒否する。
-fn open_writer(dir: &Path) -> Result<Store> {
+pub(crate) fn open_writer(dir: &Path) -> Result<Store> {
     let store = Store::open(dir, now_ms())?;
     if store.mode() == OpenMode::Writer {
         return Ok(store);
@@ -78,7 +78,7 @@ fn open_reader(dir: &Path) -> Result<Store> {
 }
 
 /// 書き終えて閉じる。WAL の書き戻しと、間隔が過ぎていればバックアップ。
-fn finish(store: Store) -> Result<()> {
+pub(crate) fn finish(store: Store) -> Result<()> {
     store.close_brief(now_ms())
 }
 

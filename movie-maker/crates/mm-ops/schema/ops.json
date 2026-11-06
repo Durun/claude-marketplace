@@ -4,6 +4,43 @@
   "description": "操作。JSON では `op` のフィールドに名前（camelCase）、残りのフィールドに引数。\n引数の大きさがバリアントごとに違うので、全部 `Box` で持つ。",
   "oneOf": [
     {
+      "description": "素材を足す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/Asset"
+        },
+        "op": {
+          "type": "string",
+          "const": "addAsset"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset"
+      ]
+    },
+    {
+      "description": "素材を外す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeAsset"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset"
+      ]
+    },
+    {
       "description": "レイヤーを足す。",
       "type": "object",
       "properties": {
@@ -781,6 +818,54 @@
     }
   ],
   "$defs": {
+    "Asset": {
+      "description": "素材。原本のパス、コンテンツハッシュ、色空間、時間軸。",
+      "type": "object",
+      "properties": {
+        "color_space": {
+          "$ref": "#/$defs/ColorSpace"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "fps": {
+          "description": "固定フレームレートなら fps。VFR は `None`（PTS の索引で引く）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rational"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "timebase_offset": {
+          "description": "音と映像の先頭のずれ。OBS の mkv で起きる。",
+          "$ref": "#/$defs/RationalTime",
+          "default": {
+            "den": 1,
+            "num": 0
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "content_hash",
+        "color_space",
+        "duration"
+      ]
+    },
     "BlendMode": {
       "description": "合成モード。式は W3C Compositing and Blending Level 1。`Add` は線形の加算（linear dodge）。",
       "type": "string",
@@ -803,6 +888,10 @@
         "luminosity",
         "add"
       ]
+    },
+    "ColorSpace": {
+      "description": "色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。",
+      "type": "string"
     },
     "Composition": {
       "description": "コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。",

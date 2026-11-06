@@ -1,0 +1,23 @@
+[package]
+name = "mm-ingest"
+description = "取り込みの流れ。コンテンツハッシュ、プレビュー動画、波形、サムネイル、付属ファイルの読み込み"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-ingest-api = { workspace = true }
+blake3 = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mm-trace = { workspace = true }
+tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

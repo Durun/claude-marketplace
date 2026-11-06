@@ -8,6 +8,7 @@ use mm_types::{CompositionId, LayerId, MmError, RationalTime, Result};
 
 use crate::touches::Touches;
 
+mod add_asset;
 mod add_composition;
 mod add_layer;
 mod add_marker;
@@ -24,6 +25,7 @@ mod move_layer;
 mod overwrite;
 mod parent_layer;
 mod precompose;
+mod remove_asset;
 mod remove_composition;
 mod remove_keyframe;
 mod remove_layer;
@@ -41,6 +43,7 @@ mod slip;
 mod split;
 mod unprecompose;
 
+pub use add_asset::AddAsset;
 pub use add_composition::AddComposition;
 pub use add_layer::AddLayer;
 pub use add_marker::AddMarker;
@@ -57,6 +60,7 @@ pub use move_layer::MoveLayer;
 pub use overwrite::Overwrite;
 pub use parent_layer::ParentLayer;
 pub use precompose::Precompose;
+pub use remove_asset::RemoveAsset;
 pub use remove_composition::RemoveComposition;
 pub use remove_keyframe::RemoveKeyframe;
 pub use remove_layer::RemoveLayer;
