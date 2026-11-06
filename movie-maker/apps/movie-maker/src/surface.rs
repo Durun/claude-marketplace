@@ -1,28 +1,43 @@
-//! wgpu のサーフェスを張る子 HWND。Tauri のウィンドウの下に自前で作り、フォーカスとキーを自分で受ける。
+//! wgpu のサーフェスを張る子 HWND。Tauri のウィンドウの下に自前で作り、フォーカスとキーとポインターを自分で受ける。
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use mm_ui_layout::PointerEvent;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, LoadCursorW, RegisterClassW, SetWindowPos, CS_HREDRAW,
-    CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, RegisterClassW, SetWindowPos,
+    CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
 use crate::keys;
-use crate::shared::Shared;
+use crate::state::Shared;
+
+/// 1 ノッチあたりのホイールの値。
+const WHEEL_DELTA: f32 = 120.0;
+/// Ctrl キーの修飾（WM_MOUSEWHEEL の wParam の下位語）。
+const MK_CONTROL: usize = 0x0008;
+/// マウスがウィンドウから出た通知（`TrackMouseEvent` で頼んだもの）。
+const WM_MOUSELEAVE: u32 = 0x02A3;
+/// 描画が止まっているときに入力が溜まり続けない上限。
+const INPUT_LIMIT: usize = 512;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
+static TRACKING: AtomicBool = AtomicBool::new(false);
+
+/// 矩形（x、y、幅、高さ。物理ピクセル）。
+pub type PixelRect = (i32, i32, i32, i32);
 
 /// 親の HWND の下に子 HWND を作る。位置と大きさは物理ピクセル。
-pub fn create(
-    parent: isize,
-    shared: Arc<Shared>,
-    rect: (i32, i32, i32, i32),
-) -> windows::core::Result<isize> {
+pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::core::Result<isize> {
     // wndproc から共有状態に届く道はこの静的変数だけなので、作る前に置く。
     let _ = SHARED.set(shared);
     let (x, y, w, h) = rect;
@@ -57,7 +72,7 @@ pub fn create(
 }
 
 /// 子 HWND の位置と大きさを変える（親のクライアント座標、物理ピクセル）。
-pub fn set_rect(hwnd: isize, rect: (i32, i32, i32, i32)) {
+pub fn set_rect(hwnd: isize, rect: PixelRect) {
     let (x, y, w, h) = rect;
     unsafe {
         // 失敗しても次の Resized で同じ値を入れ直すので、結果は破棄する。
@@ -73,13 +88,92 @@ pub fn set_rect(hwnd: isize, rect: (i32, i32, i32, i32)) {
     }
 }
 
+/// HWND がまだ生きているか。破棄された HWND への present を止めるのに使う。
+pub fn is_alive(hwnd: isize) -> bool {
+    unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
+}
+
+fn push(ev: PointerEvent) {
+    if let Some(shared) = SHARED.get() {
+        let mut q = shared.input.lock().expect("input");
+        if q.len() < INPUT_LIMIT {
+            q.push(ev);
+        }
+    }
+}
+
+fn client_xy(lparam: LPARAM) -> (f32, f32) {
+    let x = (lparam.0 & 0xFFFF) as u16 as i16;
+    let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16;
+    (f32::from(x), f32::from(y))
+}
+
+fn track_leave(hwnd: HWND) {
+    if TRACKING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let mut tme = TRACKMOUSEEVENT {
+        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+        dwFlags: TME_LEAVE,
+        hwndTrack: hwnd,
+        dwHoverTime: 0,
+    };
+    unsafe {
+        let _ = TrackMouseEvent(&mut tme);
+    }
+}
+
+fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
+    let delta = ((wparam.0 >> 16) & 0xFFFF) as u16 as i16;
+    // WM_MOUSEWHEEL の座標は画面の座標なので、クライアントの座標に直す。
+    let (sx, sy) = client_xy(lparam);
+    let mut p = POINT {
+        x: sx as i32,
+        y: sy as i32,
+    };
+    unsafe {
+        let _ = ScreenToClient(hwnd, &mut p);
+    }
+    PointerEvent::Wheel {
+        x: p.x as f32,
+        y: p.y as f32,
+        dy: f32::from(delta) / WHEEL_DELTA,
+        ctrl: wparam.0 & MK_CONTROL != 0,
+    }
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
-        // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。
+        // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
         WM_LBUTTONDOWN => {
             unsafe {
                 let _ = SetFocus(Some(hwnd));
+                SetCapture(hwnd);
             }
+            let (x, y) = client_xy(lparam);
+            push(PointerEvent::Down { x, y });
+            LRESULT(0)
+        }
+        WM_LBUTTONUP => {
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            push(PointerEvent::Up);
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE => {
+            track_leave(hwnd);
+            let (x, y) = client_xy(lparam);
+            push(PointerEvent::Move { x, y });
+            LRESULT(0)
+        }
+        WM_MOUSELEAVE => {
+            TRACKING.store(false, Ordering::SeqCst);
+            push(PointerEvent::Leave);
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            push(wheel_event(hwnd, wparam, lparam));
             LRESULT(0)
         }
         WM_KEYDOWN => {

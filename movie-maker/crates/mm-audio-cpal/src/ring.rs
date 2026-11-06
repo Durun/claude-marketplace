@@ -88,11 +88,15 @@ impl Ring {
         }
         let before = self.consumed;
         self.consumed += have as u64;
-        self.anchor = Some(Anchor {
-            plays_at,
-            frames_before: before,
-            frames_after: self.consumed,
-        });
+        // 音を消費しなかった呼び出しでは錨を替えない。無音のバッファの鳴る時刻で替えると、
+        // 位置がデバイスの遅れの分だけ手前に戻り、最後の音まで届かなくなる。
+        if have > 0 {
+            self.anchor = Some(Anchor {
+                plays_at,
+                frames_before: before,
+                frames_after: self.consumed,
+            });
+        }
     }
 
     /// 時刻 `now`（秒）に耳に届いている再生位置（秒）。まだ鳴っていなければ起点。
@@ -156,6 +160,18 @@ mod tests {
         assert!((r.position(1.0) - 10.05).abs() < 1e-9);
         assert!(out[100..].iter().all(|s| *s == 0.0), "足りない分は無音");
         assert!(out[..100].iter().all(|s| *s == 0.5));
+    }
+
+    #[test]
+    fn 音を使い切った後の無音のコールバックで位置が戻らない() {
+        let mut r = ring_with(0.1);
+        let mut out = vec![0.0; 100 * 2];
+        r.fill(&mut out, 0.5, true);
+        // 遅れ 40 ms のデバイスが、使い切った後も無音のバッファを先に渡し続ける。
+        for i in 1..20 {
+            r.fill(&mut out, 0.5 + 0.01 * f64::from(i), true);
+        }
+        assert!((r.position(1.0) - 10.1).abs() < 1e-9, "{}", r.position(1.0));
     }
 
     #[test]

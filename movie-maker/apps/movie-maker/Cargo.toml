@@ -1,13 +1,27 @@
 [package]
 name = "movie-maker"
-description = "Tauri のウィンドウに wgpu のサーフェスと WebView2 を並べる試作（段階 0 の難所）"
+description = "movie-maker のアプリ。Tauri のウィンドウに wgpu のサーフェス（Program と Timeline）と WebView2 を並べ、プロジェクトを開いて再生する"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# FFmpeg の開発ファイルが要る（mm-decode-ffmpeg/README.md）。切ったときは素材をモックのデコーダーで読む。
+ffmpeg = ["mm-runtime/ffmpeg"]
+
 [dependencies]
+mm-types = { workspace = true }
 mm-trace = { workspace = true }
+mm-doc = { workspace = true }
+mm-store = { workspace = true }
+mm-node-api = { workspace = true }
+mm-audio-api = { workspace = true }
+mm-runtime = { workspace = true }
+mm-ui-layout = { workspace = true }
+mm-ui-wgpu = { workspace = true }
+mm-audio-cpal = { workspace = true }
+png = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -20,8 +34,8 @@ pollster = { workspace = true }
 windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
+  "Win32_Media",
   "Win32_System_LibraryLoader",
-  "Win32_System_Threading",
   "Win32_UI_HiDpi",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
@@ -29,6 +43,9 @@ windows = { workspace = true, features = [
 
 [build-dependencies]
 tauri-build = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
 
 [lints]
 workspace = true

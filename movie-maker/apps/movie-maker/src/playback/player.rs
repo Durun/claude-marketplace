@@ -1,0 +1,384 @@
+//! 再生スレッドの本体。時計の位置から出すフレームを決め、音を先読みして出力に足す。
+
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Arc;
+use std::time::Duration;
+
+use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
+use mm_audio_cpal::AudioOutput;
+use mm_doc::Project;
+use mm_node_api::Quality;
+use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
+use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
+
+use super::{Command, PlaybackInfo};
+use crate::clock::{AudioClock, PlayClock, WallClock};
+use crate::state::Shared;
+
+/// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
+const AUDIO_AHEAD_SECS: f64 = 0.4;
+/// 1 回に描く音の長さ（サンプル）。0.1 秒。
+const AUDIO_CHUNK: i64 = 4_800;
+/// 次のフレームまでの待ちの下限と上限（ms）。上限は音の先読みを回す間隔でもある。
+const WAIT_MIN_MS: f64 = 0.5;
+const WAIT_MAX_MS: f64 = 4.0;
+/// 映像を音より先のフレームで出す量（秒）。フレームを描いて取り込み、present するまでに要る時間（実測で約 25 ms）を
+/// 見込まないと、映像が音より 1 フレーム近く遅れて見える。
+const VIDEO_LEAD_SECS: f64 = 0.025;
+/// 終わりの判定に許す誤差（秒）。
+const END_EPSILON: f64 = 1e-3;
+
+/// 再生スレッドの設定。
+#[derive(Debug, Clone, Default)]
+pub struct PlayerOptions {
+    /// 音の出力を開かず、壁時計で進める。
+    pub no_audio: bool,
+    /// 実装の組み合わせ。`None` なら [`runtime_config`]。
+    pub config: Option<RuntimeConfig>,
+}
+
+/// 実際の実装の組み合わせ。FFmpeg が切ってあるときは素材をモックのデコーダーで読む。
+pub fn runtime_config() -> RuntimeConfig {
+    let real = RuntimeConfig::real();
+    if cfg!(feature = "ffmpeg") {
+        real
+    } else {
+        RuntimeConfig {
+            decode: Backend::Sample,
+            encode: Backend::Sample,
+            ..real
+        }
+    }
+}
+
+/// 時計の位置から出すフレームの番号と、飛ばした数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FramePlan {
+    pub index: i64,
+    pub dropped: i64,
+}
+
+/// 位置 `pos`（秒）に出すフレームを決める。`last` は直前に出した番号。まだ同じなら `None`。
+pub fn plan_frame(pos: f64, last: Option<i64>, fps: f64, total: i64) -> Option<FramePlan> {
+    let index = ((pos * fps).floor() as i64).clamp(0, (total - 1).max(0));
+    match last {
+        Some(l) if index <= l => None,
+        Some(l) => Some(FramePlan {
+            index,
+            dropped: index - l - 1,
+        }),
+        None => Some(FramePlan { index, dropped: 0 }),
+    }
+}
+
+pub struct Player {
+    engine: Engine,
+    project: Arc<Project>,
+    comp: CompositionId,
+    fps: Rational,
+    fps_f: f64,
+    frames_total: i64,
+    duration: f64,
+    size: Size,
+    clock: Arc<dyn PlayClock>,
+    audio: Option<Arc<AudioOutput>>,
+    shared: Arc<Shared>,
+    playing: bool,
+    last_frame: Option<i64>,
+    audio_cursor: i64,
+}
+
+impl Player {
+    pub fn new(
+        shared: Arc<Shared>,
+        project: Arc<Project>,
+        comp_id: CompositionId,
+        options: PlayerOptions,
+    ) -> Result<(Self, PlaybackInfo)> {
+        let engine = assemble(&options.config.clone().unwrap_or_else(runtime_config))?;
+        let comp = project.composition(&comp_id)?;
+        let (fps, duration) = (comp.fps, comp.duration.to_f64());
+        let size = Size::new(comp.width, comp.height);
+        let audio = (!options.no_audio).then(open_audio).flatten();
+        let clock: Arc<dyn PlayClock> = match &audio {
+            Some(a) => Arc::new(AudioClock(a.clone())),
+            None => Arc::new(WallClock::default()),
+        };
+        let _ = shared.clock.set(clock.clone());
+        let fps_f = fps.to_f64();
+        let info = PlaybackInfo {
+            duration,
+            fps: fps_f,
+            width: size.width,
+            height: size.height,
+            clock: clock.kind(),
+            audio_device: audio.as_ref().map(|a| {
+                let (name, rate, ch) = a.device();
+                format!("{name} ({rate} Hz, {ch} ch)")
+            }),
+            backends: engine
+                .backend_names()
+                .into_iter()
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+        };
+        let player = Self {
+            engine,
+            project,
+            comp: comp_id,
+            fps,
+            fps_f,
+            frames_total: (duration * fps_f).round() as i64,
+            duration,
+            size,
+            clock,
+            audio,
+            shared,
+            playing: false,
+            last_frame: None,
+            audio_cursor: 0,
+        };
+        Ok((player, info))
+    }
+
+    /// 命令を受けながら再生を進める。`Quit` か、送り手が全部いなくなったら返る。
+    pub fn run(&mut self, rx: &Receiver<Command>) {
+        self.seek_to(0.0);
+        loop {
+            let wait = if self.playing {
+                Some(self.next_wait())
+            } else {
+                None
+            };
+            let received = match wait {
+                Some(d) => rx.recv_timeout(d),
+                None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+            };
+            match received {
+                Ok(Command::Quit) | Err(RecvTimeoutError::Disconnected) => break,
+                Ok(cmd) => self.handle(cmd),
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+            if self.playing {
+                self.tick();
+            }
+        }
+        self.clock.halt();
+        self.shared.playing.store(false, Ordering::SeqCst);
+    }
+
+    fn next_wait(&self) -> Duration {
+        let pos = self.clock.position();
+        let to_next = ((pos * self.fps_f).floor() + 1.0) / self.fps_f - pos;
+        Duration::from_secs_f64((to_next * 1000.0 - 1.0).clamp(WAIT_MIN_MS, WAIT_MAX_MS) / 1000.0)
+    }
+
+    fn handle(&mut self, cmd: Command) {
+        match cmd {
+            Command::Play => self.play(),
+            Command::Pause => self.pause(),
+            Command::Toggle if self.playing => self.pause(),
+            Command::Toggle => self.play(),
+            Command::Seek(t) => self.seek_to(t),
+            Command::Step(n) => {
+                let here = self.pause_position();
+                let idx = (here * self.fps_f).floor() as i64 + n;
+                self.seek_to(idx as f64 / self.fps_f);
+            }
+            Command::Quit => {}
+        }
+    }
+
+    fn pause_position(&mut self) -> f64 {
+        if self.playing {
+            self.pause();
+        }
+        self.clock.position()
+    }
+
+    fn last_start(&self) -> f64 {
+        (self.duration - 1.0 / self.fps_f).max(0.0)
+    }
+
+    fn play(&mut self) {
+        if self.playing {
+            return;
+        }
+        let here = self.clock.position();
+        let from = if here >= self.last_start() { 0.0 } else { here };
+        self.seek_to(from);
+        self.feed_audio();
+        self.clock.run();
+        self.playing = true;
+        self.shared.playing.store(true, Ordering::SeqCst);
+    }
+
+    fn pause(&mut self) {
+        if !self.playing {
+            return;
+        }
+        self.clock.halt();
+        self.playing = false;
+        self.shared.playing.store(false, Ordering::SeqCst);
+    }
+
+    /// 位置を置き直して、その位置のフレームを描く。再生中なら音も置き直して続ける。
+    fn seek_to(&mut self, t: f64) {
+        let was_playing = self.playing;
+        if was_playing {
+            self.clock.halt();
+        }
+        let t = t.clamp(0.0, self.last_start());
+        self.clock.seek(t);
+        self.audio_cursor = (t * f64::from(DEFAULT_SAMPLE_RATE)).round() as i64;
+        let idx = ((t * self.fps_f).floor() as i64).clamp(0, (self.frames_total - 1).max(0));
+        self.render_frame(idx);
+        self.last_frame = Some(idx);
+        if was_playing {
+            self.feed_audio();
+            self.clock.run();
+        }
+    }
+
+    fn tick(&mut self) {
+        self.feed_audio();
+        let pos = self.clock.position();
+        if pos >= self.duration - END_EPSILON {
+            self.finish();
+            return;
+        }
+        let Some(plan) = plan_frame(
+            pos + VIDEO_LEAD_SECS,
+            self.last_frame,
+            self.fps_f,
+            self.frames_total,
+        ) else {
+            return;
+        };
+        if plan.dropped > 0 {
+            self.shared
+                .dropped_frames
+                .fetch_add(plan.dropped as u64, Ordering::SeqCst);
+            mm_trace::counter!("preview.dropped_frames", plan.dropped);
+        }
+        self.render_frame(plan.index);
+        self.last_frame = Some(plan.index);
+    }
+
+    /// 終わりまで来た。最後のフレームを出して止める。
+    fn finish(&mut self) {
+        self.clock.halt();
+        self.playing = false;
+        self.shared.playing.store(false, Ordering::SeqCst);
+        let last = (self.frames_total - 1).max(0);
+        if self.last_frame != Some(last) {
+            self.render_frame(last);
+            self.last_frame = Some(last);
+        }
+        self.clock.seek(self.last_start());
+    }
+
+    fn render_frame(&mut self, index: i64) {
+        let Ok(time) = RationalTime::from_frames(index, self.fps) else {
+            return;
+        };
+        let started = std::time::Instant::now();
+        let result = {
+            let _span = tracing::info_span!("preview.render_frame").entered();
+            self.engine
+                .render_frame(&self.project, &self.comp, time, self.size, Quality::Preview)
+        };
+        match result {
+            Ok(img) => {
+                self.shared.frames.put(index as f64 / self.fps_f, img);
+                self.shared.rendered_frames.fetch_add(1, Ordering::SeqCst);
+                self.shared
+                    .record("render_frame_ms", started.elapsed().as_secs_f64() * 1000.0);
+            }
+            Err(e) => {
+                mm_trace::counter!("preview.render_errors", 1);
+                tracing::warn!(error = %e, index, "フレームを描けなかった");
+            }
+        }
+    }
+
+    /// 音を先読みの長さまで足す。描けなかったチャンクは無音で埋めて時計を止めない。
+    fn feed_audio(&mut self) {
+        let Some(out) = self.audio.clone() else {
+            return;
+        };
+        let total = (self.duration * f64::from(DEFAULT_SAMPLE_RATE)).round() as i64;
+        while self.audio_cursor < total && out.buffered_secs() < AUDIO_AHEAD_SECS {
+            let n = AUDIO_CHUNK.min(total - self.audio_cursor);
+            let block = self.render_audio_chunk(self.audio_cursor, n);
+            if let Err(e) = out.push(&block) {
+                tracing::warn!(error = %e, "音を足せなかった");
+                break;
+            }
+            self.audio_cursor += n;
+            if self.audio_cursor >= total {
+                // 最後の音を足した時点の数。これ以降の増加は、音を鳴らし切った後の無音。
+                self.shared
+                    .record("audio_underruns_before_tail", self.clock.underruns() as f64);
+            }
+        }
+    }
+
+    fn render_audio_chunk(&mut self, start: i64, frames: i64) -> mm_audio_api::AudioBlock {
+        let rate = DEFAULT_SAMPLE_RATE;
+        let range = TimeRange::new(
+            RationalTime::new(i128::from(start), rate).unwrap_or(RationalTime::ZERO),
+            RationalTime::new(i128::from(start + frames), rate).unwrap_or(RationalTime::ZERO),
+        );
+        let started = std::time::Instant::now();
+        let _span = tracing::info_span!("preview.render_audio").entered();
+        let rendered = range.and_then(|r| self.engine.render_audio(&self.project, &self.comp, r));
+        self.shared
+            .record("render_audio_ms", started.elapsed().as_secs_f64() * 1000.0);
+        rendered.unwrap_or_else(|e| {
+            mm_trace::counter!("preview.audio_errors", 1);
+            tracing::warn!(error = %e, start, "音を描けなかった");
+            mm_audio_api::AudioBlock::silence(rate, DEFAULT_CHANNELS, frames as usize)
+        })
+    }
+}
+
+fn open_audio() -> Option<Arc<AudioOutput>> {
+    match AudioOutput::open(DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS) {
+        Ok(out) => Some(Arc::new(out)),
+        Err(e) => {
+            tracing::warn!(error = %e, "音の出力を開けない。壁時計で進める");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 同じフレームの間は何も出さない() {
+        assert_eq!(plan_frame(0.01, Some(0), 30.0, 300), None);
+        assert_eq!(plan_frame(0.034, Some(0), 30.0, 300).unwrap().index, 1);
+    }
+
+    #[test]
+    fn 追いつけなかった分は飛ばした数に数える() {
+        let p = plan_frame(0.2, Some(2), 30.0, 300).unwrap();
+        assert_eq!((p.index, p.dropped), (6, 3));
+    }
+
+    #[test]
+    fn 最初のフレームは飛ばしに数えない() {
+        let p = plan_frame(1.0, None, 30.0, 300).unwrap();
+        assert_eq!((p.index, p.dropped), (30, 0));
+    }
+
+    #[test]
+    fn 終わりを超えた位置は最後のフレームに収める() {
+        let p = plan_frame(99.0, Some(10), 30.0, 300).unwrap();
+        assert_eq!(p.index, 299);
+    }
+}

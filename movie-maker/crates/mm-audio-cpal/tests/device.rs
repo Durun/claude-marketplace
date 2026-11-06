@@ -50,6 +50,26 @@ fn 時計は実時間で進み_止めると止まる() {
 }
 
 #[test]
+fn 足した音を鳴らし切ると時計は足した長さに届く() {
+    let Some(out) = open() else { return };
+    const CHUNK: usize = 4_800;
+    const CHUNKS: usize = 20;
+    out.reset(0.0);
+    for _ in 0..CHUNKS {
+        let block = AudioBlock::silence(DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, CHUNK);
+        out.push(&block).unwrap();
+    }
+    out.set_running(true);
+    let total = (CHUNK * CHUNKS) as f64 / f64::from(DEFAULT_SAMPLE_RATE);
+    let deadline = Instant::now() + Duration::from_secs_f64(total + 2.0);
+    while out.position_secs() < total - 0.001 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let end = out.position_secs();
+    assert!(end >= total - 0.001, "位置 {end:.4} が長さ {total} に届く");
+}
+
+#[test]
 fn 形の違うブロックは受けない() {
     let Some(out) = open() else { return };
     let bad = AudioBlock::silence(44_100, 1, 10);

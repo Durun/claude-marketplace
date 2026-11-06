@@ -3203,7 +3203,18 @@ dependencies = [
 name = "movie-maker"
 version = "0.1.0"
 dependencies = [
+ "mm-audio-api",
+ "mm-audio-cpal",
+ "mm-doc",
+ "mm-node-api",
+ "mm-runtime",
+ "mm-store",
+ "mm-testkit",
  "mm-trace",
+ "mm-types",
+ "mm-ui-layout",
+ "mm-ui-wgpu",
+ "png",
  "pollster",
  "serde",
  "serde_json",

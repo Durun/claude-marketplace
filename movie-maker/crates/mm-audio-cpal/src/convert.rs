@@ -25,6 +25,10 @@ impl Resampler {
 
     /// 入力のブロックを変換する。
     pub fn process(&mut self, input: &[f32]) -> Vec<f32> {
+        // 同じレートは補間せず、フレーム数を変えない。
+        if self.step == 1.0 {
+            return input.to_vec();
+        }
         let n = input.len() / self.channels;
         let mut out = Vec::with_capacity(((n as f64 / self.step) as usize + 1) * self.channels);
         while self.pos < (n as f64) - 1.0 {
@@ -86,9 +90,7 @@ mod tests {
     fn 同じレートはそのまま通る() {
         let mut r = Resampler::new(48_000, 48_000, 2);
         let x = ramp(100);
-        let y = r.process(&x);
-        assert_eq!(&y[..y.len()], &x[..y.len()]);
-        assert!(y.len() >= 2 * 99);
+        assert_eq!(r.process(&x), x);
     }
 
     #[test]
