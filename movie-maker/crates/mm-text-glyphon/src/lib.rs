@@ -1,29 +1,37 @@
-//! 文字の実装。cosmic-text で整形（行組み）し、swash で CPU に描く。
+//! 文字の実装。cosmic-text でシェーピング（行組み）し、描画は 2 通り持つ。
 //!
-//! `ShapedText` が字体の名前と字形の番号を持つので、描画は行組みをやり直さず字形を引くだけ。
-//! 整形器と描画器は別々に作れる。フォントの読み込みは重いので、同じプロセスでは
+//! - [`CpuRasterizer`]（`cpu`）: swash で CPU に描く。
+//! - [`GlyphonRasterizer`]（`glyphon`）: glyphon（wgpu）のグリフの atlas とパイプラインで描く。
+//!
+//! `ShapedText` がフォントの名前とグリフの番号を持つので、描画は行組みをやり直さずグリフを引くだけ。
+//! シェーパーとレンダラーは別々に作れる。フォントの読み込みは重いので、同じプロセスでは
 //! [`TextEngine`] を共有して両方を取り出すと速い。
 
+mod glyph_ids;
+mod gpu;
 mod layout;
 mod raster;
+
+pub use gpu::GlyphonRasterizer;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use cosmic_text::{FontSystem, SwashCache};
+use mm_gpu::GpuContext;
 
 use mm_text_api::{ShapedText, TextRasterizer, TextShaper, TextStyle};
 use mm_types::{MmError, Result, RgbaImage};
 
-struct Inner {
-    fonts: Mutex<(FontSystem, SwashCache)>,
+pub(crate) struct Inner {
+    pub(crate) fonts: Mutex<(FontSystem, SwashCache)>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     m.lock()
-        .map_err(|_| MmError::Internal("文字エンジンの鍵が壊れている".into()))
+        .map_err(|_| MmError::Internal("文字エンジンのロックが壊れている".into()))
 }
 
-/// フォントの読み込みと字形のキャッシュを持つ。整形器と描画器はこれを共有できる。
+/// フォントの読み込みとグリフのキャッシュを持つ。シェーパーとレンダラーはこれを共有できる。
 #[derive(Clone)]
 pub struct TextEngine {
     inner: Arc<Inner>,
@@ -39,18 +47,23 @@ impl TextEngine {
         }
     }
 
-    /// 整形器。
+    /// シェーパー。
     pub fn shaper(&self) -> Arc<CosmicShaper> {
         Arc::new(CosmicShaper {
             inner: self.inner.clone(),
         })
     }
 
-    /// 描画器。
-    pub fn rasterizer(&self) -> Arc<GlyphonRasterizer> {
-        Arc::new(GlyphonRasterizer {
+    /// レンダラー。
+    pub fn rasterizer(&self) -> Arc<CpuRasterizer> {
+        Arc::new(CpuRasterizer {
             inner: self.inner.clone(),
         })
+    }
+
+    /// glyphon（wgpu）のレンダラー。フォントの読み込みは CPU のレンダラーと共有する。
+    pub fn gpu_rasterizer(&self, gpu: Arc<GpuContext>) -> Arc<GlyphonRasterizer> {
+        Arc::new(GlyphonRasterizer::with_fonts(self.inner.clone(), gpu))
     }
 }
 
@@ -60,7 +73,7 @@ impl Default for TextEngine {
     }
 }
 
-/// cosmic-text による整形。日本語と英語の混在、折り返し、揃えを扱う。
+/// cosmic-text によるシェーピング。日本語と英語の混在、折り返し、揃えを扱う。
 pub struct CosmicShaper {
     inner: Arc<Inner>,
 }
@@ -94,7 +107,7 @@ impl TextShaper for CosmicShaper {
         let buffer = layout::layout(fs, text, style);
         let mut shaped = layout::to_shaped(fs, &buffer, text, style);
         if !shaped.bounds.is_empty() {
-            // 送り幅と行の高さの矩形に、字形のインクの張り出しを足す（斜体、アクセント、絵文字）。
+            // 送り幅と行の高さの矩形に、グリフのインクの張り出しを足す（斜体、アクセント、絵文字）。
             let ink = raster::ink_bounds(fs, cache, &shaped, style);
             shaped.bounds = shaped.bounds.union(&ink);
         }
@@ -103,11 +116,11 @@ impl TextShaper for CosmicShaper {
 }
 
 /// swash による CPU の描画。出力は線形・premultiplied の RGBA。
-pub struct GlyphonRasterizer {
+pub struct CpuRasterizer {
     inner: Arc<Inner>,
 }
 
-impl GlyphonRasterizer {
+impl CpuRasterizer {
     /// 自前のフォントの読み込みで作る。
     pub fn new() -> Self {
         Self {
@@ -116,15 +129,15 @@ impl GlyphonRasterizer {
     }
 }
 
-impl Default for GlyphonRasterizer {
+impl Default for CpuRasterizer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TextRasterizer for GlyphonRasterizer {
+impl TextRasterizer for CpuRasterizer {
     fn id(&self) -> &'static str {
-        "glyphon"
+        "cpu"
     }
 
     fn rasterize(&self, shaped: &ShapedText, style: &TextStyle, scale: f32) -> Result<RgbaImage> {

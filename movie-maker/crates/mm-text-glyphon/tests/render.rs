@@ -1,7 +1,7 @@
 //! 日本語と英語の混在、折り返し、揃えを実際に描いて確かめる。
 
 use mm_text_api::{TextAlign, TextRasterizer, TextShaper, TextStyle};
-use mm_text_glyphon::{GlyphonRasterizer, TextEngine};
+use mm_text_glyphon::{CpuRasterizer, TextEngine};
 use mm_types::{Rgba, RgbaImage};
 
 /// 線形の値を sRGB の 8 bit に。
@@ -38,7 +38,7 @@ fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(&crc32(&tagged).to_be_bytes());
 }
 
-/// 圧縮しない zlib 包み（stored ブロック）で PNG を作る。依存を増やさないため。
+/// 圧縮しない zlib の stored ブロックで PNG を作る。依存を増やさないため。
 fn encode_png(img: &RgbaImage, background: Rgba) -> Vec<u8> {
     let (w, h) = (img.width(), img.height());
     let mut raw = Vec::new();
@@ -88,12 +88,12 @@ fn style(max_width: Option<f32>) -> TextStyle {
 }
 
 #[test]
-fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
+fn 日本語と英語の混在を描き同じ入力で同じ画像になる() {
     let engine = TextEngine::new();
     let (shaper, raster) = (engine.shaper(), engine.rasterizer());
     let st = style(Some(560.0));
     let text = "動画編集ソフト movie-maker の字幕テスト。Hello, 世界!\nこの行は折り返しを確かめるために、わざと長く書いてあります。";
-    let shaped = shaper.shape(text, &st).expect("整形");
+    let shaped = shaper.shape(text, &st).expect("シェーピング");
     assert!(shaped.lines.len() >= 3, "折り返しで行が増える");
     assert!(shaped.lines.iter().all(|l| l.rect.width <= 560.5));
     let a = raster.rasterize(&shaped, &st, 1.0).expect("描く");
@@ -111,7 +111,7 @@ fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
     };
     let sh = shaper
         .shape("短い\nもう少し長い行です", &centered)
-        .expect("整形");
+        .expect("シェーピング");
     assert!(
         sh.lines[0].rect.x > sh.lines[1].rect.x,
         "短い行ほど中央に寄る"
@@ -122,11 +122,14 @@ fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
 }
 
 #[test]
-fn 別に作った描画器でも同じ絵になる() {
+fn 別に作ったレンダラーでも同じ画像になる() {
     let engine = TextEngine::new();
-    let other = GlyphonRasterizer::new();
+    let other = CpuRasterizer::new();
     let st = style(None);
-    let shaped = engine.shaper().shape("abc 日本語", &st).expect("整形");
+    let shaped = engine
+        .shaper()
+        .shape("abc 日本語", &st)
+        .expect("シェーピング");
     let a = engine
         .rasterizer()
         .rasterize(&shaped, &st, 1.0)
@@ -134,16 +137,16 @@ fn 別に作った描画器でも同じ絵になる() {
     let b = other.rasterize(&shaped, &st, 1.0).expect("描く");
     assert_eq!(
         a, b,
-        "字体と字形の番号だけで描けるので、同じ字体があれば同じ絵"
+        "フォントとグリフの番号だけで描けるので、同じフォントがあれば同じ画像"
     );
     assert!(ink(&a) > 10.0);
 }
 
-/// 絵の範囲を四方に広げて描き直しても、インクの量が変わらないこと（範囲で切れていない）。
+/// 画像の範囲を四方に広げて描き直しても、インクの量が変わらないこと（範囲で切れていない）。
 fn assert_no_clipping(name: &str, text: &str, st: &TextStyle, scale: f32) {
     let engine = TextEngine::new();
     let (shaper, raster) = (engine.shaper(), engine.rasterizer());
-    let shaped = shaper.shape(text, st).expect("整形");
+    let shaped = shaper.shape(text, st).expect("シェーピング");
     let mut wide = shaped.clone();
     let pad = 24.0;
     wide.bounds = mm_types::Rect::new(
@@ -166,7 +169,7 @@ fn assert_no_clipping(name: &str, text: &str, st: &TextStyle, scale: f32) {
 }
 
 #[test]
-fn 行より高いアクセントや絵文字も絵の範囲で切れない() {
+fn 行より高いアクセントや絵文字も画像の範囲で切れない() {
     let tight_lines = TextStyle {
         font_family: "Yu Gothic".into(),
         size_px: 48.0,

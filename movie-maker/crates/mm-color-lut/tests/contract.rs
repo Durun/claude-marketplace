@@ -42,7 +42,7 @@ fn cdlとlutのwgslが検証を通る() {
 }
 
 #[test]
-fn 焼いたlutは伝達関数に近い() {
+fn ベイクしたlutは伝達関数に近い() {
     let ct = LutColor;
     let (srgb, working) = (ColorSpace::srgb(), ColorSpace::working());
     let TransformProgram::Lut3d { size, data } = ct.bake(&srgb, &working, 65).unwrap() else {

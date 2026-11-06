@@ -1,6 +1,6 @@
 [package]
 name = "mm-text-glyphon"
-description = "文字の実装。cosmic-text で整形し、CPU で RGBA に描く"
+description = "文字の実装。cosmic-text でシェーピングし、CPU（swash）と glyphon（wgpu）のどちらでも RGBA に描く"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,9 +10,16 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-text-api = { workspace = true }
 cosmic-text = { workspace = true }
+mm-gpu = { workspace = true }
+glyphon = { workspace = true }
+wgpu = { workspace = true }
+half = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 mm-testkit = { workspace = true }
+png = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

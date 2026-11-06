@@ -1,11 +1,9 @@
-//! 見本のプロジェクトと、見本の口の束。
+//! フィクスチャのプロジェクトと、モックのインターフェースの一式。
 
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{
-    Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget, Transform,
-};
+use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget};
 use mm_node_api::Services;
 use mm_types::{
     AssetId, ColorSpace, CompositionId, Id, ParamValue, Rational, RationalTime, RenderTargetId,
@@ -17,16 +15,16 @@ use crate::decode::SampleMedia;
 use crate::node::SAMPLE_KIND_VERSION;
 use crate::text::{SampleRasterizer, SampleShaper};
 
-/// 見本の素材のパス。見本のデコーダーはパスを見ないので何でもよい。
+/// フィクスチャの素材のパス。モックのデコーダーはパスを見ないので何でもよい。
 pub const SAMPLE_ASSET_PATH: &str = "fixtures/media/sample.mp4";
-/// 縦の 1 本で素材を切る入りの時刻（秒）。
+/// 縦の 1 本で素材を切るイン点の時刻（秒）。
 pub const VERTICAL_IN_SECONDS: i64 = 3;
 /// 縦の 1 本のコンポジションの長さ（秒）。
 pub const VERTICAL_DURATION_SECONDS: i64 = 2;
 /// 縦の 1 本で載せる文字。
 pub const VERTICAL_TEXT: &str = "Hello";
 
-/// 見本の口の束。
+/// モックのインターフェースの一式。
 pub fn sample_services() -> Services {
     Services {
         text_shaper: Arc::new(SampleShaper),
@@ -66,6 +64,7 @@ pub fn vertical_project(
         fps: media.fps,
         duration,
         layers: vec![footage, text],
+        markers: Vec::new(),
     });
     project.render_targets.push(RenderTarget {
         id: target_id.clone(),
@@ -83,40 +82,37 @@ pub fn vertical_project(
 /// 素材を `in_point` から `duration` だけ切り、音を `voice` の役割で付けたレイヤー。
 fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalTime) -> Layer {
     Layer {
-        id: Id::new("l-footage"),
-        source: Node::new("footage", SAMPLE_KIND_VERSION)
-            .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
-        start: RationalTime::ZERO,
-        in_point,
-        out_point: in_point.checked_add(duration).expect("見本の長さは表せる"),
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
         audio: Some(LayerAudio {
             role: "voice".into(),
             gain_db: Param::constant(ParamValue::Number(0.0)),
             pan: Param::constant(ParamValue::Number(0.0)),
         }),
-        lock: false,
+        ..Layer::new(
+            "l-footage",
+            Node::new("footage", SAMPLE_KIND_VERSION)
+                .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
+            RationalTime::ZERO,
+            in_point,
+            in_point
+                .checked_add(duration)
+                .expect("フィクスチャの長さは表せる"),
+        )
     }
 }
 
 /// `VERTICAL_TEXT` を左下に載せるレイヤー。
 fn text_layer(duration: RationalTime) -> Layer {
-    Layer {
-        id: Id::new("l-text"),
-        source: Node::new("text", SAMPLE_KIND_VERSION)
+    Layer::new(
+        "l-text",
+        Node::new("text", SAMPLE_KIND_VERSION)
             .with_param("text", ParamValue::Text(VERTICAL_TEXT.into()))
             .with_param("size", ParamValue::Number(24.0))
             .with_param("position", ParamValue::Vec2([16.0, 120.0]))
             .with_param("color", ParamValue::Color(Rgba::WHITE)),
-        start: RationalTime::ZERO,
-        in_point: RationalTime::ZERO,
-        out_point: duration,
-        opacity: Param::constant(ParamValue::Number(1.0)),
-        transform: Transform::default(),
-        audio: None,
-        lock: false,
-    }
+        RationalTime::ZERO,
+        RationalTime::ZERO,
+        duration,
+    )
 }
 
 /// 縦の 1 本の既定の fps。

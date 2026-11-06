@@ -1,45 +1,76 @@
-//! 文書の形。縦の 1 本に要る最小（Project、Asset、Composition、Layer、Node、Param、RenderTarget）。
+//! プロジェクトのデータの形。Project、Asset、Composition、Layer、Node、Param、Sequence、RenderTarget。
 //!
-//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde と版の移行を持つ。
-//! 文書に浮動小数の秒を書かず、時刻は全部 [`RationalTime`]。
+//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde とバージョンの移行と不変条件を持つ。
+//! プロジェクトのデータに浮動小数の秒を書かず、時刻は全部 [`RationalTime`]。
 //!
-//! 古い版の JSON は [`load`]（[`migrate`]）で今の版に上げてから読む。
-
-use std::collections::BTreeMap;
+//! 古いバージョンの JSON は [`load`]（[`migrate`]）で今のバージョンに上げてから読む。
+//! 保存の JSON をバイトで決めるため、ID で引く列は [`Project::normalize`] で ID の順に並べる。
 
 use serde::{Deserialize, Serialize};
 
 use mm_types::{
-    AssetId, ColorSpace, CompositionId, LayerId, MmError, ParamValue, Params, Rational,
-    RationalTime, RenderTargetId, Result, TimeRange,
+    AssetId, ColorSpace, CompositionId, Id, MmError, Rational, RationalTime, RenderTargetId,
+    Result, TimeRange,
 };
 
-/// 文書のスキーマの版。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
+/// プロジェクトのデータのスキーマのバージョン。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
 ///
-/// - v1: 最初の形。レイヤーの変形は動画オブジェクトのパラメータ `transform.*` に書いていた。
+/// - v1: 最初の形。レイヤーの変形はノードのパラメータ `transform.*` に書いていた。
 /// - v2: `Layer.transform`（位置・拡大・回転・アンカー、キーフレームつき）。
-pub const SCHEMA_VERSION: u32 = 2;
+/// - v3: 段階 1 の形。レイヤーの速さ・タイムリマップ・親・接続・合成モード・マスク・効果・有効、
+///   キーフレームのイージングとベジェ、コンポジションのマーカー、`sequences`。
+///   v3 のマーカーは同じ時刻を持てた。
+/// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
+pub const SCHEMA_VERSION: u32 = 4;
 
+mod layer;
 mod migrate;
+mod node;
+mod param;
+mod sequence;
+mod validate;
 
+pub use layer::{
+    BlendMode, Effect, EffectId, EffectMarker, Layer, LayerAudio, Mask, MaskId, MaskMarker,
+    MaskMode, MatteKind, TimeKeyframe, TimeRemap, TrackMatte, Transform,
+};
 pub use migrate::{load, migrate};
+pub use node::{Node, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND, SEQUENCE_PARAM};
+pub use param::{CubicBezier, Ease, Interpolation, Keyframe, Param};
+pub use sequence::{
+    Cut, CutId, CutMarker, OriginRelation, Sequence, SequenceId, SequenceMarker, SequenceOrigin,
+    Transition,
+};
+
+/// マーカーの ID の型タグ。
+#[derive(Debug)]
+pub enum MarkerMarker {}
+/// マーカーの ID。
+pub type MarkerId = Id<MarkerMarker>;
 
 /// プロジェクト。成果物（レンダーターゲット）は 1:N。
+///
+/// `assets`、`compositions`、`sequences`、`render_targets` は ID で引く列で、順に意味が無い。
+/// [`Project::normalize`] が ID の順に並べ、[`load`] も通す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Project {
     pub schema_version: u32,
     pub assets: Vec<Asset>,
     pub compositions: Vec<Composition>,
+    #[serde(default)]
+    pub sequences: Vec<Sequence>,
     pub render_targets: Vec<RenderTarget>,
 }
 
 impl Project {
-    /// 空のプロジェクト。今の版。
+    /// 空のプロジェクト。今のバージョン。
     pub fn new() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             assets: Vec::new(),
             compositions: Vec::new(),
+            sequences: Vec::new(),
             render_targets: Vec::new(),
         }
     }
@@ -60,28 +91,12 @@ impl Project {
             .ok_or_else(|| MmError::NotFound(format!("composition {id}")))
     }
 
-    /// 文書の不変条件を確かめる。素材とコンポジションの長さが負でなく、レイヤーの範囲
-    /// （`in <= out`）が作れること。fps が正であることは [`Rational`] の型が保つ。
-    pub fn validate(&self) -> Result<()> {
-        for asset in &self.assets {
-            if asset.duration.is_negative() {
-                return Err(MmError::InvalidArgument(format!(
-                    "素材 {} の長さが負",
-                    asset.id
-                )));
-            }
-        }
-        for comp in &self.compositions {
-            comp.range().map_err(|e| {
-                MmError::InvalidArgument(format!("コンポジション {} の長さ: {e}", comp.id))
-            })?;
-            for layer in &comp.layers {
-                layer.range().map_err(|e| {
-                    MmError::InvalidArgument(format!("レイヤー {} の範囲: {e}", layer.id))
-                })?;
-            }
-        }
-        Ok(())
+    /// sequence を ID で引く。
+    pub fn sequence(&self, id: &SequenceId) -> Result<&Sequence> {
+        self.sequences
+            .iter()
+            .find(|s| &s.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("sequence {id}")))
     }
 
     /// レンダーターゲットを ID で引く。
@@ -91,6 +106,89 @@ impl Project {
             .find(|t| &t.id == id)
             .ok_or_else(|| MmError::NotFound(format!("render target {id}")))
     }
+
+    /// レイヤーを ID で引く（全コンポジションから）。
+    pub fn layer(&self, id: &mm_types::LayerId) -> Result<(&Composition, &Layer)> {
+        self.compositions
+            .iter()
+            .find_map(|c| c.layers.iter().find(|l| &l.id == id).map(|l| (c, l)))
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
+    }
+
+    /// カットを ID で引く（全 sequence から）。
+    pub fn cut(&self, id: &CutId) -> Result<(&Sequence, &Cut)> {
+        self.sequences
+            .iter()
+            .find_map(|s| s.cuts.iter().find(|c| &c.id == id).map(|c| (s, c)))
+            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+    }
+
+    /// コンポジションを ID で引く（書き換え用）。
+    pub fn composition_mut(&mut self, id: &CompositionId) -> Result<&mut Composition> {
+        self.compositions
+            .iter_mut()
+            .find(|c| &c.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("composition {id}")))
+    }
+
+    /// sequence を ID で引く（書き換え用）。
+    pub fn sequence_mut(&mut self, id: &SequenceId) -> Result<&mut Sequence> {
+        self.sequences
+            .iter_mut()
+            .find(|s| &s.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("sequence {id}")))
+    }
+
+    /// レイヤーの置き場所（コンポジションの ID と、下から数えた位置）。
+    pub fn layer_index(&self, id: &mm_types::LayerId) -> Result<(CompositionId, usize)> {
+        self.compositions
+            .iter()
+            .find_map(|c| {
+                c.layers
+                    .iter()
+                    .position(|l| &l.id == id)
+                    .map(|i| (c.id.clone(), i))
+            })
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
+    }
+
+    /// レイヤーを ID で引く（書き換え用）。
+    pub fn layer_mut(&mut self, id: &mm_types::LayerId) -> Result<&mut Layer> {
+        self.compositions
+            .iter_mut()
+            .find_map(|c| c.layers.iter_mut().find(|l| &l.id == id))
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
+    }
+
+    /// カットの置き場所（sequence の ID と、先頭から数えた位置）。
+    pub fn cut_index(&self, id: &CutId) -> Result<(SequenceId, usize)> {
+        self.sequences
+            .iter()
+            .find_map(|s| {
+                s.cuts
+                    .iter()
+                    .position(|c| &c.id == id)
+                    .map(|i| (s.id.clone(), i))
+            })
+            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+    }
+
+    /// カットを ID で引く（書き換え用）。
+    pub fn cut_mut(&mut self, id: &CutId) -> Result<&mut Cut> {
+        self.sequences
+            .iter_mut()
+            .find_map(|s| s.cuts.iter_mut().find(|c| &c.id == id))
+            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+    }
+
+    /// ID で引く列を ID の順に並べる。保存の前に通すと JSON がバイトで決まる。
+    /// レイヤーとカットとマーカーの順は意味を持つので触らない。
+    pub fn normalize(&mut self) {
+        self.assets.sort_by(|a, b| a.id.cmp(&b.id));
+        self.compositions.sort_by(|a, b| a.id.cmp(&b.id));
+        self.sequences.sort_by(|a, b| a.id.cmp(&b.id));
+        self.render_targets.sort_by(|a, b| a.id.cmp(&b.id));
+    }
 }
 
 impl Default for Project {
@@ -99,8 +197,9 @@ impl Default for Project {
     }
 }
 
-/// 素材。原本のパス、中身のハッシュ、色空間、時間軸。
+/// 素材。原本のパス、コンテンツハッシュ、色空間、時間軸。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Asset {
     pub id: AssetId,
     pub path: String,
@@ -109,13 +208,14 @@ pub struct Asset {
     pub duration: RationalTime,
     /// 固定フレームレートなら fps。VFR は `None`（PTS の索引で引く）。
     pub fps: Option<Rational>,
-    /// 音と映像の頭のずれ。OBS の mkv で起きる。
+    /// 音と映像の先頭のずれ。OBS の mkv で起きる。
     #[serde(default = "RationalTime::zero")]
     pub timebase_offset: RationalTime,
 }
 
-/// コンポジション。大きさ、fps、長さ、レイヤーの重なり。
+/// コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Composition {
     pub id: CompositionId,
     pub width: u32,
@@ -124,6 +224,9 @@ pub struct Composition {
     pub duration: RationalTime,
     /// 下から上の順。
     pub layers: Vec<Layer>,
+    /// 時刻の順。
+    #[serde(default)]
+    pub markers: Vec<Marker>,
 }
 
 impl Composition {
@@ -131,176 +234,37 @@ impl Composition {
     pub fn range(&self) -> Result<TimeRange> {
         TimeRange::new(RationalTime::ZERO, self.duration)
     }
-}
 
-/// レイヤー。動画オブジェクトを 1 つ持ち、時間と重ね方を足す。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Layer {
-    pub id: LayerId,
-    pub source: Node,
-    /// コンポジションの時間軸での始まり。
-    pub start: RationalTime,
-    /// 素材の時間軸での入り。
-    #[serde(rename = "in")]
-    pub in_point: RationalTime,
-    /// 素材の時間軸での出（含まない）。
-    #[serde(rename = "out")]
-    pub out_point: RationalTime,
-    pub opacity: Param,
-    /// 位置・拡大・回転・アンカー。描画器が合成で掛ける（種類には渡さない）。
-    #[serde(default)]
-    pub transform: Transform,
-    #[serde(default)]
-    pub audio: Option<LayerAudio>,
-    #[serde(default)]
-    pub lock: bool,
-}
-
-/// レイヤーの変形。値はコンポジションの画素と度。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Transform {
-    /// 動かす量（Vec2）。
-    pub position: Param,
-    /// 倍率（Number か Vec2）。1 が等倍。
-    pub scale: Param,
-    /// 度。正が時計回り。
-    pub rotation: Param,
-    /// 回転と拡大の中心（Vec2）。`None` はレイヤーの絵の中心。
-    pub anchor: Option<Param>,
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self {
-            position: Param::constant(ParamValue::Vec2([0.0, 0.0])),
-            scale: Param::constant(ParamValue::Number(1.0)),
-            rotation: Param::constant(ParamValue::Number(0.0)),
-            anchor: None,
-        }
-    }
-}
-
-impl Transform {
-    /// 恒等か。
-    pub fn is_identity(&self) -> bool {
-        *self == Self::default()
-    }
-}
-
-impl Layer {
-    /// コンポジションの時間軸での範囲。
-    pub fn range(&self) -> Result<TimeRange> {
-        TimeRange::from_start_duration(self.start, self.out_point.checked_sub(self.in_point)?)
-    }
-
-    /// コンポジションの時刻を素材の時刻に写す（速さ 1 のみ。タイムリマップは `mm-eval`）。
-    pub fn to_source_time(&self, t: RationalTime) -> Result<RationalTime> {
-        t.checked_sub(self.start)?.checked_add(self.in_point)
-    }
-}
-
-/// レイヤーの音の設定。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LayerAudio {
-    pub role: String,
-    pub gain_db: Param,
-    pub pan: Param,
-}
-
-/// 動画オブジェクト。種類の名前と版、パラメータ、入力。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Node {
-    pub kind: String,
-    pub version: u32,
-    #[serde(default)]
-    pub params: BTreeMap<String, Param>,
-    #[serde(default)]
-    pub inputs: Vec<Node>,
-}
-
-impl Node {
-    /// パラメータ無しの種類。
-    pub fn new(kind: impl Into<String>, version: u32) -> Self {
-        Self {
-            kind: kind.into(),
-            version,
-            params: BTreeMap::new(),
-            inputs: Vec::new(),
-        }
-    }
-
-    /// 固定値のパラメータを足す。
-    pub fn with_param(mut self, name: impl Into<String>, value: ParamValue) -> Self {
-        self.params.insert(name.into(), Param::constant(value));
-        self
-    }
-
-    /// 時刻 t での全パラメータの値（ホールドの評価）。
-    pub fn params_at(&self, t: RationalTime) -> Params {
-        let mut out = Params::new();
-        for (k, p) in &self.params {
-            out.set(k.clone(), p.hold_value_at(t));
-        }
-        out
-    }
-}
-
-/// キーフレームの補間。数の型だけ `Linear` と `Bezier` が効く。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Interpolation {
-    Hold,
-    Linear,
-    Bezier,
-}
-
-/// キーフレーム。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Keyframe {
-    pub time: RationalTime,
-    pub value: ParamValue,
-    pub interpolation: Interpolation,
-}
-
-/// パラメータ。固定の値か、キーフレームの列。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Param {
-    pub value: ParamValue,
-    #[serde(default)]
-    pub keyframes: Vec<Keyframe>,
-}
-
-impl Param {
-    /// 固定の値。
-    pub fn constant(value: ParamValue) -> Self {
-        Self {
-            value,
-            keyframes: Vec::new(),
-        }
-    }
-
-    /// 時刻 t で、直前のキーフレームの値をそのまま返す（ホールド）。
-    /// キーフレームが無いか t が最初のキーフレームより前なら `value`。補間は `mm-eval` が担う。
-    pub fn hold_value_at(&self, t: RationalTime) -> ParamValue {
-        self.keyframes
+    /// レイヤーを ID で引く。
+    pub fn layer(&self, id: &mm_types::LayerId) -> Result<&Layer> {
+        self.layers
             .iter()
-            .filter(|k| k.time <= t)
-            .max_by_key(|k| k.time)
-            .map(|k| k.value.clone())
-            .unwrap_or_else(|| self.value.clone())
+            .find(|l| &l.id == id)
+            .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
     }
+}
+
+/// マーカー。YouTube のチャプターの書き出しに使う。`duration` が 0 なら点。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Marker {
+    pub id: MarkerId,
+    pub time: RationalTime,
+    #[serde(default = "RationalTime::zero")]
+    pub duration: RationalTime,
+    pub name: String,
 }
 
 /// レンダーターゲット。成果物の形式。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RenderTarget {
     pub id: RenderTargetId,
     pub composition: CompositionId,
     pub width: u32,
     pub height: u32,
     pub fps: Rational,
-    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、見本は `sample`）。
+    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。
     pub codec: String,
     pub output_path: String,
     #[serde(default)]
@@ -310,62 +274,62 @@ pub struct RenderTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_types::Id;
+    use mm_types::ParamValue;
 
-    #[test]
-    fn 文書は_json_を往復する() {
-        let mut p = Project::new();
-        p.compositions.push(Composition {
-            id: Id::new("c1"),
+    fn comp(id: &str, layers: Vec<Layer>) -> Composition {
+        Composition {
+            id: Id::new(id),
             width: 320,
             height: 180,
             fps: Rational::integer(30),
             duration: RationalTime::seconds(2),
-            layers: vec![Layer {
-                id: Id::new("l1"),
-                source: Node::new("solid", 1)
-                    .with_param("color", ParamValue::Color(mm_types::Rgba::WHITE)),
-                start: RationalTime::ZERO,
-                in_point: RationalTime::ZERO,
-                out_point: RationalTime::seconds(2),
-                opacity: Param::constant(ParamValue::Number(1.0)),
-                transform: Transform::default(),
-                audio: None,
-                lock: false,
-            }],
-        });
+            layers,
+            markers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn プロジェクトのデータは_json_を往復する() {
+        let mut p = Project::new();
+        let node =
+            Node::new("solid", 1).with_param("color", ParamValue::Color(mm_types::Rgba::WHITE));
+        p.compositions.push(comp(
+            "c1",
+            vec![Layer::new(
+                "l1",
+                node,
+                RationalTime::ZERO,
+                RationalTime::ZERO,
+                RationalTime::seconds(2),
+            )],
+        ));
         let s = serde_json::to_string_pretty(&p).unwrap();
         let back: Project = serde_json::from_str(&s).unwrap();
         assert_eq!(p, back);
         assert!(s.contains("\"in\""));
+        assert!(s.contains("\"speed\""));
     }
 
     #[test]
-    fn ホールドは直前のキーフレーム() {
-        let p = Param {
-            value: ParamValue::Number(0.0),
-            keyframes: vec![
-                Keyframe {
-                    time: RationalTime::seconds(1),
-                    value: ParamValue::Number(1.0),
-                    interpolation: Interpolation::Hold,
-                },
-                Keyframe {
-                    time: RationalTime::seconds(2),
-                    value: ParamValue::Number(2.0),
-                    interpolation: Interpolation::Hold,
-                },
-            ],
-        };
-        assert_eq!(p.hold_value_at(RationalTime::ZERO).as_number(), Some(0.0));
-        assert_eq!(
-            p.hold_value_at(RationalTime::new(3, 2).unwrap())
-                .as_number(),
-            Some(1.0)
+    fn normalize_は_id_の順に並べる() {
+        let mut p = Project::new();
+        p.compositions.push(comp("b", vec![]));
+        p.compositions.push(comp("a", vec![]));
+        p.normalize();
+        assert_eq!(p.compositions[0].id.as_str(), "a");
+    }
+
+    #[test]
+    fn レイヤーの長さは速さで割る() {
+        let mut l = Layer::new(
+            "l",
+            Node::new("solid", 1),
+            RationalTime::seconds(1),
+            RationalTime::ZERO,
+            RationalTime::seconds(3),
         );
-        assert_eq!(
-            p.hold_value_at(RationalTime::seconds(5)).as_number(),
-            Some(2.0)
-        );
+        l.speed = Rational::new(3, 2).unwrap();
+        assert_eq!(l.duration().unwrap(), RationalTime::seconds(2));
+        assert_eq!(l.range().unwrap().end, RationalTime::seconds(3));
     }
 }

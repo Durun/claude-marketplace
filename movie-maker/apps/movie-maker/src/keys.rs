@@ -1,4 +1,4 @@
-//! キーの表は Rust が 1 つ持つ。面と WebView のどちらから来ても同じ入口に入れる。
+//! キーの表は Rust が 1 つ持つ。サーフェスと WebView のどちらから来ても同じ関数に入れる。
 
 use std::sync::atomic::Ordering;
 
@@ -14,7 +14,7 @@ pub fn vk_name(vk: u32) -> String {
     }
 }
 
-/// キーを 1 つ受ける入口。`source` は "surface" か "webview"。
+/// キーを 1 つ受けるエントリーポイント。`source` は "surface" か "webview"。
 pub fn dispatch(shared: &Shared, source: &str, key: &str) {
     let _span = tracing::info_span!("window.key").entered();
     let stamp = shared.input_stamp_us.swap(0, Ordering::SeqCst);
@@ -49,7 +49,7 @@ mod tests {
     }
 
     #[test]
-    fn どちらの入口でも同じ表に数える() {
+    fn どちらから来ても同じ表に数える() {
         let s = Shared::new();
         dispatch(&s, "surface", "KeyJ");
         dispatch(&s, "webview", "KeyJ");

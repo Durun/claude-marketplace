@@ -1,4 +1,4 @@
-//! 音のトラック: f32 のインターリーブ → 平面 → AAC。
+//! 音のトラック: f32 のインターリーブ → プレーナー → AAC。
 
 use ff::format::context::Output;
 use ff::format::sample::{Sample, Type};
@@ -11,7 +11,7 @@ use mm_types::{MmError, Result};
 /// AAC のビットレート（bit/s）。
 const BIT_RATE: usize = 192_000;
 
-/// 音の符号化器と、出力の中のストリーム。
+/// 音のエンコーダーと、出力の中のストリーム。
 pub struct AudioTrack {
     encoder: codec::encoder::audio::Encoder,
     stream_index: usize,
@@ -21,15 +21,15 @@ pub struct AudioTrack {
     channels: u16,
     /// AAC の 1 フレームに満たない端数のサンプル（インターリーブ）。
     pending: Vec<f32>,
-    /// 符号化器に渡したサンプル数。次のフレームの PTS。
+    /// エンコーダーに渡したサンプル数。次のフレームの PTS。
     sent: i64,
 }
 
 impl AudioTrack {
-    /// 出力にストリームを足し、AAC の符号化器を開く。
+    /// 出力にストリームを足し、AAC のエンコーダーを開く。
     pub fn open(output: &mut Output, info: &AudioStreamInfo, global_header: bool) -> Result<Self> {
         let codec = encoder::find(codec::Id::AAC)
-            .ok_or_else(|| MmError::Unsupported("AAC の符号化器が無い FFmpeg".into()))?;
+            .ok_or_else(|| MmError::Unsupported("AAC のエンコーダーが無い FFmpeg".into()))?;
         let mut stream = output
             .add_stream(codec)
             .map_err(|e| MmError::Internal(format!("音ストリーム: {e}")))?;
@@ -37,7 +37,7 @@ impl AudioTrack {
         let mut enc = codec::context::Context::new_with_codec(codec)
             .encoder()
             .audio()
-            .map_err(|e| MmError::Internal(format!("音の符号化器: {e}")))?;
+            .map_err(|e| MmError::Internal(format!("音のエンコーダー: {e}")))?;
         let time_base = Rational::new(1, info.sample_rate as i32);
         enc.set_rate(info.sample_rate as i32);
         enc.set_channel_layout(ChannelLayout::default(i32::from(info.channels)));
@@ -75,7 +75,7 @@ impl AudioTrack {
         self
     }
 
-    /// 音を溜め、AAC の 1 フレーム分たまるごとに符号化する。
+    /// 音を溜め、AAC の 1 フレーム分たまるごとにエンコードする。
     pub fn push(&mut self, output: &mut Output, block: &AudioBlock) -> Result<()> {
         if block.sample_rate != self.rate || block.channels != self.channels {
             return Err(MmError::InvalidArgument(format!(
@@ -94,7 +94,7 @@ impl AudioTrack {
         Ok(())
     }
 
-    /// 端数を短い最後のフレームとして送り、符号化器を出し切る。
+    /// 端数を短い最後のフレームとして送り、エンコーダーを出し切る。
     pub fn finish(&mut self, output: &mut Output) -> Result<()> {
         if !self.pending.is_empty() {
             let len = self.pending.len();
@@ -107,7 +107,7 @@ impl AudioTrack {
         self.drain(output)
     }
 
-    /// `pending[from..from + len]` を 1 フレームにして符号化する。
+    /// `pending[from..from + len]` を 1 フレームにしてエンコードする。
     fn send(&mut self, output: &mut Output, from: usize, len: usize) -> Result<()> {
         let channels = self.channels as usize;
         let samples = len / channels;

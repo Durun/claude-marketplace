@@ -1,9 +1,9 @@
-//! 種類に共通の小さな道具。
+//! 種類に共通の小さなツール。
 
 use mm_node_api::NodeKind;
 use mm_types::{MmError, Params, Result, Rgba, RgbaImage, Size};
 
-/// 今の版の値だけを受ける `migrate`。版が違えば移行が無いと返す。
+/// 今のバージョンの値だけを受ける `migrate`。バージョンが違えば移行が無いと返す。
 pub(crate) fn migrate_same_version(
     kind: &dyn NodeKind,
     old: serde_json::Value,
@@ -11,7 +11,7 @@ pub(crate) fn migrate_same_version(
 ) -> Result<Params> {
     if from != kind.version() {
         return Err(MmError::Unsupported(format!(
-            "{} の版 {from} からの移行が無い",
+            "{} のバージョン {from} からの移行が無い",
             kind.id()
         )));
     }

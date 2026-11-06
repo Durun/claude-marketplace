@@ -1,4 +1,4 @@
-//! 別プロセスのホストの見本と契約テスト。見本はプロセスを起こさず、同じプロセスの中で応答する。
+//! 別プロセスのホストのモックと契約テスト。モックはプロセスを起こさず、同じプロセスの中で応答する。
 //!
 //! 時間切れの検査のため、`RenderFrame` の `params` に `{"sample_delay_ms": N}` があれば、
 //! N が期限を超えるときに `Timeout` を返す（実際には待たない）。
@@ -11,10 +11,10 @@ use mm_host_api::{
 };
 use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
-/// 見本が見る「遅さ」のパラメータの名前。
+/// モックが見る「遅さ」のパラメータの名前。
 pub const DELAY_PARAM: &str = "sample_delay_ms";
 
-/// 見本のホストを起こす口。
+/// モックのホストを起こすランチャー。
 #[derive(Debug, Clone, Default)]
 pub struct SampleLauncher;
 
@@ -32,7 +32,7 @@ impl HostLauncher for SampleLauncher {
     }
 }
 
-/// 見本のホスト。
+/// モックのホスト。
 #[derive(Debug)]
 pub struct SampleHost {
     alive: bool,
@@ -69,7 +69,9 @@ impl HostProcess for SampleHost {
 
     fn request(&mut self, req: &HostRequest, timeout: Duration) -> Result<HostResponse> {
         if !self.alive {
-            return Err(MmError::HostCrashed("見本のホストは落ちている".into()));
+            return Err(MmError::HostCrashed(
+                "モックのホストはクラッシュしている".into(),
+            ));
         }
         match req {
             HostRequest::Ping => Ok(HostResponse::Pong {
@@ -124,7 +126,7 @@ pub struct HostFixture {
 }
 
 impl HostFixture {
-    /// 見本のホスト向け。
+    /// モックのホスト向け。
     pub fn sample() -> Self {
         Self {
             spec: HostSpec {

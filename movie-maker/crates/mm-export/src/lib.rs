@@ -1,8 +1,8 @@
 //! 書き出し。レンダーターゲットを選び、出力先を整え、区間を描いてエンコーダーに押し、速さを測って返す。
 //!
-//! 口の実装を選ぶのは mm-runtime だけという約束のため、このクレートは実装を知らず、`Engine` から
-//! 描画器とエンコーダーを取り出して使う（[`Engine::renderer`]、[`Engine::encoders`]）。
-//! 段ごとの時間はスパン `export.render`（1 コマの描画と読み戻し）と `export.encode`（1 バッチの押し込み）に
+//! インターフェースの実装を選ぶのは mm-runtime だけという契約のため、このクレートは実装を知らず、`Engine` から
+//! レンダラーとエンコーダーを取り出して使う（[`Engine::renderer`]、[`Engine::encoders`]）。
+//! 段ごとの時間はスパン `export.render`（1 フレームの描画とリードバック）と `export.encode`（1 バッチの押し込み）に
 //! 出す。段階 0 は 1 プロセス・1 区間で、並行の描画とラウドネスの正規化は無い。
 
 use std::path::{Path, PathBuf};
@@ -16,15 +16,15 @@ use mm_render_api::RangeRequest;
 use mm_runtime::Engine;
 use mm_types::{MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange};
 
-/// エンコーダーに一度に押すコマの数。口の呼び出しを毎コマにしない。
+/// エンコーダーに一度に押すフレームの数。インターフェースの呼び出しを毎フレームにしない。
 pub const EXPORT_BATCH_FRAMES: usize = 8;
 
 /// 書き出しの指定。
 #[derive(Debug, Clone, Default)]
 pub struct ExportOptions {
-    /// 文書のレンダーターゲットの `output_path` を上書きする。
+    /// プロジェクトのデータのレンダーターゲットの `output_path` を上書きする。
     pub output: Option<PathBuf>,
-    /// 書き出すレンダーターゲット。`None` なら文書の最初の 1 つ。
+    /// 書き出すレンダーターゲット。`None` ならプロジェクトのデータの最初の 1 つ。
     pub target: Option<RenderTargetId>,
 }
 
@@ -36,7 +36,7 @@ pub struct ExportSummary {
     pub audio_frames: u64,
     pub bytes_written: u64,
     pub elapsed: Duration,
-    /// 全体の fps（コマ数 / 経過時間）。
+    /// 全体の fps（フレーム数 / 経過時間）。
     pub fps: f64,
 }
 
@@ -48,11 +48,13 @@ pub fn pick_target(project: &Project, wanted: Option<&RenderTargetId>) -> Result
             .render_targets
             .first()
             .map(|t| t.id.clone())
-            .ok_or_else(|| MmError::NotFound("文書にレンダーターゲットが無い".into())),
+            .ok_or_else(|| {
+                MmError::NotFound("プロジェクトのデータにレンダーターゲットが無い".into())
+            }),
     }
 }
 
-/// 出力先の親ディレクトリを作る。無ければエンコーダーが開けずに落ちるため先に整える。
+/// 出力先の親ディレクトリを作る。無ければエンコーダーが開けずにクラッシュするため先に整える。
 fn ensure_parent(path: &Path) -> Result<()> {
     match path.parent() {
         Some(dir) if !dir.as_os_str().is_empty() => Ok(std::fs::create_dir_all(dir)?),
@@ -132,7 +134,7 @@ fn export_target(
         &settings,
         encoder.as_mut(),
     )?;
-    // 29.97 fps の 1 秒のように映像の長さが半端なコマで切れるとき、音も同じ長さで切って揃える。
+    // 29.97 fps の 1 秒のように映像の長さが半端なフレームで切れるとき、音も同じ長さで切って揃える。
     let audio_end = RationalTime::from_frames(frames as i64, target.fps)?;
     let audio_range = TimeRange::new(comp.range()?.start, audio_end)?;
     let audio = engine.render_audio(project, &target.composition, audio_range)?;
@@ -141,8 +143,8 @@ fn export_target(
 }
 
 /// 区間を描き、`EXPORT_BATCH_FRAMES` ずつエンコーダーに押す。
-/// 描画器は区間を一息に描くので、1 コマの描画の時間は sink が呼ばれる間隔で測り `export.render` に載せる。
-/// エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したコマの数を返す。
+/// レンダラーは区間を一息に描くので、1 フレームの描画の時間は sink が呼ばれる間隔で測り `export.render` に載せる。
+/// エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したフレームの数を返す。
 fn export_frames(
     engine: &mut Engine,
     project: &Project,
@@ -199,7 +201,7 @@ mod tests {
     }
 
     /// 全部のテストをスパンを集める購読者の下で走らせる。購読者なしのテストが並行に走ると、
-    /// tracing が呼び出し点を「誰も見ない」と覚えてしまい、集める側のテストが数え落とす。
+    /// tracing が呼び出し点を「誰も見ない」と記憶してしまい、集める側のテストが数え強制終了する。
     fn with_metrics<T>(f: impl FnOnce() -> T) -> (T, mm_trace::MetricsHandle) {
         let (layer, metrics) = MetricsLayer::new();
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -246,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn 半端なコマで切れる_fps_では音を映像の長さに揃える() {
+    fn 半端なフレームで切れる_fps_では音を映像の長さに揃える() {
         let media = SampleMedia {
             fps: mm_types::Rational::new(30_000, 1001).unwrap(),
             ..SampleMedia::default()
@@ -265,7 +267,7 @@ mod tests {
             )
             .unwrap()
         });
-        // 2 秒は 59.94 コマ。59 コマ（1.9686 秒）で切れ、音も同じ長さ。
+        // 2 秒は 59.94 フレーム。59 フレーム（1.9686 秒）で切れ、音も同じ長さ。
         assert_eq!(summary.frames, 59);
         let video_end = RationalTime::from_frames(59, media.fps).unwrap();
         let expected = mm_node_api::audio_frames_in(
@@ -327,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn 無いレンダーターゲットは断る() {
+    fn 無いレンダーターゲットは拒否する() {
         let project = Project::new();
         assert!(pick_target(&project, None).is_err());
     }

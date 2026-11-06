@@ -1,9 +1,9 @@
-//! WGSL の `mm_color_transform` を wgpu の compute で実行する試験の道具。
+//! WGSL の `mm_color_transform` を wgpu の compute で実行する試験のツール。
 //! GPU の値を CPU の値と突き合わせるために使う。アダプターが無い環境では [`GpuEval::new`] が None を返す。
 
 use wgpu::util::DeviceExt;
 
-/// 入力の画素に `mm_color_transform` を当てる compute の枠。bind group 0 は枠が使う。
+/// 入力の画素に `mm_color_transform` を適用する compute のハーネス。bind group 0 はハーネスが使う。
 const HARNESS: &str = r"
 @group(0) @binding(0) var<storage, read> mm_in: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> mm_out: array<vec4<f32>>;
@@ -43,7 +43,7 @@ impl GpuEval {
         })
     }
 
-    /// `wgsl`（`mm_color_transform` を含む）を `inputs` に当てる。
+    /// `wgsl`（`mm_color_transform` を含む）を `inputs` に適用する。
     /// `lut` は `LUT3D_APPLY_WGSL` を使うときの `(size, size^3*3 の f32)`。
     pub fn run(
         &self,
@@ -132,7 +132,7 @@ impl GpuEval {
         })
     }
 
-    /// 枠と `wgsl` をつなげて compute のパイプラインにする。検証の失敗は文字列で返す。
+    /// ハーネスと `wgsl` をつなげて compute のパイプラインにする。検証の失敗は文字列で返す。
     fn pipeline(&self, wgsl: &str) -> Result<wgpu::ComputePipeline, String> {
         let device = &self.device;
         let source = format!("{HARNESS}\n{wgsl}");
@@ -164,7 +164,7 @@ impl GpuEval {
         })
     }
 
-    /// 読み戻し用のバッファを待って、RGB の並びにする。
+    /// リードバック用のバッファを待って、RGB の配列にする。
     fn read(&self, staging: &wgpu::Buffer) -> Result<Vec<[f32; 3]>, String> {
         let slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();

@@ -27,7 +27,7 @@ impl Default for Cdl {
 }
 
 impl Cdl {
-    /// 1 画素に当てる。
+    /// 1 画素に適用する。
     pub fn apply(&self, rgb: [f32; 3]) -> [f32; 3] {
         // ASC CDL は power の前で 0 以上に切る。
         let v: [f32; 3] = std::array::from_fn(|i| {
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn slopeとoffsetとpowerを順に当てる() {
+    fn slopeとoffsetとpowerを順に適用する() {
         let cdl = Cdl {
             slope: [2.0; 3],
             offset: [-0.1; 3],

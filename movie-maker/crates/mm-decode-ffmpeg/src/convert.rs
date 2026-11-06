@@ -1,11 +1,11 @@
-//! 復号したコマ（YUV など）を CPU の RGBA f32 にする。
+//! デコードしたフレーム（YUV など）を CPU の RGBA f32 にする。
 
-use ff::color::{Range, Space};
 use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{ffi, frame};
 use ffmpeg_next as ff;
-use mm_types::{ColorSpace, MmError, Result, RgbaImage, Size};
+use mm_decode_ffmpeg_core::matrix::{is_full_range, Matrix};
+use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::transfer::decode_table;
 
@@ -19,54 +19,20 @@ struct SourceKey {
     full_range: bool,
 }
 
-/// YUV から RGB への行列。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Matrix {
-    Bt601,
-    Bt709,
-    Bt2020,
-}
-
-impl Matrix {
-    /// フレームの宣言から。未指定は画の高さで決める（HD 以上は 709）。
-    pub fn from_frame(space: Space, height: u32) -> Self {
-        match space {
-            Space::BT709 => Self::Bt709,
-            Space::BT2020NCL | Space::BT2020CL => Self::Bt2020,
-            Space::SMPTE170M | Space::BT470BG | Space::FCC | Space::SMPTE240M => Self::Bt601,
-            _ if height >= 720 => Self::Bt709,
-            _ => Self::Bt601,
-        }
+/// swscale の色空間の番号。
+fn sws_id(matrix: Matrix) -> i32 {
+    match matrix {
+        Matrix::Bt601 => ffi::SWS_CS_ITU601,
+        Matrix::Bt709 => ffi::SWS_CS_ITU709,
+        Matrix::Bt2020 => ffi::SWS_CS_BT2020,
     }
-
-    fn sws_id(self) -> i32 {
-        match self {
-            Self::Bt601 => ffi::SWS_CS_ITU601,
-            Self::Bt709 => ffi::SWS_CS_ITU709,
-            Self::Bt2020 => ffi::SWS_CS_BT2020,
-        }
-    }
-
-    /// 文書に出す色空間の名前。レンジは RGBA への変換で展開済みなので名前に入れない。
-    pub fn color_space(self) -> ColorSpace {
-        match self {
-            Self::Bt601 => ColorSpace::bt601(),
-            Self::Bt709 => ColorSpace::bt709(),
-            Self::Bt2020 => ColorSpace::bt2020(),
-        }
-    }
-}
-
-/// フレームのレンジの宣言。未指定は tv レンジ。
-pub fn is_full_range(range: Range) -> bool {
-    matches!(range, Range::JPEG)
 }
 
 /// swscale を 1 つ持ち、入力の性質が変わったときだけ作り直す。
 pub struct RgbaConverter {
     scaler: Option<(SourceKey, Scaler)>,
     out: Option<frame::Video>,
-    /// 符号化値 → 線形。作業空間は線形の premultiplied なので、アルファを掛ける前に当てる。
+    /// 符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に適用する。
     linear: [f32; 256],
 }
 
@@ -80,12 +46,12 @@ impl Default for RgbaConverter {
     }
 }
 
-// swscale の文脈は生ポインタを持つため自動では Send にならない。所有は 1 つのデコーダーだけで、
-// FFmpeg の文脈はスレッドに紐づかないので、デコーダーごと別スレッドへ移してよい。
+// swscale のコンテキストは生ポインタを持つため自動では Send にならない。所有は 1 つのデコーダーだけで、
+// FFmpeg のコンテキストはスレッドに紐づかないので、デコーダーごと別スレッドへ移してよい。
 unsafe impl Send for RgbaConverter {}
 
 impl RgbaConverter {
-    /// 1 コマを RGBA の絵にする。アルファがあれば premultiplied にする。
+    /// 1 フレームを RGBA の画像にする。アルファがあれば premultiplied にする。
     pub fn convert(&mut self, src: &frame::Video) -> Result<RgbaImage> {
         let key = SourceKey {
             format: src.format(),
@@ -122,7 +88,7 @@ fn make_scaler(key: &SourceKey) -> Result<Scaler> {
     .map_err(|e| MmError::Unsupported(format!("{:?} を RGBA にできない: {e}", key.format)))?;
     // swscale の既定は 601 のため、宣言した行列とレンジを明示する。RGB 入力では -1 が返るが無視してよい。
     unsafe {
-        let coeffs = ffi::sws_getCoefficients(key.matrix.sws_id());
+        let coeffs = ffi::sws_getCoefficients(sws_id(key.matrix));
         ffi::sws_setColorspaceDetails(
             scaler.as_mut_ptr(),
             coeffs,

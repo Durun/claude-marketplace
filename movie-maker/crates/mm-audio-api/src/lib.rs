@@ -1,11 +1,11 @@
-//! 音の口。ミキサーは Float32、サンプル単位、インターリーブで、プレビューと書き出しで同じ DSP を回す。
+//! 音のインターフェース。ミキサーは Float32、サンプル単位、インターリーブで、プレビューと書き出しで同じ DSP を回す。
 //!
 //! 契約（`mm_testkit::audio::contract`）:
 //! - 決定性: 同じ入力を 2 回混ぜると、サンプル列が bit で一致する。
 //! - 無音の入力は無音を返す。
-//! - 入力 1 本、0 dB、パン中央は素通し（許容差 1e-6）。
+//! - 入力 1 本、0 dB、パン中央はパススルー（許容差 1e-6）。
 //! - 返すブロックの `frames()` は頼んだ `frames` と一致する。
-//! - バスの音量（`buses[role].gain_db`）とマスター（`master_db`）は全実装が効かせる。ダッキングは実装が省いてよい（見本は省く）。
+//! - バスの音量（`buses[role].gain_db`）とマスター（`master_db`）は全実装が効かせる。ダッキングは実装が省いてよい（モックは省く）。
 
 use std::collections::BTreeMap;
 
@@ -27,7 +27,7 @@ pub struct AudioBlock {
 }
 
 impl AudioBlock {
-    /// `frames` コマ分の無音。
+    /// `frames` フレーム分の無音。
     pub fn silence(sample_rate: u32, channels: u16, frames: usize) -> Self {
         Self {
             sample_rate,
@@ -51,7 +51,7 @@ impl AudioBlock {
         })
     }
 
-    /// コマ数（1 コマ = 全チャンネルの 1 サンプル）。
+    /// フレーム数（1 フレーム = 全チャンネルの 1 サンプル）。
     pub fn frames(&self) -> usize {
         self.samples.len() / self.channels.max(1) as usize
     }
@@ -94,19 +94,19 @@ pub struct MixInput {
     pub block: AudioBlock,
     /// 役割（`voice`、`bgm`、`sfx`）。バスの振り分けに使う。
     pub role: String,
-    /// dB。0 で素通し。
+    /// dB。0 でパススルー。
     pub gain_db: f32,
     /// -1（左）..=1（右）。0 で中央。
     pub pan: f32,
 }
 
-/// ミキサー。`frames` コマ分を一度に混ぜる（1 サンプルずつ呼ばない）。
+/// ミキサー。`frames` フレーム分を一度に混ぜる（1 サンプルずつ呼ばない）。
 pub trait Mixer: Send {
     /// 出力の形。
     fn sample_rate(&self) -> u32;
     /// 出力のチャンネル数。
     fn channels(&self) -> u16;
-    /// 入力を混ぜて `frames` コマ分を返す。短い入力は無音で埋め、長い入力は切る。
+    /// 入力を混ぜて `frames` フレーム分を返す。短い入力は無音で埋め、長い入力は切る。
     fn mix(&mut self, inputs: &[MixInput], frames: usize) -> Result<AudioBlock>;
 }
 
@@ -159,9 +159,9 @@ pub struct MixerConfig {
     pub master_db: f32,
 }
 
-/// ミキサーを作る口。`mm-runtime` が設定で選ぶ。
+/// ミキサーを作るファクトリー。`mm-runtime` が設定で選ぶ。
 pub trait MixerFactory: Send + Sync {
-    /// 実装の名前（`dsp`、見本は `sample`）。
+    /// 実装の名前（`dsp`、モックは `sample`）。
     fn id(&self) -> &'static str;
     /// 設定を渡してミキサーを作る。
     fn create(
@@ -172,7 +172,7 @@ pub trait MixerFactory: Send + Sync {
     ) -> Result<Box<dyn Mixer>>;
 }
 
-/// 音の出口。プレビュー（cpal）と書き出し（WAV）が実装する。
+/// 音の出力先。プレビュー（cpal）と書き出し（WAV）が実装する。
 pub trait AudioSink: Send {
     /// 受け付ける形。
     fn sample_rate(&self) -> u32;
@@ -180,7 +180,7 @@ pub trait AudioSink: Send {
     fn channels(&self) -> u16;
     /// ブロックを書く。形が合わなければ `InvalidArgument`。
     fn write(&mut self, block: &AudioBlock) -> Result<()>;
-    /// 書き終える。書いたコマ数を返す。
+    /// 書き終える。書いたフレーム数を返す。
     fn finish(&mut self) -> Result<u64>;
 }
 
@@ -199,14 +199,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn コマ数はチャンネルで割った数() {
+    fn フレーム数はチャンネルで割った数() {
         let b = AudioBlock::silence(48_000, 2, 10);
         assert_eq!(b.frames(), 10);
         assert!(b.is_silent());
     }
 
     #[test]
-    fn 割り切れない長さは断る() {
+    fn 割り切れない長さは拒否する() {
         assert!(AudioBlock::from_samples(48_000, 2, vec![0.0; 3]).is_err());
     }
 }

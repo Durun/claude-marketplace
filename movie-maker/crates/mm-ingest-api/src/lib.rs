@@ -1,31 +1,31 @@
 //! 取り込みの付属ファイル（sidecar）の形。文字起こし、波形、プレビュー動画の記録。
-//! 言語を問わない外の道具（`tools/`）がこの JSON を書き、`mm-ingest` が読む。
+//! 言語を問わない外のツール（`tools/`）がこの JSON を書き、`mm-ingest` が読む。
 //!
 //! 契約（`mm_testkit::ingest::contract`）:
-//! - 今の版の JSON は `parse` を通り、serde の往復で一致する。
-//! - 古い版の JSON は `migrate` で今の版に上がる。移行は 1 版ずつの純関数。
-//! - 未来の版は `Err(Unsupported)`。
+//! - 今のバージョンの JSON は `parse` を通り、serde の往復で一致する。
+//! - 古いバージョンの JSON は `migrate` で今のバージョンに上がる。移行は 1 バージョンずつの純関数。
+//! - 未来のバージョンは `Err(Unsupported)`。
 //! - `schema_version` の無い JSON は `Err(InvalidArgument)`。
 
 use serde::{Deserialize, Serialize};
 
 use mm_types::{MmError, RationalTime, Result};
 
-/// 付属ファイルのスキーマの版。
+/// 付属ファイルのスキーマのバージョン。
 pub const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
-/// 付属ファイル。素材の中身のハッシュで結びつける。
+/// 付属ファイル。素材のコンテンツハッシュで結びつける。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sidecar {
     pub schema_version: u32,
     pub content_hash: String,
-    /// 作った道具の名前と版（`faster-whisper 1.1.0`）。
+    /// 作ったツールの名前とバージョン（`faster-whisper 1.1.0`）。
     pub producer: String,
     #[serde(flatten)]
     pub body: SidecarBody,
 }
 
-/// 付属ファイルの中身。
+/// 付属ファイルの内容。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SidecarBody {
@@ -67,13 +67,13 @@ pub struct PreviewMedia {
     pub height: u32,
 }
 
-/// 今の版の JSON を読む。版が違えば `migrate` を通す。
+/// 今のバージョンの JSON を読む。バージョンが違えば `migrate` を通す。
 pub fn parse(value: serde_json::Value) -> Result<Sidecar> {
     let migrated = migrate(value)?;
     Ok(serde_json::from_value(migrated)?)
 }
 
-/// 古い版の JSON を 1 版ずつ今の版に上げる。版が無いか未来なら `Err`。
+/// 古いバージョンの JSON を 1 バージョンずつ今のバージョンに上げる。バージョンが無いか未来なら `Err`。
 pub fn migrate(mut value: serde_json::Value) -> Result<serde_json::Value> {
     let mut version = value
         .get("schema_version")
@@ -82,7 +82,7 @@ pub fn migrate(mut value: serde_json::Value) -> Result<serde_json::Value> {
         as u32;
     if version > SIDECAR_SCHEMA_VERSION {
         return Err(MmError::Unsupported(format!(
-            "sidecar: 版 {version} は新しすぎる（今は {SIDECAR_SCHEMA_VERSION}）"
+            "sidecar: バージョン {version} は新しすぎる（今は {SIDECAR_SCHEMA_VERSION}）"
         )));
     }
     while version < SIDECAR_SCHEMA_VERSION {
@@ -92,10 +92,10 @@ pub fn migrate(mut value: serde_json::Value) -> Result<serde_json::Value> {
     Ok(value)
 }
 
-/// `from` 版から `from + 1` 版へ。版を上げるたびにここに 1 つ足す。
+/// バージョン `from` から `from + 1` へ。バージョンを上げるたびにここに 1 つ足す。
 fn migrate_one(_value: serde_json::Value, from: u32) -> Result<serde_json::Value> {
     Err(MmError::Unsupported(format!(
-        "sidecar: 版 {from} からの移行が無い"
+        "sidecar: バージョン {from} からの移行が無い"
     )))
 }
 
@@ -104,7 +104,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 今の版は往復する() {
+    fn 今のバージョンは往復する() {
         let s = Sidecar {
             schema_version: SIDECAR_SCHEMA_VERSION,
             content_hash: "abc".into(),
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn 未来の版は断る() {
+    fn 未来のバージョンは拒否する() {
         let v = serde_json::json!({"schema_version": SIDECAR_SCHEMA_VERSION + 1});
         assert!(matches!(migrate(v), Err(MmError::Unsupported(_))));
     }

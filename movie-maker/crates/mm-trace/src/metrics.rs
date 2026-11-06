@@ -1,4 +1,4 @@
-//! 常時の層。`INFO` のスパンの名前ごとの回数と分布、カウンタ、ゲージを集計し、
+//! 常時の `Layer`。`INFO` のスパンの名前ごとの回数と分布、カウンタ、ゲージを集計し、
 //! `metrics.jsonl` の 1 行にする。
 
 use std::collections::BTreeMap;
@@ -82,7 +82,7 @@ struct Inner {
     gauges: BTreeMap<String, f64>,
 }
 
-/// 集計を読む側の取っ手。層と共有する。
+/// 集計を読む側のハンドル。`Layer` と共有する。
 #[derive(Clone, Default)]
 pub struct MetricsHandle {
     inner: Arc<Mutex<Inner>>,
@@ -95,7 +95,7 @@ impl MetricsHandle {
     }
 
     /// 集計を取り出して空にする（1 分ごとの 1 行に使う）。読む間もロックを離さないので、
-    /// 取り出しと消去の間に入ったイベントは落ちない。
+    /// 取り出しと消去の間に入ったイベントは失われない。
     pub fn drain(&self) -> MetricsSnapshot {
         let mut inner = self.inner.lock().expect("metrics lock");
         let snap = snapshot_of(&inner);
@@ -163,13 +163,13 @@ fn stats_of(durations: &[u64]) -> SpanStats {
     stats
 }
 
-/// 常時の層。`INFO` 以上のスパンの長さと、`mm.metrics` のイベントを集計する。
+/// 常時の `Layer`。`INFO` 以上のスパンの長さと、`mm.metrics` のイベントを集計する。
 pub struct MetricsLayer {
     handle: MetricsHandle,
 }
 
 impl MetricsLayer {
-    /// 層と、集計を読む取っ手の組。
+    /// `Layer` と、集計を読むハンドルの組。
     pub fn new() -> (Self, MetricsHandle) {
         let handle = MetricsHandle::default();
         (
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn drain_の最中に入ったイベントも落ちない() {
+    fn drain_の最中に入ったイベントも失われない() {
         const THREADS: usize = 4;
         const PER_THREAD: usize = 20_000;
         let (_layer, handle) = MetricsLayer::new();

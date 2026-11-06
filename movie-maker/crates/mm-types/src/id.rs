@@ -1,4 +1,4 @@
-//! 型つきの ID。文書の中では文字列で持ち、型の印でレイヤーと素材の取り違えを防ぐ。
+//! 型つきの ID。プロジェクトのデータの中では文字列で持ち、型タグでレイヤーと素材の取り違えを防ぐ。
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
-/// `T` は何の ID かを表す印。文字列の中身は決定的な JSON に出るので、生成の規則は mm-ops が決める。
+/// `T` は何の ID かを表す型タグ。文字列の内容は決定的な JSON に出るので、生成の規則は mm-ops が決める。
 #[derive(Serialize, Deserialize)]
 #[serde(transparent, bound = "")]
 pub struct Id<T> {
@@ -24,7 +24,7 @@ impl<T> Id<T> {
         }
     }
 
-    /// 文字列の中身。
+    /// 文字列の内容。
     pub fn as_str(&self) -> &str {
         &self.value
     }
@@ -74,19 +74,19 @@ impl<T> Hash for Id<T> {
     }
 }
 
-/// 素材の印。
+/// 素材のマーカー。
 #[derive(Debug)]
 pub enum AssetMarker {}
-/// コンポジションの印。
+/// コンポジションのマーカー。
 #[derive(Debug)]
 pub enum CompositionMarker {}
-/// レイヤーの印。
+/// レイヤーのマーカー。
 #[derive(Debug)]
 pub enum LayerMarker {}
-/// 動画オブジェクトの印。
+/// ノードのマーカー。
 #[derive(Debug)]
 pub enum NodeMarker {}
-/// レンダーターゲットの印。
+/// レンダーターゲットのマーカー。
 #[derive(Debug)]
 pub enum RenderTargetMarker {}
 
@@ -96,7 +96,7 @@ pub type AssetId = Id<AssetMarker>;
 pub type CompositionId = Id<CompositionMarker>;
 /// レイヤーの ID。
 pub type LayerId = Id<LayerMarker>;
-/// 動画オブジェクトの ID。
+/// ノードの ID。
 pub type NodeId = Id<NodeMarker>;
 /// レンダーターゲットの ID。
 pub type RenderTargetId = Id<RenderTargetMarker>;
@@ -106,7 +106,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serde_は素の文字列() {
+    fn serde_はそのままの文字列() {
         let id: AssetId = Id::new("a1");
         assert_eq!(serde_json::to_string(&id).unwrap(), "\"a1\"");
         let back: AssetId = serde_json::from_str("\"a1\"").unwrap();

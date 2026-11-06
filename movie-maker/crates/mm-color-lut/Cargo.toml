@@ -1,13 +1,13 @@
 [package]
 name = "mm-color-lut"
-description = "色の変換の逃げ道。ASC CDL と .cube の 3D LUT を WGSL で当てる。OCIO が無くても動く"
+description = "色の変換のフォールバック。ASC CDL と .cube の 3D LUT を WGSL で適用する。OCIO が無くても動く"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [features]
-# WGSL を wgpu の compute で実行して CPU の値と突き合わせる試験の道具。GPU の無い環境では呼び出し側が飛ばす。
+# WGSL を wgpu の compute で実行して CPU の値と突き合わせる試験のツール。GPU の無い環境では呼び出し側がスキップする。
 gpu-eval = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]

@@ -1,4 +1,4 @@
-//! feature `native` のときだけ、C の橋（native/mm_ocio.cpp）をビルドして OCIO に繋ぎ、bindgen で口を作る。
+//! feature `native` のときだけ、C のブリッジ（native/mm_ocio.cpp）をビルドして OCIO に繋ぎ、bindgen でバインディングを作る。
 
 use std::env;
 
@@ -37,7 +37,7 @@ mod native {
         );
         println!("cargo:rustc-link-lib=OpenColorIO");
 
-        // 生成物に警告を出させないため、使う関数と型だけを許可し、レイアウト試験と文書コメントを切る。
+        // 生成物に警告を出させないため、使う関数と型だけを許可し、レイアウト試験とドキュメントコメントを切る。
         let bindings = bindgen::Builder::default()
             .header(header)
             .allowlist_function("mm_ocio_.*")
@@ -55,7 +55,7 @@ mod native {
         copy_runtime_dlls(&root, &out);
     }
 
-    /// Windows の実行時に OpenColorIO の DLL が見つかるよう、テストと実行の置き場へ写す。
+    /// Windows の実行時に OpenColorIO の DLL が見つかるよう、テストと実行のディレクトリへコピーする。
     fn copy_runtime_dlls(root: &std::path::Path, out: &std::path::Path) {
         // OUT_DIR は target/<profile>/build/<crate>-<hash>/out。3 つ上が target/<profile>。
         let Some(profile_dir) = out.ancestors().nth(3) else {

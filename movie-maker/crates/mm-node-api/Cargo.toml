@@ -1,7 +1,7 @@
 [package]
 name = "mm-node-api"
-description = "動画オブジェクトの口。NodeKind、FrameCx、AudioCx、Traits、FrameRef"
-version.workspace = true
+description = "ノードのインターフェース。NodeKind、FrameCx、AudioCx、Traits、FrameRef"
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true

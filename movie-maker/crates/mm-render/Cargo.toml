@@ -1,6 +1,6 @@
 [package]
 name = "mm-render"
-description = "描画器の実装。wgpu でレイヤーの変形と合成をし、GPU の時間を mm-trace に載せる"
+description = "レンダラーの実装。wgpu でレイヤーの変形と合成をし、GPU の時間を mm-trace に載せる"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-trace = { workspace = true }
 mm-doc = { workspace = true }
+mm-eval = { workspace = true }
 mm-node-api = { workspace = true }
 mm-render-api = { workspace = true }
 mm-decode-api = { workspace = true }

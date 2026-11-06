@@ -61,6 +61,18 @@ pub struct ExternalSemaphoreSignalParams {
     pub reserved: [u32; 16],
 }
 
+/// `CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS`。フェンスの値だけを使う。
+#[repr(C)]
+pub struct ExternalSemaphoreWaitParams {
+    pub fence_value: u64,
+    pub nvsci_sync: u64,
+    pub keyed_mutex_key: u64,
+    pub keyed_mutex_timeout_ms: u32,
+    pub params_reserved: [u32; 11],
+    pub flags: u32,
+    pub reserved: [u32; 16],
+}
+
 /// `CUDA_MEMCPY2D`。
 #[repr(C)]
 pub struct Memcpy2D {
@@ -102,6 +114,18 @@ type FnSignal = unsafe extern "system" fn(
     u32,
     CuStream,
 ) -> CuResult;
+type FnWait = unsafe extern "system" fn(
+    *const CuExternalSemaphore,
+    *const ExternalSemaphoreWaitParams,
+    u32,
+    CuStream,
+) -> CuResult;
+type FnFree = unsafe extern "system" fn(CuDevicePtr) -> CuResult;
+type FnDestroyMem = unsafe extern "system" fn(CuExternalMemory) -> CuResult;
+type FnDestroySem = unsafe extern "system" fn(CuExternalSemaphore) -> CuResult;
+type FnInit = unsafe extern "system" fn(u32) -> CuResult;
+type FnDeviceCount = unsafe extern "system" fn(*mut i32) -> CuResult;
+type FnDeviceLuid = unsafe extern "system" fn(*mut u8, *mut u32, i32) -> CuResult;
 type FnSync = unsafe extern "system" fn(CuStream) -> CuResult;
 
 /// 読み込んだ関数の表。
@@ -113,6 +137,13 @@ pub struct CudaApi {
     memcpy2d: FnMemcpy2D,
     import_sem: FnImportSem,
     signal: FnSignal,
+    wait: FnWait,
+    free: FnFree,
+    destroy_mem: FnDestroyMem,
+    destroy_sem: FnDestroySem,
+    init: FnInit,
+    device_count: FnDeviceCount,
+    device_luid: FnDeviceLuid,
     sync: FnSync,
 }
 
@@ -123,6 +154,18 @@ macro_rules! load {
             .ok_or_else(|| MmError::Unsupported(concat!("nvcuda に ", $name, " が無い").into()))?;
         unsafe { std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(p) }
     }};
+}
+
+/// `CudaApi::scoped` の戻り値。ドロップすると現在のコンテキストを外す。
+pub struct ContextGuard<'a> {
+    api: &'a CudaApi,
+}
+
+impl Drop for ContextGuard<'_> {
+    fn drop(&mut self) {
+        // SAFETY: `scoped` の push と対。外せないときは、後の呼び出しがコンテキストのエラーで気づく。
+        let _ = unsafe { self.api.pop() };
+    }
 }
 
 fn check(what: &str, r: CuResult) -> Result<()> {
@@ -147,19 +190,26 @@ impl CudaApi {
             memcpy2d: load!(lib, "cuMemcpy2DAsync_v2", FnMemcpy2D),
             import_sem: load!(lib, "cuImportExternalSemaphore", FnImportSem),
             signal: load!(lib, "cuSignalExternalSemaphoresAsync", FnSignal),
+            wait: load!(lib, "cuWaitExternalSemaphoresAsync", FnWait),
+            free: load!(lib, "cuMemFree_v2", FnFree),
+            destroy_mem: load!(lib, "cuDestroyExternalMemory", FnDestroyMem),
+            destroy_sem: load!(lib, "cuDestroyExternalSemaphore", FnDestroySem),
+            init: load!(lib, "cuInit", FnInit),
+            device_count: load!(lib, "cuDeviceGetCount", FnDeviceCount),
+            device_luid: load!(lib, "cuDeviceGetLuid", FnDeviceLuid),
             sync: load!(lib, "cuStreamSynchronize", FnSync),
         })
     }
 
-    /// 文脈をこのスレッドの現在にする。
+    /// コンテキストをこのスレッドの現在にする。
     ///
     /// # Safety
-    /// `ctx` は有効な CUDA の文脈。
+    /// `ctx` は有効な CUDA のコンテキスト。
     pub unsafe fn push(&self, ctx: CuContext) -> Result<()> {
         check("cuCtxPushCurrent", unsafe { (self.push)(ctx) })
     }
 
-    /// 現在の文脈を外す。
+    /// 現在のコンテキストを外す。
     ///
     /// # Safety
     /// 対応する `push` の後に呼ぶ。
@@ -168,10 +218,10 @@ impl CudaApi {
         check("cuCtxPopCurrent", unsafe { (self.pop)(&mut out) })
     }
 
-    /// D3D12 の共有ハンドルの資源を CUDA のメモリとして取り込み、全体を 1 本の線形バッファに写す。
+    /// D3D12 の共有ハンドルの資源を CUDA のメモリとして取り込み、全体を 1 本の線形バッファに対応づける。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
+    /// コンテキストが現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
     pub unsafe fn import_buffer(
         &self,
         handle: *mut c_void,
@@ -196,16 +246,21 @@ impl CudaApi {
             reserved: [0; 16],
         };
         let mut ptr = 0;
-        check("cuExternalMemoryGetMappedBuffer", unsafe {
+        let mapped = check("cuExternalMemoryGetMappedBuffer", unsafe {
             (self.mapped_buffer)(&mut ptr, mem, &buf)
-        })?;
+        });
+        if let Err(e) = mapped {
+            // 取り込んだだけの外部メモリを漏らさない
+            unsafe { (self.destroy_mem)(mem) };
+            return Err(e);
+        }
         Ok((mem, ptr))
     }
 
     /// D3D12 のフェンスを CUDA の外部セマフォとして取り込む。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は共有フェンスの NT ハンドル。
+    /// コンテキストが現在で、`handle` は共有フェンスの NT ハンドル。
     pub unsafe fn import_fence(&self, handle: *mut c_void) -> Result<CuExternalSemaphore> {
         let desc = ExternalSemaphoreHandleDesc {
             kind: EXTSEM_D3D12_FENCE,
@@ -224,7 +279,7 @@ impl CudaApi {
     /// 装置内の 2D コピーをストリームに積む。
     ///
     /// # Safety
-    /// 文脈が現在で、`copy` の両端が有効なデバイスメモリ。
+    /// コンテキストが現在で、`copy` の両端が有効なデバイスメモリ。
     pub unsafe fn memcpy2d_async(&self, copy: &Memcpy2D, stream: CuStream) -> Result<()> {
         check("cuMemcpy2DAsync", unsafe { (self.memcpy2d)(copy, stream) })
     }
@@ -232,7 +287,7 @@ impl CudaApi {
     /// ストリームのここまでが終わったら、フェンスを `value` にする。
     ///
     /// # Safety
-    /// 文脈が現在で、`sem` は取り込み済み。
+    /// コンテキストが現在で、`sem` は取り込み済み。
     pub unsafe fn signal(
         &self,
         sem: CuExternalSemaphore,
@@ -252,10 +307,87 @@ impl CudaApi {
         })
     }
 
+    /// ストリームのここから先を、フェンスが `value` に届くまで止める（GPU の中で待ち、CPU は待たない）。
+    ///
+    /// # Safety
+    /// コンテキストが現在で、`sem` は取り込み済み。
+    pub unsafe fn wait(
+        &self,
+        sem: CuExternalSemaphore,
+        value: u64,
+        stream: CuStream,
+    ) -> Result<()> {
+        let params = ExternalSemaphoreWaitParams {
+            fence_value: value,
+            nvsci_sync: 0,
+            keyed_mutex_key: 0,
+            keyed_mutex_timeout_ms: 0,
+            params_reserved: [0; 11],
+            flags: 0,
+            reserved: [0; 16],
+        };
+        check("cuWaitExternalSemaphoresAsync", unsafe {
+            (self.wait)(&sem, &params, 1, stream)
+        })
+    }
+
+    /// 取り込んだ外部メモリと、そこに対応づけたポインタを解放する。失敗は無視する（後片付け）。
+    ///
+    /// # Safety
+    /// コンテキストが現在で、引数はそのコンテキストで取り込んだもの。GPU の仕事が終わっている。
+    pub unsafe fn release_memory(&self, mem: CuExternalMemory, ptr: CuDevicePtr) {
+        unsafe {
+            (self.free)(ptr);
+            (self.destroy_mem)(mem);
+        }
+    }
+
+    /// 取り込んだセマフォを解放する。失敗は無視する（後片付け）。
+    ///
+    /// # Safety
+    /// コンテキストが現在で、`sem` はそのコンテキストで取り込んだもの。GPU の仕事が終わっている。
+    pub unsafe fn release_semaphore(&self, sem: CuExternalSemaphore) {
+        unsafe {
+            (self.destroy_sem)(sem);
+        }
+    }
+
+    /// コンテキストを現在にし、ドロップすると外す。途中のエラーで抜けても外し忘れない。
+    ///
+    /// # Safety
+    /// `ctx` は有効な CUDA のコンテキスト。
+    pub unsafe fn scoped(&self, ctx: CuContext) -> Result<ContextGuard<'_>> {
+        unsafe { self.push(ctx)? };
+        Ok(ContextGuard { api: self })
+    }
+
+    /// LUID のアダプターに当たる CUDA のデバイスの番号。
+    pub fn device_for_luid(&self, luid: u64) -> Result<i32> {
+        // SAFETY: 引数はどれも有効な出力先。
+        unsafe {
+            check("cuInit", (self.init)(0))?;
+            let mut count = 0;
+            check("cuDeviceGetCount", (self.device_count)(&mut count))?;
+            for dev in 0..count {
+                let (mut bytes, mut mask) = ([0u8; 8], 0u32);
+                check(
+                    "cuDeviceGetLuid",
+                    (self.device_luid)(bytes.as_mut_ptr(), &mut mask, dev),
+                )?;
+                if u64::from_le_bytes(bytes) == luid {
+                    return Ok(dev);
+                }
+            }
+        }
+        Err(MmError::Unsupported(
+            "この GPU に当たる CUDA のデバイスが無い".into(),
+        ))
+    }
+
     /// ストリームの完了を待つ（比較用）。
     ///
     /// # Safety
-    /// 文脈が現在。
+    /// コンテキストが現在。
     pub unsafe fn sync(&self, stream: CuStream) -> Result<()> {
         check("cuStreamSynchronize", unsafe { (self.sync)(stream) })
     }
@@ -272,6 +404,7 @@ mod tests {
         assert_eq!(size_of::<ExternalMemoryBufferDesc>(), 88);
         assert_eq!(size_of::<ExternalSemaphoreHandleDesc>(), 96);
         assert_eq!(size_of::<ExternalSemaphoreSignalParams>(), 144);
+        assert_eq!(size_of::<ExternalSemaphoreWaitParams>(), 144);
         assert_eq!(size_of::<Memcpy2D>(), 128);
     }
 }

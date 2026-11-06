@@ -1,0 +1,19 @@
+[package]
+name = "mm-decode-ffmpeg-core"
+description = "FFmpeg を使うデコーダーの共通実装（FFmpeg の CPU の部分だけ）。映像の時間軸、シークの判断、フレームの取り出し、YUV の行列"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# FFmpeg の開発ファイルと libclang が要る。既定では切ってあり、切ったときは空のクレートになる。
+ffmpeg = ["dep:ffmpeg-next"]
+
+[dependencies]
+mm-types = { workspace = true }
+mm-decode-api = { workspace = true }
+ffmpeg-next = { workspace = true, optional = true }
+
+[lints]
+workspace = true

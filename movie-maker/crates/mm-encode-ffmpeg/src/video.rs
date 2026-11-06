@@ -15,7 +15,7 @@ use crate::transfer::EncodeTable;
 const CRF: &str = "18";
 const PRESET: &str = "medium";
 
-/// 映像の符号化器と、出力の中のストリーム。
+/// 映像のエンコーダーと、出力の中のストリーム。
 pub struct VideoTrack {
     encoder: codec::encoder::video::Encoder,
     scaler: Scaler,
@@ -24,12 +24,12 @@ pub struct VideoTrack {
     stream_tb: Rational,
     size: Size,
     next_pts: i64,
-    /// 線形 → 符号化値。スケーラーに渡す前に符号化し直す。
+    /// 線形 → 符号化値。スケーラーに渡す前にエンコードし直す。
     table: EncodeTable,
 }
 
 impl VideoTrack {
-    /// 出力にストリームを足し、符号化器を開く。
+    /// 出力にストリームを足し、エンコーダーを開く。
     pub fn open(
         output: &mut Output,
         settings: &EncodeSettings,
@@ -82,14 +82,16 @@ impl VideoTrack {
         self
     }
 
-    /// 1 コマを符号化して書く。
+    /// 1 フレームをエンコードして書く。
     pub fn push(&mut self, output: &mut Output, image: &RgbaImage) -> Result<()> {
         if image.size() != self.size {
-            return Err(MmError::InvalidArgument("コマの大きさが設定と違う".into()));
+            return Err(MmError::InvalidArgument(
+                "フレームの大きさが設定と違う".into(),
+            ));
         }
         let mut rgba = frame::Video::new(Pixel::RGBA, self.size.width, self.size.height);
         fill_rgba(&mut rgba, image, &self.table);
-        // 符号化器が参照を持ち続けるので、コマごとに新しい YUV の領域を使う
+        // エンコーダーが参照を持ち続けるので、フレームごとに新しい YUV の領域を使う
         let mut yuv = frame::Video::new(Pixel::YUV420P, self.size.width, self.size.height);
         self.scaler
             .run(&rgba, &mut yuv)
@@ -102,7 +104,7 @@ impl VideoTrack {
         self.drain(output)
     }
 
-    /// 符号化器に残ったコマを出し切る。
+    /// エンコーダーに残ったフレームを出し切る。
     pub fn finish(&mut self, output: &mut Output) -> Result<()> {
         self.encoder
             .send_eof()
@@ -138,7 +140,7 @@ fn open_encoder(
     let mut enc = context
         .encoder()
         .video()
-        .map_err(|e| MmError::Internal(format!("映像の符号化器: {e}")))?;
+        .map_err(|e| MmError::Internal(format!("映像のエンコーダー: {e}")))?;
     enc.set_width(size.width);
     enc.set_height(size.height);
     enc.set_format(Pixel::YUV420P);
@@ -184,7 +186,7 @@ fn make_scaler(size: Size) -> Result<Scaler> {
     Ok(scaler)
 }
 
-/// 線形の f32 の画素を Rec.1886 の 8 ビットに符号化して RGBA のフレームへ写す。
+/// 線形の f32 の画素を Rec.1886 の 8 ビットにエンコードして RGBA のフレームへコピーする。
 /// アルファは使わず不透明として書く（premultiplied なので黒の上に置いた色と同じ）。
 fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
     let width = image.width() as usize;

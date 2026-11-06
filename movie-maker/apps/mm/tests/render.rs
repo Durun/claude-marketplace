@@ -1,4 +1,4 @@
-//! 見本のプロジェクトを `mm render` で書き出し、ffprobe と mm-decode-ffmpeg で読み戻して確かめる。
+//! フィクスチャのプロジェクトを `mm render` で書き出し、ffprobe と mm-decode-ffmpeg でリードバックして確かめる。
 //! FFmpeg が要るので feature `ffmpeg` のときだけ走る。
 #![cfg(feature = "ffmpeg")]
 
@@ -13,7 +13,7 @@ use mm_decode_api::DecoderFactory;
 use mm_decode_ffmpeg::FfmpegDecoderFactory;
 use mm_types::{RationalTime, TimeRange};
 
-/// 素材を in 点（0.5 秒）で切るので、書き出しの最初のコマは素材の 15 コマ目。
+/// 素材を in 点（0.5 秒）で切るので、書き出しの最初のフレームは素材の 15 フレーム目。
 const FIRST_SOURCE_FRAME: i64 = 15;
 const FRAMES: i64 = 30;
 
@@ -58,7 +58,7 @@ fn probe(path: &Path, select: &str, entries: &str) -> HashMap<String, String> {
 }
 
 #[test]
-fn 書き出した_mp4_のコマ数と長さとコーデックが合う() {
+fn 書き出した_mp4_のフレーム数と長さとコーデックが合う() {
     let path = render_stage0("probe.mp4");
     let v = probe(
         &path,
@@ -87,7 +87,7 @@ fn 書き出した_mp4_のコマ数と長さとコーデックが合う() {
 }
 
 #[test]
-fn 切った区間のコマ番号と音が読み戻せる() {
+fn 切った区間のフレーム番号と音が読み戻せる() {
     let path = render_stage0("readback.mp4");
     let mut decoder = FfmpegDecoderFactory.open(&path, None).expect("開ける");
     let info = decoder.info().clone();
@@ -95,12 +95,15 @@ fn 切った区間のコマ番号と音が読み戻せる() {
 
     decoder.seek(RationalTime::ZERO).expect("先頭へ");
     for n in 0..FRAMES {
-        let frame = decoder.next_frame().expect("読める").expect("コマがある");
-        let image = frame.image.expect("CPU の絵");
+        let frame = decoder
+            .next_frame()
+            .expect("読める")
+            .expect("フレームがある");
+        let image = frame.image.expect("CPU の画像");
         assert_eq!(
             common::read_frame_number(&image),
             FIRST_SOURCE_FRAME + n,
-            "書き出しの {n} コマ目の素材の番号"
+            "書き出しの {n} フレーム目の素材の番号"
         );
     }
     assert!(decoder.next_frame().expect("読める").is_none());
@@ -109,4 +112,48 @@ fn 切った区間のコマ番号と音が読み戻せる() {
         TimeRange::from_start_duration(RationalTime::ZERO, RationalTime::seconds(1)).expect("区間");
     let audio = decoder.decode_audio(range).expect("音が読める");
     assert!(!audio.is_silent(), "トーンが乗っている");
+}
+
+fn mm_ok(args: &[&str]) {
+    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+        .args(args)
+        .output()
+        .expect("mm を実行できる");
+    assert!(
+        out.status.success(),
+        "mm {args:?} が失敗した: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// 段階 0 の JSON を `mm import` で `project.mmdb` にし、`mm op` でレイヤーを動かして `mm render` で書き出す。
+#[test]
+fn 取り込んだ_mmdb_のレイヤーを動かして書き出せる() {
+    common::fixtures();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("p");
+    let dir_s = dir.to_str().unwrap();
+    mm_ok(&["import", dir_s, project_path().to_str().unwrap()]);
+
+    let before = tmp.path().join("before.mp4");
+    mm_ok(&["render", dir_s, "-o", before.to_str().unwrap()]);
+    mm_ok(&[
+        "op",
+        dir_s,
+        "setParam",
+        "--target",
+        "layer:l-text:transform.position",
+        "--json",
+        r#"{"value":{"type":"vec2","value":[160.0,20.0]}}"#,
+    ]);
+    let after = tmp.path().join("after.mp4");
+    mm_ok(&["render", dir_s, "-o", after.to_str().unwrap()]);
+
+    let (b, a) = (
+        std::fs::read(&before).unwrap(),
+        std::fs::read(&after).unwrap(),
+    );
+    assert!(!b.is_empty() && !a.is_empty());
+    assert_ne!(b, a, "レイヤーを動かした書き出しが変わっていない");
 }

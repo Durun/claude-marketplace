@@ -14,7 +14,7 @@
 <div id="mark" style="position:absolute;left:0;top:0;width:16px;height:16px"></div><div id="label">movie-maker · CEF</div><div id="frame">t=0.000</div>
 <script>
   // 描く時刻はホストが決める。requestAnimationFrame や CSS アニメーションを使わず、
-  // 時刻の関数としてだけ画面を作ると、同じ時刻から同じ絵になる。
+  // 時刻の関数としてだけ画面を作ると、同じ時刻から同じ画像になる。
   window.mmSetTime = (t, seq) => {
     const x = 120 + (1920 - 120 * 2 - 420) * (0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 4));
     document.getElementById('bar').style.left = x + 'px';

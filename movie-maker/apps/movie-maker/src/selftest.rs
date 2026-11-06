@@ -1,4 +1,4 @@
-//! `--selftest <out.json>` の自己診断。段階ごとに窓を動かして数字を取り、JSON に書いて終わる。
+//! `--selftest <out.json>` の自己診断。段階ごとにウィンドウを動かして数字を取り、JSON に書いて終わる。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -79,7 +79,7 @@ fn stage(ctx: &Ctx, mode: u8, secs: f64) -> Value {
     collect(ctx, mode, &mark)
 }
 
-/// 測り始めの印。系列と span の集計を空にして、フレーム数と時刻を控える。
+/// 測り始めのマーカー。系列と span の集計を空にして、フレーム数と時刻を控える。
 struct Mark {
     at: Instant,
     frames: u64,
@@ -124,7 +124,7 @@ fn collect(ctx: &Ctx, mode: u8, mark: &Mark) -> Value {
     })
 }
 
-/// 窓の大きさを段階的に変え、面と WebView の大きさが合うかと、変更から present までを測る。
+/// ウィンドウの大きさを段階的に変え、サーフェスと WebView の大きさが合うかと、変更から present までを測る。
 fn resize_steps(window: &Window, ctx: &Ctx) -> Value {
     ctx.shared.sync_mode.store(SYNC_CHANNEL, Ordering::SeqCst);
     let mark = Mark::now(ctx);
@@ -144,7 +144,7 @@ fn resize_steps(window: &Window, ctx: &Ctx) -> Value {
     v
 }
 
-/// 面の矩形（HWND の実測）と WebView の報告した大きさが、窓の大きさから決めた値に合うか。
+/// サーフェスの矩形（HWND の実測）と WebView の報告した大きさが、ウィンドウの大きさから決めた値に合うか。
 fn layout_check(window: &Window, ctx: &Ctx, logical: (f64, f64)) -> Value {
     let inner = window.inner_size().unwrap_or_default();
     let scale = window.scale_factor().unwrap_or(1.0);
@@ -191,7 +191,7 @@ fn resize_drag(window: &Window, ctx: &Ctx) -> Value {
     v
 }
 
-/// 面と WebView を順にクリックして J/K/L を送り、どちらに届くか、いつ Rust に届くかを見る。
+/// サーフェスと WebView を順にクリックして J/K/L を送り、どちらに届くか、いつ Rust に届くかを見る。
 fn keys(window: &Window, ctx: &Ctx, top: isize) -> Value {
     let inner = window.inner_size().unwrap_or_default();
     let (s, v) = split_rects(inner.width, inner.height);
@@ -243,7 +243,7 @@ fn dpi(window: &Window, ctx: &Ctx) -> Value {
     let home = window.outer_position().unwrap_or_default();
     let here = window.scale_factor().unwrap_or(1.0);
     let mut moves = Vec::new();
-    // 倍率が同じモニターでも、別のアダプターにつながっていると面が落ちうるので全部へ動かす。
+    // 倍率が同じモニターでも、別のアダプターにつながっているとサーフェスが失われうるので全部へ動かす。
     for m in &monitors {
         let (mx, my) = (m.position().x, m.position().y);
         if (mx..mx + m.size().width as i32).contains(&home.x)

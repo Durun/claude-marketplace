@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-d3d12va"
-description = "試作。FFmpeg の d3d12va で復号した NV12 の ID3D12Resource を、コピーなしで wgpu のテクスチャに包むデコーダー"
+description = "FFmpeg の d3d12va でデコードした NV12 / P010 を、レンダラーと同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,21 +8,44 @@ publish.workspace = true
 
 [features]
 # 既定で切る。FFmpeg の開発ファイルと libclang が無い環境でもワークスペースをビルドできるようにする。
-d3d12va = ["dep:ffmpeg-next", "dep:wgpu", "dep:pollster", "dep:windows"]
+d3d12va = [
+  "dep:ffmpeg-next",
+  "dep:wgpu",
+  "dep:windows",
+  "dep:mm-gpu",
+  "mm-decode-hw/hw",
+  "mm-decode-ffmpeg-core/ffmpeg",
+]
+# 検査のためだけのフック（待ちを外した対照）。本番の組み立てでは入れない。
+test-hooks = ["mm-decode-hw/test-hooks"]
 
 [dependencies]
 mm-types = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-decode-api = { workspace = true }
+mm-decode-ffmpeg-core = { workspace = true }
+mm-decode-hw = { workspace = true }
+mm-gpu = { workspace = true, optional = true }
 tracing = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-pollster = { workspace = true, optional = true }
-windows = { workspace = true, optional = true, features = ["Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common"] }
+windows = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common"] }
 
 [dev-dependencies]
+# 統合テストだけが検査用のフック（test-hooks）を使う。
+mm-decode-d3d12va = { path = ".", features = ["test-hooks"] }
+mm-decode-hw = { workspace = true, features = ["testing"] }
 mm-trace = { workspace = true }
+mm-testkit = { workspace = true }
+mm-gpu = { workspace = true }
+wgpu = { workspace = true }
+mm-node-api = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "mm-d3d12va-probe"
+path = "src/bin/mm-d3d12va-probe.rs"
+required-features = ["d3d12va"]
 
 [[example]]
 name = "bench_d3d12va"

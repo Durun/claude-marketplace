@@ -1,0 +1,1861 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Op",
+  "description": "操作。JSON では `op` のフィールドに名前（camelCase）、残りのフィールドに引数。\n引数の大きさがバリアントごとに違うので、全部 `Box` で持つ。",
+  "oneOf": [
+    {
+      "description": "レイヤーを足す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "layer": {
+          "$ref": "#/$defs/Layer"
+        },
+        "op": {
+          "type": "string",
+          "const": "addLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition",
+        "layer"
+      ]
+    },
+    {
+      "description": "レイヤーを外す。",
+      "type": "object",
+      "properties": {
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "レイヤーの重なりの位置を変える。",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "moveLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "index"
+      ]
+    },
+    {
+      "description": "パラメータの固定の値を置く。",
+      "type": "object",
+      "properties": {
+        "keyframes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        },
+        "op": {
+          "type": "string",
+          "const": "setParam"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        },
+        "value": {
+          "$ref": "#/$defs/ParamValue"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "value"
+      ]
+    },
+    {
+      "description": "パラメータを外す（無くてもよいフィールドだけ）。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeParam"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target"
+      ]
+    },
+    {
+      "description": "キーフレームを置く。",
+      "type": "object",
+      "properties": {
+        "keyframe": {
+          "$ref": "#/$defs/Keyframe"
+        },
+        "op": {
+          "type": "string",
+          "const": "setKeyframe"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "keyframe"
+      ]
+    },
+    {
+      "description": "キーフレームを外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeKeyframe"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        },
+        "time": {
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "time"
+      ]
+    },
+    {
+      "description": "キーフレームの補間とイージングを変える。",
+      "type": "object",
+      "properties": {
+        "bezier": {
+          "description": "`Bezier` の制御点。`None` は既定（ease-in-out）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CubicBezier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ease": {
+          "$ref": "#/$defs/Ease",
+          "default": "none"
+        },
+        "interpolation": {
+          "$ref": "#/$defs/Interpolation"
+        },
+        "op": {
+          "type": "string",
+          "const": "setEase"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        },
+        "time": {
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "time",
+        "interpolation"
+      ]
+    },
+    {
+      "description": "親のレイヤーを付ける・外す。",
+      "type": "object",
+      "properties": {
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "parentLayer"
+        },
+        "parent": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "カットへの接続を付ける・外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "attachLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "ロックを付ける・外す。",
+      "type": "object",
+      "properties": {
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "lock": {
+          "type": "boolean"
+        },
+        "op": {
+          "type": "string",
+          "const": "lockLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "lock"
+      ]
+    },
+    {
+      "description": "レイヤーの組を新しいコンポジションに入れ、入れ子のレイヤーで置き換える。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        },
+        "new_composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "new_layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "precompose"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition",
+        "layers",
+        "new_composition",
+        "new_layer"
+      ]
+    },
+    {
+      "description": "入れ子のレイヤーを中のレイヤーに戻す（precompose の逆）。",
+      "type": "object",
+      "properties": {
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "unprecompose"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "コンポジションを足す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "$ref": "#/$defs/Composition"
+        },
+        "op": {
+          "type": "string",
+          "const": "addComposition"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition"
+      ]
+    },
+    {
+      "description": "コンポジションを外す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeComposition"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition"
+      ]
+    },
+    {
+      "description": "sequence を足す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "addSequence"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Sequence"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence"
+      ]
+    },
+    {
+      "description": "sequence を参照か複製で分岐する。",
+      "type": "object",
+      "properties": {
+        "cuts": {
+          "description": "新しいカットの ID。元のカットと同じ数。",
+          "type": "array",
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        },
+        "new_sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "forkSequence"
+        },
+        "relation": {
+          "$ref": "#/$defs/OriginRelation"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence",
+        "new_sequence",
+        "relation",
+        "cuts"
+      ]
+    },
+    {
+      "description": "sequence を外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeSequence"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence"
+      ]
+    },
+    {
+      "description": "レンダーターゲットを足す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "addRenderTarget"
+        },
+        "target": {
+          "$ref": "#/$defs/RenderTarget"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target"
+      ]
+    },
+    {
+      "description": "レンダーターゲットを外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeRenderTarget"
+        },
+        "target": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target"
+      ]
+    },
+    {
+      "description": "マーカーを足す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "marker": {
+          "$ref": "#/$defs/Marker"
+        },
+        "op": {
+          "type": "string",
+          "const": "addMarker"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition",
+        "marker"
+      ]
+    },
+    {
+      "description": "マーカーを外す。",
+      "type": "object",
+      "properties": {
+        "marker": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeMarker"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "marker"
+      ]
+    },
+    {
+      "description": "カットをシーケンスに差し込む（後ろがずれる）。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "$ref": "#/$defs/Cut"
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "insert"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence",
+        "index",
+        "cut"
+      ]
+    },
+    {
+      "description": "カットを別のカットで置き換える（数は変わらない）。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "overwrite"
+        },
+        "replacement": {
+          "$ref": "#/$defs/Cut"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "replacement"
+      ]
+    },
+    {
+      "description": "カットを抜く（後ろが詰まる）。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "extract"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    },
+    {
+      "description": "カットを 2 つに割る。",
+      "type": "object",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "new_cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "split"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "at",
+        "new_cut"
+      ]
+    },
+    {
+      "description": "続きの 2 つのカットを 1 つに戻す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "next": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "join"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "next"
+      ]
+    },
+    {
+      "description": "カットのイン点かアウト点を動かし、後ろをずらす。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "edge": {
+          "$ref": "#/$defs/Edge"
+        },
+        "op": {
+          "type": "string",
+          "const": "ripple"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "edge",
+        "by"
+      ]
+    },
+    {
+      "description": "次のカットとの境目を動かす（全体の長さは変わらない）。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "roll"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "by"
+      ]
+    },
+    {
+      "description": "カットの内容をずらす（位置と長さは変わらない）。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "slip"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "by"
+      ]
+    },
+    {
+      "description": "カットを前後のカットの中で動かす（全体の長さは変わらない）。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "slide"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut",
+        "by"
+      ]
+    },
+    {
+      "description": "カットを配置から外す・戻す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "disabled": {
+          "description": "`true` で外し、`false` で戻す。",
+          "type": "boolean",
+          "default": true
+        },
+        "op": {
+          "type": "string",
+          "const": "disable"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    }
+  ],
+  "$defs": {
+    "BlendMode": {
+      "description": "合成モード。式は W3C Compositing and Blending Level 1。`Add` は線形の加算（linear dodge）。",
+      "type": "string",
+      "enum": [
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "color_dodge",
+        "color_burn",
+        "hard_light",
+        "soft_light",
+        "difference",
+        "exclusion",
+        "hue",
+        "saturation",
+        "color",
+        "luminosity",
+        "add"
+      ]
+    },
+    "Composition": {
+      "description": "コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "fps": {
+          "$ref": "#/$defs/Rational"
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "layers": {
+          "description": "下から上の順。",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          }
+        },
+        "markers": {
+          "description": "時刻の順。",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Marker"
+          }
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "fps",
+        "duration",
+        "layers"
+      ]
+    },
+    "CubicBezier": {
+      "description": "進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。\n`x1`、`x2` は `[0,1]` に収める（時間が単調になる）。",
+      "type": "object",
+      "properties": {
+        "x1": {
+          "type": "number",
+          "format": "double"
+        },
+        "x2": {
+          "type": "number",
+          "format": "double"
+        },
+        "y1": {
+          "type": "number",
+          "format": "double"
+        },
+        "y2": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ]
+    },
+    "Cut": {
+      "description": "カット。素材の範囲を 1 つ切り出す。",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "外したカットは消さずに残し、配置から除く。",
+          "type": "boolean",
+          "default": true
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "in": {
+          "description": "素材の時間軸でのイン点。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "origin": {
+          "description": "参照・複製の元のカット。ショートで in/out を上書きしたときの対応に使う。",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "out": {
+          "description": "素材の時間軸での出（含まない）。`in < out`。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "source": {
+          "$ref": "#/$defs/Node"
+        },
+        "speed": {
+          "$ref": "#/$defs/Rational",
+          "default": {
+            "den": 1,
+            "num": 1
+          }
+        },
+        "transition_in": {
+          "description": "前のカットからこのカットへのトランジション。境目をまたいで掛け、配置は変えない。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "in",
+        "out"
+      ]
+    },
+    "Ease": {
+      "description": "`Linear` の進み具合に掛けるイージングの型。",
+      "oneOf": [
+        {
+          "description": "等速。",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "ゆっくり始まる（2 次）。",
+          "type": "string",
+          "const": "in"
+        },
+        {
+          "description": "ゆっくり終わる（2 次）。",
+          "type": "string",
+          "const": "out"
+        },
+        {
+          "description": "両端がゆっくり（2 次を貼り合わせ）。",
+          "type": "string",
+          "const": "in_out"
+        }
+      ]
+    },
+    "Edge": {
+      "description": "動かす端。",
+      "oneOf": [
+        {
+          "description": "イン点（`in`）。",
+          "type": "string",
+          "const": "in"
+        },
+        {
+          "description": "アウト点（`out`）。",
+          "type": "string",
+          "const": "out"
+        }
+      ]
+    },
+    "Effect": {
+      "description": "効果。ノードの種類を 1 つ、レイヤーの画像を入力にして掛ける。",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "node": {
+          "$ref": "#/$defs/Node"
+        }
+      },
+      "required": [
+        "id",
+        "node"
+      ]
+    },
+    "Interpolation": {
+      "description": "キーフレームの補間。区間 `[k_i, k_{i+1})` の形は始点 `k_i` の補間で決まる。\n数の型（数、2・3 次元の数、色）だけ `Linear` と `Bezier` が効き、ほかはホールド。",
+      "oneOf": [
+        {
+          "description": "次のキーフレームまで値を保つ。",
+          "type": "string",
+          "const": "hold"
+        },
+        {
+          "description": "進み具合に [`Ease`] を掛けて直線で補間する。",
+          "type": "string",
+          "const": "linear"
+        },
+        {
+          "description": "進み具合を [`CubicBezier`]（CSS の `cubic-bezier` と同じ）で曲げる。",
+          "type": "string",
+          "const": "bezier"
+        }
+      ]
+    },
+    "Keyframe": {
+      "description": "キーフレーム。",
+      "type": "object",
+      "properties": {
+        "bezier": {
+          "description": "`Bezier` の制御点。無ければ [`CubicBezier::EASE_IN_OUT`]。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CubicBezier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ease": {
+          "description": "`Linear` の進み具合に掛ける。",
+          "$ref": "#/$defs/Ease",
+          "default": "none"
+        },
+        "interpolation": {
+          "$ref": "#/$defs/Interpolation"
+        },
+        "time": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "value": {
+          "$ref": "#/$defs/ParamValue"
+        }
+      },
+      "required": [
+        "time",
+        "value",
+        "interpolation"
+      ]
+    },
+    "Layer": {
+      "description": "レイヤー。ノードを 1 つ持ち、時間と重ね方を足す。\n\nコンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。\n`time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。",
+      "type": "object",
+      "properties": {
+        "attach_to": {
+          "description": "接続先のカット。カットがリップルで動くと一緒に動く。",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LayerAudio"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blend": {
+          "$ref": "#/$defs/BlendMode",
+          "default": "normal"
+        },
+        "effects": {
+          "description": "効果の列。上から順に掛ける。",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Effect"
+          }
+        },
+        "enabled": {
+          "description": "無効にしたレイヤーは描かず、鳴らさない。",
+          "type": "boolean",
+          "default": true
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "in": {
+          "description": "素材の時間軸でのイン点。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "lock": {
+          "description": "人が直した所。Claude の操作経路からの操作は拒否する。",
+          "type": "boolean",
+          "default": false
+        },
+        "masks": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Mask"
+          }
+        },
+        "opacity": {
+          "$ref": "#/$defs/Param"
+        },
+        "out": {
+          "description": "素材の時間軸での出（含まない）。`in < out`。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "parent": {
+          "description": "親のレイヤー（同じコンポジションの中）。変形を親に続けて掛ける。",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "source": {
+          "$ref": "#/$defs/Node"
+        },
+        "speed": {
+          "description": "再生の速さ。1 が等速。型が正を保つので 0 にならない。",
+          "$ref": "#/$defs/Rational",
+          "default": {
+            "den": 1,
+            "num": 1
+          }
+        },
+        "start": {
+          "description": "コンポジションの時間軸での始まり。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "time_remap": {
+          "description": "時間の写像の上書き。あれば `in` と `speed` の代わりに使う。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeRemap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "track_matte": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrackMatte"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "transform": {
+          "description": "位置・拡大・回転・アンカー。レンダラーが合成で掛ける（ノードの種類には渡さない）。",
+          "$ref": "#/$defs/Transform",
+          "default": {
+            "anchor": null,
+            "position": {
+              "keyframes": [],
+              "value": {
+                "type": "vec2",
+                "value": [
+                  0.0,
+                  0.0
+                ]
+              }
+            },
+            "rotation": {
+              "keyframes": [],
+              "value": {
+                "type": "number",
+                "value": 0.0
+              }
+            },
+            "scale": {
+              "keyframes": [],
+              "value": {
+                "type": "number",
+                "value": 1.0
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "start",
+        "in",
+        "out",
+        "opacity"
+      ]
+    },
+    "LayerAudio": {
+      "description": "レイヤーの音の設定。",
+      "type": "object",
+      "properties": {
+        "gain_db": {
+          "$ref": "#/$defs/Param"
+        },
+        "pan": {
+          "$ref": "#/$defs/Param"
+        },
+        "role": {
+          "description": "役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "gain_db",
+        "pan"
+      ]
+    },
+    "Marker": {
+      "description": "マーカー。YouTube のチャプターの書き出しに使う。`duration` が 0 なら点。",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "$ref": "#/$defs/RationalTime",
+          "default": {
+            "den": 1,
+            "num": 0
+          }
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "required": [
+        "id",
+        "time",
+        "name"
+      ]
+    },
+    "Mask": {
+      "description": "マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。",
+      "type": "object",
+      "properties": {
+        "feather": {
+          "description": "ぼかしの幅（画素）。",
+          "$ref": "#/$defs/Param"
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "inverted": {
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "$ref": "#/$defs/MaskMode",
+          "default": "add"
+        },
+        "opacity": {
+          "$ref": "#/$defs/Param"
+        },
+        "path": {
+          "description": "頂点の列（コンポジションの画素）。キーフレームで形を動かせる。",
+          "$ref": "#/$defs/Param"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "feather",
+        "opacity"
+      ]
+    },
+    "MaskMode": {
+      "description": "マスクの組み合わせ方。",
+      "type": "string",
+      "enum": [
+        "add",
+        "subtract",
+        "intersect"
+      ]
+    },
+    "MatteKind": {
+      "description": "マットに使う成分。",
+      "type": "string",
+      "enum": [
+        "alpha",
+        "luma"
+      ]
+    },
+    "Node": {
+      "description": "ノード。ノードの種類の名前とバージョン、パラメータ、入力。",
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        },
+        "kind": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Param"
+          },
+          "default": {}
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "version"
+      ]
+    },
+    "OriginRelation": {
+      "description": "参照（本編を直すとショートも変わる）か、複製（分岐。元が変わったら知らせる）か。",
+      "type": "string",
+      "enum": [
+        "reference",
+        "fork"
+      ]
+    },
+    "Param": {
+      "description": "パラメータ。固定の値か、キーフレームの列（時刻の昇順）。\n\nキーフレームがあるときは `value` を使わず、最初のキーフレームより前は最初の値、\n最後より後は最後の値になる（`mm-eval`）。",
+      "type": "object",
+      "properties": {
+        "keyframes": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        },
+        "value": {
+          "$ref": "#/$defs/ParamValue"
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "ParamRef": {
+      "description": "パラメータの指し方。`layer` か `cut` のどちらか 1 つ。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "カットの ID（カットのノードのパラメータを指すとき）。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layer": {
+          "description": "レイヤーの ID（レイヤーのパラメータを指すとき）。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "持ち主の中のパス。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "ParamValue": {
+      "description": "評価済みのパラメータの値（時刻 t での値）。",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "number"
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "vec2"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "vec3"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "color"
+            },
+            "value": {
+              "$ref": "#/$defs/Rgba"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "bool"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "choice"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "asset_ref"
+            },
+            "value": {
+              "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "json"
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        }
+      ]
+    },
+    "Rational": {
+      "description": "正の有理数 num/den（fps、再生の速さ）",
+      "type": "object",
+      "properties": {
+        "den": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        },
+        "num": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ]
+    },
+    "RationalTime": {
+      "description": "有理数の時刻 num/den 秒（負も表せる）",
+      "type": "object",
+      "properties": {
+        "den": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        },
+        "num": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ]
+    },
+    "RenderTarget": {
+      "description": "レンダーターゲット。成果物の形式。",
+      "type": "object",
+      "properties": {
+        "codec": {
+          "description": "エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。",
+          "type": "string"
+        },
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "fps": {
+          "$ref": "#/$defs/Rational"
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "loudness_lufs": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "output_path": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "composition",
+        "width",
+        "height",
+        "fps",
+        "codec",
+        "output_path"
+      ]
+    },
+    "Rgba": {
+      "description": "線形、premultiplied の RGBA。各成分は 0..=1 の範囲が基本だが、HDR では 1 を超えてよい。",
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "number",
+          "format": "float"
+        },
+        "b": {
+          "type": "number",
+          "format": "float"
+        },
+        "g": {
+          "type": "number",
+          "format": "float"
+        },
+        "r": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "required": [
+        "r",
+        "g",
+        "b",
+        "a"
+      ]
+    },
+    "Sequence": {
+      "description": "マグネティックシーケンス。OTIO の `Track` に対応づけられる形。",
+      "type": "object",
+      "properties": {
+        "cuts": {
+          "description": "先頭から順。",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Cut"
+          }
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "origin": {
+          "description": "ショートが本編を参照・複製した元。本編なら `None`。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SequenceOrigin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "cuts"
+      ]
+    },
+    "SequenceOrigin": {
+      "description": "ショートと本編の関係。",
+      "type": "object",
+      "properties": {
+        "relation": {
+          "$ref": "#/$defs/OriginRelation"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sequence",
+        "relation"
+      ]
+    },
+    "TimeKeyframe": {
+      "description": "タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。",
+      "type": "object",
+      "properties": {
+        "interpolation": {
+          "$ref": "#/$defs/Interpolation"
+        },
+        "source": {
+          "description": "素材の時刻。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "time": {
+          "description": "レイヤーの始まりからの時刻。",
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "required": [
+        "time",
+        "source",
+        "interpolation"
+      ]
+    },
+    "TimeRemap": {
+      "description": "タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。\n最初より前と最後より後は端の値を保つ。",
+      "type": "object",
+      "properties": {
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TimeKeyframe"
+          }
+        }
+      },
+      "required": [
+        "keyframes"
+      ]
+    },
+    "TrackMatte": {
+      "description": "トラックマット。同じコンポジションの別のレイヤーのアルファか輝度で切り抜く。",
+      "type": "object",
+      "properties": {
+        "inverted": {
+          "type": "boolean",
+          "default": false
+        },
+        "kind": {
+          "$ref": "#/$defs/MatteKind"
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "kind"
+      ]
+    },
+    "Transform": {
+      "description": "レイヤーの変形。値はコンポジションの画素と度。",
+      "type": "object",
+      "properties": {
+        "anchor": {
+          "description": "回転と拡大の中心（Vec2）。`None` はレイヤーの画像の中心。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "position": {
+          "description": "動かす量（Vec2）。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "vec2",
+              "value": [
+                0.0,
+                0.0
+              ]
+            }
+          }
+        },
+        "rotation": {
+          "description": "度。正が時計回り。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 0.0
+            }
+          }
+        },
+        "scale": {
+          "description": "倍率（Number か Vec2）。1 が等倍。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 1.0
+            }
+          }
+        }
+      }
+    },
+    "Transition": {
+      "description": "カットの間のトランジション。",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "node": {
+          "$ref": "#/$defs/Node"
+        }
+      },
+      "required": [
+        "node",
+        "duration"
+      ]
+    }
+  }
+}

@@ -1,9 +1,10 @@
-//! 色。中間の絵は線形の Rec.709、premultiplied のアルファで持つ。
+//! 色。中間の画像は線形の Rec.709、premultiplied のアルファで持つ。
 
 use serde::{Deserialize, Serialize};
 
 /// 線形、premultiplied の RGBA。各成分は 0..=1 の範囲が基本だが、HDR では 1 を超えてよい。
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Rgba {
     pub r: f32,
     pub g: f32,
@@ -58,6 +59,7 @@ impl Rgba {
 /// 色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ColorSpace(pub String);
 
 impl ColorSpace {

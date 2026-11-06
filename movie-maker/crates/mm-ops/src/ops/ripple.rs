@@ -1,0 +1,57 @@
+//! `ripple`。カットのイン点かアウト点を動かし、後ろをずらす。
+
+use serde::{Deserialize, Serialize};
+
+use mm_doc::{CutId, Project};
+use mm_types::{RationalTime, Result};
+
+use crate::op::{Apply, Op};
+use crate::ops::{cut_referrers, negate};
+use crate::touches::Touches;
+
+/// 動かす端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Edge {
+    /// イン点（`in`）。
+    In,
+    /// アウト点（`out`）。
+    Out,
+}
+
+/// `cut` の `edge` を、シーケンスの時間軸で `by` だけ動かす（素材の時間では `by × speed`）。
+/// イン点を正に動かすと短くなり、アウト点を正に動かすと長くなる。後ろのカットは配置でずれる。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Ripple {
+    pub cut: CutId,
+    pub edge: Edge,
+    pub by: RationalTime,
+}
+
+impl Apply for Ripple {
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        let (seq_id, index) = project.cut_index(&self.cut)?;
+        let mut t = Touches::of(&self.cut);
+        // 後ろのカットは配置でずれるので、接続したレイヤーも動く。
+        for cut in &project.sequence(&seq_id)?.cuts[index..] {
+            cut_referrers(project, &cut.id, &mut t);
+        }
+        Ok(t)
+    }
+
+    fn apply(&self, project: &mut Project) -> Result<Op> {
+        let cut = project.cut_mut(&self.cut)?;
+        let delta = self.by.scale(cut.speed)?;
+        match self.edge {
+            Edge::In => cut.in_point = cut.in_point.checked_add(delta)?,
+            Edge::Out => cut.out_point = cut.out_point.checked_add(delta)?,
+        }
+        Ok(Ripple {
+            cut: self.cut.clone(),
+            edge: self.edge,
+            by: negate(self.by)?,
+        }
+        .into())
+    }
+}

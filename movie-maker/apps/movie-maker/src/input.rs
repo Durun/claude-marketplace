@@ -85,7 +85,7 @@ pub fn client_to_screen(parent: isize, x: i32, y: i32) -> (i32, i32) {
     (p.x, p.y)
 }
 
-/// 自分のプロセスの窓が前面にあるか。
+/// 自分のプロセスのウィンドウが前面にあるか。
 pub fn is_foreground_ours() -> bool {
     unsafe {
         let fg = GetForegroundWindow();
@@ -95,14 +95,14 @@ pub fn is_foreground_ours() -> bool {
     }
 }
 
-/// 窓を前面に出す。OS が断ることがあるので、結果は `is_foreground_ours` で確かめる。
+/// ウィンドウを前面に出す。OS が拒否することがあるので、結果は `is_foreground_ours` で確かめる。
 pub fn bring_to_front(h: isize) {
     unsafe {
         let _ = SetForegroundWindow(hwnd(h));
     }
 }
 
-/// 窓のスレッドでキーボードフォーカスを持つ HWND とそのクラス名。
+/// ウィンドウのスレッドでキーボードフォーカスを持つ HWND とそのクラス名。
 pub fn focused(top: isize) -> (isize, String) {
     unsafe {
         let tid = GetWindowThreadProcessId(hwnd(top), None);

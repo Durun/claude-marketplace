@@ -6,7 +6,7 @@ export interface Mode {
   gradient: Record<string, { direction: "horizontal" | "vertical"; from: string; to: string }>;
 }
 
-/** theme.json の全体。wgpu の面も同じ形で読む。 */
+/** theme.json の全体。wgpu のサーフェスも同じ形で読む。 */
 export interface Theme {
   version: number;
   font: { family: string[]; mono: string[]; size: Record<string, number> };
@@ -14,6 +14,10 @@ export interface Theme {
     radius: Record<string, number>;
     borderWidth: number;
     space: Record<string, number>;
+    /** 部品の寸法（矢印、箇条書きの点、左の列の幅など）。 */
+    size: Record<string, number>;
+    /** 線の太さ（矢印、フォーカスの枠）。`borderWidth` はサーフェスの境界。 */
+    stroke: Record<string, number>;
   };
   modes: Record<ModeName, Mode>;
 }
@@ -22,7 +26,7 @@ export type ModeName = "light" | "dark";
 
 export const MODE_NAMES: readonly ModeName[] = ["light", "dark"];
 
-/** CSS 変数の名前の頭。パネル側は var(--mm-...) だけを使う。 */
+/** CSS 変数の名前の先頭。パネル側は var(--mm-...) だけを使う。 */
 const PREFIX = "--mm";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
@@ -79,6 +83,8 @@ const sharedVars = (t: Theme): string[] => [
   ...Object.entries(t.shape.radius).map(([k, v]) => `${PREFIX}-radius-${k}: ${px(v)};`),
   `${PREFIX}-border-width: ${px(t.shape.borderWidth)};`,
   ...Object.entries(t.shape.space).map(([k, v]) => `${PREFIX}-space-${k}: ${px(v)};`),
+  ...Object.entries(t.shape.size).map(([k, v]) => `${PREFIX}-size-${k}: ${px(v)};`),
+  ...Object.entries(t.shape.stroke).map(([k, v]) => `${PREFIX}-stroke-${k}: ${px(v)};`),
 ];
 
 const block = (selector: string, lines: string[]): string =>

@@ -1,4 +1,4 @@
-//! Tauri の窓に wgpu の面（子 HWND）と WebView2（子 WebView）を並べる試作。
+//! Tauri のウィンドウに wgpu のサーフェス（子 HWND）と WebView2（子 WebView）を並べる試作。
 //! 結果は docs/design/spikes/window.md。`--selftest <out.json>` で自己診断を回す。
 
 #[cfg(windows)]

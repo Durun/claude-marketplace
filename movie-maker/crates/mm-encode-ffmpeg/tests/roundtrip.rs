@@ -1,4 +1,4 @@
-//! 書き出した MP4 を ffprobe で読み、デコーダーで読み戻して、コマ数・長さ・番号・音を確かめる。
+//! 書き出した MP4 を ffprobe で読み、デコーダーでリードバックして、フレーム数・長さ・番号・音を確かめる。
 #![cfg(feature = "ffmpeg")]
 
 #[path = "../../mm-decode-ffmpeg/tests/common/mod.rs"]
@@ -92,7 +92,7 @@ fn settings(path: PathBuf, size: Size, fps: Rational, audio: bool) -> EncodeSett
 }
 
 #[test]
-fn 書き出した_mp4_がコマ数と長さと番号と音で読み戻せる() {
+fn 書き出した_mp4_がフレーム数と長さと番号と音で読み戻せる() {
     let path = out_path("tone.mp4");
     let size = Size::new(320, 180);
     let fps = Rational::integer(30);
@@ -154,7 +154,7 @@ fn 書き出した_mp4_がコマ数と長さと番号と音で読み戻せる() 
         assert_eq!(
             common::read_frame_number(f.image.as_ref().unwrap()),
             n,
-            "コマ {n}"
+            "フレーム {n}"
         );
         n += 1;
     }
@@ -179,7 +179,7 @@ fn 書き出した_mp4_がコマ数と長さと番号と音で読み戻せる() 
 }
 
 #[test]
-fn 分数の_fps_でもコマ数と時刻が合う() {
+fn 分数の_fps_でもフレーム数と時刻が合う() {
     let path = out_path("ntsc.mp4");
     let size = Size::new(256, 64);
     let fps = Rational::new(30_000, 1001).unwrap();
@@ -196,14 +196,14 @@ fn 分数の_fps_でもコマ数と時刻が合う() {
     let mut dec = FfmpegDecoderFactory.open(&path, None).unwrap();
     assert_eq!(dec.info().fps, Some(fps));
     for n in 0..30 {
-        let f = dec.next_frame().unwrap().expect("コマがある");
+        let f = dec.next_frame().unwrap().expect("フレームがある");
         assert_eq!(f.pts, RationalTime::from_frames(n, fps).unwrap());
         assert_eq!(common::read_frame_number(f.image.as_ref().unwrap()), n);
     }
 }
 
 #[test]
-fn 本物の素材を読んで書き直しても番号が保たれる() {
+fn 実素材を読んで書き直しても番号が保たれる() {
     let source = common::fixtures().join("cfr.mp4");
     let mut dec = FfmpegDecoderFactory.open(&source, None).unwrap();
     let info = dec.info().clone();
@@ -265,12 +265,12 @@ fn 使い方の誤りは_panic_せずエラーになる() {
     );
 }
 
-/// 線形の値 -> 符号化 -> 復号で、符号化値の 1/255 を単位に何段ずれるかの上限。
+/// 線形の値 -> エンコード -> デコードで、符号化値の 1/255 を単位に何段ずれるかの上限。
 /// 4:2:0 の間引きと tv レンジの量子化、H.264 の圧縮（crf 18）の分。
 const ROUNDTRIP_CODE_TOLERANCE: f32 = 3.0;
 
 #[test]
-fn 線形の色を書き出して読み戻しても明るさがずれない() {
+fn 線形の色を書き出してリードバックしても明るさがずれない() {
     let size = Size::new(64, 32);
     let fps = Rational::integer(30);
     let path = out_path("color.mp4");
@@ -291,7 +291,7 @@ fn 線形の色を書き出して読み戻しても明るさがずれない() {
 
     let mut dec = FfmpegDecoderFactory.open(&path, None).unwrap();
     for c in colors {
-        let f = dec.next_frame().unwrap().expect("コマがある");
+        let f = dec.next_frame().unwrap().expect("フレームがある");
         let p = f
             .image
             .as_ref()

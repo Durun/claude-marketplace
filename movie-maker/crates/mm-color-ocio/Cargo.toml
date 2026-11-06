@@ -1,6 +1,6 @@
 [package]
 name = "mm-color-ocio"
-description = "OpenColorIO による色の変換。GLSL を naga で WGSL にし、テクスチャを持つ変換は 3D LUT に焼く"
+description = "OpenColorIO による色の変換。GLSL を naga で WGSL にし、テクスチャを持つ変換は 3D LUT にベイクする"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

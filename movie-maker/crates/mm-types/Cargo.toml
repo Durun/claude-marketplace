@@ -10,6 +10,11 @@ publish.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+schemars = { workspace = true, optional = true }
+
+[features]
+# JSON Schema の導出。操作の層（mm-ops）が引数のスキーマを書き出すために使う。
+schema = ["dep:schemars"]
 
 [lints]
 workspace = true

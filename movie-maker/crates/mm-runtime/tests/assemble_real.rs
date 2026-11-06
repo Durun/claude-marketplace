@@ -1,9 +1,9 @@
-//! 本物の実装を選ぶ腕。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! 実際の実装を選ぶ腕。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use mm_runtime::{assemble, Backend, RuntimeConfig};
 use mm_types::MmError;
 
-/// 描画を wgpu、文字を glyphon、音を dsp にし、デコードとエンコードは見本のままにした設定。
+/// 描画を wgpu、文字を glyphon、音を dsp にし、デコードとエンコードはモックのままにした設定。
 fn gpu_config() -> RuntimeConfig {
     RuntimeConfig {
         render: Backend::Wgpu,
@@ -18,7 +18,7 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     let engine = match assemble(&gpu_config()) {
         Ok(e) => e,
         Err(MmError::Unsupported(e)) if std::env::var_os("MM_REQUIRE_GPU").is_none() => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             return;
         }
         Err(e) => panic!("組めない: {e}"),
@@ -30,7 +30,40 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
 }
 
 #[test]
-fn 口に合わない実装は断る() {
+fn 文字の_cpu_と色の_lut_はgpuなしで選べる() {
+    let config = RuntimeConfig {
+        text: Backend::Cpu,
+        color: Backend::Lut,
+        ..RuntimeConfig::sample()
+    };
+    assert!(!config.needs_gpu());
+    let engine = assemble(&config).expect("組める");
+    assert!(engine.backend_names().contains(&("color", "lut")));
+}
+
+#[cfg(not(feature = "ocio"))]
+#[test]
+fn ocio_は_feature_が無いと拒否する() {
+    let config = RuntimeConfig {
+        color: Backend::Ocio,
+        ..RuntimeConfig::sample()
+    };
+    assert!(matches!(assemble(&config), Err(MmError::Unsupported(_))));
+}
+
+#[cfg(feature = "ocio")]
+#[test]
+fn ocio_を選べる() {
+    let config = RuntimeConfig {
+        color: Backend::Ocio,
+        ..RuntimeConfig::sample()
+    };
+    let engine = assemble(&config).expect("組める");
+    assert!(engine.backend_names().contains(&("color", "ocio")));
+}
+
+#[test]
+fn インターフェースに合わない実装は拒否する() {
     let config = RuntimeConfig {
         audio: Backend::Wgpu,
         ..RuntimeConfig::sample()
@@ -40,7 +73,7 @@ fn 口に合わない実装は断る() {
 
 #[cfg(not(feature = "ffmpeg"))]
 #[test]
-fn ffmpeg_は_feature_が切ってあれば断る() {
+fn ffmpeg_は_feature_が切ってあれば拒否する() {
     let config = RuntimeConfig {
         decode: Backend::Ffmpeg,
         ..RuntimeConfig::sample()

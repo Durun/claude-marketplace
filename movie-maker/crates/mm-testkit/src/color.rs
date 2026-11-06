@@ -1,8 +1,10 @@
-//! 色の見本と契約テスト。見本は bt709（Rec.1886）、srgb、bt709_oetf を作業空間（線形）へ変換する。
+//! 色のモックと契約テスト。モックは bt709（Rec.1886）、srgb、bt709_oetf、bt601、bt2020 を作業色空間（線形）へ変換する。
 
 use std::sync::Arc;
 
-use mm_color_api::{ColorTransform, TransformProgram, UNIT_WHITE_SPACES};
+use mm_color_api::{
+    ColorTransform, TransformProgram, REC2020_TO_REC709, REC709_TO_REC2020, UNIT_WHITE_SPACES,
+};
 use mm_types::{ColorSpace, MmError, Result};
 
 /// 往復の許容差。
@@ -52,7 +54,7 @@ fn linear_to_bt709_oetf(v: f32) -> f32 {
     }
 }
 
-/// 見本の色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
+/// モックの色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
 #[derive(Debug, Clone, Default)]
 pub struct SampleColor;
 
@@ -61,7 +63,7 @@ impl SampleColor {
         match from.0.as_str() {
             "lin_rec709" => Ok(v),
             "srgb" => Ok(srgb_to_linear(v)),
-            "bt709" => Ok(bt1886_to_linear(v)),
+            "bt709" | "bt601" | "bt2020" => Ok(bt1886_to_linear(v)),
             "bt709_oetf" => Ok(bt709_oetf_to_linear(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
@@ -71,7 +73,7 @@ impl SampleColor {
         match to.0.as_str() {
             "lin_rec709" => Ok(v),
             "srgb" => Ok(linear_to_srgb(v)),
-            "bt709" => Ok(linear_to_bt1886(v)),
+            "bt709" | "bt601" | "bt2020" => Ok(linear_to_bt1886(v)),
             "bt709_oetf" => Ok(linear_to_bt709_oetf(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
@@ -98,9 +100,22 @@ impl ColorTransform for SampleColor {
     }
 
     fn apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
+        let mut linear = [0.0; 3];
+        for (o, v) in linear.iter_mut().zip(rgb) {
+            *o = self.to_linear(from, v)?;
+        }
+        // 原色が Rec.2020 の側だけ行列で作業色空間（Rec.709）に合わせる。
+        let matrix = match (from.0 == "bt2020", to.0 == "bt2020") {
+            (true, false) => Some(REC2020_TO_REC709),
+            (false, true) => Some(REC709_TO_REC2020),
+            _ => None,
+        };
+        if let Some(m) = matrix {
+            linear = m.map(|row| row[0] * linear[0] + row[1] * linear[1] + row[2] * linear[2]);
+        }
         let mut out = [0.0; 3];
-        for (o, v) in out.iter_mut().zip(rgb) {
-            *o = self.encode(to, self.to_linear(from, v)?)?;
+        for (o, v) in out.iter_mut().zip(linear) {
+            *o = self.encode(to, v)?;
         }
         Ok(out)
     }
@@ -111,6 +126,8 @@ impl ColorTransform for SampleColor {
             ColorSpace::srgb(),
             ColorSpace::bt709(),
             ColorSpace::bt709_oetf(),
+            ColorSpace::bt601(),
+            ColorSpace::bt2020(),
         ]
     }
 }
@@ -120,13 +137,13 @@ pub fn contract(make: impl Fn() -> Arc<dyn ColorTransform>) {
     let ct = make();
     let working = ColorSpace::working();
     let spaces = ct.known_spaces();
-    assert!(spaces.contains(&working), "作業空間を知っている");
+    assert!(spaces.contains(&working), "作業色空間を知っている");
 
     let same = ct.program(&working, &working).expect("作れる");
     assert_eq!(
         same,
         TransformProgram::Identity,
-        "作業空間から作業空間は恒等"
+        "作業色空間から作業色空間は恒等"
     );
 
     for space in &spaces {
@@ -153,9 +170,50 @@ pub fn contract(make: impl Fn() -> Arc<dyn ColorTransform>) {
         ct.program(space, &working).expect("GPU の形が作れる");
     }
 
+    named_spaces_contract(ct.as_ref());
+
     let unknown = ColorSpace("no_such_space".into());
     assert!(
         matches!(ct.program(&unknown, &working), Err(MmError::Unsupported(_))),
         "知らない色空間は Unsupported"
     );
+}
+
+/// 名前の表（RFC 0005）の全部を引けること、`bt601` は `bt709` と同じ変換、`bt2020` は原色を
+/// Rec.709 に変えることを確かめる。デコーダーが SD や UHD の素材をこの名前で名乗るため。
+fn named_spaces_contract(ct: &dyn ColorTransform) {
+    let working = ColorSpace::working();
+    for name in UNIT_WHITE_SPACES {
+        let cs = ColorSpace((*name).into());
+        ct.program(&cs, &working)
+            .unwrap_or_else(|e| panic!("{name} の program を引ける: {e}"));
+        ct.apply(&cs, &working, [0.2, 0.4, 0.6])
+            .unwrap_or_else(|e| panic!("{name} の apply を引ける: {e}"));
+    }
+
+    let probe = [0.1, 0.5, 0.9];
+    let sd = ct
+        .apply(&ColorSpace::bt601(), &working, probe)
+        .expect("bt601");
+    let hd = ct
+        .apply(&ColorSpace::bt709(), &working, probe)
+        .expect("bt709");
+    for (a, b) in sd.iter().zip(hd) {
+        assert!(
+            (a - b).abs() <= ROUNDTRIP_TOLERANCE,
+            "bt601 は bt709 と同じ変換"
+        );
+    }
+
+    // 符号化値 (1,0,0) は線形でも (1,0,0)。作業色空間では行列の第 1 列になる。
+    let red = ct
+        .apply(&ColorSpace::bt2020(), &working, [1.0, 0.0, 0.0])
+        .expect("bt2020");
+    for (i, got) in red.iter().enumerate() {
+        let want = REC2020_TO_REC709[i][0];
+        assert!(
+            (got - want).abs() <= ROUNDTRIP_TOLERANCE,
+            "bt2020 の赤は Rec.709 の原色に直る ch{i}: {got} vs {want}"
+        );
+    }
 }

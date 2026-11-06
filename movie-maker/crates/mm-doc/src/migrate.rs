@@ -1,45 +1,49 @@
-//! 文書の版の移行。古い JSON を今の版に上げてから `Project` に読む。
+//! プロジェクトのデータのバージョンの移行。古い JSON を今のバージョンに上げてから `Project` に読む。
 
 use serde_json::Value;
 
-use mm_types::{MmError, Result};
+use mm_types::{MmError, RationalTime, Result};
 
 use crate::{Project, SCHEMA_VERSION};
 
 /// v1 の `transform.*` パラメータの前置き。
 const V1_TRANSFORM_PREFIX: &str = "transform.";
 
-/// 移行の始点（これより古い版は移行が無い）。
+/// 移行の始点（これより古いバージョンは移行が無い）。
 const OLDEST_VERSION: u32 = 1;
 
-/// JSON の文字列を読み、古い版なら今の版に上げ、文書の不変条件（[`Project::validate`]）を確かめる。
+/// JSON の文字列を読み、古いバージョンなら今のバージョンに上げ、ID で引く列を ID の順に並べ（[`Project::normalize`]）、
+/// プロジェクトのデータの不変条件（[`Project::validate`]）を確かめる。
 pub fn load(json: &str) -> Result<Project> {
     let value: Value = serde_json::from_str(json)?;
     let value = migrate(value)?;
-    let project: Project = serde_json::from_value(value)?;
+    let mut project: Project = serde_json::from_value(value)?;
+    project.normalize();
     project.validate()?;
     Ok(project)
 }
 
-/// JSON の値を今の版に上げる。始点より古い版と、今の版より新しい版は `Unsupported`。
+/// JSON の値を今のバージョンに上げる。始点より古いバージョンと、今のバージョンより新しいバージョンは `Unsupported`。
 pub fn migrate(mut value: Value) -> Result<Value> {
     let mut version = schema_version(&value)?;
     if version < OLDEST_VERSION {
         return Err(MmError::Unsupported(format!(
-            "文書の版 {version} は古すぎる（移行できるのは {OLDEST_VERSION} 以降）"
+            "プロジェクトのデータのバージョン {version} は古すぎる（移行できるのは {OLDEST_VERSION} 以降）"
         )));
     }
     if version > SCHEMA_VERSION {
         return Err(MmError::Unsupported(format!(
-            "文書の版 {version} はこのビルド（{SCHEMA_VERSION}）より新しい"
+            "プロジェクトのデータのバージョン {version} はこのビルド（{SCHEMA_VERSION}）より新しい"
         )));
     }
     while version < SCHEMA_VERSION {
         match version {
             1 => v1_to_v2(&mut value),
+            2 => v2_to_v3(&mut value),
+            3 => v3_to_v4(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
-                    "文書の版 {version} からの移行が無い"
+                    "プロジェクトのデータのバージョン {version} からの移行が無い"
                 )))
             }
         }
@@ -58,7 +62,7 @@ fn schema_version(value: &Value) -> Result<u32> {
         .map_err(|_| MmError::InvalidArgument(format!("schema_version {raw} は u32 に収まらない")))
 }
 
-/// v1 → v2: レイヤーの種類のパラメータ `transform.*` を `Layer.transform` に移す。
+/// v1 → v2: レイヤーのノードのパラメータ `transform.*` を `Layer.transform` に移す。
 fn v1_to_v2(value: &mut Value) {
     let Some(comps) = value.get_mut("compositions").and_then(Value::as_array_mut) else {
         return;
@@ -97,10 +101,71 @@ fn move_transform_params(layer: &mut Value) {
     layer["transform"] = Value::Object(transform);
 }
 
+/// v2 → v3: `sequences` と各コンポジションの `markers` を空で置く。
+/// レイヤーとキーフレームに増えたフィールドは serde の既定で埋まるので、ここでは触らない。
+fn v2_to_v3(value: &mut Value) {
+    if value.get("sequences").is_none() {
+        value["sequences"] = Value::Array(Vec::new());
+    }
+    let Some(comps) = value.get_mut("compositions").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for comp in comps {
+        if comp.get("markers").is_none() {
+            comp["markers"] = Value::Array(Vec::new());
+        }
+    }
+}
+
+/// v3 → v4 でずらす幅。1 フレーム（最も細かい fps でも 1/240 秒程度）より十分小さい。
+const MARKER_NUDGE: (i64, u32) = (1, 1000);
+
+/// v3 → v4: 同じ時刻のマーカーの後ろの方を `MARKER_NUDGE` ずつ後ろへずらし、時刻を厳密な昇順にする。
+/// 昇順でない並び（時刻が戻る）は直さず、`validate` に拒否させる。
+fn v3_to_v4(value: &mut Value) {
+    let Some(comps) = value.get_mut("compositions").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for comp in comps {
+        let Some(markers) = comp.get_mut("markers").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        let mut prev: Option<(RationalTime, RationalTime)> = None;
+        for marker in markers {
+            let Some(orig) = marker
+                .get("time")
+                .and_then(|t| serde_json::from_value::<RationalTime>(t.clone()).ok())
+            else {
+                prev = None;
+                continue;
+            };
+            let mut time = orig;
+            if let Some((prev_orig, prev_new)) = prev {
+                if orig >= prev_orig && orig <= prev_new {
+                    time = nudge(prev_new).unwrap_or(orig);
+                }
+            }
+            if time != orig {
+                if let Ok(t) = serde_json::to_value(time) {
+                    marker["time"] = t;
+                }
+            }
+            prev = Some((orig, time));
+        }
+    }
+}
+
+fn nudge(t: RationalTime) -> Option<RationalTime> {
+    let step = RationalTime::new(i128::from(MARKER_NUDGE.0), MARKER_NUDGE.1).ok()?;
+    t.checked_add(step).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_types::ParamValue;
+    use mm_types::{ParamValue, Rational};
+
+    use crate::{BlendMode, Ease, Interpolation};
 
     #[test]
     fn v1_の_transform_パラメータはレイヤーに移る() {
@@ -124,45 +189,120 @@ mod tests {
         assert_eq!(p.schema_version, SCHEMA_VERSION);
         let layer = &p.compositions[0].layers[0];
         assert_eq!(layer.transform.scale.value, ParamValue::Number(2.0));
-        assert_eq!(layer.source.params.len(), 1, "種類のパラメータだけ残る");
+        assert_eq!(layer.source.params.len(), 1, "ノードのパラメータだけ残る");
         assert_eq!(
             layer.transform.position,
             crate::Transform::default().position
         );
     }
 
-    #[test]
-    fn 凍結した_v1_の文書が読める() {
+    fn fixture(version: u32) -> Project {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/doc/v1/stage0.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        let p = load(&text).unwrap();
-        assert_eq!(p.schema_version, SCHEMA_VERSION);
-        assert_eq!(p.compositions[0].layers.len(), 2);
+            .join(format!("../../fixtures/doc/v{version}/stage0.json"));
+        load(&std::fs::read_to_string(path).unwrap()).unwrap()
     }
 
     #[test]
-    fn 新しすぎる版は断る() {
+    fn 凍結した_v1_のプロジェクトのデータが読める() {
+        let p = fixture(1);
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        assert_eq!(p.compositions[0].layers.len(), 2);
+        assert_eq!(
+            p.compositions[0].layers[0].in_point,
+            RationalTime::new(1, 2).unwrap()
+        );
+        assert!(p.sequences.is_empty());
+    }
+
+    #[test]
+    fn 凍結した_v2_のプロジェクトのデータは内容を保って_v3_に上がる() {
+        let p = fixture(2);
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        let text = &p.compositions[0].layers[1];
+        assert_eq!(text.transform.position.keyframes.len(), 2);
+        assert_eq!(
+            text.transform.position.keyframes[1].value,
+            ParamValue::Vec2([40.0, 0.0])
+        );
+        assert_eq!(text.transform.scale.value, ParamValue::Number(1.5));
+        assert_eq!(
+            text.opacity.keyframes[0].interpolation,
+            Interpolation::Bezier
+        );
+        assert_eq!(text.opacity.keyframes[0].ease, Ease::None);
+        assert!(text.opacity.keyframes[0].bezier.is_none());
+        assert_eq!(text.speed, Rational::integer(1));
+        assert!(text.enabled && text.time_remap.is_none() && text.effects.is_empty());
+        assert_eq!(text.blend, BlendMode::Normal);
+        assert_eq!(
+            p.compositions[0].layers[0].audio.as_ref().unwrap().role,
+            "voice"
+        );
+        assert_eq!(p.render_targets[0].codec, "h264");
+    }
+
+    #[test]
+    fn 凍結した_v3_の同じ時刻のマーカーは_v4_でずれて_他は動かない() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/doc/v3/stage1.json");
+        let p = load(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        let times: Vec<_> = p.compositions[0].markers.iter().map(|m| m.time).collect();
+        assert_eq!(times[0], RationalTime::seconds(1));
+        assert_eq!(times[1], RationalTime::new(1001, 1000).unwrap());
+        assert_eq!(times[2], RationalTime::seconds(5));
+    }
+
+    #[test]
+    fn 凍結した_v4_のプロジェクトのデータは_v3_から上げたプロジェクトのデータと同じ() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let read = |v: &str| load(&std::fs::read_to_string(dir.join(v)).unwrap()).unwrap();
+        assert_eq!(read("v3/stage1.json"), read("v4/stage1.json"));
+    }
+
+    #[test]
+    fn v1_と_v2_のフィクスチャは同じプロジェクトのデータになる() {
+        let mut v1 = fixture(1);
+        let v2 = fixture(2);
+        // v2 のフィクスチャは v1 にキーフレームと拡大を足したものなので、その 2 つを除いて同じ。
+        let text = &mut v1.compositions[0].layers[1];
+        text.transform.position = v2.compositions[0].layers[1].transform.position.clone();
+        text.transform.scale = v2.compositions[0].layers[1].transform.scale.clone();
+        text.opacity = v2.compositions[0].layers[1].opacity.clone();
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn 今のバージョンの_json_は往復で変わらない() {
+        let p = fixture(2);
+        let s = serde_json::to_string_pretty(&p).unwrap();
+        let back = load(&s).unwrap();
+        assert_eq!(p, back);
+        assert_eq!(s, serde_json::to_string_pretty(&back).unwrap());
+    }
+
+    #[test]
+    fn 新しすぎるバージョンは拒否する() {
         let v = serde_json::json!({"schema_version": SCHEMA_VERSION + 1});
         assert!(matches!(migrate(v), Err(MmError::Unsupported(_))));
     }
 
     #[test]
-    fn 版_0_は_panic_せず断る() {
+    fn バージョン_0_は_panic_せず拒否する() {
         let json =
             r#"{"schema_version": 0, "assets": [], "compositions": [], "render_targets": []}"#;
         assert!(matches!(load(json), Err(MmError::Unsupported(_))));
     }
 
     #[test]
-    fn u32_に収まらない版は_1_に丸めず断る() {
+    fn u32_に収まらないバージョンは_1_に丸めず拒否する() {
         let v = serde_json::json!({"schema_version": (1u64 << 32) + 1});
         assert!(matches!(migrate(v), Err(MmError::InvalidArgument(_))));
     }
 
     fn doc_with_duration(num: i64) -> String {
         format!(
-            r#"{{"schema_version": 2, "assets": [], "render_targets": [],
+            r#"{{"schema_version": 3, "assets": [], "render_targets": [],
               "compositions": [{{"id": "c", "width": 16, "height": 9,
                 "fps": {{"num": 30, "den": 1}}, "duration": {{"num": {num}, "den": 1}},
                 "layers": []}}]}}"#
@@ -170,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn 長さが負のコンポジションは読み込みで断る() {
+    fn 長さが負のコンポジションは読み込みで拒否する() {
         assert!(load(&doc_with_duration(1)).is_ok());
         assert!(matches!(
             load(&doc_with_duration(-1)),
@@ -179,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn fps_が_0_の文書は読み込みで断る() {
+    fn fps_が_0_のプロジェクトのデータは読み込みで拒否する() {
         let json = doc_with_duration(1).replace(r#""num": 30, "den": 1"#, r#""num": 30, "den": 0"#);
         assert!(load(&json).is_err());
     }

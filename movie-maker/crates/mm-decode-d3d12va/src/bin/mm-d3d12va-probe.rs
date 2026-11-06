@@ -1,0 +1,44 @@
+//! 素材の先頭の数フレームを d3d12va でデコードできるかを、別プロセスで確かめる。
+//!
+//! NVIDIA の d3d12va は一部の素材（NVENC で作った 4K の HEVC など）のデコードでドライバーが内部エラーになり、
+//! プロセスの D3D12 のデバイスが全部消える（同じアダプターの別のデバイスも）。レンダラーのデバイスを守るため、
+//! 開く前にこのプロセスで試す。使い方: `mm-d3d12va-probe <素材> --luid <アダプターの LUID>`。
+//! デコードできれば終了コード 0、できなければ理由を標準エラーに出して 1。
+//! エラーを返さずデバイスだけが消える失敗もあるので、最後に GPU の完了を待ってデバイスの消失を確かめる。
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use mm_decode_api::Decoder;
+use mm_decode_d3d12va::{required_features, D3d12vaDecoder, PROBE_FRAMES};
+use mm_decode_hw::adapter::dx12_request_for_luid;
+use mm_gpu::GpuContext;
+
+fn run() -> Result<(), String> {
+    let mut args = std::env::args().skip(1);
+    let path = PathBuf::from(args.next().ok_or("素材のパスが要る")?);
+    let (flag, luid) = (args.next(), args.next());
+    if flag.as_deref() != Some("--luid") {
+        return Err("--luid <LUID> が要る".into());
+    }
+    let luid: u64 = luid.and_then(|v| v.parse().ok()).ok_or("LUID は整数")?;
+    let request = dx12_request_for_luid(luid, required_features()).map_err(|e| e.to_string())?;
+    let ctx = GpuContext::with(&request).map_err(|e| e.to_string())?;
+    let mut dec = D3d12vaDecoder::open(&path, &ctx).map_err(|e| e.to_string())?;
+    for _ in 0..PROBE_FRAMES {
+        if dec.next_frame().map_err(|e| e.to_string())?.is_none() {
+            break;
+        }
+    }
+    dec.finish().map_err(|e| e.to_string())
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}

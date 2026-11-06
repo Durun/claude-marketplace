@@ -1,4 +1,4 @@
-//! パラメータのスキーマと評価済みの値。UI の編集欄と MCP の引数はこのスキーマから作る。
+//! パラメータのスキーマと評価済みの値。UI の入力フィールドと MCP の引数はこのスキーマから作る。
 
 use std::collections::BTreeMap;
 
@@ -43,6 +43,7 @@ impl ParamType {
 /// 評価済みのパラメータの値（時刻 t での値）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ParamValue {
     Number(f64),
     Vec2([f64; 2]),
@@ -140,7 +141,7 @@ impl ParamSpec {
     }
 }
 
-/// 動画オブジェクトの種類が公開するパラメータの一覧。順序は UI に出す順。
+/// ノードの種類が公開するパラメータの一覧。順序は UI に出す順。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ParamSchema {
     pub params: Vec<ParamSpec>,
@@ -183,7 +184,7 @@ impl ParamSchema {
     }
 }
 
-/// 評価済みのパラメータの組。名前順で持ち、同じ中身なら同じ順に並ぶ（キャッシュのキーに使う）。
+/// 評価済みのパラメータの組。名前順で持ち、同じ内容なら同じ順に並ぶ（キャッシュのキーに使う）。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Params(pub BTreeMap<String, ParamValue>);
@@ -250,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn 型違いは断る() {
+    fn 型違いは拒否する() {
         let mut p = Params::new();
         p.set("opacity", ParamValue::Text("x".into()));
         assert!(schema().validate(&p).is_err());

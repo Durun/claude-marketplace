@@ -1,0 +1,2 @@
+# テストが凍結したファイル（JSON Schema、versions/ の JSON、フィクスチャ）とバイトで比べるため、取り出しの改行を LF に固定する。
+* text=auto eol=lf

@@ -1,4 +1,4 @@
-//! wgpu の Device と Queue を持つ文脈。headless（面なし）で作り、アダプターを 1 回選んで全実装で共有する。
+//! wgpu の Device と Queue を持つコンテキスト。headless（サーフェスなし）で作り、アダプターを 1 回選んで全実装で共有する。
 
 use std::any::Any;
 use std::sync::{Arc, Mutex};
@@ -6,16 +6,18 @@ use std::sync::{Arc, Mutex};
 use mm_decode_api::GpuContextRef;
 use mm_types::{GpuAdapterId, MmError, Result};
 
-/// 中間のテクスチャの形式。口の約束（`Rgba16Float`、premultiplied、線形）のとおり。
+/// 中間のテクスチャの形式。インターフェースの契約（`Rgba16Float`、premultiplied、線形）のとおり。
 pub const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
-/// 文脈の作り方。`mm-runtime` が設定から 1 回決める。
+/// コンテキストの作り方。`mm-runtime` が設定から 1 回決める。
 #[derive(Debug, Clone)]
 pub struct GpuRequest {
     /// 使うアダプター。`None` なら高性能のアダプター。
     pub adapter: Option<GpuAdapterId>,
-    /// あれば有効にする機能。無いアダプターでは落とさずに外す。
+    /// あれば有効にする機能。無いアダプターでは失敗させずに外す。
     pub optional_features: wgpu::Features,
+    /// 選べるバックエンド。D3D12 の資源を FFmpeg や CUDA と共有するデコーダーは D3D12 だけにする。
+    pub backends: wgpu::Backends,
 }
 
 impl Default for GpuRequest {
@@ -24,11 +26,12 @@ impl Default for GpuRequest {
         Self {
             adapter: None,
             optional_features: wgpu::Features::TIMESTAMP_QUERY,
+            backends: wgpu::Backends::all(),
         }
     }
 }
 
-/// GPU の文脈。描画器、デコーダー、GpuHelper が共有する。
+/// GPU のコンテキスト。レンダラー、デコーダー、GpuHelper が共有する。
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -36,8 +39,10 @@ pub struct GpuContext {
     pub adapter: GpuAdapterId,
     /// タイムスタンプのクエリが使えるか。
     pub timestamps: bool,
-    /// 作るときに求められた任意の機能。`shared` が後の求めと照合する。
+    /// 作るときに求められた任意の機能。後の求めがこの部分集合なら `shared` は同じコンテキストを返す。
     requested_features: wgpu::Features,
+    /// 選んだアダプターのバックエンド。`shared` が後の求めのバックエンドの範囲と照合する。
+    backend: wgpu::Backend,
 }
 
 impl GpuContext {
@@ -51,10 +56,11 @@ impl GpuContext {
         pollster::block_on(Self::new_async(request))
     }
 
-    /// プロセスで 1 つの文脈を共有する。Device の生成と破棄が並行すると Windows の
-    /// ドライバが終了時に落ちることがあるため、テストと書き出しはこちらを使う。
+    /// プロセスで 1 つのコンテキストを共有する。Device の生成と破棄が並行すると Windows の
+    /// ドライバが終了時にクラッシュすることがあるため、テストと書き出しはこちらを使う。
     /// 2 回目以降は、作ってあるものが `request` に合えばそれを返し、合わなければ `Err`。
-    /// アダプターは指定があるときだけ、機能の希望は常に照合する。
+    /// アダプターは指定があるときだけ照合し、バックエンドは選んだアダプターが求めの範囲にあるか、
+    /// 機能は作ったときの希望が求めを含むかで照合する。
     pub fn shared(request: &GpuRequest) -> Result<Arc<Self>> {
         static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
         let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());
@@ -76,7 +82,18 @@ impl GpuContext {
                 )));
             }
         }
-        if self.requested_features != request.optional_features {
+        // 選んだアダプターのバックエンドが求めの範囲にあれば足りる（全バックエンドで作った後の
+        // D3D12 だけの求めが、アダプターが D3D12 なら満たされる）。
+        if !request
+            .backends
+            .contains(wgpu::Backends::from(self.backend))
+        {
+            return Err(MmError::InvalidArgument(format!(
+                "共有の GPU はバックエンド {:?} のアダプターで、{:?} を求められた",
+                self.backend, request.backends
+            )));
+        }
+        if !self.requested_features.contains(request.optional_features) {
             return Err(MmError::InvalidArgument(format!(
                 "共有の GPU は機能 {:?} で作ってあり、{:?} を求められた",
                 self.requested_features, request.optional_features
@@ -85,14 +102,22 @@ impl GpuContext {
         Ok(())
     }
 
+    /// 選んだアダプターのバックエンド。
+    pub fn backend(&self) -> wgpu::Backend {
+        self.backend
+    }
+
     /// 選んだアダプターの名前。Program に出す。
     pub fn adapter_name(&self) -> &str {
         &self.adapter.name
     }
 
     async fn new_async(request: &GpuRequest) -> Result<Arc<Self>> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = request.backends;
+        let instance = wgpu::Instance::new(desc);
         let adapter = pick_adapter(&instance, request.adapter.as_ref()).await?;
+        let adapter_info = adapter.get_info();
         let required_features = request.optional_features & adapter.features();
         let timestamps = required_features.contains(wgpu::Features::TIMESTAMP_QUERY);
         let (device, queue) = adapter
@@ -110,6 +135,7 @@ impl GpuContext {
             adapter: adapter_id(&adapter),
             timestamps,
             requested_features: request.optional_features,
+            backend: adapter_info.backend,
         }))
     }
 }

@@ -1,4 +1,4 @@
-//! 見本の実装が自分の契約テストを通すことを確かめる。
+//! モックの実装が自分の契約テストを通すことを確かめる。
 
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ use mm_testkit::text::{SampleRasterizer, SampleShaper};
 use mm_types::Size;
 
 #[test]
-fn 見本のデコーダーは契約を通す() {
+fn モックのデコーダーは契約を通す() {
     let media = SampleMedia::default();
     mm_testkit::decode::contract(
         || {
@@ -27,7 +27,7 @@ fn 見本のデコーダーは契約を通す() {
 }
 
 #[test]
-fn 見本のエンコーダーは契約を通す() {
+fn モックのエンコーダーは契約を通す() {
     mm_testkit::decode::encoder_contract(
         || Arc::new(SampleEncoderFactory),
         mm_testkit::SAMPLE_ID,
@@ -36,27 +36,27 @@ fn 見本のエンコーダーは契約を通す() {
 }
 
 #[test]
-fn 見本のミキサーは契約を通す() {
+fn モックのミキサーは契約を通す() {
     mm_testkit::audio::contract(|| Arc::new(SampleMixerFactory));
 }
 
 #[test]
-fn 見本の文字は契約を通す() {
+fn モックの文字は契約を通す() {
     mm_testkit::text::contract(|| Arc::new(SampleShaper), || Arc::new(SampleRasterizer));
 }
 
 #[test]
-fn 見本の色は契約を通す() {
+fn モックの色は契約を通す() {
     mm_testkit::color::contract(|| Arc::new(SampleColor));
 }
 
 #[test]
-fn 見本のホストは契約を通す() {
+fn モックのホストは契約を通す() {
     mm_testkit::host::contract(|| Arc::new(SampleLauncher), &HostFixture::sample());
 }
 
 #[test]
-fn 見本のキャッシュは契約を通す() {
+fn モックのキャッシュは契約を通す() {
     mm_testkit::cache::contract(|limit| Arc::new(MemoryCache::new(Some(limit))), 1024);
 }
 
@@ -66,7 +66,7 @@ fn 付属ファイルの契約を通す() {
 }
 
 #[test]
-fn 見本の種類は契約を通す() {
+fn モックの種類は契約を通す() {
     mm_testkit::node::contract(|| Arc::new(SolidKind), &NodeFixture::default());
     mm_testkit::node::contract(|| Arc::new(TextKind), &NodeFixture::default());
     mm_testkit::node::contract(
@@ -80,7 +80,7 @@ fn 見本の種類は契約を通す() {
 }
 
 #[test]
-fn 見本の描画器は契約を通す() {
+fn モックのレンダラーは契約を通す() {
     let media = SampleMedia::default();
     let out = std::env::temp_dir().join("mm_testkit_render_contract.json");
     let (project, comp, _) = vertical_project(&media, &out);

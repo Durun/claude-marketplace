@@ -1,11 +1,11 @@
-//! 全クレートで共通のエラー。口のクレートはこの型を返し、実装の詳細は文字列に畳む。
+//! 全クレートで共通のエラー。API クレートはこの型を返し、実装の詳細は文字列にする。
 
 use std::time::Duration;
 
 /// movie-maker のエラー。
 #[derive(Debug, thiserror::Error)]
 pub enum MmError {
-    /// 引数が約束に合わない。呼ぶ側の誤り。
+    /// 引数が契約に合わない。呼ぶ側の誤り。
     #[error("引数が不正: {0}")]
     InvalidArgument(String),
     /// 名前や ID で引いたものが無い。
@@ -17,11 +17,11 @@ pub enum MmError {
     /// 期限までに終わらなかった。
     #[error("{what} が {limit:?} で時間切れ")]
     Timeout { what: String, limit: Duration },
-    /// 入力のファイルやストリームが壊れている。落ちずにこれを返す。
+    /// 入力のファイルやストリームが壊れている。クラッシュせずにこれを返す。
     #[error("入力が壊れている: {0}")]
     Corrupt(String),
-    /// 別プロセスのホストが落ちた、または応答しない。
-    #[error("ホストが落ちた: {0}")]
+    /// 別プロセスのホストがクラッシュした、または応答しない。
+    #[error("ホストがクラッシュした: {0}")]
     HostCrashed(String),
     /// ファイルの読み書き。
     #[error(transparent)]

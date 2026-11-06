@@ -1,6 +1,6 @@
 [package]
 name = "movie-maker"
-description = "Tauri の窓に wgpu の面と WebView2 を並べる試作（段階 0 の難所）"
+description = "Tauri のウィンドウに wgpu のサーフェスと WebView2 を並べる試作（段階 0 の難所）"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

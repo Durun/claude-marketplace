@@ -1,0 +1,39 @@
+[package]
+name = "mm-decode-hw"
+description = "GPU でデコードするデコーダー（d3d12va、cuvid）の共通実装。D3D12 のアダプターの頼み方、YUV から線形 RGB への変換、サーフェスの保持、描画パス、キューの待ちとフェンス"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# 既定で切る。FFmpeg の開発ファイルと libclang が無い環境でもワークスペースをビルドできるようにする。
+hw = [
+  "dep:ffmpeg-next",
+  "dep:wgpu",
+  "dep:windows",
+  "dep:mm-gpu",
+  "dep:pollster",
+  "mm-decode-ffmpeg-core/ffmpeg",
+]
+# 検査のためだけのフック（待ちを外した対照など）。本番の組み立てでは入れない。
+test-hooks = []
+# 2 つのデコーダーの統合テストが共有する補助（`testing` モジュール）。`hw` は入れない
+# （dev-dependencies から入れても、FFmpeg の無い設定のビルドに FFmpeg を引き込まないため）。
+testing = ["dep:mm-node-api"]
+
+[dependencies]
+mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+mm-decode-api = { workspace = true }
+mm-decode-ffmpeg-core = { workspace = true }
+mm-gpu = { workspace = true, optional = true }
+mm-node-api = { workspace = true, optional = true }
+tracing = { workspace = true }
+ffmpeg-next = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+windows = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common"] }
+
+[lints]
+workspace = true
