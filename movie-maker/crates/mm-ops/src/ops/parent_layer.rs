@@ -6,6 +6,7 @@ use mm_doc::Project;
 use mm_types::{LayerId, Result};
 
 use crate::op::{Apply, Op};
+use crate::ops::add_ancestors;
 use crate::touches::Touches;
 
 /// 親を `parent` にする。`None` で外す。循環と無い親は `Project::validate` が断る。
@@ -18,10 +19,13 @@ pub struct ParentLayer {
 }
 
 impl Apply for ParentLayer {
-    fn touches(&self, _: &Project) -> Result<Touches> {
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        let (comp, layer) = project.layer(&self.layer)?;
         let mut t = Touches::of(&self.layer);
-        if let Some(p) = &self.parent {
-            t.add(p);
+        // 循環の判定は新しい親の祖先の鎖を読むので、鎖の全部を持つ。前の親は逆命令が戻す先。
+        for parent in self.parent.iter().chain(layer.parent.iter()) {
+            t.add(parent);
+            add_ancestors(comp, parent, &mut t);
         }
         Ok(t)
     }

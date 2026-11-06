@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use mm_doc::{Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
+use mm_doc::{Composition, Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_types::{CompositionId, Id, LayerId, RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, Precompose};
+use crate::ops::{composition_referrers, invalid, Precompose};
 use crate::touches::Touches;
 
 /// 入れ子のレイヤー `layer` を外し、中のコンポジションのレイヤーをその位置に戻し、中のコンポジションを消す。
@@ -37,6 +37,7 @@ impl Apply for Unprecompose {
         let nested_id = self.nested_comp(project)?;
         let mut t = Touches::of(&comp_id);
         t.add(&nested_id).add(&self.layer);
+        composition_referrers(project, &nested_id, &mut t);
         for l in &project.composition(&nested_id)?.layers {
             t.add(&l.id);
         }
@@ -78,6 +79,23 @@ fn check_shape(
 ) -> Result<()> {
     let comp = project.composition(comp_id)?;
     let nested = project.composition(nested_id)?;
+    check_layer_shape(comp, nested_id, index)?;
+    let same_shape = nested.width == comp.width
+        && nested.height == comp.height
+        && nested.fps == comp.fps
+        && nested.duration == comp.duration
+        && nested.markers.is_empty()
+        && !nested.layers.is_empty();
+    if !same_shape {
+        return Err(invalid(format!(
+            "コンポジション {nested_id} は precompose の形でない"
+        )));
+    }
+    check_unreferenced(project, &comp.layers[index].id, nested_id)
+}
+
+/// 入れ子のレイヤーが `precompose` の既定の時間と重ね方か。
+fn check_layer_shape(comp: &Composition, nested_id: &CompositionId, index: usize) -> Result<()> {
     let layer = &comp.layers[index];
     let expected = Layer::new(
         layer.id.as_str(),
@@ -95,29 +113,34 @@ fn check_shape(
             layer.id
         )));
     }
-    let same_shape = nested.width == comp.width
-        && nested.height == comp.height
-        && nested.fps == comp.fps
-        && nested.duration == comp.duration
-        && nested.markers.is_empty()
-        && !nested.layers.is_empty();
-    if !same_shape {
-        return Err(invalid(format!(
-            "コンポジション {nested_id} は precompose の形でない"
-        )));
-    }
-    let others = project
+    Ok(())
+}
+
+/// 中のコンポジションを `layer` のほかが参照していないか（効果・カット・トランジション・レンダーターゲットも見る）。
+fn check_unreferenced(project: &Project, layer: &LayerId, nested_id: &CompositionId) -> Result<()> {
+    let is_nested_ref = |n: &Node| {
+        n.descendants().any(|n| {
+            n.kind == NESTED_KIND && n.text_param(NESTED_PARAM) == Some(nested_id.as_str())
+        })
+    };
+    let by_layer = project
         .compositions
         .iter()
         .flat_map(|c| c.layers.iter())
-        .filter(|l| l.id != layer.id)
-        .flat_map(|l| l.source.descendants())
-        .any(|n| n.kind == NESTED_KIND && n.text_param(NESTED_PARAM) == Some(nested_id.as_str()));
+        .filter(|l| &l.id != layer)
+        .flat_map(Layer::nodes)
+        .any(is_nested_ref);
+    let by_cut = project
+        .sequences
+        .iter()
+        .flat_map(|s| s.cuts.iter())
+        .flat_map(mm_doc::Cut::nodes)
+        .any(is_nested_ref);
     let targeted = project
         .render_targets
         .iter()
         .any(|t| t.composition == *nested_id);
-    if others || targeted {
+    if by_layer || by_cut || targeted {
         return Err(invalid(format!(
             "コンポジション {nested_id} はほかから参照されている"
         )));

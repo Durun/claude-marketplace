@@ -1,12 +1,17 @@
 //! 命令の種と、文書の ID への当てはめ。性質テストが使う。
 
-use super::common::{cut, layer, marker, quarters, secs};
-use mm_doc::{
-    Composition, CutId, Ease, Interpolation, Keyframe, OriginRelation, Project, Sequence,
-};
+mod build;
+mod params;
+
+use crate::common::{marker, quarters, secs};
+use build::{build_cut, build_layer, cut_id, layer_id, pick};
+use mm_doc::{Ease, Interpolation, Keyframe, OriginRelation, Project, Sequence};
 use mm_ops::*;
-use mm_types::{Id, LayerId, ParamValue};
+use mm_types::{Id, ParamValue};
+use params::{param_ref, value_for};
 use proptest::prelude::*;
+
+pub use build::{arb_cut, arb_id, arb_layer, CutSpec, LayerSpec};
 
 /// 命令の種。文書を見ずに作り、[`materialize`] で文書の ID に当てはめる。
 #[derive(Debug, Clone)]
@@ -16,32 +21,38 @@ pub enum Spec {
         at: u8,
         start: i64,
         len: i64,
-        refs: u8,
+        layer: LayerSpec,
     },
     RemoveLayer(u8),
     MoveLayer(u8, u8),
     SetParam(u8, u8, i64),
-    RemoveParam(u8),
-    SetKeyframe(u8, i64, i64),
-    RemoveKeyframe(u8, u8),
-    SetEase(u8, u8, u8),
+    RemoveParam(u8, u8),
+    SetKeyframe(u8, u8, i64, i64),
+    RemoveKeyframe(u8, u8, u8),
+    SetEase(u8, u8, u8, u8),
     ParentLayer(u8, u8),
     AttachLayer(u8, u8),
     LockLayer(u8, bool),
-    Precompose(u8),
-    AddComposition(u8),
+    Precompose {
+        comp: u8,
+        mask: u8,
+        new_comp: String,
+        new_layer: String,
+    },
+    Unprecompose(u8),
+    AddComposition(String, Vec<LayerSpec>),
     RemoveComposition(u8),
-    AddSequence(u8),
-    ForkSequence(bool),
-    RemoveSequence,
-    AddRenderTarget(u8),
-    RemoveRenderTarget,
-    AddMarker(i64),
+    AddSequence(String, Vec<CutSpec>, Option<u8>),
+    ForkSequence(u8, bool, String, String),
+    RemoveSequence(u8),
+    AddRenderTarget(u8, String),
+    RemoveRenderTarget(u8),
+    AddMarker(u8, String, i64),
     RemoveMarker(u8),
-    Insert(u8, i64, i64),
-    Overwrite(u8, i64, i64),
+    Insert(u8, u8, CutSpec),
+    Overwrite(u8, CutSpec),
     Extract(u8),
-    Split(u8, i64),
+    Split(u8, i64, String),
     Join(u8),
     Ripple(u8, bool, i64),
     Roll(u8, i64),
@@ -50,160 +61,152 @@ pub enum Spec {
     Disable(u8, bool),
 }
 
-pub fn arb_spec() -> impl Strategy<Value = Spec> {
-    let small = 0u8..8;
-    let t = -6i64..6;
+/// 文書を編集する命令の種（レイヤー、パラメータ、コンポジション）。
+fn arb_doc_spec() -> impl Strategy<Value = Spec> {
+    let s = || any::<u8>();
+    let t = || -6i64..6;
     prop_oneof![
-        (
-            small.clone(),
-            small.clone(),
-            0i64..5,
-            1i64..5,
-            small.clone()
-        )
-            .prop_map(|(comp, at, start, len, refs)| Spec::AddLayer {
+        (s(), s(), 0i64..5, 1i64..5, arb_layer()).prop_map(|(comp, at, start, len, layer)| {
+            Spec::AddLayer {
                 comp,
                 at,
                 start,
                 len,
-                refs
-            }),
-        small.clone().prop_map(Spec::RemoveLayer),
-        (small.clone(), small.clone()).prop_map(|(a, b)| Spec::MoveLayer(a, b)),
-        (small.clone(), small.clone(), t.clone()).prop_map(|(a, b, c)| Spec::SetParam(a, b, c)),
-        small.clone().prop_map(Spec::RemoveParam),
-        (small.clone(), 0i64..4, t.clone()).prop_map(|(a, b, c)| Spec::SetKeyframe(a, b, c)),
-        (small.clone(), small.clone()).prop_map(|(a, b)| Spec::RemoveKeyframe(a, b)),
-        (small.clone(), small.clone(), small.clone()).prop_map(|(a, b, c)| Spec::SetEase(a, b, c)),
-        (small.clone(), small.clone()).prop_map(|(a, b)| Spec::ParentLayer(a, b)),
-        (small.clone(), small.clone()).prop_map(|(a, b)| Spec::AttachLayer(a, b)),
-        (small.clone(), any::<bool>()).prop_map(|(a, b)| Spec::LockLayer(a, b)),
-        (1u8..8).prop_map(Spec::Precompose),
-        small.clone().prop_map(Spec::AddComposition),
-        small.clone().prop_map(Spec::RemoveComposition),
-        small.clone().prop_map(Spec::AddSequence),
-        any::<bool>().prop_map(Spec::ForkSequence),
-        Just(Spec::RemoveSequence),
-        small.clone().prop_map(Spec::AddRenderTarget),
-        Just(Spec::RemoveRenderTarget),
-        (0i64..10).prop_map(Spec::AddMarker),
-        small.clone().prop_map(Spec::RemoveMarker),
-        (small.clone(), 0i64..4, 1i64..4).prop_map(|(a, b, c)| Spec::Insert(a, b, c)),
-        (small.clone(), 0i64..4, 1i64..4).prop_map(|(a, b, c)| Spec::Overwrite(a, b, c)),
-        small.clone().prop_map(Spec::Extract),
-        (small.clone(), 1i64..12).prop_map(|(a, b)| Spec::Split(a, b)),
-        small.clone().prop_map(Spec::Join),
-        (small.clone(), any::<bool>(), t.clone()).prop_map(|(a, b, c)| Spec::Ripple(a, b, c)),
-        (small.clone(), t.clone()).prop_map(|(a, b)| Spec::Roll(a, b)),
-        (small.clone(), t.clone()).prop_map(|(a, b)| Spec::Slip(a, b)),
-        (small.clone(), t.clone()).prop_map(|(a, b)| Spec::Slide(a, b)),
-        (small, any::<bool>()).prop_map(|(a, b)| Spec::Disable(a, b)),
+                layer,
+            }
+        }),
+        s().prop_map(Spec::RemoveLayer),
+        (s(), s()).prop_map(|(a, b)| Spec::MoveLayer(a, b)),
+        (s(), s(), t()).prop_map(|(a, b, c)| Spec::SetParam(a, b, c)),
+        (s(), s()).prop_map(|(a, b)| Spec::RemoveParam(a, b)),
+        (s(), s(), 0i64..4, t()).prop_map(|(a, b, c, d)| Spec::SetKeyframe(a, b, c, d)),
+        (s(), s(), s()).prop_map(|(a, b, c)| Spec::RemoveKeyframe(a, b, c)),
+        (s(), s(), s(), s()).prop_map(|(a, b, c, d)| Spec::SetEase(a, b, c, d)),
+        (s(), s()).prop_map(|(a, b)| Spec::ParentLayer(a, b)),
+        (s(), s()).prop_map(|(a, b)| Spec::AttachLayer(a, b)),
+        (s(), any::<bool>()).prop_map(|(a, b)| Spec::LockLayer(a, b)),
+        (s(), 1u8..16, arb_id(), arb_id()).prop_map(|(comp, mask, new_comp, new_layer)| {
+            Spec::Precompose {
+                comp,
+                mask,
+                new_comp,
+                new_layer,
+            }
+        }),
+        s().prop_map(Spec::Unprecompose),
+        (arb_id(), prop::collection::vec(arb_layer(), 0..3))
+            .prop_map(|(id, layers)| Spec::AddComposition(id, layers)),
+        s().prop_map(Spec::RemoveComposition),
+        (s(), arb_id()).prop_map(|(a, b)| Spec::AddRenderTarget(a, b)),
+        s().prop_map(Spec::RemoveRenderTarget),
+        (s(), arb_id(), 0i64..10).prop_map(|(a, b, c)| Spec::AddMarker(a, b, c)),
+        s().prop_map(Spec::RemoveMarker),
     ]
 }
 
-fn pick<T>(items: &[T], i: u8) -> Option<&T> {
-    if items.is_empty() {
-        None
-    } else {
-        items.get(usize::from(i) % items.len())
-    }
+/// sequence とカットを編集する命令の種。
+fn arb_seq_spec() -> impl Strategy<Value = Spec> {
+    let s = || any::<u8>();
+    let t = || -6i64..6;
+    prop_oneof![
+        (
+            arb_id(),
+            prop::collection::vec(arb_cut(), 0..3),
+            prop::option::weighted(0.3, s())
+        )
+            .prop_map(|(id, cuts, origin)| Spec::AddSequence(id, cuts, origin)),
+        (s(), any::<bool>(), arb_id(), arb_id())
+            .prop_map(|(a, b, c, d)| Spec::ForkSequence(a, b, c, d)),
+        s().prop_map(Spec::RemoveSequence),
+        (s(), s(), arb_cut()).prop_map(|(a, b, c)| Spec::Insert(a, b, c)),
+        (s(), arb_cut()).prop_map(|(a, b)| Spec::Overwrite(a, b)),
+        s().prop_map(Spec::Extract),
+        (s(), 1i64..12, arb_id()).prop_map(|(a, b, c)| Spec::Split(a, b, c)),
+        s().prop_map(Spec::Join),
+        (s(), any::<bool>(), t()).prop_map(|(a, b, c)| Spec::Ripple(a, b, c)),
+        (s(), t()).prop_map(|(a, b)| Spec::Roll(a, b)),
+        (s(), t()).prop_map(|(a, b)| Spec::Slip(a, b)),
+        (s(), t()).prop_map(|(a, b)| Spec::Slide(a, b)),
+        (s(), any::<bool>()).prop_map(|(a, b)| Spec::Disable(a, b)),
+    ]
 }
 
-fn layer_id(p: &Project, i: u8) -> Option<LayerId> {
-    let layers: Vec<_> = p
-        .compositions
-        .iter()
-        .flat_map(|c| c.layers.iter())
-        .map(|l| l.id.clone())
-        .collect();
-    pick(&layers, i).cloned()
-}
-
-fn cut_id(p: &Project, i: u8) -> Option<CutId> {
-    let cuts: Vec<_> = p
-        .sequences
-        .iter()
-        .flat_map(|s| s.cuts.iter())
-        .map(|c| c.id.clone())
-        .collect();
-    pick(&cuts, i).cloned()
-}
-
-const PARAM_PATHS: [&str; 5] = [
-    "opacity",
-    "transform.position",
-    "transform.anchor",
-    "source.color",
-    "source.extra",
-];
-
-fn param_ref(p: &Project, i: u8, path: u8) -> Option<ParamRef> {
-    let path = PARAM_PATHS[usize::from(path) % PARAM_PATHS.len()];
-    if path.starts_with("source") && i % 2 == 1 {
-        return Some(ParamRef::cut(&cut_id(p, i)?, path));
-    }
-    Some(ParamRef::layer(&layer_id(p, i)?, path))
-}
-
-fn value_for(path: &str, v: i64) -> ParamValue {
-    if path.contains("position") || path.contains("anchor") {
-        ParamValue::Vec2([v as f64, 0.0])
-    } else {
-        ParamValue::Number(v as f64)
-    }
+pub fn arb_spec() -> impl Strategy<Value = Spec> {
+    prop_oneof![3 => arb_doc_spec(), 2 => arb_seq_spec()]
 }
 
 /// 種を今の文書の ID に当てはめる。当てはめる相手が無ければ `None`。
 pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
-    use Spec as S;
-    let op: Op = match spec {
-        S::AddLayer {
+    layer_op(spec, p)
+        .or_else(|| param_op(spec, p))
+        .or_else(|| comp_op(spec, p))
+        .or_else(|| cut_op(spec, p))
+}
+
+fn layer_op(spec: &Spec, p: &Project) -> Option<Op> {
+    Some(match spec {
+        Spec::AddLayer {
             comp,
             at,
             start,
             len,
-            refs,
+            layer,
         } => {
             let c = pick(&p.compositions, *comp)?;
-            let mut l = layer("lx", *start, 0, *len);
-            if refs & 1 == 1 {
-                l.parent = layer_id(p, *at);
-            }
-            if refs & 2 == 2 {
-                l.attach_to = cut_id(p, *at);
-            }
             AddLayer {
                 composition: c.id.clone(),
-                layer: l,
+                layer: build_layer(layer, p, *start, *len),
                 index: Some(usize::from(*at) % (c.layers.len() + 1)),
             }
             .into()
         }
-        S::RemoveLayer(i) => RemoveLayer {
+        Spec::RemoveLayer(i) => RemoveLayer {
             layer: layer_id(p, *i)?,
         }
         .into(),
-        S::MoveLayer(i, j) => MoveLayer {
+        Spec::MoveLayer(i, j) => MoveLayer {
             layer: layer_id(p, *i)?,
             index: usize::from(*j) % 3,
         }
         .into(),
-        S::SetParam(i, path, v) => {
-            let target = param_ref(p, *i, *path)?;
-            let value = value_for(&target.path, *v);
+        Spec::ParentLayer(i, j) => ParentLayer {
+            layer: layer_id(p, *i)?,
+            parent: if *j % 4 == 0 { None } else { layer_id(p, *j) },
+        }
+        .into(),
+        Spec::AttachLayer(i, j) => AttachLayer {
+            layer: layer_id(p, *i)?,
+            cut: if *j % 4 == 0 { None } else { cut_id(p, *j) },
+        }
+        .into(),
+        Spec::LockLayer(i, lock) => LockLayer {
+            layer: layer_id(p, *i)?,
+            lock: *lock,
+        }
+        .into(),
+        _ => return None,
+    })
+}
+
+fn param_op(spec: &Spec, p: &Project) -> Option<Op> {
+    Some(match spec {
+        Spec::SetParam(i, path, v) => {
+            let target = param_ref(p, *i, *path, false)?;
+            let value = value_for(p, &target.path, *v);
+            let keyframes = (*v % 3 == 0).then(Vec::new);
             SetParam {
                 target,
                 value,
-                keyframes: (*v % 3 == 0).then(Vec::new),
+                keyframes,
             }
             .into()
         }
-        S::RemoveParam(i) => RemoveParam {
-            target: param_ref(p, *i, 3 + (*i % 2))?,
+        Spec::RemoveParam(i, path) => RemoveParam {
+            target: param_ref(p, *i, *path, false)?,
         }
         .into(),
-        S::SetKeyframe(i, t, v) => SetKeyframe {
-            target: param_ref(p, *i, 0)?,
+        Spec::SetKeyframe(i, path, t, v) => SetKeyframe {
+            target: param_ref(p, *i, *path, true)?,
             keyframe: Keyframe::new(
                 secs(*t),
                 ParamValue::Number(*v as f64),
@@ -211,13 +214,13 @@ pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
             ),
         }
         .into(),
-        S::RemoveKeyframe(i, t) => RemoveKeyframe {
-            target: param_ref(p, *i, 0)?,
+        Spec::RemoveKeyframe(i, path, t) => RemoveKeyframe {
+            target: param_ref(p, *i, *path, true)?,
             time: secs(i64::from(*t % 3)),
         }
         .into(),
-        S::SetEase(i, t, e) => SetEase {
-            target: param_ref(p, *i, 0)?,
+        Spec::SetEase(i, path, t, e) => SetEase {
+            target: param_ref(p, *i, *path, true)?,
             time: secs(i64::from(*t % 3)),
             interpolation: [
                 Interpolation::Hold,
@@ -228,132 +231,212 @@ pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
             bezier: None,
         }
         .into(),
-        S::ParentLayer(i, j) => ParentLayer {
-            layer: layer_id(p, *i)?,
-            parent: if *j == 0 { None } else { layer_id(p, *j) },
+        _ => return None,
+    })
+}
+
+fn precompose(comp: u8, mask: u8, new_comp: &str, new_layer: &str, p: &Project) -> Option<Op> {
+    let c = pick(&p.compositions, comp)?;
+    let layers = c
+        .layers
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| mask & (1 << (i % 8)) != 0)
+        .map(|(_, l)| l.id.clone())
+        .collect();
+    Some(
+        Precompose {
+            composition: c.id.clone(),
+            layers,
+            new_composition: Id::new(new_comp),
+            new_layer: Id::new(new_layer),
         }
         .into(),
-        S::AttachLayer(i, j) => AttachLayer {
-            layer: layer_id(p, *i)?,
-            cut: if *j == 0 { None } else { cut_id(p, *j) },
-        }
-        .into(),
-        S::LockLayer(i, lock) => LockLayer {
-            layer: layer_id(p, *i)?,
-            lock: *lock,
-        }
-        .into(),
-        S::Precompose(mask) => {
-            let c = p.compositions.first()?;
-            let layers: Vec<_> = c
-                .layers
+    )
+}
+
+fn comp_op(spec: &Spec, p: &Project) -> Option<Op> {
+    if let Some(op) = misc_op(spec, p) {
+        return Some(op);
+    }
+    Some(match spec {
+        Spec::Precompose {
+            comp,
+            mask,
+            new_comp,
+            new_layer,
+        } => return precompose(*comp, *mask, new_comp, new_layer, p),
+        Spec::Unprecompose(i) => {
+            let nested: Vec<_> = p
+                .compositions
                 .iter()
-                .enumerate()
-                .filter(|(i, _)| mask & (1 << i) != 0)
-                .map(|(_, l)| l.id.clone())
+                .flat_map(|c| c.layers.iter())
+                .filter(|l| l.source.kind == mm_doc::NESTED_KIND)
+                .map(|l| l.id.clone())
                 .collect();
-            Precompose {
-                composition: c.id.clone(),
-                layers,
-                new_composition: Id::new("cx"),
-                new_layer: Id::new("lx"),
+            Unprecompose {
+                layer: pick(&nested, *i)?.clone(),
             }
             .into()
         }
-        S::AddComposition(i) => {
-            let mut layers = Vec::new();
-            if i % 2 == 1 {
-                layers.push(layer("ly", 0, 0, 2));
-            }
-            AddComposition {
-                composition: Composition {
-                    id: Id::new("cx"),
-                    ..super::common::comp("cx", layers, Vec::new())
-                },
-            }
-            .into()
+        Spec::AddComposition(id, layers) => {
+            let mut c = crate::common::comp(id, Vec::new(), Vec::new());
+            c.layers = layers.iter().map(|l| build_layer(l, p, 0, 2)).collect();
+            AddComposition { composition: c }.into()
         }
-        S::RemoveComposition(i) => RemoveComposition {
+        Spec::RemoveComposition(i) => RemoveComposition {
             composition: pick(&p.compositions, *i)?.id.clone(),
         }
         .into(),
-        S::AddSequence(i) => AddSequence {
+        _ => return None,
+    })
+}
+
+fn fork_sequence(p: &Project, i: u8, fork: bool, new_seq: &str, prefix: &str) -> Option<Op> {
+    let s = pick(&p.sequences, i)?;
+    let relation = if fork {
+        OriginRelation::Fork
+    } else {
+        OriginRelation::Reference
+    };
+    Some(
+        ForkSequence {
+            sequence: s.id.clone(),
+            new_sequence: Id::new(new_seq),
+            relation,
+            cuts: (0..s.cuts.len())
+                .map(|k| Id::new(format!("{prefix}{k}")))
+                .collect(),
+        }
+        .into(),
+    )
+}
+
+fn sequence_op(spec: &Spec, p: &Project) -> Option<Op> {
+    Some(match spec {
+        Spec::AddSequence(id, cuts, origin) => AddSequence {
             sequence: Sequence {
-                id: Id::new("sx"),
-                cuts: (0..(*i % 3))
-                    .map(|k| cut(&format!("kx{k}"), 0, 2, (1, 1)))
-                    .collect(),
-                origin: None,
+                id: Id::new(id),
+                cuts: cuts.iter().map(|c| build_cut(c, p)).collect(),
+                origin: origin.and_then(|i| pick(&p.sequences, i)).map(|s| {
+                    mm_doc::SequenceOrigin {
+                        sequence: s.id.clone(),
+                        relation: OriginRelation::Reference,
+                    }
+                }),
             },
         }
         .into(),
-        S::ForkSequence(fork) => {
-            let s = p.sequences.first()?;
-            ForkSequence {
+        Spec::ForkSequence(i, fork, new_seq, prefix) => {
+            return fork_sequence(p, *i, *fork, new_seq, prefix)
+        }
+        Spec::RemoveSequence(i) => RemoveSequence {
+            sequence: pick(&p.sequences, *i)?.id.clone(),
+        }
+        .into(),
+        Spec::Insert(si, i, cut) => {
+            let s = pick(&p.sequences, *si)?;
+            Insert {
                 sequence: s.id.clone(),
-                new_sequence: Id::new("sx"),
-                relation: if *fork {
-                    OriginRelation::Fork
-                } else {
-                    OriginRelation::Reference
-                },
-                cuts: (0..s.cuts.len())
-                    .map(|k| Id::new(format!("kx{k}")))
-                    .collect(),
+                index: usize::from(*i) % (s.cuts.len() + 1),
+                cut: build_cut(cut, p),
             }
             .into()
         }
-        S::RemoveSequence => RemoveSequence {
-            sequence: p.sequences.first()?.id.clone(),
+        Spec::Overwrite(i, cut) => Overwrite {
+            cut: cut_id(p, *i)?,
+            replacement: build_cut(cut, p),
         }
         .into(),
-        S::AddRenderTarget(i) => AddRenderTarget {
+        _ => return None,
+    })
+}
+
+/// 時間を動かすカットの命令（ripple、roll、slip、slide、disable）。
+fn timing_op(spec: &Spec, p: &Project) -> Option<Op> {
+    Some(match spec {
+        Spec::Ripple(i, out, by) => Ripple {
+            cut: cut_id(p, *i)?,
+            edge: if *out { Edge::Out } else { Edge::In },
+            by: quarters(*by),
+        }
+        .into(),
+        Spec::Roll(i, by) => Roll {
+            cut: cut_id(p, *i)?,
+            by: quarters(*by),
+        }
+        .into(),
+        Spec::Slip(i, by) => Slip {
+            cut: cut_id(p, *i)?,
+            by: quarters(*by),
+        }
+        .into(),
+        Spec::Slide(i, by) => Slide {
+            cut: cut_id(p, *i)?,
+            by: quarters(*by),
+        }
+        .into(),
+        Spec::Disable(i, d) => Disable {
+            cut: cut_id(p, *i)?,
+            disabled: *d,
+        }
+        .into(),
+        _ => return None,
+    })
+}
+
+/// レンダーターゲットとマーカーの命令。
+fn misc_op(spec: &Spec, p: &Project) -> Option<Op> {
+    Some(match spec {
+        Spec::AddRenderTarget(i, id) => AddRenderTarget {
             target: mm_doc::RenderTarget {
-                id: Id::new("rx"),
+                id: Id::new(id),
                 composition: pick(&p.compositions, *i)?.id.clone(),
                 ..p.render_targets.first()?.clone()
             },
         }
         .into(),
-        S::RemoveRenderTarget => RemoveRenderTarget {
-            target: p.render_targets.first()?.id.clone(),
+        Spec::RemoveRenderTarget(i) => RemoveRenderTarget {
+            target: pick(&p.render_targets, *i)?.id.clone(),
         }
         .into(),
-        S::AddMarker(t) => AddMarker {
-            composition: p.compositions.first()?.id.clone(),
-            marker: marker("mx", *t),
+        Spec::AddMarker(i, id, t) => AddMarker {
+            composition: pick(&p.compositions, *i)?.id.clone(),
+            marker: marker(id, *t),
         }
         .into(),
-        S::RemoveMarker(i) => RemoveMarker {
-            marker: pick(&p.compositions.first()?.markers, *i)?.id.clone(),
-        }
-        .into(),
-        S::Insert(i, in_s, len) => {
-            let s = p.sequences.first()?;
-            Insert {
-                sequence: s.id.clone(),
-                index: usize::from(*i) % (s.cuts.len() + 1),
-                cut: cut("kx", *in_s, *in_s + *len, (1, 1)),
+        Spec::RemoveMarker(i) => {
+            let markers: Vec<_> = p
+                .compositions
+                .iter()
+                .flat_map(|c| c.markers.iter())
+                .collect();
+            RemoveMarker {
+                marker: pick(&markers, *i)?.id.clone(),
             }
             .into()
         }
-        S::Overwrite(i, in_s, len) => Overwrite {
+        _ => return None,
+    })
+}
+
+fn cut_op(spec: &Spec, p: &Project) -> Option<Op> {
+    if let Some(op) = sequence_op(spec, p).or_else(|| timing_op(spec, p)) {
+        return Some(op);
+    }
+    Some(match spec {
+        Spec::Extract(i) => Extract {
             cut: cut_id(p, *i)?,
-            replacement: cut("kx", *in_s, *in_s + *len, (1, 1)),
         }
         .into(),
-        S::Extract(i) => Extract {
-            cut: cut_id(p, *i)?,
-        }
-        .into(),
-        S::Split(i, at) => Split {
+        Spec::Split(i, at, id) => Split {
             cut: cut_id(p, *i)?,
             at: quarters(*at),
-            new_cut: Id::new("kx"),
+            new_cut: Id::new(id),
         }
         .into(),
-        S::Join(i) => {
-            let s = p.sequences.first()?;
+        Spec::Join(i) => {
+            let s = pick(&p.sequences, *i)?;
             let first = pick(&s.cuts, *i)?;
             let index = s.cuts.iter().position(|c| c.id == first.id)?;
             Join {
@@ -362,32 +445,6 @@ pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
             }
             .into()
         }
-        S::Ripple(i, out, by) => Ripple {
-            cut: cut_id(p, *i)?,
-            edge: if *out { Edge::Out } else { Edge::In },
-            by: quarters(*by),
-        }
-        .into(),
-        S::Roll(i, by) => Roll {
-            cut: cut_id(p, *i)?,
-            by: quarters(*by),
-        }
-        .into(),
-        S::Slip(i, by) => Slip {
-            cut: cut_id(p, *i)?,
-            by: quarters(*by),
-        }
-        .into(),
-        S::Slide(i, by) => Slide {
-            cut: cut_id(p, *i)?,
-            by: quarters(*by),
-        }
-        .into(),
-        S::Disable(i, d) => Disable {
-            cut: cut_id(p, *i)?,
-            disabled: *d,
-        }
-        .into(),
-    };
-    Some(op)
+        _ => return None,
+    })
 }

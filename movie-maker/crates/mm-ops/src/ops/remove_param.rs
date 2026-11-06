@@ -18,8 +18,8 @@ pub struct RemoveParam {
 }
 
 impl Apply for RemoveParam {
-    fn touches(&self, _: &Project) -> Result<Touches> {
-        self.target.touches()
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        self.target.touches_in(project, None)
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {

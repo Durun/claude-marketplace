@@ -113,6 +113,11 @@ impl Layer {
         }
     }
 
+    /// レイヤーが持つ動画オブジェクトの根（source と効果）。
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        std::iter::once(&self.source).chain(self.effects.iter().map(|e| &e.node))
+    }
+
     /// 素材の時間軸での範囲 `[in, out)`。
     pub fn source_range(&self) -> Result<TimeRange> {
         TimeRange::new(self.in_point, self.out_point)

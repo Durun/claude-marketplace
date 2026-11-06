@@ -9,8 +9,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use mm_doc::{CutId, Layer, Param, Project};
-use mm_types::{LayerId, MmError, Result};
+use mm_types::{LayerId, MmError, ParamValue, Result};
 
+use crate::ops::add_nesting_reach;
 use crate::touches::Touches;
 
 const TRANSFORM: &str = "transform";
@@ -61,6 +62,33 @@ impl ParamRef {
                 "ParamRef は layer か cut のどちらか 1 つ".into(),
             )),
         }
+    }
+
+    /// 触る所。種類のパラメータ（`source.*`、`effects.*`）は入れ子の参照先を変えうるので、
+    /// 持ち主を含むコンポジションか sequence と、新しい値 `value` が指す先とその先の全部も含める。
+    pub(crate) fn touches_in(
+        &self,
+        project: &Project,
+        value: Option<&ParamValue>,
+    ) -> Result<Touches> {
+        let mut t = self.touches()?;
+        let is_node_param = self.path.starts_with("source.") || self.path.starts_with("effects.");
+        if !is_node_param {
+            return Ok(t);
+        }
+        match (&self.layer, &self.cut) {
+            (Some(l), _) => {
+                t.add(&project.layer_index(l)?.0);
+            }
+            (_, Some(c)) => {
+                t.add(&project.cut_index(c)?.0);
+            }
+            _ => {}
+        }
+        if let Some(target) = value.and_then(ParamValue::as_text) {
+            add_nesting_reach(project, &Touches::from_iter([target.to_owned()]), &mut t);
+        }
+        Ok(t)
     }
 
     /// 指す場所を文書の中から引く。

@@ -6,7 +6,7 @@ use mm_doc::{Cut, Project, SequenceId};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
-use crate::ops::{cut_refs, cuts_around_gap, invalid, Extract};
+use crate::ops::{cut_refs_reach, cuts_around_gap, invalid, Extract};
 use crate::touches::Touches;
 
 /// `sequence` の `index`（頭から数えた位置）に `cut` を差し込む。後ろのカットはずれる。
@@ -22,7 +22,7 @@ impl Apply for Insert {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.sequence);
         t.add(&self.cut.id);
-        cut_refs(&self.cut, &mut t);
+        cut_refs_reach(project, &self.cut, &mut t);
         cuts_around_gap(project.sequence(&self.sequence)?, self.index, &mut t);
         Ok(t)
     }

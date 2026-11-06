@@ -6,7 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::{RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::negate;
+use crate::ops::{cut_referrers, negate};
 use crate::touches::Touches;
 
 /// 動かす端。
@@ -30,8 +30,14 @@ pub struct Ripple {
 }
 
 impl Apply for Ripple {
-    fn touches(&self, _: &Project) -> Result<Touches> {
-        Ok(Touches::of(&self.cut))
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        let (seq_id, index) = project.cut_index(&self.cut)?;
+        let mut t = Touches::of(&self.cut);
+        // 後ろのカットは配置でずれるので、接続したレイヤーも動く。
+        for cut in &project.sequence(&seq_id)?.cuts[index..] {
+            cut_referrers(project, &cut.id, &mut t);
+        }
+        Ok(t)
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {

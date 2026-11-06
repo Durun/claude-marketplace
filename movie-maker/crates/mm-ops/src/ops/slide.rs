@@ -6,8 +6,8 @@ use mm_doc::{CutId, Project};
 use mm_types::{RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::negate;
 use crate::ops::roll::{next_cut, prev_cut};
+use crate::ops::{cut_referrers, negate};
 use crate::touches::Touches;
 
 /// `cut` を並びの時間軸で `by` だけ動かす。前のカットの尻が伸び（縮み）、次のカットの頭が縮む（伸びる）ので、
@@ -22,8 +22,11 @@ pub struct Slide {
 impl Apply for Slide {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.cut);
-        t.add(&prev_cut(project, &self.cut)?)
-            .add(&next_cut(project, &self.cut)?);
+        let (prev, next) = (prev_cut(project, &self.cut)?, next_cut(project, &self.cut)?);
+        t.add(&prev).add(&next);
+        for id in [&self.cut, &prev, &next] {
+            cut_referrers(project, id, &mut t);
+        }
         Ok(t)
     }
 

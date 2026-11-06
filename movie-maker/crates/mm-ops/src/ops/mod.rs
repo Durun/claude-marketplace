@@ -204,6 +204,69 @@ pub(crate) fn cut_referrers(project: &Project, id: &CutId, t: &mut Touches) {
     }
 }
 
+/// 入れ子の先（コンポジションと sequence）のうち、`id` の中身が直接指す ID。
+fn direct_nesting(project: &Project, id: &str) -> Touches {
+    let mut refs = Touches::new();
+    if let Some(comp) = project.compositions.iter().find(|c| c.id.as_str() == id) {
+        comp.layers
+            .iter()
+            .flat_map(Layer::nodes)
+            .for_each(|n| node_refs(n, &mut refs));
+    }
+    if let Some(seq) = project.sequences.iter().find(|s| s.id.as_str() == id) {
+        seq.cuts
+            .iter()
+            .flat_map(Cut::nodes)
+            .for_each(|n| node_refs(n, &mut refs));
+    }
+    refs
+}
+
+/// `roots` の ID から入れ子でたどれる先の全部を `t` に足す（`roots` も含む）。
+///
+/// 入れ子の循環を作る命令は、参照先の先を読んでいる。先の中身を書き換える命令の `touches` と
+/// 重なるよう、読む側が先の全部を持つ。
+pub(crate) fn add_nesting_reach(project: &Project, roots: &Touches, t: &mut Touches) {
+    let mut seen = std::collections::HashSet::new();
+    let mut queue: Vec<String> = roots.iter().map(str::to_owned).collect();
+    while let Some(id) = queue.pop() {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        t.add_str(&id);
+        queue.extend(direct_nesting(project, &id).iter().map(str::to_owned));
+    }
+}
+
+/// レイヤーが参照する所と、その入れ子の先の全部。
+pub(crate) fn layer_refs_reach(project: &Project, layer: &Layer, t: &mut Touches) {
+    layer_refs(layer, t);
+    let mut roots = Touches::new();
+    layer.nodes().for_each(|n| node_refs(n, &mut roots));
+    add_nesting_reach(project, &roots, t);
+}
+
+/// カットが参照する所と、その入れ子の先の全部。
+pub(crate) fn cut_refs_reach(project: &Project, cut: &Cut, t: &mut Touches) {
+    cut_refs(cut, t);
+    let mut roots = Touches::new();
+    cut.nodes().for_each(|n| node_refs(n, &mut roots));
+    add_nesting_reach(project, &roots, t);
+}
+
+/// `id` から親をたどった祖先のレイヤー（`id` 自身を除く）。
+pub(crate) fn add_ancestors(comp: &Composition, id: &LayerId, t: &mut Touches) {
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = comp.layer(id).ok().and_then(|l| l.parent.as_ref());
+    while let Some(p) = cur {
+        if !seen.insert(p.as_str()) {
+            break;
+        }
+        t.add(p);
+        cur = comp.layer(p).ok().and_then(|l| l.parent.as_ref());
+    }
+}
+
 /// レイヤーを親かトラックマットにするレイヤー。
 pub(crate) fn layer_referrers(comp: &Composition, id: &LayerId, t: &mut Touches) {
     for layer in comp.layers.iter().filter(|l| {

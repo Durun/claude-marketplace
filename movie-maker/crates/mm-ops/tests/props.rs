@@ -1,10 +1,14 @@
 //! 性質テスト。
 //! - 当ててから逆命令を当てると元の文書に戻る（`normalize` した JSON で比べる）。
 //! - 当てた後は `Project::validate` が通る。
-//! - `touches` が重ならない 2 つの命令は、順を入れ替えても同じ文書になる。
+//! - `touches` が重ならない 2 つの命令は、別々に 1 つずつ当てると順を入れ替えても同じ結果になる。
 //! - トランザクションの途中で失敗すると文書は変わらない。
+//!
+//! ケース数は環境変数 `MM_PROP_CASES`（既定 400）で変える。
 
 mod common;
+mod order;
+mod perf;
 mod spec;
 
 use common::{canon, project, secs, solid};
@@ -14,9 +18,16 @@ use mm_types::{Id, RationalTime};
 use proptest::prelude::*;
 use spec::{arb_spec, materialize};
 
+fn cases() -> u32 {
+    std::env::var("MM_PROP_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(400)
+}
+
 /// 見本の文書に、種で作った命令を何個か当てて散らした文書。
 fn arb_project() -> impl Strategy<Value = Project> {
-    prop::collection::vec(arb_spec(), 0..6).prop_map(|specs| {
+    prop::collection::vec(arb_spec(), 0..14).prop_map(|specs| {
         let mut p = project();
         let human = OpContext::human();
         for spec in specs {
@@ -29,15 +40,8 @@ fn arb_project() -> impl Strategy<Value = Project> {
     })
 }
 
-fn outcome(p: &Project, ops: &[Op]) -> Result<serde_json::Value, String> {
-    let mut p = p.clone();
-    apply_transaction(&mut p, ops, &OpContext::human())
-        .map(|_| canon(&p))
-        .map_err(|e| e.to_string())
-}
-
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(400))]
+    #![proptest_config(ProptestConfig::with_cases(cases()))]
 
     #[test]
     fn 逆命令で元に戻り_当てた後は_validate_が通る(p in arb_project(), spec in arb_spec()) {
@@ -56,17 +60,18 @@ proptest! {
     }
 
     #[test]
-    fn touches_が重ならない命令は順を入れ替えても同じ(p in arb_project(), a in arb_spec(), b in arb_spec()) {
-        let (Some(a), Some(b)) = (materialize(&a, &p), materialize(&b, &p)) else { return Ok(()) };
-        let (Ok(ta), Ok(tb)) = (a.touches(&p), b.touches(&p)) else { return Ok(()) };
-        if ta.overlaps(&tb) {
-            return Ok(());
-        }
-        let ab = outcome(&p, &[a.clone(), b.clone()]);
-        let ba = outcome(&p, &[b.clone(), a.clone()]);
-        prop_assert_eq!(ab.is_ok(), ba.is_ok(), "a={:?} b={:?} ab={:?} ba={:?}", a, b, ab, ba);
-        if let (Ok(x), Ok(y)) = (ab, ba) {
-            prop_assert_eq!(x, y, "a={:?} b={:?}", a, b);
+    fn touches_が重ならない命令は別々に当てて順を入れ替えても同じ(
+        p in arb_project(),
+        specs in prop::collection::vec(arb_spec(), 2..10),
+    ) {
+        // 同じ文書に当たる命令の全部の組を調べる。1 組ずつだと、順で変わる組に当たりにくい。
+        let ops: Vec<Op> = specs.iter().filter_map(|s| materialize(s, &p)).collect();
+        for (i, a) in ops.iter().enumerate() {
+            for b in &ops[i + 1..] {
+                if let Some(why) = order::order_violation(&p, a, b) {
+                    return Err(TestCaseError::fail(why));
+                }
+            }
         }
     }
 
@@ -95,30 +100,101 @@ proptest! {
     }
 }
 
+/// 文書が持つ参照と付属の種類。生成器が通した経路の確認に使う。
+fn features(p: &Project) -> Vec<&'static str> {
+    use mm_doc::{NESTED_KIND, SEQUENCE_KIND};
+    let layers: Vec<_> = p
+        .compositions
+        .iter()
+        .flat_map(|c| c.layers.iter())
+        .collect();
+    let cuts: Vec<_> = p.sequences.iter().flat_map(|s| s.cuts.iter()).collect();
+    let has_kind = |kind: &str| {
+        let in_layers = layers.iter().flat_map(|l| l.nodes());
+        let in_cuts = cuts.iter().flat_map(|c| c.nodes());
+        in_layers
+            .chain(in_cuts)
+            .flat_map(|n| n.descendants())
+            .any(|n| n.kind == kind)
+    };
+    let checks = [
+        ("入れ子", has_kind(NESTED_KIND)),
+        ("sequence の種類", has_kind(SEQUENCE_KIND)),
+        ("効果", layers.iter().any(|l| !l.effects.is_empty())),
+        ("マスク", layers.iter().any(|l| !l.masks.is_empty())),
+        ("音", layers.iter().any(|l| l.audio.is_some())),
+        (
+            "タイムリマップ",
+            layers.iter().any(|l| l.time_remap.is_some()),
+        ),
+        (
+            "トランジション",
+            cuts.iter().any(|c| c.transition_in.is_some()),
+        ),
+        ("カットの origin", cuts.iter().any(|c| c.origin.is_some())),
+        ("親", layers.iter().any(|l| l.parent.is_some())),
+        (
+            "トラックマット",
+            layers.iter().any(|l| l.track_matte.is_some()),
+        ),
+        ("接続", layers.iter().any(|l| l.attach_to.is_some())),
+    ];
+    checks
+        .into_iter()
+        .filter(|(_, hit)| *hit)
+        .map(|(n, _)| n)
+        .collect()
+}
+
 #[test]
-fn 種はどの命令も見本の文書に当たる() {
-    // 各種類の命令が少なくとも 1 回は当たることを確かめ、性質テストが空回りしていないことを守る。
+fn 生成器は全部の命令と参照の種類を通す() {
+    // 空回りしていないことを守る。どの命令も、各種の参照や付属も、少なくとも 1 回は文書に出る。
     use proptest::strategy::ValueTree;
     use proptest::test_runner::TestRunner;
     let mut runner = TestRunner::deterministic();
     let mut hit = std::collections::BTreeSet::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut precompose_elsewhere = false;
     let human = OpContext::human();
     for _ in 0..3000 {
+        let p = arb_project().new_tree(&mut runner).unwrap().current();
+        seen.extend(features(&p));
         let spec = arb_spec().new_tree(&mut runner).unwrap().current();
-        let p = project();
         let Some(op) = materialize(&spec, &p) else {
             continue;
         };
         let mut doc = p.clone();
         if op.apply(&mut doc, &human).is_ok() {
             hit.insert(op.name());
+            if let Op::Precompose(pre) = &op {
+                precompose_elsewhere |= pre.composition != p.compositions[0].id;
+            }
         }
     }
-    let missing: Vec<_> = Op::NAMES
-        .iter()
-        .filter(|n| !hit.contains(*n) && **n != "unprecompose")
-        .collect();
+    let missing: Vec<_> = Op::NAMES.iter().filter(|n| !hit.contains(*n)).collect();
     assert!(missing.is_empty(), "当たらなかった命令: {missing:?}");
+    assert!(
+        precompose_elsewhere,
+        "最初でないコンポジションの precompose が当たらない"
+    );
+    for want in [
+        "入れ子",
+        "sequence の種類",
+        "効果",
+        "マスク",
+        "音",
+        "タイムリマップ",
+        "トランジション",
+        "カットの origin",
+        "親",
+        "トラックマット",
+        "接続",
+    ] {
+        assert!(
+            seen.contains(want),
+            "文書に出ない: {want}（出た: {seen:?}）"
+        );
+    }
 }
 
 #[test]

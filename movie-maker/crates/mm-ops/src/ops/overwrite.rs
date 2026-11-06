@@ -6,7 +6,7 @@ use mm_doc::{Cut, CutId, Project};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
-use crate::ops::{cut_referrers, cut_refs, cuts_beside, invalid};
+use crate::ops::{cut_referrers, cut_refs_reach, cuts_beside, invalid};
 use crate::touches::Touches;
 
 /// `cut` を `replacement` で置き換える。並びの数と位置は変わらない。
@@ -21,8 +21,9 @@ impl Apply for Overwrite {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let (seq_id, index) = project.cut_index(&self.cut)?;
         let mut t = Touches::of(&self.cut);
+        t.add(&seq_id);
         t.add(&self.replacement.id);
-        cut_refs(&self.replacement, &mut t);
+        cut_refs_reach(project, &self.replacement, &mut t);
         cuts_beside(project.sequence(&seq_id)?, index, &mut t);
         cut_referrers(project, &self.cut, &mut t);
         Ok(t)
