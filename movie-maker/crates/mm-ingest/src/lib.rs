@@ -10,6 +10,7 @@
 
 mod hash;
 mod layout;
+mod lut;
 mod preview;
 mod probe;
 pub mod sidecar;
@@ -27,6 +28,7 @@ use mm_types::{AssetId, Id, MmError, Result};
 
 pub use hash::hash_file;
 pub use layout::CacheLayout;
+pub use lut::is_cube;
 pub use preview::{PreviewEncoder, PREVIEW_HEIGHT};
 pub use probe::{parse_probe, probe, AudioInfo, MediaProbe, VideoInfo};
 pub use tools::{Tools, ENV_FFMPEG, ENV_FFPROBE};
@@ -110,6 +112,9 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
     // 素材の絶対パスには個人のフォルダー名が入るので、スパンにはハッシュの先頭だけを載せる。
     let span = info_span!("ingest.file", hash = tracing::field::Empty);
     let _guard = span.enter();
+    if lut::is_cube(&abs) {
+        return ingest_lut(&abs, started);
+    }
     let ((hash, hash_elapsed), (media, probe_elapsed)) = hash_and_probe(opts, &abs)?;
     let short: String = hash.chars().take(8).collect();
     span.record("hash", short.as_str());
@@ -123,6 +128,22 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
         transcript_segments: transcript_segments(&opts.cache, &hash),
         hash_elapsed,
         probe_elapsed,
+        total_elapsed: started.elapsed(),
+    })
+}
+
+/// `.cube` の LUT を取り込む。ハッシュと検査だけで、プレビュー動画・サムネイル・波形は作らない。
+fn ingest_lut(abs: &Path, started: Instant) -> Result<IngestReport> {
+    let (hash, hash_elapsed) = timed(|| hash_file(abs))?;
+    lut::validate_cube(&std::fs::read_to_string(abs)?)?;
+    Ok(IngestReport {
+        asset: lut::build_lut_asset(abs, &hash),
+        preview: None,
+        thumbnail: None,
+        waveform: None,
+        transcript_segments: None,
+        hash_elapsed,
+        probe_elapsed: Duration::ZERO,
         total_elapsed: started.elapsed(),
     })
 }
