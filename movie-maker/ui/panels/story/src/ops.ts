@@ -2,13 +2,24 @@ import type { Op, Rating, StoryWord, Topic, WordRange } from "@mm/sdk";
 import { newId } from "./model.ts";
 
 /**
- * 単語を消し、その範囲の音を sequence のカットから抜いて詰める。`range` は選んだ単語の範囲（`story_range`）。
+ * 単語を消し、その範囲の音を `sequence` のカットから抜いて詰める。`range` は選んだ単語の範囲（`story_range`）。
  * 既に表示だけ消した単語も、範囲に入っていれば一緒に抜く。
  */
-export const cutOp = (asset: string, selected: readonly StoryWord[], range: WordRange): Op | null =>
+export const cutOp = (
+  asset: string,
+  sequence: string,
+  selected: readonly StoryWord[],
+  range: WordRange,
+): Op | null =>
   selected.length === 0
     ? null
-    : { op: "cutWords", asset, words: selected.map((w) => w.id), ranges: [{ in: range.start, out: range.end }] };
+    : {
+        op: "cutWords",
+        asset,
+        sequence,
+        words: selected.map((w) => w.id),
+        ranges: [{ in: range.start, out: range.end }],
+      };
 
 /** 単語を表示と検索からだけ消す（カットは変えない）。選んだ単語がみな消してあれば戻す。どちらも対象が無ければ `null`。 */
 export const hideOp = (asset: string, selected: readonly StoryWord[]): Op | null => {

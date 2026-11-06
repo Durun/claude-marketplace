@@ -22,20 +22,20 @@ pub struct SourceRange {
     pub out_point: RationalTime,
 }
 
-/// `sequence` の `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。
+/// シーケンスの `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CutSplice {
-    pub sequence: SequenceId,
     pub index: usize,
     pub count: usize,
     pub cuts: Vec<Cut>,
 }
 
-/// 素材 `asset` の単語 `words` を消し（`restore` で戻し）、素材の時刻の範囲 `ranges` を、その素材を映す全部のシーケンスの
-/// カットから抜いて後ろを詰める。範囲がカットの中ほどなら割って間を抜き、カットの端なら端を詰め、カットを覆えばカットを抜く。
-/// どのカットにも掛からない範囲は単語を消すだけ。後ろの半分のカットの ID は `<元の ID>-<番号>` の空いているもの。
-/// 1 つの操作なので、1 回の取り消しで単語とカットが戻る。
+/// 素材 `asset` の単語 `words` を消し（`restore` で戻し）、素材の時刻の範囲 `ranges` を、シーケンス `sequence` のうち
+/// その素材を映すカットから抜いて後ろを詰める。範囲がカットの中ほどなら割って間を抜き、カットの端なら端を詰め、
+/// カットを覆えばカットを抜く。どのカットにも掛からない範囲は単語を消すだけ。後ろの半分のカットの ID は `<元の ID>-<番号>`
+/// の空いているもの。消した印は素材に付くので全部のシーケンスの文字起こしに効くが、カットは `sequence` だけを切る
+/// （本編から分けたショートを削らない）。1 つの操作なので、1 回の取り消しで単語とカットが戻る。
 ///
 /// `splices` を渡すと `ranges` の代わりにその置き換えを順に行う（逆操作の形。人は省く）。
 /// 既にその状態の単語は変えずに通し、逆操作には変えた単語だけを載せる。何も変わらない操作は拒否する。
@@ -43,6 +43,7 @@ pub struct CutSplice {
 #[serde(deny_unknown_fields)]
 pub struct CutWords {
     pub asset: AssetId,
+    pub sequence: SequenceId,
     #[serde(default)]
     pub words: Vec<WordId>,
     #[serde(default)]
@@ -54,8 +55,9 @@ pub struct CutWords {
 }
 
 impl CutWords {
-    /// 行うカットの置き換えの列。同じシーケンスの中は後ろのカットから並べ、前の置き換えが後の位置をずらさない。
+    /// 行うカットの置き換えの列。後ろのカットから並べ、前の置き換えが後の位置をずらさない。
     fn plan(&self, project: &Project) -> Result<Vec<CutSplice>> {
+        let seq = project.sequence(&self.sequence)?;
         if !self.splices.is_empty() {
             if !self.ranges.is_empty() {
                 return Err(invalid("ranges と splices は一緒に渡さない"));
@@ -68,19 +70,16 @@ impl CutWords {
         let ranges = normalize(&self.ranges)?;
         let mut taken: HashSet<String> = all_cut_ids(project);
         let mut out = Vec::new();
-        for seq in &project.sequences {
-            for (index, cut) in seq.cuts.iter().enumerate().rev() {
-                if !shows_asset(cut, &self.asset) {
-                    continue;
-                }
-                if let Some(cuts) = pieces(cut, &ranges, &mut taken) {
-                    out.push(CutSplice {
-                        sequence: seq.id.clone(),
-                        index,
-                        count: 1,
-                        cuts,
-                    });
-                }
+        for (index, cut) in seq.cuts.iter().enumerate().rev() {
+            if !shows_asset(cut, &self.asset) {
+                continue;
+            }
+            if let Some(cuts) = pieces(cut, &ranges, &mut taken) {
+                out.push(CutSplice {
+                    index,
+                    count: 1,
+                    cuts,
+                });
             }
         }
         Ok(out)
@@ -108,11 +107,12 @@ impl CutWords {
 impl Apply for CutWords {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.asset);
+        t.add(&self.sequence);
         for w in &self.words {
             t.add(w);
         }
-        if let Ok(splices) = self.plan(project) {
-            splice_touches(project, &splices, &mut t);
+        if let (Ok(splices), Ok(seq)) = (self.plan(project), project.sequence(&self.sequence)) {
+            splice_touches(project, seq.cuts.clone(), &splices, &mut t);
         }
         Ok(t)
     }
@@ -121,7 +121,7 @@ impl Apply for CutWords {
         let splices = self.plan(project)?;
         let mut inverse = Vec::with_capacity(splices.len());
         for s in &splices {
-            inverse.push(apply_splice(project, s)?);
+            inverse.push(apply_splice(project, &self.sequence, s)?);
         }
         inverse.reverse();
         let words = self.set_words(project)?;
@@ -130,6 +130,7 @@ impl Apply for CutWords {
         }
         Ok(CutWords {
             asset: self.asset.clone(),
+            sequence: self.sequence.clone(),
             words,
             ranges: Vec::new(),
             restore: !self.restore,
@@ -232,14 +233,14 @@ fn all_cut_ids(project: &Project) -> HashSet<String> {
 }
 
 /// 置き換えを 1 つ行い、それを打ち消す置き換えを返す。
-fn apply_splice(project: &mut Project, s: &CutSplice) -> Result<CutSplice> {
-    let seq = project.sequence_mut(&s.sequence)?;
+fn apply_splice(project: &mut Project, sequence: &SequenceId, s: &CutSplice) -> Result<CutSplice> {
+    let seq = project.sequence_mut(sequence)?;
     let len = seq.cuts.len();
     let end = s.index.checked_add(s.count).filter(|e| *e <= len);
     let Some(end) = end else {
         return Err(invalid(format!(
-            "カットの範囲 {}+{} がシーケンス {} の {len} 個の中に無い",
-            s.index, s.count, s.sequence
+            "カットの範囲 {}+{} がシーケンス {sequence} の {len} 個の中に無い",
+            s.index, s.count
         )));
     };
     let removed = seq
@@ -247,28 +248,16 @@ fn apply_splice(project: &mut Project, s: &CutSplice) -> Result<CutSplice> {
         .splice(s.index..end, s.cuts.iter().cloned())
         .collect();
     Ok(CutSplice {
-        sequence: s.sequence.clone(),
         index: s.index,
         count: s.cuts.len(),
         cuts: removed,
     })
 }
 
-/// 置き換えが読む・書く所。シーケンスの写しに順に当て、抜くカット、足すカット、その前後、接続したレイヤーを集める。
-fn splice_touches(project: &Project, splices: &[CutSplice], t: &mut Touches) {
-    let mut copies: Vec<(SequenceId, Vec<Cut>)> = Vec::new();
+/// 置き換えが読む・書く所。シーケンスのカットの写し `cuts` に順に当て、抜くカット、足すカット、その前後、
+/// 接続したレイヤーを集める。
+fn splice_touches(project: &Project, mut cuts: Vec<Cut>, splices: &[CutSplice], t: &mut Touches) {
     for s in splices {
-        t.add(&s.sequence);
-        let pos = copies.iter().position(|(id, _)| id == &s.sequence);
-        let pos = match (pos, project.sequence(&s.sequence)) {
-            (Some(p), _) => p,
-            (None, Ok(seq)) => {
-                copies.push((seq.id.clone(), seq.cuts.clone()));
-                copies.len() - 1
-            }
-            (None, Err(_)) => continue,
-        };
-        let cuts = &mut copies[pos].1;
         let end = (s.index + s.count).min(cuts.len());
         let start = s.index.min(end);
         let around = start.checked_sub(1).into_iter().chain([end]);

@@ -64,7 +64,7 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
-| `story_overview` | なし | `{ assets: [{ id, name, duration, has_transcript }], sequences: [{ id, cuts, duration }] }` |
+| `story_overview` | なし | `{ assets: [{ id, name, duration, has_transcript }], sequences: [{ id, cuts, duration }], open_sequence }`（`open_sequence` は開いているコンポジションの sequence。無ければ `null`） |
 | `story_transcript` | `{ asset }` | `{ asset, words, topics, selections }`。`words` は時刻順の `{ id, segment, start, end, text, fixed, deleted }`（`text` は取り込んだままの文字、`fixed` は直した文字、表示は `fixed ?? text`）。`topics` と `selections` はその素材のもの（`ops.ts` の `Topic`、`Selection`） |
 | `story_range` | `{ asset, first, last }` | `{ start, end }`。単語 `first` から `last`（先後はどちらでもよい）までの時刻。`addTopic` の `in`、`out` にそのまま使う |
 | `story_search` | `{ query, limit? }` | `[{ asset, word, start, end, context }]`。`mm search` と同じ規則（単語の境をまたぐ、消した単語は外す、直した文字で探す）。語は 1 から 32 文字。`limit` の既定は 50 |

@@ -21,6 +21,8 @@ export interface StorySequence {
 export interface StoryOverview {
   assets: StoryAsset[];
   sequences: StorySequence[];
+  /** いま開いているコンポジションの sequence のレイヤーが置く sequence。Delete（`cutWords`）が切る先。 */
+  open_sequence?: string | null;
 }
 
 /** 文字起こしの 1 単語。時刻は素材の時間軸。 */

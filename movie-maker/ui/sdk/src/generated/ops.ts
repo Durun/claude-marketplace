@@ -55,13 +55,11 @@ export type Cut = {
   /** 前のカットからこのカットへのトランジション。境目をまたいで掛け、配置は変えない。 */
   "transition_in"?: Transition | null;
 };
-/** `sequence` の `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。 */
+/** シーケンスの `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。 */
 export type CutSplice = {
   "count": number;
   "cuts": Cut[];
   "index": number;
-  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
-  "sequence": string;
 };
 /** `Linear` の進み具合に掛けるイージングの型。 */
 export type Ease = "none" | "in" | "out" | "in_out";
@@ -673,6 +671,8 @@ export type CutWordsOp = {
   "op": "cutWords";
   "ranges"?: SourceRange[];
   "restore"?: boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
   "splices"?: CutSplice[];
   "words"?: string[];
 };

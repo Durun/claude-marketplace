@@ -1,18 +1,22 @@
-import { useState } from "preact/hooks";
 import type { StorySequence } from "@mm/sdk";
 import type { Tray } from "./useStory.ts";
 
 export interface ArrangeBarProps {
   tray: Tray;
   sequences: readonly StorySequence[];
+  /** 並べ先の sequence（`arrangeTarget` で決めたもの）。 */
+  target: string | null;
+  onChoose: (sequence: string) => void;
   onArrange: (sequence: string) => void;
 }
 
+/** 選んだ並べ先の sequence。選んでいないか無くなっていれば先頭。 */
+export const arrangeTarget = (chosen: string | null, sequences: readonly StorySequence[]): string | null =>
+  sequences.find((s) => s.id === chosen)?.id ?? sequences[0]?.id ?? null;
+
 /** 並べる対象にした話題の順と、並べ先の sequence。 */
-export const ArrangeBar = ({ tray, sequences, onArrange }: ArrangeBarProps) => {
-  const [chosen, setChosen] = useState<string | null>(null);
+export const ArrangeBar = ({ tray, sequences, target, onChoose, onArrange }: ArrangeBarProps) => {
   if (tray.picked.length === 0) return null;
-  const target = chosen ?? sequences[0]?.id ?? null;
   return (
     <div class="mm-story-bar" role="region" aria-label="Arrange">
       <ol class="mm-story-tray">
@@ -38,7 +42,7 @@ export const ArrangeBar = ({ tray, sequences, onArrange }: ArrangeBarProps) => {
           aria-label="Sequence"
           value={target ?? ""}
           disabled={sequences.length === 0}
-          onChange={(e) => setChosen(e.currentTarget.value)}
+          onChange={(e) => onChoose(e.currentTarget.value)}
         >
           {sequences.map((s) => (
             <option key={s.id} value={s.id}>

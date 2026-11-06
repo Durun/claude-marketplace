@@ -23,7 +23,7 @@ pub enum BinSpec {
     AddTopic(String, u8, i64, i64),
     RemoveTopic(u8),
     DeleteWords(u8, Vec<u8>, bool),
-    CutWords(u8, Vec<u8>, Vec<(i64, i64)>, bool),
+    CutWords(u8, u8, Vec<u8>, Vec<(i64, i64)>, bool),
     FixTranscript(u8, u8, Option<u8>),
     TrimLayer(u8, bool, i64),
     FitLayer(u8),
@@ -49,11 +49,12 @@ pub fn arb_bin_spec() -> impl Strategy<Value = BinSpec> {
             .prop_map(|(a, w, r)| BinSpec::DeleteWords(a, w, r)),
         (
             s(),
+            s(),
             prop::collection::vec(s(), 0..3),
             prop::collection::vec((0i64..24, 1i64..8), 0..3),
             prop::bool::weighted(0.2),
         )
-            .prop_map(|(a, w, r, b)| BinSpec::CutWords(a, w, r, b)),
+            .prop_map(|(a, q, w, r, b)| BinSpec::CutWords(a, q, w, r, b)),
         (s(), s(), prop::option::of(s())).prop_map(|(a, w, t)| BinSpec::FixTranscript(a, w, t)),
         (s(), any::<bool>(), -6i64..6).prop_map(|(l, o, b)| BinSpec::TrimLayer(l, o, b)),
         s().prop_map(BinSpec::FitLayer),
@@ -156,7 +157,8 @@ fn transcript_op(spec: &BinSpec, p: &Project) -> Option<Op> {
             restore: *restore,
         }
         .into(),
-        BinSpec::CutWords(a, words, ranges, restore) => CutWords {
+        BinSpec::CutWords(a, q, words, ranges, restore) => CutWords {
+            sequence: pick(&p.sequences, *q)?.id.clone(),
             asset: asset(*a)?,
             words: word_ids(words),
             // 話題のカット（1 秒から 4 秒）に掛かるよう、4 分の 1 秒の刻みで 0 秒から 8 秒に置く。

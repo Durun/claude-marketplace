@@ -248,6 +248,7 @@ fn 素材の時刻は_sequence_のカットの位置に変わる() {
     assert_eq!(story.timeline_time(ASSET, 20.0).unwrap(), None);
     let overview = story.overview().unwrap();
     assert_eq!(overview.sequences[0].duration, 7.0);
+    assert_eq!(overview.open_sequence.as_deref(), Some("s1"));
     assert!(overview.assets[0].has_transcript);
 }
 

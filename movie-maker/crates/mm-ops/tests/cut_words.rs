@@ -32,6 +32,7 @@ fn range(from: RationalTime, to: RationalTime) -> SourceRange {
 fn cut_words(words: &[&str], ranges: Vec<SourceRange>) -> CutWords {
     CutWords {
         asset: Id::new("a1"),
+        sequence: Id::new("s1"),
         words: words.iter().map(|w| Id::new(*w)).collect(),
         ranges,
         restore: false,
@@ -124,6 +125,20 @@ fn 割った後ろの_id_は空いている番号を取る() {
         .push(Cut::new("f1-1", Node::footage(&a1), secs(10), secs(11)));
     apply(&mut p, cut_words(&["w1"], vec![range(secs(2), secs(3))])).unwrap();
     assert_eq!(spans(&p)[5].0, "f1-2");
+}
+
+#[test]
+fn 指した_sequence_のカットだけを切り_ほかの_sequence_の同じ素材は残す() {
+    let mut p = with_footage();
+    let s2_before = p.sequence(&Id::new("s2")).unwrap().cuts.clone();
+    assert!(
+        s2_before.iter().any(|c| c.in_point < secs(2)),
+        "s2 に a1 の [0, 2) がある"
+    );
+    let applied = apply(&mut p, cut_words(&["w1"], vec![range(secs(1), secs(2))])).unwrap();
+    assert_eq!(p.sequence(&Id::new("s2")).unwrap().cuts, s2_before);
+    assert_eq!(spans(&p)[4], span("f1", secs(2), secs(4)));
+    assert!(!applied.touches.iter().any(|t| t == "s2" || t == "kf"));
 }
 
 #[test]

@@ -11,11 +11,12 @@
 - sequence の長さへの追従: `fitLayer { layer }`。sequence を置いたレイヤーのアウト点を sequence の長さ（有効なカットの和）に合わせ、コンポジションの長さは「これまでレイヤーの終わりと同じだった」か「新しい終わりが超える」ときだけ全レイヤーの終わりの最大に合わせる（自分で決めた長いコンポジションは縮めない）。逆操作は同じ操作に `out_point` と `duration` を明示した形。`Store::apply_txn` が、sequence に触る操作の列に対して、レイヤーの長さが操作の前の sequence の長さと同じ（追従している）レイヤーの分を自動で末尾に足すので、CLI、アプリ、MCP のどこから `insertTopics` や `insert` を出しても同じトランザクションで追従し、取り消し 1 回で戻る（自分で縮めたレイヤーには足さない。列に `fitLayer` が既にあれば足さない）。
 - 選別の操作: `markIn`・`markOut`（素材の印。`at: null` で外す）、`addSelection`・`removeSelection`、`addTopic`・`removeTopic`、`rate`（`target` は選別か話題の ID）、`tag`（`remove: true` で外す。付いているタグを付ける・付いていないタグを外すのは拒否）。どれも素材の ID を `touches` に入れる（素材を外す操作と重ねるため）。`rate` と `tag` は `target` だけ。
 - 文字起こしの操作: `deleteWords`（単語の列を消す。`restore: true` で戻す。既にその状態の単語は拒否）、`fixTranscript`（単語 1 つの文字。`text: null` で元に戻す）。本文の表は変えず、`transcript_edits` を変える。`touches` は素材と単語の ID。`deleteWords` は文字起こしの表示と検索だけを変え、sequence のカットは変えない（Story の Hide）。
-- 消して詰める操作: `cutWords { asset, words, ranges }`（Story の Delete。例 `{"op":"cutWords","asset":"a1","words":["w_…_7_2","w_…_4_1"],"ranges":[{"in":{"num":7,"den":2},"out":{"num":9,"den":2}}]}`）。単語を消し、素材の時刻の範囲 `ranges` を、その素材の撮影素材のノードを持つ全部の sequence のカットから抜いて後ろを詰める。カットの素材の時刻は素材の時刻と同じなので、カットの `[in, out)` と範囲の重なりで決める。
+- 消して詰める操作: `cutWords { asset, sequence, words, ranges }`（Story の Delete。例 `{"op":"cutWords","asset":"a1","sequence":"s1","words":["w_…_7_2","w_…_4_1"],"ranges":[{"in":{"num":7,"den":2},"out":{"num":9,"den":2}}]}`）。単語を消し、素材の時刻の範囲 `ranges` を、`sequence` のうちその素材の撮影素材のノードを持つカットから抜いて後ろを詰める。カットの素材の時刻は素材の時刻と同じなので、カットの `[in, out)` と範囲の重なりで決める。
+  - カットを切るのは `sequence` だけで、同じ素材を使うほかの sequence（本編から `forkSequence` で分けたショートなど）は変えない。消した印は素材に付くので、文字起こしの表示と検索からは全体で外れる。Story は、いま開いているコンポジションの sequence のレイヤーが置く sequence（`story_overview` の `open_sequence`）を、無ければ並べ先の sequence を送る。
   - 範囲がカットの中ほどなら割って間を抜く（後ろの半分は `<元の ID>-<番号>` の空いている ID）。端に掛かれば端を詰め、カットを覆えばカットを抜く。複数のカットにまたがる範囲は、それぞれのカットに同じ規則を当てる。どのカットにも掛からない範囲は単語を消すだけ。
   - 重なるか接する範囲は 1 つにまとめる。隣り合う単語を 1 つの範囲にするのは呼び手で、Story は選んだ単語の最初から最後までを `story_range` の規則で 1 つにする（単語の間の無音も抜く）。
-  - 既に消した単語は通し、単語もカットも変わらなければ拒否する。逆操作は同じ操作に、変えた単語、`restore: true`、カットの置き換えの列 `splices: [{sequence, index, count, cuts}]` を明示した形。1 回の取り消しで単語とカットが戻る。
-  - `touches` は素材、単語、置き換える sequence とそのカットと前後、接続したレイヤー。sequence に触るので、`fitLayer` の追従が同じトランザクションに付く。
+  - 既に消した単語は通し、単語もカットも変わらなければ拒否する。逆操作は同じ操作に、変えた単語、`restore: true`、`sequence` のカットの置き換えの列 `splices: [{index, count, cuts}]` を明示した形。1 回の取り消しで単語とカットが戻る。
+  - `touches` は素材、単語、`sequence`、置き換えるカットとその前後、接続したレイヤー。sequence に触るので、`fitLayer` の追従が同じトランザクションに付く。
 - 話題から並びを作る操作: `insertTopics { sequence, index?, topics, cuts }`。話題の素材の範囲を切り出したカット（撮影素材のノード、等速）を、話題の順に 1 つの操作で差し込む（`index` を省くと末尾）。カットの ID は呼び出し側が話題と同じ数だけ決める（やり直しで同じ ID に戻るため）。逆操作は `extractCuts` で、1 回の取り消しで全部抜ける。マクロ（操作の列）にしないのは、取り消しと `mm diff` で 1 つの編集として扱うため。
 - パラメータは `ParamRef`（`layer` か `cut` の ID と、`.` 区切りのパラメータのパス）で指す。パスは `opacity`、`transform.position|scale|rotation|anchor`、`source.<名前>`、`effects.<ID>.<名前>`、`masks.<ID>.path|feather|opacity`、`audio.gain_db|pan`。
 - 適用した後は必ず `Project::validate` を通す。通らなければ操作は失敗で、プロジェクトのデータは変わらない。

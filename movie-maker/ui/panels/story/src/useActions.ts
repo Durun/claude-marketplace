@@ -24,6 +24,8 @@ export interface ActionContext {
   tray: Tray;
   /** 選んでいる単語。 */
   selected: readonly StoryWord[];
+  /** Delete（`cutWords`）が切る sequence。無ければ切れない。 */
+  cutSequence: string | null;
   clearSelection: () => void;
   setFocusWord: (id: string | null) => void;
   setNotice: (message: string | null) => void;
@@ -51,7 +53,11 @@ export const createActions = (cx: ActionContext): Actions => {
   };
   return {
     makeTopic: (title) => sendForRange(cx, (a, range) => addTopicOp(a, title, range)),
-    cutSelected: () => sendForRange(cx, (a, range) => cutOp(a, selected, range)),
+    cutSelected: async () => {
+      const seq = cx.cutSequence;
+      if (seq) await sendForRange(cx, (a, range) => cutOp(a, seq, selected, range));
+      else cx.setNotice("No sequence to cut from. Hide only hides the words.");
+    },
     hideSelected: async () => {
       if (asset && (await send(hideOp(asset, selected)))) cx.clearSelection();
     },

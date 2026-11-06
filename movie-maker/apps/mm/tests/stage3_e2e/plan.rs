@@ -108,8 +108,10 @@ pub fn add_render_target() -> Value {
     json!({"op": "addRenderTarget", "target": target})
 }
 
-/// 言い淀みの単語を消し、その範囲をカットから抜いて詰める（`cutWords`）。
-pub fn delete_stutter(asset: &str, word: &TranscriptWord) -> Vec<Value> {
+/// 言い淀みの単語を消し、その範囲を sequence `sequence` のカットから抜いて詰める（`cutWords`）。
+pub fn delete_stutter(asset: &str, sequence: &str, word: &TranscriptWord) -> Vec<Value> {
     let range = json!({"in": time(word.start), "out": time(word.end)});
-    vec![json!({"op": "cutWords", "asset": asset, "words": [word.word], "ranges": [range]})]
+    let op = json!({"op": "cutWords", "asset": asset, "sequence": sequence,
+        "words": [word.word], "ranges": [range]});
+    vec![op]
 }

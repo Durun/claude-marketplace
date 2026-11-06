@@ -218,7 +218,7 @@ fn 話題の中の_2_語を消すと書き出しがその分だけ短くなり_�
     let picked = [&words[CUT_WORDS.0], &words[CUT_WORDS.1]];
     op(
         d,
-        json!({"op": "cutWords", "asset": asset, "words": picked,
+        json!({"op": "cutWords", "asset": asset, "sequence": "s1", "words": picked,
         "ranges": [{"in": cut_from, "out": cut_to}]}),
     );
     let (cut, quiet) = render(d, &tmp.path().join("cut.mp4"));
