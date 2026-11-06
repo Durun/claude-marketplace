@@ -189,13 +189,6 @@ jobs:
           cp target/release/mm.exe "$RUNNER_TEMP/mm-base.exe"
       - name: 比べる
         run: sh scripts/perf-gate.sh "$RUNNER_TEMP/mm-base.exe" "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/perf"
-      - name: TEMP 同じ mm どうしの揺れを測る
-        continue-on-error: true
-        run: |
-          for n in 1 2 3 4 5; do
-            echo "=== A/A $n"
-            PERF_THRESHOLD=100000% PERF_WARP_THRESHOLD=100000% sh scripts/perf-gate.sh "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/perf-aa$n" 2>&1 | grep -E "^(cpu|playback|scrub)/|^===" || true
-          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
