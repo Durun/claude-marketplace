@@ -1,7 +1,10 @@
 //! 操作を適用して書く。`mm-ops` の [`Transaction`] をプロジェクトのデータに適用し、結果を [`Store::commit`] の
 //! 形（[`TxnInput`]）に変換する。操作経路（CLI、アプリ、MCP）はこの 3 つの関数だけを呼ぶ。
 
-use mm_ops::{apply_transaction, Op, OpContext, OpError, OpRecord, OpResult, Touches, Transaction};
+use mm_ops::{
+    apply_transaction, with_fitted_layers, Op, OpContext, OpError, OpRecord, OpResult, Touches,
+    Transaction,
+};
 
 use crate::records::{Actor, StoredTxn, TxnInput, TxnKind, UndoPlan};
 use crate::store::Store;
@@ -30,7 +33,9 @@ impl Store {
             });
         }
         let mut project = self.project().clone();
-        let outcome = apply_transaction(&mut project, &txn.ops, ctx)?;
+        // sequence の長さが変わる編集では、sequence を置いたレイヤーの長さも同じトランザクションで合わせる。
+        let ops = with_fitted_layers(&project, &txn.ops);
+        let outcome = apply_transaction(&mut project, &ops, ctx)?;
         let conflict = self.touches_after(base)?.intersection(&outcome.touches);
         if !conflict.is_empty() {
             return Err(OpError::Conflict {

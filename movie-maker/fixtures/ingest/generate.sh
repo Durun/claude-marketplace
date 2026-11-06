@@ -1,6 +1,7 @@
 #!/bin/sh
 # 取り込みのフィクスチャを out/ に作る。生成物は git に入れない（transcript-ja.json だけは git に入れる）。
 #   speech-ja.wav    日本語の短い音声（Windows の音声合成 Microsoft Haruka）。文字起こしのフィクスチャ
+#   speech-long-ja.wav  10 分を超える日本語の話（同上。speech-long-ja.txt を REPEATS 回、既定 3）。通しの試験の素材
 #   long-1080p.mp4   1 分の 1080p（H.264、音つき）。取り込みの時間の計測用
 set -eu
 
@@ -21,6 +22,22 @@ if command -v powershell.exe >/dev/null 2>&1; then
       \$s.SelectVoice(\$voice.VoiceInfo.Name)
       \$s.SetOutputToWaveFile('$win_out')
       \$s.Speak('こんにちは。これは動画編集ソフトの、文字起こしの試験です。')
+      \$s.Dispose()
+    }
+  "
+  # 10 分を超える日本語の話（speech-long-ja.txt を REPEATS 回読む）。通しの試験（apps/mm/tests/stage3_e2e.rs）の素材
+  win_long=$(cygpath -w "$out/speech-long-ja.wav")
+  win_txt=$(cygpath -w "$here/speech-long-ja.txt")
+  powershell.exe -NoProfile -Command "
+    Add-Type -AssemblyName System.Speech
+    \$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+    \$voice = \$s.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq 'ja-JP' } | Select-Object -First 1
+    if (\$voice) {
+      \$s.SelectVoice(\$voice.VoiceInfo.Name)
+      \$s.SetOutputToWaveFile('$win_long')
+      \$text = (Get-Content -Raw -Encoding UTF8 '$win_txt') -replace '\r?\n', '  '
+      \$repeats = if (\$env:REPEATS) { [int]\$env:REPEATS } else { 3 }
+      \$s.Speak((@(\$text) * \$repeats) -join '  ')
       \$s.Dispose()
     }
   "

@@ -951,6 +951,47 @@
       ]
     },
     {
+      "description": "sequence のレイヤーとコンポジションの長さを sequence の長さに合わせる。",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "fitLayer"
+        },
+        "out_point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
       "description": "レイヤーのイン点かアウト点を動かす。",
       "type": "object",
       "properties": {
