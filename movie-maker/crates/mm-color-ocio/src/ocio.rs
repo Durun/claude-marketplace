@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use mm_color_api::{ColorTransform, TransformProgram};
-use mm_color_lut::bake_lut3d;
+use mm_color_lut::{bake_lut3d, LutColor};
 use mm_types::{ColorSpace, MmError, Result};
 use tracing::info_span;
 
@@ -27,13 +27,15 @@ const ENTRY: &str = "OCIOConvert";
 const DEFAULT_LUT_SIZE: u32 = 33;
 
 /// mm の色空間名と OCIO の名前の対応。ここに無い名前は OCIO の名前としてそのまま引く。
-const ALIASES: [(&str, &str); 4] = [
+const ALIASES: [(&str, &str); 5] = [
     ("lin_rec709", "Linear Rec.709 (sRGB)"),
     ("srgb", "sRGB Encoded Rec.709 (sRGB)"),
     // 映像の Rec.709 は表示側の Rec.1886（ガンマ 2.4）で見るので、その色空間に当てる。
     ("bt709", "Rec.1886 Rec.709 - Display"),
     // カメラの OETF（シーン参照）。組み込みの studio-config にある名前。
     ("bt709_oetf", "Camera Rec.709"),
+    // studio-config に Rec.601 の色空間は無い。SD は Rec.709 と同じ原色として bt709 と同じ名前に当てる（RFC 0005）。
+    ("bt601", "Rec.1886 Rec.709 - Display"),
 ];
 
 /// `known_spaces` に出す OCIO の名前。契約は「符号化値 (1,1,1) が白」を前提にするので、
@@ -194,6 +196,9 @@ impl ColorTransform for OcioColor {
     }
 
     fn program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
+        if is_bt2020(from) || is_bt2020(to) {
+            return self.bt2020_program(from, to);
+        }
         let size = self.lut_size;
         let mut inner = self.lock();
         let p = processor_for(&mut inner, from, to)?;
@@ -201,8 +206,10 @@ impl ColorTransform for OcioColor {
     }
 
     fn apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
-        let mut inner = self.lock();
-        processor_for(&mut inner, from, to)?.apply_rgb(rgb)
+        if is_bt2020(from) || is_bt2020(to) {
+            return self.bt2020_apply(from, to, rgb);
+        }
+        self.apply_ocio(from, to, rgb)
     }
 
     fn known_spaces(&self) -> Vec<ColorSpace> {
@@ -215,6 +222,48 @@ impl ColorTransform for OcioColor {
             .iter()
             .copied()
             .filter(|n| inner.config.has_colorspace(n));
-        aliases.chain(ocio).map(|n| ColorSpace(n.into())).collect()
+        aliases
+            .chain(ocio)
+            .chain([BT2020])
+            .map(|n| ColorSpace(n.into()))
+            .collect()
+    }
+}
+
+/// 組み込みの studio 設定には Rec.1886 の Rec.2020 の色空間が無いので、`bt2020` は
+/// `mm-color-lut` で作業空間に直してから（作業空間から）OCIO に渡す。
+const BT2020: &str = "bt2020";
+
+fn is_bt2020(cs: &ColorSpace) -> bool {
+    cs.0 == BT2020
+}
+
+impl OcioColor {
+    fn apply_ocio(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
+        let mut inner = self.lock();
+        processor_for(&mut inner, from, to)?.apply_rgb(rgb)
+    }
+
+    /// `bt2020` の端を LUT で作業空間と行き来し、反対側を OCIO に任せる。
+    fn bt2020_apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
+        let working = ColorSpace::working();
+        let mid = if is_bt2020(from) {
+            LutColor.apply(from, &working, rgb)?
+        } else {
+            self.apply_ocio(from, &working, rgb)?
+        };
+        if is_bt2020(to) {
+            LutColor.apply(&working, to, mid)
+        } else {
+            self.apply_ocio(&working, to, mid)
+        }
+    }
+
+    /// 相手が `mm-color-lut` も知る空間ならその WGSL をそのまま返し、そうでなければ 3D LUT に焼く。
+    fn bt2020_program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
+        if let Ok(p) = LutColor.program(from, to) {
+            return Ok(p);
+        }
+        bake_lut3d(self.lut_size, |rgb| self.bt2020_apply(from, to, rgb))
     }
 }
