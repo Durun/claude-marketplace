@@ -1,0 +1,110 @@
+{
+  "schema_version": 7,
+  "assets": [
+    {
+      "id": "a1",
+      "path": "talk.mp4",
+      "content_hash": "hash-talk",
+      "color_space": "bt709",
+      "duration": { "num": 60, "den": 1 },
+      "fps": { "num": 30, "den": 1 },
+      "timebase_offset": { "num": 0, "den": 1 }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "vert",
+      "width": 1080,
+      "height": 1920,
+      "fps": { "num": 30, "den": 1 },
+      "duration": { "num": 3, "den": 1 },
+      "markers": [],
+      "layers": [
+        {
+          "id": "vert-seq",
+          "source": { "kind": "sequence", "version": 1, "params": { "sequence": { "value": { "type": "text", "value": "short" } } } },
+          "start": { "num": 0, "den": 1 },
+          "in": { "num": 0, "den": 1 },
+          "out": { "num": 3, "den": 1 },
+          "opacity": { "value": { "type": "number", "value": 1.0 } },
+          "framing": {
+            "cuts": [
+              {
+                "cut": "r1",
+                "transform": {
+                  "position": {
+                    "value": { "type": "vec2", "value": [-200.0, 0.0] },
+                    "keyframes": [
+                      { "time": { "num": 2, "den": 1 }, "value": { "type": "vec2", "value": [-200.0, 0.0] }, "interpolation": "linear" },
+                      { "time": { "num": 4, "den": 1 }, "value": { "type": "vec2", "value": [200.0, 0.0] }, "interpolation": "linear" }
+                    ]
+                  },
+                  "scale": { "value": { "type": "number", "value": 3.16 } },
+                  "rotation": { "value": { "type": "number", "value": 0.0 } },
+                  "anchor": null
+                }
+              }
+            ],
+            "caption": {
+              "position": { "value": { "type": "vec2", "value": [540.0, 1600.0] } },
+              "width": { "value": { "type": "number", "value": 900.0 } }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "main",
+      "origin": null,
+      "cuts": [
+        {
+          "id": "k1",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+          "in": { "num": 2, "den": 1 },
+          "out": { "num": 4, "den": 1 }
+        }
+      ]
+    },
+    {
+      "id": "short",
+      "origin": { "sequence": "main", "relation": "reference" },
+      "cuts": [
+        {
+          "id": "r1",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+          "in": { "num": 2, "den": 1 },
+          "out": { "num": 7, "den": 2 },
+          "origin": "k1",
+          "overrides": { "in": false, "out": true },
+          "origin_base": null
+        }
+      ]
+    },
+    {
+      "id": "zfork",
+      "origin": { "sequence": "main", "relation": "fork" },
+      "cuts": [
+        {
+          "id": "f1",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+          "in": { "num": 2, "den": 1 },
+          "out": { "num": 4, "den": 1 },
+          "origin": "k1",
+          "overrides": { "in": false, "out": false },
+          "origin_base": {
+            "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+            "in": { "num": 1, "den": 1 },
+            "out": { "num": 4, "den": 1 },
+            "speed": { "num": 1, "den": 1 },
+            "enabled": true
+          }
+        }
+      ]
+    }
+  ],
+  "render_targets": [],
+  "bins": { "marks": [], "selections": [], "topics": [] },
+  "transcript_edits": []
+}

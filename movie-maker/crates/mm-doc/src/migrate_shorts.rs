@@ -103,6 +103,23 @@ mod tests {
     }
 
     #[test]
+    fn 凍結した_v7_の本編とショートが読めて往復する() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/doc/v7/shorts.json");
+        let p = load(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(p.cut(&Id::new("r1")).unwrap().1.overrides.out_point);
+        let layer = &p.compositions[0].layers[0];
+        let reframe = layer.framing.reframe(&Id::new("r1")).unwrap();
+        assert_eq!(reframe.transform.position.keyframes.len(), 2);
+        assert!(layer.framing.caption.is_some());
+        let changes = p.origin_changes(&Id::new("zfork")).unwrap();
+        assert_eq!(changes[0].fields, vec!["in"]);
+        assert_eq!(p.short_uses(&Id::new("main"))[&Id::new("k1")].len(), 2);
+        let back = load(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+    }
+
+    #[test]
     fn v6_の参照のカットは元の値を持たない() {
         let p = load(&v6_with_fork("reference")).unwrap();
         assert_eq!(p.cut(&Id::new("s1")).unwrap().1.origin_base, None);
