@@ -2,6 +2,7 @@
 //!
 //! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
 //! - `mm ingest <dir> <素材>...`: 素材を取り込み、`cache/` に出力を作って素材を足す（ingest_cmd.rs）。
+//! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
@@ -15,22 +16,21 @@ mod opargs;
 mod perf;
 mod project;
 mod remote;
+mod render_cmd;
 mod scenes;
 mod scenes_cpu;
 mod scenes_render;
+mod transcript_cmd;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use mm_export::{export_project, ExportOptions};
-use mm_runtime::{assemble, RuntimeConfig};
 use mm_trace::MetricsLayer;
-use mm_types::{Id, MmError, Result};
+use mm_types::{MmError, Result};
 use tracing_subscriber::prelude::*;
 
 use crate::perf::{PerfArgs, Scene};
-use crate::project::load_project;
 
 /// フィクスチャのプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
 /// ビルドした場所の絶対パスを埋め込まないので、別の場所に置いた実行ファイルでも同じ規則で動く。
@@ -95,17 +95,8 @@ enum Command {
         from: String,
         to: String,
     },
-    /// プロジェクトのレンダーターゲットを MP4 に書き出す。
-    Render {
-        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
-        project: PathBuf,
-        /// 出力先。省くとプロジェクトのデータの output_path。
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-        /// レンダーターゲットの ID。省くと最初の 1 つ。
-        #[arg(long)]
-        target: Option<String>,
-    },
+    /// プロジェクトのレンダーターゲットを MP4 に書き出す。Ctrl+C で取り消せる。
+    Render(render_cmd::RenderArgs),
     /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を適用する。
     Ingest {
         dir: PathBuf,
@@ -130,6 +121,16 @@ enum Command {
         /// 出力の幅。省くとコンポジションの大きさ。
         #[arg(long)]
         width: Option<u32>,
+    },
+    /// 文字起こしから語を引く。1 行に 1 件（素材、始まりと終わりの秒、単語の ID、続きの文字）。
+    Search {
+        dir: PathBuf,
+        query: String,
+        #[arg(long, default_value_t = transcript_cmd::DEFAULT_LIMIT)]
+        limit: usize,
+        /// 1 行に 1 件の JSON（時刻は有理数）で出す。
+        #[arg(long)]
+        json: bool,
     },
     /// 性能の計測。
     Perf {
@@ -203,11 +204,6 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Render {
-            project,
-            output,
-            target,
-        } => render(&project, output, target),
         Command::Frame {
             project,
             t,
@@ -221,6 +217,7 @@ fn run(cli: Cli) -> Result<()> {
             composition: comp.as_deref(),
             width,
         }),
+        Command::Render(args) => render_cmd::render(&args),
         Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),
         other => run_store_command(other),
@@ -261,6 +258,12 @@ fn run_store_command(command: Command) -> Result<()> {
             inputs,
             encoder,
         }),
+        Command::Search {
+            dir,
+            query,
+            limit,
+            json,
+        } => transcript_cmd::search(&dir, &query, limit, json),
         Command::Undo { dir } => commands::undo(&dir),
         Command::Redo { dir } => commands::redo(&dir),
         Command::Log { dir } => commands::log(&dir),
@@ -274,7 +277,7 @@ fn run_store_command(command: Command) -> Result<()> {
 
 fn command_name(command: &Command) -> &'static str {
     match command {
-        Command::Render { .. } => "render",
+        Command::Render(_) => "render",
         Command::Perf { .. } => "perf",
         Command::ProbeStartup { .. } => "probe-startup",
         _ => "store",
@@ -335,33 +338,6 @@ fn run_perf_report(command: PerfCommand) -> Result<()> {
         PerfCommand::Budget { results, json } => compare::run_budget(&results, json),
         PerfCommand::Run { .. } => Err(MmError::Internal("run は別の経路".into())),
     }
-}
-
-fn render(
-    project: &std::path::Path,
-    output: Option<PathBuf>,
-    target: Option<String>,
-) -> Result<()> {
-    let project = load_project(project)?;
-    let mut engine = assemble(&RuntimeConfig::real())?;
-    let summary = export_project(
-        &mut engine,
-        &project,
-        &ExportOptions {
-            output,
-            target: target.map(Id::new),
-        },
-    )?;
-    println!(
-        "{}: {} フレーム、音 {} サンプル、{} バイト、{:.2} 秒（{:.1} fps）",
-        summary.output_path.display(),
-        summary.frames,
-        summary.audio_frames,
-        summary.bytes_written,
-        summary.elapsed.as_secs_f64(),
-        summary.fps
-    );
-    Ok(())
 }
 
 #[cfg(test)]

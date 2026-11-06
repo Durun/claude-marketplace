@@ -17,6 +17,8 @@ use mm_types::{MmError, Result};
 pub const VERSIONS_DIR: &str = "versions";
 const INDEX_FILE: &str = "project.json";
 const REVIEW_FILE: &str = "review.json";
+/// 素材の整理と文字起こしの直し。無ければ（v6 より前の書き出し）空として読む。
+const BINS_FILE: &str = "bins.json";
 /// ID ごとのファイルを置く下のフォルダー。
 const PER_ID_DIRS: [&str; 3] = ["comps", "assets", "sequences"];
 
@@ -103,6 +105,8 @@ pub(crate) fn render_files(
     }
     index["render_targets"] = whole["render_targets"].clone();
     files.insert(INDEX_FILE.into(), canonical(&index).into_bytes());
+    let bins = json!({ "bins": whole["bins"], "transcript_edits": whole["transcript_edits"] });
+    files.insert(BINS_FILE.into(), canonical(&bins).into_bytes());
     let mut sorted_comments = comments.to_vec();
     sorted_comments.sort_by_key(|c| c["id"].as_str().unwrap_or_default().to_string());
     let review = json!({ "comments": sorted_comments });
@@ -181,6 +185,11 @@ pub(crate) fn read_files(versions: &Path) -> Result<(Project, Vec<Value>)> {
             .map(|id| read_json(&versions.join(path_of(dir, id.as_str().unwrap_or_default()))))
             .collect::<Result<Vec<_>>>()?;
         whole[field] = Value::Array(items);
+    }
+    if versions.join(BINS_FILE).is_file() {
+        let bins = read_json(&versions.join(BINS_FILE))?;
+        whole["bins"] = bins["bins"].clone();
+        whole["transcript_edits"] = bins["transcript_edits"].clone();
     }
     let project = mm_doc::load(&whole.to_string())?;
     let review = read_json(&versions.join(REVIEW_FILE))?;

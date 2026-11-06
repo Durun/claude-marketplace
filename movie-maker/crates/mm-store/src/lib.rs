@@ -2,6 +2,8 @@
 //! プロジェクトのデータの行と操作の記録を 1 つのトランザクションで書く。
 //!
 //! - [`Store`]: 開く、書く、取り消す、バックアップ、検索、`versions/` の書き出しと取り込み。
+//! - 文字起こしの本文は操作の記録に載せずに表へ書き（[`Store::put_transcript`]）、
+//!   語から素材と時刻を引く（[`Store::search_words`]）。直しはプロジェクトのデータの `transcript_edits`。
 //! - 操作の記録は `mm-ops` の [`OpRecord`] と [`TxnRecord`] の形で表に書く。取り消しとやり直しも
 //!   逆操作（元の操作）を適用したトランザクションとして同じ表に残り、バージョンは操作の数だけ進む。
 //!   操作を適用して書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。
@@ -9,6 +11,7 @@
 
 mod backup;
 mod docio;
+mod docio_bins;
 mod edit;
 mod export;
 mod files;
@@ -19,6 +22,8 @@ mod records;
 mod schema;
 mod store;
 mod sync;
+mod transcript;
+mod transcript_search;
 mod wal;
 
 pub use backup::{format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile};
@@ -32,6 +37,8 @@ pub use records::{
 pub use schema::{APPLICATION_ID, SCHEMA_VERSION};
 pub use store::{OpenMode, SearchHit, Store, StoreWarning};
 pub use sync::{detect_sync_folder, SyncFolder, SyncKind};
+pub use transcript::{word_id, TranscriptInput, TranscriptWord, WordInput, RUN_EXTRA_CHARS};
+pub use transcript_search::WordHit;
 pub use wal::uncommitted_frames;
 
 use mm_types::MmError;

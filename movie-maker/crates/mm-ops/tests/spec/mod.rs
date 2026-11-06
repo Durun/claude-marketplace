@@ -1,5 +1,6 @@
 //! 操作の種と、プロジェクトのデータの ID への当てはめ。性質テストが使う。
 
+mod bins;
 mod build;
 mod params;
 
@@ -61,6 +62,8 @@ pub enum Spec {
     Slip(u8, i64),
     Slide(u8, i64),
     Disable(u8, bool),
+    /// 段階 3 の操作。
+    Bin(bins::BinSpec),
 }
 
 /// プロジェクトのデータを編集する操作の種（レイヤー、パラメータ、コンポジション）。
@@ -136,11 +139,18 @@ fn arb_seq_spec() -> impl Strategy<Value = Spec> {
 }
 
 pub fn arb_spec() -> impl Strategy<Value = Spec> {
-    prop_oneof![3 => arb_doc_spec(), 2 => arb_seq_spec()]
+    prop_oneof![
+        3 => arb_doc_spec(),
+        2 => arb_seq_spec(),
+        1 => bins::arb_bin_spec().prop_map(Spec::Bin),
+    ]
 }
 
 /// 種を今のプロジェクトのデータの ID に当てはめる。当てはめる相手が無ければ `None`。
 pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
+    if let Spec::Bin(b) = spec {
+        return bins::bin_op(b, p);
+    }
     layer_op(spec, p)
         .or_else(|| param_op(spec, p))
         .or_else(|| comp_op(spec, p))

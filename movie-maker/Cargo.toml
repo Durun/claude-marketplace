@@ -76,6 +76,8 @@ tokio-stream = { version = "0.1", default-features = false, features = ["sync"] 
 # 起動ごとの合い言葉の乱数。
 getrandom = "0.3"
 clap = { version = "4.5", features = ["derive"] }
+# mm render の Ctrl+C を取り消しの旗にする。
+ctrlc = "3"
 # mm-store。SQLite は bundled で同梱する（FTS5 と JSON 関数が入る）。
 rusqlite = { version = "0.41", features = ["bundled"] }
 sha2 = "0.10"
@@ -93,6 +95,8 @@ mm-color-ocio = { path = "crates/mm-color-ocio" }
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
+# apps/movie-maker の Media パネルが開くファイルの選択ダイアログ。
+rfd = { version = "0.15", default-features = false }
 # CEF ホスト（mm-host-cef の `cef` feature）。wgpu のバージョンは cef クレートが要るバージョンに合わせる。
 cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
 

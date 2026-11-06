@@ -42,6 +42,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             2 => v2_to_v3(&mut value),
             3 => v3_to_v4(&mut value),
             4 => crate::migrate_lut::v4_to_v5(&mut value),
+            5 => v5_to_v6(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -115,6 +116,16 @@ fn v2_to_v3(value: &mut Value) {
         if comp.get("markers").is_none() {
             comp["markers"] = Value::Array(Vec::new());
         }
+    }
+}
+
+/// v5 → v6: 素材の整理と文字起こしの直しを空で置く。
+fn v5_to_v6(value: &mut Value) {
+    if value.get("bins").is_none() {
+        value["bins"] = serde_json::json!({ "marks": [], "selections": [], "topics": [] });
+    }
+    if value.get("transcript_edits").is_none() {
+        value["transcript_edits"] = Value::Array(Vec::new());
     }
 }
 
@@ -266,6 +277,29 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
         let read = |v: &str| load(&std::fs::read_to_string(dir.join(v)).unwrap()).unwrap();
         assert_eq!(read("v4/stage1.json"), read("v5/stage1.json"));
+    }
+
+    #[test]
+    fn v5_は空の整理と直しで_v6_に上がる() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let text = std::fs::read_to_string(dir.join("v5/stage1.json")).unwrap();
+        let up = migrate(serde_json::from_str(&text).unwrap()).unwrap();
+        assert_eq!(up["schema_version"], 6);
+        assert_eq!(up["bins"]["topics"], Value::Array(Vec::new()));
+        assert_eq!(up["transcript_edits"], Value::Array(Vec::new()));
+        assert!(load(&text).unwrap().bins.topics.is_empty());
+    }
+
+    #[test]
+    fn 凍結した_v6_の整理と直しが読めて往復する() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let p = load(&std::fs::read_to_string(dir.join("v6/stage3.json")).unwrap()).unwrap();
+        assert_eq!(p.bins.selections[0].rating, crate::Rating::Favorite);
+        assert_eq!(p.bins.topics[0].title, "挨拶");
+        assert_eq!(p.bins.marks[0].out_point, None);
+        assert!(p.transcript_edits[0].deleted);
+        let back = load(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]

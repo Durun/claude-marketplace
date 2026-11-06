@@ -62,6 +62,7 @@ fn main() -> Result<()> {
             &ExportOptions {
                 output: Some(out.clone()),
                 target: None,
+                ..ExportOptions::default()
             },
         )?;
         fps.push(summary.fps);

@@ -18,6 +18,10 @@ mod ipc;
 #[cfg(windows)]
 mod keys;
 #[cfg(windows)]
+mod media;
+#[cfg(windows)]
+mod media_ipc;
+#[cfg(windows)]
 mod playback;
 #[cfg(windows)]
 mod project;

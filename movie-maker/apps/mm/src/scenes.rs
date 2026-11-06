@@ -178,6 +178,7 @@ pub fn export(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
             &ExportOptions {
                 output: Some(output.clone()),
                 target: None,
+                ..ExportOptions::default()
             },
         )?;
         fps.push(summary.fps);

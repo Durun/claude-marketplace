@@ -23,8 +23,50 @@ body {
 }
 
 .mm-shell-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
   width: var(--mm-size-left-column);
   border-right: var(--mm-border-width) solid var(--mm-color-border);
+}
+
+.mm-shell-left-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mm-shell-left-body[hidden] {
+  display: none;
+}
+
+.mm-shell-tabs {
+  display: flex;
+  flex: none;
+  gap: var(--mm-space-xs);
+}
+
+.mm-shell-tab {
+  flex: 1 1 0;
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mm-shell-tab[aria-selected="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+  font-weight: 700;
+}
+
+.mm-shell-tab:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
 }
 
 .mm-shell-center {

@@ -1,5 +1,6 @@
 //! `mm ingest`: 素材を取り込み、素材を足す操作（`addAsset`）をプロジェクトに適用する。
 //! 取り込み（`mm-ingest`）は `cache/` に出力を作るだけで、プロジェクトのデータを変えるのはここ。
+//! 文字起こしの付属ファイルがあれば、本文を DB の表に入れる（`transcript_cmd`）。
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -51,9 +52,11 @@ pub fn ingest(args: &IngestArgs) -> Result<()> {
         .map(|a| a.content_hash.clone())
         .collect();
     let mut ops: Vec<Op> = Vec::new();
+    let mut hashes = Vec::new();
     for input in &args.inputs {
         let report = mm_ingest::ingest(&opts, input)?;
         print_report(input, &report);
+        hashes.push(report.asset.content_hash.clone());
         if known.insert(report.asset.content_hash.clone()) {
             ops.push(
                 AddAsset {
@@ -79,6 +82,7 @@ pub fn ingest(args: &IngestArgs) -> Result<()> {
             .map_err(op_error)?;
         println!("バージョン {}: 素材を {count} 件足した", stored.doc_version);
     }
+    crate::transcript_cmd::put_transcripts(&mut store, &opts.cache, &hashes)?;
     finish(store)
 }
 
