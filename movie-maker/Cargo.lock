@@ -3000,6 +3000,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "mm-audio-api",
+ "mm-color-lut",
  "mm-decode-api",
  "mm-doc",
  "mm-eval",

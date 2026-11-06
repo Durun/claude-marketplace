@@ -14,9 +14,11 @@
 
 mod audio;
 mod compose;
+mod effects;
 mod export;
 mod layers;
 mod renderer;
+mod sequence;
 mod source;
 mod timer;
 pub mod transform;

@@ -24,9 +24,9 @@ struct U { a: vec4<f32> }
 @fragment
 fn mm_fs(in: MmVsOut) -> @location(0) vec4<f32> {
     let p = vec2<i32>(in.pos.xy);
-    let from = textureLoad(mm_t0, p, 0);
-    let to = textureLoad(mm_t1, p, 0);
-    return mix(from, to, u.a.x);
+    let a = textureLoad(mm_t0, p, 0);
+    let b = textureLoad(mm_t1, p, 0);
+    return mix(a, b, u.a.x);
 }
 ";
 
