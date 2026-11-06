@@ -235,6 +235,39 @@ export const usePicked = (kind: string, session: string): string | undefined => 
   return pick;
 };
 
+/** セッションのウィジェットのタブを人間が並べ替えた順。ウィジェットの種類とセッションの id ごとにブラウザに保存し、同じ種類のタブを出すウィジェットどうしで共有する。 */
+const tabOrderListeners = new Set<() => void>();
+const tabOrderKey = (kind: string, session: string): string => `tab-order:${kind}:${session}`;
+
+const readTabOrder = (key: string): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
+/** keys を並べ替えた順に並べる。並べ替えた後に現れたものは、元の順のまま後ろに置く。save で並びを保存する。 */
+export const useTabOrder = (kind: string, session: string, keys: string[]): { ordered: string[]; save: (next: string[]) => void } => {
+  const key = tabOrderKey(kind, session);
+  const [order, setOrder] = useState(() => readTabOrder(key));
+  useEffect(() => {
+    const take = () => setOrder(readTabOrder(key));
+    take();
+    tabOrderListeners.add(take);
+    return () => {
+      tabOrderListeners.delete(take);
+    };
+  }, [key]);
+  const rank = new Map(order.map((k, i) => [k, i]));
+  const ordered = keys.toSorted((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
+  const save = (next: string[]) => {
+    localStorage.setItem(key, JSON.stringify(next));
+    tabOrderListeners.forEach((fn) => fn());
+  };
+  return { ordered, save };
+};
+
 /**
  * 折りたたんだものの名前を key でブラウザに保存し、開き直しても閉じたままにする。toggle は details の toggle で呼ぶ。
  * details は開いた状態で描いたときにも toggle を送るので、開閉が変わったときだけ保存する。

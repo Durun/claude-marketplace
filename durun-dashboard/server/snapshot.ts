@@ -215,7 +215,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     lastMessageAt: log?.lastMessageAt,
     tasks: claude.readTasks(meta.id),
     subagents: subs.map((s) => toSubagent(s, !!live)),
-    background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
+    background: claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, !!live)),
     pr,
     prs,
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),
@@ -320,18 +320,35 @@ export const deriveAttention = (sessions: Session[]): Attention[] => {
   return items.filter((a) => !dismissed.has(a.id));
 };
 
+// 終わって日のたったセッションは 1000 件を超え、会話ログを毎回 stat すると混んだマシンではスナップショットの組み立てが詰まる。
+// 外れたと分かったセッションは、しばらく stat し直さない。再開されれば live に載るので、すぐ一覧に戻る。
+const ENDED_RECHECK_MS = 10 * 60_000;
+const endedCheckedAt = new Map<string, number>();
+
+const isRecent = (m: SessionMeta, live: Map<string, claude.LiveSession>, now: number): boolean => {
+  if (live.has(m.id)) {
+    endedCheckedAt.delete(m.id);
+    return true;
+  }
+  const checkedAt = endedCheckedAt.get(m.id);
+  if (checkedAt !== undefined && now - checkedAt < ENDED_RECHECK_MS) return false;
+  const recent = now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS;
+  if (recent) endedCheckedAt.delete(m.id);
+  else endedCheckedAt.set(m.id, now);
+  return recent;
+};
+
 // claude -p や Agent SDK からの実行は数が多く、人が追う対象ではない。ダッシュボードとやり取りしたものだけ出す。
 // 一度も実行中の一覧に現れずフックだけで知ったセッションも、同じく短命な自動実行とみなす。
-const isListed = (m: SessionMeta): boolean =>
-  (!!m.kind && m.entrypoint !== 'sdk-cli') ||
-  !!m.improver ||
-  state.docs.some((d) => d.sessionId === m.id) ||
-  state.attention.some((a) => a.sessionId === m.id) ||
-  state.outbox.some((o) => o.sessionId === m.id);
-
 /** 一覧に出すセッション。ブックマークした発言のあるセッションは、ブックマークから開けるよう、日がたっても外さない。 */
-const listedSessions = (live: Map<string, claude.LiveSession>, now: number): SessionMeta[] =>
-  Object.values(state.sessions).filter((m) => isListed(m) && (live.has(m.id) || !!m.bookmarks?.length || now - mtimeMs(m.transcriptPath) < LISTED_AFTER_END_MS));
+const listedSessions = (live: Map<string, claude.LiveSession>, now: number): SessionMeta[] => {
+  const referenced = new Set([...state.docs, ...state.attention, ...state.outbox].map((x) => x.sessionId));
+  return Object.values(state.sessions).filter(
+    (m) =>
+      ((!!m.kind && m.entrypoint !== 'sdk-cli') || !!m.improver || referenced.has(m.id)) &&
+      (!!m.bookmarks?.length || isRecent(m, live, now)),
+  );
+};
 
 /**
  * 一覧に出すセッションの会話ログを、区切って読むごとにほかの要求へ順番を譲りながら要約しておく。起動した直後に呼ぶ。

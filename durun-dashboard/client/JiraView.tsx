@@ -5,10 +5,10 @@ import type { JiraDetail, JiraTransition, Session, Snapshot } from '../shared/ty
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
-import { pickInWidget, useCached, usePicked } from './hooks.ts';
+import { useCached, usePicked, useTabOrder } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
-import { CommentForm, RelatedSessions } from './PrView.tsx';
+import { CommentForm, PickTabs, RelatedSessions } from './PrView.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Loading, Time } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
@@ -108,21 +108,25 @@ const JiraView = ({ issueKey, version, related }: { issueKey: string; version?: 
 const jiraSessions = (sessions: Session[], key: string, here?: string): Session[] =>
   sessions.filter((s) => s.id !== here && s.jira.some((j) => j.key === key));
 
-/** セッションに課題が複数あるときは、上に並べたキーのタブで切り替える。キーの左には、ステータスのチップと同じ色の丸を出す。状態が変わったら読み直す。 */
+/** セッションに課題が複数あるときは、上に並べたキーのタブで切り替える。選んでいなければ、並べ替えた順で先頭の課題を出す。キーの左には、ステータスのチップと同じ色の丸を出す。状態が変わったら読み直す。 */
 export const JiraWidget = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const pick = usePicked(JIRA_WIDGET, s.id);
-  const issue = s.jira.find((j) => j.key === pick) ?? s.jira[0];
+  const { ordered } = useTabOrder(JIRA_WIDGET, s.id, s.jira.map((j) => j.key));
+  const issue = s.jira.find((j) => j.key === pick) ?? s.jira.find((j) => j.key === ordered[0]);
   return (
     <WidgetPanel title={JIRA_VIEW_TITLE}>
       {s.jira.length > 1 && (
-        <div class="pick-tabs" role="tablist" aria-label="課題">
-          {s.jira.map((j) => (
-            <button key={j.key} role="tab" aria-selected={j === issue} title={j.summary} onClick={() => pickInWidget(JIRA_WIDGET, s.id, j.key)}>
-              {j.status && <i class={`dot chip-${CATEGORY_TONE[j.statusCategory ?? ''] ?? 'muted'}`} role="img" aria-label={j.status} />}
-              {j.key}
-            </button>
-          ))}
-        </div>
+        <PickTabs
+          kind={JIRA_WIDGET}
+          session={s.id}
+          label="課題"
+          picked={issue?.key}
+          tabs={s.jira.map((j) => ({
+            key: j.key,
+            title: j.summary,
+            label: <>{j.status && <i class={`dot chip-${CATEGORY_TONE[j.statusCategory ?? ''] ?? 'muted'}`} role="img" aria-label={j.status} />}{j.key}</>,
+          }))}
+        />
       )}
       {issue ? <JiraView key={issue.key} issueKey={issue.key} version={issue.status} related={jiraSessions(sessions, issue.key, s.id)} /> : <Empty>このセッションに関係する JIRA の課題はありません。</Empty>}
     </WidgetPanel>

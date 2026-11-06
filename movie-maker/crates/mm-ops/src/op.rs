@@ -64,6 +64,10 @@ macro_rules! define_ops {
 }
 
 define_ops! {
+    /// 素材を足す。
+    AddAsset => "addAsset",
+    /// 素材を外す。
+    RemoveAsset => "removeAsset",
     /// レイヤーを足す。
     AddLayer => "addLayer",
     /// レイヤーを外す。

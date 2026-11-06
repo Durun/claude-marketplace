@@ -663,8 +663,9 @@ export const DocFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   useMarkSeen(doc, listed);
   const frame = useFileLinks(doc?.sessionId ?? '', doc?.path ?? '');
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
+  const refresh = { kind: 'refresh' as const, label: '読み込み直す', onClick: fetched.reload };
   return (
-    <FloatFrame f={f} title={listed?.title ?? doc?.title ?? '資料'} icon={f.tab.settings?.icon ?? '📄'} controls={[close]}>
+    <FloatFrame f={f} title={listed?.title ?? doc?.title ?? '資料'} icon={f.tab.settings?.icon ?? '📄'} controls={[refresh, close]}>
       {fetched.error && <p class="card panel error-note">資料を取得できませんでした（{fetched.error}）</p>}
       {doc && <Downloads doc={doc} />}
       {doc && (isMedia(doc) ? (
@@ -742,8 +743,8 @@ const formatOf = (path: string): DocFormat =>
   /\.md$/i.test(path) ? 'markdown' : /\.html?$/i.test(path) ? 'html' : /\.svg$/i.test(path) ? 'svg' : 'text';
 
 /** リポジトリの外のファイルを、present の資料と同じ見た目で読む。ファイルが書き換わったら読み込み直す。 */
-const TextFile = ({ f }: { f: Float }) => {
-  const file = useFetch(() => api.localFile(f.scope, f.tab.id), [f.scope, f.tab.id]);
+const TextFile = ({ f, version }: { f: Float; version: number }) => {
+  const file = useFetch(() => api.localFile(f.scope, f.tab.id), [f.scope, f.tab.id], version);
   const skin = useSkin();
   const frame = useFileLinks(f.scope, f.tab.id);
   useEffect(() => {
@@ -830,9 +831,12 @@ export const FileFloat = ({ f }: { f: Float }) => {
   const src = api.mediaUrl(f.scope, f.tab.id);
   const close = { kind: 'close' as const, label: '閉じる', onClick: () => dock(f.key, f.scope, f.tab.id) };
   const title = f.tab.id.split('/').at(-1) ?? f.tab.id;
+  // 書き換えの通知を取りこぼしたときに、人間が手で読み込み直せるようにする。画像と動画は対象にしない。
+  const [version, setVersion] = useState(0);
+  const refresh = { kind: 'refresh' as const, label: '読み込み直す', onClick: () => setVersion((v) => v + 1) };
   return (
-    <FloatFrame f={f} title={title} icon={type?.startsWith('video/') ? '🎬' : type ? '🖼️' : '📄'} controls={[close]}>
-      {type?.startsWith('video/') ? <VideoPlayer src={src} name={title} /> : type ? <img class="file-media" src={src} alt={f.tab.id} /> : <TextFile f={f} />}
+    <FloatFrame f={f} title={title} icon={type?.startsWith('video/') ? '🎬' : type ? '🖼️' : '📄'} controls={type ? [close] : [refresh, close]}>
+      {type?.startsWith('video/') ? <VideoPlayer src={src} name={title} /> : type ? <img class="file-media" src={src} alt={f.tab.id} /> : <TextFile f={f} version={version} />}
     </FloatFrame>
   );
 };

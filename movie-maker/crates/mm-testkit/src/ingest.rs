@@ -17,6 +17,7 @@ pub fn sample_sidecar() -> Sidecar {
                 start: RationalTime::ZERO,
                 end: RationalTime::seconds(2),
                 text: "こんにちは".into(),
+                words: Vec::new(),
             }],
         }),
     }

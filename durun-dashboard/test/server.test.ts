@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { borrowSkills, summarizeLog } from '../server/claude.ts';
+import { backgroundOf, borrowSkills, summarizeLog } from '../server/claude.ts';
 import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
@@ -56,6 +56,40 @@ test('summarizeLog は、バックグラウンドの shell と Monitor を、ツ
   assert.deepEqual([...summarizeLog(file).bgTasks.values()].map(({ id, kind, description, status, outputFile }) => ({ id, kind, description, status, outputFile })), [
     { id: 'b1', kind: 'shell', description: 'push する', status: 'failed', outputFile: '/tmp/x/b1.output' },
     { id: 'm1', kind: 'monitor', description: 'ログを見る', status: 'running', outputFile: undefined },
+  ]);
+});
+
+test('backgroundOf は、TaskStop で止めたタスク、期限が切れた Monitor、親のログにだけ届いたサブエージェントのタスクの終わりを、実行中から外す', () => {
+  const dir = tempDir('durun-dashboard-bg-end-');
+  const write = (name: string, entries: object[]): string => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, `${entries.map((e) => JSON.stringify(e)).join('\n')}\n`);
+    return file;
+  };
+  const call = (id: string, name: string, input: object) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const result = (id: string, toolUseResult: object) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: '' }] }, toolUseResult });
+  const note = (body: string) => `<task-notification>\n${body}\n</task-notification>`;
+  const sub = write('sub.jsonl', [
+    call('u1', 'Bash', { command: 'sleep 600', run_in_background: true }),
+    result('u1', { backgroundTaskId: 's1' }),
+    call('u2', 'Monitor', { command: 'tail -f a', description: 'a' }),
+    result('u2', { taskId: 'm1' }),
+    call('u3', 'Monitor', { command: 'tail -f b', description: 'b' }),
+    result('u3', { taskId: 'm2' }),
+    call('u4', 'Bash', { command: 'cargo build', run_in_background: true }),
+    result('u4', { backgroundTaskId: 's2' }),
+    call('u5', 'TaskStop', { task_id: 's1' }),
+    result('u5', { message: 'Successfully stopped task: s1 (sleep 600)', task_id: 's1' }),
+    { type: 'attachment', attachment: { type: 'queued_command', prompt: note('<task-id>m1</task-id>\n<summary>Monitor event: "a"</summary>\n<event>[Monitor expired after 15m with no events delivered.]</event>') } },
+    { type: 'attachment', attachment: { type: 'queued_command', prompt: note('<task-id>m2</task-id>\n<summary>Monitor event: "b"</summary>\n<event>line</event>') } },
+  ]);
+  const main = write('main.jsonl', [{ type: 'queue-operation', operation: 'enqueue', content: note('<task-id>s2</task-id>\n<status>completed</status>\n<summary>done</summary>') }]);
+  const tasks = backgroundOf([summarizeLog(main), summarizeLog(sub, true)]);
+  assert.deepEqual(tasks.map(({ id, status }) => ({ id, status })), [
+    { id: 's1', status: 'killed' },
+    { id: 'm1', status: 'stopped' },
+    { id: 'm2', status: 'running' },
+    { id: 's2', status: 'completed' },
   ]);
 });
 
