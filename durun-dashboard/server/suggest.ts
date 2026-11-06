@@ -238,11 +238,10 @@ export const peekWaiting = (s: Waiting): WaitingFor | undefined => {
   return refreshing(key, input) ? undefined : 'human';
 };
 
+const summaryLines = (s: SessionSummary | undefined): string | undefined => s && `やっていること: ${s.doing}\nいま: ${s.now}`;
+
 /** 返答の候補や名前は、概要を作れなくても作る。 */
-export const summaryText = async (c: Conversation): Promise<string | undefined> => {
-  const s = await summarize(c).catch(() => undefined);
-  return s && `やっていること: ${s.doing}\nいま: ${s.now}`;
-};
+export const summaryText = async (c: Conversation): Promise<string | undefined> => summaryLines(await summarize(c).catch(() => undefined));
 
 /** 裏で作れなかった理由。次に返すときに添える。作れたら消す。 */
 const loadErrors = new Map<string, string>();
@@ -280,9 +279,12 @@ export const peekReplies = (c: Conversation): Replies => {
   return { replies: [], ...(error ? { error } : { pending: true }) };
 };
 
-/** 頼まれるたびに作り直す。気に入らない名前が出たら、もう一度頼めるようにするため。 */
+/**
+ * 頼まれるたびに作り直す。気に入らない名前が出たら、もう一度頼めるようにするため。
+ * 概要は覚えた分だけを使い、作り終えるのを待たない。待つと haiku を 2 回続けて待たせるうえ、名前は最初と最後の発言からも付けられるため。
+ */
 export const suggestTitle = async (c: Conversation): Promise<string> => {
-  const prompt = promptOf(TITLE_INSTRUCTIONS, { theme: c.theme, summary: await summaryText(c), first_prompt: c.firstPrompt, last_prompt: laterPrompt(c), last_message: c.lastMessage });
+  const prompt = promptOf(TITLE_INSTRUCTIONS, { theme: c.theme, summary: summaryLines(peekSummary(c)), first_prompt: c.firstPrompt, last_prompt: laterPrompt(c), last_message: c.lastMessage });
   const { title } = await askHaiku(prompt, objectSchema({ title: { type: 'string' } }));
   if (typeof title !== 'string' || !title.trim()) throw new UpstreamError('名前が返りませんでした');
   return title.trim();
