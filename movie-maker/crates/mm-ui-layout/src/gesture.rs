@@ -20,7 +20,7 @@ pub enum EditKind {
     TrimLayer { item: usize, side: Side },
     /// カットの端。後ろのカットがずれる（`ripple`）。
     Ripple { item: usize, cut: usize, side: Side },
-    /// `cut` とすぐ後ろのカットの境目（`roll`）。
+    /// `cut` とすぐ後ろのカットの編集点（`roll`）。
     Roll { item: usize, cut: usize },
     /// カットの中身をずらす（`slip`）。
     Slip { item: usize, cut: usize },
@@ -37,7 +37,7 @@ fn frame_secs(model: &TimelineModel) -> f64 {
 }
 
 /// 端のつまみを時刻 `t`（スナップ後）へ動かすときの編集と量。
-/// `cut` が `None` ならレイヤーの端。`Alt` を押していると、カットの端は境目を動かす `roll` になる。
+/// `cut` が `None` ならレイヤーの端。`Alt` を押していると、カットの端は編集点を動かす `roll` になる。
 pub fn edge_edit(
     model: &TimelineModel,
     item: usize,
@@ -72,7 +72,7 @@ pub fn edge_edit(
             shrink_limit(t - edge, side, len, frame),
         ));
     }
-    // 境目の前のカットと後ろのカットの長さの内側に収める。間に無効なカットがあれば相手が違うので出さない。
+    // 編集点の前のカットと後ろのカットの長さの内側に収める。間に無効なカットがあれば相手が違うので出さない。
     let (before, after, kind_cut) = match side {
         Side::Out if bar.disabled_after => return None,
         Side::In if bar.disabled_before => return None,

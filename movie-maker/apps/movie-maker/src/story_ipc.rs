@@ -1,5 +1,5 @@
-//! Story パネルの Tauri の命令。名前と引数の形は `ui/sdk/README.md` の「Story の命令」。
-//! 文字起こしの編集（話題、削除、直し、評価、タグ、並べる）は `apply_op` で送る。
+//! Story パネルの Tauri のコマンド。名前と引数の形は `ui/sdk/README.md` の「Story のコマンド」。
+//! 文字起こしの編集（話題、削除、修正、評価、タグ、並べる）は `apply_op` で送る。
 
 use std::sync::Arc;
 

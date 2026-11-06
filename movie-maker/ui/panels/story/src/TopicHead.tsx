@@ -38,7 +38,7 @@ const TagInput = ({ onAdd }: { onAdd: (tag: string) => void }) => {
   );
 };
 
-/** 話題の見出し。題、時間、評価、タグ、並べる対象にするチェック。 */
+/** 話題の見出しの行。見出し、時間、評価、タグ、並べる対象にするチェック。 */
 export const TopicHead = ({ topic, picked, onPick, onRate, onTag, onRemove }: TopicHeadProps) => {
   const rating = topic.rating ?? "unrated";
   const span = `${formatClock(toSeconds(topic.in))} - ${formatClock(toSeconds(topic.out))}`;

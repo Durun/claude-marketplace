@@ -14,7 +14,7 @@ use crate::state::Shared;
 /// WebView へ Source の状態を送る Tauri のイベント名。`web/transport.js` が受ける。
 const SOURCE_EVENT: &str = "mm:source";
 
-/// Source の状態の変化を見分ける印。位置は 1 フレームより細かく見分ける必要はないが、比べやすいよう bit のまま持つ。
+/// Source の状態の変化を見分ける値。位置は 1 フレームより細かく見分ける必要はないが、比べやすいよう bit のまま持つ。
 type Fingerprint = (u64, u64, bool, u64, u64, u64);
 
 fn fingerprint(shared: &Shared) -> Fingerprint {

@@ -21,7 +21,7 @@ pub struct Opened {
     pub store: Option<Store>,
 }
 
-/// プロジェクトを開く。`project.mmdb` のフォルダーは書き手として開き、操作を保存して HTTP の入口に出す。
+/// プロジェクトを開く。`project.mmdb` のフォルダーは書き手として開き、操作を保存して HTTP サーバーに出す。
 /// 別のプロセスが書き手のときは、ロックを取らずに読む（再生は編集を止めない）。
 pub fn open(path: &Path) -> Result<Opened> {
     let store_dir = mm_store::store_dir(path);

@@ -40,7 +40,7 @@ const Confirm = ({ folders, onDelete, onCancel }: ConfirmProps) => (
   </div>
 );
 
-/** `cache/` の大きさと、掃除の入口。 */
+/** `cache/` の大きさと、掃除のボタン。 */
 export const CacheSection = ({ api, refreshKey, busy = false, onCleared }: CacheSectionProps) => {
   const [info, setInfo] = useState<CacheInfo | null>(null);
   const [confirming, setConfirming] = useState(false);

@@ -49,7 +49,7 @@ const DOC_CHANGED_EVENT: &str = "mm:doc-changed";
 struct Workers {
     renderer: Mutex<Option<Renderer>>,
     playback: Mutex<Option<Playback>>,
-    /// HTTP の入口。落とすと `.mm/` のポートと合い言葉が消える。
+    /// HTTP サーバー。落とすと `.mm/` のポートとトークンが消える。
     server: Mutex<Option<Server>>,
     /// 書き手の `project.mmdb`。再生が止まった後に閉じて、バックアップと WAL の書き戻しをする。
     core: Option<Arc<Core>>,
@@ -129,7 +129,7 @@ fn project_info(
     })
 }
 
-/// 書き手として開いた `project.mmdb` を `Core` に渡し、HTTP の入口を起こす。入口が起きなくても、
+/// 書き手として開いた `project.mmdb` を `Core` に渡し、HTTP サーバーを起動する。サーバーを起動できなくても、
 /// IPC の操作は `Core` を通して保存する。
 fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server> {
     let store = store?;
@@ -148,11 +148,11 @@ fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server
     let _ = shared.core.set(core.clone());
     match Server::start(core) {
         Ok(server) => {
-            eprintln!("HTTP の入口: 127.0.0.1:{}", server.port());
+            eprintln!("HTTP サーバー: 127.0.0.1:{}", server.port());
             Some(server)
         }
         Err(e) => {
-            tracing::warn!("HTTP の入口を起こせない: {e}");
+            tracing::warn!("HTTP サーバーを起動できない: {e}");
             None
         }
     }

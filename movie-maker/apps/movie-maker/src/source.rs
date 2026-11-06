@@ -25,7 +25,7 @@ pub struct SourceHandle {
     pub shared: Arc<Shared>,
     _playback: Playback,
     pub asset: AssetId,
-    /// 素材のフレームレート。印を付ける位置をフレームに丸めるのに使う。
+    /// 素材のフレームレート。イン点・アウト点を付ける位置をフレームに丸めるのに使う。
     pub fps: Rational,
     pub duration: f64,
 }
@@ -157,7 +157,7 @@ pub struct SourceAsset {
     pub duration: f64,
 }
 
-/// いまの Source の状態。印は開いているプロジェクトのデータ（`bins.marks`）から読む。
+/// いまの Source の状態。イン点・アウト点は開いているプロジェクトのデータ（`bins.marks`）から読む。
 pub fn state_of(shared: &Shared) -> SourceState {
     let doc = shared.doc();
     let assets = doc

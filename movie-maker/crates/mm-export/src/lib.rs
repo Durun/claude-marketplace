@@ -7,7 +7,7 @@
 //!
 //! - レンダーターゲットごと（[`export_targets`]）、範囲の指定（[`ExportOptions::range`]）、
 //!   sequence のまま（[`ExportOptions::sequence`]）の書き出し。
-//! - 出力は `<名前>.partial.<拡張子>` に書き、完成してから置き換える。失敗と取り消しでは書きかけを消す。
+//! - 出力は `<名前>.partial.<拡張子>` に書き、完成してから置き換える。失敗と取り消しでは一時ファイルを消す。
 //! - 進み具合と取り消しは [`ExportControl`]。結果の検証は [`verify`]（ffprobe）。
 //! - 1 プロセス・1 区間で、並行の描画（区間の分割と mux）とラウドネスの正規化は段階 4。
 
@@ -72,7 +72,7 @@ pub struct ExportSummary {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportOutcome {
     Completed(ExportSummary),
-    /// 取り消した。書きかけのファイルは消してあり、前の出力はそのまま。
+    /// 取り消した。一時ファイルは消してあり、前の出力はそのまま。
     Cancelled,
 }
 
@@ -156,8 +156,8 @@ pub fn export_targets(
     })
 }
 
-/// 出力先と書きかけの置き場所のどれかが他のレンダーターゲットと重なる組を拒否する
-/// （A の書きかけ `x.partial.mp4` が B の出力 `x.mp4` を指す場合も、互いに壊し合う）。
+/// 出力先と一時ファイルのパスのどれかが他のレンダーターゲットと重なる組を拒否する
+/// （A の一時ファイル `x.partial.mp4` が B の出力 `x.mp4` を指す場合も、互いに壊し合う）。
 fn reject_shared_outputs(project: &Project, targets: &[RenderTargetId]) -> Result<()> {
     let mut seen: Vec<([PathBuf; 2], &RenderTargetId)> = Vec::new();
     for id in targets {
@@ -214,7 +214,7 @@ pub fn export_run(
     let Some(done) = export_target(engine, &project, &target, options)? else {
         return Ok(ExportOutcome::Cancelled);
     };
-    // 検証は書きかけのまま行う。落ちたら書きかけだけが消え、前の正常な出力は置き換わらない。
+    // 検証は一時ファイルのまま行う。失敗したら一時ファイルだけが消え、前の正常な出力は置き換わらない。
     let verification = options
         .verify
         .then(|| verify_output(&partial_path(&output_path), &done.expected))

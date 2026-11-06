@@ -135,8 +135,8 @@ fn focus_viewer(shared: &Shared, region: Region) {
     }
 }
 
-/// ドラッグの確定を、Timeline に出しているデータで操作にし、そのバージョンを付けて編集の列で適用する。
-/// 描画を止めないよう、適用と結果の待ちは列のスレッドで行う。
+/// ドラッグの確定を、Timeline に出しているデータで操作にし、そのバージョンを付けて編集のキューで適用する。
+/// 描画を止めないよう、適用と結果の待ちはキューのスレッドで行う。
 fn apply_gesture(shared: &Arc<Shared>, doc: &DocSync, kind: EditKind, by: f64) {
     let Some(shown) = &doc.shown else { return };
     let Ok(comp) = shown.project.composition(&shown.comp) else {

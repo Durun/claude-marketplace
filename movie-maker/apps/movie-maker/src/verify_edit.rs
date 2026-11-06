@@ -1,4 +1,4 @@
-//! `--play-test` の Timeline 編集の通し。実際のウィンドウへのキーとドラッグで、Source を開いて印を付け、
+//! `--play-test` の Timeline 編集の通し。実際のウィンドウへのキーとドラッグで、Source を開いてイン点・アウト点を付け、
 //! insert、端のドラッグ（ripple）、中のドラッグ（slip）、split、lift、取り消しを順に行い、そのたびに
 //! プロジェクトのデータが期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
@@ -29,7 +29,7 @@ const VK_DELETE: u32 = 0x2E;
 const SETTLE: Duration = Duration::from_millis(300);
 /// 結果が出るのを待つ上限。
 const WAIT: Duration = Duration::from_secs(5);
-/// Source に付ける印（秒）。
+/// Source に付けるイン点・アウト点（秒）。
 const MARK_IN: f64 = 0.5;
 const MARK_OUT: f64 = 1.5;
 /// insert する再生位置（先頭のカットの後半）。
@@ -155,7 +155,7 @@ fn seek_main(shared: &Shared, t: f64) -> bool {
     wait_until(WAIT, || (shared.playhead() - t).abs() < 0.05)
 }
 
-/// Source を開いて印を付ける。
+/// Source を開いてイン点・アウト点を付ける。
 fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let shared = env.shared;
     let doc = shared.doc()?;
@@ -196,7 +196,7 @@ fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     Some(asset)
 }
 
-/// insert のキーで、Source の範囲が再生位置のカットの境目に入る。入ったカットの ID を返す。
+/// insert のキーで、Source の範囲が再生位置のカットの編集点に入る。入ったカットの ID を返す。
 fn insert_step(env: &Env<'_>, log: &mut Log, asset: &str) -> Option<String> {
     let shared = env.shared;
     let before = cuts(shared).len();
@@ -297,7 +297,7 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     shot(env, log, "7-undo");
 }
 
-/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは飛ばす。
+/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトではスキップする。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env

@@ -25,7 +25,7 @@ impl FrameSource for StubFrames {
     }
 }
 
-/// 書き手として開いた空のプロジェクトと、その入口。
+/// 書き手として開いた空のプロジェクトと、その HTTP サーバー。
 fn app(tmp: &TempDir) -> (PathBuf, Server) {
     let dir = tmp.path().join("p");
     let store = Store::create(&dir, &Project::new(), NOW).unwrap();
@@ -59,7 +59,7 @@ fn mm_op_は書き手のアプリへ_http_で転送され_変更が_sse_で届�
         1
     );
 
-    // 古い版を元にした操作は、touches が重なれば断られる。
+    // 古いバージョンを元にした操作は、touches が重なれば断られる。
     mm_ok(&[
         "op",
         path(&dir),
@@ -117,7 +117,7 @@ fn 合い言葉が消えていれば転送せず_理由を言う() {
     let out = mm(&["op", path(&dir), "addSequence", "--json", &sequence_json()]);
     assert!(!out.status.success());
     assert!(
-        stderr(&out).contains("HTTP の入口が無い"),
+        stderr(&out).contains("HTTP サーバーが無い"),
         "{}",
         stderr(&out)
     );

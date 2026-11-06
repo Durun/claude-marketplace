@@ -18,11 +18,11 @@ pub const SELECTION: Color = Color::hex(0xffffff);
 pub const BORDER: Color = Color::hex(0x3a3f4b);
 /// シーケンスの隙間（空き）の色。
 pub const GAP: Color = Color::hex(0x6b7280);
-/// 隣り合うカットの境目の線。
+/// 隣り合うカットの編集点の線。
 pub const CUT_SEAM: Color = Color::hex(0x14161a);
 
 /// サーフェスの UI の色の一式。既定は上の定数で、`ui/theme` の theme.json の色で差し替えられる。
-/// 再生位置、スナップの案内線、帯の種類の色、Program の背景はテーマに無いので既定のまま。
+/// 再生位置、スナップのガイド線、帯の種類の色、Program の背景はテーマに無いので既定のまま。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Palette {
     pub panel: Color,

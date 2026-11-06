@@ -81,7 +81,7 @@ export interface StoryApi {
 /** Tauri の invoke と同じ形の関数。テストで差し替える。 */
 export type StoryInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
-/** Tauri の IPC で Story の命令を呼ぶ実装。命令の名前と引数は ui/sdk/README.md。 */
+/** Tauri の IPC で Story のコマンドを呼ぶ実装。コマンドの名前と引数は ui/sdk/README.md。 */
 export const createIpcStoryApi = (call: StoryInvoke = tauriInvoke): StoryApi => {
   const transport = createIpcTransport((command, args) => call(command, args));
   return {

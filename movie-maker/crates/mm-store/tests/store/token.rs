@@ -1,4 +1,4 @@
-//! HTTP の合い言葉の置き場所と権限。
+//! HTTP のトークンの置き場所と権限。
 
 use mm_store::Store;
 

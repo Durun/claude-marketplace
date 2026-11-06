@@ -108,15 +108,15 @@ impl Store {
         lock.write_info(Some(port))
     }
 
-    /// HTTP の入口を閉じたら、ポートと合い言葉を消す。`mm` は書き手が HTTP を持たないものとして扱う。
+    /// HTTP サーバーを閉じたら、ポートとトークンを消す。`mm` は書き手が HTTP を持たないものとして扱う。
     pub fn unpublish_http(&self) -> Result<()> {
         let lock = self.lock.as_ref().ok_or_else(not_writer)?;
         lock.clear_token();
         lock.write_info(None)
     }
 
-    /// 起動ごとの合い言葉を、プロジェクトの外の持ち主専用のフォルダーに書く。
-    /// HTTP の呼び手はこれを持っていなければ通らない。
+    /// 起動ごとのトークンを、プロジェクトの外の持ち主専用のフォルダーに書く。
+    /// HTTP のクライアントはこれを持っていなければ通らない。
     pub fn publish_token(&self, token: &str) -> Result<()> {
         self.lock
             .as_ref()
@@ -124,12 +124,12 @@ impl Store {
             .write_token(token)
     }
 
-    /// 動作中の書き手の合い言葉（プロジェクトのフォルダーから）。
+    /// 動作中の書き手のトークン（プロジェクトのフォルダーから）。
     pub fn read_writer_token(dir: &Path) -> Option<String> {
         lock::read_token(dir)
     }
 
-    /// 合い言葉のファイルのパス（権限の検査用）。
+    /// トークンのファイルのパス（権限の検査用）。
     pub fn writer_token_file(dir: &Path) -> Option<PathBuf> {
         lock::token_file(dir)
     }

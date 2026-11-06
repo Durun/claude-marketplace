@@ -1,4 +1,4 @@
-//! 1 フレームの PNG。Claude が目で見るための出口（`GET /frame`、`mm frame`）。
+//! 1 フレームの PNG。Claude が目で見るためのエンドポイント（`GET /frame`、`mm frame`）。
 //!
 //! 描画は専用のスレッドが持つ `Engine` で行う。アプリの再生スレッドの `Engine` とは別なので、
 //! 再生を止めず、`Core` が送る触った ID で自分のキャッシュだけを捨てる。
@@ -82,7 +82,7 @@ impl EngineFrames {
     fn send(&self, job: Job) -> Result<()> {
         self.jobs
             .lock()
-            .map_err(|_| MmError::Internal("描画の列が壊れた".into()))?
+            .map_err(|_| MmError::Internal("描画のキューが壊れた".into()))?
             .send(job)
             .map_err(|_| MmError::Internal("描画のスレッドが終わっている".into()))
     }

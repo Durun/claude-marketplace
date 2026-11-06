@@ -1,7 +1,7 @@
-//! 素材の整理（`bins`）と文字起こしの直し（`transcript_edits`）。
+//! 素材の整理（`bins`）と文字起こしの修正（`transcript_edits`）。
 //!
 //! 文字起こしの本文は `project.mmdb` の `words` の表に持ち、プロジェクトのデータは素材の ID と時刻の範囲、
-//! 単語の ID で指すだけにする。本文はツールが作り直せる取り込みの結果で、人の判断（選別、話題、直し）だけを
+//! 単語の ID で指すだけにする。本文はツールが作り直せる取り込みの結果で、人の判断（選別、話題、修正）だけを
 //! 操作で変えて取り消せるようにするため。
 
 use std::collections::HashSet;
@@ -39,11 +39,11 @@ pub enum Rating {
     Rejected,
 }
 
-/// 素材の整理。Source の印、選別、話題。
+/// 素材の整理。Source のイン点・アウト点、選別、話題。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Bins {
-    /// 素材ごとのイン点とアウト点の印（Source で付ける）。素材の ID の順。
+    /// 素材ごとのイン点とアウト点（Source で付ける）。素材の ID の順。
     #[serde(default)]
     pub marks: Vec<SourceMarks>,
     /// ID の順。
@@ -54,7 +54,7 @@ pub struct Bins {
     pub topics: Vec<Topic>,
 }
 
-/// 素材の印。どちらも無い印は持たない（操作が外す）。
+/// 素材のイン点・アウト点。どちらも無いものは持たない（操作が外す）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SourceMarks {
@@ -106,8 +106,8 @@ pub struct Topic {
     pub tags: Vec<String>,
 }
 
-/// 文字起こしの 1 単語の直し。本文は `words` の表にあり、ここは単語の ID で指す。
-/// 何も変えない直し（`text` が無く `deleted` が偽）は持たない（操作が外す）。
+/// 文字起こしの 1 単語の修正。本文は `words` の表にあり、ここは単語の ID で指す。
+/// 何も変えない修正（`text` が無く `deleted` が偽）は持たない（操作が外す）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct WordEdit {
@@ -137,7 +137,7 @@ impl Bins {
     }
 }
 
-/// 単語の直しを素材と単語の ID の順に並べる。
+/// 単語の修正を素材と単語の ID の順に並べる。
 pub(crate) fn normalize_edits(edits: &mut [WordEdit]) {
     edits.sort_by(|a, b| (&a.asset, &a.word).cmp(&(&b.asset, &b.word)));
 }
@@ -161,20 +161,23 @@ impl Project {
             .ok_or_else(|| MmError::NotFound(format!("selection {id}")))
     }
 
-    /// 素材の単語の直し。無ければ `None`。
+    /// 素材の単語の修正。無ければ `None`。
     pub fn word_edit(&self, asset: &AssetId, word: &WordId) -> Option<&WordEdit> {
         self.transcript_edits
             .iter()
             .find(|e| &e.asset == asset && &e.word == word)
     }
 
-    /// 整理と直しの不変条件。素材が在り、範囲が素材の中で `in < out`、ID が重複しない、タグが辞書順。
+    /// 整理と修正の不変条件。素材が在り、範囲が素材の中で `in < out`、ID が重複しない、タグが辞書順。
     pub(crate) fn validate_bins(&self) -> Result<()> {
         let mut assets = HashSet::new();
         for m in &self.bins.marks {
-            self.require_asset("印", &m.asset)?;
+            self.require_asset("イン点・アウト点", &m.asset)?;
             if !assets.insert(m.asset.as_str()) {
-                return Err(invalid(format!("素材 {} の印が重複", m.asset)));
+                return Err(invalid(format!(
+                    "素材 {} のイン点・アウト点が重複",
+                    m.asset
+                )));
             }
             validate_marks(self, m)?;
         }
@@ -203,12 +206,12 @@ impl Project {
         }
         let mut words = HashSet::new();
         for e in &self.transcript_edits {
-            self.require_asset("単語の直し", &e.asset)?;
+            self.require_asset("単語の修正", &e.asset)?;
             if !words.insert((e.asset.as_str(), e.word.as_str())) {
-                return Err(invalid(format!("単語 {} の直しが重複", e.word)));
+                return Err(invalid(format!("単語 {} の修正が重複", e.word)));
             }
             if e.is_noop() {
-                return Err(invalid(format!("単語 {} の直しが何も変えない", e.word)));
+                return Err(invalid(format!("単語 {} の修正が何も変えない", e.word)));
             }
         }
         Ok(())
@@ -227,17 +230,23 @@ fn invalid(msg: String) -> MmError {
 
 fn validate_marks(project: &Project, m: &SourceMarks) -> Result<()> {
     if m.in_point.is_none() && m.out_point.is_none() {
-        return Err(invalid(format!("素材 {} の印が空", m.asset)));
+        return Err(invalid(format!("素材 {} のイン点・アウト点が空", m.asset)));
     }
     let duration = project.asset(&m.asset)?.duration;
     for t in [m.in_point, m.out_point].into_iter().flatten() {
         if t.is_negative() || t > duration {
-            return Err(invalid(format!("素材 {} の印 {t} が素材の外", m.asset)));
+            return Err(invalid(format!(
+                "素材 {} のイン点・アウト点 {t} が素材の外",
+                m.asset
+            )));
         }
     }
     if let (Some(i), Some(o)) = (m.in_point, m.out_point) {
         if i >= o {
-            return Err(invalid(format!("素材 {} の印が in < out でない", m.asset)));
+            return Err(invalid(format!(
+                "素材 {} のイン点・アウト点が in < out でない",
+                m.asset
+            )));
         }
     }
     Ok(())

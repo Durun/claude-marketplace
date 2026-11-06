@@ -3,7 +3,7 @@ import type { Op } from "./generated/ops.ts";
 import { createIpcStoryApi } from "./story.ts";
 
 describe("createIpcStoryApi", () => {
-  it("命令の名前と引数をアプリの形で渡す", async () => {
+  it("コマンドの名前と引数をアプリの形で渡す", async () => {
     const call = vi.fn().mockResolvedValue(null);
     const api = createIpcStoryApi(call);
     await api.overview();

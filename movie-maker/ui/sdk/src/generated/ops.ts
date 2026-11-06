@@ -529,7 +529,7 @@ export type RippleOp = {
   "edge": Edge;
   "op": "ripple";
 };
-/** 次のカットとの境目を動かす（全体の長さは変わらない）。 */
+/** 次のカットとの編集点を動かす（全体の長さは変わらない）。 */
 export type RollOp = {
   "by": RationalTime;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
@@ -605,14 +605,14 @@ export type TrimLayerOp = {
   "layer": string;
   "op": "trimLayer";
 };
-/** 素材のイン点の印を付ける・外す。 */
+/** 素材のイン点を付ける・外す。 */
 export type MarkInOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "asset": string;
   "at"?: RationalTime | null;
   "op": "markIn";
 };
-/** 素材のアウト点の印を付ける・外す。 */
+/** 素材のアウト点を付ける・外す。 */
 export type MarkOutOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "asset": string;

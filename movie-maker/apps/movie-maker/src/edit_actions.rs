@@ -1,5 +1,5 @@
-//! 編集のキーと WebView のボタンが呼ぶ、名前のついた編集（印、insert、overwrite、split、lift、extract、取り消し）。
-//! 操作を計画して再生スレッドに適用させる。適用は再生スレッドの返事を待つので、呼び元を止めないよう別のスレッドで行う。
+//! 編集のキーと WebView のボタンが呼ぶ、名前のついた編集（イン点・アウト点、insert、overwrite、split、lift、extract、取り消し）。
+//! 操作を計画して再生スレッドに適用させる。適用は再生スレッドの返事を待つので、呼び出し側を止めないよう別のスレッドで行う。
 
 use std::sync::Arc;
 
@@ -15,10 +15,10 @@ use crate::timebase;
 /// 名前のついた編集。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditAction {
-    /// Source の今の位置を素材のイン点・アウト点の印にする。
+    /// Source の今の位置を素材のイン点・アウト点にする。
     MarkIn,
     MarkOut,
-    /// Source の範囲を再生位置の境目に差し込む・選んだカットに重ねる。
+    /// Source の範囲を再生位置に近い編集点に差し込む・選んだカットに重ねる。
     Insert,
     Overwrite,
     /// 再生位置でカットを割る。
@@ -48,7 +48,7 @@ impl EditAction {
     }
 }
 
-/// 編集を実行する。計画と適用は編集の列（`edit::queue`）で順に行い、呼び元を止めない。
+/// 編集を実行する。計画と適用は編集のキュー（`edit::queue`）で順に行い、呼び出し側を止めない。
 pub fn run(shared: &Arc<Shared>, action: EditAction) {
     let s = shared.clone();
     let job: Box<dyn FnOnce() + Send> = match (action, shared.core.get().is_some()) {
@@ -88,7 +88,7 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
     };
     let planned = plan_action(shared, &ctx, action)?;
     edit::submit_based(shared, vec![planned.op], doc.version)?;
-    // 印は素材の整理で、Timeline で選んだカットには関係しない。
+    // イン点・アウト点は素材の整理で、Timeline で選んだカットには関係しない。
     if !matches!(action, EditAction::MarkIn | EditAction::MarkOut) {
         shared
             .edit
@@ -121,7 +121,7 @@ fn source_range(shared: &Shared, ctx: &Ctx<'_>) -> Result<plan::SourceRange, Str
     plan::source_range(ctx.project, &open_source(shared)?.asset)
 }
 
-/// Source の今の位置（素材のフレーム）に印を付ける操作。
+/// Source の今の位置（素材のフレーム）にイン点・アウト点を付ける操作。
 fn mark(shared: &Shared, is_in: bool) -> Result<Planned, String> {
     let h = open_source(shared)?;
     let at = timebase::frame_start(h.shared.playhead(), h.fps)?;
@@ -177,7 +177,7 @@ mod tests {
 
     /// `shared` の再生位置を `t` にして、その時刻のフレームの CPU の画像を待つ。
     fn frame_at(shared: &Shared, t: f64) -> RgbaImage {
-        // フレームの境目ぴったりの秒は浮動小数点の丸めで 1 つ手前のフレームになりうるので、少し先を指す。
+        // フレームの境界ぴったりの秒は浮動小数点の丸めで 1 つ手前のフレームになりうるので、少し先を指す。
         shared.send(Command::Seek(t + 1e-4));
         let mut found = None;
         assert!(
@@ -236,7 +236,7 @@ mod tests {
         let before = source_frame_of(&frame_at(&shared, 3.5));
         assert!((before - 105).abs() <= 1, "挿入前 {before}");
 
-        // Source で素材 a を開き、5 秒と 6 秒に印を付ける。
+        // Source で素材 a を開き、5 秒にイン点、6 秒にアウト点を付ける。
         let doc = shared.doc().unwrap();
         let comp = doc.project.composition(&doc.comp).unwrap();
         shared
@@ -274,7 +274,7 @@ mod tests {
         let shifted = source_frame_of(&frame_at(&shared, 4.5));
         assert!((shifted - 105).abs() <= 1, "後ろにずれた k2 {shifted}");
 
-        // 取り消すと元のカットの並びに戻り、その位置の絵も戻る。
+        // 取り消すと元のカットの並びに戻り、その位置のフレームも戻る。
         run(&shared, EditAction::Undo);
         assert!(wait_until(Duration::from_secs(5), || cut_count(&shared) == 3));
         assert!(shared
@@ -316,7 +316,7 @@ mod tests {
             -1.0,
         );
         assert_eq!(source_frame_of(&frame_at(&shared, 2.5)), 105);
-        // roll で k1 と k2 の境目を 0.5 秒後ろへ動かすと、2.3 秒は k1 の延びた分（素材の 2.8 秒）になる。
+        // roll で k1 と k2 の編集点を 0.5 秒後ろへ動かすと、2.3 秒は k1 の延びた分（素材の 2.8 秒）になる。
         assert_eq!(source_frame_of(&frame_at(&shared, 2.3)), 99);
         apply(EditKind::Roll { item: 0, cut: 0 }, 0.5);
         assert_eq!(source_frame_of(&frame_at(&shared, 2.3)), 84);

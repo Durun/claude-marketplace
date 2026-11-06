@@ -51,7 +51,7 @@ const shootInspector = async (browser) => {
   await page.close();
 };
 
-// Media は偽のアプリの窓口で場面を作る。左の列と同じ幅で撮る。
+// Media はモックの API で状態を作る。左の列と同じ幅で撮る。
 const MEDIA_SCENES = ["idle", "importing", "failed", "empty", "cache"];
 
 const shootMedia = async (browser) => {
@@ -75,7 +75,7 @@ const shootMedia = async (browser) => {
   }
 };
 
-// Story は偽のアプリの窓口で場面を作る。左の列と同じ幅で撮る。
+// Story はモックの API で状態を作る。左の列と同じ幅で撮る。
 const dragWords = async (page, from, to) => {
   const a = await page.locator(`[data-i="${from}"]`).boundingBox();
   const b = await page.locator(`[data-i="${to}"]`).boundingBox();

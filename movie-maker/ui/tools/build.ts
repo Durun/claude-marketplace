@@ -42,7 +42,7 @@ await writeFile(`${DIST}theme.css`, generateCss());
 await writeFile(`${DIST}index.html`, page("Movie Maker", "shell"));
 // Inspector を fixtures のデータで確かめるページ。アプリには載せない。
 await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-demo"));
-// Media を偽のアプリの窓口で動かすページ。アプリには載せない。
+// Media をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}media-demo.html`, page("Media demo", "media-demo"));
-// Story を偽のアプリの窓口で動かすページ。アプリには載せない。
+// Story をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));

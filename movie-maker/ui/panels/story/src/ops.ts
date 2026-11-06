@@ -38,7 +38,7 @@ export const fixOp = (asset: string, word: StoryWord, text: string): Op => ({
   text: text === "" || text === word.text ? null : text,
 });
 
-/** 範囲に題を付けて話題にする。 */
+/** 範囲に見出しを付けて話題にする。 */
 export const addTopicOp = (asset: string, title: string, range: WordRange): Op => ({
   op: "addTopic",
   topic: { id: newId("t"), asset, title, in: range.start, out: range.end },

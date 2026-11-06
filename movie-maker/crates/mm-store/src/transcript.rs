@@ -1,8 +1,8 @@
 //! 文字起こしの本文（`transcripts`、`words`、`words_fts`）。
 //!
 //! 本文は取り込みのツールが作り直せる結果なので、操作の記録に載せずに表へ直接書く。
-//! 人の直し（消した単語、直した文字）はプロジェクトのデータの `transcript_edits` にあり、
-//! 操作を書くたびに同じトランザクションで `words` の `fixed`・`deleted`・`run` に写す。
+//! 人の修正（消した単語、直した文字）はプロジェクトのデータの `transcript_edits` にあり、
+//! 操作を書くたびに同じトランザクションで `words` の `fixed`・`deleted`・`run` に反映する。
 
 use std::collections::{HashMap, HashSet};
 
@@ -40,7 +40,7 @@ pub struct WordInput {
     pub text: String,
 }
 
-/// 表に入った 1 単語と、プロジェクトのデータの直し。
+/// 表に入った 1 単語と、プロジェクトのデータの修正。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptWord {
     pub word: WordId,
@@ -139,7 +139,7 @@ impl Store {
         Ok(found.is_some())
     }
 
-    /// 素材の文字起こしの単語を時刻の順に。直しを含む。無ければ空。
+    /// 素材の文字起こしの単語を時刻の順に。修正を含む。無ければ空。
     pub fn transcript_words(&self, asset: &AssetId) -> Result<Vec<TranscriptWord>> {
         let mut st = self
             .conn
@@ -261,8 +261,8 @@ fn insert_words(
 }
 
 impl Store {
-    /// 新しく足した・変えた直しの単語が、素材の文字起こしに在るか確かめる。無い単語への直しは、
-    /// 表に写らず検索にも現れないまま `transcript_edits` に残るので、書く前に拒否する。
+    /// 新しく足した・変えた修正の単語が、素材の文字起こしに在るか確かめる。無い単語への修正は、
+    /// 表に反映されず検索にも現れないまま `transcript_edits` に残るので、書く前に拒否する。
     pub(crate) fn check_edited_words(&self, new: &Project) -> Result<()> {
         let old: HashMap<(&AssetId, &WordId), &WordEdit> = self
             .project
@@ -302,7 +302,7 @@ impl Store {
     }
 }
 
-/// 直しが変わった素材の `words` を、新しいプロジェクトのデータの直しに合わせる。
+/// 修正が変わった素材の `words` を、新しいプロジェクトのデータの修正に合わせる。
 pub(crate) fn sync_edits(tx: &Connection, old: &Project, new: &Project) -> Result<()> {
     let mut assets: Vec<&AssetId> = old
         .transcript_edits

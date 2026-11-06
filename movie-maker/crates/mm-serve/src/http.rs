@@ -1,6 +1,6 @@
-//! HTTP の入口（axum）。パスと JSON の形は `docs/design/05-ops.md` の「HTTP の入口」。
+//! HTTP サーバー（axum）。パスと JSON の形は `docs/design/05-ops.md` の「HTTP サーバー」。
 //!
-//! すべての要求は、先に `guard` で `Host`、`Origin`、合い言葉を確かめる。ブラウザーのページは
+//! すべての要求は、先に `guard` で `Host`、`Origin`、トークンを確かめる。ブラウザーのページは
 //! DNS の再束縛や別のオリジンからの要求で、ローカルの待ち受けに触れる。それをここで止める。
 
 use std::convert::Infallible;
@@ -28,7 +28,7 @@ use crate::frames::{parse_time, FrameRequest};
 /// 要求の本体の上限。`addAsset` の束や長いトランザクションが収まる大きさ。
 const BODY_LIMIT: usize = 8 * 1024 * 1024;
 
-/// 入口が共有するもの。
+/// HTTP サーバーのハンドラーが共有するもの。
 pub(crate) struct AppState {
     pub core: Arc<Core>,
     pub token: String,
@@ -51,13 +51,13 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-/// `Host`、`Origin`、合い言葉を確かめる。どれかが違えば本体を読まずに断る。
+/// `Host`、`Origin`、トークンを確かめる。どれかが違えば本体を読まずに断る。
 async fn guard(State(st): State<Arc<AppState>>, req: Request, next: Next) -> Response {
     let headers = req.headers();
     if !header_in(headers, header::HOST, &st.hosts) {
         return error_response(StatusCode::FORBIDDEN, "forbidden_host", "Host が違う");
     }
-    // ブラウザーのページからの要求は Origin を付ける。この入口を使う画面は同じオリジンのものだけ。
+    // ブラウザーのページからの要求は Origin を付ける。この HTTP サーバーを使う画面は同じオリジンのものだけ。
     if let Some(origin) = headers.get(header::ORIGIN) {
         let allowed = origin
             .to_str()
@@ -76,7 +76,7 @@ async fn guard(State(st): State<Arc<AppState>>, req: Request, next: Next) -> Res
         return error_response(
             StatusCode::UNAUTHORIZED,
             "unauthorized",
-            "合い言葉が無いか違う（Authorization: Bearer で渡す）",
+            "トークンが無いか違う（Authorization: Bearer で渡す）",
         );
     }
     next.run(req).await
@@ -89,7 +89,7 @@ fn header_in(headers: &HeaderMap, name: header::HeaderName, allowed: &[String]) 
         .is_some_and(|v| allowed.iter().any(|a| a.eq_ignore_ascii_case(v)))
 }
 
-/// 合い言葉の比較は、どこで違ったかを時間に出さない。
+/// トークンの比較は、どこで違ったかを時間に出さない。
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
@@ -154,7 +154,7 @@ struct OpsBody {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActorBody {
-    /// 呼び手の名前だけ。種類（`cli` か `mcp`）は操作経路で決まり、名乗れない。
+    /// 呼び出し側の名前だけ。種類（`cli` か `mcp`）は操作経路で決まり、名乗れない。
     name: String,
 }
 

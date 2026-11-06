@@ -1,6 +1,6 @@
-//! アプリの Program と同じ組み合わせ（`RuntimeConfig::real()`、Preview の画質）で、sequence の絵が再生位置の
+//! アプリの Program と同じ組み合わせ（`RuntimeConfig::real()`、Preview の画質）で、sequence のフレームが再生位置の
 //! 素材のフレームになるかを確かめる。素材は `mm ingest` で取り込み、プレビュー動画を持つ。
-//! 素材のフレームの番号は左上の箱に焼き込む（`fixtures/media/generate.sh` と同じ形）。FFmpeg が要るので feature `ffmpeg` のときだけ走る。
+//! 素材のフレームの番号は左上の矩形に焼き込む（`fixtures/media/generate.sh` と同じ形）。FFmpeg が要るので feature `ffmpeg` のときだけ走る。
 #![cfg(feature = "ffmpeg")]
 
 #[path = "../../../crates/mm-decode-ffmpeg/tests/common/mod.rs"]
@@ -21,7 +21,7 @@ const FPS: i64 = 30;
 const FPS_U32: u32 = 30;
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 180;
-/// 種類 `sequence` の版。
+/// ノードの種類 `sequence` のバージョン。
 const SEQUENCE_KIND_VERSION: u32 = 1;
 /// sequence のカット（素材の秒の範囲）。後ろのカットを素材の先頭にして、境の前後の取り違えを捕まえる。
 const CUTS: [(i64, i64); 2] = [(6, 9), (0, 3)];

@@ -1,4 +1,4 @@
-//! 書き出しの途中の制御。取り消し、進み具合、書きかけのファイル。
+//! 書き出しの途中の制御。取り消し、進み具合、一時ファイル。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,7 +61,7 @@ impl ExportControl {
     }
 }
 
-/// 書きかけの出力の置き場所。`out.mp4` なら `out.partial.mp4`（エンコーダーが拡張子で形式を選ぶので拡張子は残す）。
+/// 一時ファイルのパス。`out.mp4` なら `out.partial.mp4`（エンコーダーが拡張子で形式を選ぶので拡張子は残す）。
 pub(crate) fn partial_path(output: &Path) -> PathBuf {
     let stem = output
         .file_stem()
@@ -73,7 +73,7 @@ pub(crate) fn partial_path(output: &Path) -> PathBuf {
     output.with_file_name(name)
 }
 
-/// 書きかけのファイル。完成して `commit` するまでに落ちたら（エラー、取り消し、パニック）、ドロップで消す。
+/// 一時ファイル。完成して `commit` するまでに失敗したら（エラー、取り消し、パニック）、ドロップで消す。
 pub(crate) struct PartialFile {
     path: PathBuf,
     done: bool,

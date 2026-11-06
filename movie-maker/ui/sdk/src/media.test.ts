@@ -15,7 +15,7 @@ const fakeListen = () => {
 };
 
 describe("createIpcMediaApi", () => {
-  it("命令の名前と引数をアプリの形で渡す", async () => {
+  it("コマンドの名前と引数をアプリの形で渡す", async () => {
     const call = vi.fn().mockResolvedValue([]);
     const api = createIpcMediaApi(call, vi.fn());
     await api.list();

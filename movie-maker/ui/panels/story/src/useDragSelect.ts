@@ -23,7 +23,7 @@ export interface DragSelect {
 
 /**
  * 単語のドラッグで範囲を選ぶ。動かさずに離したときは 1 語のクリックとして `onClick` を呼ぶ。
- * Shift を押したクリックは、いまの範囲の頭から伸ばす。
+ * Shift を押したクリックは、いまの範囲の先頭から伸ばす。
  * キーボードは左右の矢印で単語を移り、Shift+矢印で範囲を伸ばし、Enter か Space で 1 語を選ぶ。Escape で選択を外す。
  */
 export const useDragSelect = (onClick: (index: number) => void, count: number): DragSelect => {

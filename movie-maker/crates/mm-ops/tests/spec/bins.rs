@@ -1,4 +1,4 @@
-//! 段階 3 の操作（選別、話題、文字起こしの直し、レイヤーの端、隙間、カットの列）の種。
+//! 段階 3 の操作（選別、話題、文字起こしの修正、レイヤーの端、隙間、カットの列）の種。
 
 use super::build::{arb_cut, arb_id, build_cut, cut_id, layer_id, pick, CutSpec};
 use crate::common::{quarters, secs};

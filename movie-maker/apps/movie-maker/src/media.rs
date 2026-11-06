@@ -1,6 +1,6 @@
-//! Media パネルの裏側。素材の一覧、サムネイル、波形、`cache/` の大きさと掃除、取り込み。
+//! Media パネルのアプリ側の処理。素材の一覧、サムネイル、波形、`cache/` の大きさと掃除、取り込み。
 //! 取り込みは `mm ingest` と同じ `mm_ingest::ingest` の流れで、`addAsset` を再生スレッドに適用させる。
-//! Tauri に依存しない部分（ここ）と、命令の入口（`media_ipc.rs`）を分けて、WebView 無しで試せるようにする。
+//! Tauri に依存しない部分（ここ）と、Tauri のコマンドのハンドラー（`media_ipc.rs`）を分けて、WebView 無しで試せるようにする。
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -116,7 +116,7 @@ pub struct MediaState {
     shared: Arc<Shared>,
     cache: CacheLayout,
     tools: Tools,
-    /// 素材の中身の調べ。ffprobe を一覧のたびに呼ばないよう、コンテンツハッシュで覚える。
+    /// 素材の中身の調べ。ffprobe を一覧のたびに呼ばないよう、コンテンツハッシュをキーにキャッシュする。
     probes: Mutex<HashMap<String, Option<MediaProbe>>>,
     /// 取り込みは 1 度に 1 つだけ回す。掃除も取り込みと同時に回さない（作っている途中の出力を消さない）。
     importing: Mutex<()>,
@@ -315,7 +315,7 @@ impl MediaState {
     }
 }
 
-/// 取り込みの本体。素材ごとに進み具合を `emit` に渡す。失敗した素材は飛ばして次へ進む。
+/// 取り込みの本体。素材ごとに進み具合を `emit` に渡す。失敗した素材はスキップして次へ進む。
 pub fn run_import(
     opts: &IngestOptions,
     paths: &[String],

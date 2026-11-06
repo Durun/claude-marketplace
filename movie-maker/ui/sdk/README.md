@@ -33,7 +33,7 @@ await client.send("setParam", { target: { layer: "l1", path: "opacity" }, value:
 
 Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, String>` の形。
 
-## Media の命令
+## Media のコマンド
 
 Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `src/media.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。
 
@@ -53,12 +53,12 @@ Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハン�
 |---|---|
 | `started` | `index`、`total`、`path` |
 | `done` | `index`、`path`、`asset_id`、`added`（偽なら同じコンテンツハッシュの素材がすでにあった） |
-| `failed` | `index`、`path`、`error`（失敗した素材は飛ばして次へ進む） |
+| `failed` | `index`、`path`、`error`（失敗した素材はスキップして次へ進む） |
 | `finished` | `added`、`skipped`、`failed` |
 
 ファイルのドロップは Tauri の `tauri://drag-enter`、`tauri://drag-leave`、`tauri://drag-drop`（`{ paths }`）を `MediaApi.onDrop` で受ける。
 
-## Story の命令
+## Story のコマンド
 
 Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `src/story.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
 
