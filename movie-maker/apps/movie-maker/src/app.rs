@@ -18,6 +18,8 @@ use tracing_subscriber::prelude::*;
 use windows::Win32::Media::timeBeginPeriod;
 
 use crate::cli::{self, Args};
+use crate::deliver::DeliverState;
+use crate::deliver_ipc;
 use crate::edit;
 use crate::ipc::{self, ProjectInfo, SyncState};
 use crate::media::{self, MediaState};
@@ -245,8 +247,10 @@ fn build_and_run(boot: Boot) {
         &boot.args.project,
         media::project_cache_dir(&boot.args.project),
     ));
+    let deliver_state = Arc::new(DeliverState::new(boot.shared.clone()));
     tauri::Builder::default()
         .manage(managed)
+        .manage(deliver_state)
         .manage(media_state)
         .manage(story_state)
         .invoke_handler(tauri::generate_handler![
@@ -256,6 +260,13 @@ fn build_and_run(boot: Boot) {
             ipc::project_info,
             ipc::key_event,
             edit::apply_op,
+            edit::apply_ops,
+            deliver_ipc::export_overview,
+            deliver_ipc::export_status,
+            deliver_ipc::export_start,
+            deliver_ipc::export_cancel,
+            deliver_ipc::export_reveal,
+            deliver_ipc::export_pick_output,
             media_ipc::media_list,
             media_ipc::media_thumbnail,
             media_ipc::media_waveform,
