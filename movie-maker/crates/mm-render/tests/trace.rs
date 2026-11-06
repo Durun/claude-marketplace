@@ -15,6 +15,9 @@ use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, Size};
 use tracing_subscriber::prelude::*;
 
 const SIZE: Size = Size::new(64, 36);
+/// 結果は待たずに数フレーム遅れて読むので、間を空けて何枚か描く。
+const FRAMES: u32 = 8;
+const FRAME_GAP: std::time::Duration = std::time::Duration::from_millis(10);
 
 fn project() -> Project {
     let layer = Layer::new(
@@ -68,7 +71,7 @@ fn gpu_の時間が_mm_trace_に載る() {
             Arc::new(SampleMixerFactory),
             sample_services(),
         );
-        for _ in 0..3 {
+        for _ in 0..FRAMES {
             r.render_frame(&RenderRequest {
                 project: &project,
                 composition: &id,
@@ -78,13 +81,14 @@ fn gpu_の時間が_mm_trace_に載る() {
                 nodes: &nodes,
             })
             .expect("描ける");
+            std::thread::sleep(FRAME_GAP);
         }
     });
     let snap = handle.snapshot();
-    assert_eq!(snap.spans["render.frame"].count, 3);
+    assert_eq!(snap.spans["render.frame"].count, u64::from(FRAMES));
     assert!(snap.gauges["render.gpu_frame_us"] >= 0.0);
     assert!(
         snap.spans["render.gpu_frame"].count >= 2,
-        "2 フレーム目から前のフレームの分が出る"
+        "数フレーム遅れて前のフレームの分が出る"
     );
 }

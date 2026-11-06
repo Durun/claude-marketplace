@@ -15,8 +15,7 @@ use crate::compose::Compositor;
 use crate::export::ExportPipe;
 use crate::layers::CompCx;
 use crate::source::SourcePool;
-use crate::timer::GpuTimer;
-use mm_gpu::{GpuContext, WgpuGpu};
+use mm_gpu::{GpuContext, PassTimer, WgpuGpu};
 
 /// レンダラーのバージョン。合成の式を変えたら上げる（フレームのキャッシュのキーに入る）。
 pub const WGPU_RENDERER_VERSION: u32 = 1;
@@ -27,7 +26,8 @@ const KEPT_OUTPUTS: usize = mm_render_api::KEPT_RENDERED_FRAMES;
 pub struct WgpuRenderer {
     pub(crate) gpu: WgpuGpu,
     pub(crate) compositor: Compositor,
-    pub(crate) timer: GpuTimer,
+    /// `gpu` と同じタイマー。合成のパスが書く。
+    pub(crate) timer: Arc<PassTimer>,
     pub(crate) decoders: Arc<dyn DecoderFactory>,
     pub(crate) mixers: Arc<dyn MixerFactory>,
     pub(crate) services: Services,
@@ -50,10 +50,11 @@ impl WgpuRenderer {
         mixers: Arc<dyn MixerFactory>,
         services: Services,
     ) -> Self {
+        let gpu = WgpuGpu::new(ctx.clone());
         Self {
             compositor: Compositor::new(&ctx),
-            timer: GpuTimer::new(&ctx),
-            gpu: WgpuGpu::new(ctx),
+            timer: gpu.timer().clone(),
+            gpu,
             decoders,
             mixers,
             services,
@@ -116,8 +117,8 @@ impl WgpuRenderer {
     /// GPU の上の持ち物を `ctx` の上に作り直す。
     fn rebind(&mut self, ctx: Arc<GpuContext>) {
         self.compositor = Compositor::new(&ctx);
-        self.timer = GpuTimer::new(&ctx);
         self.gpu = WgpuGpu::new(ctx);
+        self.timer = self.gpu.timer().clone();
         self.outputs.clear();
         // 覚えた画像は前のデバイスのテクスチャなので、解放せず忘れる。
         self.cache.forget_all();
@@ -131,16 +132,15 @@ impl WgpuRenderer {
         self.gpu.texture_count()
     }
 
-    /// 前のフレームの GPU の時間を読んで `mm-trace` に載せる。
+    /// 読み取りが終わった GPU の時間を `mm-trace` に載せる。待たないので、結果は 1〜2 フレーム遅れる。
     ///
     /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
     /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
     fn report_gpu_time(&mut self) {
-        let Some(ns) = self.timer.collect() else {
-            return;
-        };
-        mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
-        mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
+        for ns in self.timer.collect() {
+            mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
+            mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
+        }
     }
 
     fn keep_output(&mut self, id: u64) {
@@ -157,7 +157,6 @@ impl WgpuRenderer {
         self.cache.flush(&mut self.gpu);
         self.sources.begin_frame();
         self.report_gpu_time();
-        self.timer.begin_frame();
         let comp = req.project.composition(req.composition)?;
         let cx = CompCx {
             project: req.project,
@@ -180,6 +179,7 @@ impl WgpuRenderer {
         self.gpu.before_submit();
         ctx.queue.submit([encoder.finish()]);
         self.gpu.after_submit();
+        self.timer.after_submit();
         target
     }
 }

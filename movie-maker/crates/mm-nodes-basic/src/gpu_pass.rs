@@ -316,6 +316,7 @@ fn encode(
                     store: wgpu::StoreOp::Store,
                 },
             })],
+            timestamp_writes: gpu.timer().pass_writes(),
             ..Default::default()
         });
         rp.set_pipeline(&pipeline.pipeline);

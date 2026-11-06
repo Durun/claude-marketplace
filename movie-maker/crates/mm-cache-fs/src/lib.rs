@@ -212,14 +212,11 @@ impl CacheStore for FsCache {
     }
 
     fn put(&self, key: &CacheKey, bytes: &[u8]) -> Result<()> {
-        let tmp = self
-            .root
-            .join(TMP_DIR)
-            .join(format!(
-                "{}-{}.tmp",
-                std::process::id(),
-                self.seq.fetch_add(1, Ordering::Relaxed)
-            ));
+        let tmp = self.root.join(TMP_DIR).join(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            self.seq.fetch_add(1, Ordering::Relaxed)
+        ));
         let path = entry_path(&self.root, key);
         let parent = path
             .parent()
