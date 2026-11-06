@@ -3300,6 +3300,7 @@ dependencies = [
  "mm-audio-cpal",
  "mm-doc",
  "mm-node-api",
+ "mm-ops",
  "mm-runtime",
  "mm-store",
  "mm-testkit",

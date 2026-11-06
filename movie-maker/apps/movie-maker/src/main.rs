@@ -12,6 +12,8 @@ mod cli;
 #[cfg(windows)]
 mod clock;
 #[cfg(windows)]
+mod edit;
+#[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
 mod keys;

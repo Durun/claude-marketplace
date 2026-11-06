@@ -24,6 +24,8 @@ pub enum Command {
     Seek(f64),
     /// 現在のフレームから `n` フレーム動かす（再生中なら止める）。
     Step(i64),
+    /// `Shared::edits` に積んだ操作を当てる。
+    Edit,
     Quit,
 }
 
@@ -149,6 +151,35 @@ mod tests {
             rendered + dropped >= total,
             "描いた {rendered} と飛ばした {dropped} で全 {total} フレームを数える"
         );
+    }
+
+    #[test]
+    fn 操作を当てると触ったレイヤーを返し_今のフレームを描き直す() {
+        let (shared, _playback, _info) = start();
+        assert!(wait(Duration::from_secs(2), || shared
+            .frames
+            .newer_than(0)
+            .is_some()));
+        let before = shared.frames.newer_than(0).expect("最初のフレーム").serial;
+        let op: mm_ops::Op = mm_ops::SetParam {
+            target: mm_ops::ParamRef::layer(&mm_types::Id::new("l-footage"), "opacity"),
+            value: mm_types::ParamValue::Number(0.5),
+            keyframes: None,
+        }
+        .into();
+        let outcome = crate::edit::submit(&shared, vec![op]).expect("当たる");
+        assert!(outcome.touched.iter().any(|id| id == "l-footage"));
+        assert!(
+            shared.frames.newer_than(before).is_some(),
+            "当てた後のフレームが出る"
+        );
+        let bad: mm_ops::Op = mm_ops::SetParam {
+            target: mm_ops::ParamRef::layer(&mm_types::Id::new("no-such"), "opacity"),
+            value: mm_types::ParamValue::Number(0.5),
+            keyframes: None,
+        }
+        .into();
+        assert!(crate::edit::submit(&shared, vec![bad]).is_err());
     }
 
     #[test]

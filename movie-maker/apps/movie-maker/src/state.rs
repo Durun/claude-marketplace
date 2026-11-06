@@ -12,6 +12,7 @@ use mm_ui_layout::PointerEvent;
 use serde::Serialize;
 
 use crate::clock::PlayClock;
+use crate::edit::PendingEdit;
 use crate::playback::Command;
 
 /// 百分位つきの要約（単位は呼び出し側の決め。ここではミリ秒）。
@@ -116,6 +117,8 @@ pub struct Shared {
     pub gpu: Mutex<Option<Arc<GpuContext>>>,
     /// 描画スレッドがレンダラーの GPU でサーフェスを作れず、CPU の画像を頼んでいるか。
     pub cpu_frames: AtomicBool,
+    /// 再生スレッドがまだ当てていない操作。
+    pub edits: Mutex<Vec<PendingEdit>>,
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
 }
 
@@ -136,6 +139,7 @@ impl Shared {
             adapter: Mutex::new(String::new()),
             gpu: Mutex::new(None),
             cpu_frames: AtomicBool::new(false),
+            edits: Mutex::new(Vec::new()),
             series: Mutex::new(BTreeMap::new()),
         }
     }

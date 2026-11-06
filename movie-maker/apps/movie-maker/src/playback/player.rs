@@ -9,11 +9,13 @@ use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_audio_cpal::AudioOutput;
 use mm_doc::{Composition, Project};
 use mm_node_api::Quality;
+use mm_ops::{apply_transaction, Entry, Op, OpContext};
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
 
 use super::{Command, PlaybackInfo};
 use crate::clock::{AudioClock, PlayClock, WallClock};
+use crate::edit::EditOutcome;
 use crate::state::{FrameImage, Shared};
 
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
@@ -175,8 +177,31 @@ impl Player {
                 let idx = (here * self.fps_f).floor() as i64 + n;
                 self.seek_to(idx as f64 / self.fps_f);
             }
+            Command::Edit => self.apply_edits(),
             Command::Quit => {}
         }
+    }
+
+    /// 積まれた操作を順に当て、結果を返す。当てたら今のフレームを描き直す。
+    fn apply_edits(&mut self) {
+        let edits = std::mem::take(&mut *self.shared.edits.lock().expect("edits"));
+        for edit in edits {
+            let _ = edit.reply.send(self.apply(&edit.ops));
+        }
+    }
+
+    /// 操作を 1 つのトランザクションとして当て、触った ID に頼ったキャッシュだけを捨てる。
+    fn apply(&mut self, ops: &[Op]) -> std::result::Result<EditOutcome, String> {
+        let mut project = (*self.project).clone();
+        let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
+            .map_err(|e| e.to_string())?;
+        let touched = outcome.touches.to_vec();
+        self.engine.invalidate_touched(&touched);
+        self.project = Arc::new(project);
+        if let Some(index) = self.last_frame {
+            self.render_frame(index);
+        }
+        Ok(EditOutcome { touched })
     }
 
     fn pause_position(&mut self) -> f64 {
