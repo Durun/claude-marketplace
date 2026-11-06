@@ -83,8 +83,40 @@ pub fn project() -> Project {
         output_path: "out.mp4".into(),
         loudness_lufs: None,
     });
+    add_bins(&mut p);
     p.validate().unwrap();
     p
+}
+
+/// 素材 a1 と、その上の選別 sel1 と話題 t1。
+fn add_bins(p: &mut Project) {
+    let asset = Id::new("a1");
+    p.assets.push(mm_doc::Asset {
+        id: asset.clone(),
+        path: "a1.mp4".into(),
+        content_hash: "hash-a1".into(),
+        color_space: mm_types::ColorSpace::bt709(),
+        duration: secs(20),
+        fps: Some(Rational::integer(30)),
+        timebase_offset: RationalTime::ZERO,
+    });
+    p.bins.selections.push(mm_doc::Selection {
+        id: Id::new("sel1"),
+        asset: asset.clone(),
+        in_point: secs(0),
+        out_point: secs(2),
+        rating: mm_doc::Rating::Favorite,
+        tags: vec!["a".into()],
+    });
+    p.bins.topics.push(mm_doc::Topic {
+        id: Id::new("t1"),
+        asset,
+        in_point: secs(1),
+        out_point: secs(4),
+        title: "話題".into(),
+        rating: mm_doc::Rating::Unrated,
+        tags: Vec::new(),
+    });
 }
 
 /// 比べるための形。ID で引く列を並べ、JSON にする。

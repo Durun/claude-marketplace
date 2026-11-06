@@ -65,6 +65,7 @@ impl Project {
                 ))
             })?;
         }
+        self.validate_bins()?;
         validate_nesting(self)
     }
 

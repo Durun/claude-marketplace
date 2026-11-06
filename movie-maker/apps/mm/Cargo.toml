@@ -22,6 +22,8 @@ mm-export = { workspace = true }
 mm-ops = { workspace = true }
 mm-store = { workspace = true }
 mm-ingest = { workspace = true }
+# 文字起こしの付属ファイルの型（`mm ingest` が DB の入力に変換する）。
+mm-ingest-api = { workspace = true }
 clap = { workspace = true }
 ctrlc = { workspace = true }
 # `perf run cpu` の保存のコミットの作業フォルダー。

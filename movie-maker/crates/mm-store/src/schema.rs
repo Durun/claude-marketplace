@@ -10,10 +10,58 @@ use crate::SqlExt;
 pub const APPLICATION_ID: i32 = 0x4d4d_4442;
 
 /// DDL を 1 つずつ適用した先のバージョン。`MIGRATIONS` の長さと一致する。
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// バージョン `i` から `i + 1` に上げる DDL。プロジェクトのデータの JSON の形の移行は `mm_doc::migrate` が持つ。
-pub(crate) const MIGRATIONS: &[&str] = &[V1, V2];
+pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3];
+
+/// バージョン 3: 素材の整理と文字起こしの直しの行（プロジェクトのデータ v6）と、文字起こしの本文と全文検索。
+///
+/// `words.run` は単語の文字に後ろの単語の文字を続けたもの（`transcript::RUN_EXTRA_CHARS` 文字まで）で、
+/// 単語の境目をまたぐ語（「編」「集」の「編集」）も単語の行の検索で引けるようにする。
+/// `words_fts` は `words` を外部コンテンツにした FTS5 で、`run` だけを索引にし、トリガーで同期する。
+const V3: &str = "
+CREATE TABLE marks (id TEXT PRIMARY KEY, json TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE selections (id TEXT PRIMARY KEY, json TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE topics (id TEXT PRIMARY KEY, json TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE word_edits (id TEXT PRIMARY KEY, json TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE transcripts (
+  asset_id TEXT PRIMARY KEY,
+  content_hash TEXT NOT NULL,
+  producer TEXT NOT NULL,
+  language TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE words (
+  id INTEGER PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES transcripts(asset_id),
+  word_id TEXT NOT NULL,
+  ord INTEGER NOT NULL,
+  segment INTEGER NOT NULL,
+  start_num INTEGER NOT NULL,
+  start_den INTEGER NOT NULL,
+  end_num INTEGER NOT NULL,
+  end_den INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  fixed TEXT,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  run TEXT NOT NULL,
+  UNIQUE (asset_id, word_id),
+  UNIQUE (asset_id, ord)
+);
+CREATE VIRTUAL TABLE words_fts USING fts5(
+  run, content = 'words', content_rowid = 'id', tokenize = 'trigram case_sensitive 1'
+);
+CREATE TRIGGER words_ai AFTER INSERT ON words BEGIN
+  INSERT INTO words_fts(rowid, run) VALUES (new.id, new.run);
+END;
+CREATE TRIGGER words_ad AFTER DELETE ON words BEGIN
+  INSERT INTO words_fts(words_fts, rowid, run) VALUES ('delete', old.id, old.run);
+END;
+CREATE TRIGGER words_au AFTER UPDATE OF run ON words BEGIN
+  INSERT INTO words_fts(words_fts, rowid, run) VALUES ('delete', old.id, old.run);
+  INSERT INTO words_fts(rowid, run) VALUES (new.id, new.run);
+END;
+";
 
 const V1: &str = "
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -282,6 +330,28 @@ mod tests {
             })
             .unwrap();
         assert_eq!(ops_of_b, 1);
+    }
+
+    #[test]
+    fn バージョン_2_の_db_に整理と文字起こしの表が足される() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn, &[V1, V2]).unwrap();
+        migrate(&mut conn, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
+        conn.execute_batch(
+            "INSERT INTO transcripts VALUES ('a', 'h', 'p', 'ja');
+             INSERT INTO words(asset_id, word_id, ord, segment, start_num, start_den, end_num, end_den, text, run)
+               VALUES ('a', 'w', 0, 0, 0, 1, 1, 1, '動画編集', '動画編集');",
+        )
+        .unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM words_fts WHERE words_fts MATCH '\"画編集\"'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
     }
 
     #[test]

@@ -144,18 +144,32 @@ fn normalize(s: &str) -> String {
 }
 
 /// `$ref` を 1 段たどる。参照の名前は `x-ref` に残す（時刻と指し方の判定に使う）。
+/// 省けるフィールド（`Option<RationalTime>` の `anyOf: [$ref, null]`）は参照の側を引き、null も取れる印 `x-null` を付ける。
 fn resolve(schema: &Value, field: &Value) -> Value {
-    let Some(r) = field["$ref"].as_str() else {
-        return field.clone();
-    };
-    let name = r.rsplit('/').next().unwrap_or_default();
-    let mut out = schema["defs"][name].clone();
-    out["x-ref"] = Value::String(name.to_owned());
-    out
+    if let Some(r) = field["$ref"].as_str() {
+        let name = r.rsplit('/').next().unwrap_or_default();
+        let mut out = schema["defs"][name].clone();
+        out["x-ref"] = Value::String(name.to_owned());
+        return out;
+    }
+    let branches = field["anyOf"].as_array();
+    let referenced = branches.and_then(|bs| bs.iter().find(|b| b["$ref"].is_string()));
+    let nullable = branches.is_some_and(|bs| bs.iter().any(|b| b["type"] == "null"));
+    match referenced {
+        Some(b) if nullable => {
+            let mut out = resolve(schema, b);
+            out["x-null"] = Value::Bool(true);
+            out
+        }
+        _ => field.clone(),
+    }
 }
 
 /// フィールドの型で値を読む。
 fn coerce(field: &Value, raw: &str) -> Result<Value> {
+    if raw == "null" && field["x-null"] == true {
+        return Ok(Value::Null);
+    }
     match field["x-ref"].as_str() {
         Some("RationalTime") => return parse_time(raw),
         Some("ParamRef") if !raw.trim_start().starts_with('{') => return parse_param_ref(raw),
@@ -277,6 +291,24 @@ mod tests {
         assert_eq!(v["cut"], Value::Null, "{v}");
         let p = parse_op("attachLayer", &tokens("--layer l1 --cut c1")).unwrap();
         assert_eq!(serde_json::to_value(&p.op).unwrap()["cut"], "c1");
+    }
+
+    #[test]
+    fn 省ける時刻のフィールドは秒と_null_を受ける() {
+        let p = parse_op("markIn", &tokens("--asset a1 --at 1.5")).unwrap();
+        let v = serde_json::to_value(&p.op).unwrap();
+        assert_eq!(v["at"], json!({"num": 3, "den": 2}));
+        let p = parse_op("markOut", &tokens("--asset a1 --at null")).unwrap();
+        assert_eq!(serde_json::to_value(&p.op).unwrap()["at"], Value::Null);
+    }
+
+    #[test]
+    fn 列のフィールドは_json_の配列で渡せる() {
+        let args = r#"--sequence s1 --topics ["t1","t2"] --cuts ["k1","k2"]"#;
+        let p = parse_op("insertTopics", &tokens(args)).unwrap();
+        let v = serde_json::to_value(&p.op).unwrap();
+        assert_eq!(v["topics"], json!(["t1", "t2"]));
+        assert_eq!(v["index"], Value::Null);
     }
 
     #[test]

@@ -2785,6 +2785,7 @@ dependencies = [
  "mm-export",
  "mm-gpu",
  "mm-ingest",
+ "mm-ingest-api",
  "mm-node-api",
  "mm-nodes-basic",
  "mm-ops",

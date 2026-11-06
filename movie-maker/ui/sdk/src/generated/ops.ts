@@ -195,6 +195,8 @@ export type ParamValue = {
   "type": "json";
   "value": unknown;
 };
+/** 評価。FCP の Favorite / Reject と同じ 3 値。 */
+export type Rating = "unrated" | "favorite" | "rejected";
 /** 正の有理数 num/den（fps、再生の速さ） */
 export type Rational = {
   "den": number;
@@ -226,6 +228,20 @@ export type Rgba = {
   "g": number;
   "r": number;
 };
+/** 選別。素材の中の範囲に評価とタグを付ける（FCP のキーワード付きの範囲）。 */
+export type Selection = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** 素材の時間軸でのイン点。 */
+  "in": RationalTime;
+  /** 素材の時間軸でのアウト点（含まない）。`in < out`。 */
+  "out": RationalTime;
+  "rating"?: Rating;
+  /** 辞書順で重複しない。 */
+  "tags"?: string[];
+};
 /** マグネティックシーケンス。OTIO の `Track` に対応づけられる形。 */
 export type Sequence = {
   /** 先頭から順。 */
@@ -252,6 +268,21 @@ export type TimeKeyframe = {
 /** タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。 最初より前と最後より後は端の値を保つ。 */
 export type TimeRemap = {
   "keyframes": TimeKeyframe[];
+};
+/** 話題。文字起こしの区間（素材の中の範囲）に見出しを付けたもの。Story が並べ、`insertTopics` がカットにする。 */
+export type Topic = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** 素材の時間軸でのイン点。 */
+  "in": RationalTime;
+  /** 素材の時間軸でのアウト点（含まない）。`in < out`。 */
+  "out": RationalTime;
+  "rating"?: Rating;
+  /** 辞書順で重複しない。 */
+  "tags"?: string[];
+  "title": string;
 };
 /** トラックマット。同じコンポジションの別のレイヤーのアルファか輝度で切り抜く。 */
 export type TrackMatte = {
@@ -516,6 +547,113 @@ export type DisableOp = {
   "disabled"?: boolean;
   "op": "disable";
 };
+/** カットを抜いて同じ長さの隙間を残す。 */
+export type LiftOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "lift";
+};
+/** 続いたカットの列を差し込む。 */
+export type InsertCutsOp = {
+  "cuts": Cut[];
+  "index": number;
+  "op": "insertCuts";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** 続いたカットの列を抜く。 */
+export type ExtractCutsOp = {
+  "count": number;
+  "index": number;
+  "op": "extractCuts";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** 話題の列からカットを作って差し込む。 */
+export type InsertTopicsOp = {
+  "cuts": string[];
+  "index"?: number | null;
+  "op": "insertTopics";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+  "topics": string[];
+};
+/** レイヤーのイン点かアウト点を動かす。 */
+export type TrimLayerOp = {
+  "by": RationalTime;
+  "edge": Edge;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "trimLayer";
+};
+/** 素材のイン点の印を付ける・外す。 */
+export type MarkInOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "at"?: RationalTime | null;
+  "op": "markIn";
+};
+/** 素材のアウト点の印を付ける・外す。 */
+export type MarkOutOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "at"?: RationalTime | null;
+  "op": "markOut";
+};
+/** 選別を足す。 */
+export type AddSelectionOp = {
+  "op": "addSelection";
+  "selection": Selection;
+};
+/** 選別を外す。 */
+export type RemoveSelectionOp = {
+  "op": "removeSelection";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "selection": string;
+};
+/** 選別か話題の評価を変える。 */
+export type RateOp = {
+  "op": "rate";
+  "rating": Rating;
+  /** 選別か話題の ID。 */
+  "target": string;
+};
+/** 選別か話題にタグを付ける・外す。 */
+export type TagOp = {
+  "op": "tag";
+  "remove"?: boolean;
+  "tag": string;
+  /** 選別か話題の ID。 */
+  "target": string;
+};
+/** 話題を足す。 */
+export type AddTopicOp = {
+  "op": "addTopic";
+  "topic": Topic;
+};
+/** 話題を外す。 */
+export type RemoveTopicOp = {
+  "op": "removeTopic";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "topic": string;
+};
+/** 文字起こしの単語を消す・戻す。 */
+export type DeleteWordsOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "op": "deleteWords";
+  "restore"?: boolean;
+  "words": string[];
+};
+/** 文字起こしの単語の文字を直す。 */
+export type FixTranscriptOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "op": "fixTranscript";
+  "text"?: string | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "word": string;
+};
 
 /** 全部の操作。`op` が名前。 */
 export type Op =
@@ -552,7 +690,22 @@ export type Op =
   | RollOp
   | SlipOp
   | SlideOp
-  | DisableOp;
+  | DisableOp
+  | LiftOp
+  | InsertCutsOp
+  | ExtractCutsOp
+  | InsertTopicsOp
+  | TrimLayerOp
+  | MarkInOp
+  | MarkOutOp
+  | AddSelectionOp
+  | RemoveSelectionOp
+  | RateOp
+  | TagOp
+  | AddTopicOp
+  | RemoveTopicOp
+  | DeleteWordsOp
+  | FixTranscriptOp;
 
 /** 操作の名前の和。 */
 export type OpName = Op["op"];
@@ -598,7 +751,22 @@ export const OP_NAMES: readonly OpName[] = [
   "roll",
   "slip",
   "slide",
-  "disable"
+  "disable",
+  "lift",
+  "insertCuts",
+  "extractCuts",
+  "insertTopics",
+  "trimLayer",
+  "markIn",
+  "markOut",
+  "addSelection",
+  "removeSelection",
+  "rate",
+  "tag",
+  "addTopic",
+  "removeTopic",
+  "deleteWords",
+  "fixTranscript"
 ];
 
 /** パラメータの値の種類（`ParamValue.type`）ごとの、`value` の JSON Schema。 */

@@ -2,6 +2,7 @@
 //!
 //! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
 //! - `mm ingest <dir> <素材>...`: 素材を取り込み、`cache/` に出力を作って素材を足す（ingest_cmd.rs）。
+//! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
 //! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
@@ -17,6 +18,7 @@ mod render_cmd;
 mod scenes;
 mod scenes_cpu;
 mod scenes_render;
+mod transcript_cmd;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -102,6 +104,16 @@ enum Command {
         /// プレビュー動画のエンコーダー（auto、nvenc、x264）。
         #[arg(long, default_value = "auto", value_parser = ingest_cmd::parse_encoder)]
         encoder: mm_ingest::PreviewEncoder,
+    },
+    /// 文字起こしから語を引く。1 行に 1 件（素材、始まりと終わりの秒、単語の ID、続きの文字）。
+    Search {
+        dir: PathBuf,
+        query: String,
+        #[arg(long, default_value_t = transcript_cmd::DEFAULT_LIMIT)]
+        limit: usize,
+        /// 1 行に 1 件の JSON（時刻は有理数）で出す。
+        #[arg(long)]
+        json: bool,
     },
     /// 性能の計測。
     Perf {
@@ -216,6 +228,12 @@ fn run_store_command(command: Command) -> Result<()> {
             inputs,
             encoder,
         }),
+        Command::Search {
+            dir,
+            query,
+            limit,
+            json,
+        } => transcript_cmd::search(&dir, &query, limit, json),
         Command::Undo { dir } => commands::undo(&dir),
         Command::Redo { dir } => commands::redo(&dir),
         Command::Log { dir } => commands::log(&dir),

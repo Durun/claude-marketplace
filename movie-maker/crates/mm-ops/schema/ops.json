@@ -823,6 +823,402 @@
         "op",
         "cut"
       ]
+    },
+    {
+      "description": "カットを抜いて同じ長さの隙間を残す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "lift"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    },
+    {
+      "description": "続いたカットの列を差し込む。",
+      "type": "object",
+      "properties": {
+        "cuts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Cut"
+          }
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "insertCuts"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence",
+        "index",
+        "cuts"
+      ]
+    },
+    {
+      "description": "続いたカットの列を抜く。",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "extractCuts"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence",
+        "index",
+        "count"
+      ]
+    },
+    {
+      "description": "話題の列からカットを作って差し込む。",
+      "type": "object",
+      "properties": {
+        "cuts": {
+          "type": "array",
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        },
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "default": null,
+          "minimum": 0
+        },
+        "op": {
+          "type": "string",
+          "const": "insertTopics"
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "sequence",
+        "topics",
+        "cuts"
+      ]
+    },
+    {
+      "description": "レイヤーのイン点かアウト点を動かす。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "edge": {
+          "$ref": "#/$defs/Edge"
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "trimLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "edge",
+        "by"
+      ]
+    },
+    {
+      "description": "素材のイン点の印を付ける・外す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "markIn"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset"
+      ]
+    },
+    {
+      "description": "素材のアウト点の印を付ける・外す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "markOut"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset"
+      ]
+    },
+    {
+      "description": "選別を足す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "addSelection"
+        },
+        "selection": {
+          "$ref": "#/$defs/Selection"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "selection"
+      ]
+    },
+    {
+      "description": "選別を外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeSelection"
+        },
+        "selection": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "selection"
+      ]
+    },
+    {
+      "description": "選別か話題の評価を変える。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "rate"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "target": {
+          "description": "選別か話題の ID。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "rating"
+      ]
+    },
+    {
+      "description": "選別か話題にタグを付ける・外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "tag"
+        },
+        "remove": {
+          "type": "boolean",
+          "default": false
+        },
+        "tag": {
+          "type": "string"
+        },
+        "target": {
+          "description": "選別か話題の ID。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "tag"
+      ]
+    },
+    {
+      "description": "話題を足す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "addTopic"
+        },
+        "topic": {
+          "$ref": "#/$defs/Topic"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "topic"
+      ]
+    },
+    {
+      "description": "話題を外す。",
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "removeTopic"
+        },
+        "topic": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "topic"
+      ]
+    },
+    {
+      "description": "文字起こしの単語を消す・戻す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "deleteWords"
+        },
+        "restore": {
+          "type": "boolean",
+          "default": false
+        },
+        "words": {
+          "type": "array",
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset",
+        "words"
+      ]
+    },
+    {
+      "description": "文字起こしの単語の文字を直す。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "fixTranscript"
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset",
+        "word"
+      ]
     }
   ],
   "$defs": {
@@ -1658,6 +2054,15 @@
         }
       ]
     },
+    "Rating": {
+      "description": "評価。FCP の Favorite / Reject と同じ 3 値。",
+      "type": "string",
+      "enum": [
+        "unrated",
+        "favorite",
+        "rejected"
+      ]
+    },
     "Rational": {
       "description": "正の有理数 num/den（fps、再生の速さ）",
       "type": "object",
@@ -1776,6 +2181,46 @@
         "a"
       ]
     },
+    "Selection": {
+      "description": "選別。素材の中の範囲に評価とタグを付ける（FCP のキーワード付きの範囲）。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "in": {
+          "description": "素材の時間軸でのイン点。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "out": {
+          "description": "素材の時間軸でのアウト点（含まない）。`in < out`。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "unrated"
+        },
+        "tags": {
+          "description": "辞書順で重複しない。",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "asset",
+        "in",
+        "out"
+      ]
+    },
     "Sequence": {
       "description": "マグネティックシーケンス。OTIO の `Track` に対応づけられる形。",
       "type": "object",
@@ -1861,6 +2306,50 @@
       },
       "required": [
         "keyframes"
+      ]
+    },
+    "Topic": {
+      "description": "話題。文字起こしの区間（素材の中の範囲）に見出しを付けたもの。Story が並べ、`insertTopics` がカットにする。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "id": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "in": {
+          "description": "素材の時間軸でのイン点。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "out": {
+          "description": "素材の時間軸でのアウト点（含まない）。`in < out`。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "unrated"
+        },
+        "tags": {
+          "description": "辞書順で重複しない。",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "asset",
+        "in",
+        "out",
+        "title"
       ]
     },
     "TrackMatte": {
