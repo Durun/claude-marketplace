@@ -380,6 +380,12 @@ export const conversationOf = (id: string): Conversation | undefined => {
   return { ...s, firstPrompt: firstPromptOf(meta.transcriptPath ? claude.summarizeLog(meta.transcriptPath) : undefined) };
 };
 
+/** 一覧に出ているアーカイブしていないセッションのテーマ。画面と同じく前後の空白を除く。 */
+export const activeThemes = (exceptId: string): string[] => {
+  const sessions = listedSessions(claude.readLiveSessions(), Date.now()).filter((m) => !m.archived && m.id !== exceptId);
+  return [...new Set(sessions.map((m) => themeOf(m).trim()))];
+};
+
 export const buildSnapshot = (): Snapshot => {
   const now = Date.now();
   const live = claude.readLiveSessions();

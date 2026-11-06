@@ -9,9 +9,9 @@ import { flHookContext } from './flconnect.ts';
 import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
-import { conversationOf } from './snapshot.ts';
+import { activeThemes, conversationOf } from './snapshot.ts';
 import { ensureSession, inferFormat, newId, state, touch, type SessionMeta, type StoredAttention } from './store.ts';
-import { suggestTitle } from './suggest.ts';
+import { suggestTitle, suggestTitleAndTheme } from './suggest.ts';
 
 export type HookInput = {
   hook_event_name?: string;
@@ -177,6 +177,7 @@ const titling = new Set<string>();
 /**
  * 人が見るセッションに、人間も set_task も名前を付けていなければ、Claude の最初の応答が終わったときか、始まって 5 分経ったときに haiku が名前を付ける。
  * Claude Code が自動で付ける名前は作業の中身が分かりにくいので、付いていないものとして扱う。
+ * テーマも付いていなければ、同じ haiku に、いま追っているテーマから選ばせて付ける。
  * Stop の時点では、最後の発言が会話ログにまだ書かれていないことがあるので、フックが渡すものを使う。
  */
 const nameUntitled = (meta: SessionMeta, input: HookInput, responded: boolean): void => {
@@ -186,11 +187,13 @@ const nameUntitled = (meta: SessionMeta, input: HookInput, responded: boolean): 
   const c = conversationOf(meta.id);
   if (!c) return;
   titling.add(meta.id);
-  suggestTitle({ ...c, lastMessage: (responded && input.last_assistant_message) || c.lastMessage }).then(
-    (title) => {
-      // 考えている間に人間が付けた名前は残す。
-      if (meta.title) return;
-      meta.title = title;
+  const conversation = { ...c, lastMessage: (responded && input.last_assistant_message) || c.lastMessage };
+  const named = meta.theme === undefined ? suggestTitleAndTheme(conversation, activeThemes(meta.id)) : suggestTitle(conversation).then((title) => ({ title, theme: undefined }));
+  named.then(
+    ({ title, theme }) => {
+      // 考えている間に人間が付けた名前とテーマは残す。
+      meta.title ??= title;
+      if (meta.theme === undefined) meta.theme = theme;
       touch();
     },
     (e: Error) => console.error(`${meta.id} に名前を付けられません: ${e.message}`),

@@ -146,9 +146,9 @@ test('worktree に入って会話ログが別のディレクトリへ移った�
   assert.equal(state.sessions.moved?.transcriptPath, moved);
 });
 
-test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前を付け、人間が付けた名前は変えない', async () => {
+test('名前の無いセッションには、Claude の最初の応答が終わったときに haiku が名前とテーマを付け、人間が付けた名前は変えない', async () => {
   // 偽の claude は、概要と名前のどちらを頼まれても同じ答えを返す。
-  const answer = JSON.stringify({ structured_output: { title: 'ログインの修正', doing: 'ログインを直す', now: '直し終えた' } });
+  const answer = JSON.stringify({ structured_output: { title: 'ログインの修正', theme: '認証', doing: 'ログインを直す', now: '直し終えた' } });
   useFakeClaude(tmp, `stdin(); console.log(${js(answer)});`);
   const transcript = path.join(tmp, 's2.jsonl');
   fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, message: { content: 'ログインを直して' } })}\n`);
@@ -164,6 +164,7 @@ test('名前の無いセッションには、Claude の最初の応答が終わ�
   handleHook(stop, 0);
   await new Promise<void>((resolve) => onChange(() => meta.title && resolve()));
   assert.equal(meta.title, 'ログインの修正');
+  assert.equal(meta.theme, '認証');
   assert.equal(named.title, '手で付けた名前');
 });
 

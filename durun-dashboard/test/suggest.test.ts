@@ -15,10 +15,10 @@ const tmp = tempDir('durun-dashboard-suggest-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 // 本物の Jev に問い合わせないよう、キーを外す。Jev を使うテストは、偽の Jev を立てる。
 delete process.env.TYPESAFE_AI_API_KEY;
-const { explainTerm, peekReplies, peekSummary, peekTasks, peekWaiting, sessionGlossary, suggestTitle, summarize } = await import('../server/suggest.ts');
+const { explainTerm, peekReplies, peekSummary, peekTasks, peekWaiting, sessionGlossary, suggestTitle, suggestTitleAndTheme, summarize } = await import('../server/suggest.ts');
 const promptFile = path.join(tmp, 'prompt');
 const callsFile = path.join(tmp, 'calls');
-const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', doing: ' 候補を出す ', now: ' 直し終えた ' };
+const output = { replies: [' 進めてください ', '', 1, '直してください'], title: ' 返答候補の表示 ', theme: ' ダッシュボード ', doing: ' 候補を出す ', now: ' 直し終えた ' };
 useFakeClaude(
   tmp,
   `const prompt = stdin();
@@ -82,6 +82,12 @@ test('返答の候補は、発言が変わったら、前の発言への候補�
 test('セッション名の候補は、概要と最初の依頼も材料にして作る', async () => {
   assert.equal(await suggestTitle(conversation('s1', '直しました')), '返答候補の表示');
   assert.match(lastPrompt(), /<summary>\nやっていること: 候補を出す.*<first_prompt>\n候補を出して\n<\/first_prompt>/s);
+});
+
+test('新しいセッションの名前とテーマは、いま追っているテーマの一覧を材料にして作り、仮のテーマは渡さない', async () => {
+  assert.deepEqual(await suggestTitleAndTheme(conversation('s1', '直しました'), ['ダッシュボード', 'LPO']), { title: '返答候補の表示', theme: 'ダッシュボード' });
+  assert.match(lastPrompt(), /<themes>\nダッシュボード\nLPO\n<\/themes>/);
+  assert.doesNotMatch(lastPrompt(), /<theme>/);
 });
 
 test('概要は、やり取りが進んだら、前の概要に古い印を付けてすぐ返し、裏でまとめ直す', async () => {

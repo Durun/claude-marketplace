@@ -41,6 +41,10 @@ const TITLE_INSTRUCTIONS = `この Claude Code のセッションに付ける名
 - 何の作業かが一覧で見分けられる名詞句にする。
 - 20 文字以内で書く。`;
 
+const THEME_INSTRUCTIONS = `この Claude Code のセッションに付ける名前とテーマを考えてください。
+- title: 何の作業かが一覧で見分けられる名詞句にする。20 文字以内で書く。
+- theme: セッションをまとめる枠組み。<themes> は人間がいま追っているテーマの一覧。この作業が入るテーマがあれば、その名前を一字も変えずに返す。無ければ、新しいテーマを 15 文字以内の名詞句で書く。`;
+
 // 長いセッションでも用語集が長くなりすぎないよう、やり取りの区切りごとに拾う語はこの数までにする。
 const MAX_TERMS_PER_CHUNK = 10;
 
@@ -288,6 +292,17 @@ export const suggestTitle = async (c: Conversation): Promise<string> => {
   const { title } = await askHaiku(prompt, objectSchema({ title: { type: 'string' } }));
   if (typeof title !== 'string' || !title.trim()) throw new UpstreamError('名前が返りませんでした');
   return title.trim();
+};
+
+/**
+ * 新しいセッションに名前とテーマを一度に付ける。人間が既に知っている枠組みへ入れるよう、themes の中から選ばせ、合うものが無いときだけ新しく作らせる。
+ * テーマはまだ決まっていないので、仮のテーマ（リポジトリ名）は材料に渡さない。
+ */
+export const suggestTitleAndTheme = async (c: Conversation, themes: string[]): Promise<{ title: string; theme: string }> => {
+  const prompt = promptOf(THEME_INSTRUCTIONS, { themes: themes.join('\n'), summary: summaryLines(peekSummary(c)), first_prompt: c.firstPrompt, last_prompt: laterPrompt(c), last_message: c.lastMessage });
+  const { title, theme } = await askHaiku(prompt, objectSchema({ title: { type: 'string' }, theme: { type: 'string' } }));
+  if (typeof title !== 'string' || !title.trim() || typeof theme !== 'string' || !theme.trim()) throw new UpstreamError('名前かテーマが返りませんでした');
+  return { title: title.trim(), theme: theme.trim() };
 };
 
 /** 用語を比べるときの形。全角と半角、大文字と小文字だけが違う語は、同じ語とみなす。 */
