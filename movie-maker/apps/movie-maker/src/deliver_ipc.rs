@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::deliver::{export_config, DeliverState, Emit, ExportStatus, Overview, StartRequest};
+use crate::deliver::{
+    export_config, output_extensions, DeliverState, Emit, ExportStatus, Overview, StartRequest,
+};
 
 /// 書き出しの列の状態を送る Tauri のイベント名。`ui/sdk` の `EXPORT_PROGRESS_EVENT` と同じ。
 const EXPORT_PROGRESS_EVENT: &str = "mm:export-progress";
@@ -58,11 +60,17 @@ pub async fn export_reveal(state: Deliver<'_>, path: String) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
-/// 出力先を選ぶ保存ダイアログ。キャンセルは `None`。
+/// 出力先を選ぶ保存ダイアログ。`codec` に合う拡張子で絞る。キャンセルは `None`。
 #[tauri::command]
-pub async fn export_pick_output(current: Option<String>) -> Result<Option<String>, String> {
+pub async fn export_pick_output(
+    current: Option<String>,
+    codec: Option<String>,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut dialog = rfd::FileDialog::new();
+        if let Some(codec) = codec.as_deref() {
+            dialog = dialog.add_filter("Video", output_extensions(codec));
+        }
         if let Some(path) = current.as_deref().map(std::path::Path::new) {
             if let Some(dir) = path.parent().filter(|d| d.is_dir()) {
                 dialog = dialog.set_directory(dir);

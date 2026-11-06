@@ -1,8 +1,15 @@
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 
+use mm_doc::{
+    Cut, Layer, Node, Sequence, SubtitleOutput, FOOTAGE_KIND, FOOTAGE_PARAM, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
+};
+use mm_runtime::Backend;
+use mm_store::{TranscriptInput, WordInput};
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::fixtures::vertical_project;
+use mm_types::{ParamValue, RationalTime};
 
 use super::*;
 
@@ -21,7 +28,7 @@ fn state(dir: &std::path::Path) -> Arc<DeliverState> {
     project.render_targets.push(second);
     let shared = Arc::new(Shared::new());
     shared.publish_doc(Arc::new(project), comp);
-    Arc::new(DeliverState::new(shared))
+    Arc::new(DeliverState::new(shared, &dir.join("project.json")))
 }
 
 fn request(targets: &[&str]) -> StartRequest {
@@ -161,4 +168,240 @@ fn 一覧にはレンダーターゲットとコンポジションが出る() {
     assert_eq!(o.targets.len(), 2);
     assert_eq!(o.compositions[0].id, "main");
     assert!(o.compositions[0].duration > 0.0);
+}
+
+/// 字幕を出す（sidecar）レンダーターゲットと、素材 `clip` の文字起こしを持つ `project.mmdb` を開いた状態。
+/// 本編のコンポジションは、素材の 3〜5 秒を切り出す sequence のレイヤーを持つ。
+fn subtitle_state(dir: &std::path::Path) -> Arc<DeliverState> {
+    let out = dir.join("out.json");
+    let (mut project, comp, _) = vertical_project(&SampleMedia::default(), &out);
+    let clip = ParamValue::AssetRef(Id::new("clip"));
+    let cut = Cut::new(
+        "k1",
+        Node::new(FOOTAGE_KIND, 1).with_param(FOOTAGE_PARAM, clip),
+        RationalTime::seconds(3),
+        RationalTime::seconds(5),
+    );
+    project.sequences.push(Sequence {
+        id: Id::new("s"),
+        cuts: vec![cut],
+        origin: None,
+    });
+    let node = Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s".into()));
+    let seconds = RationalTime::seconds;
+    let layer = Layer::new("seq", node, seconds(0), seconds(0), seconds(2));
+    project.compositions[0].layers.push(layer);
+    project.render_targets[0].delivery.subtitles = SubtitleOutput::Sidecar;
+    let store_dir = dir.join("store");
+    let mut store = mm_store::Store::create(&store_dir, &project, 0).unwrap();
+    let words = [("こんにちは", 3), ("世界", 4)].map(|(text, at)| WordInput {
+        segment: 0,
+        start: seconds(at),
+        end: RationalTime::new(i128::from(at) * 1000 + 800, 1000).unwrap(),
+        text: text.into(),
+    });
+    let input = TranscriptInput {
+        producer: "test".into(),
+        language: "ja".into(),
+        words: words.to_vec(),
+    };
+    store
+        .put_transcript(&Id::new("clip"), &project.assets[0].content_hash, &input)
+        .unwrap();
+    drop(store);
+    let shared = Arc::new(Shared::new());
+    shared.publish_doc(Arc::new(project), comp);
+    Arc::new(DeliverState::new(shared, &store_dir))
+}
+
+#[test]
+fn 字幕を出すレンダーターゲットはアプリの書き出しで文字起こしを渡され_字幕のファイルを置く() {
+    let dir = temp("subtitles");
+    let state = subtitle_state(&dir);
+    let (emit, rx) = collect();
+    // sequence のレイヤーを描けるのは wgpu のレンダラーだけ（モックは持たない）。
+    let config = RuntimeConfig {
+        render: Backend::Wgpu,
+        ..RuntimeConfig::sample()
+    };
+    state.start(request(&["mp4"]), config, emit).unwrap();
+    let last = finished(&rx);
+    assert_eq!(
+        last.items[0].state,
+        ItemState::Done,
+        "{:?}",
+        last.items[0].error
+    );
+    let srt = std::fs::read_to_string(dir.join("out.srt")).expect("sidecar の字幕");
+    assert!(srt.contains("こんにちは"), "{srt}");
+    assert!(dir.join("out.vtt").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn 一覧の出力先は開くときに直す前の相対のまま返す() {
+    let dir = temp("relative");
+    let (mut project, comp, _) = vertical_project(&SampleMedia::default(), &dir.join("a.json"));
+    project.render_targets[0].output_path = "exports/yt.mp4".into();
+    project.render_targets[0].delivery.chapters = true;
+    let base = dir.join("proj");
+    mm_store::rebase_project(&mut project, &base);
+    assert!(Path::new(&project.render_targets[0].output_path).starts_with(&base));
+    let shared = Arc::new(Shared::new());
+    shared.publish_doc(Arc::new(project), comp);
+    let state = DeliverState::new(shared, &base.join("project.json"));
+    let overview = state.overview().unwrap();
+    assert_eq!(overview.targets[0].output_path, "exports/yt.mp4");
+    assert!(overview.targets[0].delivery.chapters, "ほかの欄は変えない");
+}
+
+#[test]
+fn 大文字小文字と区切りだけが違う出力先も同じとして断る() {
+    let dir = temp("shared");
+    let state = state(&dir);
+    let comp = state.shared.doc().unwrap().comp;
+    for (a, b) in [("Out.mp4", "out.mp4"), ("a/x.mp4", "a\\x.mp4")] {
+        let mut project = (*state.project().unwrap()).clone();
+        project.render_targets[0].output_path = a.into();
+        project.render_targets[1].output_path = b.into();
+        state.shared.publish_doc(Arc::new(project), comp.clone());
+        let (emit, _rx) = collect();
+        let e = state
+            .start(request(&["mp4", "second"]), RuntimeConfig::sample(), emit)
+            .unwrap_err();
+        assert!(e.contains("同じ出力先"), "{a} と {b}: {e}");
+    }
+}
+
+#[test]
+fn 一時ファイルの名前と重なる出力先も断る() {
+    let dir = temp("partial");
+    let state = state(&dir);
+    let comp = state.shared.doc().unwrap().comp;
+    let mut project = (*state.project().unwrap()).clone();
+    project.render_targets[0].output_path = "x.mp4".into();
+    project.render_targets[1].output_path = "x.partial.mp4".into();
+    state.shared.publish_doc(Arc::new(project), comp);
+    let (emit, _rx) = collect();
+    let e = state
+        .start(request(&["mp4", "second"]), RuntimeConfig::sample(), emit)
+        .unwrap_err();
+    assert!(e.contains("同じ出力先"), "{e}");
+}
+
+#[test]
+fn 一本が失敗しても残りは書き出す() {
+    let dir = temp("partial_fail");
+    let state = state(&dir);
+    let comp = state.shared.doc().unwrap().comp;
+    let mut project = (*state.project().unwrap()).clone();
+    project.render_targets[0].codec = "no-such-codec".into();
+    state.shared.publish_doc(Arc::new(project), comp);
+    let (emit, rx) = collect();
+    state
+        .start(request(&["mp4", "second"]), RuntimeConfig::sample(), emit)
+        .unwrap();
+    let last = finished(&rx);
+    assert_eq!(last.items[0].state, ItemState::Failed);
+    assert!(last.items[0].error.is_some());
+    assert_eq!(last.items[1].state, ItemState::Done, "{last:?}");
+    assert!(dir.join("b.json").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn 書き出しのスレッドがパニックしても_列は止まった状態で知らせる() {
+    let dir = temp("panic");
+    let state = state(&dir);
+    let (tx, rx) = channel();
+    let tx = Mutex::new(tx);
+    let armed = AtomicBool::new(true);
+    let emit: Emit = Arc::new(move |s| {
+        let _ = tx.lock().unwrap().send(s.clone());
+        let running = s
+            .items
+            .first()
+            .is_some_and(|i| i.state == ItemState::Running);
+        if running && armed.swap(false, Ordering::SeqCst) {
+            panic!("書き出しのスレッドの途中で落ちる");
+        }
+    });
+    state
+        .start(request(&["mp4", "second"]), RuntimeConfig::sample(), emit)
+        .unwrap();
+    let last = finished(&rx);
+    assert!(
+        last.items
+            .iter()
+            .all(|i| i.state == ItemState::Failed && i.error.is_some()),
+        "{last:?}"
+    );
+    assert!(!state.status().running);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn 列を止めると_動いていない項目だけ理由つきの失敗になる() {
+    let target = state(&temp("stop")).project().unwrap().render_targets[0].clone();
+    let queued = ExportItem::queued(&target);
+    let done = ExportItem {
+        state: ItemState::Done,
+        ..queued.clone()
+    };
+    let status = Mutex::new(ExportStatus {
+        running: true,
+        items: vec![done, queued],
+    });
+    let stopped = stop_all(&status, "スレッドを作れない");
+    assert!(!stopped.running);
+    assert_eq!(stopped.items[0].state, ItemState::Done);
+    assert_eq!(stopped.items[1].state, ItemState::Failed);
+    assert_eq!(
+        stopped.items[1].error.as_deref(),
+        Some("スレッドを作れない")
+    );
+    assert_eq!(*status.lock().unwrap(), stopped);
+}
+
+#[test]
+fn 進み具合は_total_が_0_のうちは終わりにせず_最後のフレームは間隔を待たずに送る() {
+    let (emit, rx) = collect();
+    let target = state(&temp("progress")).project().unwrap().render_targets[0].clone();
+    let status = Arc::new(Mutex::new(ExportStatus {
+        running: true,
+        items: vec![ExportItem::queued(&target)],
+    }));
+    let progress = progress_reporter(status, emit, 0);
+    let at = |done, total| ExportProgress {
+        target: target.id.clone(),
+        frames_done: done,
+        frames_total: total,
+        elapsed: Duration::from_millis(1),
+    };
+    progress(&at(0, 0));
+    assert!(rx.try_recv().is_err(), "合計が 0 のうちは間隔を待つ");
+    progress(&at(1, 1));
+    assert_eq!(rx.try_recv().unwrap().items[0].frames_done, 1);
+}
+
+#[test]
+fn 保存ダイアログの拡張子はコーデックに合う() {
+    assert_eq!(output_extensions("prores_ks"), ["mov"]);
+    assert_eq!(output_extensions("dnxhr_hq"), ["mov"]);
+    assert_eq!(output_extensions("h264_nvenc"), ["mp4", "mov"]);
+}
+
+#[test]
+fn 書き出しのレンダラーは再生より小さい_vram_のキャッシュを持つ() {
+    let config = export_config();
+    assert_eq!(config.frame_memory_bytes, Some(EXPORT_FRAME_MEMORY_BYTES));
+    assert!(!config.present);
+}
+
+#[test]
+fn ffprobe_を起動できなければ検証を使えないとする() {
+    std::env::set_var("MM_FFPROBE", temp("none").join("ffprobe-missing"));
+    let available = ffprobe_available();
+    std::env::remove_var("MM_FFPROBE");
+    assert!(!available);
 }

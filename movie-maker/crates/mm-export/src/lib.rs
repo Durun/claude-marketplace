@@ -187,7 +187,7 @@ pub fn export_targets(
 
 /// 出力先と一時ファイルのパスのどれかが他のレンダーターゲットと重なる組を拒否する
 /// （A の一時ファイル `x.partial.mp4` が B の出力 `x.mp4` を指す場合も、互いに壊し合う）。
-fn reject_shared_outputs(project: &Project, targets: &[RenderTargetId]) -> Result<()> {
+pub fn reject_shared_outputs(project: &Project, targets: &[RenderTargetId]) -> Result<()> {
     let mut seen: Vec<([PathBuf; 2], &RenderTargetId)> = Vec::new();
     for id in targets {
         let path = PathBuf::from(&project.render_target(id)?.output_path);

@@ -5,18 +5,20 @@
 //! 進み具合は、列全体の状態（`ExportStatus`）をそのまま送る。画面は受けた状態を描くだけで、差分を畳む処理を持たない。
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use mm_doc::{Project, RenderTarget};
+use mm_doc::{Project, RenderTarget, SubtitleOutput};
 use mm_export::{
-    export_run, ExportControl, ExportOptions, ExportOutcome, ExportProgress, ExportSummary,
+    export_run, reject_shared_outputs, verify_output, CaptionWord, Expected, ExportControl,
+    ExportOptions, ExportOutcome, ExportProgress, ExportSummary, ProgressFn, TranscriptWords,
     Verification,
 };
 use mm_runtime::{assemble, RuntimeConfig};
-use mm_types::{Id, MmError};
+use mm_store::Store;
+use mm_types::{Id, MmError, RenderTargetId, Size};
 use serde::{Deserialize, Serialize};
 
 use crate::playback::runtime_config;
@@ -25,11 +27,18 @@ use crate::state::Shared;
 /// 進み具合を画面へ送る間隔（ミリ秒）。1 フレームごとに送ると WebView の側が詰まる。
 const EMIT_INTERVAL_MS: u64 = 100;
 
+/// 書き出しのレンダラーが VRAM に持つフレームのキャッシュの上限。再生のレンダラーも別に 1 GiB を持つので、
+/// 同時に持つ合計が膨らまないよう、順に進める書き出しでは小さくする。
+const EXPORT_FRAME_MEMORY_BYTES: u64 = 256 << 20;
+
 /// コンポジション 1 つ。レンダーターゲットの `composition` の選択肢と、範囲の表示に使う。
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CompositionInfo {
     pub id: String,
     pub duration: f64,
+    /// 縦長のレンダーターゲット（Shorts）が、既定で縦長のコンポジションを指すために使う。
+    pub width: u32,
+    pub height: u32,
 }
 
 /// sequence 1 つ。選ぶとレンダーターゲットのコンポジションの代わりに、全長を書き出す。
@@ -147,6 +156,10 @@ pub type Emit = Arc<dyn Fn(&ExportStatus) + Send + Sync>;
 /// Deliver の状態。アプリに 1 つ持つ。
 pub struct DeliverState {
     shared: Arc<Shared>,
+    /// 相対の出力先の基準（`rebase_project` が使ったフォルダー）。画面へ返すときに相対へ戻す。
+    base: PathBuf,
+    /// `project.mmdb` のフォルダー。文字起こしの単語を読む。JSON のプロジェクトでは `None`。
+    store_dir: Option<PathBuf>,
     status: Arc<Mutex<ExportStatus>>,
     cancel: Mutex<Arc<AtomicBool>>,
     /// 書き出し終えたファイル。フォルダーを開く先をここに入っているものだけに絞る。
@@ -154,9 +167,16 @@ pub struct DeliverState {
 }
 
 impl DeliverState {
-    pub fn new(shared: Arc<Shared>) -> Self {
+    /// `project` は開いたプロジェクトのパス（JSON か `project.mmdb` のフォルダー）。
+    pub fn new(shared: Arc<Shared>, project: &Path) -> Self {
+        let store_dir = mm_store::store_dir(project);
+        let base = store_dir
+            .clone()
+            .unwrap_or_else(|| project.parent().unwrap_or(Path::new(".")).to_path_buf());
         Self {
             shared,
+            base,
+            store_dir,
             status: Arc::default(),
             cancel: Mutex::new(Arc::default()),
             outputs: Arc::default(),
@@ -179,6 +199,8 @@ impl DeliverState {
             .map(|c| CompositionInfo {
                 id: c.id.to_string(),
                 duration: c.duration.to_f64(),
+                width: c.width,
+                height: c.height,
             })
             .collect();
         let sequences = project
@@ -190,12 +212,69 @@ impl DeliverState {
             })
             .collect();
         Ok(Overview {
-            targets: project.render_targets.clone(),
+            targets: project
+                .render_targets
+                .iter()
+                .map(|t| self.relative_target(t))
+                .collect(),
             compositions,
             sequences,
             open_composition: self.shared.doc().map(|d| d.comp.to_string()),
-            can_verify: cfg!(feature = "ffmpeg"),
+            can_verify: cfg!(feature = "ffmpeg") && ffprobe_available(),
         })
+    }
+
+    /// 相対の出力先を、開くときに直す前の形へ戻す。画面が編集で書き戻しても、相対のまま保たれる。
+    fn relative_target(&self, target: &RenderTarget) -> RenderTarget {
+        let mut target = target.clone();
+        if let Ok(rest) = Path::new(&target.output_path).strip_prefix(&self.base) {
+            target.output_path = rest.to_string_lossy().into_owned();
+        }
+        target
+    }
+
+    /// 字幕を出すレンダーターゲットが列にあるときだけ、文字起こしの単語を読む。`mm render` と同じ元（DB の単語）。
+    fn transcript(
+        &self,
+        project: &Project,
+        targets: &[RenderTarget],
+    ) -> Option<Arc<TranscriptWords>> {
+        targets
+            .iter()
+            .any(|t| t.delivery.subtitles != SubtitleOutput::None)
+            .then(|| Arc::new(self.transcript_words(project)))
+    }
+
+    /// 素材ごとの字幕にする単語。消した単語は除き、直した文字を使う。DB が無い、読めないときは空
+    /// （空だと書き出しは字幕なしの警告で終わる）。
+    fn transcript_words(&self, project: &Project) -> TranscriptWords {
+        let mut out = TranscriptWords::new();
+        let Some(store) = self
+            .store_dir
+            .as_deref()
+            .and_then(|d| Store::open_read_only(d).ok())
+        else {
+            return out;
+        };
+        for asset in &project.assets {
+            let words: Vec<CaptionWord> = store
+                .transcript_words(&asset.id)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|w| {
+                    let text = w.shown()?.to_owned();
+                    Some(CaptionWord {
+                        start: w.start,
+                        end: w.end,
+                        text,
+                    })
+                })
+                .collect();
+            if !words.is_empty() {
+                out.insert(asset.id.clone(), words);
+            }
+        }
+        out
     }
 
     /// いまの列の状態。
@@ -212,6 +291,7 @@ impl DeliverState {
     ) -> Result<(), String> {
         let project = self.project()?;
         let targets = pick(&project, &request)?;
+        let transcript = self.transcript(&project, &targets);
         let mut status = self.status.lock().expect("export status");
         if status.running {
             return Err("書き出し中".into());
@@ -228,18 +308,21 @@ impl DeliverState {
         let job = Job {
             project,
             request,
+            transcript,
             config,
             cancel,
             status: self.status.clone(),
             outputs: self.outputs.clone(),
-            emit,
+            emit: emit.clone(),
         };
         std::thread::Builder::new()
             .name("export".into())
             .spawn(move || job.run())
             .map_err(|e| {
-                self.status.lock().expect("export status").running = false;
-                e.to_string()
+                let message = e.to_string();
+                let stopped = stop_all(&self.status, &message);
+                emit(&stopped);
+                message
             })?;
         Ok(())
     }
@@ -274,27 +357,73 @@ fn pick(project: &Project, request: &StartRequest) -> Result<Vec<RenderTarget>, 
             .sequence(&Id::new(sequence.as_str()))
             .map_err(|e| e.to_string())?;
     }
-    let mut picked: Vec<RenderTarget> = Vec::new();
-    for id in &request.targets {
-        let target = project
-            .render_target(&Id::new(id.as_str()))
-            .map_err(|e| e.to_string())?
-            .clone();
-        if let Some(other) = picked.iter().find(|t| t.output_path == target.output_path) {
-            return Err(format!(
-                "レンダーターゲット {} と {} が同じ出力先 {} を指している",
-                other.id, target.id, target.output_path
-            ));
-        }
-        picked.push(target);
-    }
+    let ids: Vec<RenderTargetId> = request
+        .targets
+        .iter()
+        .map(|t| Id::new(t.as_str()))
+        .collect();
+    let picked = ids
+        .iter()
+        .map(|id| project.render_target(id).cloned())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    reject_shared_outputs(&case_folded_outputs(project), &ids).map_err(|e| e.to_string())?;
     Ok(picked)
+}
+
+/// 出力先を小文字にしたデータ。Windows のファイル名は大文字小文字を区別しないので、
+/// `Out.mp4` と `out.mp4` を同じ出力先として判定に渡す。
+fn case_folded_outputs(project: &Project) -> Project {
+    let mut folded = project.clone();
+    for target in &mut folded.render_targets {
+        target.output_path = target.output_path.to_lowercase();
+    }
+    folded
+}
+
+/// ffprobe を起動できるか。検証の出口と同じ起動の道（`MM_FFPROBE`）を通すため、存在しないパスを読ませて、
+/// 「起動できない」（`NotFound`）かどうかだけを見る。
+fn ffprobe_available() -> bool {
+    let expected = Expected {
+        frames: 0,
+        size: Size::new(1, 1),
+        fps: 1.0,
+        audio_seconds: None,
+    };
+    !matches!(
+        verify_output(Path::new(""), &expected),
+        Err(MmError::NotFound(_))
+    )
+}
+
+/// コーデックに合う出力ファイルの拡張子。保存ダイアログの絞り込みに使う。ProRes と DNxHR は MOV にしか書けない。
+pub fn output_extensions(codec: &str) -> &'static [&'static str] {
+    if codec.starts_with("prores") || codec.starts_with("dnx") {
+        &["mov"]
+    } else {
+        &["mp4", "mov"]
+    }
+}
+
+/// 列を止まった状態にして返す。動いていない項目に理由を付けて失敗にする。
+fn stop_all(status: &Mutex<ExportStatus>, message: &str) -> ExportStatus {
+    let mut status = status.lock().expect("export status");
+    status.running = false;
+    for item in &mut status.items {
+        if matches!(item.state, ItemState::Queued | ItemState::Running) {
+            item.state = ItemState::Failed;
+            item.error.get_or_insert_with(|| message.to_owned());
+        }
+    }
+    status.clone()
 }
 
 /// 書き出しのスレッドが持つもの。
 struct Job {
     project: Arc<Project>,
     request: StartRequest,
+    /// 字幕を出すレンダーターゲットがあるときの文字起こしの単語。
+    transcript: Option<Arc<TranscriptWords>>,
     config: RuntimeConfig,
     cancel: Arc<AtomicBool>,
     status: Arc<Mutex<ExportStatus>>,
@@ -307,17 +436,7 @@ struct Finish<'a>(&'a Job);
 
 impl Drop for Finish<'_> {
     fn drop(&mut self) {
-        let mut status = self.0.status.lock().expect("export status");
-        status.running = false;
-        for item in &mut status.items {
-            if matches!(item.state, ItemState::Queued | ItemState::Running) {
-                item.state = ItemState::Failed;
-                item.error
-                    .get_or_insert_with(|| "書き出しが途中で止まった".into());
-            }
-        }
-        let stopped = status.clone();
-        drop(status);
+        let stopped = stop_all(&self.0.status, "書き出しが途中で止まった");
         (self.0.emit)(&stopped);
     }
 }
@@ -347,32 +466,15 @@ impl Job {
     }
 
     fn options(&self, index: usize) -> ExportOptions {
-        let status = self.status.clone();
-        let emit = self.emit.clone();
-        let started = Instant::now();
-        let last_ms = AtomicU64::new(0);
-        let progress = move |p: &ExportProgress| {
-            let snapshot = {
-                let mut status = status.lock().expect("export status");
-                if let Some(item) = status.items.get_mut(index) {
-                    apply_progress(item, p);
-                }
-                status.clone()
-            };
-            let now = started.elapsed().as_millis() as u64;
-            let finished = p.frames_done >= p.frames_total;
-            if finished || now.saturating_sub(last_ms.load(Ordering::Relaxed)) >= EMIT_INTERVAL_MS {
-                last_ms.store(now, Ordering::Relaxed);
-                emit(&snapshot);
-            }
-        };
+        let progress = progress_reporter(self.status.clone(), self.emit.clone(), index);
         ExportOptions {
             target: Some(Id::new(self.request.targets[index].as_str())),
             sequence: self.request.sequence.as_deref().map(Id::new),
             verify: self.request.verify,
+            transcript: self.transcript.clone(),
             control: ExportControl::default()
                 .with_cancel(self.cancel.clone())
-                .with_progress(Arc::new(progress)),
+                .with_progress(progress),
             ..ExportOptions::default()
         }
     }
@@ -424,6 +526,28 @@ impl Job {
     }
 }
 
+/// 列の `index` 番目の進み具合を状態に写し、`EMIT_INTERVAL_MS` ごと（と最後のフレーム）にだけ状態を送る。
+/// 状態の複製は送るときだけにして、フレームごとの負担を小さくする。
+fn progress_reporter(status: Arc<Mutex<ExportStatus>>, emit: Emit, index: usize) -> ProgressFn {
+    let started = Instant::now();
+    let last_ms = AtomicU64::new(0);
+    Arc::new(move |p: &ExportProgress| {
+        let now = started.elapsed().as_millis() as u64;
+        let finished = p.frames_total > 0 && p.frames_done >= p.frames_total;
+        let due = now.saturating_sub(last_ms.load(Ordering::Relaxed)) >= EMIT_INTERVAL_MS;
+        let mut status = status.lock().expect("export status");
+        if let Some(item) = status.items.get_mut(index) {
+            apply_progress(item, p);
+        }
+        if finished || due {
+            last_ms.store(now, Ordering::Relaxed);
+            let snapshot = status.clone();
+            drop(status);
+            emit(&snapshot);
+        }
+    })
+}
+
 fn apply_progress(item: &mut ExportItem, p: &ExportProgress) {
     item.frames_done = p.frames_done;
     item.frames_total = p.frames_total;
@@ -437,6 +561,7 @@ fn apply_progress(item: &mut ExportItem, p: &ExportProgress) {
 pub fn export_config() -> RuntimeConfig {
     RuntimeConfig {
         present: false,
+        frame_memory_bytes: Some(EXPORT_FRAME_MEMORY_BYTES),
         ..runtime_config()
     }
 }
