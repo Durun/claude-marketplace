@@ -98,6 +98,10 @@ impl FfmpegDecoder {
 }
 
 impl Decoder for FfmpegDecoder {
+    fn backend_id(&self) -> Option<&'static str> {
+        Some("ffmpeg")
+    }
+
     fn info(&self) -> &MediaInfo {
         self.seq.info()
     }

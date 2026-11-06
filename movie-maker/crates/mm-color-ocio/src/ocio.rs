@@ -58,6 +58,20 @@ struct Inner {
 pub struct OcioColor {
     inner: Mutex<Inner>,
     lut_size: u32,
+    /// 開いた設定の場所と、ファイルならその更新時刻。`config_fingerprint` に入れる。
+    source: String,
+}
+
+/// 設定の場所。ファイルなら更新時刻も付け、中身を書き換えた設定を別の設定として扱う。
+fn config_source(uri_or_path: &str) -> String {
+    let modified = std::fs::metadata(uri_or_path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+    match modified {
+        Some(d) => format!("{uri_or_path}@{}", d.as_nanos()),
+        None => uri_or_path.to_owned(),
+    }
 }
 
 impl OcioColor {
@@ -75,6 +89,7 @@ impl OcioColor {
                 processors: HashMap::new(),
             }),
             lut_size: DEFAULT_LUT_SIZE,
+            source: config_source(uri_or_path),
         })
     }
 
@@ -210,6 +225,15 @@ impl ColorTransform for OcioColor {
             return self.bt2020_apply(from, to, rgb);
         }
         self.apply_ocio(from, to, rgb)
+    }
+
+    fn config_fingerprint(&self) -> String {
+        format!(
+            "{OCIO_ID}:{}:{}:lut{}",
+            Self::version(),
+            self.source,
+            self.lut_size
+        )
     }
 
     fn known_spaces(&self) -> Vec<ColorSpace> {

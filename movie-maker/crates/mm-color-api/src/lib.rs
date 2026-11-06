@@ -74,4 +74,9 @@ pub trait ColorTransform: Send + Sync {
     fn apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]>;
     /// この実装が知っている色空間の名前。
     fn known_spaces(&self) -> Vec<ColorSpace>;
+    /// 実装と設定の指紋。同じ指紋なら同じ変換になる（OCIO なら設定の場所とライブラリのバージョンも含める）。
+    /// 変換した画素はこの指紋の下でフレームのキャッシュに覚える。設定を持たない実装は `id` で足りる。
+    fn config_fingerprint(&self) -> String {
+        self.id().to_owned()
+    }
 }

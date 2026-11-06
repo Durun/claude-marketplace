@@ -149,6 +149,10 @@ impl Drop for CuvidDecoder {
 }
 
 impl Decoder for CuvidDecoder {
+    fn backend_id(&self) -> Option<&'static str> {
+        Some("cuvid")
+    }
+
     fn info(&self) -> &MediaInfo {
         self.seq.info()
     }
