@@ -354,7 +354,11 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
     unread: entries ? unreadMessages(snapshot.outbox, s.id, entries) : [],
     asks: asksOf(snapshot.attention, s.id),
     jump,
-    onJump: (index: number) => setJump({ index }),
+    // チャットと同じ枠のタブに重ねていても見えるよう、チャットのタブを前に出してから移る。
+    onJump: (index: number) => {
+      showWidget(SESSION_KEY, s.id, CHAT_WIDGET);
+      setJump({ index });
+    },
     notion: !!snapshot.notion,
     snapshotAt: snapshot.now,
     sessions: snapshot.sessions,
