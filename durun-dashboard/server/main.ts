@@ -26,6 +26,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { noteActivity } from './reflect.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -1539,6 +1540,7 @@ watch(PROJECTS_DIR, true, (file) => {
   scheduleBroadcast();
   flushQueue();
   if (file) onTranscriptChange(file);
+  noteActivity();
 });
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
@@ -1546,6 +1548,8 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
+// 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
+noteActivity();
 redeliverInterrupted();
 flushQueue();
 flushArchives();
