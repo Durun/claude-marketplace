@@ -43,6 +43,19 @@ export {
   type WaveformView,
 } from "./media.ts";
 export {
+  createIpcDeliverApi,
+  EXPORT_PROGRESS_EVENT,
+  type DeliverApi,
+  type DeliverComposition,
+  type DeliverOverview,
+  type DeliverSequence,
+  type ExportItem,
+  type ExportItemState,
+  type ExportRequest,
+  type ExportStatus,
+  type ExportVerification,
+} from "./deliver.ts";
+export {
   createIpcStoryApi,
   type StoryApi,
   type StoryAsset,

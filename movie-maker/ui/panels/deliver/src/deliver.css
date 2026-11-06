@@ -1,0 +1,261 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-deliver {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-deliver select,
+.mm-deliver input[type="text"] {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--mm-space-xs);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-deliver select:focus-visible,
+.mm-deliver input:focus-visible,
+.mm-deliver-button:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-deliver-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-md);
+}
+
+.mm-deliver-toolbar select {
+  flex: 1 1 0;
+}
+
+.mm-deliver-button {
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mm-deliver-button:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
+.mm-deliver-primary:not(:disabled) {
+  border-color: var(--mm-color-accent);
+  color: var(--mm-color-task-link);
+  font-weight: 700;
+}
+
+.mm-deliver-hint,
+.mm-deliver-meta,
+.mm-deliver-state {
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-deliver-error {
+  margin: 0;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-danger);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mm-deliver-heading {
+  margin: 0;
+  font-size: var(--mm-font-size-base);
+}
+
+.mm-deliver-targets,
+.mm-deliver-items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mm-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-deliver-row,
+.mm-deliver-item,
+.mm-deliver-form {
+  box-sizing: border-box;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-deliver-row {
+  display: flex;
+  gap: var(--mm-space-md);
+}
+
+.mm-deliver-row[data-queued="true"] {
+  border-color: var(--mm-color-accent);
+}
+
+.mm-deliver-check {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-deliver-order {
+  min-width: var(--mm-size-bullet);
+  padding: 0 var(--mm-space-xs);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+  font-size: var(--mm-font-size-sm);
+  text-align: center;
+}
+
+.mm-deliver-row-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  gap: var(--mm-space-xs);
+  min-width: 0;
+}
+
+.mm-deliver-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mm-space-sm);
+}
+
+.mm-deliver-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-deliver-row-actions {
+  display: flex;
+  flex: none;
+  gap: var(--mm-space-xs);
+}
+
+.mm-deliver-path {
+  overflow: hidden;
+  font-family: var(--mm-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-deliver-empty {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-deliver-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  gap: var(--mm-space-sm);
+}
+
+.mm-deliver-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--mm-space-xs) var(--mm-space-sm);
+}
+
+.mm-deliver-field label {
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-deliver-field[data-invalid="true"] input,
+.mm-deliver-field[data-invalid="true"] select {
+  border-color: var(--mm-color-danger);
+}
+
+.mm-deliver-field-error {
+  grid-column: 2;
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-deliver-output-input {
+  display: flex;
+  gap: var(--mm-space-xs);
+}
+
+.mm-deliver-output-input input {
+  flex: 1 1 auto;
+}
+
+.mm-deliver-form-actions {
+  display: flex;
+  gap: var(--mm-space-sm);
+}
+
+.mm-deliver-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mm-space-sm);
+}
+
+.mm-deliver-check-line {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-deliver-queue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mm-space-sm);
+}
+
+.mm-deliver-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mm-space-xs);
+}
+
+.mm-deliver-item[data-state="running"] {
+  border-color: var(--mm-color-accent);
+}
+
+.mm-deliver-item[data-state="failed"] {
+  border-color: var(--mm-color-danger);
+}
+
+.mm-deliver-bar {
+  box-sizing: border-box;
+  height: var(--mm-size-bullet);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-bg);
+  overflow: hidden;
+}
+
+.mm-deliver-bar-fill {
+  height: 100%;
+  background: var(--mm-color-accent);
+}
