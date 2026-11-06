@@ -132,6 +132,36 @@ define_ops! {
     Slide => "slide",
     /// カットを配置から外す・戻す。
     Disable => "disable",
+    /// カットを抜いて同じ長さの隙間を残す。
+    Lift => "lift",
+    /// 続いたカットの列を差し込む。
+    InsertCuts => "insertCuts",
+    /// 続いたカットの列を抜く。
+    ExtractCuts => "extractCuts",
+    /// 話題の列からカットを作って差し込む。
+    InsertTopics => "insertTopics",
+    /// レイヤーのイン点かアウト点を動かす。
+    TrimLayer => "trimLayer",
+    /// 素材のイン点の印を付ける・外す。
+    MarkIn => "markIn",
+    /// 素材のアウト点の印を付ける・外す。
+    MarkOut => "markOut",
+    /// 選別を足す。
+    AddSelection => "addSelection",
+    /// 選別を外す。
+    RemoveSelection => "removeSelection",
+    /// 選別か話題の評価を変える。
+    Rate => "rate",
+    /// 選別か話題にタグを付ける・外す。
+    Tag => "tag",
+    /// 話題を足す。
+    AddTopic => "addTopic",
+    /// 話題を外す。
+    RemoveTopic => "removeTopic",
+    /// 文字起こしの単語を消す・戻す。
+    DeleteWords => "deleteWords",
+    /// 文字起こしの単語の文字を直す。
+    FixTranscript => "fixTranscript",
 }
 
 impl Op {

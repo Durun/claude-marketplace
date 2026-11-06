@@ -22,8 +22,10 @@ use mm_types::{
 ///   v3 のマーカーは同じ時刻を持てた。
 /// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
 /// - v5: `color.lut` の LUT は素材（`lut` の `AssetRef`）。v4 の `path` はその場所の素材（`contentHash` は空）に移す。
-pub const SCHEMA_VERSION: u32 = 5;
+/// - v6: 素材の整理（`bins`: 印、選別、話題）と文字起こしの直し（`transcript_edits`）。v5 からは空で上げる。
+pub const SCHEMA_VERSION: u32 = 6;
 
+mod bins;
 mod layer;
 mod migrate;
 mod migrate_lut;
@@ -32,12 +34,19 @@ mod param;
 mod sequence;
 mod validate;
 
+pub use bins::{
+    Bins, Rating, Selection, SelectionId, SelectionMarker, SourceMarks, Topic, TopicId,
+    TopicMarker, WordEdit, WordId, WordMarker,
+};
 pub use layer::{
     BlendMode, Effect, EffectId, EffectMarker, Layer, LayerAudio, Mask, MaskId, MaskMarker,
     MaskMode, MatteKind, TimeKeyframe, TimeRemap, TrackMatte, Transform,
 };
 pub use migrate::{load, migrate};
-pub use node::{Node, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND, SEQUENCE_PARAM};
+pub use node::{
+    Node, FOOTAGE_KIND, FOOTAGE_PARAM, GAP_KIND, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
+};
 pub use param::{CubicBezier, Ease, Interpolation, Keyframe, Param};
 pub use sequence::{
     Cut, CutId, CutMarker, OriginRelation, Sequence, SequenceId, SequenceMarker, SequenceOrigin,
@@ -63,6 +72,12 @@ pub struct Project {
     #[serde(default)]
     pub sequences: Vec<Sequence>,
     pub render_targets: Vec<RenderTarget>,
+    /// 素材の整理（印、選別、話題）。
+    #[serde(default)]
+    pub bins: Bins,
+    /// 文字起こしの直し。素材と単語の ID の順。
+    #[serde(default)]
+    pub transcript_edits: Vec<WordEdit>,
 }
 
 impl Project {
@@ -74,6 +89,8 @@ impl Project {
             compositions: Vec::new(),
             sequences: Vec::new(),
             render_targets: Vec::new(),
+            bins: Bins::default(),
+            transcript_edits: Vec::new(),
         }
     }
 
@@ -190,6 +207,8 @@ impl Project {
         self.compositions.sort_by(|a, b| a.id.cmp(&b.id));
         self.sequences.sort_by(|a, b| a.id.cmp(&b.id));
         self.render_targets.sort_by(|a, b| a.id.cmp(&b.id));
+        self.bins.normalize();
+        bins::normalize_edits(&mut self.transcript_edits);
     }
 }
 

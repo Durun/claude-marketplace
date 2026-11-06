@@ -1,0 +1,59 @@
+{
+  "schema_version": 6,
+  "assets": [
+    {
+      "id": "a1",
+      "path": "talk.mp4",
+      "content_hash": "hash-talk",
+      "color_space": "bt709",
+      "duration": { "num": 60, "den": 1 },
+      "fps": { "num": 30, "den": 1 },
+      "timebase_offset": { "num": 0, "den": 1 }
+    }
+  ],
+  "compositions": [],
+  "sequences": [
+    {
+      "id": "s1",
+      "cuts": [
+        {
+          "id": "k1",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+          "in": { "num": 2, "den": 1 },
+          "out": { "num": 9, "den": 2 }
+        }
+      ]
+    }
+  ],
+  "render_targets": [],
+  "bins": {
+    "marks": [
+      { "asset": "a1", "in": { "num": 1, "den": 1 }, "out": null }
+    ],
+    "selections": [
+      {
+        "id": "sel1",
+        "asset": "a1",
+        "in": { "num": 0, "den": 1 },
+        "out": { "num": 5, "den": 1 },
+        "rating": "favorite",
+        "tags": ["intro", "outdoor"]
+      }
+    ],
+    "topics": [
+      {
+        "id": "t1",
+        "asset": "a1",
+        "in": { "num": 2, "den": 1 },
+        "out": { "num": 9, "den": 2 },
+        "title": "挨拶",
+        "rating": "unrated",
+        "tags": []
+      }
+    ]
+  },
+  "transcript_edits": [
+    { "asset": "a1", "word": "w_hash-talk_2_1", "text": null, "deleted": true },
+    { "asset": "a1", "word": "w_hash-talk_5_2", "text": "編集", "deleted": false }
+  ]
+}
