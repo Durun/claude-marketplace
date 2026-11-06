@@ -2830,6 +2830,7 @@ name = "mm"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "mm-decode-api",
  "mm-decode-ffmpeg",
  "mm-doc",
  "mm-export",
