@@ -298,13 +298,13 @@ export const withRequired = (base: Record<string, unknown>, specs: FieldSpec[]):
   return filled as unknown as RenderTarget;
 };
 
-/** 一覧の行の「その他」に出す欄。専用の形で見せる欄を除き、値のある欄だけ。 */
+/** 一覧の行の「その他」に出す欄。専用の形で見せる欄と、既定値のままの欄を除き、値のある欄だけ。 */
 export const extraFields = (target: RenderTarget, specs: FieldSpec[]): { label: string; text: string }[] =>
   specs
     .filter((s) => !CORE_KEYS.includes(s.key))
     .flatMap((s) => {
       const value = getAt(target as Rec, s.path);
-      if (value === undefined || value === null) return [];
+      if (value === undefined || value === null || JSON.stringify(value) === JSON.stringify(s.fallback)) return [];
       const text = s.control.kind === "rational" ? formatRational(value as Rational) : typeof value === "object" ? JSON.stringify(value) : String(value);
       return [{ label: s.label, text }];
     });

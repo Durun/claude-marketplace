@@ -105,6 +105,16 @@ describe("withRequired と extraFields", () => {
     expect(extraFields(target, specs)).toEqual([]);
     expect(extraFields({ ...target, loudness_lufs: -14 }, specs)).toEqual([{ label: "Loudness (LUFS)", text: "-14" }]);
   });
+
+  it("既定値のままの delivery は出さず、変えた欄だけ出す", () => {
+    const plain = { ...target, delivery: { subtitles: "none", chapters: false, true_peak_dbtp: null } } as unknown as RenderTarget;
+    expect(extraFields(plain, specs)).toEqual([]);
+    const changed = { ...target, delivery: { subtitles: "sidecar", chapters: true } } as unknown as RenderTarget;
+    expect(extraFields(changed, specs)).toEqual([
+      { label: "Delivery: Chapters", text: "true" },
+      { label: "Delivery: Subtitles", text: "sidecar" },
+    ]);
+  });
 });
 
 describe("プリセット", () => {
