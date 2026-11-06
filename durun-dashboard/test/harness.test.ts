@@ -11,7 +11,7 @@ test('frontmatter の 1 行の値と、> で続ける複数行の値を読む', 
   assert.deepEqual(frontmatterOf('本文だけ'), {});
 });
 
-test('CLAUDE.md・スキル・記憶・フックを、いつ効くかとともに並べる', () => {
+test('CLAUDE.md・スキル・記憶・フックを、いつ効くかとともに並べる', async () => {
   const dir = tempDir('durun-dashboard-harness-');
   const write = (rel: string, text: string) => {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -22,7 +22,7 @@ test('CLAUDE.md・スキル・記憶・フックを、いつ効くかととも�
   write('projects/-Users-me-work-repo/memory/MEMORY.md', '- 索引');
   write('projects/-Users-me-work-repo/memory/a.md', '---\nname: a\ndescription: 手順はスキルにしない\n---\n');
   write('settings.json', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ command: 'guard.sh' }] }] } }));
-  const items = harnessItems(dir, [os.tmpdir()]).map(({ kind, name, trigger }) => ({ kind, name, trigger }));
+  const items = (await harnessItems(dir, [os.tmpdir()])).map(({ kind, name, trigger }) => ({ kind, name, trigger }));
   assert.deepEqual(items, [
     { kind: 'instructions', name: 'CLAUDE.md', trigger: 'いつも' },
     { kind: 'skill', name: 'lint', trigger: 'lint を直すときに使う' },
