@@ -86,6 +86,8 @@ mm-color-ocio = { path = "crates/mm-color-ocio" }
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
+# apps/movie-maker の Media パネルが開くファイルの選択ダイアログ。
+rfd = { version = "0.15", default-features = false }
 # CEF ホスト（mm-host-cef の `cef` feature）。wgpu のバージョンは cef クレートが要るバージョンに合わせる。
 cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
 

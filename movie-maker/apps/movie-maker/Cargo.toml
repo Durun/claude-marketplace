@@ -19,6 +19,8 @@ mm-node-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-runtime = { workspace = true }
 mm-ops = { workspace = true }
+mm-ingest = { workspace = true }
+mm-ingest-api = { workspace = true }
 mm-ui-layout = { workspace = true }
 mm-ui-wgpu = { workspace = true }
 mm-audio-cpal = { workspace = true }
@@ -30,6 +32,7 @@ tracing-subscriber = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 tauri = { workspace = true }
+rfd = { workspace = true }
 wgpu = { workspace = true }
 pollster = { workspace = true }
 windows = { workspace = true, features = [
@@ -47,6 +50,7 @@ tauri-build = { workspace = true }
 
 [dev-dependencies]
 mm-testkit = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
