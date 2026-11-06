@@ -15,6 +15,6 @@ mod server;
 mod transcripts;
 
 pub use client::{Client, EventStream, Response, SseEvent};
-pub use core::{now_ms, Caller, Change, Core, ProjectView, ServeError};
+pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
 pub use server::Server;

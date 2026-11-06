@@ -34,6 +34,14 @@ fn print_change(change: &Value) {
         change["version"],
         change["name"].as_str().unwrap_or("")
     );
+    if let Some(of) = change.get("of") {
+        println!(
+            "  元の操作: {} / {}（{}）",
+            of["actor"].as_str().unwrap_or(""),
+            of["actor_name"].as_str().unwrap_or(""),
+            of["name"].as_str().unwrap_or("")
+        );
+    }
     let touched: Vec<&str> = change["touched"]
         .as_array()
         .map(|a| a.iter().filter_map(Value::as_str).collect())

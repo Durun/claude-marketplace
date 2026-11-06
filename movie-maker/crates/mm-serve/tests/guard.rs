@@ -186,3 +186,58 @@ fn 文字起こしは素材に入り_素材が無ければ断る() {
         .unwrap();
     assert_eq!(res.status, 401);
 }
+
+#[test]
+fn 取り消しは人の操作を戻したと返す() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Store::create(&tmp.path().join("p"), &Project::new(), NOW).unwrap();
+    let core = Core::new(store, None);
+    let server = Server::start(core.clone()).unwrap();
+    let client = Client::new(server.port(), server.token());
+    let op: mm_ops::Transaction = serde_json::from_value(json!({
+        "name": "人がした操作",
+        "ops": [{"op": "addSequence", "sequence": {"id": "s1", "cuts": []}}],
+    }))
+    .unwrap();
+    core.apply(op, &mm_serve::Caller::webview(), None).unwrap();
+
+    let undo = client.post("/undo", &json!({})).unwrap().json().unwrap();
+    let of = &undo["change"]["of"];
+    assert_eq!(
+        (of["actor"].as_str(), of["name"].as_str()),
+        (Some("gui"), Some("人がした操作"))
+    );
+    assert_eq!(undo["change"]["actor"], "cli", "取り消した側は cli");
+    let redo = client.post("/redo", &json!({})).unwrap().json().unwrap();
+    assert_eq!(redo["change"]["of"]["actor"], "gui");
+}
+
+#[test]
+fn クラッシュで残った古いポートと合い言葉は信じない() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("p");
+    let writer = Store::create(&dir, &Project::new(), NOW).unwrap();
+    writer.publish_token("stale-token").unwrap();
+    writer.publish_http_port(1).unwrap();
+    let info_path = dir.join(".mm").join("lock.info");
+    let token_path = Store::writer_token_file(&dir).unwrap();
+    let (info, token) = (
+        std::fs::read(&info_path).unwrap(),
+        std::fs::read(&token_path).unwrap(),
+    );
+    assert!(
+        Client::for_project(&dir).is_some(),
+        "書き手が生きている間は見つかる"
+    );
+
+    // 書き手が落ちて、ロックだけが解けた状態を作る。
+    drop(writer);
+    std::fs::write(&info_path, info).unwrap();
+    std::fs::write(&token_path, token).unwrap();
+    assert_eq!(
+        Store::read_writer_token(&dir).as_deref(),
+        Some("stale-token")
+    );
+    assert!(Client::for_project(&dir).is_none());
+    std::fs::remove_file(token_path).unwrap();
+}

@@ -12,7 +12,7 @@ use crate::backup::BackupJob;
 use crate::docio::{self, RowMap};
 use crate::lock::{self, LockInfo, WriterLock};
 use crate::open::set_meta;
-use crate::records::{kind_str, OpRecord, StoredTxn, TxnInput, TxnKind, UndoPlan};
+use crate::records::{kind_str, Actor, OpRecord, StoredTxn, TxnInput, TxnKind, UndoPlan};
 use crate::sync::SyncFolder;
 use crate::{backup, SqlExt};
 
@@ -249,16 +249,23 @@ impl Store {
     }
 
     fn plan_at(&self, pos: i64) -> Result<Option<UndoPlan>> {
-        let found: Option<(i64, String)> = self
+        let found: Option<(i64, String, Actor)> = self
             .conn
             .query_row(
-                "SELECT t.id, t.name FROM undo_stack u JOIN txns t ON t.id = u.txn_id WHERE u.pos = ?1",
+                "SELECT t.id, t.name, t.actor_kind, t.actor_name
+                 FROM undo_stack u JOIN txns t ON t.id = u.txn_id WHERE u.pos = ?1",
                 [pos],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| {
+                    let actor = Actor {
+                        kind: r.get(2)?,
+                        name: r.get(3)?,
+                    };
+                    Ok((r.get(0)?, r.get(1)?, actor))
+                },
             )
             .optional()
             .sql()?;
-        let Some((txn_id, name)) = found else {
+        let Some((txn_id, name, actor)) = found else {
             return Ok(None);
         };
         let ops = self
@@ -266,7 +273,12 @@ impl Store {
             .into_iter()
             .map(|o| o.record)
             .collect::<Vec<OpRecord>>();
-        Ok(Some(UndoPlan { txn_id, name, ops }))
+        Ok(Some(UndoPlan {
+            txn_id,
+            name,
+            actor,
+            ops,
+        }))
     }
 
     /// 一貫したコピーを `backups/` に作り、世代を整理する。

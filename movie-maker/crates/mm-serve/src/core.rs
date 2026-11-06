@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use mm_doc::Project;
 use mm_ops::{Entry, OpContext, OpError, Transaction};
-use mm_store::{Actor, BackupJob, Store, StoredTxn, TranscriptInput, TxnKind};
+use mm_store::{Actor, BackupJob, Store, StoredTxn, TranscriptInput, TxnKind, UndoPlan};
 use mm_types::{AssetId, MmError};
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -53,6 +53,30 @@ pub struct Change {
     pub actor: String,
     /// 触った ID。描き直す範囲を決めるのに使う。
     pub touched: Vec<String>,
+    /// 取り消し・やり直しが戻した（やり直した）元のトランザクション。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub of: Option<ChangeOf>,
+}
+
+/// 取り消し・やり直しの対象になった元のトランザクション。誰の操作を戻したかを呼び手に返す。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChangeOf {
+    pub txn_id: i64,
+    pub name: String,
+    /// 元の操作をした人の種類（`gui`、`cli`、`claude` など）と名前。
+    pub actor: String,
+    pub actor_name: String,
+}
+
+impl From<UndoPlan> for ChangeOf {
+    fn from(plan: UndoPlan) -> Self {
+        Self {
+            txn_id: plan.txn_id,
+            name: plan.name,
+            actor: plan.actor.kind,
+            actor_name: plan.actor.name,
+        }
+    }
 }
 
 impl Change {
@@ -74,6 +98,7 @@ impl Change {
             name: stored.name.clone(),
             actor: stored.actor.kind.clone(),
             touched: touched.into_iter().cloned().collect(),
+            of: None,
         }
     }
 }
@@ -204,7 +229,7 @@ impl Core {
         let change = self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
             let stored = s.apply_txn(txn, &ctx, caller.actor.clone(), now_ms(), responds_to)?;
-            Ok(self.finish(s, &stored))
+            Ok(self.finish(s, &stored, None))
         })?;
         Ok(change)
     }
@@ -213,8 +238,9 @@ impl Core {
     pub fn undo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
+            let target = s.undo_plan()?.map(ChangeOf::from);
             let stored = s.undo_last(&ctx, caller.actor.clone(), now_ms())?;
-            Ok(stored.map(|t| self.finish(s, &t)))
+            Ok(stored.map(|t| self.finish(s, &t, target)))
         })
     }
 
@@ -222,18 +248,20 @@ impl Core {
     pub fn redo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
+            let target = s.redo_plan()?.map(ChangeOf::from);
             let stored = s.redo_last(&ctx, caller.actor.clone(), now_ms())?;
-            Ok(stored.map(|t| self.finish(s, &t)))
+            Ok(stored.map(|t| self.finish(s, &t, target)))
         })
     }
 
     /// 書いた後の仕事。間隔が過ぎたバックアップ、描画側のキャッシュの無効化、購読者への通知。
-    fn finish(&self, store: &mut Store, stored: &StoredTxn) -> Change {
+    fn finish(&self, store: &mut Store, stored: &StoredTxn, of: Option<ChangeOf>) -> Change {
         self.version.store(store.doc_version(), Ordering::Release);
         if let Some(job) = store.take_due_backup(now_ms()) {
             self.spawn_backup(job);
         }
-        let change = Change::of(stored);
+        let mut change = Change::of(stored);
+        change.of = of;
         if let Some(frames) = &self.frames {
             frames.invalidate(&change.touched);
         }
