@@ -18,6 +18,8 @@
       "media-thumb-width": 64,
       "media-thumb-height": 36,
       "media-list-min": 120,
+      "story-hits-max": 144,
+      "story-tag-input": 60,
       "waveform-height": 40,
       "progress": 4
     },

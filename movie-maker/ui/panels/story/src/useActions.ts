@@ -1,6 +1,6 @@
 import type { Rating, StoryApi, StoryHit, StoryWord, Topic } from "@mm/sdk";
 import { addTopicOp, deleteOp, fixOp, insertTopicsOp, rateOp, tagOp } from "./ops.ts";
-import { seekToSource, type Loaded, type Tray } from "./useStory.ts";
+import { seekToCut, seekToSource, type Loaded, type Tray } from "./useStory.ts";
 
 export interface Actions {
   makeTopic: (title: string) => Promise<void>;
@@ -59,10 +59,12 @@ export const createActions = (cx: ActionContext): Actions => {
       }
     },
     arrange: async (sequence) => {
-      const [first] = tray.picked;
-      if (!first || !(await send(insertTopicsOp(sequence, tray.picked)))) return;
+      if (tray.picked.length === 0) return;
+      const op = insertTopicsOp(sequence, tray.picked);
+      if (!(await send(op))) return;
       tray.clear();
-      await jumpTo(first.asset, { start: first.in });
+      const moved = await seekToCut(api, op.cuts[0] ?? "");
+      cx.setNotice(moved ? null : "This part is not on the timeline yet.");
     },
     jump: async (word) => {
       if (asset) await jumpTo(asset, word);

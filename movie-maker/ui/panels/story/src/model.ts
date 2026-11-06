@@ -33,6 +33,8 @@ export const newId = (prefix: string): string => {
 export interface Block {
   key: string;
   topic: Topic | null;
+  /** 見出しを出すか。話題ごとに最初の塊だけ（重なった話題で塊が分かれても見出しは 1 回）。 */
+  head: boolean;
   /** 段落ごとの単語と、その単語の `words` の中の番号。 */
   paragraphs: { word: StoryWord; index: number }[][];
 }
@@ -46,12 +48,15 @@ const topicOf = (word: StoryWord, topics: readonly Topic[]): Topic | null =>
 export const buildBlocks = (words: readonly StoryWord[], topics: readonly Topic[]): Block[] => {
   const sorted = [...topics].sort((a, b) => compareTime(a.in, b.in));
   const blocks: Block[] = [];
+  const headed = new Set<string>();
   let lastSegment = -1;
   words.forEach((word, index) => {
     const topic = topicOf(word, sorted);
     let block = blocks.at(-1);
     if (!block || block.topic?.id !== topic?.id) {
-      block = { key: `${topic?.id ?? "plain"}-${index}`, topic, paragraphs: [] };
+      const head = topic !== null && !headed.has(topic.id);
+      if (topic) headed.add(topic.id);
+      block = { key: `${topic?.id ?? "plain"}-${index}`, topic, head, paragraphs: [] };
       blocks.push(block);
       lastSegment = -1;
     }
@@ -60,6 +65,12 @@ export const buildBlocks = (words: readonly StoryWord[], topics: readonly Topic[
     block.paragraphs.at(-1)?.push({ word, index });
   });
   return blocks;
+};
+
+/** 単語の始まりを 1 つも含まず、本文のどの塊にも出ない話題。見出しを末尾に一覧で出して外せるようにする。 */
+export const orphanTopics = (blocks: readonly Block[], topics: readonly Topic[]): Topic[] => {
+  const shown = new Set(blocks.flatMap((b) => (b.topic ? [b.topic.id] : [])));
+  return topics.filter((t) => !shown.has(t.id));
 };
 
 /** 選んだ単語の範囲（`words` の番号、両端を含む）。 */

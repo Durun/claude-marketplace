@@ -27,12 +27,17 @@ pub enum ItemKind {
 }
 
 /// シーケンスのカット 1 つ（有効なものだけ）。コンポジションの時間軸での始まりと終わり（秒）。
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct CutBar {
     pub start: f64,
     pub end: f64,
     /// 隙間（`lift` で抜いた所）。空きとして描く。
     pub gap: bool,
+    /// シーケンスのカット列（無効なカットも含む）で、すぐ前のカットが無効。
+    /// `roll` と `slide` は列の隣を動かすので、見えている隣と食い違うときは出さない。
+    pub disabled_before: bool,
+    /// シーケンスのカット列で、すぐ後ろのカットが無効。
+    pub disabled_after: bool,
 }
 
 /// Timeline に並ぶレイヤー 1 本。
@@ -176,12 +181,11 @@ pub fn hit_test(model: &TimelineModel, view: &TimeView, x: f32, y: f32) -> Hit {
         if let Some(hit) = cut_hit(item, view, index, x) {
             return hit;
         }
-        let part = if item.cuts.is_empty() {
-            part_at(bx, bw, x)
-        } else {
-            Part::Body
+        // カットの外に出ているレイヤーの端は、カットを持つレイヤーでもつまみになる。
+        return Hit::Layer {
+            index,
+            part: part_at(bx, bw, x),
         };
-        return Hit::Layer { index, part };
     }
     Hit::Empty
 }
@@ -275,7 +279,12 @@ mod tests {
     }
 
     fn seq_model() -> TimelineModel {
-        let cut = |start, end, gap| CutBar { start, end, gap };
+        let cut = |start, end, gap| CutBar {
+            start,
+            end,
+            gap,
+            ..CutBar::default()
+        };
         let mut seq = Item::layer(0.0, 10.0, ItemKind::Sequence, true);
         seq.cuts = vec![cut(0.0, 3.0, false), cut(3.0, 4.0, true)];
         TimelineModel {
@@ -300,6 +309,25 @@ mod tests {
             Hit::Layer {
                 index: 0,
                 part: Part::Body
+            }
+        );
+    }
+
+    #[test]
+    fn カットの外にあるシーケンスのレイヤーの端はレイヤーのつまみ() {
+        let m = seq_model();
+        let y = row_top(0) + 5.0;
+        let at = |x| hit_test(&m, &view(), x, y);
+        let layer = |part| Hit::Layer { index: 0, part };
+        assert_eq!(at(998.0), layer(Part::OutHandle), "カットは 4 秒まで");
+        assert_eq!(at(700.0), layer(Part::Body));
+        // 端がカットの中にあるときはカットのつまみが先。
+        assert_eq!(
+            at(2.0),
+            Hit::Cut {
+                item: 0,
+                cut: 0,
+                part: Part::InHandle
             }
         );
     }

@@ -1,7 +1,16 @@
 import { useEffect, useState } from "preact/hooks";
 import { InspectorPanel } from "@mm/inspector";
 import { MediaPanel } from "@mm/media";
-import { invoke, type Asset, type Layer, type MediaApi, type Op, type StoryApi } from "@mm/sdk";
+import {
+  invoke,
+  onDocChanged,
+  type Asset,
+  type Layer,
+  type MediaApi,
+  type MediaListen,
+  type Op,
+  type StoryApi,
+} from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
 import { TasksPanel } from "@mm/tasks";
 
@@ -14,12 +23,14 @@ export interface LayerSelection {
 }
 
 export interface ShellProps {
-  /** 操作を送る。本番は sdk の client（IPC）をつなぐ。 */
-  sendOp: (op: Op) => void;
+  /** 操作を送る。本番は sdk の client（IPC）をつなぐ。断られたら理由の文字を返し、Shell が画面に出す。 */
+  sendOp: (op: Op) => Promise<string | null> | undefined;
   /** Media パネルがアプリに頼む窓口。無ければ Media は出さない。 */
   media?: MediaApi;
   /** Story パネルがアプリに頼む窓口。無ければ Story は出さない。 */
   story?: StoryApi;
+  /** Tauri のイベントの購読。無ければ本番の listen。テストで差し替える。 */
+  listen?: MediaListen;
 }
 
 /** 左の列で見せているパネル。XP のムービーメーカーの Tasks と Collections の切り替えに倣う。 */
@@ -51,12 +62,55 @@ const LeftTabs = ({ tabs, tab, onSelect }: { tabs: LeftTab[]; tab: LeftTab; onSe
   </div>
 );
 
-/** 左に Tasks、Media、Story（タブで切り替え）、右に Inspector。窓口を渡したパネルだけタブを出す。 */
-export const Shell = ({ sendOp, media, story }: ShellProps) => {
+/** Timeline の選択のイベントを受けて、いま選ばれているレイヤーを持つ。 */
+const useLayerSelection = (): LayerSelection => {
   const [selection, setSelection] = useState<LayerSelection>({ layer: null });
+  useEffect(() => {
+    const onSelected = (e: Event) => setSelection((e as CustomEvent<LayerSelection>).detail);
+    window.addEventListener(LAYER_SELECTED_EVENT, onSelected);
+    return () => window.removeEventListener(LAYER_SELECTED_EVENT, onSelected);
+  }, []);
+  return selection;
+};
+
+/** 操作を送り、断られた理由を持つ。次に成功した操作で消える。 */
+const useSendOp = (sendOp: ShellProps["sendOp"]) => {
+  const [opError, setOpError] = useState<string | null>(null);
+  const send = async (op: Op) => setOpError((await sendOp(op)) ?? null);
+  return { send, opError };
+};
+
+/** `mm:doc-changed` が届いた回数。パネルの読み直しの合図にする。 */
+const useDocChanges = (listen: MediaListen | undefined): number => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    // 購読が確立する前に外れた場合も、確立した後で外す。
+    let off: (() => void) | null = null;
+    let stopped = false;
+    // Tauri の外（デモや試験）では購読できないので、通知なしで動かす。
+    onDocChanged(() => setCount((n) => n + 1), listen).then(
+      (fn) => {
+        if (stopped) fn();
+        else off = fn;
+      },
+      () => undefined,
+    );
+    return () => {
+      stopped = true;
+      off?.();
+    };
+  }, [listen]);
+  return count;
+};
+
+/** 左に Tasks、Media、Story（タブで切り替え）、右に Inspector。窓口を渡したパネルだけタブを出す。 */
+export const Shell = ({ sendOp, media, story, listen }: ShellProps) => {
+  const selection = useLayerSelection();
   const [tab, setTab] = useState<LeftTab>("tasks");
   const [importRequest, setImportRequest] = useState(0);
   const [storyVisits, setStoryVisits] = useState(0);
+  const docChanges = useDocChanges(listen);
+  const { send, opError } = useSendOp(sendOp);
   const tabs: LeftTab[] = ["tasks", ...(media ? ["media" as const] : []), ...(story ? ["story" as const] : [])];
   const selectTab = (next: LeftTab) => {
     if (next === "story") setStoryVisits((n) => n + 1);
@@ -70,11 +124,6 @@ export const Shell = ({ sendOp, media, story }: ShellProps) => {
     }
     void invoke(command);
   };
-  useEffect(() => {
-    const onSelected = (e: Event) => setSelection((e as CustomEvent<LayerSelection>).detail);
-    window.addEventListener(LAYER_SELECTED_EVENT, onSelected);
-    return () => window.removeEventListener(LAYER_SELECTED_EVENT, onSelected);
-  }, []);
   return (
     <>
       <aside class="mm-shell-left">
@@ -84,18 +133,23 @@ export const Shell = ({ sendOp, media, story }: ShellProps) => {
         </div>
         {media && (
           <div class="mm-shell-left-body" role="tabpanel" hidden={tab !== "media"}>
-            <MediaPanel api={media} importRequest={importRequest} />
+            <MediaPanel api={media} importRequest={importRequest} refreshKey={docChanges} />
           </div>
         )}
         {story && (
           <div class="mm-shell-left-body" role="tabpanel" hidden={tab !== "story"}>
-            <StoryPanel api={story} refreshKey={storyVisits} />
+            <StoryPanel api={story} refreshKey={storyVisits + docChanges} />
           </div>
         )}
       </aside>
       <main class="mm-shell-center" />
       <aside class="mm-shell-right">
-        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={sendOp} />
+        {opError && (
+          <p class="mm-shell-error" role="alert">
+            {opError}
+          </p>
+        )}
+        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={send} />
       </aside>
     </>
   );

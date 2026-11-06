@@ -9,11 +9,13 @@ export interface MediaPanelProps {
   api: MediaApi;
   /** 外から「ファイルを選んで取り込む」を始めたいときに増やす（Tasks の項目から）。 */
   importRequest?: number;
+  /** 増えるたびに素材の一覧を読み直す（外から編集されたとき）。 */
+  refreshKey?: number;
 }
 
 /** XP のムービーメーカーのコレクション風の素材の一覧。取り込み、波形、キャッシュの掃除を持つ。 */
-export const MediaPanel = ({ api, importRequest = 0 }: MediaPanelProps) => {
-  const media = useMedia(api, importRequest);
+export const MediaPanel = ({ api, importRequest = 0, refreshKey = 0 }: MediaPanelProps) => {
+  const media = useMedia(api, importRequest, refreshKey);
   const { items, progress } = media;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = items.find((i) => i.id === selectedId) ?? null;
