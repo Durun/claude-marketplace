@@ -360,7 +360,7 @@ export const Summary = ({ s }: { s: Session }) => {
 
 /**
  * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。JIRA の課題のキーもリンクにする。ほかの文は mark で描く。
- * PR はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
+ * PR と課題はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
  * PR と課題へのリンクは、押すとダッシュボードの中で開く。
  */
 const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
@@ -371,7 +371,8 @@ const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
     const split = refSplitter(data ?? []);
     const splitJira = jiraSplitter(issues ?? []);
     const title = (r: RepoRef) => (r.kind === 'pr' && !light ? undefined : r.title);
-    const rest = (text: string) => splitJira(text).map((p, i) => (p.url ? <Ext key={i} href={p.url}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
+    const summaries = new Map(light ? (issues ?? []).map((j) => [j.key, j.summary]) : []);
+    const rest = (text: string) => splitJira(text).map((p, i) => (p.url ? <Ext key={i} href={p.url} title={summaries.get(p.text)}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
     return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={title(p.ref)}>{p.text}</Ext> : <Fragment key={i}>{rest(p.text)}</Fragment>));
   }, [data, issues, mark, light]);
 };
@@ -386,10 +387,13 @@ const badgeLinkOf = (e: MouseEvent): string | undefined => {
   return a && (PR_URL.test(a.href) || JIRA_ISSUE_KEY.test(a.href.split('/browse/')[1] ?? '')) ? a.href : undefined;
 };
 
-/** PR へのリンクにマウスを載せたら、イルカが吹き出しで PR を説明する。コメントなど PR の中の場所へのリンクは説明しない。 */
-const explainPrLink = (e: MouseEvent) => {
+/** PR と JIRA の課題へのリンクにマウスを載せたら、イルカが吹き出しで説明する。コメントなど PR や課題の中の場所へのリンクは説明しない。 */
+const explainLink = (e: MouseEvent) => {
   const a = e.target instanceof Element ? e.target.closest('a') : null;
-  if (a && PR_URL.test(a.href)) explain({ pr: a.href, at: a });
+  if (!a) return;
+  const jira = a.href.split('/browse/')[1] ?? '';
+  if (PR_URL.test(a.href)) explain({ pr: a.href, at: a });
+  else if (JIRA_ISSUE_KEY.test(jira)) explain({ jira, at: a });
 };
 
 const CHAT_PAGE = 100;
@@ -574,7 +578,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     <>
       <h2 class="section-title">チャット</h2>
       {badgeMenu && <XpContextMenu id={BADGE_MENU_ID} x={badgeMenu.x} y={badgeMenu.y} items={[{ label: 'バッジに追加', onClick: () => void addBadge(badgeMenu.url) }]} onClose={() => setBadgeMenu(undefined)} />}
-      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainPrLink} onContextMenuCapture={onContextMenu}>
+      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainLink} onContextMenuCapture={onContextMenu}>
         {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>

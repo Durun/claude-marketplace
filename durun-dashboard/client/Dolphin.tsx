@@ -7,6 +7,7 @@ import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
 import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
+import { JiraTip } from './JiraView.tsx';
 import { PrTip } from './PrView.tsx';
 import { currentSessionId } from './router.ts';
 import { toast } from './toast.tsx';
@@ -73,15 +74,15 @@ type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: nu
 /** windUp は、引っぱったまま振り回して勢いをつけた道のり（px）。 */
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
-/** 説明しているものと、マウスを載せている要素。説明するのは、用語か、URL で指した PR。 */
-type Explained = { at: Element } & ({ term: GlossaryTerm } | { pr: string });
+/** 説明しているものと、マウスを載せている要素。説明するのは、用語か、URL で指した PR か、キーで指した JIRA の課題。 */
+type Explained = { at: Element } & ({ term: GlossaryTerm } | { pr: string } | { jira: string });
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
 type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag; explained?: Explained };
 
 const explainers = new Set<(e?: Explained) => void>();
 
-/** 用語か PR へのリンクにマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
+/** 用語か PR か課題へのリンクにマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
 export const explain = (e?: Explained): void => explainers.forEach((fn) => fn(e));
 
 const clamp = (v: number, min: number, max: number): number => Math.min(Math.max(v, min), Math.max(min, max));
@@ -521,10 +522,12 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     <div class="dolphin" ref={box}>
       {open && <DolphinChat turns={turns} thinking={thinking} hearing={hearing} sendStates={sendStates} onAsk={ask} onDecide={decide} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
       {explained && (
-        <div class={`card dolphin-chat ${'pr' in explained ? 'dolphin-pr' : 'dolphin-term'}`} ref={tip} role="tooltip">
+        <div class={`card dolphin-chat ${'term' in explained ? 'dolphin-term' : 'dolphin-pr'}`} ref={tip} role="tooltip">
+          {/* useCached は読み込み中も前の PR や課題を残すので、PR と課題ごとに作り直す。 */}
           {'pr' in explained ? (
-            // useCached は読み込み中も前の PR を残すので、PR ごとに作り直す。
             <PrTip key={explained.pr} url={explained.pr} />
+          ) : 'jira' in explained ? (
+            <JiraTip key={explained.jira} issueKey={explained.jira} />
           ) : (
             <>
               <strong>{explained.term.term}</strong>

@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'preact/hooks';
 import type { JiraDetail, JiraTransition, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
+import { firstLines } from './format.ts';
 import { type Float, FloatFrame, JIRA_ICON, dock } from './Float.tsx';
 import { useCached, usePicked, useTabOrder } from './hooks.ts';
 import { IssueRow } from './JiraIssues.tsx';
@@ -60,6 +61,24 @@ const StatusMenu = ({ issue, onMoved }: { issue: JiraDetail; onMoved: () => void
 };
 
 /** JIRA で開くリンクは、課題へのリンクを横取りする処理に拾わせないよう data-external を付ける。 */
+/** イルカが吹き出しで見せる課題の要約。題名と状態と担当と、説明の初めの数行。 */
+export const JiraTip = ({ issueKey }: { issueKey: string }) => {
+  const issue = useCached((fresh) => api.jiraIssue(issueKey, fresh), [issueKey]);
+  if (!issue.data) return <span class="muted">{issue.error ? `課題を読めませんでした（${issue.error}）` : '課題を読んでいます…'}</span>;
+  const body = firstLines(issue.data.description, 3);
+  return (
+    <>
+      <strong class="pr-view-title">{issue.data.key} {issue.data.summary}</strong>
+      <div class="pr-view-meta muted">
+        {issue.data.status && <span>{issue.data.status}</span>}
+        <span>担当 {issue.data.assignee ?? '未割り当て'}</span>
+        {issue.data.updatedAt !== undefined && <span>更新 <Time at={issue.data.updatedAt} /></span>}
+      </div>
+      {body && <Markdown text={body} />}
+    </>
+  );
+};
+
 const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolean; reload: () => void }) => (
   <div class="stack pr-view jira-view">
     <div class="pr-view-head">
