@@ -152,8 +152,8 @@ impl ExportPipe {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("render.yuv_out"),
             });
-        draw_plane(&mut encoder, &self.y_pipeline, &bind, &set.y);
-        draw_plane(&mut encoder, &self.uv_pipeline, &bind, &set.uv);
+        draw_plane(&mut encoder, &self.y_pipeline, &bind, &set.y, gpu.timer());
+        draw_plane(&mut encoder, &self.uv_pipeline, &bind, &set.uv, gpu.timer());
         ctx.queue.submit([encoder.finish()]);
         (
             gpu.begin_readback(&set.y, 1),
@@ -219,6 +219,7 @@ fn draw_plane(
     pipeline: &wgpu::RenderPipeline,
     bind: &wgpu::BindGroup,
     target: &wgpu::Texture,
+    timer: &mm_gpu::PassTimer,
 ) {
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -232,6 +233,7 @@ fn draw_plane(
                 store: wgpu::StoreOp::Store,
             },
         })],
+        timestamp_writes: timer.pass_writes(),
         ..Default::default()
     });
     pass.set_pipeline(pipeline);

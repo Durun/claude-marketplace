@@ -23,7 +23,6 @@ mod layers;
 mod renderer;
 mod sequence;
 mod source;
-mod timer;
 pub mod transform;
 
 pub use cache::{FrameCacheConfig, DEFAULT_MEMORY_BYTES};

@@ -24,6 +24,8 @@ pub(crate) const LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
 const CONTRAST_PIVOT: f32 = 0.18;
 /// `pow` の底に許す最小。0 と負の値で `log2` が発散しない。
 const MIN_POW_BASE: f32 = 1e-10;
+/// CDL の power の下限。`mm_color_lut::MIN_POWER` と同じ値（試験で突き合わせる）。
+const MIN_CDL_POWER: f32 = 1e-3;
 
 /// フラグメントシェーダーの共通部分。`mm_color` は種類ごとに足す。
 const FRAGMENT_WGSL: &str = r"
@@ -313,7 +315,7 @@ impl Cdl {
         Self {
             slope: vec3_or(params, "slope", 1.0),
             offset: vec3_or(params, "offset", 0.0),
-            power: vec3_or(params, "power", 1.0),
+            power: vec3_or(params, "power", 1.0).map(|p| p.max(MIN_CDL_POWER)),
             saturation: params.number_or("saturation", 1.0) as f32,
         }
     }
@@ -337,7 +339,8 @@ impl Cdl {
 
 const CDL_WGSL: &str = r"
 fn mm_color(c: vec3<f32>) -> vec3<f32> {
-    let v = pow(max(c * u.a.xyz + u.b.xyz, vec3<f32>(0.0)), u.c.xyz);
+    let b = max(c * u.a.xyz + u.b.xyz, vec3<f32>(0.0));
+    let v = select(vec3<f32>(0.0), pow(max(b, vec3<f32>(MIN_POW_BASE)), u.c.xyz), b > vec3<f32>(0.0));
     let luma = dot(v, vec3<f32>(0.2126, 0.7152, 0.0722));
     return vec3<f32>(luma) + (v - vec3<f32>(luma)) * u.d.x;
 }
@@ -388,7 +391,7 @@ impl NodeKind for ColorCdlKind {
         uniform[8..11].copy_from_slice(&cdl.power);
         uniform[12] = cdl.saturation;
         let pass = ColorPass {
-            wgsl: CDL_WGSL.into(),
+            wgsl: CDL_WGSL.replace("MIN_POW_BASE", &format!("{MIN_POW_BASE:e}")),
             uniform,
             lut: None,
             cpu: Box::new(move |rgb| cdl.cpu(rgb)),
@@ -437,6 +440,16 @@ mod tests {
         params.set("saturation", ParamValue::Number(0.0));
         let out = Adjust::of(&params).cpu([1.0, 0.0, 0.0]);
         assert!((out[0] - 0.2126).abs() < 1e-5 && out[0] == out[1] && out[1] == out[2]);
+    }
+
+    #[test]
+    fn power_0_でも_0_の画素は_0_で有限() {
+        let mut params = Params::new();
+        params.set("power", ParamValue::Vec3([0.0, -1.0, 1.0]));
+        let cdl = Cdl::of(&params);
+        assert_eq!(MIN_CDL_POWER, mm_color_lut::MIN_POWER);
+        assert!(cdl.power.iter().all(|p| *p >= MIN_CDL_POWER));
+        assert_eq!(cdl.cpu([0.0; 3]), [0.0; 3]);
     }
 
     #[test]

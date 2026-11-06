@@ -18,7 +18,7 @@ use mm_color_api::{ColorTransform, TransformProgram};
 use mm_types::{ColorSpace, Result};
 
 pub use bake::{bake_lut3d, LUT3D_APPLY_WGSL};
-pub use cdl::Cdl;
+pub use cdl::{Cdl, MIN_POWER};
 pub use cube::{sample_trilinear, Cube3d};
 
 use space::Space;
