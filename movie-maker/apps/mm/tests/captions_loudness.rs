@@ -5,7 +5,7 @@
 //! - MP4 の字幕のトラック（mov_text）の中身が SRT と同じ。
 //! - 書き出した音の統合ラウドネスが目標（YouTube -14、放送 -23）の ±0.5 LU に入り、トゥルーピークが -1 dBTP 以下。
 //!
-//! FFmpeg が要るので feature `ffmpeg` のときだけ走る。
+//! FFmpeg が要るので feature `ffmpeg` のときだけ実行する。
 #![cfg(feature = "ffmpeg")]
 
 use std::path::Path;
@@ -359,7 +359,7 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
     let chapters = ffprobe_json(&yt, &["-show_chapters"]);
     let chapters = chapters["chapters"].as_array().unwrap();
     assert_eq!(chapters.len(), 3, "{chapters:?}");
-    // チャプターは映像と同じ時間軸に置く。映像の始まりがずれていれば、同じだけずれていないと話題の頭と合わない。
+    // チャプターは映像と同じ時間軸に置く。映像の始まりがずれていれば、同じだけずれていないと話題の先頭と合わない。
     let video_start = stream_start(&yt, "v");
     let starts = [0.0, timeline_start(0), timeline_start(40)];
     for (c, (start, title)) in chapters

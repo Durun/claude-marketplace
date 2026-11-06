@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn 本編のカットに使うショートの印と_元が変わったカットを出す() {
+    fn 本編のカットに使うショートと上書きのフラグと_元が変わったカットを出す() {
         let lines = text_lines(&project()).unwrap();
         assert_eq!(
             lines,

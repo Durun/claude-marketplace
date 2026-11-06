@@ -202,9 +202,12 @@ mod tests {
     }
 
     #[test]
-    fn nvenc_が無ければ_h264_は_libx264_に落ちる() {
+    fn nvenc_が無ければ_h264_は_libx264_にフォールバックする() {
         let only_x264 = auto(&[&["h264", "prores_422hq"]]);
-        assert!(only_x264.supports("h264_nvenc"), "h264 に落ちるので頼める");
+        assert!(
+            only_x264.supports("h264_nvenc"),
+            "h264 にフォールバックするので頼める"
+        );
         assert!(only_x264.supports("prores_422hq"));
         assert!(!only_x264.supports("hevc_nvenc"), "HEVC に代わりは無い");
         assert!(!only_x264.supports("vp9"));
@@ -295,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn 字幕を受けない候補は飛ばして次の候補で書き_使った実装を報告する() {
+    fn 字幕を受けない候補はスキップして次の候補で書き_使った実装を報告する() {
         let factory = AutoEncoderFactory::new(vec![
             fake("nvenc", "h264_nvenc", false, true),
             fake("ffmpeg", "h264", true, true),

@@ -1,8 +1,8 @@
-//! 書き出しの進み具合を列の状態へ写して送る。
+//! 書き出しの進み具合をキューの状態へ反映して送る。
 
 use super::*;
 
-/// 列の `index` 番目の進み具合を状態に写し、`EMIT_INTERVAL_MS` ごと（と最後のフレーム）にだけ状態を送る。
+/// キューの `index` 番目の進み具合を状態に反映し、`EMIT_INTERVAL_MS` ごと（と最後のフレーム）にだけ状態を送る。
 /// 状態の複製は送るときだけにして、フレームごとの負担を小さくする。
 pub(super) fn progress_reporter(
     status: Arc<Mutex<ExportStatus>>,

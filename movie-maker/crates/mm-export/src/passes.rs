@@ -1,4 +1,4 @@
-//! 映像を描いてエンコーダーに押す段。2 パスのコーデックは同じ描画を 2 回通し、並行の描画は別のエンジンで描く。
+//! 映像を描いてエンコーダーに送る工程。2 パスのコーデックは同じ描画を 2 回通し、並行の描画は別のエンジンで描く。
 //! 音は映像と同じ取り消しで止まるよう、短い区間ずつ混ぜてつなぐ。
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -67,8 +67,8 @@ pub(crate) enum Drawer<'a> {
     Workers(&'a RuntimeConfig),
 }
 
-/// 映像をエンコーダーに押し、音を混ぜる。並行の描画なら音を映像と同時に混ぜる。取り消されたら `None`。
-/// 押した映像のフレームの数と、混ぜた音を返す。
+/// 映像をエンコーダーに送り、音を混ぜる。並行の描画なら音を映像と同時に混ぜる。取り消されたら `None`。
+/// 送った映像のフレームの数と、混ぜた音を返す。
 pub(crate) fn render_video_and_audio(
     engine: &mut Engine,
     project: &Project,
@@ -102,9 +102,9 @@ pub(crate) fn render_video_and_audio(
             );
             // 映像が止まったら、音を混ぜ終えるのを待たずに抜けられるよう音も止める
             video_failed.store(video.is_err(), Ordering::Relaxed);
-            let audio = audio
-                .join()
-                .unwrap_or_else(|_| Err(MmError::Internal("音を混ぜるスレッドが落ちた".into())));
+            let audio = audio.join().unwrap_or_else(|_| {
+                Err(MmError::Internal("音を混ぜるスレッドがパニックした".into()))
+            });
             (video, audio)
         })
     } else {
@@ -185,7 +185,7 @@ pub(crate) fn mix_audio(
     }
 }
 
-/// エンコーダーが求める回数（2 パスは 2 回）、区間を描いて押す。最後の 1 回に押したフレームの数を返す。
+/// エンコーダーが求める回数（2 パスは 2 回）、区間を描いて送る。最後の 1 回に送ったフレームの数を返す。
 #[cfg(test)]
 pub(crate) fn export_passes(
     engine: &mut Engine,
@@ -230,7 +230,7 @@ fn export_passes_with(
 }
 
 /// 区間を描き、レンダラーの `export_range`（`EXPORT_BATCH_FRAMES` ずつ、または GPU で YUV にした経路）で
-/// エンコーダーに押す。押したフレームの数を返す。
+/// エンコーダーに送る。送ったフレームの数を返す。
 #[cfg(test)]
 pub(crate) fn export_frames(
     engine: &mut Engine,
@@ -318,7 +318,7 @@ impl<'a> Progress<'a> {
         }
     }
 
-    /// 1 フレーム押した。描画の時間を `export.render` に載せ、進み具合を知らせる。
+    /// 1 フレーム送った。描画の時間を `export.render` に載せ、進み具合を知らせる。
     fn frame(&mut self, elapsed: Duration) {
         mm_trace::record_span("export.render", elapsed);
         self.done += 1;
@@ -331,7 +331,7 @@ impl<'a> Progress<'a> {
     }
 }
 
-/// 押し込みの時間をスパン `export.encode` に載せ、取り消されていたら押さずに止めるエンコーダー。
+/// 送信の時間をスパン `export.encode` に載せ、取り消されていたら送らずに止めるエンコーダー。
 struct Metered<'a> {
     inner: &'a mut dyn Encoder,
     control: &'a ExportControl,
@@ -364,7 +364,7 @@ impl Encoder for Metered<'_> {
     }
 
     fn push_nv12_frames(&mut self, frames: &[Nv12Frame]) -> Result<()> {
-        // 空の列は NV12 に対応するかの問い合わせなので、取り消しとは関係なく通す。
+        // 空のスライスは NV12 に対応するかの問い合わせなので、取り消しとは関係なく通す。
         if frames.is_empty() {
             return self.inner.push_nv12_frames(frames);
         }

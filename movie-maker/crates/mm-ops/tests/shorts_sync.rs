@@ -22,7 +22,7 @@ fn cut(p: &Project, id: &str) -> mm_doc::Cut {
 }
 
 /// 本編 main（m1: 1〜3 秒、m2: 1〜3 秒）と、m1 を参照するショート short の v7 のプロジェクト。
-/// ショートのカット s1 の in/out/速さは引数で決める（v7 は上書きの印を持たない）。
+/// ショートのカット s1 の in/out/速さは引数で決める（v7 は上書きのフラグを持たない）。
 fn v7_reference(s1_in: i64, s1_out: i64, s1_speed: i64) -> Project {
     let cut = |id: &str, origin: &str, a: i64, b: i64, speed: i64| {
         format!(
@@ -105,7 +105,8 @@ fn with_reference() -> Project {
 }
 
 #[test]
-fn 本編を写すとショートの上書きした_in_以下になる操作はショートのカットと上書きを示して断る() {
+fn 本編の変更を反映するとショートの上書きした_in_以下になる操作はショートのカットと上書きを示して拒否する(
+) {
     let mut p = with_reference();
     apply(
         &mut p,
@@ -127,7 +128,7 @@ fn 本編を写すとショートの上書きした_in_以下になる操作は�
     .unwrap_err();
     assert!(err.contains("k2") && err.contains("r0"), "{err}");
     assert!(err.contains("上書き"), "{err}");
-    assert_eq!(canon(&p), canon(&before), "断ったら変わらない");
+    assert_eq!(canon(&p), canon(&before), "拒否したら変わらない");
 }
 
 #[test]
@@ -198,6 +199,6 @@ fn 再フレーミングを外す操作も検査し_逆操作が必ず通る() {
     apply(&mut p, Extract { cut: Id::new("r0") });
     assert!(
         try_apply(&mut p, reframe("r0", None)).is_err(),
-        "消えたカットは外す操作も断る（逆操作が置けないため）"
+        "消えたカットは外す操作も拒否する（逆操作が置けないため）"
     );
 }

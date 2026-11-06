@@ -33,7 +33,7 @@ describe("createIpcDeliverApi", () => {
     await expect(api.start({ targets: ["a"], verify: false })).rejects.toThrow("書き出し中");
   });
 
-  it("進み具合のイベントの中身（列の状態）をそのまま渡し、購読を外せる", async () => {
+  it("進み具合のイベントの中身（キューの状態）をそのまま渡し、購読を外せる", async () => {
     const handlers = new Map<string, Handler>();
     const listen: MediaListen = async (name, h) => {
       handlers.set(name, h);

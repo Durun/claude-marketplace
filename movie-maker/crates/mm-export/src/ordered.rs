@@ -1,4 +1,4 @@
-//! 順序つきの並行実行。区間（チャンク）を複数のワーカーが先取りして作り、受け取る側が番号順に 1 つずつ受け取る。
+//! 順序つきの並行実行。チャンクを複数のワーカーが先取りして作り、受け取る側が番号順に 1 つずつ受け取る。
 //!
 //! 受け取りが `window` 個より先へ進めないよう、ワーカーは受け取りの番号 + `window` 未満のチャンクだけを取る。
 //! 作った結果が溜まる量を `window` と同時に作る数で抑えるため。どれかが失敗したら残りを止め、最初のエラーを返す。
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn 先に作る数は窓で抑える() {
+    fn 先に作る数は先取りの幅で抑える() {
         let produced = AtomicUsize::new(0);
         let max_ahead = AtomicUsize::new(0);
         let consumed = AtomicUsize::new(0);
@@ -222,7 +222,7 @@ mod tests {
         // 受け取り中の 1 個は、受け取り済みの数に入る前（`take` が数える）に、このテストの数えでは未受け取り
         assert!(
             max_ahead.load(Ordering::SeqCst) <= 5 + 1,
-            "窓を超えて作った"
+            "先取りの幅を超えて作った"
         );
     }
 
@@ -273,13 +273,13 @@ mod tests {
             || Ok(()),
             |_, i| {
                 if i == 5 {
-                    panic!("区間 5 で落ちる");
+                    panic!("チャンク 5 で失敗する");
                 }
                 Ok(i)
             },
             |_, _| Ok(()),
         );
-        assert!(matches!(r, Err(MmError::Internal(m)) if m.contains("区間 5 で落ちる")));
+        assert!(matches!(r, Err(MmError::Internal(m)) if m.contains("チャンク 5 で失敗する")));
     }
 
     #[test]

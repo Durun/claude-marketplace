@@ -1,4 +1,4 @@
-//! レンダーターゲット 1 つの書き出し。出力先とコーデックを整え、描いて押し、検証して置き換え、納品物を書く。
+//! レンダーターゲット 1 つの書き出し。出力先とコーデックを整え、描いて送り、検証して置き換え、納品物を書く。
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -16,11 +16,11 @@ use crate::{
     ExportOutcome, ExportSummary,
 };
 
-/// MP4 にしか書けないコーデックの名前の頭（x264、NVENC の H.264 と HEVC）。
+/// MP4 にしか書けないコーデックの名前の接頭辞（x264、NVENC の H.264 と HEVC）。
 const MP4_CODEC_PREFIXES: [&str; 3] = ["h264", "libx264", "hevc"];
 /// MP4 として開ける拡張子。
 const MP4_EXTENSIONS: [&str; 2] = ["mp4", "m4v"];
-/// MOV にしか書けないコーデックの名前の頭（ProRes と DNxHR）。
+/// MOV にしか書けないコーデックの名前の接頭辞（ProRes と DNxHR）。
 const MOV_CODEC_PREFIXES: [&str; 2] = ["prores", "dnx"];
 
 /// 書き出しが終わったときのエンコーダーの報告と、出力が満たすべきこと。
@@ -74,7 +74,7 @@ pub fn export_run(
 }
 
 /// 書き出す形のプロジェクトのデータ（sequence の差し替え、一時ファイルの出力先、コーデックの上書き）と、
-/// 最後に置き換える出力先。コーデックと拡張子が合わなければ、何も書かずに断る。
+/// 最後に置き換える出力先。コーデックと拡張子が合わなければ、何も書かずに拒否する。
 fn prepare_run(
     project: &Project,
     target: &RenderTargetId,
@@ -109,7 +109,7 @@ fn target_mut<'a>(
         .ok_or_else(|| MmError::NotFound(format!("render target {target}")))
 }
 
-/// コーデックが書ける入れ物と出力先の拡張子が合わなければ、書き出す前に断る
+/// コーデックが書けるコンテナと出力先の拡張子が合わなければ、書き出す前に拒否する
 /// （拡張子と中身の形式が食い違うと、プレーヤーや納品先が開けない）。
 pub(crate) fn check_container(codec: &str, output: &Path) -> Result<()> {
     let has_ext = |exts: &[&str]| {
@@ -132,7 +132,7 @@ pub(crate) fn check_container(codec: &str, output: &Path) -> Result<()> {
     )))
 }
 
-/// 区間を描き、バッチでエンコーダーに押し、音を付けて閉じる。取り消されたら `None`。
+/// 区間を描き、バッチでエンコーダーに送り、音を付けて閉じる。取り消されたら `None`。
 fn export_target(
     engine: &mut Engine,
     project: &Project,

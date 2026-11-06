@@ -90,7 +90,7 @@ struct Session {
 unsafe impl Send for Session {}
 unsafe impl Send for Analysis {}
 
-/// x264 の統計ファイルと、それに付いてくるファイル。値が落ちたら消す。
+/// x264 の統計ファイルと、それに付いてくるファイル。値がドロップされたら消す。
 struct StatsFiles {
     path: PathBuf,
 }

@@ -1,4 +1,4 @@
-//! 通しの試験の編集。本編を話題で組み、その先頭の 2 話題を参照するショートを作り、本編をリップルする。
+//! 通しのテストの編集。本編を話題で組み、その先頭の 2 話題を参照するショートを作り、本編をリップルする。
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -83,7 +83,7 @@ impl Env {
     }
 }
 
-/// `mm` を走らせる。結果は成否にかかわらず返す。
+/// `mm` を実行する。結果は成否にかかわらず返す。
 pub fn mm_try(args: &[&str]) -> Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_mm"))
         .args(args)
@@ -91,7 +91,7 @@ pub fn mm_try(args: &[&str]) -> Output {
         .expect("mm を実行できる")
 }
 
-/// `mm` を走らせ、失敗したら止める。
+/// `mm` を実行し、失敗したら止める。
 pub fn mm(args: &[&str]) -> Output {
     let out = mm_try(args);
     assert!(
@@ -224,7 +224,7 @@ pub fn cut_start(p: &Project, seq: &str, cut: &str) -> RationalTime {
         .start
 }
 
-/// 本編の話題ごとの章（各話題の最初のカットの始まりに置くマーカー）の ID と時刻と名前。
+/// 本編の話題ごとのチャプター（各話題の最初のカットの始まりに置くマーカー）の ID と時刻と名前。
 pub fn chapter_marks(p: &Project) -> Vec<(String, RationalTime, String)> {
     ORDER
         .iter()
@@ -249,7 +249,7 @@ fn target(id: &str, comp: &str, size: (u32, u32), lufs: f64, delivery: Value) ->
     op
 }
 
-/// 章のマーカーと、2 つのレンダーターゲット（YouTube 用 `yt` と Shorts 用 `shorts`）を足す。
+/// チャプターのマーカーと、2 つのレンダーターゲット（YouTube 用 `yt` と Shorts 用 `shorts`）を足す。
 pub fn add_targets(env: &Env, lufs: f64) {
     let p = project_of(&env.dir);
     let mut ops: Vec<Value> = chapter_marks(&p)

@@ -14,7 +14,7 @@ use crate::spec::AudioCodec;
 const BIT_RATE: usize = 192_000;
 /// フレームの大きさが決まっていない PCM を送る 1 回のサンプル数（チャンネルあたり）。
 const PCM_CHUNK: usize = 4096;
-/// 24 ビットの PCM は 32 ビット整数の上位 24 ビットで渡す。f32 の ±1.0 をこの値に写す。
+/// 24 ビットの PCM は 32 ビット整数の上位 24 ビットで渡す。f32 の ±1.0 をこの値に対応させる。
 const I32_SCALE: f32 = 2_147_483_647.0;
 
 /// 音のエンコーダーと、出力の中のストリーム。
@@ -86,7 +86,7 @@ impl AudioTrack {
         })
     }
 
-    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を控える。
+    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を記録する。
     pub fn after_header(mut self, output: &Output) -> Self {
         if let Some(stream) = output.stream(self.stream_index) {
             self.stream_tb = stream.time_base();

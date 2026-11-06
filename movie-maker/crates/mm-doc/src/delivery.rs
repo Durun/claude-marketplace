@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 書き出しのトゥルーピークの上限（dBTP）の既定。EBU R128 の -1 dBTP で、AAC に落とすときの余白になる。
+/// 書き出しのトゥルーピークの上限（dBTP）の既定。EBU R128 の -1 dBTP で、AAC にエンコードするときの余白になる。
 pub const DEFAULT_TRUE_PEAK_DBTP: f32 = -1.0;
 
 /// 字幕の置き方。

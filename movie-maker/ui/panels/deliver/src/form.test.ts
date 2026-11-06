@@ -16,11 +16,11 @@ const target: RenderTarget = {
 describe("fieldSpecs", () => {
   const specs = fieldSpecs();
 
-  it("定番の欄を決まった順で先頭に並べる", () => {
+  it("主要な入力欄を決まった順で先頭に並べる", () => {
     expect(specs.map((s) => s.key).slice(0, 7)).toEqual(["id", "composition", "width", "height", "fps", "codec", "output_path"]);
   });
 
-  it("欄の種類をスキーマの形から決める", () => {
+  it("入力欄の種類をスキーマの形から決める", () => {
     const kind = (key: string) => specs.find((s) => s.key === key)?.control.kind;
     expect(kind("width")).toBe("integer");
     expect(kind("fps")).toBe("rational");
@@ -30,7 +30,7 @@ describe("fieldSpecs", () => {
     expect(specs.find((s) => s.key === "loudness_lufs")?.required).toBe(false);
   });
 
-  it("スキーマに足された欄は、直さなくても欄になる", () => {
+  it("スキーマに足された入力欄は、直さなくても入力欄になる", () => {
     const schema: JsonSchema = {
       type: "object",
       required: ["id", "subtitles"],
@@ -66,7 +66,7 @@ describe("下書きとレンダーターゲットの往復", () => {
     expect(parsed).toEqual({ ok: true, value: target });
   });
 
-  it("空にした省ける欄は取り除き、スキーマに無い欄は残す", () => {
+  it("空にした省ける入力欄は取り除き、スキーマに無いフィールドは残す", () => {
     const base = { ...target, loudness_lufs: -14, future_field: 7 } as RenderTarget;
     const draft = { ...draftOf(base, specs), loudness_lufs: "" };
     const parsed = targetOf(draft, specs, base);
@@ -74,7 +74,7 @@ describe("下書きとレンダーターゲットの往復", () => {
     expect(parsed.ok && (parsed.value as Record<string, unknown>).future_field).toBe(7);
   });
 
-  it("誤りは欄ごとに返す", () => {
+  it("誤りは入力欄ごとに返す", () => {
     const draft = { ...draftOf(target, specs), width: "19x", fps: "0", id: " ", loudness_lufs: "loud" };
     const parsed = targetOf(draft, specs, target);
     expect(parsed.ok).toBe(false);
@@ -94,19 +94,19 @@ describe("parseRational", () => {
 describe("withRequired と extraFields", () => {
   const specs = fieldSpecs();
 
-  it("増えた必須の欄をスキーマの既定値か型の初期値で埋める", () => {
+  it("増えた必須のフィールドをスキーマの既定値か型の初期値で埋める", () => {
     const withNew = [...specs, { key: "audio_bitrate", path: ["audio_bitrate"], label: "x", required: true, control: { kind: "integer" as const, min: 64 } }];
     const filled = withRequired({ id: "a" }, withNew) as unknown as Record<string, unknown>;
     expect(filled.audio_bitrate).toBe(64);
     expect(filled.id).toBe("a");
   });
 
-  it("一覧の行に出す「その他」は、専用の形で見せる欄を除いた値のある欄", () => {
+  it("一覧の行に出す「その他」は、専用の形で見せる入力欄を除いた値のある入力欄", () => {
     expect(extraFields(target, specs)).toEqual([]);
     expect(extraFields({ ...target, loudness_lufs: -14 }, specs)).toEqual([{ label: "Loudness (LUFS)", text: "-14" }]);
   });
 
-  it("既定値のままの delivery は出さず、変えた欄だけ出す", () => {
+  it("既定値のままの delivery は出さず、変えたフィールドだけ出す", () => {
     const plain = { ...target, delivery: { subtitles: "none", chapters: false, true_peak_dbtp: null } } as unknown as RenderTarget;
     expect(extraFields(plain, specs)).toEqual([]);
     const changed = { ...target, delivery: { subtitles: "sidecar", chapters: true } } as unknown as RenderTarget;
@@ -142,7 +142,7 @@ describe("プリセット", () => {
 describe("実際のスキーマの delivery", () => {
   const specs = fieldSpecs();
 
-  it("入れ子の delivery は子の欄になり、列挙は選択、真偽はチェックになる", () => {
+  it("入れ子の delivery は子の入力欄になり、列挙は選択、真偽はチェックになる", () => {
     const kind = (key: string) => specs.find((s) => s.key === key)?.control;
     expect(kind("delivery.subtitles")).toEqual({ kind: "choice", options: ["none", "sidecar", "embedded"] });
     expect(kind("delivery.chapters")).toEqual({ kind: "bool" });

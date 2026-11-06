@@ -15,7 +15,7 @@ fn temp(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("mm_export_{name}_{}", std::process::id()))
 }
 
-/// 全部のテストをスパンを集める購読者の下で走らせる。購読者なしのテストが並行に走ると、
+/// 全部のテストをスパンを集める購読者の下で実行する。購読者なしのテストが並行に実行されると、
 /// tracing が呼び出し点を「誰も見ない」と記憶してしまい、集める側のテストが数え強制終了する。
 fn with_metrics<T>(f: impl FnOnce() -> T) -> (T, mm_trace::MetricsHandle) {
     let (layer, metrics) = MetricsLayer::new();
@@ -31,7 +31,7 @@ fn out_options(out: &Path) -> ExportOptions {
 }
 
 #[test]
-fn 出力先を上書きして書き出し段ごとのスパンが出る() {
+fn 出力先を上書きして書き出し工程ごとのスパンが出る() {
     let media = SampleMedia::default();
     let (project, _, _) = vertical_project(&media, &temp("unused.json"));
     let out = temp("dir").join("nested").join("out.json");
@@ -86,7 +86,7 @@ fn 半端なフレームで切れる_fps_では音を映像の長さに揃える
     let _ = std::fs::remove_dir_all(temp("ntsc"));
 }
 
-/// 押すたびに失敗し、何回呼ばれたかと最初のエラーを残す。
+/// 送るたびに失敗し、何回呼ばれたかと最初のエラーを残す。
 #[derive(Default)]
 struct FailingEncoder {
     pushes: usize,
@@ -249,7 +249,7 @@ fn 範囲を指定すると_その区間だけ書き出す() {
 }
 
 #[test]
-fn 取り消すと書きかけを残さず_前の出力も壊さない() {
+fn 取り消すと一時ファイルを残さず_前の出力も壊さない() {
     let media = SampleMedia::default();
     let (project, _, _) = vertical_project(&media, &temp("unused.json"));
     let out = temp("cancel").join("out.json");
@@ -313,7 +313,7 @@ fn 進み具合は最後のフレームで全体に届く() {
 }
 
 #[test]
-fn 検証に落ちた書き出しは前の出力を残し_書きかけを消す() {
+fn 検証に失敗した書き出しは前の出力を残し_一時ファイルを消す() {
     let media = SampleMedia::default();
     let (project, _, _) = vertical_project(&media, &temp("unused.json"));
     let out = temp("verify").join("out.json");
@@ -335,7 +335,7 @@ fn 検証に落ちた書き出しは前の出力を残し_書きかけを消す(
 }
 
 #[test]
-fn 一方の書きかけが他方の出力と同じ名前になる組は始める前に拒否する() {
+fn 一方の一時ファイルが他方の出力と同じ名前になる組は始める前に拒否する() {
     let dir = temp("partial_clash");
     let mut project = two_targets(&dir);
     project.render_targets[0].output_path = dir.join("x.mp4").to_string_lossy().into_owned();

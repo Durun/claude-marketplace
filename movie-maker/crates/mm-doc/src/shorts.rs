@@ -1,9 +1,9 @@
 //! 本編とショートの関係。
 //!
-//! - 参照のショート（`OriginRelation::Reference`）のカットは、元のカットの値を写して持つ。描画と書き出しは
-//!   ショートのカットをそのまま読めばよく、元を引き直さない。写すのは [`Project::sync_references`] で、操作の層が
-//!   操作を 1 つ適用するたびに通す。上書きした in/out（`Cut.overrides`）だけは写さない。写した結果が
-//!   `in < out` を満たさない本編の操作は、上書きを外さずに断る。
+//! - 参照のショート（`OriginRelation::Reference`）のカットは、元のカットの値を反映して持つ。描画と書き出しは
+//!   ショートのカットをそのまま読めばよく、元を引き直さない。反映するのは [`Project::sync_references`] で、操作の層が
+//!   操作を 1 つ適用するたびに通す。上書きした in/out（`Cut.overrides`）だけは反映しない。反映した結果が
+//!   `in < out` を満たさない本編の操作は、上書きを外さずに拒否する。
 //! - ショートのカットは、分けたときの元の値（`Cut.origin_base`）を持つ。[`Project::origin_changes`] が今の元と
 //!   比べて変わったカットを返す。参照は元に従うが、本編のカットを割ると前の側にしか従わないので、それも知らせる。
 //! - [`Project::short_uses`] は本編のカットごとに、どのショートのどのカットが使っているかを返す。
@@ -59,10 +59,10 @@ impl Project {
         ReferenceSnapshot(cuts)
     }
 
-    /// 参照のショートのカットに元のカットの値を写す。上書きした in/out は写さない。
+    /// 参照のショートのカットに元のカットの値を反映する。上書きした in/out は反映しない。
     ///
     /// `before` は操作の前の値。ショートのカットの、元に従う所（上書きしていない in/out、素材、速さ、有効）を
-    /// 直接変えた操作は `InvalidArgument` で拒否する（写すと黙って戻ってしまうため）。元のカットが無いカットは触らない。
+    /// 直接変えた操作は `InvalidArgument` で拒否する（反映すると黙って戻ってしまうため）。元のカットが無いカットは触らない。
     pub fn sync_references(&mut self, before: &ReferenceSnapshot) -> Result<()> {
         for id in self.reference_order() {
             let Some(origin) = self.sequence(&id)?.origin.clone() else {
@@ -139,7 +139,7 @@ impl Project {
         Ok(changes.collect())
     }
 
-    /// 参照のショートの ID を、元が先に来る順に並べる（ショートのショートは元のショートを写した後に写す）。
+    /// 参照のショートの ID を、元が先に来る順に並べる（ショートのショートは元のショートを反映した後に反映する）。
     fn reference_order(&self) -> Vec<SequenceId> {
         let mut refs: Vec<(usize, SequenceId)> = self
             .sequences
@@ -171,7 +171,7 @@ fn origin_depth(project: &Project, id: &SequenceId) -> usize {
     depth
 }
 
-/// カット 1 つに元の値を写す。`prev` が無いカットはこの操作で足したもので、元と同じ値で足していること。
+/// カット 1 つに元の値を反映する。`prev` が無いカットはこの操作で足したもので、元と同じ値で足していること。
 fn sync_cut(cut: &mut Cut, prev: Option<&Cut>, main: &Cut) -> Result<()> {
     let base = prev.unwrap_or(main);
     if cut.source != base.source || cut.speed != base.speed || cut.enabled != base.enabled {
@@ -198,7 +198,7 @@ fn sync_cut(cut: &mut Cut, prev: Option<&Cut>, main: &Cut) -> Result<()> {
     Ok(())
 }
 
-/// 時刻 1 つの写した後の値。上書きしていれば今の値、していなければ元の値。
+/// 時刻 1 つの反映した後の値。上書きしていれば今の値、していなければ元の値。
 /// 上書きしていない値をこの操作が元と違う値に変えたら `None`。
 fn sync_point(
     (overridden, value): (bool, RationalTime),
@@ -215,8 +215,8 @@ fn sync_point(
     (!edited || value == main).then_some(main)
 }
 
-/// 写した後のカットが `in < out` を満たすこと。満たさないのは上書きした側を元が越えたときなので、
-/// ショート側の検証のエラーではなく、本編のカットと上書きを示して本編の操作を断る。
+/// 反映した後のカットが `in < out` を満たすこと。満たさないのは上書きした側を元が越えたときなので、
+/// ショート側の検証のエラーではなく、本編のカットと上書きを示して本編の操作を拒否する。
 fn check_synced(short: &SequenceId, cut: &Cut, main: &Cut) -> Result<()> {
     if cut.in_point < cut.out_point || !cut.overrides.any() {
         return Ok(());
@@ -227,7 +227,7 @@ fn check_synced(short: &SequenceId, cut: &Cut, main: &Cut) -> Result<()> {
         _ => "out",
     };
     Err(MmError::InvalidArgument(format!(
-        "本編のカット {} の変更を写すと、ショート {short} のカット {} が in {} >= out {} になる（{} は {which} を上書きしている。先に overrideCut か resetCut で上書きを直す）",
+        "本編のカット {} の変更を反映すると、ショート {short} のカット {} が in {} >= out {} になる（{} は {which} を上書きしている。先に overrideCut か resetCut で上書きを直す）",
         main.id, cut.id, cut.in_point, cut.out_point, cut.id
     )))
 }

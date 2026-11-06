@@ -34,7 +34,7 @@ fn cut(p: &Project, id: &str) -> mm_doc::Cut {
 }
 
 #[test]
-fn 範囲の参照は続いたカットだけを元つきで写す() {
+fn 範囲の参照は続いたカットだけを元つきでコピーする() {
     let p = with_reference();
     let short = p.sequence(&Id::new("short")).unwrap();
     assert_eq!(short.cuts.len(), 2);

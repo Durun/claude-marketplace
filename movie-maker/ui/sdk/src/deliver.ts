@@ -29,7 +29,7 @@ export interface DeliverOverview {
   can_verify: boolean;
 }
 
-/** 列の 1 項目の状態。 */
+/** キューの 1 項目の状態。 */
 export type ExportItemState = "queued" | "running" | "done" | "failed" | "cancelled";
 
 /** ffprobe が読んだ出力の中身。 */
@@ -42,7 +42,7 @@ export interface ExportVerification {
   audio_seconds: number | null;
 }
 
-/** 列の 1 項目。時間は秒。 */
+/** キューの 1 項目。時間は秒。 */
 export interface ExportItem {
   target: string;
   state: ExportItemState;
@@ -58,7 +58,7 @@ export interface ExportItem {
   error: string | null;
 }
 
-/** 書き出しの列全体の状態（アプリの `export_status` と、イベント `mm:export-progress` の中身）。 */
+/** 書き出しのキュー全体の状態（アプリの `export_status` と、イベント `mm:export-progress` の中身）。 */
 export interface ExportStatus {
   running: boolean;
   items: ExportItem[];
@@ -74,7 +74,7 @@ export interface ExportRequest {
   verify: boolean;
 }
 
-/** 書き出しの列の状態を送る Tauri のイベント名。アプリの `deliver_ipc.rs` と同じ。 */
+/** 書き出しのキューの状態を送る Tauri のイベント名。アプリの `deliver_ipc.rs` と同じ。 */
 export const EXPORT_PROGRESS_EVENT = "mm:export-progress";
 
 /** Deliver パネルがアプリに頼むこと。テストでは差し替える。失敗は reject（理由の文字を持つ Error）。 */
@@ -83,7 +83,7 @@ export interface DeliverApi {
   status: () => Promise<ExportStatus>;
   /** 操作を 1 つのトランザクションで送る（`apply_ops`）。取り消し 1 回で戻る。 */
   applyOps: (ops: Op[]) => Promise<void>;
-  /** 列を作って書き出しを始め、すぐ返る。進み具合は `onProgress`。 */
+  /** キューを作って書き出しを始め、すぐ返る。進み具合は `onProgress`。 */
   start: (request: ExportRequest) => Promise<void>;
   cancel: () => Promise<void>;
   /** 書き出したファイルをエクスプローラーで選んで開く。 */
