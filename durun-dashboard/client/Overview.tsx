@@ -338,23 +338,22 @@ export const RemoteIcon = ({ s }: { s: Session }) => (
 );
 
 /** やり取りが進むたびにまとめ直す。まとめ直す間は、前の概要を薄く出しておく。 */
+/** セッションのウィジェットの下部に出す概要。見出しの列を作らず、見出しを文の頭に置いて幅を本文に使う。 */
 export const Summary = ({ s }: { s: Session }) => {
   const ready = !!(s.lastPrompt || s.lastMessage);
   const progress = `${s.status} ${s.lastMessageAt} ${s.lastPrompt} ${s.tasks.map((t) => t.status).join()}`;
   const { data, loading, error } = useCached(() => (ready ? api.summary(s.id) : Promise.resolve(undefined)), [s.id, progress, ready]);
   return (
-    <WidgetPanel title="概要">
+    <div class={`session-summary ${data && (loading || data.stale) ? 'is-loading' : ''}`}>
       {data ? (
-        <dl class={`summary ${loading || data.stale ? 'is-loading' : ''}`}>
-          <dt>やっていること</dt>
-          <dd><Translatable text={data.doing}>{(t) => t}</Translatable></dd>
-          <dt>いま</dt>
-          <dd><Translatable text={data.now}>{(t) => t}</Translatable></dd>
-        </dl>
+        <>
+          <p><span class="session-summary-label">やっていること</span><Translatable text={data.doing}>{(t) => t}</Translatable></p>
+          <p><span class="session-summary-label">いま</span><Translatable text={data.now}>{(t) => t}</Translatable></p>
+        </>
       ) : (
-        <Empty>{!ready ? 'まだやり取りがありません。' : error ? `まとめられませんでした（${error}）` : 'まとめています…'}</Empty>
+        <p class="muted">{!ready ? 'まだやり取りがありません。' : error ? `まとめられませんでした（${error}）` : 'まとめています…'}</p>
       )}
-    </WidgetPanel>
+    </div>
   );
 };
 

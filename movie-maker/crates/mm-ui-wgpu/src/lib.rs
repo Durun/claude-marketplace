@@ -9,7 +9,7 @@ mod program;
 mod quads;
 mod ui;
 
-pub use model::timeline_model;
+pub use model::{timeline_layer_ids, timeline_model};
 pub use program::ProgramViewer;
 pub use quads::QuadRenderer;
 pub use ui::Ui;

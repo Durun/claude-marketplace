@@ -2771,6 +2771,7 @@ dependencies = [
  "mm-decode-ffmpeg",
  "mm-doc",
  "mm-export",
+ "mm-gpu",
  "mm-ingest",
  "mm-node-api",
  "mm-ops",

@@ -13,12 +13,15 @@ const UPDATE_ENV: &str = "MM_GOLDEN_UPDATE";
 /// バックエンドの確認の環境変数。`mm_testkit::golden::BACKEND_ENV` と同じ。
 const BACKEND_ENV: &str = "MM_GOLDEN_BACKEND";
 
-const USAGE: &str = "使い方: cargo xtask golden-update [--backend <warp|rtx|lavapipe|...>]";
+const USAGE: &str =
+    "使い方: cargo xtask golden-update [--backend <warp|rtx|lavapipe|...>] [--test <テスト名の一部>]";
 
 /// `golden-update` の引数。
 #[derive(Debug, Default, PartialEq)]
 struct GoldenArgs {
     backend: Option<String>,
+    /// `cargo test` に渡すテスト名の絞り込み。
+    test: Option<String>,
 }
 
 fn parse_golden_args(args: &[String]) -> Result<GoldenArgs, String> {
@@ -29,6 +32,9 @@ fn parse_golden_args(args: &[String]) -> Result<GoldenArgs, String> {
             "--backend" => {
                 parsed.backend = Some(it.next().ok_or("--backend に名前が要る")?.clone());
             }
+            "--test" => {
+                parsed.test = Some(it.next().ok_or("--test に名前が要る")?.clone());
+            }
             other => return Err(format!("知らない引数 {other}\n{USAGE}")),
         }
     }
@@ -38,7 +44,11 @@ fn parse_golden_args(args: &[String]) -> Result<GoldenArgs, String> {
 fn golden_update(args: &GoldenArgs) -> Result<(), String> {
     for (package, test) in GOLDEN_TESTS {
         let mut cmd = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
-        cmd.args(["test", "-p", package, "--test", test, "--", "--nocapture"])
+        cmd.args(["test", "-p", package, "--test", test, "--"]);
+        if let Some(filter) = &args.test {
+            cmd.arg(filter);
+        }
+        cmd.arg("--nocapture")
             .env(UPDATE_ENV, "1")
             // GPU が無い環境で何も書かずに成功するのを防ぐ。
             .env("MM_REQUIRE_GPU", "1");
@@ -90,7 +100,16 @@ mod tests {
     }
 
     #[test]
+    fn テスト名を読む() {
+        let parsed =
+            parse_golden_args(&strings(&["--test", "color_cdl", "--backend", "rtx"])).unwrap();
+        assert_eq!(parsed.test.as_deref(), Some("color_cdl"));
+        assert_eq!(parsed.backend.as_deref(), Some("rtx"));
+    }
+
+    #[test]
     fn 知らない引数は拒否する() {
+        assert!(parse_golden_args(&strings(&["--test"])).is_err());
         assert!(parse_golden_args(&strings(&["--nope"])).is_err());
         assert!(parse_golden_args(&strings(&["--backend"])).is_err());
     }

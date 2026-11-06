@@ -4,11 +4,11 @@
 
 | ジョブ | 環境 | いつ | 内容 |
 |---|---|---|---|
-| `check` | windows-latest | PR、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない） |
+| `check` | windows-latest | PR、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない）。`fixtures/golden/warp/` があれば、WARP で期待画像のテストを必須で回す手順が続く |
 | `ffmpeg` | windows-latest | PR、main、手動 | BtbN の FFmpeg 9.0 の shared ビルドを展開し、feature `ffmpeg` などを入れた clippy とテスト、`mm render fixtures/projects/stage0/project.json` の書き出し。LLVM は runner のものを使い、無ければ choco で入れる。手順の元は [mm-decode-ffmpeg の README](../crates/mm-decode-ffmpeg/README.md) |
 | `semver` | ubuntu-latest | PR のみ | `cargo-semver-checks` で `crates/mm-*-api` の全部を PR の基点（`origin/<base>`）と比べる |
-| `ui` | ubuntu-latest | `movie-maker/ui/**` を変えた PR、main、手動 | Node 24 と pnpm 12（pnpm のキャッシュ）。`pnpm install --frozen-lockfile` のあと `build`、`typecheck`、`lint`、`test`。PR で `ui/` に差が無ければ、ジョブは走るが各手順を飛ばす |
-| `perf-gate` | windows-latest | PR のみ | 性能の回帰のゲート。基点と PR の `mm` を作り、`scripts/perf-gate.sh` で `mm perf run cpu` を交互に回して比べる。下の「性能の回帰のゲート」 |
+| `ui` | ubuntu-latest | `movie-maker/ui/**` か `crates/mm-ops/schema/**` を変えた PR、main、手動 | Node 24 と pnpm 12（pnpm のキャッシュ）。`pnpm install --frozen-lockfile` のあと `gen:check`（コミット済みの `generated/ops.ts` が `ops.json` と合うか）、`build`、`typecheck`、`lint`、`test`。PR で `ui/` に差が無ければ、ジョブは走るが各手順を飛ばす |
+| `perf-gate` | windows-latest | PR のみ | 性能の回帰のゲート。基点と PR の `mm` を作り、`scripts/perf-gate.sh` で `mm perf run cpu` と、WARP の `playback`・`scrub` を交互に回して比べる。下の「性能の回帰のゲート」 |
 | `perf-record` | windows-latest | main、夜間 | `mm perf run cpu` を 10 回測り、結果を artifact（90 日）に残し、予算を超えた項目を issue にする。`issues: write` を持つのはこのジョブだけ |
 
 ## API クレートのバージョンの検査
@@ -41,10 +41,11 @@ Windows でワークツリーのパスが長いと、semver-checks の基点の�
 | 場面 | 場所 | 項目 |
 |---|---|---|
 | `cpu` | CI（`perf-gate`、`perf-record`） | `ops.apply_ms`（レイヤー 2000 個で操作 1 つ）、`ops.validate_ms`、`store.commit_ms`（保存のコミット 1 回） |
-| `playback`、`scrub` | 手元の GPU | 描画の 1 フレーム、落とすフレームの割合、スクラブの p50 と p99 |
+| `playback`、`scrub`（WARP） | CI（`perf-gate`） | 描画の 1 フレーム、スクラブの p50 と p99。予算とは比べず、基点との相対だけ見る |
+| `playback`、`scrub`（実機） | 手元の GPU | 同じ項目を 1080p で。予算とベースラインと比べる |
 | `export`、`startup` | 手元の GPU と FFmpeg | 書き出しの fps、起動 |
 
-GitHub Actions の runner に GPU は無く、FFmpeg の素材も無い。CI は `cpu` を前後で比べ、GPU の場面は手元で回してベースラインと比べる。divan のベンチは使わず、`mm perf run cpu` に一本化した。divan の出力は機械で読める形でなく、通しの場面と同じ結果の形（`mm perf compare` が読む）にそろえるため。
+GitHub Actions の runner に実機の GPU は無く、FFmpeg の素材も無い。CI は `cpu` と、WARP（D3D12 のソフトウェアの GPU。`Microsoft Basic Render Driver`）で回す `playback`・`scrub` を前後で比べ、実機の GPU の場面は手元で回してベースラインと予算と比べる。WARP の速さは実機と別物なので、予算とは比べない。目的は、描画の経路（レンダラー、キャッシュ、リードバック）が遅くなった PR を GPU の無い CI でも見つけること。WARP の場面は `mm perf run playback|scrub --adapter "Microsoft Basic Render Driver" --size 480x270` で、遅い GPU でも回数を稼げるよう小さい絵で短く回す（`playback` は 1 秒、`scrub` は 20 回シーク、`--repeat 3`）。divan のベンチは使わず、`mm perf run cpu` に一本化した。divan の出力は機械で読める形でなく、通しの場面と同じ結果の形（`mm perf compare` が読む）にそろえるため。
 
 ### しきい値と回数
 
@@ -56,9 +57,27 @@ GitHub Actions の runner に GPU は無く、FFmpeg の素材も無い。CI は
 | ラウンド | 基点と PR を 3 回ずつ交互 | 全部を束ねた中央値で比べる。外れ値の 1 回に引きずられない |
 | 確認 | 回帰が出たらさらに 3 ラウンドを足し、束ね直して再判定 | 1 度の揺れで落とさない |
 
+WARP の場面は別の閾値で比べる。
+
+| 設定 | 値 | 理由 |
+|---|---|---|
+| 閾値（`PERF_WARP_THRESHOLD`） | 40% | 同じ `mm` どうしを windows-latest で 5 回（1 回は 3 ラウンドを束ねた比較）比べた揺れは、p50 と平均の項目で ±3.5% 以内、p99 の項目で最大 +18.4%（`scrub.full_p99_ms`）、-17.0%、+16.7%（`playback.frame_p99_ms`）。p99 は 1 回の繰り返しの最大に近く揺れる。最大の揺れの 2 倍強に置き、描画が 1.4 倍以上遅くなる変更を拾う |
+| 絶対値の下限（`PERF_WARP_MIN_DELTA`） | 2 ms | WARP のフレームは 20〜70 ms なので、2 ms 未満の差は無視 |
+| 1 回の測定 | `--repeat 3` | `playback` は 1 回に 2 秒（キャッシュなしとありを 1 秒ずつ）、`scrub` は 20 回シーク |
+
+`playback.dropped_pct` と `playback.cached_dropped_pct` は WARP では常に 100%（60 fps に追いつかない）で、比較では動かない。回帰を見るのは `*_frame_ms`、`*_p99_ms`、`playback.cpu_ms`、`playback.gpu_ms`、`scrub.*`。
+
+WARP の揺れの実測は、基点に `--adapter` がまだ無いこの変更の PR で、PR の `mm` どうしを比べて取った（基点を足した後は本来の基点比べになる）。
+
 所要時間は、キャッシュが冷たい最初の実行で `perf-gate` が 7 分（基点の mm のビルド 5 分 12 秒、PR の mm 26 秒、測定は 6 秒）。測定そのものは数十秒で、残りはビルド。runner の値は手元の約 2 倍（`ops.apply_ms` 3.7 ms、`store.commit_ms` 8.5 ms）で、予算には収まる。
 
-環境変数 `PERF_THRESHOLD`、`PERF_MIN_DELTA`、`PERF_ROUNDS`、`PERF_REPEAT` で `scripts/perf-gate.sh` の値を変えられる。基点に `perf run cpu` がまだ無い PR（このシナリオを足す PR 自身）では、比較を飛ばして PR の側だけ測る。
+WARP の場面を足した後の所要時間は、2026-11 の実行で、PR の mm のビルドが 4 分 22 秒（冷たいキャッシュ）、基点のビルドが 53 秒、比較が約 3.6 分（cpu と WARP の 3 ラウンド）。回帰が出て確認のラウンドを足すとさらに約 3.6 分。ジョブの上限は 45 分。
+
+環境変数 `PERF_THRESHOLD`、`PERF_MIN_DELTA`、`PERF_ROUNDS`、`PERF_REPEAT`、`PERF_WARP_*`（`THRESHOLD`、`MIN_DELTA`、`REPEAT`、`ADAPTER`、`SIZE`、`SECONDS`、`SEEKS`）、`PERF_WARP=0`（WARP の場面を回さない）で `scripts/perf-gate.sh` の値を変えられる。基点に `perf run cpu` や `--adapter` がまだ無い PR（そのシナリオや引数を足す PR 自身）では、比較を飛ばして PR の側だけ測る。
+
+### 期待画像の WARP 版
+
+`check` ジョブは `fixtures/golden/warp/` があるとき、`MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1` で `cargo test -p mm-render --test golden` をもう一度回す。runner のアダプターが WARP でなければ（`MM_GOLDEN_BACKEND` の食い違いで）失敗し、版が欠けていても失敗する。版が無いうちはこの手順を飛ばす。
 
 ### ベースラインの置き場所と更新
 

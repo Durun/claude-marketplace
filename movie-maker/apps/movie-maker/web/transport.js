@@ -1,13 +1,16 @@
-// 再生の操作列と時計の表示。ui/dist の shell に重ねて出す（アプリが initialization_script で読み込む）。
+// 再生の操作列と時計の表示。ui/dist の shell の中央の列に入れる（アプリが initialization_script で読み込む）。
+// Timeline の選択（Rust の Tauri イベント）は、shell の Inspector が受ける DOM のイベントにつなぐ。
 // 再生位置は Rust の時計が持つ。ここでは受けた位置を、送られてから経った時間だけ進めて表示する。
 (() => {
   const { invoke, Channel } = window.__TAURI__.core;
   const ADAPTER_WAIT_MS = 1500;
+  const LAYER_SELECTED_EVENT = "mm:layer-selected";
+  // キー操作を再生に渡さない入力部品。値を打つ・選ぶ操作が Space や矢印を使う。
+  const TEXT_ENTRY = "input, select, textarea, [contenteditable]";
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
 
   const CSS = `
-    #mm-transport { position: absolute; top: 0; right: 0; bottom: 0; left: var(--mm-size-left-column, 260px);
-      box-sizing: border-box; padding: var(--mm-space-md, 10px); overflow: auto;
+    #mm-transport { height: 100%; box-sizing: border-box; padding: var(--mm-space-md, 10px); overflow: auto;
       background: var(--mm-color-bg); color: var(--mm-color-text);
       font-family: var(--mm-font-family); font-size: var(--mm-font-size-base); }
     #mm-transport h2 { margin: 0 0 var(--mm-space-sm, 6px); font-size: var(--mm-font-size-lg); }
@@ -26,7 +29,7 @@
     #mm-transport dt { color: var(--mm-color-text-muted); }
     #mm-transport dd { margin: 0; word-break: break-all; }
     #mm-transport ul { margin: 0; padding: 0; list-style: none; font-family: var(--mm-font-mono, monospace); }
-    #mm-transport li { padding: 1px 0; }
+    #mm-transport li { padding: 1px 0; overflow-wrap: anywhere; }
   `;
 
   const el = (tag, attrs = {}, children = []) => {
@@ -100,7 +103,7 @@
       ui.layers,
     ]);
     document.head.append(style);
-    document.body.append(root);
+    (document.querySelector(".mm-shell-center") ?? document.body).append(root);
   };
 
   const row = (k, v) => [el("dt", { textContent: k }), el("dd", { textContent: v })];
@@ -144,9 +147,15 @@
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
     window.addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.repeat) return;
+      if (e.repeat || (e.target instanceof Element && e.target.closest(TEXT_ENTRY))) return;
       if (e.code === "Space") e.preventDefault();
       invoke("key_event", { source: "webview", key: e.code });
+    });
+    // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
+    window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {
+      window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
+      info = await invoke("project_info");
+      showInfo();
     });
     // 描画スレッドが GPU を選び終えた後に情報を取り直す。
     setTimeout(async () => {

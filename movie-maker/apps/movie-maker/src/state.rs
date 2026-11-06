@@ -6,8 +6,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use mm_doc::Project;
 use mm_runtime::{GpuContext, GpuFrame};
-use mm_types::RgbaImage;
+use mm_types::{CompositionId, RgbaImage};
 use mm_ui_layout::PointerEvent;
 use serde::Serialize;
 
@@ -90,6 +91,13 @@ impl FrameSlot {
     }
 }
 
+/// 再生スレッドが持つ、いま開いているプロジェクトのデータとコンポジション。操作を当てるたびに置き直す。
+#[derive(Clone)]
+pub struct OpenDoc {
+    pub project: Arc<Project>,
+    pub comp: CompositionId,
+}
+
 /// アプリ全体で 1 つの共有状態。
 pub struct Shared {
     /// 全スレッドを止める合図。
@@ -119,6 +127,16 @@ pub struct Shared {
     pub cpu_frames: AtomicBool,
     /// 再生スレッドがまだ当てていない操作。
     pub edits: Mutex<Vec<PendingEdit>>,
+    /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
+    doc: Mutex<Option<OpenDoc>>,
+    /// `doc` を置き直すたびに進む。読む側が作り直すかどうかの判定に使う。
+    pub doc_serial: AtomicU64,
+    /// Timeline で選んだレイヤーの ID。
+    selected_layer: Mutex<Option<String>>,
+    /// 選択を置き直すたびに進む。
+    pub selection_serial: AtomicU64,
+    /// 計測の系列を貯めるか。自動試験のときだけ貯め、普段の起動で増え続けないようにする。
+    collect_series: AtomicBool,
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
 }
 
@@ -140,6 +158,11 @@ impl Shared {
             gpu: Mutex::new(None),
             cpu_frames: AtomicBool::new(false),
             edits: Mutex::new(Vec::new()),
+            doc: Mutex::new(None),
+            doc_serial: AtomicU64::new(0),
+            selected_layer: Mutex::new(None),
+            selection_serial: AtomicU64::new(0),
+            collect_series: AtomicBool::new(false),
             series: Mutex::new(BTreeMap::new()),
         }
     }
@@ -166,8 +189,41 @@ impl Shared {
         self.clock.get().map_or(0.0, |c| c.position())
     }
 
-    /// 名前つきの系列に 1 つ足す。
+    /// 開いているプロジェクトのデータを置き直し、読む側に知らせる。
+    pub fn publish_doc(&self, project: Arc<Project>, comp: CompositionId) {
+        *self.doc.lock().expect("doc") = Some(OpenDoc { project, comp });
+        self.doc_serial.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// いま開いているプロジェクトのデータ。
+    pub fn doc(&self) -> Option<OpenDoc> {
+        self.doc.lock().expect("doc").clone()
+    }
+
+    /// Timeline で選んだレイヤーを置く。外すときは `None`。
+    pub fn select_layer(&self, id: Option<String>) {
+        let mut selected = self.selected_layer.lock().expect("selected");
+        if *selected != id {
+            *selected = id;
+            self.selection_serial.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// 選んでいるレイヤーの ID。
+    pub fn selected_layer(&self) -> Option<String> {
+        self.selected_layer.lock().expect("selected").clone()
+    }
+
+    /// 計測の系列を貯め始める（自動試験用）。
+    pub fn collect_series(&self) {
+        self.collect_series.store(true, Ordering::SeqCst);
+    }
+
+    /// 名前つきの系列に 1 つ足す。貯める設定でなければ捨てる。
     pub fn record(&self, name: &'static str, value: f64) {
+        if !self.collect_series.load(Ordering::SeqCst) {
+            return;
+        }
         self.series
             .lock()
             .expect("series lock")
@@ -203,6 +259,32 @@ mod tests {
         assert_eq!((s.n, s.max, s.min), (100, 100.0, 1.0));
         assert!((s.p50 - 50.0).abs() <= 1.0);
         assert!((s.p99 - 99.0).abs() <= 1.0);
+    }
+
+    #[test]
+    fn 系列は貯める設定にしたときだけ増える() {
+        let s = Shared::new();
+        s.record("x", 1.0);
+        assert!(s.drain_series().is_empty(), "普段の起動では貯めない");
+        s.collect_series();
+        s.record("x", 1.0);
+        assert_eq!(s.drain_series()["x"].n, 1);
+    }
+
+    #[test]
+    fn 選択は変わったときだけ通し番号が進む() {
+        let s = Shared::new();
+        s.select_layer(Some("a".into()));
+        s.select_layer(Some("a".into()));
+        assert_eq!(s.selection_serial.load(Ordering::SeqCst), 1);
+        s.select_layer(None);
+        assert_eq!(
+            (
+                s.selected_layer(),
+                s.selection_serial.load(Ordering::SeqCst)
+            ),
+            (None, 2)
+        );
     }
 
     #[test]

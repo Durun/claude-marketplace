@@ -729,6 +729,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .recycle-table td .app-icon { margin-right: 4px; vertical-align: -3px; }
 .recycle-table tr:focus { outline: 1px dotted #000; outline-offset: -1px; }
 .recycle-table tr[aria-selected="true"] td { background: #316ac5; color: #fff; }
+/* 学習アプリの知見の一覧。「いつ効くか」は長い description なので、いちばん広く取る。 */
+.learn-harness th:nth-child(1) { width: 24%; }
+.learn-harness th:nth-child(2) { width: 46%; }
+.learn-harness th:nth-child(3) { width: 20%; }
+.xp-task-link[aria-pressed="true"] { font-weight: 700; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
@@ -1121,6 +1126,10 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 
 /* ---- セッション ---- */
 .session-head { display: grid; align-content: start; gap: 8px; }
+.session-summary { display: grid; gap: 2px; margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.55; }
+.session-summary p { margin: 0; overflow-wrap: anywhere; }
+.session-summary-label { margin-right: 8px; color: var(--muted); font-size: 12px; }
+.session-summary.is-loading { opacity: 0.6; }
 .head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 /* XP のタイトルバーはアイコンも並べるので、折り返すと長い名前がアイコンの下の行に回る。折り返さず、入らない名前は切る。 */
 .session-title { flex-wrap: nowrap; margin-bottom: 10px; }
@@ -1311,12 +1320,15 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 /* ウィジェットの中では、ファイル一覧の高さを画面ではなくウィジェットの高さに合わせる。 */
 .widget-body:has(> .code-view) { container-type: size; }
 .widget .code-side { max-height: calc(100cqh - var(--bar-h) - 16px); }
-.file-list { display: grid; gap: 2px; margin-top: 8px; }
-.file-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 6px 4px 14px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.file-list, .file-list ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.file-list { margin-top: 8px; }
+.file-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 6px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
 .file-item:hover { background: var(--surface-2); }
 .file-item.is-viewed { opacity: 0.55; }
 .file-name { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.file-dir { overflow: hidden; margin-top: 6px; padding: 2px 6px; color: var(--muted); font: 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.file-dir { display: block; width: 100%; overflow: hidden; padding: 3px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 11.5px var(--mono); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.file-dir:hover { background: var(--surface-2); }
+.file-dir .chevron { display: inline-block; width: 12px; }
 .fstatus { display: inline-grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--muted); color: #fff; font: 700 11px/1 var(--mono); }
 .fstatus-added { background: #1a7f37; }
 .fstatus-modified { background: #9a6700; }

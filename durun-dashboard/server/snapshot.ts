@@ -8,6 +8,7 @@ import * as claude from './claude.ts';
 import { autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
+import { learnState } from './reflect.ts';
 import { slackKeyOf, slackLinksIn } from './slack.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
@@ -345,7 +346,7 @@ const listedSessions = (live: Map<string, claude.LiveSession>, now: number): Ses
   const referenced = new Set([...state.docs, ...state.attention, ...state.outbox].map((x) => x.sessionId));
   return Object.values(state.sessions).filter(
     (m) =>
-      ((!!m.kind && m.entrypoint !== 'sdk-cli') || !!m.improver || referenced.has(m.id)) &&
+      ((!!m.kind && m.entrypoint !== 'sdk-cli') || !!m.improver || !!m.learner || referenced.has(m.id)) &&
       (!!m.bookmarks?.length || isRecent(m, live, now)),
   );
 };
@@ -404,6 +405,7 @@ export const buildSnapshot = (): Snapshot => {
     themes,
     sessionOrder: state.sessionOrder,
     improve: improveState(),
+    learn: learnState(),
     autoContinue: !!state.autoContinue,
     auth: authRequests(),
     claudeLogin: claudeLoginState(),

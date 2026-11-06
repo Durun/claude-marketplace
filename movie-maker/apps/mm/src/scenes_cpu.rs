@@ -79,6 +79,18 @@ fn duration_ms(d: Duration) -> f64 {
     d.as_secs_f64() * MS_PER_SECOND
 }
 
+/// 操作の適用 1 回あたりの平均（ミリ秒）。適用は書き換えるので繰り返しごとに複製が要るが、
+/// 2000 レイヤーの複製が時間に入ると回帰が埋もれるため、先に作っておいて適用だけを測る。
+fn apply_ms(project: &Project, op: &Op, ctx: &OpContext) -> Result<f64> {
+    let mut copies: Vec<Project> = (0..INNER_ITERATIONS).map(|_| project.clone()).collect();
+    let start = Instant::now();
+    for p in &mut copies {
+        op.apply(p, ctx)
+            .map_err(|e| mm_types::MmError::Internal(format!("適用に失敗: {e}")))?;
+    }
+    Ok(duration_ms(start.elapsed()) / f64::from(INNER_ITERATIONS))
+}
+
 /// 保存のコミット 1 回あたりの平均（ミリ秒）。毎回違う値を書き、差分が空にならないようにする。
 fn commit_ms(project: &Project) -> Result<f64> {
     let dir = tempfile::tempdir()?;
@@ -107,12 +119,7 @@ pub fn cpu(args: &PerfArgs) -> Result<Vec<Item>> {
     let op = set_opacity(0.5);
     let (mut apply, mut validate, mut commit) = (Vec::new(), Vec::new(), Vec::new());
     for _ in 0..args.repeat {
-        apply.push(mean_ms(INNER_ITERATIONS, || {
-            let mut p = project.clone();
-            op.apply(&mut p, &ctx)
-                .map(|_| ())
-                .map_err(|e| mm_types::MmError::Internal(format!("適用に失敗: {e}")))
-        })?);
+        apply.push(apply_ms(&project, &op, &ctx)?);
         validate.push(mean_ms(INNER_ITERATIONS, || project.validate())?);
         commit.push(commit_ms(&project)?);
     }

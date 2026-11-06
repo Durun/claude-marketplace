@@ -29,6 +29,7 @@ body {
 
 .mm-shell-center {
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .mm-shell-right {

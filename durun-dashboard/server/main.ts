@@ -26,6 +26,8 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { learnNow, noteActivity, updateLearn } from './reflect.ts';
+import { harnessItems } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -92,6 +94,7 @@ const STATIC: Record<string, string> = {
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/recycle-bin.svg': 'public/recycle-bin.svg',
   '/recycle-bin-full.svg': 'public/recycle-bin-full.svg',
+  '/learn.svg': 'public/learn.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
@@ -1303,6 +1306,8 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
+  [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
+  [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   // ブラウザでのログインは数分かかるので、終わるのを待たずに返す。進み具合と失敗は、スナップショットで知らせる。
@@ -1314,6 +1319,8 @@ const memoryNow = latestMemory(() => platform.readMemory());
 
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
+  [/^\/api\/learn\/harness$/, () => harnessItems(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
   [/^\/api\/translate\/status$/, () => translateStatus()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
@@ -1539,6 +1546,7 @@ watch(PROJECTS_DIR, true, (file) => {
   scheduleBroadcast();
   flushQueue();
   if (file) onTranscriptChange(file);
+  noteActivity();
 });
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
@@ -1546,6 +1554,8 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
+// 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
+noteActivity();
 redeliverInterrupted();
 flushQueue();
 flushArchives();

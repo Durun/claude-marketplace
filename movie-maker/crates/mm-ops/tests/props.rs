@@ -57,6 +57,8 @@ proptest! {
         applied.inverse.apply(&mut doc, &human)
             .map_err(|e| TestCaseError::fail(format!("逆操作 {:?} が適用できない: {e}", applied.inverse)))?;
         prop_assert_eq!(canon(&doc), before, "op={:?} inverse={:?}", op, applied.inverse);
+        // canon は素材を ID で並べ直すので、並びの戻りは別に見る。
+        prop_assert_eq!(&doc.assets, &p.assets, "素材の並びが戻らない: op={:?}", op);
     }
 
     #[test]

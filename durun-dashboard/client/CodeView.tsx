@@ -6,6 +6,7 @@ import { type BranchView, type DiffFile, type DiffRange, type PrInfo, type Revie
 import { api, attempt } from './api.ts';
 import { DiffStat, FileDiff, NO_THREADS, STATUS_LETTER } from './DiffTable.tsx';
 import { type Focus, diffBatchEnd, findFocus } from './fileRef.ts';
+import { type FileTreeNode, buildFileTree } from './fileTree.ts';
 import { pickInWidget, useCached, useFetch, usePicked, useTabOrder } from './hooks.ts';
 import { PickTabs } from './PrView.tsx';
 import { ReviewBar } from './ReviewBar.tsx';
@@ -63,38 +64,52 @@ type Entry = { file: DiffFile; index: number };
 const anchorId = (index: number): string => `diff-file-${index}`;
 const WHOLE_ANCHOR = 'diff-file-whole';
 
-const splitPath = (path: string): { dir: string; name: string } => {
-  const i = path.lastIndexOf('/');
-  return { dir: i < 0 ? '' : path.slice(0, i), name: path.slice(i + 1) };
-};
-
 const commentCounts = (comments: ReviewComment[]): Map<string, number> => {
   const counts = new Map<string, number>();
   for (const c of comments) counts.set(c.path, (counts.get(c.path) ?? 0) + 1);
   return counts;
 };
 
-/** GitHub のファイルツリーと同じく、ディレクトリの見出しの下にファイル名を並べる。 */
-const FileList = ({ entries, counts, viewed }: { entries: Entry[]; counts: Map<string, number>; viewed?: Set<string> }) => (
-  <ul class="file-list">
-    {entries.map(({ file, index }, i) => {
-      const { dir, name } = splitPath(file.path);
+type FileListProps = { entries: Entry[]; counts: Map<string, number>; viewed?: Set<string> };
+
+/** GitHub のファイルツリーと同じく、ディレクトリを入れ子にし、押すと畳む。 */
+const FileList = ({ entries, counts, viewed }: FileListProps) => {
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const toggle = (path: string) => {
+    const next = new Set(folded);
+    if (!next.delete(path)) next.add(path);
+    setFolded(next);
+  };
+  const render = (nodes: FileTreeNode<Entry>[], depth: number): ComponentChildren =>
+    nodes.map((node) => {
+      const indent = { paddingLeft: `${6 + depth * 14}px` };
+      if (node.kind === 'dir') {
+        const open = !folded.has(node.path);
+        return (
+          <li key={`d:${node.path}`}>
+            <button class="file-dir" style={indent} title={node.path} aria-expanded={open} onClick={() => toggle(node.path)}>
+              <span class="chevron">{open ? '▾' : '▸'}</span>
+              {node.name}
+            </button>
+            {open && <ul>{render(node.children, depth + 1)}</ul>}
+          </li>
+        );
+      }
+      const { file, index } = node.item;
       const n = counts.get(file.path) ?? 0;
-      const prev = entries[i - 1];
       return (
         <li key={index}>
-          {(!prev || splitPath(prev.file.path).dir !== dir) && <div class="file-dir" title={dir}>{dir || '/'}</div>}
-          <button class={`file-item${viewed?.has(file.path) ? ' is-viewed' : ''}`} title={file.path} onClick={() => document.getElementById(anchorId(index))?.scrollIntoView({ block: 'start' })}>
+          <button class={`file-item${viewed?.has(file.path) ? ' is-viewed' : ''}`} style={indent} title={file.path} onClick={() => document.getElementById(anchorId(index))?.scrollIntoView({ block: 'start' })}>
             <span class={`fstatus fstatus-${file.status}`}>{STATUS_LETTER[file.status]}</span>
-            <span class="file-name">{name}</span>
+            <span class="file-name">{node.name}</span>
             {n > 0 && <span class="tag tag-warn">{n}</span>}
             <DiffStat file={file} />
           </button>
         </li>
       );
-    })}
-  </ul>
-);
+    });
+  return <ul class="file-list">{render(buildFileTree(entries, (e) => e.file.path), 0)}</ul>;
+};
 
 // 1 回に描く差分の表の行の数の目安。数万行の差分を一度に描くと画面が数秒固まるので、先頭のファイルからこの行数ずつ描き足す。
 const ROWS_PER_FRAME = 1000;
