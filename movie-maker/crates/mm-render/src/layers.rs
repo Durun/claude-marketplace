@@ -5,17 +5,16 @@
 //! - そうでなければ `FrameCx::region` の矩形を覆う。レンダラーは `region_of_definition` を `region` に渡すので、
 //!   領域だけを描いた画像（文字）も、素材のままの大きさの GPU のフレーム（撮影素材）も、ここで 1 回だけ拡縮する。
 
-use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use mm_doc::{Composition, Layer, Project, SEQUENCE_KIND};
 use mm_eval::{evaluate_opacity, node_params_at, source_time};
-use mm_node_api::{FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry, Quality};
-use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
+use mm_node_api::{FrameCx, NoInputs, NodeKind, NodeRegistry, Quality};
+use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
-use crate::cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::compose::DrawItem;
-use mm_gpu::WgpuGpu;
+use crate::frame_cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
+use crate::kind_cache::{render_cached, Placement};
 
 use crate::renderer::WgpuRenderer;
 use crate::transform::{uv_to_ndc, LayerTransform};
@@ -84,7 +83,7 @@ impl From<CachedImage> for LayerImage {
 }
 
 impl LayerImage {
-    fn as_cached(&self) -> CachedImage {
+    pub(crate) fn as_cached(&self) -> CachedImage {
         CachedImage {
             texture: self.texture,
             size: self.size,
@@ -129,7 +128,7 @@ impl WgpuRenderer {
         }
         self.composite(encoder, target, &prepared);
         mm_trace::counter!("render.layers_drawn", prepared.len());
-        // 操作がテクスチャを握っているので、提出の前にプールから外してよい。
+        // 手放したテクスチャは提出待ちに置かれ、このコマンドを提出するまで使い回されない（mm_gpu::WgpuGpu）。
         for id in temps {
             self.gpu.release_id(id);
         }
@@ -223,15 +222,19 @@ impl WgpuRenderer {
             cache,
             ..
         } = self;
-        let color_config = format!("{}+{}", services.color.id(), decoders.id());
+        let color = services.color.config_fingerprint();
         let at = source_time(layer, cx.t)?;
-        let footage = sources.footage_for(
+        let opened = sources.footage_with_backend(
             decoders.as_ref(),
             gpu.context().as_ref(),
             cx.project,
             params,
             at,
         )?;
+        let (footage, backend) = match opened {
+            Some((source, backend)) => (Some(source), backend),
+            None => (None, decoders.id()),
+        };
         let mut inputs = NoInputs;
         let mut frame_cx = FrameCx {
             time: cx.t,
@@ -250,53 +253,24 @@ impl WgpuRenderer {
         if rod.is_empty() {
             return Ok(None);
         }
-        // ベクターは拡大する分だけ細かく描き、後から拡大しない。倍率は領域の大きさだけに掛かる。
-        let boost = if kind.traits().vector {
-            vector_boost(transform, &rod)
-        } else {
-            1.0
-        };
-        frame_cx.size = scaled(cx.size, boost);
-        frame_cx.region = scaled_rect(&rod, boost);
-        frame_cx.scale *= boost;
-        let canvas = frame_cx.size;
+        boost_vector(&mut frame_cx, kind, transform, &rod);
+        let decoder = |_: &AssetId| backend.to_owned();
         let env = KeyEnv {
             project: cx.project,
             quality: cx.quality,
-            color_config: &color_config,
+            color: &color,
+            decoder: &decoder,
         };
         let key = cache
             .enabled()
-            .then(|| cache::kind_key(&env, kind, layer, &frame_cx));
-        let key = key.flatten();
-        if let Some((k, deps)) = &key {
-            if let Some(hit) = cache.lookup(k, deps, &mut *frame_cx.gpu) {
-                return Ok(Some(hit.into()));
-            }
-        }
-        let rendered = std::panic::catch_unwind(AssertUnwindSafe(|| kind.render(&mut frame_cx)))
-            .map_err(|_| MmError::Internal(format!("{} が panic", kind.id())))??;
-        let image_size = rendered.size();
-        let Some((texture, owned)) = upload_rendered(gpu, rendered)? else {
-            return Ok(None);
+            .then(|| frame_cache::kind_key(&env, kind, layer, &frame_cx))
+            .flatten();
+        let place = Placement {
+            canvas: frame_cx.size,
+            comp: Rect::new(0.0, 0.0, cx.comp.width as f32, cx.comp.height as f32),
+            region: scaled_rect(&rod, 1.0 / cx.comp_to_out()),
         };
-        let place = if image_size == canvas {
-            Rect::new(0.0, 0.0, cx.comp.width as f32, cx.comp.height as f32)
-        } else {
-            scaled_rect(&rod, 1.0 / cx.comp_to_out())
-        };
-        let image = LayerImage {
-            texture,
-            size: image_size,
-            place,
-            cached: false,
-        };
-        Ok(Some(
-            match cache.remember(key, image.as_cached(), owned, gpu) {
-                Some(kept) => kept.into(),
-                None => image,
-            },
-        ))
+        render_cached(cache, kind, &mut frame_cx, key, &place)
     }
 
     /// 入れ子のコンポジションを別のテクスチャに描く。中にベクターがあるときは、入れ子のレイヤーを
@@ -370,13 +344,16 @@ impl WgpuRenderer {
         if !self.cache.enabled() {
             return None;
         }
-        let color_config = format!("{}+{}", self.services.color.id(), self.decoders.id());
+        let color = self.services.color.config_fingerprint();
+        let factory = self.decoders.id();
+        let decoder = |id: &AssetId| self.sources.backend(id).unwrap_or(factory).to_owned();
         let env = KeyEnv {
             project: child.project,
             quality: child.quality,
-            color_config: &color_config,
+            color: &color,
+            decoder: &decoder,
         };
-        cache::nested_key(
+        frame_cache::nested_key(
             &env,
             &NestedKeyInput {
                 nodes: child.nodes,
@@ -392,19 +369,6 @@ impl WgpuRenderer {
     }
 }
 
-/// 種類が返した画像をテクスチャにする。透明なら `None`。2 つ目は、テクスチャの持ち主がレンダラーか
-/// （偽ならデコーダーの借用）。GPU で描く種類のテクスチャはヘルパーのプールのものなので、写さずに覚えられる。
-fn upload_rendered(gpu: &mut WgpuGpu, rendered: FrameRef) -> Result<Option<(u64, bool)>> {
-    Ok(match rendered {
-        FrameRef::Transparent { .. } => None,
-        FrameRef::Cpu(image) => match gpu.upload(&image)? {
-            FrameRef::Gpu(tex) => Some((tex.id, true)),
-            _ => return Err(MmError::Internal("upload が Gpu を返さない".into())),
-        },
-        FrameRef::Gpu(tex) => Some((tex.id, !gpu.is_borrowed(tex.id))),
-    })
-}
-
 /// 出力の 1 画素あたりの元の画素の数（軸ごと）。1 を超える軸は合成で面積平均に縮小する。
 fn minify_taps(image: &LayerImage, transform: &LayerTransform, comp_to_out: f32) -> [f32; 2] {
     let out_w = image.place.width * comp_to_out * transform.scale[0].abs();
@@ -413,6 +377,24 @@ fn minify_taps(image: &LayerImage, transform: &LayerTransform, comp_to_out: f32)
         image.size.width as f32 / out_w.max(f32::EPSILON),
         image.size.height as f32 / out_h.max(f32::EPSILON),
     ]
+}
+
+/// 種類に渡す領域を `rod` にする。ベクターの種類は拡大する分だけ細かく描き、後から拡大しない。
+/// 倍率は画布と領域の大きさと `scale` に掛かる。
+fn boost_vector(
+    frame_cx: &mut FrameCx<'_>,
+    kind: &dyn NodeKind,
+    transform: &LayerTransform,
+    rod: &Rect,
+) {
+    let boost = if kind.traits().vector {
+        vector_boost(transform, rod)
+    } else {
+        1.0
+    };
+    frame_cx.size = scaled(frame_cx.size, boost);
+    frame_cx.region = scaled_rect(rod, boost);
+    frame_cx.scale *= boost;
 }
 
 /// ベクターの種類を描く倍率。拡大は `MAX_VECTOR_SCALE` までで、領域のテクスチャの一辺が上限を超えない。

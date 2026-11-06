@@ -279,6 +279,7 @@ fn 上限で追い出した画像はディスクから戻る() {
     render(&mut f, &p, 3);
     render(&mut f, &p, 4);
     render(&mut f, &p, 5);
+    f.renderer.wait_frame_cache_spills();
     assert!(store.size_bytes() > 0, "2 回使った画像は退避される");
     let before = renders(&f);
     let back = render(&mut f, &p, 3);

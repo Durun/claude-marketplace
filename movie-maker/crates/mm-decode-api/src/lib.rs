@@ -178,6 +178,12 @@ pub trait Decoder: Send {
     }
     /// 区間の音。音が無ければ無音。
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock>;
+    /// デコードしている実装の名前（`ffmpeg`、`d3d12va`、`cuvid`）。実装を選ぶファクトリー（`auto`）が開いた
+    /// デコーダーでも、実際に選ばれた実装を返す。画素は実装で変わりうるので、フレームのキャッシュのキーに入る。
+    /// `None` は、開いたファクトリーの名前で足りる（モックなど）。
+    fn backend_id(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// デコーダーを開くインターフェース。`mm-runtime` が設定で選ぶ。

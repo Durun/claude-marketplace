@@ -97,6 +97,14 @@ impl SourcePool {
         self.frame += 1;
     }
 
+    /// 素材を読んでいるデコーダーの実装の名前。開いていないか、実装が名乗らなければ `None`。
+    pub fn backend(&self, asset: &AssetId) -> Option<&'static str> {
+        self.sources
+            .get(asset)?
+            .iter()
+            .find_map(|s| s.decoder.backend_id())
+    }
+
     /// 素材 ID が `ids` にあるものだけ閉じる。素材の中身やパスが変わったとき。
     pub fn forget(&mut self, ids: &[String]) {
         self.sources
@@ -113,6 +121,20 @@ impl SourcePool {
         params: &Params,
         t: RationalTime,
     ) -> Result<Option<&'s mut (dyn FrameSource + 's)>> {
+        let footage = self.footage_with_backend(decoders, gpu, project, params, t)?;
+        Ok(footage.map(|(source, _)| source))
+    }
+
+    /// [`Self::footage_for`] と同じで、デコーダーの実装の名前（`Decoder::backend_id`。名乗らなければ
+    /// ファクトリーの名前）も返す。フレームのキャッシュのキーに入れる。
+    pub fn footage_with_backend<'s>(
+        &'s mut self,
+        decoders: &dyn DecoderFactory,
+        gpu: &dyn GpuContextRef,
+        project: &Project,
+        params: &Params,
+        t: RationalTime,
+    ) -> Result<Option<(&'s mut (dyn FrameSource + 's), &'static str)>> {
         let Some(asset_id) = params.0.values().find_map(ParamValue::as_asset) else {
             return Ok(None);
         };
@@ -133,7 +155,8 @@ impl SourcePool {
         };
         let source = &mut opened[slot];
         source.used = frame;
-        Ok(Some(source as &mut (dyn FrameSource + 's)))
+        let backend = source.decoder.backend_id().unwrap_or(decoders.id());
+        Ok(Some((source as &mut (dyn FrameSource + 's), backend)))
     }
 }
 

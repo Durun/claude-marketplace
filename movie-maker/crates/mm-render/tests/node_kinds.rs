@@ -8,6 +8,7 @@ use common::{
 };
 use mm_doc::{Cut, Node, Sequence};
 use mm_render_api::KEPT_RENDERED_FRAMES;
+use mm_testkit::fixtures::{invert_lut_asset, INVERT_LUT_ID};
 use mm_types::{Id, ParamValue, Rgba, RgbaImage, Size};
 
 /// f16 の丸め（約 5e-4）と線形補間の誤差を見込んだ許容。
@@ -134,16 +135,13 @@ fn 効果を重ねると上から順に掛かる() {
 #[test]
 fn lut_は入力の色空間に符号化して引く() {
     let Some(ctx) = gpu() else { return };
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/luts/invert.cube"
-    );
     let lut = Node::new("color.lut", 1)
-        .with_param("path", ParamValue::Text(path.into()))
+        .with_param("lut", ParamValue::AssetRef(Id::new(INVERT_LUT_ID)))
         .with_param("input_space", ParamValue::Choice("lin_rec709".into()));
     let mut l = layer("l", solid(Rgba::new(0.2, 0.4, 0.8, 1.0)), 2);
     l.effects.push(effect("e", lut));
-    let p = project(vec![comp("main", SMALL, 2, vec![l])], vec![]);
+    let mut p = project(vec![comp("main", SMALL, 2, vec![l])], vec![]);
+    p.assets.push(invert_lut_asset());
     let mut r = renderer(&ctx);
     let img = render_at(&mut r, &p, "main", seconds(0), SMALL);
     assert_pixel(&img, 1, 1, Rgba::new(0.8, 0.6, 0.2, 1.0));

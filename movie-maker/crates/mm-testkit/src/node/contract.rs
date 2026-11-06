@@ -8,7 +8,7 @@ use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_node_api::{
     AudioCx, FrameCx, FrameRef, GpuHelper, InputFrames, NoInputs, NodeKind, Quality, Services,
 };
-use mm_types::{MmError, Params, RationalTime, Rect, Result, RgbaImage, Size, TimeRange};
+use mm_types::{AssetId, MmError, Params, RationalTime, Rect, Result, RgbaImage, Size, TimeRange};
 
 use crate::decode::{DecoderFrameSource, SampleDecoderFactory, SampleMedia};
 use crate::gpu::CpuGpu;
@@ -26,6 +26,11 @@ impl InputFrames for ConstInputs {
 
     fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// プロジェクトのデータが無いので、素材の ID をそのままファイルのパスとして読む。
+    fn asset_path(&self, id: &AssetId) -> Option<std::path::PathBuf> {
+        Some(id.as_str().into())
     }
 }
 

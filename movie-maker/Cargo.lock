@@ -3151,10 +3151,9 @@ dependencies = [
 
 [[package]]
 name = "mm-render-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mm-audio-api",
- "mm-cache-api",
  "mm-decode-api",
  "mm-doc",
  "mm-node-api",

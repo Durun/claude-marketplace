@@ -3,14 +3,14 @@
 //! どちらも入力は作業色空間（線形の光）。`color.lut` は LUT の入力の色空間（`input_space`）に符号化してから引き、
 //! 線形に戻して `intensity` で元と混ぜる。`color.convert` は入力の値を `from` の符号化値として読み、`to` の符号化値にする。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use mm_color_api::{ColorTransform, TransformProgram};
 use mm_node_api::{FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
 use mm_types::{
-    ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result,
+    AssetId, ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result,
 };
 
 use crate::color::{apply, ColorPass};
@@ -21,6 +21,8 @@ use crate::KIND_VERSION;
 
 /// LUT の入力の色空間の名前。`mm-color-api` の名前の表のうち、LUT でよく使う 3 つ。
 const SPACES: [&str; 3] = ["lin_rec709", "srgb", "bt709"];
+/// LUT の `.cube` の素材（`AssetRef`）を持つパラメータの名前。
+pub const LUT_PARAM: &str = "lut";
 /// 線形の光の折れ点（sRGB）。
 const SRGB_LINEAR_CUT: f32 = 0.003_130_8;
 const SRGB_ENCODED_CUT: f32 = 0.040_45;
@@ -119,8 +121,8 @@ impl std::fmt::Debug for ColorLutKind {
 
 impl ColorLutKind {
     /// `path` の LUT。更新時刻が同じなら読み直さない。
-    fn load(&self, path: &str) -> Result<Arc<Lut>> {
-        let path = PathBuf::from(path);
+    fn load(&self, path: &Path) -> Result<Arc<Lut>> {
+        let path = path.to_path_buf();
         let modified = std::fs::metadata(&path)?.modified().ok();
         let mut guard = self
             .loaded
@@ -183,7 +185,11 @@ impl NodeKind for ColorLutKind {
 
     fn params(&self) -> ParamSchema {
         ParamSchema::new(vec![
-            ParamSpec::new("path", ParamType::Text, ParamValue::Text(String::new())),
+            ParamSpec::new(
+                LUT_PARAM,
+                ParamType::AssetRef,
+                ParamValue::AssetRef(AssetId::new("")),
+            ),
             ParamSpec::new(
                 "intensity",
                 ParamType::Number {
@@ -222,8 +228,7 @@ impl NodeKind for ColorLutKind {
         if lut_is_identity(cx.params) {
             return source_frame(cx);
         }
-        let path = cx.params.get("path").and_then(ParamValue::as_text);
-        let lut = self.load(path.unwrap_or_default())?;
+        let lut = self.load(&lut_path(cx)?)?;
         let intensity = cx.params.number_or("intensity", 1.0).clamp(0.0, 1.0) as f32;
         let encoding = Encoding::of(cx.params);
         let mut uniform = [0.0; 16];
@@ -246,10 +251,26 @@ impl NodeKind for ColorLutKind {
     }
 }
 
-/// パスが空か、強さが 0 なら何もしない。
+/// LUT の素材。`AssetRef` が無いか空なら `None`。
+fn lut_asset(params: &Params) -> Option<&AssetId> {
+    params
+        .get(LUT_PARAM)
+        .and_then(ParamValue::as_asset)
+        .filter(|id| !id.as_str().is_empty())
+}
+
+/// LUT の素材のファイル。素材をパスに直すのは、プロジェクトのデータを持つ呼び手（`InputFrames::asset_path`）。
+fn lut_path(cx: &FrameCx<'_>) -> Result<PathBuf> {
+    let id =
+        lut_asset(cx.params).ok_or_else(|| MmError::InvalidArgument("LUT の素材が無い".into()))?;
+    cx.inputs
+        .asset_path(id)
+        .ok_or_else(|| MmError::NotFound(format!("LUT の素材 {id}")))
+}
+
+/// 素材が無いか、強さが 0 なら何もしない。
 fn lut_is_identity(params: &Params) -> bool {
-    let path = params.get("path").and_then(ParamValue::as_text);
-    path.unwrap_or_default().is_empty() || params.number_or("intensity", 1.0) <= 0.0
+    lut_asset(params).is_none() || params.number_or("intensity", 1.0) <= 0.0
 }
 
 /// `ColorTransform::program` の結果をシェーダーの形にしたもの。

@@ -8,10 +8,6 @@
 //! - `FrameCacheKey::digest` は同じ入力で同じ値、どのフィールドを変えても別の値。
 //! - `invalidate` の後も同じ画像（キャッシュを破棄しても結果は変わらない）。
 
-mod memo;
-
-pub use memo::{Dropped, Evicted, Memo, MemoStats, Weighted};
-
 use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
@@ -249,7 +245,7 @@ pub fn export_range_rgba<R: Renderer + ?Sized>(
     Ok(count)
 }
 
-/// 先読みの描画の順を決める。計算の結果の覚えは [`Memo`]（キーで引き、頼った ID が変わったら捨て、上限で追い出す）。
+/// 先読みの描画の順を決める。計算の結果の覚えは実装の側（`mm-render` の `Memo`。キーで引き、頼った ID が変わったら捨て、上限で追い出す）。
 /// rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に倣い、
 /// 提供者（このインターフェースの実装）を差し替えられる。
 pub trait Scheduler: Send {
