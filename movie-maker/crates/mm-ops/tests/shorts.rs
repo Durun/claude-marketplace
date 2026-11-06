@@ -40,7 +40,12 @@ fn 範囲の参照は続いたカットだけを元つきで写す() {
     assert_eq!(short.cuts.len(), 2);
     assert_eq!(short.cuts[0].origin.as_ref().unwrap().as_str(), "k2");
     assert_eq!(short.cuts[1].origin.as_ref().unwrap().as_str(), "k3");
-    assert_eq!(short.cuts[0].origin_base, None, "参照は比べ先を持たない");
+    let k2 = p.cut(&Id::new("k2")).unwrap().1;
+    assert_eq!(
+        short.cuts[0].origin_base,
+        Some(mm_doc::CutBase::of(k2)),
+        "参照も比べ先を持つ"
+    );
 }
 
 #[test]

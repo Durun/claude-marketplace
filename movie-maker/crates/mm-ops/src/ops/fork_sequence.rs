@@ -13,10 +13,10 @@ use crate::ops::{cut_refs, invalid, RemoveSequence};
 use crate::touches::Touches;
 
 /// `sequence` のカットをコピーして `new_sequence` を作る。カットは `cuts` の ID でコピーし（数が合うこと）、
-/// 各カットの `origin` に元のカットを残す。
+/// 各カットの `origin` に元のカットを、`origin_base` に元の値を残す（元が変わったら知らせる比べ先）。
 ///
 /// - 参照（`reference`）: 元のカットを直すとショートのカットも変わる。in/out は `overrideCut` で上書きできる。
-/// - 複製（`fork`）: 分岐する。各カットの `origin_base` に元の値を残し、元が変わったら知らせる比べ先にする。
+/// - 複製（`fork`）: 分岐する。元が変わっても従わない。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ForkSequence {
@@ -65,7 +65,7 @@ impl ForkSequence {
         c.id = id.clone();
         c.origin = Some(cut.id.clone());
         c.overrides = CutOverrides::default();
-        c.origin_base = (self.relation == OriginRelation::Fork).then(|| CutBase::of(cut));
+        c.origin_base = Some(CutBase::of(cut));
         c
     }
 }

@@ -21,7 +21,7 @@ pub struct SetReframe {
 }
 
 impl SetReframe {
-    /// 置くカットがレイヤーの sequence に在ること。
+    /// 置く・外すカットがレイヤーの sequence に在ること。
     fn check(&self, project: &Project) -> Result<()> {
         let (_, layer) = project.layer(&self.layer)?;
         if layer.source.kind != SEQUENCE_KIND {
@@ -50,9 +50,8 @@ impl Apply for SetReframe {
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
-        if self.transform.is_some() {
-            self.check(project)?;
-        }
+        // 外すときも検査する。消えたカットの項目を外すと、逆操作（項目を置き直す）が検査で通らなくなるため。
+        self.check(project)?;
         let cuts = &mut project.layer_mut(&self.layer)?.framing.cuts;
         let old = cuts
             .iter()
