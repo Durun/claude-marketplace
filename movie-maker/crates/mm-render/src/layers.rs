@@ -224,11 +224,13 @@ impl WgpuRenderer {
             ..
         } = self;
         let color_config = format!("{}+{}", services.color.id(), decoders.id());
+        let at = source_time(layer, cx.t)?;
         let footage = sources.footage_for(
             decoders.as_ref(),
             gpu.context().as_ref(),
             cx.project,
             params,
+            at,
         )?;
         let mut inputs = NoInputs;
         let mut frame_cx = FrameCx {
@@ -240,7 +242,7 @@ impl WgpuRenderer {
             quality: cx.quality,
             inputs: &mut inputs,
             footage,
-            source_time: source_time(layer, cx.t)?,
+            source_time: at,
             gpu: &mut *gpu,
             services,
         };

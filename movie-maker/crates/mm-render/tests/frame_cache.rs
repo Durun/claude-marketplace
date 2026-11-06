@@ -359,6 +359,35 @@ fn シーケンスのカットの画像を覚え_編集は触ったカットだ�
     assert_eq!(renders(&f), 3, "カットの ID に頼った画像を捨てた");
 }
 
+/// 入れ子を `start` 秒から 1 秒だけ置く（中の時刻は 0 から）。
+fn nested_at(layer: &str, comp: &str, start: i64) -> Layer {
+    Layer {
+        start: RationalTime::seconds(start),
+        out_point: RationalTime::seconds(1),
+        ..nested(layer, comp)
+    }
+}
+
+/// 同じ入れ子を順に並べると、2 つ目は 1 つ目と同じ中の時刻なので、中の種類を呼ばずに覚えた画像を使う
+/// （素材なら、デコーダーが頭へシークし直さない）。
+#[test]
+fn 同じ入れ子を順に並べた_2_つ目は覚えた画像を使う() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let p = project(vec![
+        comp(
+            "main",
+            vec![nested_at("s0", "scene", 0), nested_at("s1", "scene", 1)],
+        ),
+        comp("scene", vec![counting("a", 0.5)]),
+    ]);
+    let first: Vec<_> = (0..30).map(|i| render(&mut f, &p, i)).collect();
+    assert_eq!(renders(&f), 30);
+    let second: Vec<_> = (30..60).map(|i| render(&mut f, &p, i)).collect();
+    assert_eq!(renders(&f), 30, "2 つ目の入れ子では中を描かない");
+    assert!(first.iter().zip(&second).all(|(a, b)| **a == **b));
+}
+
 #[test]
 fn 入れ子の中のシーケンスを編集すると入れ子の画像を描き直す() {
     let Some(ctx) = gpu() else { return };

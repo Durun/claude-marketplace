@@ -1,4 +1,9 @@
 //! 素材の供給元。デコーダーを時刻で引ける形にし、同じフレームの連続した要求はデコードし直さない。
+//!
+//! 同じ素材を 1 つのフレームで別の位置から読む（入れ子で同じ素材を時刻をずらして重ねる）と、デコーダーが 1 つでは
+//! 毎回シークし直す。そこで素材ごとに [`MAX_DECODERS_PER_ASSET`] 個までデコーダーを持ち、次のフレームを
+//! 読むだけで済むものを選ぶ。デコーダーを開くのはシークより重いので、そのフレームでまだ使っていないものがあれば
+//! シークで済ませ、全部が使用中のときだけ新しく開く。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -8,10 +13,15 @@ use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, FrameSource, GpuConte
 use mm_doc::Project;
 use mm_types::{AssetId, MmError, ParamValue, Params, RationalTime, Result, TimeRange};
 
-/// `Decoder` を `FrameSource` にする。直前のフレームを保持する。
+/// 素材ごとに持つデコーダーの上限。重ねる数がこれを超えたら、最も前に使ったものをシークし直す。
+pub(crate) const MAX_DECODERS_PER_ASSET: usize = 4;
+
+/// `Decoder` を `FrameSource` にする。直前のフレームを保持し、次のフレームはシークせずに読む。
 pub struct DecoderSource {
     decoder: Box<dyn Decoder>,
     last: Option<DecodedFrame>,
+    /// 最後に使ったフレームの番号（`SourcePool` の数え）。
+    used: u64,
 }
 
 impl DecoderSource {
@@ -20,7 +30,20 @@ impl DecoderSource {
         Self {
             decoder,
             last: None,
+            used: 0,
         }
+    }
+
+    /// `t` のフレームを、シークせずに返せるか（同じフレームか、直前のフレームの次）。
+    fn reaches(&self, t: RationalTime) -> bool {
+        let index = self.decoder.info().frame_index_at(t);
+        self.last
+            .as_ref()
+            .is_some_and(|l| l.index == index || l.index + 1 == index)
+    }
+
+    fn read_next(&mut self) -> Result<Option<DecodedFrame>> {
+        self.decoder.next_frame()
     }
 }
 
@@ -34,10 +57,17 @@ impl FrameSource for DecoderSource {
         if let Some(last) = self.last.as_ref().filter(|l| l.index == index) {
             return Ok(last.clone());
         }
+        // 直前の次のフレームはそのまま読む。番号が合わなければ（可変フレームレートなど）シークし直す。
+        if self.last.as_ref().is_some_and(|l| l.index + 1 == index) {
+            if let Some(frame) = self.read_next()?.filter(|f| f.index == index) {
+                self.last = Some(frame.clone());
+                return Ok(frame);
+            }
+        }
+        mm_trace::counter!("render.source_seeks", 1);
         self.decoder.seek(t)?;
         let frame = self
-            .decoder
-            .next_frame()?
+            .read_next()?
             .ok_or_else(|| MmError::NotFound(format!("フレーム {index}（t = {t}）")))?;
         self.last = Some(frame.clone());
         Ok(frame)
@@ -48,10 +78,12 @@ impl FrameSource for DecoderSource {
     }
 }
 
-/// 開いた素材のキャッシュ。素材ごとに 1 度だけ開いて使い回す。
+/// 開いた素材のキャッシュ。素材ごとに開いたデコーダーを使い回す。
 #[derive(Default)]
 pub struct SourcePool {
-    sources: HashMap<AssetId, Box<dyn FrameSource>>,
+    sources: HashMap<AssetId, Vec<DecoderSource>>,
+    /// 描いているフレームの数え。同じフレームの中で使用中のデコーダーを見分ける。
+    frame: u64,
 }
 
 impl SourcePool {
@@ -60,19 +92,26 @@ impl SourcePool {
         self.sources.clear();
     }
 
+    /// 次のフレームを描き始める。前のフレームで使ったデコーダーも、次のフレームでは空きになる。
+    pub fn begin_frame(&mut self) {
+        self.frame += 1;
+    }
+
     /// 素材 ID が `ids` にあるものだけ閉じる。素材の中身やパスが変わったとき。
     pub fn forget(&mut self, ids: &[String]) {
         self.sources
             .retain(|id, _| !ids.iter().any(|i| i == id.as_str()));
     }
 
-    /// 評価済みのパラメータの `AssetRef` の素材を返す（無ければ開く）。`AssetRef` が無いか空なら `None`。
+    /// 評価済みのパラメータの `AssetRef` の素材を、素材の時刻 `t` を読むのに向いたデコーダーで返す（無ければ開く）。
+    /// `AssetRef` が無いか空なら `None`。
     pub fn footage_for<'s>(
         &'s mut self,
         decoders: &dyn DecoderFactory,
         gpu: &dyn GpuContextRef,
         project: &Project,
         params: &Params,
+        t: RationalTime,
     ) -> Result<Option<&'s mut (dyn FrameSource + 's)>> {
         let Some(asset_id) = params.0.values().find_map(ParamValue::as_asset) else {
             return Ok(None);
@@ -80,12 +119,45 @@ impl SourcePool {
         if asset_id.as_str().is_empty() {
             return Ok(None);
         }
-        if !self.sources.contains_key(asset_id) {
-            let asset = project.asset(asset_id)?;
-            let decoder = decoders.open(Path::new(&asset.path), Some(gpu))?;
-            self.sources
-                .insert(asset_id.clone(), Box::new(DecoderSource::new(decoder)));
-        }
-        Ok(mm_node_api::footage_ref(self.sources.get_mut(asset_id)))
+        let frame = self.frame;
+        let opened = self.sources.entry(asset_id.clone()).or_default();
+        let slot = match pick(opened, t, frame) {
+            Some(i) => i,
+            None => {
+                let asset = project.asset(asset_id)?;
+                let decoder = decoders.open(Path::new(&asset.path), Some(gpu))?;
+                mm_trace::counter!("render.source_opens", 1);
+                opened.push(DecoderSource::new(decoder));
+                opened.len() - 1
+            }
+        };
+        let source = &mut opened[slot];
+        source.used = frame;
+        Ok(Some(source as &mut (dyn FrameSource + 's)))
     }
 }
+
+/// `t` を読むデコーダーの位置。読み進めるだけで済むもの、このフレームで空いているもの、の順に選ぶ。
+/// 全部が使用中で上限に満たなければ `None`（新しく開く）。上限なら最も前に使ったもの。
+fn pick(opened: &[DecoderSource], t: RationalTime, frame: u64) -> Option<usize> {
+    if let Some(i) = opened.iter().position(|s| s.reaches(t)) {
+        return Some(i);
+    }
+    let idle = opened
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.used != frame)
+        .min_by_key(|(_, s)| s.used)
+        .map(|(i, _)| i);
+    if idle.is_some() || opened.len() < MAX_DECODERS_PER_ASSET {
+        return idle;
+    }
+    opened
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, s)| s.used)
+        .map(|(i, _)| i)
+}
+
+#[cfg(test)]
+mod tests;
