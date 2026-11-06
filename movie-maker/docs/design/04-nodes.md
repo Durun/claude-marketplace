@@ -94,7 +94,7 @@ pub trait NodeKind: Send + Sync {
 |---|---|---|
 | `color.adjust` | `brightness`（露出の段数、既定 0）、`contrast`（18% グレーを支点にしたべき、既定 1）、`saturation`（Rec.709 の輝度係数からの距離の倍率、既定 1） | 明るさ、コントラスト、彩度 |
 | `color.cdl` | `slope`、`offset`、`power`（Vec3）、`saturation` | ASC CDL。`clamp(in * slope + offset) ^ power` の後に彩度。作業色空間の上で掛ける |
-| `color.lut` | `path`（`.cube`）、`intensity`（0..1）、`input_space`（`lin_rec709`、`srgb`、`bt709`） | 3D LUT。LUT の入力の色空間に符号化して引き、線形に戻して `intensity` で混ぜる |
+| `color.lut` | `lut`（`.cube` の素材の `AssetRef`。中身の `contentHash` がキャッシュのキーに入る）、`intensity`（0..1）、`input_space`（`lin_rec709`、`srgb`、`bt709`） | 3D LUT。LUT の入力の色空間に符号化して引き、線形に戻して `intensity` で混ぜる |
 | `color.convert` | `from`、`to`（色空間の名前） | 入力の値を `from` の符号化値として読み、`to` の符号化値にする。`FrameCx::services.color`（`mm-color-api`）の `program` / `apply` を使う |
 
 ## shader.wgsl の書き方
