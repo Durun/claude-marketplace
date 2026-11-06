@@ -8,17 +8,27 @@ publish.workspace = true
 
 [features]
 # 既定で切る。FFmpeg の開発ファイル、libclang、NVIDIA のドライバーが無い環境でもワークスペースをビルドできるようにする。
-cuvid = ["dep:ffmpeg-next", "dep:wgpu", "dep:pollster", "dep:windows", "dep:mm-gpu"]
+cuvid = [
+  "dep:ffmpeg-next",
+  "dep:wgpu",
+  "dep:windows",
+  "dep:mm-gpu",
+  "mm-decode-hw/hw",
+  "mm-decode-ffmpeg-core/ffmpeg",
+]
+# 検査のためだけの口（待ちを外した対照、故障の注入）。本番の組み立てでは入れない。
+test-hooks = ["mm-decode-hw/test-hooks"]
 
 [dependencies]
 mm-types = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-decode-api = { workspace = true }
+mm-decode-ffmpeg-core = { workspace = true }
+mm-decode-hw = { workspace = true }
 mm-gpu = { workspace = true, optional = true }
 tracing = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-pollster = { workspace = true, optional = true }
 windows = { workspace = true, optional = true, features = [
   "Win32_Foundation",
   "Win32_Security",
@@ -28,6 +38,9 @@ windows = { workspace = true, optional = true, features = [
 ] }
 
 [dev-dependencies]
+# 統合テストだけが検査の口（test-hooks）を使う。
+mm-decode-cuvid = { path = ".", features = ["test-hooks"] }
+mm-decode-hw = { workspace = true, features = ["testing"] }
 mm-trace = { workspace = true }
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }

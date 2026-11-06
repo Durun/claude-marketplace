@@ -24,11 +24,12 @@ mod dec;
 #[cfg(feature = "cuvid")]
 mod decoder;
 #[cfg(feature = "cuvid")]
-mod share;
-/// d3d12va のクレートと同じソースを取り込む共有部（実装どうしは依存しない規則のため）。
+mod hooks;
 #[cfg(feature = "cuvid")]
-#[path = "../../mm-decode-d3d12va/src/shared/mod.rs"]
-pub mod shared;
+mod share;
 
 #[cfg(feature = "cuvid")]
 pub use decoder::{gpu_request, CuvidDecoder, CuvidFactory};
+/// 検査のための故障の注入と資源の数え（feature `test-hooks`）。
+#[cfg(all(feature = "cuvid", feature = "test-hooks"))]
+pub use hooks::{inject, live_imports, Fault};

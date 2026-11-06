@@ -4,13 +4,14 @@
 //! プロセスの D3D12 のデバイスが全部消える（同じアダプターの別のデバイスも）。描画器のデバイスを守るため、
 //! 開く前にこのプロセスで試す。使い方: `mm-d3d12va-probe <素材> --luid <アダプターの LUID>`。
 //! 復号できれば終了コード 0、できなければ理由を標準エラーに出して 1。
+//! エラーを返さずデバイスだけが消える失敗もあるので、最後に GPU の完了を待ってデバイスの消失を確かめる。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use mm_decode_api::Decoder;
-use mm_decode_d3d12va::shared::adapter::dx12_request_for_luid;
 use mm_decode_d3d12va::{required_features, D3d12vaDecoder, PROBE_FRAMES};
+use mm_decode_hw::adapter::dx12_request_for_luid;
 use mm_gpu::GpuContext;
 
 fn run() -> Result<(), String> {
@@ -29,7 +30,7 @@ fn run() -> Result<(), String> {
             break;
         }
     }
-    Ok(())
+    dec.finish().map_err(|e| e.to_string())
 }
 
 fn main() -> ExitCode {

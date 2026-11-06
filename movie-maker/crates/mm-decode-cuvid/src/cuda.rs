@@ -156,6 +156,18 @@ macro_rules! load {
     }};
 }
 
+/// `CudaApi::scoped` の戻り値。捨てると現在の文脈を外す。
+pub struct ContextGuard<'a> {
+    api: &'a CudaApi,
+}
+
+impl Drop for ContextGuard<'_> {
+    fn drop(&mut self) {
+        // SAFETY: `scoped` の push と対。外せないときは、後の呼び出しが文脈のエラーで気づく。
+        let _ = unsafe { self.api.pop() };
+    }
+}
+
 fn check(what: &str, r: CuResult) -> Result<()> {
     if r == 0 {
         Ok(())
@@ -234,9 +246,14 @@ impl CudaApi {
             reserved: [0; 16],
         };
         let mut ptr = 0;
-        check("cuExternalMemoryGetMappedBuffer", unsafe {
+        let mapped = check("cuExternalMemoryGetMappedBuffer", unsafe {
             (self.mapped_buffer)(&mut ptr, mem, &buf)
-        })?;
+        });
+        if let Err(e) = mapped {
+            // 取り込んだだけの外部メモリを漏らさない
+            unsafe { (self.destroy_mem)(mem) };
+            return Err(e);
+        }
         Ok((mem, ptr))
     }
 
@@ -314,21 +331,34 @@ impl CudaApi {
         })
     }
 
-    /// 取り込んだ外部メモリと、そこに写したポインタ、取り込んだセマフォを手放す。失敗は無視する（後片付け）。
+    /// 取り込んだ外部メモリと、そこに写したポインタを手放す。失敗は無視する（後片付け）。
     ///
     /// # Safety
     /// 文脈が現在で、引数はその文脈で取り込んだもの。GPU の仕事が終わっている。
-    pub unsafe fn release_import(
-        &self,
-        mem: CuExternalMemory,
-        ptr: CuDevicePtr,
-        sem: CuExternalSemaphore,
-    ) {
+    pub unsafe fn release_memory(&self, mem: CuExternalMemory, ptr: CuDevicePtr) {
         unsafe {
-            (self.destroy_sem)(sem);
             (self.free)(ptr);
             (self.destroy_mem)(mem);
         }
+    }
+
+    /// 取り込んだセマフォを手放す。失敗は無視する（後片付け）。
+    ///
+    /// # Safety
+    /// 文脈が現在で、`sem` はその文脈で取り込んだもの。GPU の仕事が終わっている。
+    pub unsafe fn release_semaphore(&self, sem: CuExternalSemaphore) {
+        unsafe {
+            (self.destroy_sem)(sem);
+        }
+    }
+
+    /// 文脈を現在にし、捨てると外す。途中のエラーで抜けても外し忘れない。
+    ///
+    /// # Safety
+    /// `ctx` は有効な CUDA の文脈。
+    pub unsafe fn scoped(&self, ctx: CuContext) -> Result<ContextGuard<'_>> {
+        unsafe { self.push(ctx)? };
+        Ok(ContextGuard { api: self })
     }
 
     /// LUID のアダプターに当たる CUDA のデバイスの番号。

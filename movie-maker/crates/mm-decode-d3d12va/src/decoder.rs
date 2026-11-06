@@ -11,23 +11,22 @@ use mm_decode_api::{
 };
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_types::{GpuAdapterId, MmError, RationalTime, Result, TimeRange};
-use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, D3D12_FENCE_FLAG_NONE};
+use windows::Win32::Graphics::Direct3D12::ID3D12Fence;
 
 use crate::convert::YuvConverter;
 use crate::hwdec;
-use crate::shared::adapter::dx12_request;
-use crate::shared::pool::FramePool;
-use crate::shared::reader::{IndexedFrame, Sequencer};
-use crate::shared::release::ReleaseQueue;
-use crate::shared::yuv::{is_full_range, Matrix, YuvParams};
 use crate::wrap::Wrapper;
+use mm_decode_ffmpeg_core::matrix::{is_full_range, Matrix};
+use mm_decode_ffmpeg_core::reader::{IndexedFrame, Sequencer};
+use mm_decode_hw::adapter::dx12_request;
+use mm_decode_hw::device::{check_device, create_local_fence, queue_signal};
+use mm_decode_hw::pool::FramePool;
+use mm_decode_hw::release::ReleaseQueue;
+use mm_decode_hw::yuv::YuvParams;
 
 /// 無音を返すときの形式。
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
-
-/// 実装の名前。
-pub const ID: &str = "d3d12va";
 
 /// この実装が描画器のデバイスに求める機能。`GpuRequest::optional_features` に足す。
 pub fn required_features() -> wgpu::Features {
@@ -49,6 +48,7 @@ pub fn gpu_request(wanted: Option<&GpuAdapterId>) -> Result<GpuRequest> {
 pub struct D3d12vaDecoder {
     seq: Sequencer,
     bits: u32,
+    device: wgpu::Device,
     queue: wgpu::Queue,
     wrapper: Wrapper,
     converter: YuvConverter,
@@ -75,12 +75,13 @@ impl D3d12vaDecoder {
                 "デバイスが P010 と 16 bit のテクスチャを持たない".into(),
             ));
         }
-        let fence = create_fence(&gpu.device)?;
+        let fence = create_local_fence(&gpu.device)?;
         let seq = Sequencer::new(path, opened.reader)?;
         let pool = FramePool::new(gpu.device.clone(), seq.info().size);
         Ok(Self {
             seq,
             bits: opened.bits,
+            device: gpu.device.clone(),
             queue: gpu.queue.clone(),
             wrapper: Wrapper::new(gpu.device.clone()),
             converter: YuvConverter::new(gpu.device.clone(), gpu.queue.clone()),
@@ -93,8 +94,16 @@ impl D3d12vaDecoder {
     }
 
     /// 復号した面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    #[cfg(feature = "test-hooks")]
     pub fn set_gpu_wait(&mut self, on: bool) {
         self.release.set_wait_for_gpu(on);
+    }
+
+    /// これまでに出した変換の完了を待ち、デバイスが消えていないかを確かめる。
+    /// ドライバーが復号の失敗をエラーで返さずデバイスの消失で表すので、試し復号の最後に呼ぶ。
+    pub fn finish(&mut self) -> Result<()> {
+        self.release.try_wait_all()?;
+        check_device(&self.device)
     }
 
     /// 握っている面の数。
@@ -109,13 +118,8 @@ impl D3d12vaDecoder {
 
     /// wgpu のキューに、いまの提出までの読み取りが終わったらフェンスを進めさせる。値を返す。
     fn signal_after_submit(&mut self) -> Result<u64> {
-        // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
-        let hal = unsafe { self.queue.as_hal::<wgpu::hal::api::Dx12>() }
-            .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
         self.fence_value += 1;
-        // SAFETY: キューとフェンスは同じデバイスの有効なオブジェクト。
-        unsafe { hal.as_raw().Signal(&self.fence, self.fence_value) }
-            .map_err(|e| MmError::Internal(format!("フェンスの Signal: {e}")))?;
+        queue_signal(&self.queue, &self.fence, self.fence_value)?;
         Ok(self.fence_value)
     }
 
@@ -133,6 +137,7 @@ impl D3d12vaDecoder {
             is_full_range(hw.color_range()),
             self.bits,
             YuvParams::texture_code_scale(self.bits),
+            (hw.width(), hw.height()),
         );
         planes.wait_decode_on(&self.queue)?;
         let target = self.pool.take();
@@ -149,15 +154,6 @@ impl D3d12vaDecoder {
             gpu: Some(handle),
         })
     }
-}
-
-fn create_fence(device: &wgpu::Device) -> Result<ID3D12Fence> {
-    // SAFETY: as_hal の参照はこの関数の間だけ使う。
-    let hal = unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }
-        .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
-    // SAFETY: 有効なデバイスに、初期値 0 のフェンスを作る。
-    unsafe { hal.raw_device().CreateFence(0, D3D12_FENCE_FLAG_NONE) }
-        .map_err(|e| MmError::Internal(format!("フェンスの作成: {e}")))
 }
 
 impl Drop for D3d12vaDecoder {
@@ -197,7 +193,7 @@ pub struct D3d12vaFactory;
 
 impl DecoderFactory for D3d12vaFactory {
     fn id(&self) -> &'static str {
-        ID
+        crate::ID
     }
 
     /// `gpu` が無い、または `mm-gpu` の文脈でなければ `Err(Unsupported)`（GPU の外には出せない）。

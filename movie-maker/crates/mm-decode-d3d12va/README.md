@@ -20,8 +20,9 @@ cargo test -p mm-decode-d3d12va --features d3d12va
 - デバイスは `DecoderFactory::open` の `gpu`（`mm-gpu` の `GpuContext`）。D3D12 のアダプターで作る必要があり、頼み方は `gpu_request()`（`GpuRequest::backends` を D3D12 にする）。`required_features()` が NV12、P010、16 bit の形式を求める。
 - コマの絵は `GpuFrameTexture`（`Rgba16Float`、線形、premultiplied）。変換先は借りが終われば置き場へ戻る。
 - 復号した面は、変換を読み終えたことを wgpu のキューのフェンスで確かめるまで FFmpeg のプールに返さない（`shared/release.rs`）。
-- 開く前に、別プロセス `mm-d3d12va-probe` で先頭 4 コマを復号して確かめる（NVIDIA の d3d12va は失敗するとプロセスの D3D12 のデバイスが全部消えるため）。実行ファイルは `MM_D3D12VA_PROBE`、なければ実行ファイルと同じ場所（かその一つ上）の `mm-d3d12va-probe.exe`。無ければ試さずに通す。
-- 時間軸（PTS の索引、VFR）、シーク、フェンスの待ち、変換の係数は `src/shared/` にあり、`mm-decode-cuvid` が `#[path]` で同じソースを取り込む。
+- 開く前に、別プロセス `mm-d3d12va-probe` で先頭 4 コマを復号して確かめる（NVIDIA の d3d12va は失敗するとプロセスの D3D12 のデバイスが全部消えるため）。実行ファイルは `MM_D3D12VA_PROBE`、なければ実行ファイルと同じ場所（かその一つ上）の `mm-d3d12va-probe.exe`。Cargo は依存先の bin を作らないので、`cargo run -p mm` などでは先に `cargo build -p mm-decode-d3d12va --features d3d12va --bin mm-d3d12va-probe` を実行しておく。見つからない、起動できない、時間切れのときは試せなかった扱いで `Err(Unsupported)`（次の実装へ譲る。結果は覚えない）。
+- 時間軸（PTS の索引、VFR）、シーク、コマの取り出し、YUV の行列は `mm-decode-ffmpeg-core`、フェンスの待ち、変換の係数、描画パスは `mm-decode-hw`（どちらも `mm-decode-cuvid` と `mm-decode-ffmpeg` の共有部。[RFC 0007](../../docs/rfcs/0007-decode-shared-crates.md)）。
+- PQ と HLG の素材は `Err(Unsupported)`（Rec.1886 の式で線形にすると明るさが狂うため。CPU の経路も同じ判定）。
 - 音は無音を返す。`mm-runtime` が FFmpeg のデコーダーの音と素材の情報を付ける。
 
 ## 測る

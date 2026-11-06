@@ -8,6 +8,8 @@ use mm_types::{MmError, Result};
 use windows::core::Interface;
 use windows::Win32::Graphics::Direct3D12::{ID3D12Fence, ID3D12Resource};
 
+use mm_decode_hw::device::queue_wait;
+
 use crate::ffi::{AvD3d12vaFrame, DXGI_FORMAT_NV12, DXGI_FORMAT_P010};
 
 /// 包んだコマ。`y` と `uv` が 2 つの面の見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
@@ -22,13 +24,32 @@ pub struct PlaneViews {
 }
 
 impl PlaneViews {
-    /// 次の `Queue::submit` の頭で、復号の完了までキューを待たせる（CPU は待たない）。
+    /// キューの以後の実行を、復号の完了まで GPU の側で待たせる（CPU は待たない）。
+    /// 待ちはキューへ直接積むので、別のスレッドの submit が挟まっても変換より前に効く。
     pub fn wait_decode_on(&self, queue: &wgpu::Queue) -> Result<()> {
-        // SAFETY: as_hal の参照はこの呼び出しの間だけ使う。
-        let hal = unsafe { queue.as_hal::<wgpu::hal::api::Dx12>() }
-            .ok_or_else(|| MmError::Unsupported("wgpu が D3D12 ではない".into()))?;
-        hal.add_wait_fence(self.fence.clone(), self.fence_value);
-        Ok(())
+        queue_wait(queue, &self.fence, self.fence_value)
+    }
+}
+
+/// FFmpeg の `hw_frames_ctx`（面のプール）への参照。プールが作り直されたかを、アドレスの再利用に
+/// 惑わされず見分けるために、参照を持って生かしておく。
+struct FramesRef(*mut ffmpeg_next::ffi::AVBufferRef);
+
+// SAFETY: 参照の数えは FFmpeg が行う。持つのは 1 つの Wrapper だけ。
+unsafe impl Send for FramesRef {}
+
+impl FramesRef {
+    /// `ctx` の AVBuffer（プールの実体）が同じか。
+    fn same_pool(&self, ctx: *mut ffmpeg_next::ffi::AVBufferRef) -> bool {
+        // SAFETY: どちらも有効な AVBufferRef。
+        unsafe { (*self.0).buffer == (*ctx).buffer }
+    }
+}
+
+impl Drop for FramesRef {
+    fn drop(&mut self) {
+        // SAFETY: av_buffer_ref で取った参照。
+        unsafe { ffmpeg_next::ffi::av_buffer_unref(&mut self.0) };
     }
 }
 
@@ -44,6 +65,8 @@ struct Entry {
 pub struct Wrapper {
     device: wgpu::Device,
     cache: HashMap<usize, Entry>,
+    /// 覚えが対応する面のプール。変わったら覚えを捨てる。
+    pool: Option<FramesRef>,
 }
 
 impl Wrapper {
@@ -52,7 +75,19 @@ impl Wrapper {
         Self {
             device,
             cache: HashMap::new(),
+            pool: None,
         }
+    }
+
+    /// コマのプールが前と違えば、古いプールの面の覚えを捨てる（面は覚えが握っていて、捨てないと残り続ける）。
+    fn follow_pool(&mut self, frames_ctx: *mut ffmpeg_next::ffi::AVBufferRef) {
+        if frames_ctx.is_null() || self.pool.as_ref().is_some_and(|p| p.same_pool(frames_ctx)) {
+            return;
+        }
+        self.cache.clear();
+        // SAFETY: コマが持つ有効な hw_frames_ctx。参照を足して、コマより長く持つ。
+        let held = unsafe { ffmpeg_next::ffi::av_buffer_ref(frames_ctx) };
+        self.pool = (!held.is_null()).then_some(FramesRef(held));
     }
 
     /// 包んだ資源の数。
@@ -63,7 +98,7 @@ impl Wrapper {
     /// d3d12va のコマを包む。
     pub fn wrap(&mut self, frame: &frame::Video) -> Result<PlaneViews> {
         // SAFETY: d3d12va のコマは data[0] に AVD3D12VAFrame を持つ。コマが生きている間だけ読む。
-        let (resource_ptr, layer, fence_ptr, fence_value) = unsafe {
+        let (resource_ptr, layer, fence_ptr, fence_value, frames_ctx) = unsafe {
             let f = frame.as_ptr();
             if (*f).format != ffmpeg_next::ffi::AVPixelFormat::AV_PIX_FMT_D3D12 as i32 {
                 return Err(MmError::Unsupported("d3d12 のコマではない".into()));
@@ -77,8 +112,10 @@ impl Wrapper {
                 (*d).subresource_index as u32,
                 (*d).sync_ctx.fence,
                 (*d).sync_ctx.fence_value,
+                (*f).hw_frames_ctx,
             )
         };
+        self.follow_pool(frames_ctx);
         let key = resource_ptr as usize;
         if !self.cache.contains_key(&key) {
             let entry = self.import(resource_ptr)?;

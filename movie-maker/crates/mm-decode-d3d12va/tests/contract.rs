@@ -2,7 +2,7 @@
 //! 素材は `fixtures/media/generate.sh`（無ければ作る）。GPU と NVIDIA のドライバーが要る。
 #![cfg(feature = "d3d12va")]
 
-mod common;
+use mm_decode_hw::testing as common;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,6 +25,15 @@ const FILES: [&str; 6] = [
     "offset_bf.mp4",
     "p10.mp4",
 ];
+
+/// GPU の文脈を作って基本の素材を開けるか。GPU が無い環境（CI）ではテストを飛ばす。
+fn available() -> bool {
+    common::gpu_available(|| {
+        std::env::set_var(PROBE_ENV, env!("CARGO_BIN_EXE_mm-d3d12va-probe"));
+        let ctx = GpuContext::shared(&gpu_request(None)?)?;
+        D3d12vaDecoder::open(&fixtures(&FILES).join("cfr.mp4"), &ctx).map(drop)
+    })
+}
 
 fn ctx() -> Arc<GpuContext> {
     std::env::set_var(PROBE_ENV, env!("CARGO_BIN_EXE_mm-d3d12va-probe"));
@@ -53,6 +62,9 @@ fn drain_numbers(dec: &mut dyn Decoder) -> Vec<(i64, i64)> {
 
 #[test]
 fn デコーダーが契約を通る() {
+    if !available() {
+        return;
+    }
     let dir = fixtures(&FILES);
     let fx = DecodeFixture {
         path: dir.join("cfr.mp4"),
@@ -65,12 +77,18 @@ fn デコーダーが契約を通る() {
 
 #[test]
 fn vfr_の契約を通る() {
+    if !available() {
+        return;
+    }
     vfr_contract(|| open("vfr.mp4"));
     vfr_contract(|| open("vfr_bf.mp4"));
 }
 
 #[test]
 fn 焼いた番号がコマの番号と一致する() {
+    if !available() {
+        return;
+    }
     for name in ["cfr.mp4", "ntsc.mp4", "vfr.mp4", "vfr_bf.mp4"] {
         let mut dec = open(name);
         let frames = drain_numbers(dec.as_mut());
@@ -83,6 +101,9 @@ fn 焼いた番号がコマの番号と一致する() {
 
 #[test]
 fn 頭がずれた素材でも番号が先頭から数える() {
+    if !available() {
+        return;
+    }
     let mut dec = open("offset_bf.mp4");
     let frames = drain_numbers(dec.as_mut());
     let first = frames[0].1;
@@ -93,6 +114,9 @@ fn 頭がずれた素材でも番号が先頭から数える() {
 
 #[test]
 fn 飛び飛びのシークで目的のコマが出る() {
+    if !available() {
+        return;
+    }
     let mut dec = open("cfr.mp4");
     let fps = dec.info().fps.expect("CFR");
     for target in [0, 59, 30, 13, 14, 45, 3, 3, 58] {
@@ -110,6 +134,9 @@ fn 飛び飛びのシークで目的のコマが出る() {
 
 #[test]
 fn 十ビットの素材は八ビットに落とさず運ぶ() {
+    if !available() {
+        return;
+    }
     let mut dec = open("p10.mp4");
     let mut checked = 0;
     while let Some(f) = dec.next_frame().expect("復号") {
@@ -127,6 +154,9 @@ fn 十ビットの素材は八ビットに落とさず運ぶ() {
 
 #[test]
 fn gpu_の文脈なしでは断る() {
+    if !available() {
+        return;
+    }
     let path = fixtures(&FILES).join("cfr.mp4");
     assert!(matches!(
         D3d12vaFactory.open(&path, None),
@@ -137,6 +167,9 @@ fn gpu_の文脈なしでは断る() {
 /// `take_frame` のような取り出しをしなくても、コマを捨てるだけでプールが尽きない。
 #[test]
 fn コマを捨て続けてもプールが尽きない() {
+    if !available() {
+        return;
+    }
     let mut dec = open("cfr.mp4");
     let mut total = 0;
     for _ in 0..8 {
@@ -151,6 +184,9 @@ fn コマを捨て続けてもプールが尽きない() {
 /// 借りを長く持っても、面は変換の完了で返るので復号が止まらない。
 #[test]
 fn コマを持ち続けても復号が止まらない() {
+    if !available() {
+        return;
+    }
     let ctx = ctx();
     let path = fixtures(&FILES).join("cfr.mp4");
     let mut dec = D3d12vaDecoder::open(&path, &ctx).expect("開ける");
@@ -185,6 +221,9 @@ fn mixed_frames(wait_for_gpu: bool) -> usize {
 
 #[test]
 fn gpu_が遅れても別のコマが混ざらない() {
+    if !available() {
+        return;
+    }
     for _ in 0..3 {
         assert_eq!(mixed_frames(true), 0);
     }
@@ -194,6 +233,9 @@ fn gpu_が遅れても別のコマが混ざらない() {
 /// デバイスが消えない。ドライバーが直って復号できるなら開けてもよい。
 #[test]
 fn 落ちる素材は別プロセスで断られデバイスを守る() {
+    if !available() {
+        return;
+    }
     let ctx = ctx();
     let dir = fixtures(&FILES);
     let nvenc = dir.join("nvenc4k.mp4");
@@ -218,7 +260,72 @@ fn 落ちる素材は別プロセスで断られデバイスを守る() {
 }
 
 #[test]
+fn 試し復号の最後にデバイスの無事を確かめられる() {
+    if !available() {
+        return;
+    }
+    let ctx = ctx();
+    let path = fixtures(&FILES).join("cfr.mp4");
+    let mut dec = D3d12vaDecoder::open(&path, &ctx).expect("開ける");
+    for _ in 0..mm_decode_d3d12va::PROBE_FRAMES {
+        assert!(dec.next_frame().expect("復号").is_some());
+    }
+    dec.finish()
+        .expect("GPU の完了を待てて、デバイスも消えていない");
+    assert_eq!(dec.pending_surfaces(), 0, "握っていた面を全部放した");
+}
+
+#[test]
+fn pq_と_hlg_の素材は断る() {
+    if !available() {
+        return;
+    }
+    for trc in ["smpte2084", "arib-std-b67"] {
+        let path = common::hdr_transfer_fixture(trc);
+        let opened = factory().open(&path, None);
+        assert!(
+            matches!(opened, Err(MmError::Unsupported(_))),
+            "{trc}: {:?}",
+            opened.err()
+        );
+    }
+}
+
+#[test]
+fn 色差は隣の画素へ線形に補間される() {
+    if !available() {
+        return;
+    }
+    let path = common::chroma_ramp_fixture();
+    let mut dec = factory().open(&path, None).expect("開ける");
+    let frame = dec.next_frame().expect("復号").expect("コマ");
+    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の絵"), 100);
+    assert!(
+        ratio < 0.15,
+        "隣と同じ値の画素が {ratio:.2} の割合で並ぶ（最近傍の読み）"
+    );
+}
+
+/// 別のスレッドが同じキューに提出し続けても、変換が復号の完了を待たずに走って別のコマが混ざることがない。
+#[test]
+fn 別のスレッドの提出が挟まっても復号の完了を待つ() {
+    if !available() {
+        return;
+    }
+    let ctx = ctx();
+    let mut dec = open("cfr.mp4");
+    let frames = common::with_background_submits(&ctx, || drain_numbers(dec.as_mut()));
+    assert_eq!(frames.len() as i64, dec.info().frame_count());
+    for (index, number) in frames {
+        assert_eq!(index, number, "コマ {index}");
+    }
+}
+
+#[test]
 fn 待ちを外すと別のコマが混ざる_対照() {
+    if !available() {
+        return;
+    }
     let mixed = mixed_frames(false);
     assert!(
         mixed > 0,

@@ -24,9 +24,6 @@ mod decoder;
 mod hwdec;
 #[cfg(feature = "d3d12va")]
 mod probe;
-/// cuvid のクレートと同じソースを取り込む共有部。
-#[cfg(feature = "d3d12va")]
-pub mod shared;
 #[cfg(feature = "d3d12va")]
 mod wrap;
 

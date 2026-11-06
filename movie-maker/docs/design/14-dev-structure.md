@@ -78,7 +78,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の層だけを持つ。実装と組み立てはこれを使ってスパンを置き、口のクレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. 口は基礎だけに依存する。口と口の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は 1 つで、GPU を触る実装は「実装の共有部」`mm-gpu`（wgpu の文脈とアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のコマの中身の型）に依存してよい（RFC 0001）。口は wgpu を出さないので、wgpu の型を合わせる場所がここになる。`mm-gpu` は口と基礎にだけ依存し、ほかの実装には依存しない。
+3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「実装の共有部」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw` の 3 つ。GPU を触る実装は `mm-gpu`（wgpu の文脈とアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のコマの中身の型）に依存してよい（RFC 0001）。口は wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU で復号する 2 つはさらに `mm-decode-hw`（アダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。共有部は口と基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。入口（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 循環は `cargo` が断る（クレート間の循環依存はビルドできない）ので、この図のとおりに分けていれば起きない。クレートの中のモジュールの循環は、口と実装を別のクレートに置くことで防ぐ。
@@ -114,6 +114,8 @@ movie-maker/
     mm-decode-ffmpeg/   FFmpeg のライブラリ。CPU の復号と、ProRes・DNxHR・EXR の読み
     mm-decode-d3d12va/  NVDEC を d3d12va で。コピーなしで wgpu に包む
     mm-decode-cuvid/    NVDEC を cuvid で。CUDA の外部メモリで 1 コピー
+    mm-decode-ffmpeg-core/  実装の共有部。FFmpeg の CPU の部分（映像の時間軸、シーク、YUV の行列）
+    mm-decode-hw/       実装の共有部。GPU で復号する実装の部品（アダプター、キューの待ち、YUV の変換）
     mm-encode-nvenc/    NVENC（GPU の中で渡す）
     mm-encode-ffmpeg/   ProRes、DNxHR、2 パス（読み戻して渡す）
     mm-color-ocio/      OCIO 2.5 の bindgen と、GLSL → naga → WGSL
