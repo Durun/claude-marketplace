@@ -5,7 +5,7 @@ use std::path::Path;
 use mm_ingest::CacheLayout;
 use mm_ingest_api::Transcript;
 use mm_store::{Store, TranscriptInput, WordInput};
-use mm_types::Result;
+use mm_types::{AssetId, MmError, Result};
 
 /// `mm search` が出す件数の既定。
 pub const DEFAULT_LIMIT: usize = 50;
@@ -37,30 +37,49 @@ pub fn to_input(producer: &str, t: &Transcript) -> TranscriptInput {
     }
 }
 
-/// プロジェクトの素材のうち、`hashes` の素材の文字起こしの付属ファイル（`cache/ingest/<hash>.transcript.json`）を DB に入れる。
-pub fn put_transcripts(store: &mut Store, cache: &CacheLayout, hashes: &[String]) -> Result<()> {
+/// `hashes` の素材の文字起こしの付属ファイル（`cache/ingest/<hash>.transcript.json`）を `put` で DB に入れる。
+/// `assets` は（素材の ID、コンテンツハッシュ）。1 つ失敗しても残りを入れ、最後にまとめて誤りにする
+/// （素材は足し済みなので、同じ `mm ingest` をもう一度走らせれば文字起こしだけ入れ直せる）。
+pub fn put_transcripts(
+    cache: &CacheLayout,
+    hashes: &[String],
+    assets: &[(AssetId, String)],
+    mut put: impl FnMut(&AssetId, &str, &TranscriptInput) -> Result<usize>,
+) -> Result<()> {
+    let mut failures = Vec::new();
     for hash in hashes {
-        let path = cache.sidecar(hash, "transcript");
-        if !path.is_file() {
+        let Some((asset, _)) = assets.iter().find(|(_, h)| h == hash) else {
             continue;
+        };
+        match read_transcript(cache, hash) {
+            Ok(None) => {}
+            Ok(Some(input)) => match put(asset, hash, &input) {
+                Ok(n) => println!("{asset}: 文字起こし {n} 語を DB に入れた"),
+                Err(e) => failures.push(format!("{asset}: {e}")),
+            },
+            Err(e) => failures.push(format!("{asset}: {e}")),
         }
-        let sidecar = mm_ingest::sidecar::read_sidecar(&path, hash)?;
-        let mm_ingest_api::SidecarBody::Transcript(t) = &sidecar.body else {
-            continue;
-        };
-        let Some(asset) = store
-            .project()
-            .assets
-            .iter()
-            .find(|a| &a.content_hash == hash)
-            .map(|a| a.id.clone())
-        else {
-            continue;
-        };
-        let n = store.put_transcript(&asset, hash, &to_input(&sidecar.producer, t))?;
-        println!("{asset}: 文字起こし {n} 語を DB に入れた");
     }
-    Ok(())
+    if failures.is_empty() {
+        return Ok(());
+    }
+    Err(MmError::InvalidArgument(format!(
+        "素材は足したが、文字起こしを入れられなかった。同じ mm ingest をもう一度実行すると入れ直す\n  {}",
+        failures.join("\n  ")
+    )))
+}
+
+/// 付属ファイルの文字起こし。ファイルが無い、または文字起こしでなければ `None`。
+fn read_transcript(cache: &CacheLayout, hash: &str) -> Result<Option<TranscriptInput>> {
+    let path = cache.sidecar(hash, "transcript");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let sidecar = mm_ingest::sidecar::read_sidecar(&path, hash)?;
+    let mm_ingest_api::SidecarBody::Transcript(t) = &sidecar.body else {
+        return Ok(None);
+    };
+    Ok(Some(to_input(&sidecar.producer, t)))
 }
 
 /// `mm search <dir> <語>`。文字起こしから語を引き、素材と時刻を出す。`json` なら 1 行に 1 件の JSON。

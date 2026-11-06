@@ -22,11 +22,14 @@ mod records;
 mod schema;
 mod store;
 mod sync;
+mod token;
 mod transcript;
 mod transcript_search;
 mod wal;
 
-pub use backup::{format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile};
+pub use backup::{
+    format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile, BackupJob,
+};
 pub use export::{ExportReport, VERSIONS_DIR};
 pub use files::{load_json, load_project, rebase_project, store_dir, DB_FILE};
 pub use history::fold_history;

@@ -5,12 +5,15 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use mm_doc::Asset;
 use mm_ingest::{ArtifactReport, ArtifactState, CacheLayout, IngestOptions, IngestReport};
 use mm_ingest::{PreviewEncoder, Tools};
 use mm_ops::{AddAsset, Op, Transaction};
-use mm_types::{MmError, Result};
+use mm_types::{AssetId, MmError, Result};
 
-use crate::commands::{actor, cli_context, finish, now_ms, op_error, open_writer};
+use crate::commands::{actor, cli_context, finish, now_ms, op_error, open_target, Target};
+use crate::remote;
+use crate::transcript_cmd::put_transcripts;
 
 /// プロジェクトの中のキャッシュのフォルダー名。
 const CACHE_DIR: &str = "cache";
@@ -35,29 +38,74 @@ pub fn parse_encoder(text: &str) -> std::result::Result<PreviewEncoder, String> 
 }
 
 /// 素材を 1 つずつ取り込み、新しい素材をまとめて 1 つのトランザクションで足す。
+/// 別のプロセス（アプリ）が書き手なら、素材の追加は `/ops`、文字起こしは `/transcripts` で転送する。
 pub fn ingest(args: &IngestArgs) -> Result<()> {
     if args.inputs.is_empty() {
         return Err(MmError::InvalidArgument("素材のパスを 1 つ以上渡す".into()));
     }
-    let mut store = open_writer(&args.dir)?;
+    let target = open_target(&args.dir)?;
     let opts = IngestOptions {
         cache: CacheLayout::new(args.dir.join(CACHE_DIR)),
         tools: Tools::default(),
         encoder: args.encoder,
     };
-    let mut known: HashSet<String> = store
-        .project()
-        .assets
-        .iter()
-        .map(|a| a.content_hash.clone())
-        .collect();
+    let known = match &target {
+        Target::Local(store) => asset_pairs(store.project().assets.iter()),
+        Target::Remote(client) => remote::assets(client)?,
+    };
+    let (ops, hashes) = collect_ops(&opts, &args.inputs, &known)?;
+    match target {
+        Target::Local(mut store) => {
+            if !ops.is_empty() {
+                let count = ops.len();
+                let stored = store
+                    .apply_txn(
+                        Transaction::new(TXN_NAME, ops),
+                        &cli_context(),
+                        actor(),
+                        now_ms(),
+                        None,
+                    )
+                    .map_err(op_error)?;
+                println!("バージョン {}: 素材を {count} 件足した", stored.doc_version);
+            }
+            let assets = asset_pairs(store.project().assets.iter());
+            let put = |a: &_, h: &str, t: &_| store.put_transcript(a, h, t);
+            put_transcripts(&opts.cache, &hashes, &assets, put)?;
+            finish(*store)
+        }
+        Target::Remote(client) => {
+            if !ops.is_empty() {
+                remote::op(&client, &Transaction::new(TXN_NAME, ops))?;
+            }
+            let assets = remote::assets(&client)?;
+            let put = |a: &_, h: &str, t: &_| remote::put_transcript(&client, a, h, t);
+            put_transcripts(&opts.cache, &hashes, &assets, put)
+        }
+    }
+}
+
+/// 素材の（ID、コンテンツハッシュ）。
+fn asset_pairs<'a>(assets: impl Iterator<Item = &'a Asset>) -> Vec<(AssetId, String)> {
+    assets
+        .map(|a| (a.id.clone(), a.content_hash.clone()))
+        .collect()
+}
+
+/// 入力を取り込み、プロジェクトにまだ無い素材を足す操作と、全入力のコンテンツハッシュを返す。
+fn collect_ops(
+    opts: &IngestOptions,
+    inputs: &[PathBuf],
+    known: &[(AssetId, String)],
+) -> Result<(Vec<Op>, Vec<String>)> {
+    let mut seen: HashSet<String> = known.iter().map(|(_, h)| h.clone()).collect();
     let mut ops: Vec<Op> = Vec::new();
     let mut hashes = Vec::new();
-    for input in &args.inputs {
-        let report = mm_ingest::ingest(&opts, input)?;
+    for input in inputs {
+        let report = mm_ingest::ingest(opts, input)?;
         print_report(input, &report);
         hashes.push(report.asset.content_hash.clone());
-        if known.insert(report.asset.content_hash.clone()) {
+        if seen.insert(report.asset.content_hash.clone()) {
             ops.push(
                 AddAsset {
                     asset: report.asset,
@@ -69,21 +117,7 @@ pub fn ingest(args: &IngestArgs) -> Result<()> {
             println!("  素材は既にプロジェクトにある（同じコンテンツハッシュ）");
         }
     }
-    if !ops.is_empty() {
-        let count = ops.len();
-        let stored = store
-            .apply_txn(
-                Transaction::new(TXN_NAME, ops),
-                &cli_context(),
-                actor(),
-                now_ms(),
-                None,
-            )
-            .map_err(op_error)?;
-        println!("バージョン {}: 素材を {count} 件足した", stored.doc_version);
-    }
-    crate::transcript_cmd::put_transcripts(&mut store, &opts.cache, &hashes)?;
-    finish(store)
+    Ok((ops, hashes))
 }
 
 fn print_report(input: &Path, r: &IngestReport) {

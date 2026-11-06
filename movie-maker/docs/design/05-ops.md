@@ -41,15 +41,16 @@
 
 実装は `crates/mm-serve`。アプリが書き手として `project.mmdb` を開き、`mm_serve::Core`（`Store` を `Mutex` の 1 本の列で持つ）を作り、`Server` で公開する。IPC の `apply_op` も同じ `Core::apply`（`Store::apply_txn`）を通るので、どの経路で書いても `project.mmdb` に残り、変わった所（`touched`）が `Core` の通知から再生スレッド（`invalidate_touched` と描き直し）、WebView（Tauri のイベント `mm:doc-changed`）、`GET /events` の購読者に届く。
 
-- 待つ場所は 127.0.0.1 の空きポートだけ。ポートは `.mm/lock.info` の `http_port`、起動ごとの合い言葉（トークン、32 バイトの乱数の 16 進）は `.mm/token` に書く。書き手が落ちると両方消え、落ち方が悪くて残っても、次に書き手になったプロセスが消す。
+- 待つ場所は 127.0.0.1 の空きポートだけ。ポートと合い言葉の置き場所の識別子（`token_id`）は `.mm/lock.info` に書く。起動ごとの合い言葉（トークン、32 バイトの乱数の 16 進）はプロジェクトの外の持ち主専用のフォルダーに置く（Windows は `%LOCALAPPDATA%movie-maker	okens<識別子>`、フォルダーごと現在のユーザーだけの ACL。Unix は `$XDG_RUNTIME_DIR` か `~/.local/state` の同じ構成で 0700/0600）。同期のフォルダーや別アカウントの読み取りに出ない。書き手が落ちるとポートと合い言葉が消え、落ち方が悪くて残っても、次に書き手になったプロセスが消す。呼び手は書き手のロックが生きていることを確かめてから、残った情報を信じる。
 - 全部の要求で `Host`（`127.0.0.1:<port>`、`localhost:<port>`）を確かめる（DNS の再束縛を止める）。`Origin` があれば同じ待ち受けのオリジンだけを通す（別のページからの要求を止める）。合い言葉は `Authorization: Bearer <トークン>`。順に 403、403、401。CORS のヘッダーは返さない。
-- HTTP から名乗れる操作経路は `cli`（既定）と `mcp` だけで、ロックの付いた所に触る操作は拒否する。`webview` と `surface` は名乗れない。
+- HTTP から名乗れる操作経路は `cli`（既定）と `mcp` だけで、ロックの付いた所に触る操作は拒否する。`webview` と `surface` は名乗れない。`actor.kind` は操作経路で決まり、名乗れるのは `actor.name` だけ（`kind` を渡すと 400）。
 
 | パス | 中身 |
 |---|---|
-| `POST /ops` | `{"op": {...}, "name": "...", "base_version": 3}` か `{"txn": {"name": "...", "base_version": 3, "ops": [...]}}`。任意で `entry`（`cli` か `mcp`）、`actor`（`{"kind","name"}`）、`responds_to`。応答は `{"version","txn_id","kind","name","actor","touched":[...]}` |
+| `POST /ops` | `{"op": {...}, "name": "...", "base_version": 3}` か `{"txn": {"name": "...", "base_version": 3, "ops": [...]}}`。任意で `entry`（`cli` か `mcp`）、`actor`（`{"name"}`）、`responds_to`。応答は `{"version","txn_id","kind","name","actor","touched":[...]}` |
 | `POST /undo`、`POST /redo` | 本体は空か `{"entry"}`。応答は `{"change": {...}}`、無ければ `{"change": null}` |
 | `GET /project` | `{"version","undo_depth","project": {...}}`（素材のパスはフォルダーからの相対のまま） |
+| `POST /transcripts` | `{"asset","content_hash","producer","language","words":[{"segment","start","end","text"}]}`。素材の文字起こしを DB の表に入れる（前の本文は置き換える）。応答は `{"words": 件数}`。文字起こしは操作ではなく表なので `/ops` に載らない。`mm ingest` がアプリの動作中に使う |
 | `GET /frame?t=3/2&comp=main&width=640` | 1 フレームの PNG（`image/png`）。`t` は秒（`1.5`、`3/2`）。専用のスレッドの `Engine` で描くので再生を止めない |
 | `GET /events` | SSE。最初に `hello`（`{"version"}`）、書くたびに `change`（`POST /ops` の応答と同じ形）、取りこぼしたら `resync`（`GET /project` で読み直す） |
 

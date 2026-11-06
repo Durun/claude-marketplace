@@ -8,6 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use mm_doc::Project;
 use mm_types::{MmError, Result};
 
+use crate::backup::BackupJob;
 use crate::docio::{self, RowMap};
 use crate::lock::{self, LockInfo, WriterLock};
 use crate::open::set_meta;
@@ -104,23 +105,18 @@ impl Store {
     /// アプリが HTTP のポートを開いたら、`mm` が見つけられるように書く。
     pub fn publish_http_port(&self, port: u16) -> Result<()> {
         let lock = self.lock.as_ref().ok_or_else(not_writer)?;
-        lock.write_info(&LockInfo {
-            pid: std::process::id(),
-            http_port: Some(port),
-        })
+        lock.write_info(Some(port))
     }
 
     /// HTTP の入口を閉じたら、ポートと合い言葉を消す。`mm` は書き手が HTTP を持たないものとして扱う。
     pub fn unpublish_http(&self) -> Result<()> {
         let lock = self.lock.as_ref().ok_or_else(not_writer)?;
         lock.clear_token();
-        lock.write_info(&LockInfo {
-            pid: std::process::id(),
-            http_port: None,
-        })
+        lock.write_info(None)
     }
 
-    /// 起動ごとの合い言葉を `.mm/token` に書く。HTTP の呼び手はこれを持っていなければ通らない。
+    /// 起動ごとの合い言葉を、プロジェクトの外の持ち主専用のフォルダーに書く。
+    /// HTTP の呼び手はこれを持っていなければ通らない。
     pub fn publish_token(&self, token: &str) -> Result<()> {
         self.lock
             .as_ref()
@@ -131,6 +127,16 @@ impl Store {
     /// 動作中の書き手の合い言葉（プロジェクトのフォルダーから）。
     pub fn read_writer_token(dir: &Path) -> Option<String> {
         lock::read_token(dir)
+    }
+
+    /// 合い言葉のファイルのパス（権限の検査用）。
+    pub fn writer_token_file(dir: &Path) -> Option<PathBuf> {
+        lock::token_file(dir)
+    }
+
+    /// 書き手のプロセスが生きているか。`false` なら `lock.info` の中身は古い。
+    pub fn writer_alive(dir: &Path) -> bool {
+        lock::writer_alive(dir)
     }
 
     /// 動作中の書き手の情報（プロジェクトのフォルダーから）。
@@ -277,6 +283,16 @@ impl Store {
             return Ok(None);
         }
         self.backup(now_ms).map(Some)
+    }
+
+    /// 間隔が過ぎていたら、バックアップの仕事を返す（時刻は今に進める）。
+    /// 仕事は `Store` の外で走らせられるので、並べて使う側のロックを長く持たずに済む。
+    pub fn take_due_backup(&mut self, now_ms: i64) -> Option<BackupJob> {
+        if self.mode != OpenMode::Writer || now_ms - self.last_backup_ms < self.backup_interval() {
+            return None;
+        }
+        self.last_backup_ms = now_ms;
+        Some(BackupJob::new(self.dir.clone(), now_ms))
     }
 
     /// バックアップの間隔（ミリ秒）。
