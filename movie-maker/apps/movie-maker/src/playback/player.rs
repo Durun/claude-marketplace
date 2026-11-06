@@ -188,6 +188,7 @@ impl Player {
                 self.seek_to(idx as f64 / self.fps_f);
             }
             Command::Edit => self.apply_edits(),
+            Command::Reload => self.reload(),
             Command::Quit => {}
         }
     }
@@ -207,19 +208,45 @@ impl Player {
         let mut project = (*self.project).clone();
         let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
+        let touched = outcome.touches.to_vec();
+        self.adopt_project(project, &touched)?;
+        Ok(EditOutcome { touched })
+    }
+
+    /// 保存した最新のプロジェクトのデータ（HTTP の入口と IPC が書いたもの）に置き換えて描き直す。
+    fn reload(&mut self) {
+        let Some(core) = self.shared.core.get() else {
+            return;
+        };
+        let touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
+        match core.render_project() {
+            Ok((_, project)) => {
+                if let Err(e) = self.adopt_project(project, &touched) {
+                    tracing::warn!("保存した変更を描画に取り込めない: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("保存したプロジェクトのデータを読めない: {e}"),
+        }
+    }
+
+    /// `project` を再生するプロジェクトのデータにし、触った ID に頼ったキャッシュだけを捨てて描き直す。
+    fn adopt_project(
+        &mut self,
+        project: Project,
+        touched: &[String],
+    ) -> std::result::Result<(), String> {
         let comp = project
             .composition(&self.comp)
             .map_err(|_| "開いているコンポジションを消す操作は適用しない".to_owned())?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
-        let touched = outcome.touches.to_vec();
-        self.engine.invalidate_touched(&touched);
+        self.engine.invalidate_touched(touched);
         let project = Arc::new(project);
         self.project = project.clone();
         self.shared.publish_doc(project, self.comp.clone());
         self.adopt_shape(fps, duration, size);
         self.resync();
-        Ok(EditOutcome { touched })
+        Ok(())
     }
 
     /// コンポジションの fps、長さ、大きさを引き直す。操作で変わっても、再生の計算が古い値のままにならない。

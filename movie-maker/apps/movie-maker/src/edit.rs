@@ -95,9 +95,23 @@ pub async fn apply_op(
 ) -> Result<EditOutcome, String> {
     let op: Op = serde_json::from_value(op).map_err(|e| format!("操作の形が違う: {e}"))?;
     let shared = state.shared.clone();
-    tauri::async_runtime::spawn_blocking(move || submit(&shared, vec![op]))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || match shared.core.get() {
+        Some(core) => apply_saved(core, op),
+        None => submit(&shared, vec![op]),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 書き手の `Store` に適用して `project.mmdb` に書く。描き直しは変更の通知を受けた再生スレッドが行う。
+fn apply_saved(core: &mm_serve::Core, op: Op) -> Result<EditOutcome, String> {
+    let txn = mm_ops::Transaction::new("WebView の操作", vec![op]);
+    let change = core
+        .apply(txn, &mm_serve::Caller::webview(), None)
+        .map_err(|e| e.to_string())?;
+    Ok(EditOutcome {
+        touched: change.touched,
+    })
 }
 
 #[cfg(test)]

@@ -110,6 +110,29 @@ impl Store {
         })
     }
 
+    /// HTTP の入口を閉じたら、ポートと合い言葉を消す。`mm` は書き手が HTTP を持たないものとして扱う。
+    pub fn unpublish_http(&self) -> Result<()> {
+        let lock = self.lock.as_ref().ok_or_else(not_writer)?;
+        lock.clear_token();
+        lock.write_info(&LockInfo {
+            pid: std::process::id(),
+            http_port: None,
+        })
+    }
+
+    /// 起動ごとの合い言葉を `.mm/token` に書く。HTTP の呼び手はこれを持っていなければ通らない。
+    pub fn publish_token(&self, token: &str) -> Result<()> {
+        self.lock
+            .as_ref()
+            .ok_or_else(not_writer)?
+            .write_token(token)
+    }
+
+    /// 動作中の書き手の合い言葉（プロジェクトのフォルダーから）。
+    pub fn read_writer_token(dir: &Path) -> Option<String> {
+        lock::read_token(dir)
+    }
+
     /// 動作中の書き手の情報（プロジェクトのフォルダーから）。
     pub fn read_writer_info(dir: &Path) -> Option<LockInfo> {
         lock::read_info(dir)

@@ -19,6 +19,7 @@ mm-node-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-runtime = { workspace = true }
 mm-ops = { workspace = true }
+mm-serve = { workspace = true }
 mm-ui-layout = { workspace = true }
 mm-ui-wgpu = { workspace = true }
 mm-audio-cpal = { workspace = true }
