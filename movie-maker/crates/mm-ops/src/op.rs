@@ -140,6 +140,8 @@ define_ops! {
     ExtractCuts => "extractCuts",
     /// 話題の列からカットを作って差し込む。
     InsertTopics => "insertTopics",
+    /// sequence のレイヤーとコンポジションの長さを sequence の長さに合わせる。
+    FitLayer => "fitLayer",
     /// レイヤーのイン点かアウト点を動かす。
     TrimLayer => "trimLayer",
     /// 素材のイン点の印を付ける・外す。
