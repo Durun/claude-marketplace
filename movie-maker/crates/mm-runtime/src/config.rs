@@ -65,6 +65,11 @@ impl Backend {
         )
     }
 
+    /// GPU の文脈が無いと組めない実装か。`auto` は文脈が無ければ ffmpeg で動くので含まない。
+    pub fn requires_gpu(self) -> bool {
+        self.uses_gpu() && self != Backend::Auto
+    }
+
     /// 復号に D3D12 のデバイスが要る実装か（描画器のデバイスを D3D12 のアダプターで作る）。
     pub fn needs_d3d12(self) -> bool {
         matches!(self, Backend::D3d12va | Backend::Cuvid | Backend::Auto)
@@ -118,6 +123,12 @@ impl RuntimeConfig {
     /// GPU の文脈を作る要る組み合わせか。描画器、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
     pub fn needs_gpu(&self) -> bool {
         self.render.uses_gpu() || self.decode.uses_gpu() || self.text == Backend::Glyphon
+    }
+
+    /// GPU の文脈が作れないと組めない組み合わせか。`needs_gpu` のうち、`decode: auto` だけが理由なら偽
+    /// （GPU の無い環境では ffmpeg で動く）。
+    pub fn requires_gpu(&self) -> bool {
+        self.render.requires_gpu() || self.decode.requires_gpu() || self.text == Backend::Glyphon
     }
 
     /// 本物の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
@@ -179,6 +190,33 @@ mod tests {
             decode_only.needs_gpu(),
             "デコーダーが GPU を使う選択でも文脈は要る"
         );
+    }
+
+    #[test]
+    fn auto_だけが理由なら_gpu_は必須でない() {
+        let auto_only = RuntimeConfig {
+            decode: Backend::Auto,
+            ..RuntimeConfig::sample()
+        };
+        assert!(auto_only.needs_gpu() && !auto_only.requires_gpu());
+        for required in [
+            RuntimeConfig {
+                render: Backend::Wgpu,
+                decode: Backend::Auto,
+                ..RuntimeConfig::sample()
+            },
+            RuntimeConfig {
+                decode: Backend::D3d12va,
+                ..RuntimeConfig::sample()
+            },
+            RuntimeConfig {
+                text: Backend::Glyphon,
+                decode: Backend::Auto,
+                ..RuntimeConfig::sample()
+            },
+        ] {
+            assert!(required.requires_gpu(), "{required:?}");
+        }
     }
 
     #[test]
