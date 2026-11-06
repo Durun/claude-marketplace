@@ -10,7 +10,7 @@ body {
 
 .mm-shell-left {
   box-sizing: border-box;
-  width: 260px;
+  width: var(--mm-size-left-column);
   height: 100%;
   padding: var(--mm-space-md);
   overflow-y: auto;

@@ -3,6 +3,8 @@ export interface TaskItem {
   id: string;
   label: string;
   command: string;
+  /** 今は押せない項目。薄い色で出し、押しても命令は呼ばない。 */
+  disabled?: boolean;
 }
 
 /** 作業のまとまり。見出しを押すと開け閉めする。 */

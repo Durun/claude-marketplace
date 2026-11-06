@@ -24,6 +24,16 @@ describe("TasksPanel", () => {
     expect(onInvoke).toHaveBeenCalledWith(DEFAULT_GROUPS[0]?.items[0]?.command);
   });
 
+  it("disabled の項目は押せず、命令を呼ばない", () => {
+    const onInvoke = vi.fn();
+    const groups = [{ id: "g", title: "G", items: [{ id: "a", label: "A", command: "a.run", disabled: true }] }];
+    render(<TasksPanel groups={groups} onInvoke={onInvoke} />, host);
+    const link = host.querySelector<HTMLButtonElement>(".mm-tasks-link");
+    expect(link?.disabled).toBe(true);
+    click(link);
+    expect(onInvoke).not.toHaveBeenCalled();
+  });
+
   it("見出しを押すとまとまりを閉じて、もう一度で開く", () => {
     render(<TasksPanel onInvoke={vi.fn()} />, host);
     const toggle = host.querySelector(".mm-tasks-toggle");
