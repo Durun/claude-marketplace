@@ -17,6 +17,7 @@
 mod audio;
 mod cache;
 mod compose;
+mod crossfade;
 mod effects;
 mod export;
 mod layers;
