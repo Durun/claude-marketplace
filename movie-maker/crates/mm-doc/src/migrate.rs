@@ -41,6 +41,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             1 => v1_to_v2(&mut value),
             2 => v2_to_v3(&mut value),
             3 => v3_to_v4(&mut value),
+            4 => crate::migrate_lut::v4_to_v5(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -258,6 +259,13 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
         let read = |v: &str| load(&std::fs::read_to_string(dir.join(v)).unwrap()).unwrap();
         assert_eq!(read("v3/stage1.json"), read("v4/stage1.json"));
+    }
+
+    #[test]
+    fn 凍結した_v5_のプロジェクトのデータは_v4_から上げたプロジェクトのデータと同じ() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let read = |v: &str| load(&std::fs::read_to_string(dir.join(v)).unwrap()).unwrap();
+        assert_eq!(read("v4/stage1.json"), read("v5/stage1.json"));
     }
 
     #[test]

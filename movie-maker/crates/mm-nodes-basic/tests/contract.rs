@@ -118,7 +118,7 @@ fn color_lut_は契約を満たす() {
         "/../../fixtures/luts/invert.cube"
     );
     let mut params = Params::new();
-    params.set("path", ParamValue::Text(path.into()));
+    params.set("lut", ParamValue::AssetRef(mm_types::Id::new(path)));
     contract(
         || Arc::new(ColorLutKind::default()),
         &effect_fixture(params),

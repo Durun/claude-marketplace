@@ -149,7 +149,7 @@ fn color_lut_は_gpu_と_cpu_で一致する() {
         check(
             &ColorLutKind::default(),
             &[
-                ("path", ParamValue::Text(path.into())),
+                ("lut", ParamValue::AssetRef(mm_types::Id::new(path))),
                 ("intensity", ParamValue::Number(0.75)),
                 ("input_space", ParamValue::Choice(space.into())),
             ],
