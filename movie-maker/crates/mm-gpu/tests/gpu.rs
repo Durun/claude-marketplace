@@ -37,12 +37,12 @@ fn shared_は合わない求めを黙って捨てない() {
         GpuContext::shared(&other_adapter),
         Err(MmError::InvalidArgument(_))
     ));
-    let other_features = GpuRequest {
-        optional_features: wgpu::Features::empty(),
+    let more_features = GpuRequest {
+        optional_features: GpuRequest::default().optional_features | wgpu::Features::SHADER_F16,
         ..GpuRequest::default()
     };
     assert!(matches!(
-        GpuContext::shared(&other_features),
+        GpuContext::shared(&more_features),
         Err(MmError::InvalidArgument(_))
     ));
     let same = GpuRequest {
@@ -50,6 +50,28 @@ fn shared_は合わない求めを黙って捨てない() {
         ..GpuRequest::default()
     };
     assert!(Arc::ptr_eq(&GpuContext::shared(&same).unwrap(), &ctx));
+}
+
+/// 全バックエンドで作った後の、バックエンドを絞った求め（`decode: ffmpeg` の後の `decode: auto`）。
+#[test]
+fn shared_は選んだアダプターが求めの範囲にあれば同じ文脈を返す() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    let narrowed = GpuRequest {
+        backends: wgpu::Backends::from(ctx.backend()),
+        optional_features: wgpu::Features::empty(),
+        ..GpuRequest::default()
+    };
+    assert!(Arc::ptr_eq(&GpuContext::shared(&narrowed).unwrap(), &ctx));
+    let elsewhere = GpuRequest {
+        backends: wgpu::Backends::all() - wgpu::Backends::from(ctx.backend()),
+        ..GpuRequest::default()
+    };
+    assert!(matches!(
+        GpuContext::shared(&elsewhere),
+        Err(MmError::InvalidArgument(_))
+    ));
 }
 
 #[test]
