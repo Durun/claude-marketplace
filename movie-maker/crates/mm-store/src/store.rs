@@ -42,7 +42,7 @@ pub enum StoreWarning {
 /// 検索の 1 件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {
-    /// `layer`、`marker`、`composition`、`asset`。
+    /// `layer`、`marker`、`composition`、`asset`、`topic`（話題の見出し）、`tag`（選別と話題のタグ）。
     pub kind: String,
     /// 持ち主の行のキー（`layers/<comp>/<id>` など）。
     pub owner: String,
