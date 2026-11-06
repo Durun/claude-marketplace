@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import { XP_SCROLLBAR_STYLE } from './docFrame.ts';
 
-export const SKINS = { default: 'デフォルト', xp: 'Windows XP' } as const;
+export const SKINS = { xp: 'Windows XP' } as const;
 export type Skin = keyof typeof SKINS;
 const SKIN_KEY = 'dashboard-skin';
 
 const load = (): Skin => {
   const v = localStorage.getItem(SKIN_KEY) ?? '';
-  return Object.hasOwn(SKINS, v) ? (v as Skin) : 'default';
+  return Object.hasOwn(SKINS, v) ? (v as Skin) : 'xp';
 };
 
 let skin = load();

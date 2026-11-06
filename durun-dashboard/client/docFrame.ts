@@ -272,7 +272,7 @@ export const parseDelimited = (text: string, sep: string): string[][] => {
  * ファイルから読んだ HTML の資料は、相対パスで埋め込んだ音声や画像を、サーバーが資料のディレクトリから返すアドレスへ向ける。
  * embedded は Markdown の本文に埋め込む図で、ページの余白と背景を外す。
  */
-export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<Doc, 'id' | 'path'>>, skin: Skin = 'default', embedded = false): string => {
+export const buildSrcdoc = (doc: Pick<Doc, 'format' | 'content'> & Partial<Pick<Doc, 'id' | 'path'>>, skin: Skin = 'xp', embedded = false): string => {
   const skinStyle = skin === 'xp' ? `<style>${XP_SCROLLBAR_STYLE}</style>` : '';
   // HTML や SVG の資料は、先頭に足すと doctype より前になって互換モードに落ちるので、末尾に足す。
   if (doc.format === 'html') {
