@@ -1,4 +1,4 @@
-//! 音のトラック: f32 のインターリーブ → プレーナー → AAC。
+//! 音のトラック: f32 のインターリーブ → AAC（プレーナー）または 24 ビット PCM（インターリーブ）。
 
 use ff::format::context::Output;
 use ff::format::sample::{Sample, Type};
@@ -8,8 +8,14 @@ use mm_audio_api::AudioBlock;
 use mm_decode_api::AudioStreamInfo;
 use mm_types::{MmError, Result};
 
+use crate::spec::AudioCodec;
+
 /// AAC のビットレート（bit/s）。
 const BIT_RATE: usize = 192_000;
+/// フレームの大きさが決まっていない PCM を送る 1 回のサンプル数（チャンネルあたり）。
+const PCM_CHUNK: usize = 4096;
+/// 24 ビットの PCM は 32 ビット整数の上位 24 ビットで渡す。f32 の ±1.0 をこの値に写す。
+const I32_SCALE: f32 = 2_147_483_647.0;
 
 /// 音のエンコーダーと、出力の中のストリーム。
 pub struct AudioTrack {
@@ -19,6 +25,7 @@ pub struct AudioTrack {
     stream_tb: Rational,
     rate: u32,
     channels: u16,
+    codec_kind: AudioCodec,
     /// AAC の 1 フレームに満たない端数のサンプル（インターリーブ）。
     pending: Vec<f32>,
     /// エンコーダーに渡したサンプル数。次のフレームの PTS。
@@ -26,10 +33,19 @@ pub struct AudioTrack {
 }
 
 impl AudioTrack {
-    /// 出力にストリームを足し、AAC のエンコーダーを開く。
-    pub fn open(output: &mut Output, info: &AudioStreamInfo, global_header: bool) -> Result<Self> {
-        let codec = encoder::find(codec::Id::AAC)
-            .ok_or_else(|| MmError::Unsupported("AAC のエンコーダーが無い FFmpeg".into()))?;
+    /// 出力にストリームを足し、音のエンコーダーを開く。
+    pub fn open(
+        output: &mut Output,
+        info: &AudioStreamInfo,
+        kind: AudioCodec,
+        global_header: bool,
+    ) -> Result<Self> {
+        let (codec_id, label) = match kind {
+            AudioCodec::Aac => (codec::Id::AAC, "AAC"),
+            AudioCodec::PcmS24 => (codec::Id::PCM_S24LE, "PCM 24 ビット"),
+        };
+        let codec = encoder::find(codec_id)
+            .ok_or_else(|| MmError::Unsupported(format!("{label} のエンコーダーが無い FFmpeg")))?;
         let mut stream = output
             .add_stream(codec)
             .map_err(|e| MmError::Internal(format!("音ストリーム: {e}")))?;
@@ -41,15 +57,17 @@ impl AudioTrack {
         let time_base = Rational::new(1, info.sample_rate as i32);
         enc.set_rate(info.sample_rate as i32);
         enc.set_channel_layout(ChannelLayout::default(i32::from(info.channels)));
-        enc.set_format(Sample::F32(Type::Planar));
-        enc.set_bit_rate(BIT_RATE);
+        enc.set_format(sample_format(kind));
+        if kind == AudioCodec::Aac {
+            enc.set_bit_rate(BIT_RATE);
+        }
         enc.set_time_base(time_base);
         if global_header {
             enc.set_flags(codec::Flags::GLOBAL_HEADER);
         }
         let opened = enc.open().map_err(|e| {
             MmError::Unsupported(format!(
-                "AAC を開けない（{}Hz {}ch）: {e}",
+                "{label} を開けない（{}Hz {}ch）: {e}",
                 info.sample_rate, info.channels
             ))
         })?;
@@ -62,6 +80,7 @@ impl AudioTrack {
             stream_tb: time_base,
             rate: info.sample_rate,
             channels: info.channels,
+            codec_kind: kind,
             pending: Vec::new(),
             sent: 0,
         })
@@ -84,7 +103,11 @@ impl AudioTrack {
             )));
         }
         self.pending.extend_from_slice(&block.samples);
-        let frame_len = self.encoder.frame_size() as usize * self.channels as usize;
+        let per_channel = match self.encoder.frame_size() as usize {
+            0 => PCM_CHUNK,
+            n => n,
+        };
+        let frame_len = per_channel * self.channels as usize;
         let mut taken = 0;
         while self.pending.len() - taken >= frame_len {
             self.send(output, taken, frame_len)?;
@@ -112,15 +135,27 @@ impl AudioTrack {
         let channels = self.channels as usize;
         let samples = len / channels;
         let mut frame = frame::Audio::new(
-            Sample::F32(Type::Planar),
+            sample_format(self.codec_kind),
             samples,
             ChannelLayout::default(i32::from(self.channels)),
         );
         frame.set_rate(self.rate);
-        for ch in 0..channels {
-            let plane = frame.plane_mut::<f32>(ch);
-            for (i, out) in plane.iter_mut().take(samples).enumerate() {
-                *out = self.pending[from + i * channels + ch];
+        let src = &self.pending[from..from + len];
+        match self.codec_kind {
+            AudioCodec::Aac => {
+                for ch in 0..channels {
+                    let plane = frame.plane_mut::<f32>(ch);
+                    for (out, frame_samples) in plane.iter_mut().zip(src.chunks_exact(channels)) {
+                        *out = frame_samples[ch];
+                    }
+                }
+            }
+            AudioCodec::PcmS24 => {
+                let plane = frame.plane_mut::<i32>(0);
+                for (out, sample) in plane.iter_mut().zip(src) {
+                    // 24 ビットの PCM エンコーダーは上位 24 ビットだけを使う
+                    *out = (sample.clamp(-1.0, 1.0) * I32_SCALE) as i32;
+                }
             }
         }
         frame.set_pts(Some(self.sent));
@@ -132,13 +167,20 @@ impl AudioTrack {
     }
 
     fn drain(&mut self, output: &mut Output) -> Result<()> {
-        crate::drain_packets(
+        crate::writer::drain_packets(
             &mut self.encoder,
-            output,
+            Some(output),
             self.stream_index,
             self.time_base,
             self.stream_tb,
             0,
         )
+    }
+}
+
+fn sample_format(kind: AudioCodec) -> Sample {
+    match kind {
+        AudioCodec::Aac => Sample::F32(Type::Planar),
+        AudioCodec::PcmS24 => Sample::I32(Type::Packed),
     }
 }

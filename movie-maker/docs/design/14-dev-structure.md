@@ -78,7 +78,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の `Layer` だけを持つ。実装と組み立てはこれを使ってスパンを置き、API クレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. API クレートは基礎だけに依存する。API クレート同士の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw` の 3 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
+3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core` の 4 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0014）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。操作経路（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 循環は `cargo` が拒否する（クレート間の循環依存はビルドできない）ので、この図のとおりに分けていれば起きない。クレートの中のモジュールの循環は、API クレートと実装を別のクレートに置くことで防ぐ。
@@ -116,8 +116,9 @@ movie-maker/
     mm-decode-cuvid/    NVDEC を cuvid で。CUDA の外部メモリで 1 コピー
     mm-decode-ffmpeg-core/  共通実装。FFmpeg の CPU の部分（映像の時間軸、シーク、YUV の行列）
     mm-decode-hw/       共通実装。GPU でデコードする実装の部品（アダプター、キューの待ち、YUV の変換）
-    mm-encode-nvenc/    NVENC（GPU の中で渡す）
-    mm-encode-ffmpeg/   ProRes、DNxHR、2 パス（リードバックして渡す）
+    mm-encode-ffmpeg-core/  共通実装。コーデックの指定（CodecSpec）から MP4 と MOV に書く（RFC 0014）
+    mm-encode-nvenc/    NVENC（FFmpeg の h264_nvenc、hevc_nvenc。NV12 を CPU のメモリから渡す）
+    mm-encode-ffmpeg/   libx264（1 パスと 2 パス）、ProRes、DNxHR（リードバックして渡す）
     mm-color-ocio/      OCIO 2.5 の bindgen と、GLSL → naga → WGSL
     mm-color-lut/       ASC CDL と .cube を WGSL で。OCIO が動かないときの 3D LUT のフォールバック
     mm-audio-dsp/       自前の DSP のミキサー、バス、ダッキング、ebur128

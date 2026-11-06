@@ -39,6 +39,48 @@ impl EncodeTable {
     }
 }
 
+/// 16 ビットの表で、これより暗い線形の値は式で求める。表の 1 段（`1 / LUT_SIZE`）の符号化値の幅が、10 ビットの
+/// 半段（`TOLERANCE_16` = 32）を超える暗さの上限。
+const DARK_LIMIT_16: f32 = 1.0e-3;
+/// 16 ビットの表と式のずれの上限（16 ビットの符号化値で、10 ビットの半段）。
+#[cfg(test)]
+const TOLERANCE_16: i32 = 32;
+
+/// 線形の値を 16 ビットの符号化値へ。10 ビットの YUV へ縮める前の精度を保つ（8 ビットを経由すると 10 ビットの階調が出ない）。
+pub struct EncodeTable16 {
+    lut: Vec<u16>,
+}
+
+impl EncodeTable16 {
+    pub fn new() -> Self {
+        let lut = (0..LUT_SIZE)
+            .map(|i| exact16((i as f32 + 0.5) / (LUT_SIZE - 1) as f32))
+            .collect();
+        Self { lut }
+    }
+
+    /// 線形の値 → 符号化値。範囲外は端に丸め、NaN は 0。暗部は表の 1 段が粗いので式で求める。
+    pub fn encode(&self, linear: f32) -> u16 {
+        if linear.is_nan() || linear < DARK_LIMIT_16 {
+            return exact16(linear);
+        }
+        self.lut[((linear * (LUT_SIZE - 1) as f32) as usize).min(LUT_SIZE - 1)]
+    }
+}
+
+impl Default for EncodeTable16 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn exact16(linear: f32) -> u16 {
+    if linear.is_nan() {
+        return 0;
+    }
+    (linear.clamp(0.0, 1.0).powf(1.0 / GAMMA) * 65535.0).round() as u16
+}
+
 fn search(bounds: &[f32; 255], linear: f32) -> u8 {
     bounds.partition_point(|b| *b <= linear) as u8
 }
@@ -72,6 +114,24 @@ mod tests {
             assert!((got - exact).abs() <= 1, "線形 {v}: 式 {exact} 表 {got}");
             v *= 1.003;
         }
+    }
+
+    #[test]
+    fn 十六ビットの表は式と_10_ビットの半段以内しかずれない() {
+        let table = EncodeTable16::new();
+        let mut v = 1.0e-7f32;
+        while v < 1.0 {
+            let exact = i32::from(exact16(v));
+            let got = i32::from(table.encode(v));
+            assert!(
+                (got - exact).abs() <= TOLERANCE_16,
+                "線形 {v}: 式 {exact} 表 {got}"
+            );
+            v *= 1.003;
+        }
+        assert_eq!(table.encode(1.0), 65535);
+        assert_eq!(table.encode(-1.0), 0);
+        assert_eq!(table.encode(f32::NAN), 0);
     }
 
     #[test]

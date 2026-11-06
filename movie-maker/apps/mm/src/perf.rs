@@ -2,6 +2,7 @@
 //!
 //! 結果は `mm-trace` の `metrics.jsonl` の形（1 行 1 集計）と、予算つきの結果の JSON の 2 つ。
 
+use std::borrow::Cow;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,7 +12,10 @@ use mm_trace::{MetricsHandle, MetricsSnapshot};
 use mm_types::{MmError, Result};
 use serde_json::{json, Value};
 
-use crate::{scenes, scenes_cpu, scenes_render};
+use crate::{scenes, scenes_cpu, scenes_export, scenes_render};
+
+/// 4K（3840x2160）として扱う幅。
+const UHD_WIDTH: u32 = 3840;
 
 /// 回せるシナリオ。`cpu` 以外は GPU が要り（`export` と `startup` は FFmpeg の素材も要る）、CI では回せない。
 /// `all` は GPU のシナリオを全部と `cpu`。
@@ -59,7 +63,7 @@ pub struct Budget {
 /// 1 つの測定項目。`value` は繰り返しの中央値。
 #[derive(Debug, Clone)]
 pub struct Item {
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     pub unit: &'static str,
     pub value: f64,
     pub samples: Vec<f64>,
@@ -69,13 +73,13 @@ pub struct Item {
 impl Item {
     /// サンプルの中央値を値にした項目。
     pub fn from_samples(
-        name: &'static str,
+        name: impl Into<Cow<'static, str>>,
         unit: &'static str,
         samples: Vec<f64>,
         budget: Option<Budget>,
     ) -> Self {
         Self {
-            name,
+            name: name.into(),
             unit,
             value: median(&samples),
             samples,
@@ -142,6 +146,12 @@ pub struct PerfArgs {
     pub baseline: bool,
     /// 描画のシナリオで使う GPU の名前の一部。`None` は高性能のアダプター。
     pub adapter: Option<String>,
+    /// `export` のコーデックの上書き。`None` はプロジェクトのレンダーターゲットのまま。
+    pub codec: Option<String>,
+    /// `export` で並行に描くレンダラーの数。
+    pub parallel: usize,
+    /// `export` で、コーデックと並行の数の組（`scenes_export::MATRIX`）を全部測る。
+    pub matrix: bool,
 }
 
 /// シナリオを回して分かった、測った環境。
@@ -163,7 +173,7 @@ pub fn run(args: &PerfArgs, metrics: &MetricsHandle) -> Result<()> {
         items.extend(scenes::startup(args)?);
     }
     if all || args.scene == Scene::Export {
-        items.extend(scenes::export(args, &mut env)?);
+        items.extend(scenes_export::export(args, &mut env)?);
     }
     if all || args.scene == Scene::Playback {
         items.extend(scenes_render::playback(args, &mut env, metrics)?);
@@ -235,7 +245,7 @@ fn write_results(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let adapter = env.adapter.clone();
-    let scene = args.scene.name();
+    let scene = scene_label(args);
     let metrics: Value = serde_json::from_str(&snapshot.to_jsonl_line())?;
     let doc = json!({
         "scene": scene,
@@ -260,6 +270,17 @@ fn write_results(
         )?;
     }
     Ok(path)
+}
+
+/// 結果の `scene` と、ベースラインのファイル名の元。`export` を 4K で測ったときは別の組として扱う
+/// （同じ項目の名前で、1080p の結果と混ざらないように）。
+fn scene_label(args: &PerfArgs) -> String {
+    let name = args.scene.name();
+    if args.scene == Scene::Export && args.size.0 >= UHD_WIDTH {
+        format!("{name}-4k")
+    } else {
+        name
+    }
 }
 
 fn append_line(path: &Path, line: &str) -> Result<()> {

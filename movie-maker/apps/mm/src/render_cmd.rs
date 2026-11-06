@@ -42,6 +42,13 @@ pub struct RenderArgs {
     /// 書き出す区間（秒）。`開始:終了` の形で、コンポジションの範囲に収める。
     #[arg(long, value_parser = parse_range)]
     pub range: Option<TimeRange>,
+    /// レンダーターゲットのコーデックを上書きする（`h264`、`h264_2pass`、`h264_nvenc`、`hevc_nvenc`、
+    /// `prores_422hq`、`prores_4444`、`dnxhr_hq` など）。NVIDIA の GPU が無いと `h264_nvenc` は libx264 で書く。
+    #[arg(long)]
+    pub codec: Option<String>,
+    /// 並行に描くレンダラーの数。1 は並行にしない。
+    #[arg(long, default_value_t = 1)]
+    pub parallel: usize,
     /// 書き出したあとの ffprobe の検証を省く。
     #[arg(long)]
     pub no_verify: bool,
@@ -74,6 +81,8 @@ pub fn render(args: &RenderArgs) -> Result<()> {
         output: args.output.clone(),
         range: args.range,
         sequence: args.sequence.clone().map(Id::new),
+        codec: args.codec.clone(),
+        parallel: args.parallel,
         verify: !args.no_verify,
         control,
         ..ExportOptions::default()

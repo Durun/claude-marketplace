@@ -37,7 +37,9 @@ mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
 mm-text-glyphon = { path = "crates/mm-text-glyphon" }
 mm-audio-dsp = { path = "crates/mm-audio-dsp" }
 mm-decode-ffmpeg = { path = "crates/mm-decode-ffmpeg" }
+mm-encode-ffmpeg-core = { path = "crates/mm-encode-ffmpeg-core" }
 mm-encode-ffmpeg = { path = "crates/mm-encode-ffmpeg" }
+mm-encode-nvenc = { path = "crates/mm-encode-nvenc" }
 mm-export = { path = "crates/mm-export" }
 mm-ops = { path = "crates/mm-ops" }
 mm-store = { path = "crates/mm-store" }

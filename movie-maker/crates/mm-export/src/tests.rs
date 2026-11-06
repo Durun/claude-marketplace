@@ -125,6 +125,9 @@ fn エンコーダーの失敗は最初のエラーで止まる() {
         composition: &comp,
         range: project.composition(&comp).unwrap().range().unwrap(),
         control: &control,
+        parallel: 0,
+        parallel_min_frames: None,
+        pass: PassPosition { index: 1, of: 1 },
     };
     let mut encoder = FailingEncoder::default();
     let (result, _) = with_metrics(|| {

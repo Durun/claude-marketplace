@@ -1,0 +1,486 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5090",
+  "items": [
+    {
+      "better": "higher",
+      "budget": {
+        "kind": "at_least",
+        "row": "書き出し（1080p60、NVENC、1 プロセス）",
+        "value": 120.0
+      },
+      "name": "export.fps",
+      "ok": false,
+      "samples": [
+        65.7637760560602,
+        63.84887872802562
+      ],
+      "unit": "fps",
+      "value": 64.8063273920429
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.fps_cold",
+      "ok": null,
+      "samples": [
+        65.7637760560602
+      ],
+      "unit": "fps",
+      "value": 65.7637760560602
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.elapsed_ms",
+      "ok": null,
+      "samples": [
+        9123.5637,
+        9397.1893
+      ],
+      "unit": "ms",
+      "value": 9260.3765
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264.p1.fps",
+      "ok": null,
+      "samples": [
+        58.399153640532674,
+        58.89521354771309
+      ],
+      "unit": "fps",
+      "value": 58.64718359412288
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264.p1.fps_cold",
+      "ok": null,
+      "samples": [
+        58.399153640532674
+      ],
+      "unit": "fps",
+      "value": 58.399153640532674
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264.p1.elapsed_ms",
+      "ok": null,
+      "samples": [
+        10274.1215,
+        10187.5851
+      ],
+      "unit": "ms",
+      "value": 10230.853299999999
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264.p4.fps",
+      "ok": null,
+      "samples": [
+        56.19381321101564,
+        61.760740025421754
+      ],
+      "unit": "fps",
+      "value": 58.977276618218696
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264.p4.fps_cold",
+      "ok": null,
+      "samples": [
+        56.19381321101564
+      ],
+      "unit": "fps",
+      "value": 56.19381321101564
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264.p4.elapsed_ms",
+      "ok": null,
+      "samples": [
+        10677.332,
+        9714.9095
+      ],
+      "unit": "ms",
+      "value": 10196.12075
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_2pass.p1.fps",
+      "ok": null,
+      "samples": [
+        32.24288002647355,
+        20.352736878491314
+      ],
+      "unit": "fps",
+      "value": 26.297808452482432
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_2pass.p1.fps_cold",
+      "ok": null,
+      "samples": [
+        32.24288002647355
+      ],
+      "unit": "fps",
+      "value": 32.24288002647355
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264_2pass.p1.elapsed_ms",
+      "ok": null,
+      "samples": [
+        18608.7595,
+        29480.0647
+      ],
+      "unit": "ms",
+      "value": 24044.4121
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_2pass.p4.fps",
+      "ok": null,
+      "samples": [
+        25.178561849477493,
+        30.98046447296132
+      ],
+      "unit": "fps",
+      "value": 28.079513161219406
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_2pass.p4.fps_cold",
+      "ok": null,
+      "samples": [
+        25.178561849477493
+      ],
+      "unit": "fps",
+      "value": 25.178561849477493
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264_2pass.p4.elapsed_ms",
+      "ok": null,
+      "samples": [
+        23829.7963,
+        19367.0434
+      ],
+      "unit": "ms",
+      "value": 21598.41985
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_nvenc.p1.fps",
+      "ok": null,
+      "samples": [
+        90.4807058942751,
+        77.15676994138902
+      ],
+      "unit": "fps",
+      "value": 83.81873791783207
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_nvenc.p1.fps_cold",
+      "ok": null,
+      "samples": [
+        90.4807058942751
+      ],
+      "unit": "fps",
+      "value": 90.4807058942751
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264_nvenc.p1.elapsed_ms",
+      "ok": null,
+      "samples": [
+        6631.2480000000005,
+        7776.3753
+      ],
+      "unit": "ms",
+      "value": 7203.81165
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_nvenc.p4.fps",
+      "ok": null,
+      "samples": [
+        78.1839627205314,
+        74.31376900746493
+      ],
+      "unit": "fps",
+      "value": 76.24886586399816
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.h264_nvenc.p4.fps_cold",
+      "ok": null,
+      "samples": [
+        78.1839627205314
+      ],
+      "unit": "fps",
+      "value": 78.1839627205314
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.h264_nvenc.p4.elapsed_ms",
+      "ok": null,
+      "samples": [
+        7674.2081,
+        8073.8739000000005
+      ],
+      "unit": "ms",
+      "value": 7874.041
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.hevc_nvenc.p1.fps",
+      "ok": null,
+      "samples": [
+        72.768042235736,
+        94.34414700704986
+      ],
+      "unit": "fps",
+      "value": 83.55609462139293
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.hevc_nvenc.p1.fps_cold",
+      "ok": null,
+      "samples": [
+        72.768042235736
+      ],
+      "unit": "fps",
+      "value": 72.768042235736
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.hevc_nvenc.p1.elapsed_ms",
+      "ok": null,
+      "samples": [
+        8245.3778,
+        6359.695000000001
+      ],
+      "unit": "ms",
+      "value": 7302.536400000001
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.hevc_nvenc.p4.fps",
+      "ok": null,
+      "samples": [
+        83.60909237731724,
+        110.94510231089217
+      ],
+      "unit": "fps",
+      "value": 97.2770973441047
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.hevc_nvenc.p4.fps_cold",
+      "ok": null,
+      "samples": [
+        83.60909237731724
+      ],
+      "unit": "fps",
+      "value": 83.60909237731724
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.hevc_nvenc.p4.elapsed_ms",
+      "ok": null,
+      "samples": [
+        7176.253,
+        5408.0801
+      ],
+      "unit": "ms",
+      "value": 6292.16655
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.prores_422hq.p1.fps",
+      "ok": null,
+      "samples": [
+        8.901954874928439,
+        8.742693388712896
+      ],
+      "unit": "fps",
+      "value": 8.822324131820668
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.prores_422hq.p1.fps_cold",
+      "ok": null,
+      "samples": [
+        8.901954874928439
+      ],
+      "unit": "fps",
+      "value": 8.901954874928439
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.prores_422hq.p1.elapsed_ms",
+      "ok": null,
+      "samples": [
+        67400.9258,
+        68628.7364
+      ],
+      "unit": "ms",
+      "value": 68014.8311
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.prores_422hq.p4.fps",
+      "ok": null,
+      "samples": [
+        12.740982329270418,
+        13.718510796114744
+      ],
+      "unit": "fps",
+      "value": 13.229746562692581
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.prores_422hq.p4.fps_cold",
+      "ok": null,
+      "samples": [
+        12.740982329270418
+      ],
+      "unit": "fps",
+      "value": 12.740982329270418
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.prores_422hq.p4.elapsed_ms",
+      "ok": null,
+      "samples": [
+        47092.130300000004,
+        43736.5257
+      ],
+      "unit": "ms",
+      "value": 45414.328
+    }
+  ],
+  "metrics": {
+    "counters": {
+      "cache.frame_hits": 29687,
+      "cache.frame_lookups": 31200,
+      "decode.index_cache_hits": 124,
+      "export.frames": 13200,
+      "render.layers_drawn": 31200,
+      "render.source_opens": 52,
+      "render.source_seeks": 223
+    },
+    "gauges": {
+      "cache.frame_entries": 31,
+      "cache.frame_memory_bytes": 13876920,
+      "export.fps": 13.718510796114744,
+      "render.gpu_frame_us": 38
+    },
+    "spans": {
+      "decode.copy": {
+        "count": 1672,
+        "max_us": 7429,
+        "p50_us": 95,
+        "p95_us": 230,
+        "p99_us": 1766
+      },
+      "decode.next_frame": {
+        "count": 1672,
+        "max_us": 122662,
+        "p50_us": 1077,
+        "p95_us": 4247,
+        "p99_us": 54161
+      },
+      "export.encode": {
+        "count": 9950,
+        "max_us": 685897,
+        "p50_us": 8497,
+        "p95_us": 125566,
+        "p99_us": 157955
+      },
+      "export.render": {
+        "count": 15600,
+        "max_us": 597017,
+        "p50_us": 14181,
+        "p95_us": 107311,
+        "p99_us": 132726
+      },
+      "export.run": {
+        "count": 22,
+        "max_us": 68628970,
+        "p50_us": 10187736,
+        "p95_us": 67401051,
+        "p99_us": 68628970
+      },
+      "render.audio": {
+        "count": 22,
+        "max_us": 457331,
+        "p50_us": 89839,
+        "p95_us": 155221,
+        "p99_us": 457331
+      },
+      "render.export": {
+        "count": 332,
+        "max_us": 15878145,
+        "p50_us": 237533,
+        "p95_us": 1210825,
+        "p99_us": 9408686
+      },
+      "render.gpu_frame": {
+        "count": 15551,
+        "max_us": 3992,
+        "p50_us": 62,
+        "p95_us": 113,
+        "p99_us": 131
+      },
+      "render.range": {
+        "count": 602,
+        "max_us": 68323994,
+        "p50_us": 157625,
+        "p95_us": 242436,
+        "p99_us": 645093
+      },
+      "runtime.render_audio": {
+        "count": 22,
+        "max_us": 457344,
+        "p50_us": 89850,
+        "p95_us": 155235,
+        "p99_us": 457344
+      }
+    }
+  },
+  "repeat": 2,
+  "scene": "export-4k",
+  "timestamp": 1793992110
+}

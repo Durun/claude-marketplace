@@ -9,9 +9,12 @@
 //!   sequence のまま（[`ExportOptions::sequence`]）の書き出し。
 //! - 出力は `<名前>.partial.<拡張子>` に書き、完成してから置き換える。失敗と取り消しでは一時ファイルを消す。
 //! - 進み具合と取り消しは [`ExportControl`]。結果の検証は [`verify`]（ffprobe）。
-//! - 1 プロセス・1 区間で、並行の描画（区間の分割と mux）とラウドネスの正規化は段階 4。
+//! - 並行の描画（[`ExportOptions::parallel`]）。区間を短いチャンクに分けて複数のレンダラーで描き、フレームの順に
+//!   エンコーダーへ押す。2 パスのコーデックは、同じ描画を 2 回通す。ラウドネスの正規化は別の担当。
 
 mod control;
+mod ordered;
+mod parallel;
 mod sequence;
 pub mod verify;
 
@@ -23,7 +26,7 @@ use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings, Encoder, Nv12
 use mm_doc::{Project, SequenceId};
 use mm_node_api::Quality;
 use mm_render_api::RangeRequest;
-use mm_runtime::Engine;
+use mm_runtime::{Engine, RuntimeConfig};
 use mm_types::{MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange};
 
 pub use control::{ExportControl, ExportProgress, ProgressFn};
@@ -49,6 +52,14 @@ pub struct ExportOptions {
     pub sequence: Option<SequenceId>,
     /// 書き出したあと ffprobe で出力を検証する。モックのエンコーダー（JSON を書く）では使えない。
     pub verify: bool,
+    /// プロジェクトのデータのレンダーターゲットの `codec` を上書きする（`h264_nvenc`、`prores_422hq` など）。
+    pub codec: Option<String>,
+    /// 並行に描くレンダラーの数。0 と 1 は並行にしない（`Engine` のレンダラー 1 つで描く）。
+    /// 2 以上は、レンダラーを作れる設定で組んだ別の `Engine` をその数だけ作り、区間をチャンクに分けて描かせる。
+    pub parallel: usize,
+    /// 並行にする最短のフレーム数。`None` は `parallel` 本 x 30 フレーム以上のとき（それより短いと全ワーカーに
+    /// チャンクが回らないので、1 つのレンダラーで描く）。
+    pub parallel_min_frames: Option<u64>,
     /// 取り消しと進み具合。
     pub control: ExportControl,
 }
@@ -209,6 +220,9 @@ pub fn export_run(
     ensure_parent(&output_path)?;
     let partial = PartialFile::new(partial_path(&output_path));
     set_output(&mut project, &target, &partial_path(&output_path))?;
+    if let Some(codec) = &options.codec {
+        set_codec(&mut project, &target, codec)?;
+    }
 
     let started = Instant::now();
     let Some(done) = export_target(engine, &project, &target, options)? else {
@@ -246,10 +260,82 @@ fn set_output(project: &mut Project, target: &RenderTargetId, path: &Path) -> Re
     Ok(())
 }
 
+fn set_codec(project: &mut Project, target: &RenderTargetId, codec: &str) -> Result<()> {
+    let t = project
+        .render_targets
+        .iter_mut()
+        .find(|t| t.id == *target)
+        .ok_or_else(|| MmError::NotFound(format!("render target {target}")))?;
+    t.codec = codec.to_owned();
+    Ok(())
+}
+
 /// 書き出しが終わったときのエンコーダーの報告と、出力が満たすべきこと。
 struct Finished {
     report: EncodeReport,
     expected: Expected,
+}
+
+/// 映像をエンコーダーに押し、音を混ぜる。並行の描画なら音を映像と同時に混ぜる。取り消されたら `None`。
+/// 押した映像のフレームの数と、混ぜた音を返す。
+fn render_video_and_audio(
+    engine: &mut Engine,
+    project: &Project,
+    plan: &Plan<'_>,
+    settings: &EncodeSettings,
+    audio_range: TimeRange,
+    encoder: &mut dyn Encoder,
+) -> Result<Option<(usize, mm_audio_api::AudioBlock)>> {
+    let total = frames_in(plan.range, settings);
+    let concurrent = parallel::worth_it(plan.parallel, total as u64, plan.parallel_min_frames);
+    let composition = plan.composition;
+    let (video, audio) = if concurrent {
+        // 並行の描画は別のエンジンを使うので、呼び出し側のエンジンは映像と同時に音を混ぜられる。
+        let config = engine.config().clone();
+        std::thread::scope(|scope| {
+            let audio = scope.spawn(|| engine.render_audio(project, composition, audio_range));
+            let video = export_passes_with(
+                &mut Drawer::Workers(&config),
+                project,
+                plan,
+                settings,
+                encoder,
+            );
+            let audio = audio
+                .join()
+                .unwrap_or_else(|_| Err(MmError::Internal("音を混ぜるスレッドが落ちた".into())));
+            (video, audio)
+        })
+    } else {
+        let video = export_passes_with(
+            &mut Drawer::Engine(&mut *engine),
+            project,
+            plan,
+            settings,
+            encoder,
+        );
+        let audio = match &video {
+            Ok(_) if !plan.control.is_cancelled() => {
+                engine.render_audio(project, composition, audio_range)
+            }
+            _ => Err(MmError::Internal("音は混ぜない".into())),
+        };
+        (video, audio)
+    };
+    let frames = match video {
+        Ok(frames) => frames,
+        Err(e) if is_cancel_error(&e) && plan.control.is_cancelled() => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if plan.control.is_cancelled() {
+        return Ok(None);
+    }
+    if frames != total {
+        return Err(MmError::Internal(format!(
+            "描いたフレームの数 {frames} が区間の数 {total} と違う"
+        )));
+    }
+    Ok(Some((frames, audio?)))
 }
 
 /// 区間を描き、バッチでエンコーダーに押し、音を付けて閉じる。取り消されたら `None`。
@@ -278,17 +364,22 @@ fn export_target(
         composition: &target.composition,
         range,
         control: &options.control,
+        parallel: options.parallel,
+        parallel_min_frames: options.parallel_min_frames,
+        pass: PassPosition { index: 1, of: 1 },
     };
-    let frames = match export_frames(engine, project, &plan, &settings, encoder.as_mut()) {
-        Ok(frames) => frames,
-        Err(e) if is_cancel_error(&e) && options.control.is_cancelled() => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    let audio_range = audio_range_of(range, &settings, frames)?;
-    if options.control.is_cancelled() {
+    let audio_range = audio_range_of(range, &settings, frames_in(range, &settings))?;
+    let Some((frames, audio)) = render_video_and_audio(
+        engine,
+        project,
+        &plan,
+        &settings,
+        audio_range,
+        encoder.as_mut(),
+    )?
+    else {
         return Ok(None);
-    }
-    let audio = engine.render_audio(project, &target.composition, audio_range)?;
+    };
     encoder.push_audio(&audio)?;
     let report = encoder.finish()?;
     let expected = Expected {
@@ -298,6 +389,12 @@ fn export_target(
         audio_seconds: Some(audio_range.duration()?.to_f64()),
     };
     Ok(Some(Finished { report, expected }))
+}
+
+/// 区間のフレーム数。
+fn frames_in(range: TimeRange, settings: &EncodeSettings) -> usize {
+    let indices = range.frame_indices(settings.fps);
+    (indices.end - indices.start).max(0) as usize
 }
 
 fn encode_settings(target: &mm_doc::RenderTarget) -> EncodeSettings {
@@ -336,17 +433,79 @@ fn resolve_range(whole: TimeRange, wanted: Option<TimeRange>) -> Result<TimeRang
     Ok(wanted)
 }
 
+/// 映像を通す何回目か（2 パスのエンコーダーは 2 回通す）。
+#[derive(Clone, Copy)]
+struct PassPosition {
+    index: u32,
+    of: u32,
+}
+
 /// 何をどの区間で描くか。
+#[derive(Clone, Copy)]
 struct Plan<'a> {
     target: &'a RenderTargetId,
     composition: &'a mm_types::CompositionId,
     range: TimeRange,
     control: &'a ExportControl,
+    parallel: usize,
+    parallel_min_frames: Option<u64>,
+    pass: PassPosition,
+}
+
+/// エンコーダーが求める回数（2 パスは 2 回）、区間を描いて押す。最後の 1 回に押したフレームの数を返す。
+#[cfg(test)]
+fn export_passes(
+    engine: &mut Engine,
+    project: &Project,
+    plan: &Plan<'_>,
+    settings: &EncodeSettings,
+    encoder: &mut dyn Encoder,
+) -> Result<usize> {
+    export_passes_with(
+        &mut Drawer::Engine(engine),
+        project,
+        plan,
+        settings,
+        encoder,
+    )
+}
+
+/// 映像を描く手段。並行の描画は別のエンジンを組むので、設定だけでよい。
+enum Drawer<'a> {
+    Engine(&'a mut Engine),
+    Workers(&'a RuntimeConfig),
+}
+
+/// `export_passes` の本体。
+fn export_passes_with(
+    drawer: &mut Drawer<'_>,
+    project: &Project,
+    plan: &Plan<'_>,
+    settings: &EncodeSettings,
+    encoder: &mut dyn Encoder,
+) -> Result<usize> {
+    let passes = encoder.passes().max(1);
+    let mut frames = 0;
+    for pass in 1..=passes {
+        if passes > 1 {
+            encoder.begin_pass(pass)?;
+        }
+        let pass_plan = Plan {
+            pass: PassPosition {
+                index: pass,
+                of: passes,
+            },
+            ..*plan
+        };
+        frames = export_frames_with(drawer, project, &pass_plan, settings, encoder)?;
+    }
+    Ok(frames)
 }
 
 /// 区間を描き、レンダラーの `export_range`（`EXPORT_BATCH_FRAMES` ずつ、または GPU で YUV にした経路）で
 /// エンコーダーに押す。レンダラーは区間を一息に描くので、1 フレームの描画の時間はフレームが出てくる間隔で測り
 /// `export.render` に載せる。エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したフレームの数を返す。
+#[cfg(test)]
 fn export_frames(
     engine: &mut Engine,
     project: &Project,
@@ -354,16 +513,66 @@ fn export_frames(
     settings: &EncodeSettings,
     encoder: &mut dyn Encoder,
 ) -> Result<usize> {
-    let registry = engine.registry().clone();
+    export_frames_with(
+        &mut Drawer::Engine(engine),
+        project,
+        plan,
+        settings,
+        encoder,
+    )
+}
+
+/// `export_frames` の本体。
+fn export_frames_with(
+    drawer: &mut Drawer<'_>,
+    project: &Project,
+    plan: &Plan<'_>,
+    settings: &EncodeSettings,
+    encoder: &mut dyn Encoder,
+) -> Result<usize> {
     let indices = plan.range.frame_indices(settings.fps);
-    let total = (indices.end - indices.start).max(0) as u64;
+    let frames_in_pass = (indices.end - indices.start).max(0) as u64;
     let started = Instant::now();
     let mut last = Instant::now();
-    let mut done = 0u64;
+    let mut done = u64::from(plan.pass.index - 1) * frames_in_pass;
+    let total = frames_in_pass * u64::from(plan.pass.of);
     let mut metered = Metered {
         inner: encoder,
         control: plan.control,
     };
+    let mut on_frame = |elapsed: Duration| {
+        mm_trace::record_span("export.render", elapsed);
+        done += 1;
+        plan.control.report(&ExportProgress {
+            target: plan.target.clone(),
+            frames_done: done,
+            frames_total: total,
+            elapsed: started.elapsed(),
+        });
+    };
+    let config = match drawer {
+        Drawer::Workers(config) => Some(*config),
+        Drawer::Engine(engine) => {
+            parallel::worth_it(plan.parallel, frames_in_pass, plan.parallel_min_frames)
+                .then(|| engine.config())
+        }
+    };
+    if let Some(config) = config {
+        let job = parallel::ParallelJob {
+            project,
+            composition: plan.composition,
+            range: plan.range,
+            settings,
+            workers: plan.parallel,
+            config: config.clone(),
+            chunk_frames: None,
+        };
+        return parallel::export_parallel(&job, &mut metered, &mut |_, elapsed| on_frame(elapsed));
+    }
+    let Drawer::Engine(engine) = drawer else {
+        return Err(MmError::Internal("並行の描画が要るのに設定が無い".into()));
+    };
+    let registry = engine.registry().clone();
     engine.renderer().export_range(
         &RangeRequest {
             project,
@@ -377,15 +586,8 @@ fn export_frames(
         &mut metered,
         EXPORT_BATCH_FRAMES,
         &mut |_index| {
-            mm_trace::record_span("export.render", last.elapsed());
+            on_frame(last.elapsed());
             last = Instant::now();
-            done += 1;
-            plan.control.report(&ExportProgress {
-                target: plan.target.clone(),
-                frames_done: done,
-                frames_total: total,
-                elapsed: started.elapsed(),
-            });
         },
     )
 }
@@ -429,6 +631,14 @@ impl Encoder for Metered<'_> {
         self.inner.push_nv12_frames(frames)
     }
 
+    fn passes(&self) -> u32 {
+        self.inner.passes()
+    }
+
+    fn begin_pass(&mut self, pass: u32) -> Result<()> {
+        self.inner.begin_pass(pass)
+    }
+
     fn push_audio(&mut self, block: &mm_audio_api::AudioBlock) -> Result<()> {
         self.inner.push_audio(block)
     }
@@ -440,3 +650,5 @@ impl Encoder for Metered<'_> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_parallel;

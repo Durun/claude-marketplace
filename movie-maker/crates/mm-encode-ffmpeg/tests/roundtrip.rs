@@ -240,8 +240,8 @@ fn 使い方の誤りは_panic_せずエラーになる() {
     assert!(matches!(enc.begin(&odd), Err(MmError::InvalidArgument(_))));
 
     let mut enc = FfmpegEncoderFactory.create().unwrap();
-    let mut unsupported = settings(out_path("prores.mov"), size, fps, false);
-    unsupported.codec = "prores_ks".into();
+    let mut unsupported = settings(out_path("vp9.webm"), size, fps, false);
+    unsupported.codec = "vp9".into();
     assert!(matches!(
         enc.begin(&unsupported),
         Err(MmError::Unsupported(_))
