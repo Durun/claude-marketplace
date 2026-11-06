@@ -22,7 +22,10 @@ const target = (id: string, over: Partial<RenderTarget> = {}): RenderTarget => (
 
 const overview = (targets: RenderTarget[], over: Partial<DeliverOverview> = {}): DeliverOverview => ({
   targets,
-  compositions: [{ id: "main", duration: 42 }],
+  compositions: [
+    { id: "main", duration: 42, width: 1920, height: 1080 },
+    { id: "short", duration: 30, width: 1080, height: 1920 },
+  ],
   sequences: [{ id: "cut", duration: 30 }],
   open_composition: "main",
   can_verify: true,
@@ -110,20 +113,20 @@ describe("編集", () => {
     await settle();
     const [ops] = vi.mocked(api.applyOps).mock.calls[0] ?? [];
     expect(ops).toEqual([
-      { op: "addRenderTarget", target: target("youtube-1080p", { output_path: "exports/youtube-1080p.mp4" }) },
+      { op: "addRenderTarget", target: target("youtube-1080p", { codec: "h264_nvenc", loudness_lufs: -14, output_path: "exports/youtube-1080p.mp4" }) },
     ]);
   });
 
-  it("直す: 外して足す操作を 1 回の applyOps で送る", async () => {
-    const { api } = await mount(overview([target("yt")]));
-    await click(byText("button", "Edit"));
+  it("直す: 外して元の位置に足す操作を 1 回の applyOps で送る", async () => {
+    const { api } = await mount(overview([target("a"), target("yt"), target("b")]));
+    await click([...host.querySelectorAll("button")].filter((b) => b.textContent === "Edit")[1]);
     setValue(host.querySelector("#mm-deliver-field-width"), "1280");
     await click(byText("button", "Save"));
     await settle();
     expect(api.applyOps).toHaveBeenCalledTimes(1);
     expect(vi.mocked(api.applyOps).mock.calls[0]?.[0]).toEqual([
       { op: "removeRenderTarget", target: "yt" },
-      { op: "addRenderTarget", target: target("yt", { width: 1280 }) },
+      { op: "addRenderTarget", target: target("yt", { width: 1280 }), index: 1 },
     ]);
   });
 
@@ -202,5 +205,97 @@ describe("書き出しの進み具合", () => {
       status: vi.fn().mockResolvedValue({ running: true, items: [item({ state: "running", frames_done: 1, frames_total: 2 })] }),
     });
     expect(host.querySelector(".mm-deliver-queue")?.textContent).toContain("Exporting");
+  });
+});
+
+describe("レビューの指摘（編集）", () => {
+  const pickPreset = (id: string) =>
+    act(() => {
+      const select = host.querySelector<HTMLSelectElement>('select[aria-label="Preset"]');
+      (select as HTMLSelectElement).value = id;
+      select?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+  it("Shorts のプリセットは、縦長のコンポジションを既定にする", async () => {
+    await mount(overview([]));
+    pickPreset("youtube-shorts");
+    await click(byText("button", "Add target"));
+    expect((host.querySelector("#mm-deliver-field-composition") as HTMLSelectElement).value).toBe("short");
+  });
+
+  it("入れ子の delivery を、実際のスキーマの欄（選択とチェック）として出し、選んだ値を送る", async () => {
+    const { api } = await mount(overview([]));
+    await click(byText("button", "Add target"));
+    const subtitles = host.querySelector<HTMLSelectElement>('[id="mm-deliver-field-delivery.subtitles"]');
+    expect([...(subtitles?.options ?? [])].map((o) => o.value)).toEqual(["", "none", "sidecar", "embedded"]);
+    expect(host.querySelector<HTMLInputElement>('[id="mm-deliver-field-delivery.chapters"]')?.type).toBe("checkbox");
+    act(() => {
+      (subtitles as HTMLSelectElement).value = "sidecar";
+      subtitles?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click(byText("button", "Add"));
+    await settle();
+    const [ops] = vi.mocked(api.applyOps).mock.calls[0] ?? [];
+    expect(ops?.[0]).toMatchObject({ op: "addRenderTarget", target: { delivery: { subtitles: "sidecar" }, loudness_lufs: -14 } });
+  });
+
+  it("誤りは欄に結び付き、aria-invalid が立つ", async () => {
+    await mount(overview([target("yt")]));
+    await click(byText("button", "Edit"));
+    setValue(host.querySelector("#mm-deliver-field-width"), "1081");
+    await click(byText("button", "Save"));
+    const width = host.querySelector("#mm-deliver-field-width");
+    expect(width?.getAttribute("aria-invalid")).toBe("true");
+    const described = width?.getAttribute("aria-describedby") ?? "";
+    expect(host.querySelector(`[id="${described}"]`)?.textContent).toContain("even");
+    expect(host.querySelector("#mm-deliver-field-height")?.getAttribute("aria-invalid")).toBe("false");
+  });
+
+  it("出力先の保存ダイアログにコーデックを渡す", async () => {
+    const { api } = await mount(overview([target("yt", { codec: "prores_ks", output_path: "out/yt.mov" })]));
+    await click(byText("button", "Edit"));
+    await click(byText("button", "Browse…"));
+    expect(api.pickOutput).toHaveBeenCalledWith("out/yt.mov", "prores_ks");
+  });
+});
+
+describe("レビューの指摘（書き出しの列）", () => {
+  it("書き出しの依頼が返るまで、もう一度押しても依頼は 1 回", async () => {
+    let finish: () => void = () => {};
+    const start = vi.fn().mockImplementation(() => new Promise<void>((ok) => (finish = ok)));
+    await mount(overview([target("a")]), { start });
+    await click(host.querySelector('input[aria-label="Queue a"]'));
+    const button = byText("button", "Export 1 target") as HTMLButtonElement;
+    await click(button);
+    expect(button.disabled).toBe(true);
+    await click(button);
+    expect(start).toHaveBeenCalledTimes(1);
+    finish();
+    await settle();
+    expect(button.disabled).toBe(false);
+  });
+
+  it("開いたときの状態の応答がイベントより後に届いても、新しい状態を上書きしない", async () => {
+    let answer: (s: ExportStatus) => void = () => {};
+    const status = vi.fn().mockImplementation(() => new Promise<ExportStatus>((ok) => (answer = ok)));
+    const { push } = await mount(overview([target("a")]), { status });
+    await push({ running: true, items: [item({ state: "running", frames_done: 5, frames_total: 10 })] });
+    await act(async () => answer({ running: false, items: [] }));
+    expect(host.querySelector(".mm-deliver-queue")?.textContent).toContain("Exporting");
+  });
+
+  it("購読を先に始めてから状態を読む", async () => {
+    const order: string[] = [];
+    await mount(overview([target("a")]), {
+      onProgress: vi.fn().mockImplementation(async () => {
+        order.push("subscribe");
+        return () => {};
+      }),
+      status: vi.fn().mockImplementation(async () => {
+        order.push("status");
+        return { running: false, items: [] };
+      }),
+    });
+    expect(order).toEqual(["subscribe", "status"]);
   });
 });

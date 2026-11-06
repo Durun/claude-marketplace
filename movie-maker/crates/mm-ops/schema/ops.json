@@ -642,6 +642,14 @@
       "description": "レンダーターゲットを足す。",
       "type": "object",
       "properties": {
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
         "op": {
           "type": "string",
           "const": "addRenderTarget"

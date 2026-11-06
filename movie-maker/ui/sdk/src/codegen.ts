@@ -104,7 +104,11 @@ export const opName = (variant: JsonSchema): string => {
 /** `$ref` をたどって、参照の無い形にする（パラメータの値の型の抜き出し用）。 */
 export const inlineRefs = (schema: JsonSchema, defs: OpsSchema["$defs"]): JsonSchema => {
   if (typeof schema !== "object") return schema;
-  if (schema.$ref) return inlineRefs(defs[refName(schema.$ref)] ?? false, defs);
+  if (schema.$ref) {
+    const target = inlineRefs(defs[refName(schema.$ref)] ?? false, defs);
+    // 参照する側の既定値（`#[serde(default)]` の欄）は、参照先に無いので引き継ぐ。
+    return typeof target === "object" && schema.default !== undefined ? { ...target, default: schema.default } : target;
+  }
   const out: SchemaObject = { ...schema };
   if (schema.properties) {
     out.properties = Object.fromEntries(

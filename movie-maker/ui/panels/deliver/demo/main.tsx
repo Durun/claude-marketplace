@@ -18,7 +18,10 @@ const targets: RenderTarget[] = [
 
 const overview = (): DeliverOverview => ({
   targets: targets.map((t) => ({ ...t })),
-  compositions: [{ id: "main", duration: FRAMES / FPS }],
+  compositions: [
+    { id: "main", duration: FRAMES / FPS, width: 1920, height: 1080 },
+    { id: "short", duration: 38, width: 1080, height: 1920 },
+  ],
   sequences: [{ id: "main-cut", duration: 38 }],
   open_composition: "main",
   can_verify: true,
@@ -58,7 +61,7 @@ const step = (frames: number): void => {
 (window as unknown as { __deliverStep: (n: number) => void }).__deliverStep = step;
 
 const apply = (op: Op): void => {
-  if (op.op === "addRenderTarget") targets.push(op.target);
+  if (op.op === "addRenderTarget") targets.splice(op.index ?? targets.length, 0, op.target);
   if (op.op === "removeRenderTarget") targets.splice(targets.findIndex((t) => t.id === op.target), 1);
 };
 

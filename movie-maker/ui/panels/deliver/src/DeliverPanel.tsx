@@ -3,7 +3,7 @@ import type { DeliverApi, DeliverOverview, RenderTarget } from "@mm/sdk";
 import { ExportQueue } from "./ExportQueue.tsx";
 import { fieldSpecs, type FieldSpec } from "./form.ts";
 import { formatDuration } from "./format.ts";
-import { customPreset, PRESETS, targetFromPreset, type Preset } from "./presets.ts";
+import { customPreset, defaultComposition, PRESETS, targetFromPreset, type Preset } from "./presets.ts";
 import { TargetForm } from "./TargetForm.tsx";
 import { TargetRow } from "./TargetRow.tsx";
 import { replaceTargetOps, useDeliver, type DeliverState } from "./useDeliver.ts";
@@ -64,7 +64,7 @@ const StartBar = ({ deliver }: { deliver: DeliverState }) => {
   const n = deliver.queue.length;
   return (
     <div class="mm-deliver-toolbar">
-      <button type="button" class="mm-deliver-button mm-deliver-primary" disabled={n === 0 || deliver.status.running} onClick={deliver.start}>
+      <button type="button" class="mm-deliver-button mm-deliver-primary" disabled={n === 0 || deliver.status.running || deliver.starting} onClick={deliver.start}>
         {n === 0 ? "Export" : `Export ${n} ${n === 1 ? "target" : "targets"}`}
       </button>
       {n === 0 && <span class="mm-deliver-hint">Check the targets to export.</span>}
@@ -77,13 +77,14 @@ const useEditing = (deliver: DeliverState, specs: FieldSpec[]) => {
   const overview = deliver.overview;
   const add = (preset: Preset) => {
     if (!overview) return;
-    const composition = overview.open_composition ?? overview.compositions[0]?.id ?? "";
+    const composition = defaultComposition(preset, overview);
     const takenIds = overview.targets.map((t) => t.id);
     setEditing({ target: targetFromPreset(preset, { composition, takenIds }, specs), original: null });
   };
   const submit = async (value: RenderTarget): Promise<boolean> => {
     const original = editing?.original ?? null;
-    const ops = original === null ? [{ op: "addRenderTarget" as const, target: value }] : replaceTargetOps(original, value);
+    const index = overview?.targets.findIndex((t) => t.id === original) ?? -1;
+    const ops = original === null || index < 0 ? [{ op: "addRenderTarget" as const, target: value }] : replaceTargetOps(original, value, index);
     const ok = await deliver.applyOps(ops);
     if (ok) setEditing(null);
     return ok;
