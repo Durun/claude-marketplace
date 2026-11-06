@@ -3,15 +3,19 @@
 //! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
 //! - `mm ingest <dir> <素材>...`: 素材を取り込み、`cache/` に出力を作って素材を足す（ingest_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
-//! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`all`）。
+//! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
+//! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
 
 mod commands;
+mod compare;
 mod describe;
 mod ingest_cmd;
 mod opargs;
 mod perf;
 mod project;
 mod scenes;
+mod scenes_cpu;
+mod scenes_render;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,8 +32,8 @@ use crate::project::load_project;
 
 /// フィクスチャのプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
 /// ビルドした場所の絶対パスを埋め込まないので、別の場所に置いた実行ファイルでも同じ規則で動く。
-fn default_project() -> PathBuf {
-    PathBuf::from("fixtures/projects/stage0/project.json")
+fn default_project(scene: Scene) -> PathBuf {
+    PathBuf::from(scene.default_project())
 }
 
 #[derive(Parser)]
@@ -136,6 +140,33 @@ enum PerfCommand {
         /// export の描画の大きさ（WxH）。
         #[arg(long, default_value = "1920x1080", value_parser = scenes::parse_size)]
         size: (u32, u32),
+        /// playback で再生する秒数。
+        #[arg(long, default_value_t = 10.0)]
+        seconds: f64,
+        /// scrub のシーク回数（繰り返し 1 回あたり）。
+        #[arg(long, default_value_t = 100)]
+        seeks: usize,
+        /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
+        #[arg(long)]
+        baseline: bool,
+    },
+    /// 2 つの結果（JSON かそのフォルダー）を比べ、閾値を超えて遅くなった項目があれば失敗する。
+    Compare {
+        before: PathBuf,
+        after: PathBuf,
+        /// 遅くなったとみなす割合（5%、0.3 など）。
+        #[arg(long, default_value = "10%", value_parser = compare::parse_threshold)]
+        threshold: f64,
+        /// この絶対値より小さい差は無視する（項目の単位）。
+        #[arg(long, default_value_t = 0.0)]
+        min_delta: f64,
+    },
+    /// 結果（JSON かそのフォルダー）の項目を予算と並べる。
+    Budget {
+        results: PathBuf,
+        /// 超えた項目だけを JSON で出す（起票の入力）。
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -156,9 +187,7 @@ fn run(cli: Cli) -> Result<()> {
             output,
             target,
         } => render(&project, output, target),
-        Command::Perf {
-            command: PerfCommand::Run { .. },
-        } => run_perf(cli.command),
+        Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),
         other => run_store_command(other),
     }
@@ -218,19 +247,19 @@ fn command_name(command: &Command) -> &'static str {
     }
 }
 
-fn run_perf(command: Command) -> Result<()> {
-    let Command::Perf {
-        command:
-            PerfCommand::Run {
-                scene,
-                repeat,
-                out_dir,
-                project,
-                size,
-            },
+fn run_perf(command: PerfCommand) -> Result<()> {
+    let PerfCommand::Run {
+        scene,
+        repeat,
+        out_dir,
+        project,
+        size,
+        seconds,
+        seeks,
+        baseline,
     } = command
     else {
-        return Err(MmError::Internal("perf のサブコマンドでない".into()));
+        return run_perf_report(command);
     };
     let (layer, metrics) = MetricsLayer::new();
     tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
@@ -239,10 +268,37 @@ fn run_perf(command: Command) -> Result<()> {
         scene,
         repeat,
         out_dir,
-        project: project.unwrap_or_else(default_project),
+        project: project.unwrap_or_else(|| default_project(scene)),
         size,
+        seconds,
+        seeks,
+        baseline,
     };
     perf::run(&args, &metrics)
+}
+
+/// 結果を読むだけのサブコマンド（`compare`、`budget`）。
+fn run_perf_report(command: PerfCommand) -> Result<()> {
+    match command {
+        PerfCommand::Compare {
+            before,
+            after,
+            threshold,
+            min_delta,
+        } => {
+            let options = compare::CompareOptions {
+                threshold,
+                min_delta,
+            };
+            if !compare::run_compare(&before, &after, options)? {
+                // 回帰は使い方の誤りではないので、エラーの文言は出さず終了コードだけで知らせる。
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        PerfCommand::Budget { results, json } => compare::run_budget(&results, json),
+        PerfCommand::Run { .. } => Err(MmError::Internal("run は別の経路".into())),
+    }
 }
 
 fn render(
@@ -278,6 +334,6 @@ mod tests {
 
     #[test]
     fn 既定のプロジェクトはビルドした場所の絶対パスでない() {
-        assert!(default_project().is_relative());
+        assert!(default_project(Scene::Export).is_relative());
     }
 }

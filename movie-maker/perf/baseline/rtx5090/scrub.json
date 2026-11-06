@@ -1,0 +1,107 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5090",
+  "items": [
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "scrub.preview_p50_ms",
+      "ok": null,
+      "samples": [
+        62.7038,
+        63.25939999999999,
+        62.65560000000001,
+        62.6559,
+        62.439
+      ],
+      "unit": "ms",
+      "value": 62.6559
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "スクラブ（縮小したフレームがサーフェスに出るまで）",
+        "value": 50.0
+      },
+      "name": "scrub.preview_p99_ms",
+      "ok": false,
+      "samples": [
+        71.1425,
+        70.8836,
+        69.855,
+        76.5797,
+        75.4849
+      ],
+      "unit": "ms",
+      "value": 71.1425
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "scrub.full_p50_ms",
+      "ok": null,
+      "samples": [
+        271.1611,
+        270.71869999999996,
+        269.6685,
+        270.30490000000003,
+        269.7309
+      ],
+      "unit": "ms",
+      "value": 270.30490000000003
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "スクラブ（縮小したフレームがサーフェスに出るまで）",
+        "value": 150.0
+      },
+      "name": "scrub.full_p99_ms",
+      "ok": false,
+      "samples": [
+        285.16380000000004,
+        285.4916,
+        279.76250000000005,
+        298.5587,
+        332.9139
+      ],
+      "unit": "ms",
+      "value": 285.4916
+    }
+  ],
+  "metrics": {
+    "counters": {
+      "render.layers_drawn": 13039
+    },
+    "gauges": {
+      "render.gpu_frame_us": 208
+    },
+    "spans": {
+      "render.frame": {
+        "count": 1003,
+        "max_us": 314562,
+        "p50_us": 208259,
+        "p95_us": 224738,
+        "p99_us": 233582
+      },
+      "render.gpu_frame": {
+        "count": 1002,
+        "max_us": 6000,
+        "p50_us": 283,
+        "p95_us": 5881,
+        "p99_us": 5955
+      },
+      "runtime.render_frame": {
+        "count": 1003,
+        "max_us": 378242,
+        "p50_us": 237951,
+        "p95_us": 275289,
+        "p99_us": 285036
+      }
+    }
+  },
+  "repeat": 5,
+  "scene": "scrub",
+  "timestamp": 1793944589
+}

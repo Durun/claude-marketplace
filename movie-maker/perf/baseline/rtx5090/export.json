@@ -1,0 +1,114 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5090",
+  "items": [
+    {
+      "better": "higher",
+      "budget": {
+        "kind": "at_least",
+        "row": "書き出し（1080p60、NVENC、1 プロセス）",
+        "value": 120.0
+      },
+      "name": "export.fps",
+      "ok": false,
+      "samples": [
+        12.668289249305472,
+        12.161831163135641,
+        12.4614494676178,
+        12.631380036373322,
+        11.88435147430728
+      ],
+      "unit": "fps",
+      "value": 12.4614494676178
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.fps_cold",
+      "ok": null,
+      "samples": [
+        12.668289249305472
+      ],
+      "unit": "fps",
+      "value": 12.668289249305472
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.elapsed_ms",
+      "ok": null,
+      "samples": [
+        2368.1177,
+        2466.7338,
+        2407.4246000000003,
+        2375.0374,
+        2524.3278999999998
+      ],
+      "unit": "ms",
+      "value": 2407.4246000000003
+    }
+  ],
+  "metrics": {
+    "counters": {
+      "export.frames": 150,
+      "render.layers_drawn": 300
+    },
+    "gauges": {
+      "export.fps": 11.88435147430728,
+      "render.gpu_frame_us": 71
+    },
+    "spans": {
+      "export.encode": {
+        "count": 20,
+        "max_us": 115259,
+        "p50_us": 103021,
+        "p95_us": 114962,
+        "p99_us": 115259
+      },
+      "export.render": {
+        "count": 150,
+        "max_us": 78180,
+        "p50_us": 62608,
+        "p95_us": 70969,
+        "p99_us": 76307
+      },
+      "export.run": {
+        "count": 5,
+        "max_us": 2524415,
+        "p50_us": 2407522,
+        "p95_us": 2524415,
+        "p99_us": 2524415
+      },
+      "render.audio": {
+        "count": 5,
+        "max_us": 1823,
+        "p50_us": 1004,
+        "p95_us": 1823,
+        "p99_us": 1823
+      },
+      "render.gpu_frame": {
+        "count": 149,
+        "max_us": 200,
+        "p50_us": 63,
+        "p95_us": 169,
+        "p99_us": 195
+      },
+      "render.range": {
+        "count": 5,
+        "max_us": 2314994,
+        "p50_us": 2205805,
+        "p95_us": 2314994,
+        "p99_us": 2314994
+      },
+      "runtime.render_audio": {
+        "count": 5,
+        "max_us": 1831,
+        "p50_us": 1014,
+        "p95_us": 1831,
+        "p99_us": 1831
+      }
+    }
+  },
+  "repeat": 5,
+  "scene": "export",
+  "timestamp": 1793944609
+}

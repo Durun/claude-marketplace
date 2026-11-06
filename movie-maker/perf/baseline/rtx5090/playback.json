@@ -1,0 +1,112 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5090",
+  "items": [
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "playback.frame_ms",
+      "ok": null,
+      "samples": [
+        283.99649999999997,
+        282.1268,
+        283.2828
+      ],
+      "unit": "ms",
+      "value": 283.2828
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "playback.frame_p99_ms",
+      "ok": null,
+      "samples": [
+        319.11109999999996,
+        293.9764,
+        301.17719999999997
+      ],
+      "unit": "ms",
+      "value": 301.17719999999997
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "再生で落とすフレーム",
+        "value": 1.0
+      },
+      "name": "playback.dropped_pct",
+      "ok": false,
+      "samples": [
+        100.0,
+        100.0,
+        100.0
+      ],
+      "unit": "%",
+      "value": 100.0
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "描画の 1 フレーム（プレビュー、1080p、レイヤー 10 枚、文字 3 枚）",
+        "value": 4.0
+      },
+      "name": "playback.cpu_ms",
+      "ok": false,
+      "samples": [
+        230.641
+      ],
+      "unit": "ms",
+      "value": 230.641
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "描画の 1 フレーム（プレビュー、1080p、レイヤー 10 枚、文字 3 枚）",
+        "value": 6.0
+      },
+      "name": "playback.gpu_ms",
+      "ok": true,
+      "samples": [
+        5.386
+      ],
+      "unit": "ms",
+      "value": 5.386
+    }
+  ],
+  "metrics": {
+    "counters": {
+      "render.layers_drawn": 11739
+    },
+    "gauges": {
+      "render.gpu_frame_us": 5365
+    },
+    "spans": {
+      "render.frame": {
+        "count": 903,
+        "max_us": 287782,
+        "p50_us": 230641,
+        "p95_us": 242739,
+        "p99_us": 254991
+      },
+      "render.gpu_frame": {
+        "count": 902,
+        "max_us": 6232,
+        "p50_us": 5386,
+        "p95_us": 5511,
+        "p99_us": 5873
+      },
+      "runtime.render_frame": {
+        "count": 903,
+        "max_us": 346952,
+        "p50_us": 282204,
+        "p95_us": 294812,
+        "p99_us": 309467
+      }
+    }
+  },
+  "repeat": 3,
+  "scene": "playback",
+  "timestamp": 1793944408
+}

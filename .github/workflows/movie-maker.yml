@@ -10,6 +10,8 @@ on:
     paths:
       - "movie-maker/**"
       - ".github/workflows/movie-maker.yml"
+  schedule:
+    - cron: "0 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +33,7 @@ defaults:
 jobs:
   # 外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストは飛ぶ。
   check:
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -44,6 +47,7 @@ jobs:
 
   # FFmpeg 9.0 の shared ビルドと feature `ffmpeg` を入れた検査。手順は crates/mm-decode-ffmpeg/README.md。
   ffmpeg:
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -95,3 +99,108 @@ jobs:
           args=()
           for d in crates/mm-*-api; do args+=(-p "$(basename "$d")"); done
           cargo semver-checks "${args[@]}" --baseline-rev "$BASE"
+
+  # ui/（WebView の画面）の検査。PR は movie-maker/ui/** を変えたときだけ回し、main への push と手動では常に回す。
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'schedule'
+    defaults:
+      run:
+        shell: bash
+        working-directory: movie-maker/ui
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: ui/ に変更があるか
+        id: changed
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ] || ! git diff --quiet "$BASE...HEAD" -- movie-maker/ui; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - if: steps.changed.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: movie-maker/ui/pnpm-lock.yaml
+      - if: steps.changed.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.changed.outputs.run == 'true'
+        run: pnpm build
+      - if: steps.changed.outputs.run == 'true'
+        run: pnpm typecheck
+      - if: steps.changed.outputs.run == 'true'
+        run: pnpm lint
+      - if: steps.changed.outputs.run == 'true'
+        run: pnpm test
+
+  # 性能の回帰のゲート（PR）。同じ runner で基点と PR の mm を交互に回して比べる。閾値の理由は docs/ci.md。
+  perf-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          workspaces: movie-maker
+          key: perf
+      - name: 基点の mm を作る
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          (cd "$RUNNER_TEMP/base/movie-maker" && cargo build --release -p mm --target-dir "$GITHUB_WORKSPACE/movie-maker/target")
+          cp target/release/mm.exe "$RUNNER_TEMP/mm-base.exe"
+      - name: PR の mm を作る
+        run: |
+          cargo build --release -p mm
+          cp target/release/mm.exe "$RUNNER_TEMP/mm-head.exe"
+      - name: 比べる
+        run: sh scripts/perf-gate.sh "$RUNNER_TEMP/mm-base.exe" "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/perf"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-gate
+          path: ${{ runner.temp }}/perf
+          retention-days: 14
+
+  # main への push と夜間: CPU の場面を測って結果を残し、予算を超えた項目を issue にする。PR では起票しない。
+  perf-record:
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          workspaces: movie-maker
+          key: perf
+      - run: cargo build --release -p mm
+      - run: target/release/mm.exe perf run cpu --repeat 10 --out-dir perf-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ github.sha }}
+          path: movie-maker/perf-results
+          retention-days: 90
+      - name: 予算を超えた項目を起票する
+        run: sh scripts/perf-file-issues.sh target/release/mm.exe perf-results
