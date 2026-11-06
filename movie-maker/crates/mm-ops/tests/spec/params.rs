@@ -17,6 +17,13 @@ fn numeric_paths(l: &Layer) -> Vec<String> {
         paths.push(format!("masks.{}.opacity", m.id));
         paths.push(format!("masks.{}.feather", m.id));
     }
+    for r in &l.framing.cuts {
+        paths.push(format!("reframe.{}.scale", r.cut));
+        paths.push(format!("reframe.{}.rotation", r.cut));
+    }
+    if l.framing.caption.is_some() {
+        paths.push("caption.width".into());
+    }
     paths
 }
 

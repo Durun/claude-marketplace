@@ -2,7 +2,8 @@
 //!
 //! パスは `.` で区切る。レイヤーは `opacity`、`transform.position|scale|rotation|anchor`、
 //! `source.<名前>`、`effects.<効果の ID>.<名前>`、`masks.<マスクの ID>.path|feather|opacity`、
-//! `audio.gain_db|pan`。カットは `source.<名前>`。ノードのパラメータの名前は `.` を含んでよい。
+//! `audio.gain_db|pan`、`reframe.<カットの ID>.position|scale|rotation|anchor`、`caption.position|width`。
+//! カットは `source.<名前>`。ノードのパラメータの名前は `.` を含んでよい。
 
 use std::collections::BTreeMap;
 
@@ -19,6 +20,8 @@ const SOURCE: &str = "source";
 const EFFECTS: &str = "effects";
 const MASKS: &str = "masks";
 const AUDIO: &str = "audio";
+const REFRAME: &str = "reframe";
+const CAPTION: &str = "caption";
 
 /// パラメータの指し方。`layer` か `cut` のどちらか 1 つ。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -121,6 +124,8 @@ fn resolve_layer<'a>(layer: &'a mut Layer, path: &str) -> Result<ParamSlot<'a>> 
             "anchor" => Ok(ParamSlot::Optional(&mut layer.transform.anchor)),
             _ => Err(unknown_path(path)),
         },
+        REFRAME => resolve_reframe(layer, rest).ok_or_else(|| unknown_path(path)),
+        CAPTION => resolve_caption(layer, rest, path),
         SOURCE if !rest.is_empty() => Ok(ParamSlot::Map(&mut layer.source.params, rest.into())),
         EFFECTS => resolve_effect(layer, rest).ok_or_else(|| unknown_path(path)),
         MASKS => resolve_mask(layer, rest).ok_or_else(|| unknown_path(path)),
@@ -146,6 +151,37 @@ fn resolve_effect<'a>(layer: &'a mut Layer, rest: &str) -> Option<ParamSlot<'a>>
     }
     let effect = layer.effects.iter_mut().find(|e| e.id.as_str() == id)?;
     Some(ParamSlot::Map(&mut effect.node.params, name.into()))
+}
+
+fn resolve_caption<'a>(layer: &'a mut Layer, rest: &str, path: &str) -> Result<ParamSlot<'a>> {
+    let id = layer.id.clone();
+    let caption = layer
+        .framing
+        .caption
+        .as_mut()
+        .ok_or_else(|| MmError::NotFound(format!("レイヤー {id} の字幕の置き場所")))?;
+    match rest {
+        "position" => Ok(ParamSlot::Fixed(&mut caption.position)),
+        "width" => Ok(ParamSlot::Fixed(&mut caption.width)),
+        _ => Err(unknown_path(path)),
+    }
+}
+
+fn resolve_reframe<'a>(layer: &'a mut Layer, rest: &str) -> Option<ParamSlot<'a>> {
+    let (id, name) = rest.rsplit_once('.')?;
+    let reframe = layer
+        .framing
+        .cuts
+        .iter_mut()
+        .find(|r| r.cut.as_str() == id)?;
+    let t = &mut reframe.transform;
+    match name {
+        "position" => Some(ParamSlot::Fixed(&mut t.position)),
+        "scale" => Some(ParamSlot::Fixed(&mut t.scale)),
+        "rotation" => Some(ParamSlot::Fixed(&mut t.rotation)),
+        "anchor" => Some(ParamSlot::Optional(&mut t.anchor)),
+        _ => None,
+    }
 }
 
 fn resolve_mask<'a>(layer: &'a mut Layer, rest: &str) -> Option<ParamSlot<'a>> {

@@ -134,6 +134,12 @@ fn features(p: &Project) -> Vec<&'static str> {
             cuts.iter().any(|c| c.transition_in.is_some()),
         ),
         ("カットの origin", cuts.iter().any(|c| c.origin.is_some())),
+        ("カットの上書き", cuts.iter().any(|c| c.overrides.any())),
+        ("複製の元の値", cuts.iter().any(|c| c.origin_base.is_some())),
+        (
+            "再フレーミング",
+            layers.iter().any(|l| !l.framing.cuts.is_empty()),
+        ),
         ("親", layers.iter().any(|l| l.parent.is_some())),
         (
             "トラックマット",
@@ -158,7 +164,7 @@ fn 生成器は全部の操作と参照の種類を通す() {
     let mut seen = std::collections::BTreeSet::new();
     let mut precompose_elsewhere = false;
     let human = OpContext::human();
-    for _ in 0..6000 {
+    for _ in 0..8000 {
         let p = arb_project().new_tree(&mut runner).unwrap().current();
         seen.extend(features(&p));
         let spec = arb_spec().new_tree(&mut runner).unwrap().current();
@@ -188,6 +194,9 @@ fn 生成器は全部の操作と参照の種類を通す() {
         "タイムリマップ",
         "トランジション",
         "カットの origin",
+        "カットの上書き",
+        "複製の元の値",
+        "再フレーミング",
         "親",
         "トラックマット",
         "接続",

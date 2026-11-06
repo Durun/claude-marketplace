@@ -23,15 +23,19 @@ use mm_types::{
 /// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
 /// - v5: `color.lut` の LUT は素材（`lut` の `AssetRef`）。v4 の `path` はその場所の素材（`contentHash` は空）に移す。
 /// - v6: 素材の整理（`bins`: イン点・アウト点、選別、話題）と文字起こしの修正（`transcript_edits`）。v5 からは空で上げる。
-pub const SCHEMA_VERSION: u32 = 6;
+/// - v7: 本編とショート。カットの上書き（`Cut.overrides`）と複製の元の値（`Cut.origin_base`）、
+///   sequence のレイヤーの再フレーミングと字幕の置き場所（`Layer.framing`）。v6 の複製のカットは今の元の値を元の値にして上げる。
+pub const SCHEMA_VERSION: u32 = 7;
 
 mod bins;
 mod layer;
 mod migrate;
 mod migrate_lut;
+mod migrate_shorts;
 mod node;
 mod param;
 mod sequence;
+mod shorts;
 mod validate;
 
 pub use bins::{
@@ -39,17 +43,20 @@ pub use bins::{
     TopicMarker, WordEdit, WordId, WordMarker,
 };
 pub use layer::{
-    BlendMode, Effect, EffectId, EffectMarker, Layer, LayerAudio, Mask, MaskId, MaskMarker,
+    BlendMode, CaptionPlacement, CutReframe, Effect, EffectId, EffectMarker, Framing, Layer,
+    LayerAudio, Mask, MaskId, MaskMarker,
     MaskMode, MatteKind, TimeKeyframe, TimeRemap, TrackMatte, Transform,
 };
 pub use migrate::{load, migrate};
+pub use shorts::{OriginChange, ReferenceSnapshot, ShortUse};
 pub use node::{
     Node, FOOTAGE_KIND, FOOTAGE_PARAM, GAP_KIND, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
     SEQUENCE_PARAM,
 };
 pub use param::{CubicBezier, Ease, Interpolation, Keyframe, Param};
 pub use sequence::{
-    Cut, CutId, CutMarker, OriginRelation, Sequence, SequenceId, SequenceMarker, SequenceOrigin,
+    Cut, CutBase, CutId, CutMarker, CutOverrides, OriginRelation, Sequence, SequenceId,
+    SequenceMarker, SequenceOrigin,
     Transition,
 };
 

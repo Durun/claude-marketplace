@@ -22,6 +22,7 @@ mod insert;
 mod join;
 mod lock_layer;
 mod move_layer;
+mod override_cut;
 mod overwrite;
 mod parent_layer;
 mod precompose;
@@ -33,11 +34,14 @@ mod remove_marker;
 mod remove_param;
 mod remove_render_target;
 mod remove_sequence;
+mod reset_cut;
 mod ripple;
 mod roll;
+mod set_caption;
 mod set_ease;
 mod set_keyframe;
 mod set_param;
+mod set_reframe;
 mod slide;
 mod slip;
 mod split;
@@ -89,11 +93,12 @@ pub use add_sequence::AddSequence;
 pub use attach_layer::AttachLayer;
 pub use disable::Disable;
 pub use extract::Extract;
-pub use fork_sequence::ForkSequence;
+pub use fork_sequence::{CutRange, ForkSequence};
 pub use insert::Insert;
 pub use join::Join;
 pub use lock_layer::LockLayer;
 pub use move_layer::MoveLayer;
+pub use override_cut::OverrideCut;
 pub use overwrite::Overwrite;
 pub use parent_layer::ParentLayer;
 pub use precompose::Precompose;
@@ -105,11 +110,14 @@ pub use remove_marker::RemoveMarker;
 pub use remove_param::RemoveParam;
 pub use remove_render_target::RemoveRenderTarget;
 pub use remove_sequence::RemoveSequence;
+pub use reset_cut::ResetCut;
 pub use ripple::{Edge, Ripple};
 pub use roll::Roll;
+pub use set_caption::SetCaption;
 pub use set_ease::SetEase;
 pub use set_keyframe::SetKeyframe;
 pub use set_param::SetParam;
+pub use set_reframe::SetReframe;
 pub use slide::Slide;
 pub use slip::Slip;
 pub use split::Split;
@@ -163,9 +171,12 @@ pub(crate) fn layer_refs(layer: &Layer, t: &mut Touches) {
     }
 }
 
-/// カットが参照する所（入れ子、トランジションの入れ子）。
+/// カットが参照する所（入れ子、トランジションの入れ子、参照・複製の元のカット）。
 pub(crate) fn cut_refs(cut: &Cut, t: &mut Touches) {
     node_refs(&cut.source, t);
+    if let Some(origin) = &cut.origin {
+        t.add(origin);
+    }
     if let Some(tr) = &cut.transition_in {
         node_refs(&tr.node, t);
     }

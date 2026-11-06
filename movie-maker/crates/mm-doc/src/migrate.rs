@@ -43,6 +43,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             3 => v3_to_v4(&mut value),
             4 => crate::migrate_lut::v4_to_v5(&mut value),
             5 => v5_to_v6(&mut value),
+            6 => crate::migrate_shorts::v6_to_v7(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -284,7 +285,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
         let text = std::fs::read_to_string(dir.join("v5/stage1.json")).unwrap();
         let up = migrate(serde_json::from_str(&text).unwrap()).unwrap();
-        assert_eq!(up["schema_version"], 6);
+        assert_eq!(up["schema_version"], SCHEMA_VERSION);
         assert_eq!(up["bins"]["topics"], Value::Array(Vec::new()));
         assert_eq!(up["transcript_edits"], Value::Array(Vec::new()));
         assert!(load(&text).unwrap().bins.topics.is_empty());
