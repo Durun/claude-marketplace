@@ -1,0 +1,97 @@
+name: movie-maker
+
+on:
+  pull_request:
+    paths:
+      - "movie-maker/**"
+      - ".github/workflows/movie-maker.yml"
+  push:
+    branches: [main]
+    paths:
+      - "movie-maker/**"
+      - ".github/workflows/movie-maker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: movie-maker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: movie-maker
+
+jobs:
+  # 外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストは飛ぶ。
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          workspaces: movie-maker
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  # FFmpeg 9.0 の shared ビルドと feature `ffmpeg` を入れた検査。手順は crates/mm-decode-ffmpeg/README.md。
+  ffmpeg:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      FFMPEG_ZIP: ffmpeg-n9.0-latest-win64-gpl-shared-9.0
+      FEATURES: mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-runtime/ffmpeg,mm/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          workspaces: movie-maker
+          key: ffmpeg
+      - name: FFmpeg を取って展開する
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.zip" "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_ZIP}.zip"
+          7z x -y "$RUNNER_TEMP/ffmpeg.zip" -o"$RUNNER_TEMP/ffmpeg" > /dev/null
+          root="$(cygpath -m "$RUNNER_TEMP/ffmpeg/$FFMPEG_ZIP")"
+          echo "FFMPEG_DIR=$root" >> "$GITHUB_ENV"
+          echo "$root/bin" >> "$GITHUB_PATH"
+      - name: LLVM（libclang）を確かめる
+        run: |
+          if [ ! -f "C:/Program Files/LLVM/bin/libclang.dll" ]; then
+            choco install llvm -y --no-progress
+          fi
+          echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
+      - run: cargo clippy --workspace --all-targets --features "$FEATURES" -- -D warnings
+      - run: cargo test --workspace --features "$FEATURES"
+      - run: cargo run -p mm --features ffmpeg -- render fixtures/projects/stage0/project.json -o target/stage0-check.mp4
+
+  # 口（crates/mm-*-api）の破壊的変更を、PR の基点と比べて見つける。破壊的変更には版の繰り上げが要る。
+  semver:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          workspaces: movie-maker
+          key: semver
+      - uses: taiki-e/install-action@v2.90.1
+        with:
+          tool: cargo-semver-checks@0.51.0
+      - name: 口のクレートを基点と比べる
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          args=()
+          for d in crates/mm-*-api; do args+=(-p "$(basename "$d")"); done
+          cargo semver-checks "${args[@]}" --baseline-rev "$BASE"
