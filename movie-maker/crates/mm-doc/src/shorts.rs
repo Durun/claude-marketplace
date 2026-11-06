@@ -2,9 +2,10 @@
 //!
 //! - 参照のショート（`OriginRelation::Reference`）のカットは、元のカットの値を写して持つ。描画と書き出しは
 //!   ショートのカットをそのまま読めばよく、元を引き直さない。写すのは [`Project::sync_references`] で、操作の層が
-//!   操作を 1 つ適用するたびに通す。上書きした in/out（`Cut.overrides`）だけは写さない。
-//! - 複製のショート（`OriginRelation::Fork`）のカットは、複製したときの元の値（`Cut.origin_base`）を持ち、
-//!   [`Project::origin_changes`] が今の元と比べて変わったカットを返す。
+//!   操作を 1 つ適用するたびに通す。上書きした in/out（`Cut.overrides`）だけは写さない。写した結果が
+//!   `in < out` を満たさない本編の操作は、上書きを外さずに断る。
+//! - ショートのカットは、分けたときの元の値（`Cut.origin_base`）を持つ。[`Project::origin_changes`] が今の元と
+//!   比べて変わったカットを返す。参照は元に従うが、本編のカットを割ると前の側にしか従わないので、それも知らせる。
 //! - [`Project::short_uses`] は本編のカットごとに、どのショートのどのカットが使っているかを返す。
 
 use std::collections::{BTreeMap, HashMap};
@@ -31,7 +32,7 @@ pub struct ShortUse {
     pub overrides: CutOverrides,
 }
 
-/// 複製のショートのカットの元の変化。
+/// ショートのカットの元の変化。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OriginChange {
     pub cut: CutId,
@@ -40,6 +41,8 @@ pub struct OriginChange {
     pub fields: Vec<&'static str>,
     /// 元のカットが消えた。
     pub removed: bool,
+    /// 元のカットを割ってできた後ろの側の本編のカット（順に）。元の値の範囲のうち、元のカットから外れた所を持つ。
+    pub split: Vec<CutId>,
 }
 
 impl Project {
@@ -76,6 +79,7 @@ impl Project {
                     continue;
                 };
                 sync_cut(cut, before.0.get(&cut.id), m)?;
+                check_synced(&id, cut, m)?;
             }
         }
         Ok(())
@@ -107,27 +111,30 @@ impl Project {
 
     /// ショート `short` のカットのうち、元のカットが変わったか消えたもの（カットの順）。
     ///
-    /// 複製は `Cut.origin_base` と今の元を比べる。参照は元に従うので、元が消えたカットだけを返す。
+    /// 参照も複製も `Cut.origin_base` と今の元を比べる（参照は元に従った後の値も知らせる）。元の値を持たない
+    /// カットは、元が消えたときだけ返す。
     pub fn origin_changes(&self, short: &SequenceId) -> Result<Vec<OriginChange>> {
         let seq = self.sequence(short)?;
         let Some(origin) = &seq.origin else {
             return Ok(Vec::new());
         };
-        let main = self.sequence(&origin.sequence)?;
+        let main = &self.sequence(&origin.sequence)?.cuts;
         let changes = seq.cuts.iter().filter_map(|cut| {
             let o = cut.origin.as_ref()?;
-            let change = |fields, removed| OriginChange {
+            let change = |fields, removed, split| OriginChange {
                 cut: cut.id.clone(),
                 origin: o.clone(),
                 fields,
                 removed,
+                split,
             };
-            let Some(m) = main.cuts.iter().find(|c| &c.id == o) else {
-                return Some(change(Vec::new(), true));
+            let Some(index) = main.iter().position(|c| &c.id == o) else {
+                return Some(change(Vec::new(), true, Vec::new()));
             };
             let base = cut.origin_base.as_ref()?;
-            let fields = base.changed_fields(&CutBase::of(m));
-            (!fields.is_empty()).then(|| change(fields, false))
+            let fields = base.changed_fields(&CutBase::of(&main[index]));
+            let split = split_parts(main, index, base);
+            (!fields.is_empty()).then(|| change(fields, false, split))
         });
         Ok(changes.collect())
     }
@@ -206,6 +213,42 @@ fn sync_point(
         None => true,
     };
     (!edited || value == main).then_some(main)
+}
+
+/// 写した後のカットが `in < out` を満たすこと。満たさないのは上書きした側を元が越えたときなので、
+/// ショート側の検証のエラーではなく、本編のカットと上書きを示して本編の操作を断る。
+fn check_synced(short: &SequenceId, cut: &Cut, main: &Cut) -> Result<()> {
+    if cut.in_point < cut.out_point || !cut.overrides.any() {
+        return Ok(());
+    }
+    let which = match (cut.overrides.in_point, cut.overrides.out_point) {
+        (true, true) => "in と out",
+        (true, false) => "in",
+        _ => "out",
+    };
+    Err(MmError::InvalidArgument(format!(
+        "本編のカット {} の変更を写すと、ショート {short} のカット {} が in {} >= out {} になる（{} は {which} を上書きしている。先に overrideCut か resetCut で上書きを直す）",
+        main.id, cut.id, cut.in_point, cut.out_point, cut.id
+    )))
+}
+
+/// 本編の `index` のカットに続き、素材が切れ目なく続くカット（割った後ろの側）のうち、元の値の範囲に入るもの。
+fn split_parts(main: &[Cut], index: usize, base: &CutBase) -> Vec<CutId> {
+    let mut parts = Vec::new();
+    let mut prev = &main[index];
+    for next in &main[index + 1..] {
+        let continues = next.source == prev.source
+            && next.speed == prev.speed
+            && next.in_point == prev.out_point
+            && next.source == base.source
+            && next.in_point < base.out_point;
+        if !continues {
+            break;
+        }
+        parts.push(next.id.clone());
+        prev = next;
+    }
+    parts
 }
 
 fn follow_error(cut: &Cut, what: &str) -> MmError {
