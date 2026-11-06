@@ -44,6 +44,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             4 => crate::migrate_lut::v4_to_v5(&mut value),
             5 => v5_to_v6(&mut value),
             6 => {} // v7 の delivery は serde の既定で埋まる
+            7 => crate::migrate_shorts::v7_to_v8(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"

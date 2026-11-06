@@ -8,6 +8,7 @@ use mm_types::Result;
 use crate::context::OpContext;
 use crate::error::{OpError, OpResult};
 use crate::ops::*;
+use crate::shorts::add_short_links;
 use crate::touches::Touches;
 
 /// 操作ごとの実装。`ops/` の各ファイルが実装する。
@@ -47,9 +48,12 @@ macro_rules! define_ops {
             /// 全部の操作の名前。
             pub const NAMES: &'static [&'static str] = &[ $( $name, )* ];
 
-            /// 読む・書く所の ID。
+            /// 読む・書く所の ID。参照のショートのカットと元のカットは、片方に触れば両方に触る
+            /// （元を直すと写り、ショートの上書きは元を読む）。
             pub fn touches(&self, project: &Project) -> Result<Touches> {
-                match self { $( Self::$variant(x) => x.touches(project), )* }
+                let mut t = match self { $( Self::$variant(x) => x.touches(project), )* }?;
+                add_short_links(project, &mut t);
+                Ok(t)
             }
 
             fn apply_inner(&self, project: &mut Project) -> Result<Op> {
@@ -104,6 +108,14 @@ define_ops! {
     ForkSequence => "forkSequence",
     /// sequence を外す。
     RemoveSequence => "removeSequence",
+    /// 参照のショートのカットの in/out を上書きする・上書きを外す。
+    OverrideCut => "overrideCut",
+    /// 参照のショートのカットの上書きを全部外す。
+    ResetCut => "resetCut",
+    /// sequence のレイヤーのカットの再フレーミングを置く・外す。
+    SetReframe => "setReframe",
+    /// sequence のレイヤーの字幕の置き場所を置く・外す。
+    SetCaption => "setCaption",
     /// レンダーターゲットを足す。
     AddRenderTarget => "addRenderTarget",
     /// レンダーターゲットを外す。
@@ -196,7 +208,9 @@ impl Op {
                 return Err(OpError::Locked(locked));
             }
         }
+        let before = project.reference_snapshot();
         let inverse = self.apply_inner(project)?;
+        project.sync_references(&before)?;
         project.validate()?;
         Ok(Applied { inverse, touches })
     }

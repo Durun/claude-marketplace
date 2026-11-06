@@ -42,6 +42,11 @@ impl Touches {
         self
     }
 
+    /// ID を含むか。
+    pub fn contains(&self, id: &str) -> bool {
+        self.0.contains(id)
+    }
+
     /// 重なるか。
     pub fn overlaps(&self, other: &Touches) -> bool {
         self.0.iter().any(|id| other.0.contains(id))

@@ -180,10 +180,23 @@ fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Resu
     for param in layer_params(layer) {
         validate_keyframes(&format!("レイヤー {id}"), param)?;
     }
+    validate_framing(layer)?;
     for node in layer.nodes() {
         validate_node(project, &format!("レイヤー {id}"), node)?;
     }
     Ok(())
+}
+
+/// 再フレーミングのカットは 1 つに 1 つ。消えたカットの項目は残してよい（取り消しで戻ったカットに効き直す）。
+fn validate_framing(layer: &Layer) -> Result<()> {
+    let mut seen = HashSet::new();
+    match layer.framing.cuts.iter().find(|r| !seen.insert(&r.cut)) {
+        Some(dup) => Err(invalid(format!(
+            "レイヤー {} の再フレーミングのカット {} が重なる",
+            layer.id, dup.cut
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// 親の鎖をたどって循環を見つける。
@@ -238,6 +251,7 @@ fn layer_params(layer: &Layer) -> impl Iterator<Item = &Param> {
         .chain(layer.transform.params())
         .chain(masks)
         .chain(audio)
+        .chain(layer.framing.params())
 }
 
 fn validate_node(project: &Project, owner: &str, root: &Node) -> Result<()> {

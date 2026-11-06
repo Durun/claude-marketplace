@@ -451,7 +451,7 @@
       "type": "object",
       "properties": {
         "cuts": {
-          "description": "新しいカットの ID。元のカットと同じ数。",
+          "description": "新しいカットの ID。コピーする元のカットと同じ数。",
           "type": "array",
           "items": {
             "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
@@ -465,6 +465,17 @@
         "op": {
           "type": "string",
           "const": "forkSequence"
+        },
+        "range": {
+          "description": "コピーする続いたカットの範囲（両端を含む）。省くと全部。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CutRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "relation": {
           "$ref": "#/$defs/OriginRelation"
@@ -500,6 +511,131 @@
       "required": [
         "op",
         "sequence"
+      ]
+    },
+    {
+      "description": "参照のショートのカットの in/out を上書きする・上書きを外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "in": {
+          "description": "上書きするイン点（素材の時間軸）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "const": "overrideCut"
+        },
+        "out": {
+          "description": "上書きするアウト点（素材の時間軸、含まない）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RationalTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    },
+    {
+      "description": "参照のショートのカットの上書きを全部外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "resetCut"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    },
+    {
+      "description": "sequence のレイヤーのカットの再フレーミングを置く・外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setReframe"
+        },
+        "transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transform"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "cut"
+      ]
+    },
+    {
+      "description": "sequence のレイヤーの字幕の置き場所を置く・外す。",
+      "type": "object",
+      "properties": {
+        "caption": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaptionPlacement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setCaption"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
       ]
     },
     {
@@ -1384,6 +1520,24 @@
         "add"
       ]
     },
+    "CaptionPlacement": {
+      "description": "字幕の置き場所。値はコンポジションの画素。",
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "字幕の帯の下端の中央（Vec2）。",
+          "$ref": "#/$defs/Param"
+        },
+        "width": {
+          "description": "字幕の帯の幅（Number）。これを超える行は折り返す。",
+          "$ref": "#/$defs/Param"
+        }
+      },
+      "required": [
+        "position",
+        "width"
+      ]
+    },
     "ColorSpace": {
       "description": "色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。",
       "type": "string"
@@ -1490,9 +1644,29 @@
           ],
           "default": null
         },
+        "origin_base": {
+          "description": "複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CutBase"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "out": {
           "description": "素材の時間軸での出（含まない）。`in < out`。",
           "$ref": "#/$defs/RationalTime"
+        },
+        "overrides": {
+          "description": "参照のショートで、元のカットから上書きした所。上書きしていない所は元のカットに従う。",
+          "$ref": "#/$defs/CutOverrides",
+          "default": {
+            "in": false,
+            "out": false
+          }
         },
         "source": {
           "$ref": "#/$defs/Node"
@@ -1522,6 +1696,86 @@
         "source",
         "in",
         "out"
+      ]
+    },
+    "CutBase": {
+      "description": "元のカットの、ショートが従う・比べる値（素材、イン点、アウト点、速さ、有効）。",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "in": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "out": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "source": {
+          "$ref": "#/$defs/Node"
+        },
+        "speed": {
+          "$ref": "#/$defs/Rational"
+        }
+      },
+      "required": [
+        "source",
+        "in",
+        "out",
+        "speed",
+        "enabled"
+      ]
+    },
+    "CutOverrides": {
+      "description": "参照のショートのカットで上書きした所。真の所は元のカットに従わない。",
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "boolean"
+        },
+        "out": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "in",
+        "out"
+      ]
+    },
+    "CutRange": {
+      "description": "sequence の中の続いたカットの範囲。`first` が `last` より前か同じ。",
+      "type": "object",
+      "properties": {
+        "first": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "last": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "first",
+        "last"
+      ]
+    },
+    "CutReframe": {
+      "description": "カット 1 つの再フレーミング。カットの画像（コンポジションの画布に縦横比を保って収めたもの）に掛ける変形。\nキーフレームの時刻は素材の時刻（被写体の位置は素材の時刻で決まるので、カットを動かしても切り出しがずれない）。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
+        }
+      },
+      "required": [
+        "cut",
+        "transform"
       ]
     },
     "CutSplice": {
@@ -1638,6 +1892,33 @@
         "node"
       ]
     },
+    "Framing": {
+      "description": "sequence のレイヤーの、コンポジションごとの見せ方。同じ素材を本編（16:9）とショート（9:16）で別の位置から切り出す。",
+      "type": "object",
+      "properties": {
+        "caption": {
+          "description": "字幕の置き場所。`None` は字幕を描く側の既定。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaptionPlacement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cuts": {
+          "description": "カットごとの再フレーミング。カットの ID は重ならない。無いカットは変形なし。",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CutReframe"
+          }
+        }
+      },
+      "required": [
+        "cuts"
+      ]
+    },
     "Interpolation": {
       "description": "キーフレームの補間。区間 `[k_i, k_{i+1})` の形は始点 `k_i` の補間で決まる。\n数の型（数、2・3 次元の数、色）だけ `Linear` と `Bezier` が効き、ほかはホールド。",
       "oneOf": [
@@ -1734,6 +2015,14 @@
           "description": "無効にしたレイヤーは描かず、鳴らさない。",
           "type": "boolean",
           "default": true
+        },
+        "framing": {
+          "description": "sequence のレイヤーで、このコンポジションでのカットごとの再フレーミングと字幕の置き場所。",
+          "$ref": "#/$defs/Framing",
+          "default": {
+            "caption": null,
+            "cuts": []
+          }
         },
         "id": {
           "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
