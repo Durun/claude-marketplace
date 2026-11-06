@@ -1,7 +1,8 @@
 //! FFmpeg のライブラリによるエンコーダー（`mm-decode-api` の `Encoder` の実装）。
 //!
 //! H.264（libx264）+ AAC を MP4 に書く。フレームは線形の RGBA の f32 で受け取り、Rec.1886 の
-//! 符号化値に直してから Rec.709・tv レンジの YUV420P にして押す。フレームの時刻は 1 フレームごとに `1 / fps` 進める（書き出しは CFR）。
+//! 符号化値に直してから Rec.709・tv レンジの NV12 にして押す。レンダラーが GPU で作った NV12（`push_nv12_frames`）は
+//! 変換せずに押す。フレームの時刻は 1 フレームごとに `1 / fps` 進める（書き出しは CFR）。
 //!
 //! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
 #![cfg(feature = "ffmpeg")]
@@ -14,7 +15,7 @@ use ff::format::context::Output;
 use ff::{codec, encoder, format, Packet, Rational};
 use ffmpeg_next as ff;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, EncoderFactory};
+use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, EncoderFactory, Nv12Frame};
 use mm_types::{MmError, Result, RgbaImage};
 
 use audio::AudioTrack;
@@ -117,6 +118,15 @@ impl Encoder for FfmpegEncoder {
         let s = self.session_mut("push_frames")?;
         for image in frames {
             s.video.push(&mut s.output, image)?;
+            s.frames += 1;
+        }
+        Ok(())
+    }
+
+    fn push_nv12_frames(&mut self, frames: &[Nv12Frame]) -> Result<()> {
+        let s = self.session_mut("push_nv12_frames")?;
+        for frame in frames {
+            s.video.push_nv12(&mut s.output, frame)?;
             s.frames += 1;
         }
         Ok(())
