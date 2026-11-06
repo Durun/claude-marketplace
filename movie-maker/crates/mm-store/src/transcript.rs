@@ -4,7 +4,7 @@
 //! 人の直し（消した単語、直した文字）はプロジェクトのデータの `transcript_edits` にあり、
 //! 操作を書くたびに同じトランザクションで `words` の `fixed`・`deleted`・`run` に写す。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -220,7 +220,8 @@ fn insert_words(
     edits: &[&WordEdit],
 ) -> Result<()> {
     let ids = assign_ids(content_hash, words);
-    let find = |id: &WordId| edits.iter().find(|e| &e.word == id).copied();
+    let by_word: HashMap<&WordId, &WordEdit> = edits.iter().map(|e| (&e.word, *e)).collect();
+    let find = |id: &WordId| by_word.get(id).copied();
     let shown: Vec<Option<&str>> = words
         .iter()
         .zip(&ids)
@@ -257,6 +258,48 @@ fn insert_words(
         .sql()?;
     }
     Ok(())
+}
+
+impl Store {
+    /// 新しく足した・変えた直しの単語が、素材の文字起こしに在るか確かめる。無い単語への直しは、
+    /// 表に写らず検索にも現れないまま `transcript_edits` に残るので、書く前に拒否する。
+    pub(crate) fn check_edited_words(&self, new: &Project) -> Result<()> {
+        let old: HashMap<(&AssetId, &WordId), &WordEdit> = self
+            .project
+            .transcript_edits
+            .iter()
+            .map(|e| ((&e.asset, &e.word), e))
+            .collect();
+        let mut known: HashMap<&AssetId, HashSet<String>> = HashMap::new();
+        for edit in &new.transcript_edits {
+            if old.get(&(&edit.asset, &edit.word)) == Some(&edit) {
+                continue;
+            }
+            if !known.contains_key(&edit.asset) {
+                known.insert(&edit.asset, self.word_ids_of(&edit.asset)?);
+            }
+            if !known[&edit.asset].contains(edit.word.as_str()) {
+                return Err(MmError::InvalidArgument(format!(
+                    "単語 {} は素材 {} の文字起こしに無い",
+                    edit.word, edit.asset
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn word_ids_of(&self, asset: &AssetId) -> Result<HashSet<String>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT word_id FROM words WHERE asset_id = ?1")
+            .sql()?;
+        let ids = st
+            .query_map([asset.as_str()], |r| r.get::<_, String>(0))
+            .sql()?
+            .collect::<rusqlite::Result<HashSet<String>>>()
+            .sql()?;
+        Ok(ids)
+    }
 }
 
 /// 直しが変わった素材の `words` を、新しいプロジェクトのデータの直しに合わせる。
@@ -297,7 +340,8 @@ fn refresh_asset(tx: &Connection, asset: &AssetId, edits: &[&WordEdit]) -> Resul
         .sql()?
         .collect::<rusqlite::Result<_>>()
         .sql()?;
-    let edit_of = |word: &str| edits.iter().find(|e| e.word.as_str() == word).copied();
+    let by_word: HashMap<&str, &WordEdit> = edits.iter().map(|e| (e.word.as_str(), *e)).collect();
+    let edit_of = |word: &str| by_word.get(word).copied();
     let wanted: Vec<(Option<String>, bool)> = rows
         .iter()
         .map(|(_, word, ..)| edit_of(word).map_or((None, false), |e| (e.text.clone(), e.deleted)))

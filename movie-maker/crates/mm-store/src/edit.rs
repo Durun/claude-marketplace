@@ -31,6 +31,7 @@ impl Store {
         }
         let mut project = self.project().clone();
         let outcome = apply_transaction(&mut project, &txn.ops, ctx)?;
+        self.check_edited_words(&project).map_err(OpError::Doc)?;
         let conflict = self.touches_after(base)?.intersection(&outcome.touches);
         if !conflict.is_empty() {
             return Err(OpError::Conflict {
