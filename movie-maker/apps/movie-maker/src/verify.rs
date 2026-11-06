@@ -147,9 +147,10 @@ fn run(
     shared.send(Command::Play);
     let started = wait_until(START_TIMEOUT, || shared.playing.load(Ordering::SeqCst));
     let t0 = Instant::now();
-    let shot = play_and_capture(shared, info, test, hwnd, t0);
+    let (shot, shot_at) = play_and_capture(shared, info, test, hwnd, t0);
     let wall = t0.elapsed().as_secs_f64();
     let mut report = report(shared, info, test, &base, started, wall, shot);
+    report["screenshot_at"] = shot_at;
     report["interaction"] = interaction(shared, info, target);
     report["inspector"] = inspector_flow(app, shared, target, hwnd, test);
     report["timeline_edit"] = verify_edit::run(&verify_edit::Env {
@@ -162,20 +163,27 @@ fn run(
     report
 }
 
-/// 再生が終わるまで待ち、半分まで進んだところでスクリーンショットを撮る。
+/// 再生が終わるまで待ち、半分まで進んだところでスクリーンショットを撮る。撮った時の再生位置と、Program に
+/// 渡した最新のフレームの時刻も返す。WebView の時刻の表示は画面への反映がサーフェスより約 2 フレーム遅れるので、
+/// スクリーンショットの絵と比べるのはこちらの時刻にする。
 fn play_and_capture(
     shared: &Shared,
     info: &PlaybackInfo,
     test: &PlayTest,
     hwnd: isize,
     t0: Instant,
-) -> Option<String> {
+) -> (Option<String>, Value) {
     let mut shot = None;
+    let mut at = Value::Null;
     let half = Duration::from_secs_f64((info.duration.min(test.secs) / 2.0).max(0.1));
     wait_until(
         Duration::from_secs_f64(info.duration) + FINISH_SLACK,
         || {
             if shot.is_none() && t0.elapsed() >= half {
+                at = json!({
+                    "playhead_secs": shared.playhead(),
+                    "frame_secs": shared.frames.newer_than(0).map(|f| f.time),
+                });
                 shot = test.screenshot.as_ref().map(|path| {
                     match capture::capture_window(hwnd, path) {
                         Ok(()) => path.display().to_string(),
@@ -189,7 +197,7 @@ fn play_and_capture(
             !shared.playing.load(Ordering::SeqCst)
         },
     );
-    shot.filter(|s| !s.is_empty())
+    (shot.filter(|s| !s.is_empty()), at)
 }
 
 fn report(
