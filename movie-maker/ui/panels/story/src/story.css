@@ -1,0 +1,314 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-story {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  height: 100%;
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-story-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-story-input,
+.mm-story-button {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-story-input {
+  background: var(--mm-color-surface);
+}
+
+.mm-story-row > .mm-story-input {
+  flex: 1 1 0;
+}
+
+.mm-story > .mm-story-input {
+  width: 100%;
+}
+
+.mm-story-button {
+  flex: none;
+  background: var(--mm-gradient-button);
+  cursor: pointer;
+}
+
+.mm-story-button:disabled {
+  color: var(--mm-color-text-muted);
+  cursor: default;
+}
+
+.mm-story-primary {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+}
+
+.mm-story-primary:disabled {
+  color: var(--mm-color-accent-text);
+  opacity: 0.5;
+}
+
+.mm-story-input:focus-visible,
+.mm-story-button:focus-visible,
+.mm-story-chip:focus-visible,
+.mm-story-hit:focus-visible,
+.mm-story-link:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-story-meta,
+.mm-story-time,
+.mm-story-empty {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-story-error {
+  margin: 0;
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-story-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mm-color-task-link);
+  font: inherit;
+  font-size: var(--mm-font-size-sm);
+  cursor: pointer;
+}
+
+.mm-story-link:hover {
+  color: var(--mm-color-task-link-hover);
+  text-decoration: underline;
+}
+
+/* 検索 */
+.mm-story-search {
+  display: grid;
+  gap: var(--mm-space-xs);
+}
+
+.mm-story-hits {
+  margin: 0;
+  padding: 0;
+  max-height: calc(var(--mm-size-media-list-min) * 1.2);
+  overflow-y: auto;
+  list-style: none;
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-story-hit {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mm-space-sm);
+  width: 100%;
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: 0;
+  background: none;
+  color: var(--mm-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-story-hit:hover {
+  background: color-mix(in srgb, var(--mm-color-accent) 15%, transparent);
+}
+
+.mm-story-hit-context {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 読み物 */
+.mm-story-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* 選択の操作欄が出て高さが縮んでも、スクロールバーの出入りで文が折り返し直されないようにする。 */
+  scrollbar-gutter: stable;
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-story-text {
+  padding: var(--mm-space-sm);
+  line-height: 1.9;
+  user-select: none;
+}
+
+.mm-story-block + .mm-story-block {
+  margin-top: var(--mm-space-sm);
+}
+
+.mm-story-block[data-topic="true"] {
+  padding: var(--mm-space-xs) var(--mm-space-sm) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-left: var(--mm-space-xs) solid var(--mm-color-accent);
+  border-radius: var(--mm-radius-md);
+}
+
+.mm-story-paragraph {
+  margin: 0;
+}
+
+.mm-story-paragraph + .mm-story-paragraph {
+  margin-top: var(--mm-space-xs);
+}
+
+.mm-story-word {
+  border-radius: var(--mm-radius-sm);
+  cursor: pointer;
+}
+
+.mm-story-word:hover {
+  background: color-mix(in srgb, var(--mm-color-accent) 15%, transparent);
+}
+
+.mm-story-word[data-selected="true"] {
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+}
+
+.mm-story-word[data-deleted="true"] {
+  color: var(--mm-color-text-muted);
+  text-decoration: line-through;
+}
+
+.mm-story-word[data-fixed="true"] {
+  text-decoration: underline dotted var(--mm-color-accent);
+  text-decoration-thickness: var(--mm-stroke-focus);
+  text-underline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-story-word[data-focus="true"] {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+}
+
+/* 話題の見出し */
+.mm-story-topic-head {
+  display: grid;
+  gap: var(--mm-space-xs);
+  margin-bottom: var(--mm-space-xs);
+  padding-bottom: var(--mm-space-xs);
+  border-bottom: var(--mm-border-width) solid var(--mm-color-border);
+  line-height: 1.4;
+}
+
+.mm-story-topic-head[data-rating="rejected"] .mm-story-topic-title {
+  color: var(--mm-color-text-muted);
+  text-decoration: line-through;
+}
+
+.mm-story-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  cursor: pointer;
+}
+
+.mm-story-topic-title {
+  font-weight: 700;
+}
+
+.mm-story-topic-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-story-chip,
+.mm-story-tag {
+  padding: 0 var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-lg);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
+  font-size: var(--mm-font-size-sm);
+  cursor: pointer;
+}
+
+.mm-story-chip[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+}
+
+.mm-story-tag {
+  border-color: var(--mm-color-border);
+  color: var(--mm-color-task-link);
+}
+
+.mm-story-tag:hover {
+  border-color: var(--mm-color-danger);
+  color: var(--mm-color-danger);
+}
+
+.mm-story-tag-input {
+  width: calc(var(--mm-size-media-list-min) / 2);
+  padding-block: 0;
+  font-size: var(--mm-font-size-sm);
+}
+
+/* 選択と並べる */
+.mm-story-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mm-space-xs);
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-bg);
+}
+
+.mm-story-bar .mm-story-meta {
+  flex: 1 1 auto;
+}
+
+.mm-story-tray {
+  display: grid;
+  gap: var(--mm-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-story-tray-item {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.mm-story-tray-title {
+  flex: 1 1 auto;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

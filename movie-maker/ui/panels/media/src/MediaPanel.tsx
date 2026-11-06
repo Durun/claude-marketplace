@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { MediaApi } from "@mm/sdk";
+import { announceAsset, type MediaApi } from "@mm/sdk";
 import { CacheSection } from "./CacheSection.tsx";
 import { Failures, PendingRow, Row } from "./Rows.tsx";
 import { useMedia } from "./useMedia.ts";
@@ -43,7 +43,10 @@ export const MediaPanel = ({ api, importRequest = 0 }: MediaPanelProps) => {
             api={api}
             item={item}
             selected={item.id === selectedId}
-            onSelect={() => setSelectedId(item.id)}
+            onSelect={() => {
+              setSelectedId(item.id);
+              announceAsset(item.id);
+            }}
           />
         ))}
         {items.length === 0 && !progress.running && (

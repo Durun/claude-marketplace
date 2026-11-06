@@ -27,6 +27,8 @@ use crate::project;
 use crate::render::Renderer;
 use crate::source_ipc;
 use crate::state::Shared;
+use crate::story::StoryState;
+use crate::story_ipc;
 use crate::surface::{self, PixelRect};
 use crate::verify::{self, Telemetry};
 
@@ -246,9 +248,15 @@ fn build_and_run(boot: Boot) {
         boot.shared.clone(),
         media::project_cache_dir(&boot.args.project),
     ));
+    let story_state = Arc::new(StoryState::new(
+        boot.shared.clone(),
+        &boot.args.project,
+        media::project_cache_dir(&boot.args.project),
+    ));
     tauri::Builder::default()
         .manage(managed)
         .manage(media_state)
+        .manage(story_state)
         .invoke_handler(tauri::generate_handler![
             ipc::subscribe,
             ipc::sync_ack,
@@ -263,6 +271,11 @@ fn build_and_run(boot: Boot) {
             media_ipc::media_import,
             media_ipc::media_cache_info,
             media_ipc::media_cache_clear,
+            story_ipc::story_overview,
+            story_ipc::story_transcript,
+            story_ipc::story_range,
+            story_ipc::story_search,
+            story_ipc::story_timeline_time,
             source_ipc::source_open,
             source_ipc::source_close,
             source_ipc::source_state,

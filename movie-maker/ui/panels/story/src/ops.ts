@@ -1,0 +1,48 @@
+import type { Op, Rating, StoryWord, Topic, WordRange } from "@mm/sdk";
+import { newId } from "./model.ts";
+
+/** 単語を消す。選んだ単語がみな消してあれば戻す。どちらも対象が無ければ `null`。 */
+export const deleteOp = (asset: string, selected: readonly StoryWord[]): Op | null => {
+  const alive = selected.filter((w) => !w.deleted);
+  const restore = alive.length === 0;
+  const target = restore ? selected : alive;
+  if (target.length === 0) return null;
+  return { op: "deleteWords", asset, words: target.map((w) => w.id), restore };
+};
+
+/** 1 語の文字を直す。空の文字は直しを外す。 */
+export const fixOp = (asset: string, word: StoryWord, text: string): Op => ({
+  op: "fixTranscript",
+  asset,
+  word: word.id,
+  text: text === "" || text === word.text ? null : text,
+});
+
+/** 範囲に題を付けて話題にする。 */
+export const addTopicOp = (asset: string, title: string, range: WordRange): Op => ({
+  op: "addTopic",
+  topic: { id: newId("t"), asset, title, in: range.start, out: range.end },
+});
+
+/** 評価を変える。同じ評価をもう一度選ぶと「未評価」に戻す。 */
+export const rateOp = (topic: Topic, rating: Rating): Op => ({
+  op: "rate",
+  target: topic.id,
+  rating: topic.rating === rating ? "unrated" : rating,
+});
+
+/** タグを付ける・外す。 */
+export const tagOp = (topic: Topic, tag: string, remove: boolean): Op => ({
+  op: "tag",
+  target: topic.id,
+  tag,
+  remove,
+});
+
+/** 話題の列を、並べた順にカットにして sequence の末尾へ差し込む。 */
+export const insertTopicsOp = (sequence: string, topics: readonly Topic[]): Op => ({
+  op: "insertTopics",
+  sequence,
+  topics: topics.map((t) => t.id),
+  cuts: topics.map(() => newId("k")),
+});

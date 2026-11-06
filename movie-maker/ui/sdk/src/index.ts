@@ -42,3 +42,16 @@ export {
   type MediaStatus,
   type WaveformView,
 } from "./media.ts";
+export {
+  createIpcStoryApi,
+  type StoryApi,
+  type StoryAsset,
+  type StoryHit,
+  type StoryInvoke,
+  type StoryOverview,
+  type StorySequence,
+  type StoryTranscript,
+  type StoryWord,
+  type WordRange,
+} from "./story.ts";
+export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";

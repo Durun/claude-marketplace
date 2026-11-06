@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { createClient, createIpcMediaApi, createIpcTransport } from "@mm/sdk";
+import { createClient, createIpcMediaApi, createIpcStoryApi, createIpcTransport } from "@mm/sdk";
 import { followTheme } from "./followTheme.ts";
 import { Shell } from "./Shell.tsx";
 import "./shell.css";
@@ -14,4 +14,4 @@ const sendOp = (op: Parameters<typeof client.sendOp>[0]): void => {
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));
 const root = document.getElementById("root");
-if (root) render(<Shell sendOp={sendOp} media={createIpcMediaApi()} />, root);
+if (root) render(<Shell sendOp={sendOp} media={createIpcMediaApi()} story={createIpcStoryApi()} />, root);
