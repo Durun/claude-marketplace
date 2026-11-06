@@ -46,6 +46,7 @@ mod unprecompose;
 mod add_selection;
 mod add_topic;
 mod bins;
+mod cut_words;
 mod delete_words;
 mod extract_cuts;
 mod fit_layer;
@@ -63,6 +64,7 @@ mod trim_layer;
 
 pub use add_selection::AddSelection;
 pub use add_topic::AddTopic;
+pub use cut_words::{CutSplice, CutWords, SourceRange};
 pub use delete_words::DeleteWords;
 pub use extract_cuts::ExtractCuts;
 pub use fit_layer::{with_fitted_layers, FitLayer};

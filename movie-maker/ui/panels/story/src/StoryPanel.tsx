@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { StoryApi } from "@mm/sdk";
-import { ArrangeBar } from "./ArrangeBar.tsx";
+import { ArrangeBar, arrangeTarget } from "./ArrangeBar.tsx";
 import { SearchBox } from "./SearchBox.tsx";
 import { SelectionBar } from "./SelectionBar.tsx";
 import { TranscriptView, type TopicActions } from "./TranscriptView.tsx";
@@ -48,6 +48,14 @@ const topicActions = (actions: Actions, tray: Tray): TopicActions => ({
   onRemove: actions.removeTopic,
 });
 
+/** 並べ先の sequence と、Delete が切る sequence（開いているコンポジションの sequence、無ければ並べ先）。 */
+const useSequenceTargets = (loaded: ReturnType<typeof useLoaded>) => {
+  const [chosen, choose] = useState<string | null>(null);
+  const sequences = loaded.overview?.sequences ?? [];
+  const target = arrangeTarget(chosen, sequences);
+  return { sequences, target, choose, cutSequence: loaded.overview?.open_sequence ?? target };
+};
+
 /** 文字起こしを読み物として見せ、範囲を選んで話題にする・消す・直す・並べる。 */
 export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
   const loaded = useLoaded(api, refreshKey);
@@ -61,7 +69,8 @@ export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
     if (word) void actions.jump(word);
   }, words.length);
   const selected = select.dragging ? [] : wordsIn(words, select.span);
-  const actions = createActions({ api, loaded, tray, selected, clearSelection: select.clear, setFocusWord, setNotice });
+  const { cutSequence, ...seq } = useSequenceTargets(loaded);
+  const actions = createActions({ api, loaded, tray, selected, cutSequence, clearSelection: select.clear, setFocusWord, setNotice });
   const assets = loaded.overview?.assets ?? [];
 
   return (
@@ -85,11 +94,12 @@ export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
       <SelectionBar
         selected={selected}
         onTopic={actions.makeTopic}
-        onDelete={actions.deleteSelected}
+        onCut={actions.cutSelected}
+        onHide={actions.hideSelected}
         onFix={actions.fixSelected}
         onClear={select.clear}
       />
-      <ArrangeBar tray={tray} sequences={loaded.overview?.sequences ?? []} onArrange={actions.arrange} />
+      <ArrangeBar tray={tray} {...seq} onChoose={seq.choose} onArrange={actions.arrange} />
     </section>
   );
 };

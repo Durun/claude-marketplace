@@ -171,12 +171,49 @@ describe("StoryPanel の選択と編集", () => {
     expect(op).toMatchObject({ op: "addTopic", topic: { asset: "a1", in: t(1), out: t(4), title: "w1直" } });
     expect(api.transcript).toHaveBeenCalledTimes(2);
   });
+});
 
-  it("消していない単語を削除し、全部消してあれば戻す", async () => {
+describe("StoryPanel の Delete", () => {
+  it("Delete は選んだ単語の範囲を並べ先の sequence から外す cutWords を送る", async () => {
     const api = fake();
     await mount(api);
     drag(0, 2);
     await press(button("Delete"));
+    expect(api.range).toHaveBeenCalledWith("a1", "w0", "w2");
+    expect(sent(api)[0]).toEqual({
+      op: "cutWords",
+      asset: "a1",
+      sequence: "s1",
+      words: ["w0", "w1", "w2"],
+      ranges: [{ in: t(1), out: t(4) }],
+    });
+  });
+});
+
+describe("StoryPanel の Delete の切る先、Hide、直し", () => {
+  it("開いているコンポジションの sequence があればそこを切り、sequence が無ければ送らない", async () => {
+    const sequences = [
+      { id: "s1", cuts: 0, duration: 0 },
+      { id: "short", cuts: 0, duration: 0 },
+    ];
+    const assets = [{ id: "a1", name: "talk.wav", duration: 5, has_transcript: true }];
+    const open = fake([], { overview: vi.fn().mockResolvedValue({ assets, sequences, open_sequence: "short" }) });
+    await mount(open);
+    drag(0, 0);
+    await press(button("Delete"));
+    expect(sent(open)[0]).toMatchObject({ op: "cutWords", sequence: "short" });
+    const none = fake([], { overview: vi.fn().mockResolvedValue({ assets, sequences: [] }) });
+    await mount(none);
+    drag(0, 0);
+    await press(button("Delete"));
+    expect(sent(none)).toEqual([]);
+  });
+
+  it("Hide は消していない単語を表示だけ消し、全部消してあれば戻す", async () => {
+    const api = fake();
+    await mount(api);
+    drag(0, 2);
+    await press(button("Hide"));
     expect(sent(api)[0]).toEqual({ op: "deleteWords", asset: "a1", words: ["w0", "w1"], restore: false });
     drag(2, 2);
     expect(button("Restore")).toBeDefined();

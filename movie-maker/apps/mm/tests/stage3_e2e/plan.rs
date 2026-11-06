@@ -108,16 +108,10 @@ pub fn add_render_target() -> Value {
     json!({"op": "addRenderTarget", "target": target})
 }
 
-/// 言い淀みの単語を消し（`deleteWords`）、その範囲をカットから抜く（割って、間を `extract`）。
-/// `deleteWords` は文字起こしの表示だけを変えるので、再生から外すカットの編集は別に要る。
-pub fn delete_stutter(asset: &str, word: &TranscriptWord, topic: &Topic) -> Vec<Value> {
-    let cut = topic.id.replacen('t', "k", 1);
-    let head = word.start.checked_sub(topic.start).unwrap();
-    let body = word.end.checked_sub(word.start).unwrap();
-    vec![
-        json!({"op": "deleteWords", "asset": asset, "words": [word.word]}),
-        json!({"op": "split", "cut": cut, "at": time(head), "new_cut": format!("{cut}a")}),
-        json!({"op": "split", "cut": format!("{cut}a"), "at": time(body), "new_cut": format!("{cut}b")}),
-        json!({"op": "extract", "cut": format!("{cut}a")}),
-    ]
+/// 言い淀みの単語を消し、その範囲を sequence `sequence` のカットから抜いて詰める（`cutWords`）。
+pub fn delete_stutter(asset: &str, sequence: &str, word: &TranscriptWord) -> Vec<Value> {
+    let range = json!({"in": time(word.start), "out": time(word.end)});
+    let op = json!({"op": "cutWords", "asset": asset, "sequence": sequence,
+        "words": [word.word], "ranges": [range]});
+    vec![op]
 }

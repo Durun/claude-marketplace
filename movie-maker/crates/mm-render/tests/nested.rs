@@ -201,6 +201,42 @@ fn 入れ子の中の音が親の時間に置かれて出る() {
 }
 
 #[test]
+fn sequence_のカットの音が素材のイン点から並んで出る() {
+    let Some(ctx) = gpu() else { return };
+    let ms = |v: i128| RationalTime::new(v, 1000).expect("表せる");
+    // 素材の [1.0, 1.5) と [0.2, 0.7) を、この順に並べる。
+    let first = mm_doc::Cut::new("k1", footage_node(), ms(1000), ms(1500));
+    let second = mm_doc::Cut::new("k2", footage_node(), ms(200), ms(700));
+    let seq_node = Node::new("sequence", 1).with_param("sequence", ParamValue::Text("s1".into()));
+    let direct = |id: &str, from: i128, to: i128| {
+        Layer::new(id, footage_node(), RationalTime::ZERO, ms(from), ms(to))
+    };
+    let mut p = project(vec![
+        comp(
+            "main",
+            SMALL,
+            vec![layer("q", seq_node, RationalTime::ZERO, ms(1000))],
+        ),
+        comp("a", SMALL, vec![direct("fa", 1000, 1500)]),
+        comp("b", SMALL, vec![direct("fb", 200, 700)]),
+    ]);
+    p.sequences.push(mm_doc::Sequence {
+        id: Id::new("s1"),
+        cuts: vec![first, second],
+        origin: None,
+    });
+    let nodes = registry(&Arc::default());
+    let mut r = renderer(&ctx, Arc::new(SampleMixerFactory));
+    let want_a = audio(&mut r, &p, &nodes, "a", span(0, 500));
+    let want_b = audio(&mut r, &p, &nodes, "b", span(0, 500));
+    assert!(!want_a.is_silent() && want_a.max_diff(&want_b) != Some(0.0));
+    let got_a = audio(&mut r, &p, &nodes, "main", span(0, 500));
+    let got_b = audio(&mut r, &p, &nodes, "main", span(500, 1000));
+    assert_eq!(got_a.max_diff(&want_a), Some(0.0), "1 つ目のカットの音");
+    assert_eq!(got_b.max_diff(&want_b), Some(0.0), "2 つ目のカットの音");
+}
+
+#[test]
 fn 続きの区間はミキサーを持ち越しシークで作り直す() {
     let Some(ctx) = gpu() else { return };
     let p = project(vec![comp(

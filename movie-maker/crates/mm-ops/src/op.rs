@@ -162,6 +162,8 @@ define_ops! {
     RemoveTopic => "removeTopic",
     /// 文字起こしの単語を消す・戻す。
     DeleteWords => "deleteWords",
+    /// 文字起こしの単語を消し、その音をシーケンスのカットから抜いて詰める。
+    CutWords => "cutWords",
     /// 文字起こしの単語の文字を直す。
     FixTranscript => "fixTranscript",
 }

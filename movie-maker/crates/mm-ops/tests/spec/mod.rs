@@ -142,7 +142,7 @@ pub fn arb_spec() -> impl Strategy<Value = Spec> {
     prop_oneof![
         3 => arb_doc_spec(),
         2 => arb_seq_spec(),
-        1 => bins::arb_bin_spec().prop_map(Spec::Bin),
+        3 => bins::arb_bin_spec().prop_map(Spec::Bin),
     ]
 }
 

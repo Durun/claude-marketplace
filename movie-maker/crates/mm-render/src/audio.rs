@@ -1,15 +1,16 @@
 //! 音。レイヤーごとにノードの種類の `render_audio` を呼び、置く位置をそろえてミキサーに渡す。
-//! 入れ子（ノードの種類 `composition`）は、中のコンポジションを同じ手順で混ぜた音を 1 本の入力にする。
+//! 入れ子（ノードの種類 `composition`）と sequence は、中のコンポジションやカットの列を同じ手順で混ぜた音を 1 本の入力にする。
 
 use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig};
-use mm_doc::{Composition, Layer};
-use mm_eval::{evaluate_audio, source_time};
-use mm_node_api::{audio_frames_in, AudioCx};
+use mm_doc::{Composition, Layer, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_eval::{evaluate_audio, place_cuts, source_time};
+use mm_node_api::{audio_frames_in, AudioCx, NodeKind};
 use mm_render_api::AudioRequest;
 use mm_types::{CompositionId, Id, Params, RationalTime, Result, TimeRange};
 
 use crate::layers::{evaluate, MAX_DEPTH, NESTED_KIND, NESTED_PARAM};
 use crate::renderer::WgpuRenderer;
+use crate::sequence::cut_layer;
 
 /// 連続して呼ばれる `render_audio` の間で持ち越すミキサー。ダッキングの状態をブロックの切れ目で戻さない。
 pub(crate) struct AudioStream {
@@ -101,28 +102,13 @@ impl WgpuRenderer {
             source_time(layer, overlap.start)?,
             source_time(layer, overlap.end)?,
         )?;
-        let block = if kind.id() == NESTED_KIND {
-            match self.nested_audio(scope, &params, source_range)? {
-                Some(block) => block,
-                None => return Ok(None),
-            }
-        } else {
-            let footage = self.sources.footage_for(
-                self.decoders.as_ref(),
-                self.gpu.context().as_ref(),
-                req.project,
-                &params,
-                source_range.start,
-            )?;
-            let mut cx = AudioCx {
-                range: overlap,
-                source_range,
-                params: &params,
-                sample_rate: req.sample_rate,
-                channels: req.channels,
-                footage,
-            };
-            kind.render_audio(&mut cx)?
+        let block = match kind.id() {
+            NESTED_KIND => self.nested_audio(scope, &params, source_range)?,
+            SEQUENCE_KIND => self.sequence_audio(scope, &params, source_range)?,
+            _ => Some(self.node_audio(req, kind.as_ref(), &params, overlap, source_range)?),
+        };
+        let Some(block) = block else {
+            return Ok(None);
         };
         let offset = audio_frames_in(
             TimeRange::new(scope.range.start, overlap.start)?,
@@ -138,6 +124,94 @@ impl WgpuRenderer {
         }))
     }
 
+    /// 入れ子でも sequence でもないノードの音。素材があればその区間を読む。
+    fn node_audio(
+        &mut self,
+        req: &AudioRequest<'_>,
+        kind: &dyn NodeKind,
+        params: &Params,
+        range: TimeRange,
+        source_range: TimeRange,
+    ) -> Result<AudioBlock> {
+        let footage = self.sources.footage_for(
+            self.decoders.as_ref(),
+            self.gpu.context().as_ref(),
+            req.project,
+            params,
+            source_range.start,
+        )?;
+        let mut cx = AudioCx {
+            range,
+            source_range,
+            params,
+            sample_rate: req.sample_rate,
+            channels: req.channels,
+            footage,
+        };
+        kind.render_audio(&mut cx)
+    }
+
+    /// sequence の `source_range`（sequence の時間軸）の音。有効なカットを、映像と同じくカットの位置・イン点・速さを
+    /// 持つレイヤーにして、入れ子と同じ手順で混ぜる。境のトランジションは音に掛けず、境で切り替える。
+    fn sequence_audio(
+        &mut self,
+        scope: &AudioScope<'_>,
+        params: &Params,
+        source_range: TimeRange,
+    ) -> Result<Option<AudioBlock>> {
+        let name = params
+            .get(SEQUENCE_PARAM)
+            .and_then(|v| v.as_text())
+            .unwrap_or("");
+        if name.is_empty() || !self.within_depth(scope) {
+            return Ok(None);
+        }
+        let seq = scope.req.project.sequence(&Id::new(name))?;
+        let layers = place_cuts(seq)?
+            .iter()
+            .map(|p| cut_layer(&seq.cuts[p.index], p))
+            .collect();
+        let cuts = Composition {
+            id: Id::new(name),
+            width: scope.comp.width,
+            height: scope.comp.height,
+            fps: scope.comp.fps,
+            duration: scope.comp.duration,
+            layers,
+            markers: Vec::new(),
+        };
+        self.mix_range(scope, &cuts, source_range).map(Some)
+    }
+
+    /// 入れ子の深さが上限の中か。超えたらエラーを記録する。
+    fn within_depth(&mut self, scope: &AudioScope<'_>) -> bool {
+        let ok = scope.depth < MAX_DEPTH;
+        if !ok {
+            self.errors
+                .push(format!("入れ子が {MAX_DEPTH} 段を超えた（循環の疑い）"));
+        }
+        ok
+    }
+
+    /// コンポジション `comp` の `range` を、ダッキングなしの別のミキサーで 1 本に混ぜる。
+    fn mix_range(
+        &mut self,
+        scope: &AudioScope<'_>,
+        comp: &Composition,
+        range: TimeRange,
+    ) -> Result<AudioBlock> {
+        let inner = AudioScope {
+            comp,
+            range,
+            depth: scope.depth + 1,
+            ..*scope
+        };
+        let inputs = self.comp_inputs(&inner)?;
+        let frames = audio_frames_in(range, scope.req.sample_rate);
+        let mut mixer = self.new_mixer(scope.req.sample_rate, scope.req.channels)?;
+        mixer.mix(&inputs, frames)
+    }
+
     /// 入れ子のコンポジションの `source_range` を、ダッキングなしの別のミキサーで 1 本に混ぜる。
     /// 役割・音量・パンは入れ子のレイヤーの設定で親が扱う。
     fn nested_audio(
@@ -150,26 +224,12 @@ impl WgpuRenderer {
             .get(NESTED_PARAM)
             .and_then(|v| v.as_text())
             .unwrap_or("");
-        if name.is_empty() {
-            return Ok(None);
-        }
-        if scope.depth >= MAX_DEPTH {
-            self.errors
-                .push(format!("入れ子が {MAX_DEPTH} 段を超えた（循環の疑い）"));
+        if name.is_empty() || !self.within_depth(scope) {
             return Ok(None);
         }
         let id: CompositionId = Id::new(name);
         let comp = scope.req.project.composition(&id)?;
-        let inner = AudioScope {
-            comp,
-            range: source_range,
-            depth: scope.depth + 1,
-            ..*scope
-        };
-        let inputs = self.comp_inputs(&inner)?;
-        let frames = audio_frames_in(source_range, scope.req.sample_rate);
-        let mut mixer = self.new_mixer(scope.req.sample_rate, scope.req.channels)?;
-        mixer.mix(&inputs, frames).map(Some)
+        self.mix_range(scope, comp, source_range).map(Some)
     }
 }
 

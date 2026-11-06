@@ -55,6 +55,12 @@ export type Cut = {
   /** 前のカットからこのカットへのトランジション。境目をまたいで掛け、配置は変えない。 */
   "transition_in"?: Transition | null;
 };
+/** シーケンスの `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。 */
+export type CutSplice = {
+  "count": number;
+  "cuts": Cut[];
+  "index": number;
+};
 /** `Linear` の進み具合に掛けるイージングの型。 */
 export type Ease = "none" | "in" | "out" | "in_out";
 /** 動かす端。 */
@@ -256,6 +262,11 @@ export type SequenceOrigin = {
   "relation": OriginRelation;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "sequence": string;
+};
+/** 素材の時刻の範囲 `[in, out)`。 */
+export type SourceRange = {
+  "in": RationalTime;
+  "out": RationalTime;
 };
 /** タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。 */
 export type TimeKeyframe = {
@@ -653,6 +664,18 @@ export type DeleteWordsOp = {
   "restore"?: boolean;
   "words": string[];
 };
+/** 文字起こしの単語を消し、その音をシーケンスのカットから抜いて詰める。 */
+export type CutWordsOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "op": "cutWords";
+  "ranges"?: SourceRange[];
+  "restore"?: boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+  "splices"?: CutSplice[];
+  "words"?: string[];
+};
 /** 文字起こしの単語の文字を直す。 */
 export type FixTranscriptOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
@@ -714,6 +737,7 @@ export type Op =
   | AddTopicOp
   | RemoveTopicOp
   | DeleteWordsOp
+  | CutWordsOp
   | FixTranscriptOp;
 
 /** 操作の名前の和。 */
@@ -776,6 +800,7 @@ export const OP_NAMES: readonly OpName[] = [
   "addTopic",
   "removeTopic",
   "deleteWords",
+  "cutWords",
   "fixTranscript"
 ];
 

@@ -181,7 +181,7 @@ fn remove_stutter(
         &env.dir,
         &env.root,
         "stutter",
-        plan::delete_stutter(asset, word, topic),
+        plan::delete_stutter(asset, "s1", word),
     );
     let want = total.checked_sub(cut_off).unwrap();
     assert_eq!(comp_length(&env.dir), (want, want));

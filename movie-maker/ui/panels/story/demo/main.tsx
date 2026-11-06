@@ -66,6 +66,7 @@ const applyOp = (op: Op): void => {
   if (op.op === "addTopic") topics.push(op.topic);
   if (op.op === "removeTopic") topics.splice(topics.findIndex((t) => t.id === op.topic), 1);
   if (op.op === "deleteWords") op.words.forEach((id) => (at(id).deleted = !op.restore));
+  if (op.op === "cutWords") (op.words ?? []).forEach((id) => (at(id).deleted = true));
   if (op.op === "fixTranscript") at(op.word).fixed = op.text ?? null;
   if (op.op === "rate") (topics.find((t) => t.id === op.target) as Topic).rating = op.rating;
   if (op.op === "tag") {

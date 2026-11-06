@@ -46,6 +46,9 @@ pub struct StorySequence {
 pub struct Overview {
     pub assets: Vec<StoryAsset>,
     pub sequences: Vec<StorySequence>,
+    /// いま開いているコンポジションの、いちばん下の sequence のレイヤーが置く sequence。無ければ `None`。
+    /// Story の Delete（`cutWords`）が切る先。
+    pub open_sequence: Option<String>,
 }
 
 /// 文字起こしの 1 単語。時刻は素材の時間軸。
@@ -130,7 +133,13 @@ impl StoryState {
 
     /// 素材と、シーケンスの一覧。
     pub fn overview(&self) -> Result<Overview, String> {
-        let (project, _) = self.project()?;
+        let (project, comp) = self.project()?;
+        let open_sequence = project.composition(&comp).ok().and_then(|c| {
+            c.layers
+                .iter()
+                .find_map(|l| timebase::layer_sequence(&project, l))
+                .map(|s| s.id.to_string())
+        });
         let assets = project
             .assets
             .iter()
@@ -150,7 +159,11 @@ impl StoryState {
                 duration: mm_eval::sequence_duration(s).map_or(0.0, RationalTime::to_f64),
             })
             .collect();
-        Ok(Overview { assets, sequences })
+        Ok(Overview {
+            assets,
+            sequences,
+            open_sequence,
+        })
     }
 
     fn has_transcript(&self, asset: &Asset) -> bool {
