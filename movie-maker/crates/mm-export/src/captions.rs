@@ -39,7 +39,7 @@ fn to_ms(t: RationalTime) -> i64 {
 }
 
 /// コンポジションの字幕。`range` はその区間だけを、区間の始まりを 0 にして返す。
-/// 最上位の sequence のレイヤーだけを見る（入れ子のコンポジションの中の sequence は含めない）。
+/// 最上位の有効な sequence のレイヤーだけを見る（入れ子のコンポジションの中の sequence は含めない）。
 pub fn composition_cues(
     project: &Project,
     comp: &Composition,
@@ -50,7 +50,7 @@ pub fn composition_cues(
     for layer in comp
         .layers
         .iter()
-        .filter(|l| l.source.kind == SEQUENCE_KIND)
+        .filter(|l| l.enabled && l.source.kind == SEQUENCE_KIND)
     {
         let id = layer.source.text_param(SEQUENCE_PARAM).unwrap_or("");
         let seq = project.sequence(&mm_types::Id::new(id))?;
@@ -250,6 +250,15 @@ mod tests {
         let texts: Vec<_> = cues.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["C。", "D。"]);
         assert_eq!(cues[0].start, RationalTime::ZERO);
+    }
+
+    #[test]
+    fn 無効にしたレイヤーの字幕は出さない() {
+        let (p, mut comp) = project(vec![Cut::new("k", footage("a"), t(0, 1), t(4, 1))]);
+        comp.layers[0].enabled = false;
+        assert!(composition_cues(&p, &comp, whole(), &transcript())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

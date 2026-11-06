@@ -44,6 +44,37 @@ fn 字幕を出す設定で文字起こしが無いと拒否する() {
 }
 
 #[test]
+fn 出さなくなった字幕とチャプターの前回のファイルを消し_警告に出す() {
+    let dir = temp("stale");
+    let out = dir.join("out.json");
+    std::fs::create_dir_all(&dir).unwrap();
+    let stale = ["out.srt", "out.vtt", "out.chapters.txt"].map(|n| dir.join(n));
+    let other = dir.join("out.ja.srt");
+    for p in stale.iter().chain([&other]) {
+        std::fs::write(p, "old").unwrap();
+    }
+    let project = project_with(&out, |_| {});
+    let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+    let summary = export_project(&mut engine, &project, &ExportOptions::default()).unwrap();
+    for p in &stale {
+        assert!(!p.exists(), "{} が残っている", p.display());
+    }
+    assert!(other.exists(), "自分が作る名前でないファイルは消さない");
+    assert_eq!(
+        summary
+            .delivery
+            .warnings
+            .iter()
+            .filter(|w| w.contains("前回"))
+            .count(),
+        stale.len(),
+        "{:?}",
+        summary.delivery.warnings
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn チャプターの決まりを満たさなくても書き出しは成功し_理由を警告に出す() {
     let out = temp("chap").join("out.json");
     let project = project_with(&out, |t| {
