@@ -1,6 +1,7 @@
 node_modules/
 data/
 public/app.js
+public/dolphin-worker.js
 public/chunks/
 .env.local
 .claude/worktrees/

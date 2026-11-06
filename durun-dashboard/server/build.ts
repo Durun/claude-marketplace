@@ -19,12 +19,12 @@ const pruneChunks: esbuild.Plugin = {
 };
 
 /**
- * 最初に読み込む app.js と、要るときに読み込むチャンクに分ける。イルカの 3D の描画は大きいので、イルカを出すときだけ読み込む。
+ * 最初に読み込む app.js と、要るときに読み込むチャンクに分ける。イルカの 3D の描画は大きく、WebGL の準備で画面を固めるので、ワーカーの dolphin-worker.js で読み込んで描く。
  * 改善要望に載る例外のスタックを読めるよう、空白と構文だけを詰め、名前は縮めない。
  */
 export const buildOptions: esbuild.BuildOptions = {
   absWorkingDir: ROOT,
-  entryPoints: { app: 'client/main.tsx' },
+  entryPoints: { app: 'client/main.tsx', 'dolphin-worker': 'client/dolphinWorker.ts' },
   bundle: true,
   format: 'esm',
   target: 'es2022',

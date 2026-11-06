@@ -94,9 +94,9 @@ const eyes = (): Group => {
 };
 
 /** canvas にイルカを置く。返す draw を毎フレーム呼んで泳がせる。 */
-export const createDolphin = (canvas: HTMLCanvasElement, width: number, height: number) => {
+export const createDolphin = (canvas: OffscreenCanvas, width: number, height: number, pixelRatio: number) => {
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(pixelRatio, 2));
   renderer.setSize(width, height, false);
   const camera = new PerspectiveCamera(30, width / height, 0.1, 20);
   // 少し上から見下ろして、横向きでも尾びれの形が見えるようにする。
@@ -140,5 +140,5 @@ export const createDolphin = (canvas: HTMLCanvasElement, width: number, height: 
     dolphin.rotation.set(pose.roll, pose.yaw, pose.pitch, 'YZX');
     renderer.render(scene, camera);
   };
-  return { draw, dispose: () => renderer.dispose() };
+  return { draw };
 };

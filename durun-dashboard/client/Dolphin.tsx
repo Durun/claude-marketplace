@@ -2,7 +2,8 @@ import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssistantMessage, AssistantReply, GlossaryTerm } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
-import type { Pose, createDolphin } from './dolphin3d.ts';
+import type { Pose } from './dolphin3d.ts';
+import type { DolphinMessage } from './dolphinWorker.ts';
 import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
 import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
@@ -236,15 +237,15 @@ const placeBubble = (bubble: HTMLElement, m: Motion): void => {
 };
 
 /** 毎フレーム、泳がせて向きを変え、イルカと吹き出しを動かして描く。止める関数を返す。 */
-const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: HTMLElement, bubbles: RefObject<HTMLElement>[], m: Motion, live: Live): (() => void) => {
-  let view: ReturnType<typeof createDolphin>;
-  try {
-    view = create(canvas, W, H);
-  } catch {
-    // GPU が使えないなどで WebGL を使えないブラウザでは、描けないのでイルカを出さない。
-    box.hidden = true;
-    return () => {};
-  }
+const animate = (canvas: HTMLCanvasElement, box: HTMLElement, bubbles: RefObject<HTMLElement>[], m: Motion, live: Live): (() => void) => {
+  // 3D の描画は大きく、WebGL の準備で画面を固めるので、ワーカーで読み込んで描く。描けなければイルカを出さない。
+  const worker = new Worker('/dolphin-worker.js', { type: 'module' });
+  const hide = () => void (box.hidden = true);
+  worker.onerror = hide;
+  worker.onmessage = hide;
+  const send = (message: DolphinMessage, transfer: Transferable[] = []) => worker.postMessage(message, transfer);
+  const offscreen = canvas.transferControlToOffscreen();
+  send({ canvas: offscreen, width: W, height: H, pixelRatio: devicePixelRatio }, [offscreen]);
   // 動きを減らす設定（prefers-reduced-motion）は見ない。Windows でアニメーション効果を切っているだけでも止まり、壊れて見えるため。
   Object.assign(m, { tx: m.x, ty: m.y, restUntil: performance.now() + 2000 });
   let last = performance.now();
@@ -266,13 +267,13 @@ const animate = (create: typeof createDolphin, canvas: HTMLCanvasElement, box: H
     for (const b of bubbles) if (b.current) placeBubble(b.current, m);
     const moving = Math.min(MAX_STROKE, 0.6 + Math.hypot(m.vx, m.vy) / SPEED);
     const stroke: Pose['stroke'] = m.stuck ? STUCK_STROKE : m.fling ? moving : live.thinking || dragging ? 2.5 : stopped ? 0.4 : moving;
-    view.draw(dt, { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke });
+    send({ dt, pose: { yaw: m.yaw, pitch: m.pitch + spin(m, 'flip'), roll: spin(m, 'roll'), stroke } });
     frame = requestAnimationFrame(loop);
   };
   frame = requestAnimationFrame(loop);
   return () => {
     cancelAnimationFrame(frame);
-    view.dispose();
+    worker.terminate();
   };
 };
 
@@ -451,21 +452,7 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
     return () => void explainers.delete(setExplained);
   }, []);
   useEffect(() => {
-    let stop: (() => void) | undefined;
-    let gone = false;
-    // 3D の描画は大きいので、最初の画面を出した後で読み込む。読み込めなければ、描けないのでイルカを出さない。
-    import('./dolphin3d.ts').then(
-      ({ createDolphin }) => {
-        if (!gone && canvas.current && box.current) stop = animate(createDolphin, canvas.current, box.current, [chat, tip], motion.current, live.current);
-      },
-      () => {
-        if (box.current) box.current.hidden = true;
-      },
-    );
-    return () => {
-      gone = true;
-      stop?.();
-    };
+    if (canvas.current && box.current) return animate(canvas.current, box.current, [chat, tip], motion.current, live.current);
   }, []);
 
   const mines = useFloats((list) => list.find((f) => f.key === MINESWEEPER_KEY));

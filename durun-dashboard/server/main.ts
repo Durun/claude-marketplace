@@ -75,6 +75,7 @@ const SAVE_SUMMARIES_MS = 5 * 60_000;
 const STATIC: Record<string, string> = {
   '/': 'public/index.html',
   '/app.js': 'public/app.js',
+  '/dolphin-worker.js': 'public/dolphin-worker.js',
   '/style.css': 'public/style.css',
   '/diagram.svg': 'public/diagram.svg',
   '/claude-new.svg': 'public/claude-new.svg',
