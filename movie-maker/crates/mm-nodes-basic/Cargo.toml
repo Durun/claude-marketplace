@@ -1,6 +1,6 @@
 [package]
 name = "mm-nodes-basic"
-description = "段階 0 のノード: footage、solid、image、composition、text"
+description = "基本のノードの種類: footage、image、solid、composition、sequence、text、shader.wgsl、color.*、transition.dissolve"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,10 +11,15 @@ mm-types = { workspace = true }
 mm-node-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-text-api = { workspace = true }
+mm-color-api = { workspace = true }
+mm-gpu = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 mm-testkit = { workspace = true }
+mm-color-lut = { workspace = true }
 
 [lints]
 workspace = true

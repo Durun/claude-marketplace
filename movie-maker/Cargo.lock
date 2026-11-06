@@ -2969,11 +2969,16 @@ name = "mm-nodes-basic"
 version = "0.1.0"
 dependencies = [
  "mm-audio-api",
+ "mm-color-api",
+ "mm-color-lut",
+ "mm-gpu",
  "mm-node-api",
  "mm-testkit",
  "mm-text-api",
  "mm-types",
+ "pollster",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]
