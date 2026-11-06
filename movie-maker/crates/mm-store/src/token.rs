@@ -39,6 +39,8 @@ pub(crate) fn write_token(id: &str, token: &str) -> Result<PathBuf> {
     ensure_private_dir(&root)?;
     let path = root.join(id);
     let mut file = create_private_file(&path)?;
+    // フォルダーの権限は並行して作った別のファイルには効いていないことがある。中身を書く前にファイル自身を絞る。
+    restrict_file(&path)?;
     file.write_all(token.as_bytes())?;
     Ok(path)
 }
@@ -104,21 +106,36 @@ fn create_private_file(path: &Path) -> Result<fs::File> {
         .open(path)?)
 }
 
+/// Unix は作成時の 0600 で足りる。
+#[cfg(unix)]
+fn restrict_file(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// `icacls` で継承を切り、現在のユーザーだけにフルコントロールを与える。
 #[cfg(windows)]
 fn ensure_private_dir(dir: &Path) -> Result<()> {
     fs::create_dir_all(dir)?;
-    let grant = format!("{}:(OI)(CI)F", current_user()?);
+    icacls_owner_only(dir, &format!("{}:(OI)(CI)F", current_user()?))
+}
+
+#[cfg(windows)]
+fn restrict_file(path: &Path) -> Result<()> {
+    icacls_owner_only(path, &format!("{}:F", current_user()?))
+}
+
+#[cfg(windows)]
+fn icacls_owner_only(path: &Path, grant: &str) -> Result<()> {
     let status = std::process::Command::new("icacls")
-        .arg(dir)
-        .args(["/inheritance:r", "/grant:r", &grant])
+        .arg(path)
+        .args(["/inheritance:r", "/grant:r", grant])
         .stdout(std::process::Stdio::null())
         .status()?;
     if status.success() {
         Ok(())
     } else {
         Err(MmError::Internal(format!(
-            "合い言葉のフォルダーの権限を絞れなかった: {status}"
+            "合い言葉の置き場所の権限を絞れなかった: {status}"
         )))
     }
 }
