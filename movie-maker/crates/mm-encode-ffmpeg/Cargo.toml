@@ -18,7 +18,7 @@ ffmpeg = ["dep:ffmpeg-next", "mm-decode-ffmpeg/ffmpeg"]
 
 [dev-dependencies]
 mm-testkit = { workspace = true }
-# 書き出した MP4 を読み戻してコマの番号を確かめる。テストだけの依存で、実装どうしの依存にはならない。
+# 書き出した MP4 をリードバックてフレームの番号を確かめる。テストだけの依存で、実装どうしの依存にはならない。
 mm-decode-ffmpeg = { path = "../mm-decode-ffmpeg" }
 
 [lints]

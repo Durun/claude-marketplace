@@ -1,5 +1,5 @@
 //! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の絵との行き来は f32 と f16 の変換で行う。
-//! デコーダーから借りたコマは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
+//! デコーダーから借りたフレームは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use crate::frame::GpuFrameTexture;
 
 /// 1 画素のバイト数（RGBA の f16）。
 const BYTES_PER_PIXEL: u32 = 8;
-/// wgpu が読み戻しの行に課す境界。
+/// wgpu がリードバックの行に課す境界。
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 /// wgpu の GPU ヘルパー。種類は `as_any` で降りて `context()` と `texture()` を使える。
@@ -23,7 +23,7 @@ pub struct WgpuGpu {
     ctx: Arc<GpuContext>,
     next_id: u64,
     textures: HashMap<u64, wgpu::Texture>,
-    /// 借りているコマ。`after_submit` で捨てる。
+    /// 借りているフレーム。`after_submit` で捨てる。
     borrowed: Vec<(u64, Arc<dyn mm_decode_api::GpuFrame>)>,
 }
 
@@ -58,7 +58,7 @@ impl WgpuGpu {
         self.textures.remove(&id);
     }
 
-    /// `submit` の直前。借りたコマの復号の完了を待たせる。
+    /// `submit` の直前。借りたフレームのデコードの完了を待たせる。
     pub fn before_submit(&self) {
         for (_, frame) in &self.borrowed {
             if let Some(wait) =
@@ -69,7 +69,7 @@ impl WgpuGpu {
         }
     }
 
-    /// `submit` の直後。借りたコマを返す（デコーダーのプールが空く）。
+    /// `submit` の直後。借りたフレームを返す（デコーダーのプールが空く）。
     pub fn after_submit(&mut self) {
         for (id, _) in self.borrowed.drain(..) {
             self.textures.remove(&id);
@@ -160,7 +160,7 @@ impl WgpuGpu {
         let data = buffer
             .slice(..)
             .get_mapped_range()
-            .map_err(|e| MmError::Internal(format!("読み戻しの範囲: {e}")))?;
+            .map_err(|e| MmError::Internal(format!("リードバックの範囲: {e}")))?;
         let mut pixels = Vec::with_capacity(size.area() * 4);
         for row in data.chunks_exact(padded_row as usize) {
             let used = &row[..(size.width * BYTES_PER_PIXEL) as usize];
@@ -186,8 +186,8 @@ pub fn map_blocking(device: &wgpu::Device, buffer: &wgpu::Buffer) -> Result<()> 
         .poll(wgpu::PollType::wait_indefinitely())
         .map_err(|e| MmError::Internal(format!("GPU の待ちに失敗: {e}")))?;
     rx.recv()
-        .map_err(|e| MmError::Internal(format!("読み戻しの通知が来ない: {e}")))?
-        .map_err(|e| MmError::Internal(format!("読み戻しに失敗: {e}")))
+        .map_err(|e| MmError::Internal(format!("リードバックの通知が来ない: {e}")))?
+        .map_err(|e| MmError::Internal(format!("リードバックに失敗: {e}")))
 }
 
 impl GpuHelper for WgpuGpu {
@@ -254,7 +254,7 @@ impl GpuHelper for WgpuGpu {
     fn import(&mut self, frame: &GpuFrameHandle) -> Result<FrameRef> {
         let texture = GpuFrameTexture::of(frame).ok_or_else(|| {
             MmError::Unsupported(format!(
-                "GPU のコマ {} は wgpu のテクスチャでない",
+                "GPU のフレーム {} は wgpu のテクスチャでない",
                 frame.id
             ))
         })?;

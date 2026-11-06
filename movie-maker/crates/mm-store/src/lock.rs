@@ -15,7 +15,7 @@ const MM_DIR: &str = ".mm";
 const LOCK_FILE: &str = "lock";
 const INFO_FILE: &str = "lock.info";
 
-/// 書き手の情報。`mm` はこれを見てアプリに命令を送る。
+/// 書き手の情報。`mm` はこれを見てアプリに操作を送る。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LockInfo {
     pub pid: u32,

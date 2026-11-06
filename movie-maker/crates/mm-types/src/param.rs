@@ -141,7 +141,7 @@ impl ParamSpec {
     }
 }
 
-/// 動画オブジェクトの種類が公開するパラメータの一覧。順序は UI に出す順。
+/// ノードの種類が公開するパラメータの一覧。順序は UI に出す順。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ParamSchema {
     pub params: Vec<ParamSpec>,

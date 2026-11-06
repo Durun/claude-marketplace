@@ -1,4 +1,4 @@
-//! `mm-decode-api` の `Decoder` の実装。cuvid（NVDEC）の CUDA のメモリを、描画器の D3D12 のデバイスの
+//! `mm-decode-api` の `Decoder` の実装。cuvid（NVDEC）の CUDA のメモリを、レンダラーの D3D12 のデバイスの
 //! 共有バッファへ 1 回コピーし、線形の `Rgba16Float`（`GpuFrameTexture`）にして返す。
 //!
 //! CUDA のコピーは枠ごとの共有フェンスで、wgpu が前に読み終えるまで待つ。FFmpeg の面は、コピーの完了までだけ握る。
@@ -31,7 +31,7 @@ const SILENCE_CHANNELS: u16 = 2;
 /// 共有バッファの輪の枠の数。
 const RING_SLOTS: usize = 4;
 
-/// 描画器の GPU の文脈を、cuvid が使える形（D3D12 のアダプター）で頼む。
+/// レンダラーの GPU の文脈を、cuvid が使える形（D3D12 のアダプター）で頼む。
 /// `wanted` が `None` なら D3D12 での高性能のアダプター。
 pub fn gpu_request(wanted: Option<&GpuAdapterId>) -> Result<GpuRequest> {
     dx12_request(wanted, wgpu::Features::empty())
@@ -46,7 +46,7 @@ pub struct CuvidDecoder {
     pool: FramePool,
     release: ReleaseQueue,
     next_id: u64,
-    // 復号器より後に手放す。
+    // デコーダーより後に手放す。
     _device: DeviceRef,
 }
 
@@ -54,7 +54,7 @@ pub struct CuvidDecoder {
 unsafe impl Send for CuvidDecoder {}
 
 impl CuvidDecoder {
-    /// 素材を開く。`gpu` は描画器と同じデバイスで、D3D12 でなければ `Err(Unsupported)`。
+    /// 素材を開く。`gpu` はレンダラーと同じデバイスで、D3D12 でなければ `Err(Unsupported)`。
     pub fn open(path: &Path, gpu: &GpuContext) -> Result<Self> {
         let luid = gpu
             .adapter
@@ -66,7 +66,7 @@ impl CuvidDecoder {
         let seq = Sequencer::new(path, opened.reader)?;
         let size = seq.info().size;
         let bytes_per_sample = if opened.bits == 8 { 1 } else { 2 };
-        // SAFETY: 文脈とストリームは、いま開いた復号器の CUDA のもの。
+        // SAFETY: 文脈とストリームは、いま開いたデコーダーの CUDA のもの。
         let ring = unsafe {
             SharedRing::new(
                 (gpu.device.clone(), gpu.queue.clone()),
@@ -88,7 +88,7 @@ impl CuvidDecoder {
         })
     }
 
-    /// 復号した面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    /// デコードした面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
     #[cfg(feature = "test-hooks")]
     pub fn set_gpu_wait(&mut self, on: bool) {
         self.release.set_wait_for_gpu(on);
@@ -172,7 +172,7 @@ impl Decoder for CuvidDecoder {
     }
 }
 
-/// `DecoderFactory`。デバイスは `open` で渡される描画器のものを使い、自前では作らない。
+/// `DecoderFactory`。デバイスは `open` で渡されるレンダラーのものを使い、自前では作らない。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CuvidFactory;
 

@@ -5,13 +5,13 @@
 
 [[area]]
 name = "doc-and-ops"
-title = "文書と命令"
+title = "文書と操作"
 write = ["crates/mm-doc/", "crates/mm-eval/", "crates/mm-ops/", "crates/mm-store/"]
 avoid = ["crates/mm-*-api/"]
 
 [[area]]
 name = "render"
-title = "描画器"
+title = "レンダラー"
 write = ["crates/mm-render/", "crates/mm-nodes-basic/"]
 avoid = ["crates/mm-node-api/", "crates/mm-render-api/"]
 

@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-cuvid"
-description = "FFmpeg の cuvid（NVDEC）で復号した CUDA のメモリを D3D12 の共有バッファへ 1 回コピーし、描画器と同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
+description = "FFmpeg の cuvid（NVDEC）でデコードした CUDA のメモリを D3D12 の共有バッファへ 1 回コピーし、レンダラーと同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

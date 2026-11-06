@@ -1,4 +1,4 @@
-//! 復号器からコマを取り出す層。パケットの読み込み、PTS の索引による番号づけ、シーク。
+//! デコーダーからフレームを取り出す層。パケットの読み込み、PTS の索引による番号づけ、シーク。
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +11,7 @@ use mm_types::{MmError, RationalTime, Result, Size};
 use crate::matrix::{check_transfer, Matrix};
 use crate::timeline::{can_read_forward, Timeline};
 
-/// 開いた入力と、映像の復号器。パケットを送ってコマを受ける。
+/// 開いた入力と、映像のデコーダー。パケットを送ってフレームを受ける。
 pub struct StreamReader {
     input: Input,
     stream_index: usize,
@@ -20,7 +20,7 @@ pub struct StreamReader {
 }
 
 impl StreamReader {
-    /// 開いた入力と復号器を組にする。
+    /// 開いた入力とデコーダーを組にする。
     pub fn new(input: Input, stream_index: usize, decoder: ff::decoder::Video) -> Self {
         Self {
             input,
@@ -37,12 +37,12 @@ impl StreamReader {
             .expect("開いた映像ストリーム")
     }
 
-    /// 復号器の宣言。
+    /// デコーダーの宣言。
     pub fn decoder(&self) -> &ff::decoder::Video {
         &self.decoder
     }
 
-    /// 次の復号済みのコマ。終わりなら `None`。
+    /// 次のデコード済みのフレーム。終わりなら `None`。
     pub fn receive(&mut self) -> Result<Option<frame::Video>> {
         let mut packet = Packet::empty();
         loop {
@@ -51,7 +51,7 @@ impl StreamReader {
                 Ok(()) => return Ok(Some(decoded)),
                 Err(ff::Error::Eof) => return Ok(None),
                 Err(ff::Error::Other { errno }) if errno == ff::error::EAGAIN => {}
-                Err(e) => return Err(MmError::Corrupt(format!("映像の復号: {e}"))),
+                Err(e) => return Err(MmError::Corrupt(format!("映像のデコード: {e}"))),
             }
             if self.draining {
                 return Ok(None);
@@ -73,7 +73,7 @@ impl StreamReader {
         }
     }
 
-    /// ストリームの `ts`（ticks）以前のキーフレームへ戻し、復号器を空にする。
+    /// ストリームの `ts`（ticks）以前のキーフレームへ戻し、デコーダーを空にする。
     pub fn reposition(&mut self, ts: i64) -> Result<()> {
         // SAFETY: input は開いている。ストリーム番号は open で得たもの。
         let ret = unsafe {
@@ -96,14 +96,14 @@ impl StreamReader {
     }
 }
 
-/// 番号と時刻が付いたコマ。
+/// 番号と時刻が付いたフレーム。
 pub struct IndexedFrame {
     pub index: i64,
     pub pts: RationalTime,
     pub frame: frame::Video,
 }
 
-/// コマを番号の順に出す。シークは目的のコマの手前のキーフレームから復号して捨てる。
+/// フレームを番号の順に出す。シークは目的のフレームの手前のキーフレームからデコードして捨てる。
 pub struct Sequencer {
     reader: StreamReader,
     timeline: Timeline,
@@ -136,7 +136,7 @@ impl Sequencer {
         &self.timeline.info
     }
 
-    /// 素材の時間軸の 0（最初のコマ）の秒。音の頭のずれを決めるのに使う。
+    /// 素材の時間軸の 0（最初のフレーム）の秒。音の頭のずれを決めるのに使う。
     pub fn origin(&self) -> RationalTime {
         self.timeline.origin
     }
@@ -149,7 +149,7 @@ impl Sequencer {
 
     fn receive_indexed(&mut self) -> Result<Option<(i64, frame::Video)>> {
         while let Some(decoded) = self.reader.receive()? {
-            // PTS の無いコマは番号を決められないので読み飛ばす
+            // PTS の無いフレームは番号を決められないので読み飛ばす
             if let Some(p) = decoded.timestamp().or(decoded.pts()) {
                 return Ok(Some((self.timeline.index_of(p), decoded)));
             }
@@ -157,7 +157,7 @@ impl Sequencer {
         Ok(None)
     }
 
-    /// 次のコマ。終わりなら `None`。
+    /// 次のフレーム。終わりなら `None`。
     pub fn next_frame(&mut self) -> Result<Option<IndexedFrame>> {
         loop {
             if self.next_index >= self.timeline.count() || (self.ended && self.held.is_none()) {
@@ -180,7 +180,7 @@ impl Sequencer {
         }
     }
 
-    /// `t` のコマが次に出るようにする。同じ GOP の中の先なら読み進め、そうでなければ手前のキーフレームから探し直す。
+    /// `t` のフレームが次に出るようにする。同じ GOP の中の先なら読み進め、そうでなければ手前のキーフレームから探し直す。
     pub fn seek(&mut self, t: RationalTime) -> Result<()> {
         let count = self.timeline.count();
         let index = self.timeline.info.frame_index_at(t).clamp(0, count);
@@ -202,7 +202,7 @@ impl Sequencer {
         self.reposition_to(index)
     }
 
-    /// 復号器を進めながら `index` より前のコマを捨てる。
+    /// デコーダーを進めながら `index` より前のフレームを捨てる。
     fn skip_to(&mut self, index: i64) -> Result<()> {
         self.next_index = index;
         loop {
@@ -224,8 +224,8 @@ impl Sequencer {
         }
     }
 
-    /// 目的のコマの PTS を指して戻す。コンテナによってはキーフレームの PTS が目的より後に
-    /// 見えるので、先頭のコマが目的を過ぎたら手前のコマの PTS で探し直す。
+    /// 目的のフレームの PTS を指して戻す。コンテナによってはキーフレームの PTS が目的より後に
+    /// 見えるので、先頭のフレームが目的を過ぎたら手前のフレームの PTS で探し直す。
     fn reposition_to(&mut self, index: i64) -> Result<()> {
         let mut margin = 0;
         loop {

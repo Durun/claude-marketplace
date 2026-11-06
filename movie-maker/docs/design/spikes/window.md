@@ -8,7 +8,7 @@
 - Tauri 2 の `Window::add_child`（`unstable`）で子 WebView を、自前の子 HWND に `wgpu::Surface` を張って並べる。
 - 面は 60 秒の連続で 59.97 fps、面を取れなかった回数は 0。WebView を 60 Hz で更新しても落ちない。
 - Rust の再生位置が WebView の画面に出るまで、中央値 9〜14 ms、99% で 17 ms 以下（予算 50 ms の内）。
-- 大きさを変え続けている間は WebView の更新が最大 0.25 秒遅れる。面は 1〜2 コマ落ちるだけ。
+- 大きさを変え続けている間は WebView の更新が最大 0.25 秒遅れる。面は 1〜2 フレーム落ちるだけ。
 - 未確認は 150% の DPI、倍率の違うモニター間の移動、複数の子 WebView。「人が確かめる所」を見る。
 
 ## 手元の環境
@@ -38,7 +38,7 @@ flowchart LR
 
 - 窓は `WindowBuilder` で作る（`WebviewWindow` は WebView が窓全体を覆う）。`add_child` の位置と大きさは物理ピクセルで渡す。
 - 面の HWND は `WS_CHILD | WS_CLIPSIBLINGS` で親の下に作り、`SurfaceTargetUnsafe::RawHandle`（Win32）で `wgpu::Surface` にする。UI スレッドの外の描画スレッドで描く。
-- `WindowEvent::Resized` で `SetWindowPos`（面）と `Webview::set_bounds`（WebView）を同じ値から決めて置き直す。面は次のコマで `configure` し直す。
+- `WindowEvent::Resized` で `SetWindowPos`（面）と `Webview::set_bounds`（WebView）を同じ値から決めて置き直す。面は次のフレームで `configure` し直す。
 - Tauri のコマンドは `async` にする。同期のコマンドは UI スレッドで動くので、60 Hz の通知がメッセージループを塞ぐ。
 - wry の `wgpu.rs` の例 [28] は使わなかった。Tauri 側の `add_child` が wry の `build_as_child` を包んでおり、そのまま足りた。
 
@@ -48,14 +48,14 @@ flowchart LR
 
 ### 面を 60 fps で描き続ける
 
-| 場面 | 時間 | fps | コマの間隔 p99 / 最大 (ms) | 面を取れなかった数 |
+| 場面 | 時間 | fps | フレームの間隔 p99 / 最大 (ms) | 面を取れなかった数 |
 |---|---|---|---|---|
 | WebView を更新しない | 5 s | 60.0 | 16.67 / 16.71 | 0 |
 | `Channel` で 60 Hz 更新（400 個の要素を毎回変える） | 10 s | 60.0 | 16.67 / 16.76 | 0 |
 | `emit` で 60 Hz 更新 | 10 s | 60.0 | 16.67 / 16.82 | 0 |
 | `Channel` で 60 Hz 更新、連続 | 60 s | 59.97 | 18.06 / 25.70 | 0 |
 
-- 1 コマの CPU は、コマンドの記録と submit が中央値 0.4〜0.7 ms、present が 0.4〜0.6 ms。残りは `get_current_texture` での待ち（Fifo のペース）。
+- 1 フレームの CPU は、コマンドの記録と submit が中央値 0.4〜0.7 ms、present が 0.4〜0.6 ms。残りは `get_current_texture` での待ち（Fifo のペース）。
 - 通知の経路は `Channel` と `emit` で差が出なかった。型が付き順序が保たれる `Channel` を採る。
 
 ### 再生位置の同期の遅れ（Rust の状態 → IPC → WebView の画面）
@@ -69,17 +69,17 @@ flowchart LR
 | rAF → Rust が ack を受ける | 2.2 / 3.2 | 1.9 / 2.9 | 3.1 / 5.7 |
 | 送信 → ack（`window.sync` の往復） | 11.7 / 14.3 | 15.5 / 18.0 | 12.5 / 20.5（最大 26.4） |
 
-- IPC の片道は 1 ms 前後で、遅れの大半は WebView の次の rAF を待つ時間（最大 1 コマ）。
-- 予算「WebView → 命令 → 通知 → 画面 50 ms」に対し、ここは「通知 → 画面」の区間だけで 99% 17 ms 以下。
-- WebView から Rust へキーが届くまでは中央値 5.0 ms（最大 10.0 ms）。命令の適用を足しても 50 ms に収まる見込み。
+- IPC の片道は 1 ms 前後で、遅れの大半は WebView の次の rAF を待つ時間（最大 1 フレーム）。
+- 予算「WebView → 操作 → 通知 → 画面 50 ms」に対し、ここは「通知 → 画面」の区間だけで 99% 17 ms 以下。
+- WebView から Rust へキーが届くまでは中央値 5.0 ms（最大 10.0 ms）。操作の適用を足しても 50 ms に収まる見込み。
 
 ### 大きさの変更
 
 | 場面 | 結果 |
 |---|---|
 | 4 段階（1600x1000、900x600、1920x1080、1280x800。論理） | 4 回とも、面の HWND と `wgpu` の大きさと WebView の報告（CSS px）が一致。面を取れなかった数 0 |
-| 変更から新しい大きさの最初の present まで | 中央値 30 ms、最大 44 ms（4 回）。このとき 1 コマの間隔が最大 58 ms |
-| 10 ms ごとに 200 回、続けて変える | 変更 → present は中央値 5.7 ms、99% 15.8 ms。コマの間隔は 99% 23.7 ms、最大 27.9 ms（1 コマ落ちる程度）。面を取れなかった数 0 |
+| 変更から新しい大きさの最初の present まで | 中央値 30 ms、最大 44 ms（4 回）。このとき 1 フレームの間隔が最大 58 ms |
+| 10 ms ごとに 200 回、続けて変える | 変更 → present は中央値 5.7 ms、99% 15.8 ms。フレームの間隔は 99% 23.7 ms、最大 27.9 ms（1 フレーム落ちる程度）。面を取れなかった数 0 |
 | 同じ連続の間の WebView の同期（`window.sync`） | 中央値 36.9 ms、99% 221.8 ms、最大 247 ms |
 
 - 連続で変えている間、WebView の通知は最大 0.25 秒遅れる（WebView の再レイアウトが先に来るためと見ている。原因の切り分けはしていない）。900 ms の静止を挟む 4 段階の測定では、往復の中央値が 2.5 ms（99% 18.8 ms）だった。
@@ -96,12 +96,12 @@ flowchart LR
 
 - キーは**フォーカスのある片方にだけ**届く。両方に届くことも、どちらにも届かないこともない。
 - 子 HWND は自動でフォーカスを取らないので、`WM_LBUTTONDOWN` で `SetFocus` する。
-- 「どちらにフォーカスがあっても同じ命令になる」は、面の `WM_KEYDOWN` と WebView の `keydown`（IPC）を `keys::dispatch` の 1 つの入口に入れることで成り立つ。キーの表（J/K/L など）はこの入口の先に置く。
+- 「どちらにフォーカスがあっても同じ操作になる」は、面の `WM_KEYDOWN` と WebView の `keydown`（IPC）を `keys::dispatch` の 1 つの入口に入れることで成り立つ。キーの表（J/K/L など）はこの入口の先に置く。
 
 ### DPI とモニター
 
 - 主モニターの 125%（物理 2000x1250 の窓）で、面の HWND、`wgpu` の面、WebView の `innerWidth × devicePixelRatio` が全て一致。WebView の `devicePixelRatio` は 1.25。
-- 副モニター（3840x2160、125%、主の左上にあたる負の座標）へ窓を動かして戻した。配置は崩れず、面を取れなかった数 0、コマの間隔は最大 20.6 ms。
+- 副モニター（3840x2160、125%、主の左上にあたる負の座標）へ窓を動かして戻した。配置は崩れず、面を取れなかった数 0、フレームの間隔は最大 20.6 ms。
 - **150% と、倍率の違うモニター間の移動は測っていない**（このマシンに 150% が無い）。
 
 ## 逃げ道
@@ -111,7 +111,7 @@ flowchart LR
 ## 実装のとき気をつける所
 
 - 面の大きさと WebView の矩形は、窓の物理ピクセルから 1 か所（`split_rects`）で決める。論理ピクセルで持つと DPI で 1 px ずれる。
-- 面を取れなかったとき（`Outdated`、`Lost`）は `configure` し直して次のコマに回す。今回は 0 回で、この経路は試していない。
+- 面を取れなかったとき（`Outdated`、`Lost`）は `configure` し直して次のフレームに回す。今回は 0 回で、この経路は試していない。
 - wgpu 30 は `Instance::new_without_display_handle`、`get_current_texture` が `CurrentSurfaceTexture` を返し、`queue.present` で出す。`SurfaceConfiguration` に `color_space` がある（HDR の出力は段階 2 で見る）。
 - Tauri 3 の alpha（3.0.0-alpha.5）が crates.io にある。この試作は 2.12.5。
 - 自己診断（`--selftest`）は窓を最前面にして `SendInput` を打つ。実行中の約 2 分は PC を触らない。

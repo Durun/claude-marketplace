@@ -1,4 +1,4 @@
-//! 順の入れ替えの性質: `touches` が重ならない 2 つの命令は、別々に 1 つずつ当てると、順を変えても結果が同じ。
+//! 順の入れ替えの性質: `touches` が重ならない 2 つの操作は、別々に 1 つずつ当てると、順を変えても結果が同じ。
 //! レビューで再現した、順で結果が変わる文書を固定する。
 
 use crate::common::{self, canon, comp, layer, project};
@@ -6,7 +6,7 @@ use mm_doc::{Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, RationalTime};
 
-/// 命令を 1 つずつ別に当てる。当たらない命令は飛ばす。各命令の成否と最後の文書を返す。
+/// 操作を 1 つずつ別に当てる。当たらない操作は飛ばす。各操作の成否と最後の文書を返す。
 fn apply_each(p: &Project, ops: &[&Op]) -> (Vec<bool>, serde_json::Value) {
     let mut doc = p.clone();
     let human = OpContext::human();
@@ -202,7 +202,7 @@ fn ロックしたレイヤーが接続したカットを_claude_の入口から
 }
 
 #[test]
-fn 同じ時刻のマーカーは_add_marker_が断り_remove_marker_の逆命令で戻る() {
+fn 同じ時刻のマーカーは_add_marker_が断り_remove_marker_の逆操作で戻る() {
     let mut p = project();
     let human = OpContext::human();
     let dup: Op = AddMarker {

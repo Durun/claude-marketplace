@@ -1,4 +1,4 @@
-//! 描画器の GPU の文脈を D3D12 のアダプターで作る頼み方。
+//! レンダラーの GPU の文脈を D3D12 のアダプターで作る頼み方。
 //!
 //! `GpuContext` は既定で Vulkan と D3D12 の両方から高性能のアダプターを選ぶため、Windows の NVIDIA では
 //! Vulkan が選ばれうる。d3d12va と cuvid は FFmpeg と CUDA に D3D12 のデバイスを渡す（共有資源は
@@ -25,7 +25,7 @@ pub fn dx12_request_for_luid(luid: u64, features: wgpu::Features) -> Result<GpuR
 }
 
 /// D3D12 のアダプターを指す `GpuRequest`。`wanted` があればその機種、なければ D3D12 での高性能のアダプター。
-/// `features` は描画器のデバイスに求める機能（`TIMESTAMP_QUERY` は常に求める）。
+/// `features` はレンダラーのデバイスに求める機能（`TIMESTAMP_QUERY` は常に求める）。
 pub fn dx12_request(wanted: Option<&GpuAdapterId>, features: wgpu::Features) -> Result<GpuRequest> {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = wgpu::Backends::DX12;

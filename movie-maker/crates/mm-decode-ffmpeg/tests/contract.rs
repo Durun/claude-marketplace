@@ -63,7 +63,7 @@ fn pq_と_hlg_の素材は断る() {
 }
 
 #[test]
-fn 契約の素材でも焼いた番号がコマの番号と一致する() {
+fn 契約の素材でも焼いた番号がフレームの番号と一致する() {
     let dir = common::fixtures();
     let mut dec = FfmpegDecoderFactory
         .open(&dir.join("cfr.mp4"), None)

@@ -1,4 +1,4 @@
-//! `mm-ops` の命令を模した見本。別クレートの関数が差し替わるかを見るため、先端のクレートの外に置く。
+//! `mm-ops` の操作を模した見本。別クレートの関数が差し替わるかを見るため、先端のクレートの外に置く。
 
 use mm_doc::{Composition, Layer, Node, Param, Project};
 use mm_types::{Id, ParamValue, Rational, RationalTime};
@@ -29,7 +29,7 @@ pub fn demo_project() -> Project {
     p
 }
 
-/// 不透明度を変える命令（文書を受けて文書を変える純粋な関数）。印つきの報告を返す。
+/// 不透明度を変える操作（文書を受けて文書を変える純粋な関数）。印つきの報告を返す。
 pub fn set_opacity(project: &mut Project, value: f64) -> String {
     let layer = &mut project.compositions[0].layers[0];
     layer.opacity = Param::constant(ParamValue::Number(value));

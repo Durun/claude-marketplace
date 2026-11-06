@@ -1,4 +1,4 @@
-//! 動画オブジェクトの口。OpenFX のプラグイン API に寄せる（時刻で引ける入力、描く領域、
+//! ノードの口。OpenFX のプラグイン API に寄せる（時刻で引ける入力、描く領域、
 //! 恒等の宣言、性質の宣言）。
 //!
 //! GPU は [`GpuHelper`] で囲い、口には wgpu の型を出さない。`mm-render` が wgpu で実装し、
@@ -14,7 +14,7 @@
 //! - `is_identity` が真なら入力 0 と同じ絵。
 //! - `region_of_definition` の外は透明。
 //! - `migrate(今の版の値, 今の版)` は恒等。
-//! - `render` の `Err` はそのレイヤーだけ透明と印（描画器の約束。種類は `Err` を返すだけでよい）。
+//! - `render` の `Err` はそのレイヤーだけ透明と印（レンダラーの約束。種類は `Err` を返すだけでよい）。
 
 use std::any::Any;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub enum Cost {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Isolation {
-    /// Rust の種類。`Err` と panic は描画器が受け、そのレイヤーだけ透明にする。
+    /// Rust の種類。`Err` と panic はレンダラーが受け、そのレイヤーだけ透明にする。
     InProcess,
     /// 別プロセス。落ちたら印を出して起動し直す。
     OutOfProcess,
@@ -114,10 +114,10 @@ pub struct GpuTexture {
     pub size: Size,
 }
 
-/// 描いたコマ。`Rgba16Float` 相当、premultiplied、線形。
+/// 描いたフレーム。`Rgba16Float` 相当、premultiplied、線形。
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameRef {
-    /// 何も描かない（透明）。描画器は合成を飛ばせる。
+    /// 何も描かない（透明）。レンダラーは合成を飛ばせる。
     Transparent { size: Size },
     /// CPU の絵。`GpuHelper::upload` で GPU に載せる。
     Cpu(Arc<RgbaImage>),
@@ -143,8 +143,8 @@ impl FrameRef {
 
 /// GPU のヘルパー。`wgpu::Device` そのものは渡さず、要る操作だけを出す（RFC 0001）。
 ///
-/// テクスチャの寿命: `upload` / `allocate` / `import` が返した `Gpu` のコマはヘルパーが持ち、
-/// `release` で捨てる。描画器は合成を提出したら、そのコマで使ったテクスチャを `release` する。
+/// テクスチャの寿命: `upload` / `allocate` / `import` が返した `Gpu` のフレームはヘルパーが持ち、
+/// `release` で捨てる。レンダラーは合成を提出したら、そのフレームで使ったテクスチャを `release` する。
 pub trait GpuHelper {
     /// CPU の絵をテクスチャにする。
     fn upload(&mut self, image: &RgbaImage) -> Result<FrameRef>;
@@ -154,12 +154,12 @@ pub trait GpuHelper {
     fn allocate(&mut self, size: Size) -> Result<FrameRef>;
     /// テクスチャを捨てる。`Cpu` と `Transparent` は何もしない。
     fn release(&mut self, frame: &FrameRef);
-    /// デコーダーの GPU のコマを、このヘルパーのテクスチャとして使えるようにする。
-    /// 返すコマは次の `submit` が終わるまでの借り物で、描画器が `submit` の後に `release` する。
+    /// デコーダーの GPU のフレームを、このヘルパーのテクスチャとして使えるようにする。
+    /// 返すフレームは次の `submit` が終わるまでの借り物で、レンダラーが `submit` の後に `release` する。
     /// 中身の型を知らないヘルパーは `Err(Unsupported)`。
     fn import(&mut self, frame: &GpuFrameHandle) -> Result<FrameRef> {
         Err(mm_types::MmError::Unsupported(format!(
-            "GPU のコマ {} を受けられない",
+            "GPU のフレーム {} を受けられない",
             frame.id
         )))
     }
@@ -177,7 +177,7 @@ pub struct Services {
 
 /// 時刻で引ける入力の映像。
 pub trait InputFrames {
-    /// 入力 `index` の時刻 `t` のコマ。
+    /// 入力 `index` の時刻 `t` のフレーム。
     fn frame(&mut self, index: usize, t: RationalTime) -> Result<FrameRef>;
     /// 入力の数。
     fn len(&self) -> usize;
@@ -195,22 +195,22 @@ pub struct PrepareCx<'a> {
     pub footage: Option<&'a mut dyn FrameSource>,
 }
 
-/// 1 コマを描く文脈。
+/// 1 フレームを描く文脈。
 pub struct FrameCx<'a> {
-    /// コンポジションの時間軸での時刻。レイヤーの写像は描画器が済ませてある。
+    /// コンポジションの時間軸での時刻。レイヤーの写像はレンダラーが済ませてある。
     pub time: RationalTime,
     /// 評価済みのパラメータ（既定値で埋めてある）。
     pub params: &'a Params,
     /// 出力の大きさ（画素）。
     pub size: Size,
-    /// このコマで要る領域。外は描かなくてよい。
+    /// このフレームで要る領域。外は描かなくてよい。
     pub region: Rect,
     /// 画面上の倍率。`vector` の種類はこの倍率で描く。
     pub scale: f32,
     pub quality: Quality,
     /// 入力の映像。
     pub inputs: &'a mut dyn InputFrames,
-    /// 素材。`footage` の種類に描画器が渡す。時間軸はすでに素材のもの。
+    /// 素材。`footage` の種類にレンダラーが渡す。時間軸はすでに素材のもの。
     pub footage: Option<&'a mut dyn FrameSource>,
     /// 素材の時間軸での時刻。`footage` が `Some` のときだけ意味を持つ。
     pub source_time: RationalTime,
@@ -230,7 +230,7 @@ pub struct AudioCx<'a> {
     pub footage: Option<&'a mut dyn FrameSource>,
 }
 
-/// 動画オブジェクトの種類。実装は `mm-nodes-*` に 1 種類ずつ置く。
+/// ノードの種類。実装は `mm-nodes-*` に 1 種類ずつ置く。
 pub trait NodeKind: Send + Sync {
     /// 種類の名前（`footage`、`text`、`web.cef`、`shader.wgsl`）。文書の `Node.kind` に入る。
     fn id(&self) -> &'static str;
@@ -256,20 +256,20 @@ pub trait NodeKind: Send + Sync {
         let _ = (params, cx);
         Ok(())
     }
-    /// このコマを描くのに要る入力の時刻の範囲（モーションブラー、トランジション）。
+    /// このフレームを描くのに要る入力の時刻の範囲（モーションブラー、トランジション）。
     fn frames_needed(&self, cx: &FrameCx<'_>) -> Vec<TimeRange> {
         vec![TimeRange::new(cx.time, cx.time).expect("長さ 0 の範囲")]
     }
-    /// 絵が存在する領域。画面の外なら描画器は飛ばす。
+    /// 絵が存在する領域。画面の外ならレンダラーは飛ばす。
     fn region_of_definition(&self, cx: &FrameCx<'_>) -> Rect {
         cx.size.to_rect()
     }
-    /// 入力 0 をそのまま返すだけか。真なら描画器は飛ばす。
+    /// 入力 0 をそのまま返すだけか。真ならレンダラーは飛ばす。
     fn is_identity(&self, cx: &FrameCx<'_>) -> bool {
         let _ = cx;
         false
     }
-    /// 時刻 t のコマ。
+    /// 時刻 t のフレーム。
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef>;
     /// 区間の音。`traits().audio` が偽なら無音を返してよい。
     fn render_audio(&self, cx: &mut AudioCx<'_>) -> Result<AudioBlock> {
@@ -289,7 +289,7 @@ pub fn footage_ref<'a>(
     }
 }
 
-/// 区間に入る音のコマ数。`floor(end * rate) - floor(start * rate)` で、隣の区間と重ならない。
+/// 区間に入る音のフレーム数。`floor(end * rate) - floor(start * rate)` で、隣の区間と重ならない。
 pub fn audio_frames_in(range: TimeRange, sample_rate: u32) -> usize {
     // サンプルレート 0 は音が無いのと同じ。
     let Ok(rate) = mm_types::Rational::new(sample_rate, 1) else {
@@ -299,7 +299,7 @@ pub fn audio_frames_in(range: TimeRange, sample_rate: u32) -> usize {
     n.max(0) as usize
 }
 
-/// 種類の登録簿。`mm-runtime` が実装し、描画器が `Node.kind` から種類を引く。
+/// 種類のレジストリ。`mm-runtime` が実装し、レンダラーが `Node.kind` から種類を引く。
 pub trait NodeRegistry: Send + Sync {
     /// 名前で引く。
     fn get(&self, kind: &str) -> Option<Arc<dyn NodeKind>>;
@@ -326,7 +326,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 隣り合う区間の音のコマ数は重ならない() {
+    fn 隣り合う区間の音のフレーム数は重ならない() {
         let a = TimeRange::new(RationalTime::ZERO, RationalTime::new(1, 3).unwrap()).unwrap();
         let b = TimeRange::new(a.end, RationalTime::new(2, 3).unwrap()).unwrap();
         let c = TimeRange::new(b.end, RationalTime::seconds(1)).unwrap();

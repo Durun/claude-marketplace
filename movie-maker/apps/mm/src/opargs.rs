@@ -1,4 +1,4 @@
-//! `mm op <dir> <命令名> --引数 値 ...` の引数を、命令の JSON に組み立てる。
+//! `mm op <dir> <操作名> --引数 値 ...` の引数を、操作の JSON に組み立てる。
 //!
 //! 引数の名前と型は `mm_ops::ops_schema()` から引く。スキーマが無い欄は受けない。
 //! 値は欄の型で読む（文字列の欄はそのまま、時刻の欄は `-0.4` や `3/2` から `{num, den}` へ、
@@ -9,14 +9,14 @@ use serde_json::{json, Map, Value};
 use mm_ops::Op;
 use mm_types::{MmError, RationalTime, Result};
 
-/// 命令の欄ではなく、`mm op` 自身が読む引数。
+/// 操作の欄ではなく、`mm op` 自身が読む引数。
 const RESERVED_JSON: &str = "json";
 const RESERVED_BASE: &str = "base";
 const RESERVED_LABEL: &str = "label";
 /// 10 進の小数を時刻にするときの小数点以下の桁数の上限（分母が `u32` に収まる範囲）。
 const MAX_DECIMALS: usize = 9;
 
-/// 組み立てた命令と、`mm op` 自身の引数。
+/// 組み立てた操作と、`mm op` 自身の引数。
 #[derive(Debug)]
 pub struct ParsedOp {
     pub op: Op,
@@ -26,7 +26,7 @@ pub struct ParsedOp {
     pub label: Option<String>,
 }
 
-/// 命令の名前と、名前の後ろの引数の並びから命令を作る。
+/// 操作の名前と、名前の後ろの引数の並びから操作を作る。
 pub fn parse_op(name: &str, tokens: &[String]) -> Result<ParsedOp> {
     let schema = branch_schema(name)?;
     let mut object = Map::new();
@@ -51,13 +51,13 @@ pub fn parse_op(name: &str, tokens: &[String]) -> Result<ParsedOp> {
     merged.extend(object);
     merged.insert("op".into(), Value::String(name.to_owned()));
     let op: Op = serde_json::from_value(Value::Object(merged))
-        .map_err(|e| invalid(format!("命令 {name} の引数: {e}")))?;
+        .map_err(|e| invalid(format!("操作 {name} の引数: {e}")))?;
     Ok(ParsedOp { op, base, label })
 }
 
-/// 命令の名前と欄の一覧（`mm op` の案内）。
+/// 操作の名前と欄の一覧（`mm op` の案内）。
 pub fn usage() -> String {
-    format!("命令: {}", Op::NAMES.join(", "))
+    format!("操作: {}", Op::NAMES.join(", "))
 }
 
 fn invalid(msg: String) -> MmError {
@@ -101,14 +101,14 @@ fn is_flag(token: &str) -> bool {
         .is_some_and(|r| r.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))
 }
 
-/// 命令 `name` の枝のスキーマ（`$defs` を `defs` の名前で引けるよう、枝に `$defs` を付けて返す）。
+/// 操作 `name` の枝のスキーマ（`$defs` を `defs` の名前で引けるよう、枝に `$defs` を付けて返す）。
 fn branch_schema(name: &str) -> Result<Value> {
     let root = serde_json::to_value(mm_ops::ops_schema())?;
     let branch = root["oneOf"]
         .as_array()
         .and_then(|bs| bs.iter().find(|b| b["properties"]["op"]["const"] == name))
         .cloned()
-        .ok_or_else(|| invalid(format!("知らない命令: {name}（{}）", usage())))?;
+        .ok_or_else(|| invalid(format!("知らない操作: {name}（{}）", usage())))?;
     Ok(json!({ "branch": branch, "defs": root["$defs"] }))
 }
 
@@ -131,7 +131,7 @@ fn find_field(schema: &Value, op: &str, key: &str) -> Result<(String, Value)> {
         .filter(|f| *f != "op")
         .collect();
     Err(invalid(format!(
-        "命令 {op} に引数 --{key} は無い（使える引数: {}）",
+        "操作 {op} に引数 --{key} は無い（使える引数: {}）",
         names.join(", ")
     )))
 }
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn ripple_の引数が命令になる() {
+    fn ripple_の引数が操作になる() {
         let p = parse_op("ripple", &tokens("--cut c12 --edge out --by -0.4 --base 3")).unwrap();
         assert_eq!(p.base, Some(3));
         let v = serde_json::to_value(&p.op).unwrap();
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn 知らない命令と知らない引数は使える名前を添えて断る() {
+    fn 知らない操作と知らない引数は使える名前を添えて断る() {
         let e = parse_op("nope", &[]).unwrap_err().to_string();
         assert!(e.contains("ripple"), "{e}");
         let e = parse_op("ripple", &tokens("--cut c --zzz 1"))

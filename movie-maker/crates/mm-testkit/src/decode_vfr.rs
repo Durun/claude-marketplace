@@ -8,7 +8,7 @@ use mm_types::{ColorSpace, RationalTime, Result, Rgba, RgbaImage, Size, TimeRang
 
 use crate::decode::frame_color;
 
-/// PTS の列を持つ見本のデコーダー。コマの番号を G に焼く（`decode::frame_color`）。
+/// PTS の列を持つ見本のデコーダー。フレームの番号を G に焼く（`decode::frame_color`）。
 #[derive(Debug)]
 pub struct SampleVfrDecoder {
     info: MediaInfo,
@@ -16,7 +16,7 @@ pub struct SampleVfrDecoder {
 }
 
 impl SampleVfrDecoder {
-    /// `pts`（昇順）のコマを持つ、長さ `duration` の素材。
+    /// `pts`（昇順）のフレームを持つ、長さ `duration` の素材。
     pub fn new(pts: Vec<RationalTime>, duration: RationalTime) -> Self {
         Self {
             info: MediaInfo {
@@ -32,7 +32,7 @@ impl SampleVfrDecoder {
         }
     }
 
-    /// 契約の既定の素材: PTS が 0、1/2、3/4 秒の 3 コマで長さ 1 秒。
+    /// 契約の既定の素材: PTS が 0、1/2、3/4 秒の 3 フレームで長さ 1 秒。
     pub fn sample() -> Self {
         let half = RationalTime::new(1, 2).expect("表せる");
         let three_quarters = RationalTime::new(3, 4).expect("表せる");
@@ -86,22 +86,22 @@ fn indices(dec: &mut dyn Decoder, start: RationalTime, end: RationalTime) -> Vec
 }
 
 /// VFR の `decode_range` の契約。`make` は PTS が 3 つ以上ある VFR の素材を開く。
-/// 区間に PTS が入るコマを全部、番号の順に返し、最後のコマを落とさない。
+/// 区間に PTS が入るフレームを全部、番号の順に返し、最後のフレームを落とさない。
 pub fn vfr_contract(make: impl Fn() -> Box<dyn Decoder>) {
     let mut dec = make();
     let info = dec.info().clone();
     let pts = &info.pts_index;
     assert!(info.fps.is_none() && pts.len() >= 3, "契約の素材は VFR");
     let n = pts.len() as i64;
-    assert_eq!(info.frame_count(), n, "VFR のコマ数は PTS の数");
+    assert_eq!(info.frame_count(), n, "VFR のフレーム数は PTS の数");
     assert_eq!(
         info.frame_index_at(RationalTime::new(-1, 10).expect("表せる")),
         -1,
-        "最初のコマより前は CFR と同じ -1"
+        "最初のフレームより前は CFR と同じ -1"
     );
 
     let all = indices(dec.as_mut(), RationalTime::ZERO, info.duration);
-    assert_eq!(all, (0..n).collect::<Vec<_>>(), "全体なら最後のコマまで");
+    assert_eq!(all, (0..n).collect::<Vec<_>>(), "全体なら最後のフレームまで");
 
     let last = pts[pts.len() - 1];
     let head = indices(dec.as_mut(), RationalTime::ZERO, last);
@@ -127,7 +127,7 @@ pub fn vfr_contract(make: impl Fn() -> Box<dyn Decoder>) {
     assert_eq!(
         from_mid,
         (1..n).collect::<Vec<_>>(),
-        "頭が PTS の途中なら次のコマから"
+        "頭が PTS の途中なら次のフレームから"
     );
 }
 

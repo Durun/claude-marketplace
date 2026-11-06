@@ -12,7 +12,7 @@ fn output_path(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn 切った素材のコマが_in_点からの番号で出る() {
+fn 切った素材のフレームが_in_点からの番号で出る() {
     let media = SampleMedia::default();
     let (project, comp, _) = vertical_project(&media, &output_path("frame"));
     let mut engine = assemble(&RuntimeConfig::sample()).expect("組める");
@@ -27,7 +27,7 @@ fn 切った素材のコマが_in_点からの番号で出る() {
         assert_eq!(
             frame_index_of(img.pixel(0, 0)),
             expected,
-            "コマ {frame} の素材の番号"
+            "フレーム {frame} の素材の番号"
         );
     }
 }

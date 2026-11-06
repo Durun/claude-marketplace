@@ -1,4 +1,4 @@
-//! 本物の素材（CFR、NTSC の分数、VFR、頭が 0 でない素材、音）のコマの番号と時刻。
+//! 本物の素材（CFR、NTSC の分数、VFR、頭が 0 でない素材、音）のフレームの番号と時刻。
 #![cfg(feature = "ffmpeg")]
 
 mod common;
@@ -18,14 +18,14 @@ fn number(frame: &DecodedFrame) -> i64 {
 
 fn drain(dec: &mut dyn Decoder) -> Vec<DecodedFrame> {
     let mut out = Vec::new();
-    while let Some(f) = dec.next_frame().expect("復号") {
+    while let Some(f) = dec.next_frame().expect("デコード") {
         out.push(f);
     }
     out
 }
 
 #[test]
-fn cfr_の全コマで焼いた番号と番号と時刻が一致する() {
+fn cfr_の全フレームで焼いた番号と番号と時刻が一致する() {
     let mut dec = open("cfr.mp4");
     let fps = Rational::integer(30);
     assert_eq!(dec.info().fps, Some(fps));
@@ -33,7 +33,7 @@ fn cfr_の全コマで焼いた番号と番号と時刻が一致する() {
     assert!(dec.info().pts_index.is_empty());
     for (i, f) in drain(dec.as_mut()).iter().enumerate() {
         assert_eq!(f.index, i as i64);
-        assert_eq!(number(f), i as i64, "コマ {i} の焼いた番号");
+        assert_eq!(number(f), i as i64, "フレーム {i} の焼いた番号");
         assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps).unwrap());
     }
 }
@@ -46,7 +46,7 @@ fn シーク後も_in_点から正しい番号が出る() {
     for target in [59, 0, 30, 31, 13, 12, 11, 45, 44, 1, 58, 24, 23, 25] {
         dec.seek(RationalTime::from_frames(target, fps).unwrap())
             .unwrap();
-        let f = dec.next_frame().unwrap().expect("コマがある");
+        let f = dec.next_frame().unwrap().expect("フレームがある");
         assert_eq!(f.index, target);
         assert_eq!(number(&f), target, "シーク先 {target} の焼いた番号");
         if target < 59 {
@@ -57,7 +57,7 @@ fn シーク後も_in_点から正しい番号が出る() {
 }
 
 #[test]
-fn 区間の復号は_in_点の番号から並ぶ() {
+fn 区間のデコードは_in_点の番号から並ぶ() {
     let mut dec = open("cfr.mp4");
     let fps = Rational::integer(30);
     let range = TimeRange::new(
@@ -112,7 +112,7 @@ fn vfr_は_pts_の索引を持ち番号がずれない() {
         assert_eq!(number(f), i as i64);
         assert_eq!(f.pts, info.pts_index[i]);
     }
-    // 時刻で引く: コマの時刻ちょうどと、次のコマの直前
+    // 時刻で引く: フレームの時刻ちょうどと、次のフレームの直前
     for target in [41usize, 3, 59, 0, 17] {
         let t = info.pts_index[target];
         assert_eq!(info.frame_index_at(t), target as i64);
@@ -129,7 +129,7 @@ fn vfr_は_pts_の索引を持ち番号がずれない() {
 }
 
 #[test]
-fn 頭が_0_でない素材も最初のコマが_t_0_になる() {
+fn 頭が_0_でない素材も最初のフレームが_t_0_になる() {
     let mut dec = open("offset.mp4");
     let fps = dec.info().fps.expect("CFR");
     assert_eq!(fps, Rational::integer(30));

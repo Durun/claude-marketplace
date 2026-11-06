@@ -17,7 +17,7 @@ pub enum CutMarker {}
 
 /// sequence の ID。
 pub type SequenceId = Id<SequenceMarker>;
-/// カットの ID。`attachTo` と命令の `touches` が指す。
+/// カットの ID。`attachTo` と操作の `touches` が指す。
 pub type CutId = Id<CutMarker>;
 
 /// 磁気の並び。OTIO の `Track` に写せる形。
@@ -77,7 +77,7 @@ impl Cut {
         }
     }
 
-    /// カットが持つ動画オブジェクトの根（source とトランジション）。
+    /// カットが持つノードの根（source とトランジション）。
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         std::iter::once(&self.source).chain(self.transition_in.iter().map(|t| &t.node))
     }

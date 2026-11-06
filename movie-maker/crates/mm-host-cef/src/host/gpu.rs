@@ -1,4 +1,4 @@
-//! wgpu の D3D12 デバイスと、受け取った絵を PNG にする読み戻し。
+//! wgpu の D3D12 デバイスと、受け取った絵を PNG にするリードバック。
 
 use std::path::Path;
 
@@ -71,11 +71,11 @@ pub fn read_rgba(
     buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
     device
         .poll(wgpu::PollType::wait_indefinitely())
-        .map_err(|e| format!("読み戻しの完了待ちに失敗: {e}"))?;
+        .map_err(|e| format!("リードバックの完了待ちに失敗: {e}"))?;
     let mapped = buffer
         .slice(..)
         .get_mapped_range()
-        .map_err(|e| format!("読み戻しの対応付けに失敗: {e}"))?;
+        .map_err(|e| format!("リードバックの対応付けに失敗: {e}"))?;
     let mut out = Vec::with_capacity((row_bytes * size.height) as usize);
     for row in mapped.chunks(padded as usize).take(size.height as usize) {
         for px in row[..row_bytes as usize].chunks_exact(4) {

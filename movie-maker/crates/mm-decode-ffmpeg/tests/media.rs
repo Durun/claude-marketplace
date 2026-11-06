@@ -19,7 +19,7 @@ fn number(frame: &DecodedFrame) -> i64 {
 
 fn drain(dec: &mut dyn Decoder) -> Vec<DecodedFrame> {
     let mut out = Vec::new();
-    while let Some(f) = dec.next_frame().expect("復号") {
+    while let Some(f) = dec.next_frame().expect("デコード") {
         out.push(f);
     }
     out
@@ -33,25 +33,25 @@ fn tenths(a: i128, b: i128) -> TimeRange {
     .unwrap()
 }
 
-/// 時刻 `t` の 1 コマ目の焼いた番号が `want` になる。
+/// 時刻 `t` の 1 フレーム目の焼いた番号が `want` になる。
 fn assert_seek(dec: &mut dyn Decoder, t: RationalTime, want: i64) {
     dec.seek(t).unwrap();
-    let f = dec.next_frame().unwrap().expect("コマがある");
+    let f = dec.next_frame().unwrap().expect("フレームがある");
     assert_eq!(number(&f), want, "{t:?} の番号");
 }
 
 #[test]
-fn edit_list_の外のパケットは索引に入らずコマ数が出るコマと一致する() {
+fn edit_list_の外のパケットは索引に入らずフレーム数が出るフレームと一致する() {
     let mut dec = open("editlist.mp4");
     let info = dec.info().clone();
     let frames = drain(dec.as_mut());
     assert_eq!(frames.len() as i64, info.frame_count());
-    // 0.5 秒（コマ 15）で切った素材。出るコマは 45 で、先頭は元のコマ 15
+    // 0.5 秒（フレーム 15）で切った素材。出るフレームは 45 で、先頭は元のフレーム 15
     assert_eq!(frames.len(), 45);
     let first = number(&frames[0]);
     for (i, f) in frames.iter().enumerate() {
         assert_eq!(f.index, i as i64);
-        assert_eq!(number(f), first + i as i64, "コマ {i}");
+        assert_eq!(number(f), first + i as i64, "フレーム {i}");
     }
     let fps = info.fps.expect("CFR");
     for i in 0..5 {
@@ -102,7 +102,7 @@ fn b_フレーム入りの_vfr_でも番号と時刻が合う() {
 
 #[test]
 fn 飛ばしながら読んでも番号が合う() {
-    // 30 fps の素材を 15 fps に置く（1 コマおき）、速度 2 の再生、同じ GOP 内の小さな前進、後戻りを混ぜる
+    // 30 fps の素材を 15 fps に置く（1 フレームおき）、速度 2 の再生、同じ GOP 内の小さな前進、後戻りを混ぜる
     for name in ["cfr.mp4", "vfr_bf.mp4"] {
         let mut dec = open(name);
         let info = dec.info().clone();

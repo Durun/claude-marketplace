@@ -41,12 +41,12 @@ CEF のオフスクリーン描画を、共有テクスチャ（D3D11 → D3D12 
 | 指定 | 既定 | 意味 |
 |---|---|---|
 | `--path accel\|cpu` | accel | `OnAcceleratedPaint`（共有テクスチャ）か `OnPaint`（BGRA のアップロード） |
-| `--frames` `--warmup` | 300 / 20 | 測るコマ数と、測らない助走 |
+| `--frames` `--warmup` | 300 / 20 | 測るフレーム数と、測らない助走 |
 | `--size WxH` | 1920x1080 | 描く大きさ |
-| `--fps` | 30 | コマの時刻の刻み（コマ `n` は `n / fps` 秒） |
-| `--rate` | 240 | `windowless_frame_rate`。外部 BeginFrame でも描画の間隔の下限になる（60 だと 1 コマ 35 ms） |
+| `--fps` | 30 | フレームの時刻の刻み（フレーム `n` は `n / fps` 秒） |
+| `--rate` | 240 | `windowless_frame_rate`。外部 BeginFrame でも描画の間隔の下限になる（60 だと 1 フレーム 35 ms） |
 | `--resend-us` | 3000 | 絵が来ないとき BeginFrame を送り直すまでの待ち |
 | `--adapter` | 空 | wgpu の GPU を名前の一部で選ぶ。CEF は `force-high-performance-gpu` で外付けの GPU に揃える |
-| `--verify` | 切 | 全コマを読み戻して古い絵と再描画の同一を確かめる。`--out` で PNG と `metrics-*.jsonl` |
+| `--verify` | 切 | 全フレームをリードバックて古い絵と再描画の同一を確かめる。`--out` で PNG と `metrics-*.jsonl` |
 
 `--名前=値` は Chromium のスイッチとして CEF に渡る。`MM_CEF_LOG=<ファイル>` で CEF の詳細ログを書く。

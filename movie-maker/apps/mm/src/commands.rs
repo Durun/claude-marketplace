@@ -1,5 +1,5 @@
 //! プロジェクトのフォルダー（`project.mmdb`）に対する `mm` のサブコマンド。
-//! 書く命令は書き手のロックを取れたときだけ受け、別のプロセスが書いているときは断る。
+//! 書く操作は書き手のロックを取れたときだけ受け、別のプロセスが書いているときは断る。
 //! 読むだけのコマンド（`log`、`diff`、`export`）はロックを取らずに開き、アプリの邪魔をしない。
 
 use std::path::Path;
@@ -32,16 +32,16 @@ fn actor() -> Actor {
     }
 }
 
-/// CLI は Claude の入口として、ロックの付いた所に触る命令を断る。
+/// CLI は Claude の入口として、ロックの付いた所に触る操作を断る。
 fn cli_context() -> OpContext {
     OpContext::new(Entry::Cli)
 }
 
-/// 命令の層の断りを、`mm` のエラーにする。
+/// 操作の層の断りを、`mm` のエラーにする。
 fn op_error(e: OpError) -> MmError {
     match e {
         OpError::Doc(inner) => inner,
-        other => MmError::InvalidArgument(format!("命令を断った: {other}")),
+        other => MmError::InvalidArgument(format!("操作を断った: {other}")),
     }
 }
 
@@ -126,7 +126,7 @@ pub fn export(dir: &Path, name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// `mm op`: 命令 1 つか、まとまり（`--txn`）を当てる。
+/// `mm op`: 操作 1 つか、まとまり（`--txn`）を当てる。
 pub fn op(
     dir: &Path,
     name: Option<&str>,
@@ -136,12 +136,12 @@ pub fn op(
     let txn = match (name, txn_file) {
         (Some(_), Some(_)) => {
             return Err(MmError::InvalidArgument(
-                "命令の名前と --txn は同時に渡せない".into(),
+                "操作の名前と --txn は同時に渡せない".into(),
             ))
         }
         (None, None) => {
             return Err(MmError::InvalidArgument(format!(
-                "命令の名前か --txn を渡す。{}",
+                "操作の名前か --txn を渡す。{}",
                 usage()
             )))
         }
@@ -189,7 +189,7 @@ fn read_txn(file: &Path, tokens: &[String]) -> Result<Transaction> {
     Ok(txn)
 }
 
-/// `mm op --schema`: 全部の命令の JSON Schema。
+/// `mm op --schema`: 全部の操作の JSON Schema。
 pub fn schema() {
     print!("{}", mm_ops::ops_schema_json());
 }

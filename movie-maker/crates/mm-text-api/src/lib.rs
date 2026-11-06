@@ -1,15 +1,15 @@
 //! 文字の口。整形（行組み）と描画を分け、整形の結果はキャッシュできる値にする。
 //!
 //! 大きさは画面上の倍率 `scale` で描き、平行移動は合成の側でかける（ヒンティングで跳ねない）。
-//! [`ShapedText`] は字形（字体の名前と字形 ID）と元の文字の範囲を持つので、描画器は行組みを
-//! やり直さずに描ける。整形器と描画器は別々に作ってよく、JSON を往復した整形の結果も描ける。
+//! [`ShapedText`] はグリフ（字体の名前とグリフ ID）と元の文字の範囲を持つので、レンダラーは行組みを
+//! やり直さずに描ける。整形器とレンダラーは別々に作ってよく、JSON を往復した整形の結果も描ける。
 //!
 //! 契約（`mm_testkit::text::contract`）:
 //! - 同じ文字列と同じスタイルで同じ行組み（`ShapedText` が一致）。
 //! - 空文字は行 0 で、`bounds` が空。
 //! - `max_width` より長い 1 語は折り返され、どの行も `max_width` を超えない（1 文字が超える場合を除く）。
 //! - 合字と絵文字を含む文字列で落ちない。
-//! - どの字形も `face` が `faces` の中を指し、`byte_offset..byte_offset + byte_len` が文字列の中。
+//! - どのグリフも `face` が `faces` の中を指し、`byte_offset..byte_offset + byte_len` が文字列の中。
 //! - `align` が `Center` / `Right` のとき、短い行は長い行より右から始まる。
 //! - `rasterize` の絵の大きさは `bounds * scale` を切り上げた大きさ。
 //! - JSON を往復した `ShapedText` も同じ大きさに描ける。
@@ -74,7 +74,7 @@ impl Default for TextStyle {
     }
 }
 
-/// 整形に使った字体。描画器はこの名前で同じ字体を引く。
+/// 整形に使った字体。レンダラーはこの名前で同じ字体を引く。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FaceRef {
     /// PostScript 名（見本は `sample`）。
@@ -83,7 +83,7 @@ pub struct FaceRef {
     pub weight: u16,
 }
 
-/// 1 つの字形の置き場所。
+/// 1 つのグリフの置き場所。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlyphBox {
     /// 1 倍のときの矩形。
@@ -94,9 +94,9 @@ pub struct GlyphBox {
     pub byte_len: usize,
     /// [`ShapedText::faces`] の索引。
     pub face: u32,
-    /// 字体の中の字形の番号。
+    /// 字体の中のグリフの番号。
     pub glyph_id: u16,
-    /// 1 倍のときの字形の原点（ベースライン上、字形のオフセット込み）。
+    /// 1 倍のときのグリフの原点（ベースライン上、グリフのオフセット込み）。
     pub origin: [f32; 2],
 }
 

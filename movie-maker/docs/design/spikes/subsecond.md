@@ -26,7 +26,7 @@
 
 | 場所 | 中身 |
 |---|---|
-| `ops-sample/` | `mm-doc` の `Project` を受けて変える関数（`mm-ops` の命令の見本）。別クレートの関数が差し替わるかを見る |
+| `ops-sample/` | `mm-doc` の `Project` を受けて変える関数（`mm-ops` の操作の見本）。別クレートの関数が差し替わるかを見る |
 | `plain/` | 素の実行ファイル。200ms ごとに先端のクレートの関数と `ops-sample` の関数を `subsecond::call` で呼び、印と epoch ms を 1 行出す |
 | `tauri-app/` | 最小の Tauri 2。WebView が 200ms ごとに Tauri のコマンドを呼び、コマンドが `subsecond::call` の中で `ops-sample` を呼んで同じ形の 1 行を出す |
 | `scripts/` | `measure.sh`（印を書き換えた時刻から、新しい印が出るまで）、`repeat.sh`（繰り返し）、`baseline.sh`（`cargo build` の増分と再起動） |
@@ -63,7 +63,7 @@
 
 ## 分かったこと
 
-- 差し替えは `subsecond::call` の中でだけ効く。`call` の外から呼ぶ関数は古いまま。命令の入口と Tauri のコマンドの本体を `call` で包む。
+- 差し替えは `subsecond::call` の中でだけ効く。`call` の外から呼ぶ関数は古いまま。操作の入口と Tauri のコマンドの本体を `call` で包む。
 - 差し替えが効くクレートは、`dx` で起動したワークスペースのメンバーだけ。ワークスペースの外のパスの依存（`tauri-app` から見た `ops-sample`）を書き換えても `dx` は動かない。`mm-ops` を別クレートにするなら、アプリと同じワークスペースに置く。
 - 同じワークスペースに、起動していない別のアプリ（`plain` と `tauri-app`）が入っていると、共通のクレートを書き換えたときに `dx` が `Missing rustc args for replay: 'spike_tauri'` で失敗する。アプリごとにワークスペースを分けるか、動かすアプリだけを入れる。
 - 状態は残る。Tauri の管理する状態（`Doc`）の通し番号は差し替えの間も続いた。構造体の形を変える変更は試していない（subsecond の文書では未対応）。

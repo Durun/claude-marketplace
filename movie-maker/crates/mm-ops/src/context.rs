@@ -1,8 +1,8 @@
-//! 命令の文脈。どの入口から来たか（ロックの判定に使う）。
+//! 操作の文脈。どの入口から来たか（ロックの判定に使う）。
 
 use serde::{Deserialize, Serialize};
 
-/// 命令の入口。4 つの入口は同じ命令を呼び、違いはロックの扱いだけ。
+/// 操作の入口。4 つの入口は同じ操作を呼び、違いはロックの扱いだけ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Entry {
@@ -17,13 +17,13 @@ pub enum Entry {
 }
 
 impl Entry {
-    /// Claude の入口か。ロックの付いた所に触る命令を断る。
+    /// Claude の入口か。ロックの付いた所に触る操作を断る。
     pub fn is_claude(self) -> bool {
         matches!(self, Self::Cli | Self::Mcp)
     }
 }
 
-/// 命令を当てるときの文脈。
+/// 操作を当てるときの文脈。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpContext {
     pub entry: Entry,

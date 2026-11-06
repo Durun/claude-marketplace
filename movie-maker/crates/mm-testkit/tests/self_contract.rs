@@ -80,7 +80,7 @@ fn 見本の種類は契約を通す() {
 }
 
 #[test]
-fn 見本の描画器は契約を通す() {
+fn 見本のレンダラーは契約を通す() {
     let media = SampleMedia::default();
     let out = std::env::temp_dir().join("mm_testkit_render_contract.json");
     let (project, comp, _) = vertical_project(&media, &out);

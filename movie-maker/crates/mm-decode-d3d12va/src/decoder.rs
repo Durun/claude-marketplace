@@ -1,5 +1,5 @@
-//! `mm-decode-api` の `Decoder` の実装。コマは描画器の wgpu のデバイスの上の `Rgba16Float`
-//! （`GpuFrameTexture`）で返す。復号した面は変換の完了までだけ握り、借りが長引いてもプールは尽きない。
+//! `mm-decode-api` の `Decoder` の実装。フレームはレンダラーの wgpu のデバイスの上の `Rgba16Float`
+//! （`GpuFrameTexture`）で返す。デコードした面は変換の完了までだけ握り、借りが長引いてもプールは尽きない。
 //!
 //! 音は無音を返す。音は `mm-runtime` が FFmpeg のデコーダーと組み合わせる。
 
@@ -28,7 +28,7 @@ use mm_decode_hw::yuv::YuvParams;
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
 
-/// この実装が描画器のデバイスに求める機能。`GpuRequest::optional_features` に足す。
+/// この実装がレンダラーのデバイスに求める機能。`GpuRequest::optional_features` に足す。
 pub fn required_features() -> wgpu::Features {
     wgpu::Features::TEXTURE_FORMAT_NV12 | ten_bit_features()
 }
@@ -38,7 +38,7 @@ fn ten_bit_features() -> wgpu::Features {
     wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
 }
 
-/// 描画器の GPU の文脈を、d3d12va が使える形（D3D12 のアダプター、必要な機能つき）で頼む。
+/// レンダラーの GPU の文脈を、d3d12va が使える形（D3D12 のアダプター、必要な機能つき）で頼む。
 /// `wanted` が `None` なら D3D12 での高性能のアダプター。
 pub fn gpu_request(wanted: Option<&GpuAdapterId>) -> Result<GpuRequest> {
     dx12_request(wanted, required_features())
@@ -61,7 +61,7 @@ pub struct D3d12vaDecoder {
 }
 
 impl D3d12vaDecoder {
-    /// 素材を開く。`gpu` は描画器と同じデバイスで、D3D12 でなければ `Err(Unsupported)`。
+    /// 素材を開く。`gpu` はレンダラーと同じデバイスで、D3D12 でなければ `Err(Unsupported)`。
     pub fn open(path: &Path, gpu: &GpuContext) -> Result<Self> {
         let features = gpu.device.features();
         if !features.contains(wgpu::Features::TEXTURE_FORMAT_NV12) {
@@ -93,14 +93,14 @@ impl D3d12vaDecoder {
         })
     }
 
-    /// 復号した面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    /// デコードした面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
     #[cfg(feature = "test-hooks")]
     pub fn set_gpu_wait(&mut self, on: bool) {
         self.release.set_wait_for_gpu(on);
     }
 
     /// これまでに出した変換の完了を待ち、デバイスが消えていないかを確かめる。
-    /// ドライバーが復号の失敗をエラーで返さずデバイスの消失で表すので、試し復号の最後に呼ぶ。
+    /// ドライバーがデコードの失敗をエラーで返さずデバイスの消失で表すので、試しデコードの最後に呼ぶ。
     pub fn finish(&mut self) -> Result<()> {
         self.release.try_wait_all()?;
         check_device(&self.device)
@@ -187,7 +187,7 @@ impl Decoder for D3d12vaDecoder {
     }
 }
 
-/// `DecoderFactory`。デバイスは `open` で渡される描画器のものを使い、自前では作らない。
+/// `DecoderFactory`。デバイスは `open` で渡されるレンダラーのものを使い、自前では作らない。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct D3d12vaFactory;
 
@@ -201,8 +201,8 @@ impl DecoderFactory for D3d12vaFactory {
         let ctx = gpu
             .and_then(|g| g.as_any().downcast_ref::<GpuContext>())
             .ok_or_else(|| MmError::Unsupported("d3d12va は GPU の文脈が要る".into()))?;
-        // 開くだけなら復号しないので安全（壊れた素材はここで Corrupt になる）。落ちる素材は
-        // ドライバーが D3D12 のデバイスを全部消すので、最初の復号の前に別プロセスで試す。
+        // 開くだけならデコードしないので安全（壊れた素材はここで Corrupt になる）。落ちる素材は
+        // ドライバーが D3D12 のデバイスを全部消すので、最初のデコードの前に別プロセスで試す。
         let decoder = D3d12vaDecoder::open(path, ctx)?;
         let luid = ctx
             .adapter

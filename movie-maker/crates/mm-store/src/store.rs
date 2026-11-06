@@ -1,4 +1,4 @@
-//! `Store`: 開いたプロジェクト。文書と命令の記録を 1 つのトランザクションで書く。
+//! `Store`: 開いたプロジェクト。文書と操作の記録を 1 つのトランザクションで書く。
 //! 開き方（作る、開く、読み取りだけ）は `open.rs`。
 
 use std::path::{Path, PathBuf};
@@ -91,7 +91,7 @@ impl Store {
         &self.project
     }
 
-    /// 今の文書の版番号。命令 1 つで 1 進む。取り消しとやり直しも命令の数だけ進める。
+    /// 今の文書の版番号。操作 1 つで 1 進む。取り消しとやり直しも操作の数だけ進める。
     pub fn doc_version(&self) -> i64 {
         self.doc_version
     }
@@ -123,14 +123,14 @@ impl Store {
         }
     }
 
-    /// 文書の変更とまとまりの記録を 1 つのトランザクションで書く。`project` は命令を当てた後の文書。
-    /// 取り消し（やり直し）は、逆命令（元の命令）を当てた記録を同じ形で書き、版も命令の数だけ進む。
+    /// 文書の変更とまとまりの記録を 1 つのトランザクションで書く。`project` は操作を当てた後の文書。
+    /// 取り消し（やり直し）は、逆操作（元の操作）を当てた記録を同じ形で書き、版も操作の数だけ進む。
     /// 当てたまとまりの行は後から書き換えない。途中で落ちたら、開き直すと書く前の版に戻る。
     pub fn commit(&mut self, project: &Project, input: &TxnInput) -> Result<StoredTxn> {
         self.require_writer()?;
         if input.ops.is_empty() {
             return Err(MmError::InvalidArgument(
-                "命令の無いトランザクション".into(),
+                "操作の無いトランザクション".into(),
             ));
         }
         let pos = self.next_undo_pos(input.kind)?;
@@ -205,7 +205,7 @@ impl Store {
         self.undo_pos = pos;
     }
 
-    /// 取り消すまとまり。無ければ `None`。呼ぶ側が逆命令を逆順に当て、`TxnKind::Undo` の [`Store::commit`] で書く。
+    /// 取り消すまとまり。無ければ `None`。呼ぶ側が逆操作を逆順に当て、`TxnKind::Undo` の [`Store::commit`] で書く。
     pub fn undo_plan(&self) -> Result<Option<UndoPlan>> {
         if self.undo_pos == 0 {
             return Ok(None);
@@ -213,7 +213,7 @@ impl Store {
         self.plan_at(self.undo_pos)
     }
 
-    /// やり直すまとまり。無ければ `None`。命令を当てた順に当て、`TxnKind::Redo` の [`Store::commit`] で書く。
+    /// やり直すまとまり。無ければ `None`。操作を当てた順に当て、`TxnKind::Redo` の [`Store::commit`] で書く。
     pub fn redo_plan(&self) -> Result<Option<UndoPlan>> {
         self.plan_at(self.undo_pos + 1)
     }
@@ -277,7 +277,7 @@ impl Store {
         self.close_with(now_ms, true)
     }
 
-    /// 閉じる。バックアップは間隔が過ぎていたときだけ作る。1 命令ごとに開き直す `mm` が使う
+    /// 閉じる。バックアップは間隔が過ぎていたときだけ作る。1 操作ごとに開き直す `mm` が使う
     /// （毎回写すと直近 10 個の世代が数分で埋まり、古い状態に戻れなくなる）。
     pub fn close_brief(self, now_ms: i64) -> Result<()> {
         self.close_with(now_ms, false)
@@ -303,7 +303,7 @@ fn not_writer() -> MmError {
     MmError::Unsupported("読み取りだけで開いているので書けない".into())
 }
 
-/// まとまりと命令を表に書く。ID は通し番号、版は命令ごとに 1 進む。
+/// まとまりと操作を表に書く。ID は通し番号、版は操作ごとに 1 進む。
 fn insert_txn(tx: &rusqlite::Transaction, input: &TxnInput, base: i64) -> Result<StoredTxn> {
     let id: i64 = tx
         .query_row("SELECT coalesce(max(id), 0) + 1 FROM txns", [], |r| {
@@ -386,7 +386,7 @@ fn insert_ops(
     Ok(out)
 }
 
-/// 命令の名前（`op` の欄）。
+/// 操作の名前（`op` の欄）。
 fn op_name(op: &serde_json::Value) -> String {
     op["op"].as_str().unwrap_or("?").to_string()
 }

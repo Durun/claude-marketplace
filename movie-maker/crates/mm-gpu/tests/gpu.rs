@@ -92,13 +92,13 @@ fn 保存した識別子の_luid_が古くても同じ_gpu_を選ぶ() {
 }
 
 #[test]
-fn 読み戻しは大きさが合わなければ_unsupported() {
+fn リードバックは大きさが合わなければ_unsupported() {
     let Some(ctx) = gpu() else {
         return;
     };
     let mut helper = WgpuGpu::new(ctx);
     let FrameRef::Gpu(tex) = helper.allocate(Size::new(8, 4)).unwrap() else {
-        panic!("GPU のコマ");
+        panic!("GPU のフレーム");
     };
     let lying = FrameRef::Gpu(GpuTexture {
         id: tex.id,

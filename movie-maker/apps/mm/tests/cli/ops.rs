@@ -1,4 +1,4 @@
-//! 命令、取り消し、export / import の往復、diff、ロック、競合を実行ファイル越しに確かめる。
+//! 操作、取り消し、export / import の往復、diff、ロック、競合を実行ファイル越しに確かめる。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ fn read_tree(root: &Path) -> Vec<(String, Vec<u8>)> {
 }
 
 #[test]
-fn 命令から取り消しとやり直しと_export_import_の往復() {
+fn 操作から取り消しとやり直しと_export_import_の往復() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -54,14 +54,14 @@ fn 命令から取り消しとやり直しと_export_import_の往復() {
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1/2",
     ]);
-    // 版 3。取り消して版 4（c2 の ripple の逆命令）。
+    // 版 3。取り消して版 4（c2 の ripple の逆操作）。
     let undo = stdout(&mm_ok(&["undo", ps]));
     assert!(
         undo.contains("版 4") && undo.contains("取り消し: ripple"),
         "{undo}"
     );
 
-    // 版 3 を元にした c2 への命令は、版 4 の取り消しと触る所が重なるので断られる。
+    // 版 3 を元にした c2 への操作は、版 4 の取り消しと触る所が重なるので断られる。
     let out = mm(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "3",
     ]);
@@ -169,7 +169,7 @@ fn diff_は意味の差分を人が読める文で出す() {
 }
 
 #[test]
-fn ロックした所に触る命令は断られ_文書は変わらない() {
+fn ロックした所に触る操作は断られ_文書は変わらない() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("p");
     mm_ok(&[
@@ -207,7 +207,7 @@ fn ロックした所に触る命令は断られ_文書は変わらない() {
 }
 
 #[test]
-fn 古い版を元にした命令は触る所が重なれば断られ_重ならなければ通る() {
+fn 古い版を元にした操作は触る所が重なれば断られ_重ならなければ通る() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -234,7 +234,7 @@ fn 古い版を元にした命令は触る所が重なれば断られ_重なら�
 }
 
 #[test]
-fn txn_ファイルの命令は全部当たるか全部当たらない() {
+fn txn_ファイルの操作は全部当たるか全部当たらない() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -270,7 +270,7 @@ fn txn_ファイルの命令は全部当たるか全部当たらない() {
 }
 
 #[test]
-fn schema_は全部の命令を含み_知らない命令は使える名前を添えて断る() {
+fn schema_は全部の操作を含み_知らない操作は使える名前を添えて断る() {
     let schema = stdout(&mm_ok(&["op", "--schema"]));
     let value: serde_json::Value = serde_json::from_str(&schema).unwrap();
     assert_eq!(

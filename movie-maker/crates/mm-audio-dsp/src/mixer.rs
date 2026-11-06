@@ -54,7 +54,7 @@ pub struct DspMixer {
     duck_gain: f32,
     /// トリガーの振幅の保持した最大値。ゼロ交差で鳴っていないと見なさないための検出値。
     peak: f32,
-    /// `peak` を保持する残りのコマ数。
+    /// `peak` を保持する残りのフレーム数。
     hold_left: usize,
 }
 
@@ -67,7 +67,7 @@ fn pan_gains(pan: f32) -> (f32, f32) {
     ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
 }
 
-/// 1 コマで動かす 0..1 の全幅に対する割合。`ms` で動ききる。0 ms は即時。
+/// 1 フレームで動かす 0..1 の全幅に対する割合。`ms` で動ききる。0 ms は即時。
 fn slew_step(ms: f32, sample_rate: u32) -> f32 {
     if ms <= 0.0 {
         return f32::INFINITY;
@@ -113,7 +113,7 @@ impl DspMixer {
         Ok(buses)
     }
 
-    /// トリガーの検出値を 1 コマ進める。大きい値は即座に取り、小さい値は保持時間が過ぎるまで待つ。
+    /// トリガーの検出値を 1 フレーム進める。大きい値は即座に取り、小さい値は保持時間が過ぎるまで待つ。
     fn detect(&mut self, level: f32) -> f32 {
         let hold = (DUCK_HOLD_MS * self.sample_rate as f32 / 1000.0) as usize;
         if level >= self.peak || self.hold_left == 0 {

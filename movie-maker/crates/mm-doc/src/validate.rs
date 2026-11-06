@@ -1,4 +1,4 @@
-//! 文書の不変条件。[`Project::validate`] が読み込みと命令の後に通す。
+//! 文書の不変条件。[`Project::validate`] が読み込みと操作の後に通す。
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -308,7 +308,7 @@ impl Visit<'_> {
     }
 }
 
-/// 入れ子（コンポジション・sequence から、動画オブジェクトが指すコンポジション・sequence）の循環。
+/// 入れ子（コンポジション・sequence から、ノードが指すコンポジション・sequence）の循環。
 /// 根はコンポジションと sequence の全部で、どこからも参照されない sequence の循環も見つける。
 fn validate_nesting(project: &Project) -> Result<()> {
     let mut walk = Nesting {

@@ -42,4 +42,4 @@ cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg
 
 `fixtures/media/generate.sh`（ffmpeg の CLI）が `fixtures/media/out/` に作る。生成物は git に入れない。
 テストは `out/.stamp` が無いときだけ `sh generate.sh` を自分で呼ぶ。手で作り直すなら `out/` を消して同じスクリプトを実行する。
-コマの番号は左上の 16x16 の箱 16 個の白黒に焼いてあり、デコード後の画素から読み戻す（`tests/common/mod.rs`）。
+フレームの番号は左上の 16x16 の箱 16 個の白黒に焼いてあり、デコード後の画素から読み戻す（`tests/common/mod.rs`）。

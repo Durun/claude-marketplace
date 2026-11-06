@@ -40,27 +40,27 @@ fn within_deadline(what: &str, f: impl FnOnce() + Send + 'static) {
         .unwrap_or_else(|_| panic!("{what}: CUDA のストリームが止まった"));
 }
 
-/// コピーの途中で失敗しても、枠のフェンスの回数がずれて 4 コマ後に止まることがない。
+/// コピーの途中で失敗しても、枠のフェンスの回数がずれて 4 フレーム後に止まることがない。
 fn recovers_after(fault: Fault) {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let ctx = ctx();
     let path = fixtures(&["cfr.mp4"]).join("cfr.mp4");
-    within_deadline("故障のあとの復号", move || {
+    within_deadline("故障のあとのデコード", move || {
         let mut dec = CuvidDecoder::open(&path, &ctx).expect("開ける");
         inject(fault);
         assert!(
             dec.next_frame().is_err(),
-            "仕掛けた故障で 1 コマ目が失敗する"
+            "仕掛けた故障で 1 フレーム目が失敗する"
         );
-        // 輪は 4 枠。故障の枠を含めて何周もして、止まらず全コマが出る。
+        // 輪は 4 枠。故障の枠を含めて何周もして、止まらず全フレームが出る。
         let mut count = 0;
-        while let Some(frame) = dec.next_frame().expect("故障のあとは復号できる") {
+        while let Some(frame) = dec.next_frame().expect("故障のあとはデコードできる") {
             drop(frame);
             count += 1;
         }
-        assert!(count >= 50, "残りのコマが出た: {count}");
+        assert!(count >= 50, "残りのフレームが出た: {count}");
         dec.seek(RationalTime::ZERO).expect("seek");
-        assert!(dec.next_frame().expect("復号").is_some());
+        assert!(dec.next_frame().expect("デコード").is_some());
     });
 }
 

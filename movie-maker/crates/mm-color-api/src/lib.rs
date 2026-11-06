@@ -1,4 +1,4 @@
-//! 色空間の変換の口。描画器は [`ColorTransform::program`] で GPU の形を受け取り、
+//! 色空間の変換の口。レンダラーは [`ColorTransform::program`] で GPU の形を受け取り、
 //! 契約テストと CPU の経路は [`ColorTransform::apply`] で同じ変換を数で確かめる。
 //!
 //! # 色空間の名前の決まり
@@ -7,19 +7,19 @@
 //!
 //! | 名前 | 伝達関数 | 原色 |
 //! |---|---|---|
-//! | `lin_rec709` | 線形（作業空間） | Rec.709 |
+//! | `lin_rec709` | 線形（作業色空間） | Rec.709 |
 //! | `srgb` | IEC 61966-2-1 の区分（静止画の既定） | Rec.709 |
 //! | `bt709` | Rec.1886 の表示の式（`linear = v^2.4`、映像の既定。OCIO の `Rec.1886 Rec.709 - Display`） | Rec.709 |
 //! | `bt709_oetf` | BT.709 のカメラの OETF（シーン参照の素材だけ） | Rec.709 |
-//! | `bt601` | Rec.1886 の表示の式 | Rec.601（SMPTE 170M）。作業空間には Rec.709 と同じ原色として扱う |
-//! | `bt2020` | Rec.1886 の表示の式 | Rec.2020（SDR）。作業空間へは [`REC2020_TO_REC709`] で変換する |
+//! | `bt601` | Rec.1886 の表示の式 | Rec.601（SMPTE 170M）。作業色空間には Rec.709 と同じ原色として扱う |
+//! | `bt2020` | Rec.1886 の表示の式 | Rec.2020（SDR）。作業色空間へは [`REC2020_TO_REC709`] で変換する |
 //!
 //! 原色の扱いの理由は RFC 0005 の「bt601 と bt2020 の扱い」。
 //!
 //! 契約（`mm_testkit::color::contract`）:
 //! - 往復（from → to → from）が許容差 1e-3 に入る。
-//! - 作業空間から作業空間への変換は恒等。
-//! - 符号化値 (1,1,1) が白になる空間（名前の表の全部、[`UNIT_WHITE_SPACES`]）では、(1,1,1) は作業空間でも白。
+//! - 作業色空間から作業色空間への変換は恒等。
+//! - 符号化値 (1,1,1) が白になる空間（名前の表の全部、[`UNIT_WHITE_SPACES`]）では、(1,1,1) は作業色空間でも白。
 //!   それ以外の空間（`acescg` など）は白の確認を飛ばし、往復と `program` だけ確かめる。
 //! - `program` と `apply` は同じ変換を表す（実装の組で見本の絵が守る）。
 
@@ -56,7 +56,7 @@ pub const REC709_TO_REC2020: [[f32; 3]; 3] = [
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransformProgram {
-    /// 何もしない。描画器はパスを飛ばせる。
+    /// 何もしない。レンダラーはパスを飛ばせる。
     Identity,
     /// WGSL の関数 `fn mm_color_transform(c: vec3<f32>) -> vec3<f32>` を含むソース。
     Wgsl { source: String },
@@ -64,7 +64,7 @@ pub enum TransformProgram {
     Lut3d { size: u32, data: Vec<f32> },
 }
 
-/// 色の変換。入力の色空間 → 作業空間 → 表示・出力。
+/// 色の変換。入力の色空間 → 作業色空間 → 表示・出力。
 pub trait ColorTransform: Send + Sync {
     /// 実装の名前（`ocio`、`lut`、見本は `sample`）。
     fn id(&self) -> &'static str;

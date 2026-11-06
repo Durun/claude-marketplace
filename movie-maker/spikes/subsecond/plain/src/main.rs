@@ -1,4 +1,4 @@
-//! 素の実行ファイル。200ms ごとに命令を適用し、印と時刻（epoch ms）を 1 行出す。
+//! 素の実行ファイル。200ms ごとに操作を適用し、印と時刻（epoch ms）を 1 行出す。
 //! 先端のクレート（ここ）の関数と、別クレート（ops-sample）の関数の両方が差し替わるかを見る。
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -14,7 +14,7 @@ fn epoch_ms() -> u128 {
         .map_or(0, |d| d.as_millis())
 }
 
-/// 先端のクレートに置いた命令。
+/// 先端のクレートに置いた操作。
 fn tip_op(project: &mut Project) -> String {
     let layer = &mut project.compositions[0].layers[0];
     layer.lock = !layer.lock;

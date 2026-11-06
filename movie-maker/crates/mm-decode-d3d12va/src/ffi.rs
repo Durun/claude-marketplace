@@ -6,7 +6,7 @@
 use std::ffi::c_void;
 
 /// `D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS`。
-/// 復号に使ったキューと wgpu のキューが、バリアなしで同じ資源を読めるようにする。
+/// デコードに使ったキューと wgpu のキューが、バリアなしで同じ資源を読めるようにする。
 pub const RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS: u32 = 0x20;
 
 /// `DXGI_FORMAT_NV12`。

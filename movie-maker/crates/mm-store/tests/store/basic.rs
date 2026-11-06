@@ -11,7 +11,7 @@ use mm_types::MmError;
 use crate::common::{actor, locked, project_with, toggle_lock, NOW};
 
 #[test]
-fn 書いた文書と命令は開き直しても残る() {
+fn 書いた文書と操作は開き直しても残る() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(2);
     {
@@ -57,7 +57,7 @@ fn 取り消しとやり直しは位置を動かし_版と記録を進める() {
     assert_eq!(redo.doc_version, 4);
     assert_eq!(s.project(), &p);
 
-    // 取り消した後の新しい命令で、やり直しの先が捨てられる。
+    // 取り消した後の新しい操作で、やり直しの先が捨てられる。
     s.undo_last(&human, actor(), NOW).unwrap().unwrap();
     s.undo_last(&human, actor(), NOW).unwrap().unwrap();
     assert_eq!(s.project(), &p0);

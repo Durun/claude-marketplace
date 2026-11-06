@@ -59,7 +59,7 @@ pub fn create_local_fence(device: &wgpu::Device) -> Result<ID3D12Fence> {
     create_fence(device, D3D12_FENCE_FLAG_NONE)
 }
 
-/// デバイスが消えていないか。NVIDIA のドライバーは復号の失敗をエラーで返さずデバイスの消失で表すことがある。
+/// デバイスが消えていないか。NVIDIA のドライバーはデコードの失敗をエラーで返さずデバイスの消失で表すことがある。
 pub fn check_device(device: &wgpu::Device) -> Result<()> {
     // SAFETY: as_hal の参照はこの関数の間だけ使う。
     let hal = unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }

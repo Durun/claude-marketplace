@@ -1,4 +1,4 @@
-//! cosmic-text の行組みを `ShapedText` に写す。字体と字形の番号を結果に残すので、描画は行組みをやり直さない。
+//! cosmic-text の行組みを `ShapedText` に写す。字体とグリフの番号を結果に残すので、描画は行組みをやり直さない。
 
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap,

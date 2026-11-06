@@ -19,9 +19,9 @@ fn 変換にかかる時間をスパンで測る() {
             // 毎回読み直して、起動時の設定の読み込みの分布を取る。
             let ocio = OcioColor::builtin().expect("設定");
             let (srgb, working) = (ColorSpace::srgb(), ColorSpace::working());
-            ocio.program(&srgb, &working).expect("sRGB -> 作業空間");
+            ocio.program(&srgb, &working).expect("sRGB -> 作業色空間");
             ocio.program(&ColorSpace("ACEScg".into()), &working)
-                .expect("ACEScg -> 作業空間");
+                .expect("ACEScg -> 作業色空間");
             ocio.display_program(&ColorSpace("ACEScg".into()), None, None)
                 .expect("ACES の表示");
         }

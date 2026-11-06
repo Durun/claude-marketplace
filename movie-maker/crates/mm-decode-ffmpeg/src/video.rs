@@ -36,7 +36,7 @@ impl FfmpegDecoder {
         let stream_index = stream.index();
         let mut ctx = ff::codec::Context::from_parameters(stream.parameters())
             .map_err(|e| MmError::Unsupported(format!("映像のコーデック: {e}")))?;
-        // 1 スレッドだと 1080p の復号が数倍遅い。0 は FFmpeg が CPU の数で決める。
+        // 1 スレッドだと 1080p のデコードが数倍遅い。0 は FFmpeg が CPU の数で決める。
         ctx.set_threading(ff::threading::Config {
             kind: ff::threading::Type::Frame,
             ..Default::default()

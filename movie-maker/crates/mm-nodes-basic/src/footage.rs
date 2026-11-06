@@ -15,7 +15,7 @@ fn asset_schema() -> ParamSchema {
     )])
 }
 
-/// 素材の `t` のコマを画面に収めて返す。素材が無ければ透明。
+/// 素材の `t` のフレームを画面に収めて返す。素材が無ければ透明。
 fn render_source_frame(cx: &mut FrameCx<'_>, t: RationalTime) -> Result<FrameRef> {
     let size = cx.size;
     let Some(footage) = cx.footage.as_deref_mut() else {
@@ -24,13 +24,13 @@ fn render_source_frame(cx: &mut FrameCx<'_>, t: RationalTime) -> Result<FrameRef
     let frame = footage.frame_at(t)?;
     let Some(image) = frame.image else {
         return Err(MmError::Unsupported(
-            "GPU のコマはまだ受けない（CPU のコマだけ）".into(),
+            "GPU のフレームはまだ受けない（CPU のフレームだけ）".into(),
         ));
     };
     Ok(FrameRef::cpu(fit_contain(image, size)))
 }
 
-/// 撮影素材。`asset` の素材を描画器が開いて `cx.footage` に渡し、`cx.source_time` のコマを返す。
+/// 撮影素材。`asset` の素材をレンダラーが開いて `cx.footage` に渡し、`cx.source_time` のフレームを返す。
 #[derive(Debug, Default)]
 pub struct FootageKind;
 
@@ -75,7 +75,7 @@ impl NodeKind for FootageKind {
     }
 }
 
-/// 静止画。素材の最初のコマを使い、時間で変わらない。
+/// 静止画。素材の最初のフレームを使い、時間で変わらない。
 #[derive(Debug, Default)]
 pub struct ImageKind;
 

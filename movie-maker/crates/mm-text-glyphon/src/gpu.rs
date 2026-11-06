@@ -1,8 +1,8 @@
-//! glyphon（wgpu）による描画。字形の atlas、頂点、パイプラインは glyphon が持ち、
-//! 字形の絵は `ShapedText` の字体と字形の番号から swash で取って渡す（glyphon の `CustomGlyph`）。
+//! glyphon（wgpu）による描画。グリフの atlas、頂点、パイプラインは glyphon が持ち、
+//! グリフの絵は `ShapedText` の字体とグリフの番号から swash で取って渡す（glyphon の `CustomGlyph`）。
 //!
 //! 行組みを持たない `ShapedText` からも描けるよう、glyphon の `Buffer` は空のままにする。
-//! 出力は線形・premultiplied の `Rgba16Float` を読み戻した RGBA で、CPU の描画器と同じ意味。
+//! 出力は線形・premultiplied の `Rgba16Float` をリードバックた RGBA で、CPU のレンダラーと同じ意味。
 
 use std::sync::{Arc, Mutex};
 
@@ -20,12 +20,12 @@ use crate::glyph_ids::{GlyphIds, IdsExhausted, MAX_GLYPH_IDS};
 use crate::raster;
 use crate::{lock, Inner};
 
-/// 読み戻しの行は 256 バイトに揃える。
+/// リードバックの行は 256 バイトに揃える。
 const ROW_ALIGN: u32 = 256;
 /// `Rgba16Float` の 1 画素のバイト数。
 const BYTES_PER_PIXEL: u32 = 8;
 
-/// glyphon の部品と、字形の ID の表。
+/// glyphon の部品と、グリフの ID の表。
 struct GpuState {
     atlas: TextAtlas,
     renderer: TextRenderer,
@@ -65,7 +65,7 @@ pub struct GlyphonRasterizer {
     inner: Arc<Inner>,
     gpu: Arc<GpuContext>,
     state: Mutex<GpuState>,
-    /// 1 つの atlas に振る字形の ID の数の上限。
+    /// 1 つの atlas に振るグリフの ID の数の上限。
     id_limit: usize,
 }
 
@@ -116,7 +116,7 @@ fn glyphon_color(c: Rgba) -> Color {
     )
 }
 
-/// 字形を集めて `CustomGlyph` にする。位置は絵の中の整数の左上。
+/// グリフを集めて `CustomGlyph` にする。位置は絵の中の整数の左上。
 /// ID を使い切ったら `Err`（途中までの ID は呼び出し側が表ごと捨てる）。
 fn collect_glyphs(
     fs: &mut FontSystem,
@@ -191,7 +191,7 @@ fn read_back(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> Result<Rg
     let data = buffer
         .slice(..)
         .get_mapped_range()
-        .map_err(|e| MmError::Internal(format!("読み戻しの範囲: {e}")))?;
+        .map_err(|e| MmError::Internal(format!("リードバックの範囲: {e}")))?;
     let mut pixels = Vec::with_capacity(size.area() * 4);
     for row in data.chunks_exact(padded_row as usize) {
         let used = &row[..(size.width * BYTES_PER_PIXEL) as usize];
@@ -245,7 +245,7 @@ impl GlyphonRasterizer {
         read_back(&self.gpu, &texture, size)
     }
 
-    /// 字形に ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
+    /// グリフに ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
     /// それでも収まらない（1 回の絵だけで上限を超える）ときは `Unsupported`。
     fn collect(
         &self,
@@ -265,12 +265,12 @@ impl GlyphonRasterizer {
             }
         }
         Err(MmError::Unsupported(format!(
-            "1 回の文字の絵の字形が多すぎる（上限 {}）",
+            "1 回の文字の絵のグリフが多すぎる（上限 {}）",
             self.id_limit
         )))
     }
 
-    /// 字形を glyphon の atlas と頂点に載せる。
+    /// グリフを glyphon の atlas と頂点に載せる。
     fn prepare(
         &self,
         state: &mut GpuState,
@@ -322,7 +322,7 @@ impl GlyphonRasterizer {
             .map_err(|e| MmError::Internal(format!("glyphon の prepare: {e}")))
     }
 
-    /// 載せた字形を `texture` に描く。
+    /// 載せたグリフを `texture` に描く。
     fn render(&self, state: &mut GpuState, texture: &wgpu::Texture) -> Result<()> {
         let ctx = &*self.gpu;
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -375,7 +375,7 @@ mod tests {
     use mm_gpu::GpuRequest;
     use mm_text_api::TextShaper;
 
-    /// 異なる字形を 8 つしか振れない描画器。
+    /// 異なるグリフを 8 つしか振れないレンダラー。
     const SMALL_LIMIT: usize = 8;
 
     fn gpu() -> Option<Arc<GpuContext>> {
@@ -392,7 +392,7 @@ mod tests {
         img.data().iter().sum()
     }
 
-    /// 上限に近い atlas に 1 回で上限を超える字形を足すと、ID が重ならず作り直して描ける。
+    /// 上限に近い atlas に 1 回で上限を超えるグリフを足すと、ID が重ならず作り直して描ける。
     #[test]
     fn 上限を超えたら作り直して描き直す() {
         let Some(gpu) = gpu() else { return };

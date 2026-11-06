@@ -44,12 +44,12 @@ impl Engine {
         &self.parts.config
     }
 
-    /// 種類の登録簿。
+    /// 種類のレジストリ。
     pub fn registry(&self) -> &Registry {
         &self.parts.registry
     }
 
-    /// 描画器。書き出し（`mm-export`）が段ごとに計測しながら呼ぶための口。
+    /// レンダラー。書き出し（`mm-export`）が段ごとに計測しながら呼ぶための口。
     pub fn renderer(&mut self) -> &mut dyn Renderer {
         self.parts.renderer.as_mut()
     }
@@ -93,7 +93,7 @@ impl Engine {
         ]
     }
 
-    /// 時刻 t のコマを CPU の絵で返す（`mm frame`、Claude の目）。
+    /// 時刻 t のフレームを CPU の絵で返す（`mm frame`、Claude の目）。
     pub fn render_frame(
         &mut self,
         project: &Project,

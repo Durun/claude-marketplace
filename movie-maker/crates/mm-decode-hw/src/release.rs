@@ -1,6 +1,6 @@
-//! 復号結果（FFmpeg のプールの面）を、GPU が読み終えるまで握る。
+//! デコード結果（FFmpeg のプールの面）を、GPU が読み終えるまで握る。
 //!
-//! 面を放すとプールに戻り、次の復号が上書きする。FFmpeg は wgpu のキューの読み取りを知らないので、
+//! 面を放すとプールに戻り、次のデコードが上書きする。FFmpeg は wgpu のキューの読み取りを知らないので、
 //! wgpu のキューで進めたフェンスが値に届くまで放さない。
 
 use std::collections::VecDeque;
@@ -11,7 +11,7 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Graphics::Direct3D12::ID3D12Fence;
 
 /// 握ったままにする面の上限。超えたら一番古いものの完了を CPU で待つ。
-/// FFmpeg のプールの予備（`extra_hw_frames`）より小さくして、復号が面を取れなくなる前に止める
+/// FFmpeg のプールの予備（`extra_hw_frames`）より小さくして、デコードが面を取れなくなる前に止める
 /// （d3d12va は `EXTRA_HW_FRAMES > MAX_PENDING` をコンパイル時に確かめる）。
 pub const MAX_PENDING: usize = 8;
 
@@ -96,7 +96,7 @@ impl ReleaseQueue {
         Ok(())
     }
 
-    /// 全部の完了を待って放す。復号器を壊す前に呼ぶ。待てないなら、握ったまま壊すより放して進む。
+    /// 全部の完了を待って放す。デコーダーを壊す前に呼ぶ。待てないなら、握ったまま壊すより放して進む。
     pub fn wait_all(&mut self) {
         let _ = self.try_wait_all();
     }

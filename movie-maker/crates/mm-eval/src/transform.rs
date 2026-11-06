@@ -1,4 +1,4 @@
-//! レイヤーの変形と音の設定を時刻 t で評価する。描画器と見本の描画器が同じ値を読む。
+//! レイヤーの変形と音の設定を時刻 t で評価する。レンダラーと見本のレンダラーが同じ値を読む。
 
 use mm_doc::{Layer, Transform};
 use mm_types::{ParamValue, RationalTime};

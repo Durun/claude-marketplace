@@ -47,7 +47,7 @@ impl ContentHash {
 pub struct CacheKey {
     pub kind: CacheKind,
     pub content_hash: ContentHash,
-    /// 同じ素材の中の区別（`540p`、コマの番号、文字の絵のハッシュ）。
+    /// 同じ素材の中の区別（`540p`、フレームの番号、文字の絵のハッシュ）。
     pub variant: String,
 }
 

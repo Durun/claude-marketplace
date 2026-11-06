@@ -83,7 +83,7 @@ pub enum CompositionMarker {}
 /// レイヤーの印。
 #[derive(Debug)]
 pub enum LayerMarker {}
-/// 動画オブジェクトの印。
+/// ノードの印。
 #[derive(Debug)]
 pub enum NodeMarker {}
 /// レンダーターゲットの印。
@@ -96,7 +96,7 @@ pub type AssetId = Id<AssetMarker>;
 pub type CompositionId = Id<CompositionMarker>;
 /// レイヤーの ID。
 pub type LayerId = Id<LayerMarker>;
-/// 動画オブジェクトの ID。
+/// ノードの ID。
 pub type NodeId = Id<NodeMarker>;
 /// レンダーターゲットの ID。
 pub type RenderTargetId = Id<RenderTargetMarker>;

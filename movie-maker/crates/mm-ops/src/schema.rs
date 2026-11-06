@@ -1,4 +1,4 @@
-//! 全部の命令の JSON Schema。`mm op --schema`、MCP のツールの型、`ui/sdk` の型の生成の元。
+//! 全部の操作の JSON Schema。`mm op --schema`、MCP のツールの型、`ui/sdk` の型の生成の元。
 
 use schemars::schema_for;
 

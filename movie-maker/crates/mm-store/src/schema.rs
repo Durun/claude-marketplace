@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn 版_1_のまとまりと命令は整数の_id_に写り_undo_stack_が追う() {
+    fn 版_1_のまとまりと操作は整数の_id_に写り_undo_stack_が追う() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn, &[V1]).unwrap();
         conn.execute_batch(

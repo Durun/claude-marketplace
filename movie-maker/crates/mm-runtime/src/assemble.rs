@@ -141,7 +141,7 @@ fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
 }
 
 /// GPU を使う実装があるときだけ、文脈を 1 回作る。設定のアダプターが無ければ高性能のもの。
-/// 要否は描画器とデコーダーの両方の選択で決まる（GPU で復号する実装は描画器と同じデバイスが要る）。
+/// 要否はレンダラーとデコーダーの両方の選択で決まる（GPU でデコードする実装はレンダラーと同じデバイスが要る）。
 fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
     gpu_context_with(config, GpuContext::shared)
 }
@@ -165,8 +165,8 @@ fn gpu_context_with(
     }
 }
 
-/// 文脈の頼み方。GPU で復号する実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
-/// 描画器もそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
+/// 文脈の頼み方。GPU でデコードする実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
+/// レンダラーもそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
 fn gpu_request(config: &RuntimeConfig) -> Result<GpuRequest> {
     let default = GpuRequest {
         adapter: config.gpu.clone(),
@@ -207,7 +207,7 @@ fn color(backend: Backend) -> Result<Arc<dyn ColorTransform>> {
     }
 }
 
-/// 整形器と描画器の組。cpu と glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
+/// 整形器とレンダラーの組。cpu と glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
 /// glyphon は GPU の文脈が要る（`RuntimeConfig::needs_gpu` が文脈を作らせる）。
 fn text(
     backend: Backend,
@@ -251,7 +251,7 @@ fn renderer(
     }
 }
 
-/// 描画器に合う種類の登録簿。見本の描画器は見本の種類、wgpu の描画器は `mm-nodes-basic`。
+/// レンダラーに合う種類のレジストリ。見本のレンダラーは見本の種類、wgpu のレンダラーは `mm-nodes-basic`。
 fn registry(render: Backend) -> Result<Registry> {
     let mut r = Registry::new();
     if render == Backend::Wgpu {

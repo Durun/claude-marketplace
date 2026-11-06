@@ -178,7 +178,7 @@ fn mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
     (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
 }
 
-/// `block` を `offset` コマ目から置き、全体を `total` コマにそろえる。
+/// `block` を `offset` フレーム目から置き、全体を `total` フレームにそろえる。
 fn place_block(block: &AudioBlock, offset: usize, total: usize) -> AudioBlock {
     let ch = block.channels as usize;
     let mut samples = vec![0.0f32; total * ch];

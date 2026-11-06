@@ -133,7 +133,7 @@ fn request<'a>(
     }
 }
 
-/// 1 コマ描いて CPU の絵にする。
+/// 1 フレーム描いて CPU の絵にする。
 fn render_image(r: &mut WgpuRenderer, p: &Project, name: &str, size: Size) -> Arc<RgbaImage> {
     let id = Id::new(name);
     let nodes = registry();
@@ -308,11 +308,11 @@ fn 区間を描いてもテクスチャが溜まらない() {
         )
         .expect("区間が描ける");
     assert_eq!((n, seen), (30, 30));
-    assert_eq!(r.texture_count(), before, "区間のコマは捨てる");
+    assert_eq!(r.texture_count(), before, "区間のフレームは捨てる");
     for _ in 0..20 {
         render_image(&mut r, &p, "main", SMALL);
     }
-    assert!(r.texture_count() <= 8, "単発のコマは直近の分だけ持つ");
+    assert!(r.texture_count() <= 8, "単発のフレームは直近の分だけ持つ");
 }
 
 /// 見本の絵: 背景、素材、回した単色、入れ子、拡大した文字を重ねる。

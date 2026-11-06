@@ -1,6 +1,6 @@
-//! 動画オブジェクトの見本（`solid`、`footage`、`text`）。契約テストは `contract` にある。
+//! ノードの見本（`solid`、`footage`、`text`）。契約テストは `contract` にある。
 //!
-//! 見本の種類は、返す絵の大きさを `cx.size` にそろえる（描画器は (0, 0) に重ねるだけでよい）。
+//! 見本の種類は、返す絵の大きさを `cx.size` にそろえる（レンダラーは (0, 0) に重ねるだけでよい）。
 
 mod contract;
 
@@ -73,7 +73,7 @@ impl NodeKind for SolidKind {
     }
 }
 
-/// 撮影素材。`asset` の素材を描画器が開いて `cx.footage` に渡す。
+/// 撮影素材。`asset` の素材をレンダラーが開いて `cx.footage` に渡す。
 #[derive(Debug, Default)]
 pub struct FootageKind;
 
@@ -112,7 +112,7 @@ impl NodeKind for FootageKind {
         let frame = footage.frame_at(cx.source_time)?;
         let Some(image) = frame.image else {
             return Err(mm_types::MmError::Unsupported(
-                "見本は CPU のコマだけ".into(),
+                "見本は CPU のフレームだけ".into(),
             ));
         };
         let mut canvas = RgbaImage::transparent(cx.size);
@@ -254,14 +254,14 @@ impl NodeKind for TextKind {
     }
 }
 
-/// 名前で引くだけの登録簿。テストと見本の描画器に使う。
+/// 名前で引くだけのレジストリ。テストと見本のレンダラーに使う。
 #[derive(Default, Clone)]
 pub struct MapRegistry {
     kinds: HashMap<&'static str, Arc<dyn NodeKind>>,
 }
 
 impl MapRegistry {
-    /// 見本の 3 種類を入れた登録簿。
+    /// 見本の 3 種類を入れたレジストリ。
     pub fn with_samples() -> Self {
         let mut r = Self::default();
         r.insert(Arc::new(SolidKind));

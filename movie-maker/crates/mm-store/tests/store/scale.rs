@@ -1,4 +1,4 @@
-//! 大きさの見積もりの確かめ。命令を 10 万件書いて DB の大きさと開く時間を測る。
+//! 大きさの見積もりの確かめ。操作を 10 万件書いて DB の大きさと開く時間を測る。
 //! `cargo test -p mm-store --release --test store scale -- --ignored --nocapture` で動かす。
 
 use std::time::Instant;
@@ -8,13 +8,13 @@ use mm_store::Store;
 use crate::common::{locked, project_with, NOW};
 
 const TOTAL_OPS: usize = 100_000;
-/// ドラッグ 1 回ぶんの命令の数。
+/// ドラッグ 1 回ぶんの操作の数。
 const OPS_PER_TXN: usize = 20;
 const LAYERS: usize = 2000;
 
 #[test]
 #[ignore = "測定用。時間がかかる"]
-fn 命令_10_万件の大きさと開く時間() {
+fn 操作_10_万件の大きさと開く時間() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(LAYERS), NOW).unwrap();
     let mut project = project_with(LAYERS);

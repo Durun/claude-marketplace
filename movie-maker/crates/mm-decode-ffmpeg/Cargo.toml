@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-ffmpeg"
-description = "FFmpeg のライブラリによるデコーダー。CPU の RGBA でコマを返す"
+description = "FFmpeg のライブラリによるデコーダー。CPU の RGBA でフレームを返す"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

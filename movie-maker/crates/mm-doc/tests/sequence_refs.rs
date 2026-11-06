@@ -87,7 +87,7 @@ fn 循環した_sequence_を参照するレイヤーがあっても_validate_は
 }
 
 #[test]
-fn トランジションの動画オブジェクトも入れ子と_sequence_の先を確かめる() {
+fn トランジションのノードも入れ子と_sequence_の先を確かめる() {
     let mut p = project(vec![comp("c", vec![])]);
     let mut seq = seq_with_cut_source("s", Node::new("solid", 1));
     seq.cuts[0].transition_in = Some(Transition {
@@ -138,7 +138,7 @@ fn 同じ時刻のマーカーを持つ古い文書は_load_でずらして読�
         .collect();
     assert_eq!(times[0], RationalTime::seconds(1));
     assert!(times[0] < times[1] && times[1] < times[2]);
-    // ずらしは 1 コマ（1/30 秒）より小さい。
+    // ずらしは 1 フレーム（1/30 秒）より小さい。
     let frame = RationalTime::new(1, 30).unwrap();
     assert!(times[2] < RationalTime::seconds(1).checked_add(frame).unwrap());
 }

@@ -1,6 +1,6 @@
 # mm-decode-cuvid
 
-FFmpeg の cuvid（NVDEC）で復号した CUDA のメモリを、D3D12 の共有バッファへ 1 回コピーし、描画器と同じ wgpu のデバイスの上で線形の `Rgba16Float` に変えて返す `Decoder`。
+FFmpeg の cuvid（NVDEC）でデコードした CUDA のメモリを、D3D12 の共有バッファへ 1 回コピーし、レンダラーと同じ wgpu のデバイスの上で線形の `Rgba16Float` に変えて返す `Decoder`。
 `d3d12va` が使えない素材（NVENC で作った 4K の HEVC など）の逃げ道。結果と判断は [`docs/design/spikes/nvdec.md`](../../docs/design/spikes/nvdec.md)。`mm-runtime` の `decode = "cuvid"`（と `auto`）で選ぶ。
 
 ## feature
@@ -19,7 +19,7 @@ cargo test -p mm-decode-cuvid --features cuvid
 
 ## 作り
 
-1. `h264_cuvid` / `hevc_cuvid` が `AV_PIX_FMT_CUDA`（`data[0]` が Y、`data[1]` が UV のデバイスポインタ。10 bit は P010）で返す。CUDA のデバイスは、描画器の D3D12 のアダプターの LUID で選ぶ。
+1. `h264_cuvid` / `hevc_cuvid` が `AV_PIX_FMT_CUDA`（`data[0]` が Y、`data[1]` が UV のデバイスポインタ。10 bit は P010）で返す。CUDA のデバイスは、レンダラーの D3D12 のアダプターの LUID で選ぶ。
 2. D3D12 の共有バッファ（`D3D12_HEAP_FLAG_SHARED`）を CUDA の外部メモリとして取り込み、Y と UV を `cuMemcpy2DAsync` で 1 回コピーする。
 3. 枠ごとの共有フェンスを CUDA と wgpu が交互に進める。奇数が「CUDA がコピーを終えた」、偶数が「wgpu が読み終えた」。CUDA は次のコピーの前に `cuWaitExternalSemaphoresAsync` で前の偶数を待ち、wgpu は `Queue::add_wait_fence` で奇数を待ち、提出のあとに偶数を `Signal` する。
 4. 共有バッファをストレージバッファとして読む描画パスが、`Rgba16Float`（線形、premultiplied）の `GpuFrameTexture` に変える。

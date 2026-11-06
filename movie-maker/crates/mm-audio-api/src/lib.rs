@@ -27,7 +27,7 @@ pub struct AudioBlock {
 }
 
 impl AudioBlock {
-    /// `frames` コマ分の無音。
+    /// `frames` フレーム分の無音。
     pub fn silence(sample_rate: u32, channels: u16, frames: usize) -> Self {
         Self {
             sample_rate,
@@ -51,7 +51,7 @@ impl AudioBlock {
         })
     }
 
-    /// コマ数（1 コマ = 全チャンネルの 1 サンプル）。
+    /// フレーム数（1 フレーム = 全チャンネルの 1 サンプル）。
     pub fn frames(&self) -> usize {
         self.samples.len() / self.channels.max(1) as usize
     }
@@ -100,13 +100,13 @@ pub struct MixInput {
     pub pan: f32,
 }
 
-/// ミキサー。`frames` コマ分を一度に混ぜる（1 サンプルずつ呼ばない）。
+/// ミキサー。`frames` フレーム分を一度に混ぜる（1 サンプルずつ呼ばない）。
 pub trait Mixer: Send {
     /// 出力の形。
     fn sample_rate(&self) -> u32;
     /// 出力のチャンネル数。
     fn channels(&self) -> u16;
-    /// 入力を混ぜて `frames` コマ分を返す。短い入力は無音で埋め、長い入力は切る。
+    /// 入力を混ぜて `frames` フレーム分を返す。短い入力は無音で埋め、長い入力は切る。
     fn mix(&mut self, inputs: &[MixInput], frames: usize) -> Result<AudioBlock>;
 }
 
@@ -180,7 +180,7 @@ pub trait AudioSink: Send {
     fn channels(&self) -> u16;
     /// ブロックを書く。形が合わなければ `InvalidArgument`。
     fn write(&mut self, block: &AudioBlock) -> Result<()>;
-    /// 書き終える。書いたコマ数を返す。
+    /// 書き終える。書いたフレーム数を返す。
     fn finish(&mut self) -> Result<u64>;
 }
 
@@ -199,7 +199,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn コマ数はチャンネルで割った数() {
+    fn フレーム数はチャンネルで割った数() {
         let b = AudioBlock::silence(48_000, 2, 10);
         assert_eq!(b.frames(), 10);
         assert!(b.is_silent());

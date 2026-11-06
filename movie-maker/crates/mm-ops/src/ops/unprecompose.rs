@@ -11,7 +11,7 @@ use crate::touches::Touches;
 
 /// 入れ子のレイヤー `layer` を外し、中のコンポジションのレイヤーをその位置に戻し、中のコンポジションを消す。
 ///
-/// 逆命令が `precompose` になるよう、`precompose` が作る形（入れ子のレイヤーが既定の時間と重ね方で、
+/// 逆操作が `precompose` になるよう、`precompose` が作る形（入れ子のレイヤーが既定の時間と重ね方で、
 /// 中のコンポジションが親と同じ大きさ・fps・長さでマーカーが無く、ほかから参照されない）だけ戻せる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

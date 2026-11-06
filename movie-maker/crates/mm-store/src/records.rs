@@ -1,4 +1,4 @@
-//! 命令の記録まわりの型。まとまりの形は `mm-ops` の [`TxnRecord`]（命令 1 つは [`OpRecord`]）で、
+//! 操作の記録まわりの型。まとまりの形は `mm-ops` の [`TxnRecord`]（操作 1 つは [`OpRecord`]）で、
 //! 保存の層はそれに「誰が、いつ、どのコメントへの対応か」を足して表に写す。
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ pub struct Actor {
 /// ID と版は `Store` が振る。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxnInput {
-    /// 普通の命令か、どのまとまりの取り消し・やり直しか。
+    /// 普通の操作か、どのまとまりの取り消し・やり直しか。
     pub kind: TxnKind,
     /// 表示用の名前（「ドラッグ」「Claude の対応」）。
     pub name: String,
@@ -25,12 +25,12 @@ pub struct TxnInput {
     pub at_ms: i64,
     /// どのコメントへの対応か。
     pub responds_to: Option<String>,
-    /// 当てた順の命令。空は断る。
+    /// 当てた順の操作。空は断る。
     pub ops: Vec<OpRecord>,
 }
 
 impl TxnInput {
-    /// 普通の命令のまとまり。
+    /// 普通の操作のまとまり。
     pub fn normal(name: impl Into<String>, actor: Actor, at_ms: i64, ops: Vec<OpRecord>) -> Self {
         Self {
             kind: TxnKind::Normal,
@@ -43,7 +43,7 @@ impl TxnInput {
     }
 }
 
-/// 表から読んだ命令。
+/// 表から読んだ操作。
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredOp {
     pub seq: i64,
@@ -116,7 +116,7 @@ pub(crate) fn kind_str(kind: TxnKind) -> &'static str {
     }
 }
 
-/// `txns.kind` と `of_txn` から。知らない文字は普通の命令として読む。
+/// `txns.kind` と `of_txn` から。知らない文字は普通の操作として読む。
 pub(crate) fn kind_of(kind: &str, of: Option<i64>) -> TxnKind {
     match (kind, of) {
         ("undo", Some(of)) => TxnKind::Undo { of: of as u64 },

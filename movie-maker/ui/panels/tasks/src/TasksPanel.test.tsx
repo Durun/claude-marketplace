@@ -17,14 +17,14 @@ const click = (el: Element | null | undefined) => {
 };
 
 describe("TasksPanel", () => {
-  it("項目を押すと命令の名前を onInvoke に渡す", () => {
+  it("項目を押すと操作の名前を onInvoke に渡す", () => {
     const onInvoke = vi.fn();
     render(<TasksPanel onInvoke={onInvoke} />, host);
     click(host.querySelector(".mm-tasks-link"));
     expect(onInvoke).toHaveBeenCalledWith(DEFAULT_GROUPS[0]?.items[0]?.command);
   });
 
-  it("disabled の項目は押せず、命令を呼ばない", () => {
+  it("disabled の項目は押せず、操作を呼ばない", () => {
     const onInvoke = vi.fn();
     const groups = [{ id: "g", title: "G", items: [{ id: "a", label: "A", command: "a.run", disabled: true }] }];
     render(<TasksPanel groups={groups} onInvoke={onInvoke} />, host);

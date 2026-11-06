@@ -4,11 +4,11 @@ use mm_types::{ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result};
 use crate::util::migrate_same_version;
 use crate::KIND_VERSION;
 
-/// 中のコンポジションの ID を持つパラメータの名前。描画器が読む。
+/// 中のコンポジションの ID を持つパラメータの名前。レンダラーが読む。
 pub const COMPOSITION_PARAM: &str = "composition";
 
 /// 入れ子のコンポジション。中身は文書（`Project`）にあり、種類の口からは見えないので、
-/// 展開は描画器が行う。種類自身は透明を返し、描画器の外で単独に呼ばれても安全にする。
+/// 展開はレンダラーが行う。種類自身は透明を返し、レンダラーの外で単独に呼ばれても安全にする。
 #[derive(Debug, Default)]
 pub struct CompositionKind;
 

@@ -1,4 +1,4 @@
-//! 動画オブジェクトの契約テストと、1 コマを描く足場。
+//! ノードの契約テストと、1 フレームを描く足場。
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -67,7 +67,7 @@ impl NodeFixture {
     }
 }
 
-/// 1 コマを描く足場。契約テストと見本の描画器が使う。
+/// 1 フレームを描く足場。契約テストと見本のレンダラーが使う。
 pub struct Harness {
     pub gpu: CpuGpu,
     pub services: Services,

@@ -28,11 +28,11 @@ pub enum Backend {
     Dsp,
     /// `mm-decode-ffmpeg` と `mm-encode-ffmpeg`。feature `ffmpeg` のときだけ組める。
     Ffmpeg,
-    /// `mm-decode-d3d12va`（デコードだけ）。feature `d3d12va` のときだけ組める。描画器と同じ D3D12 のデバイスが要る。
+    /// `mm-decode-d3d12va`（デコードだけ）。feature `d3d12va` のときだけ組める。レンダラーと同じ D3D12 のデバイスが要る。
     D3d12va,
     /// `mm-decode-cuvid`（デコードだけ）。feature `cuvid` のときだけ組める。NVIDIA の GPU が要る。
     Cuvid,
-    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数コマで判断する。
+    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数フレームで判断する。
     Auto,
 }
 
@@ -56,8 +56,8 @@ impl Backend {
 }
 
 impl Backend {
-    /// この実装が GPU の文脈を使うか。GPU で復号する実装（`d3d12va`、`cuvid`、それを試す `auto`）は
-    /// 描画器と同じデバイスが要る。
+    /// この実装が GPU の文脈を使うか。GPU でデコードする実装（`d3d12va`、`cuvid`、それを試す `auto`）は
+    /// レンダラーと同じデバイスが要る。
     pub fn uses_gpu(self) -> bool {
         matches!(
             self,
@@ -70,7 +70,7 @@ impl Backend {
         self.uses_gpu() && self != Backend::Auto
     }
 
-    /// 復号に D3D12 のデバイスが要る実装か（描画器のデバイスを D3D12 のアダプターで作る）。
+    /// デコードに D3D12 のデバイスが要る実装か（レンダラーのデバイスを D3D12 のアダプターで作る）。
     pub fn needs_d3d12(self) -> bool {
         matches!(self, Backend::D3d12va | Backend::Cuvid | Backend::Auto)
     }
@@ -110,7 +110,7 @@ pub struct RuntimeConfig {
     pub cache: Backend,
     /// キャッシュの大きさの上限（バイト）。`None` は無制限。
     pub cache_limit_bytes: Option<u64>,
-    /// 使う GPU。`None` なら高性能のアダプター。描画器・デコーダー・別プロセスのホストが同じものを使う。
+    /// 使う GPU。`None` なら高性能のアダプター。レンダラー・デコーダー・別プロセスのホストが同じものを使う。
     pub gpu: Option<GpuAdapterId>,
 }
 
@@ -120,7 +120,7 @@ impl RuntimeConfig {
         Self::default()
     }
 
-    /// GPU の文脈を作る要る組み合わせか。描画器、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
+    /// GPU の文脈を作る要る組み合わせか。レンダラー、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
     pub fn needs_gpu(&self) -> bool {
         self.render.uses_gpu() || self.decode.uses_gpu() || self.text == Backend::Glyphon
     }
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_で復号する実装は_gpu_を使う() {
+    fn gpu_でデコードする実装は_gpu_を使う() {
         for b in [
             Backend::D3d12va,
             Backend::Cuvid,
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_の要否は描画器の選択で決まる() {
+    fn gpu_の要否はレンダラーの選択で決まる() {
         assert!(!RuntimeConfig::sample().needs_gpu());
         assert!(RuntimeConfig::real().needs_gpu());
         let decode_only = RuntimeConfig {

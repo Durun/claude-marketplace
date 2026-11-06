@@ -26,11 +26,11 @@
 
 ### 変換の submit と待ちの登録（指摘 6）
 
-`wgpu::hal::dx12::Queue::add_wait_fence` は「キューの次の submit」に付くので、別のスレッドが先に submit すると待ちがそちらに付く。待ちは `ID3D12CommandQueue::Wait` をキューへ直接積む（`mm_decode_hw::device::queue_wait`）。直接積んだ待ちは、積んだ後にキューへ入る全部の実行に効くので、どのスレッドの submit が挟まっても自分の変換より前に効く。信号は submit の後に直接積み、挟まった submit があっても遅れるだけで早まらない。デコーダーと描画器が別のスレッドで同じキューに submit してよい。
+`wgpu::hal::dx12::Queue::add_wait_fence` は「キューの次の submit」に付くので、別のスレッドが先に submit すると待ちがそちらに付く。待ちは `ID3D12CommandQueue::Wait` をキューへ直接積む（`mm_decode_hw::device::queue_wait`）。直接積んだ待ちは、積んだ後にキューへ入る全部の実行に効くので、どのスレッドの submit が挟まっても自分の変換より前に効く。信号は submit の後に直接積み、挟まった submit があっても遅れるだけで早まらない。デコーダーとレンダラーが別のスレッドで同じキューに submit してよい。
 
 ### PQ と HLG（指摘 12）
 
-伝達特性が PQ（SMPTE ST 2084）か HLG（ARIB STD-B67）の素材は、`Sequencer::new` が `Err(Unsupported)` にする。3 つの実装が同じ判定で断る。BT.2020 の原色を作業空間へ変換するかは色の名前の RFC 0005 で決める。
+伝達特性が PQ（SMPTE ST 2084）か HLG（ARIB STD-B67）の素材は、`Sequencer::new` が `Err(Unsupported)` にする。3 つの実装が同じ判定で断る。BT.2020 の原色を作業色空間へ変換するかは色の名前の RFC 0005 で決める。
 
 ## 影響
 

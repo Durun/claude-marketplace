@@ -1,4 +1,4 @@
-//! デコーダーの GPU のコマの中身。口の `GpuFrame` の wgpu での形。
+//! デコーダーの GPU のフレームの中身。口の `GpuFrame` の wgpu での形。
 
 use std::any::Any;
 use std::sync::Arc;
@@ -6,13 +6,13 @@ use std::sync::Arc;
 use mm_decode_api::{GpuFrame, GpuFrameHandle};
 use mm_types::Size;
 
-/// 復号の完了を待たせる手続き。`Queue::submit` の前に呼ぶ。
+/// デコードの完了を待たせる手続き。`Queue::submit` の前に呼ぶ。
 pub type WaitFn = dyn Fn(&wgpu::Queue) + Send + Sync;
 
-/// wgpu のテクスチャに包んだコマ。`FRAME_FORMAT`（`Rgba16Float`）か、描画器が読める形式で渡す。
+/// wgpu のテクスチャに包んだフレーム。`FRAME_FORMAT`（`Rgba16Float`）か、レンダラーが読める形式で渡す。
 pub struct GpuFrameTexture {
     pub texture: wgpu::Texture,
-    /// 復号の完了を待たせる。`None` なら復号器が同じキューで書いており、順序が守られる。
+    /// デコードの完了を待たせる。`None` ならデコーダーが同じキューで書いており、順序が守られる。
     pub wait: Option<Box<WaitFn>>,
 }
 

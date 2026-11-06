@@ -57,21 +57,21 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
-    /// 命令を当てる。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
+    /// 操作を当てる。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
     ///
-    /// 引数は命令ごとの欄の名前（`mm op --schema` が一覧）。複雑な欄は `--json '{...}'`、
+    /// 引数は操作ごとの欄の名前（`mm op --schema` が一覧）。複雑な欄は `--json '{...}'`、
     /// 元にした版は `--base <版>`、記録の名前は `--label <名前>`。
     Op {
         dir: Option<PathBuf>,
-        /// 命令の名前（addLayer、ripple、setParam など）。
+        /// 操作の名前（addLayer、ripple、setParam など）。
         op_name: Option<String>,
-        /// 全部の命令の JSON Schema を出す。
+        /// 全部の操作の JSON Schema を出す。
         #[arg(long)]
         schema: bool,
-        /// 複数の命令を 1 つのまとまりとして当てる（`Transaction` の JSON）。
+        /// 複数の操作を 1 つのまとまりとして当てる（`Transaction` の JSON）。
         #[arg(long)]
         txn: Option<PathBuf>,
-        /// 命令の引数（`--欄 値` の並び）。
+        /// 操作の引数（`--欄 値` の並び）。
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -79,7 +79,7 @@ enum Command {
     Undo { dir: PathBuf },
     /// 取り消したまとまりをやり直す。
     Redo { dir: PathBuf },
-    /// 命令の記録を出す。
+    /// 操作の記録を出す。
     Log { dir: PathBuf },
     /// 2 つの版の間の意味の差分を出す。版は番号、`head`、名前付きの版の名前。
     Diff {
@@ -240,7 +240,7 @@ fn render(
         },
     )?;
     println!(
-        "{}: {} コマ、音 {} サンプル、{} バイト、{:.2} 秒（{:.1} fps）",
+        "{}: {} フレーム、音 {} サンプル、{} バイト、{:.2} 秒（{:.1} fps）",
         summary.output_path.display(),
         summary.frames,
         summary.audio_frames,

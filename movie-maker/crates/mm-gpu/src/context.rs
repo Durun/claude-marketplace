@@ -31,7 +31,7 @@ impl Default for GpuRequest {
     }
 }
 
-/// GPU の文脈。描画器、デコーダー、GpuHelper が共有する。
+/// GPU の文脈。レンダラー、デコーダー、GpuHelper が共有する。
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,

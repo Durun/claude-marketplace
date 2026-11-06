@@ -3,8 +3,8 @@
 段階 0 の試作の結果は [spikes/](spikes/) と[進め方](15-roadmap.md#段階-0-で最初に確かめる難所)。
 
 1. 口の版の検査: 決まった（2026-11-06、ユーザー）。`cargo-semver-checks` を CI に入れた。公開しないクレートでも `--baseline-rev` で動く。口のクレートは各自の版を持つ（[CI](../ci.md)）
-2. NVDEC の 4K の予算: 決まった（2026-11-06、ユーザー）。予算を fps ではなく「4K60 の素材を同時に何本復号できるか」で表し、8 本以上とする。実測（`d3d12va` 540〜590 fps、`cuvid` 560〜600 fps）は 9 本分にあたる。前の「4K 700 fps 以上」は、NVDEC 本体が届かない数だった [nvdec](spikes/nvdec.md#4k-の-fps)
-3. NVENC で作った 4K の HEVC が `d3d12va` で復号できない件の原因: 1 コマ目の `send_packet` が `EINVAL` で落ちる。ffmpeg の CLI 単体でも再現し、`cuvid` は通る。FFmpeg の `d3d12va` か NVIDIA のドライバーか未調査 [nvdec](spikes/nvdec.md#詰まった所)
+2. NVDEC の 4K の予算: 決まった（2026-11-06、ユーザー）。予算を fps ではなく「4K60 の素材を同時に何本デコードできるか」で表し、8 本以上とする。実測（`d3d12va` 540〜590 fps、`cuvid` 560〜600 fps）は 9 本分にあたる。前の「4K 700 fps 以上」は、NVDEC 本体が届かない数だった [nvdec](spikes/nvdec.md#4k-の-fps)
+3. NVENC で作った 4K の HEVC が `d3d12va` でデコードできない件の原因: 1 フレーム目の `send_packet` が `EINVAL` で落ちる。ffmpeg の CLI 単体でも再現し、`cuvid` は通る。FFmpeg の `d3d12va` か NVIDIA のドライバーか未調査 [nvdec](spikes/nvdec.md#詰まった所)
    - 案 1（55%）: 逃げ道（`cuvid`）に任せ、原因は調べない。OBS の NVENC の録画が同じ形かだけ段階 1 で確かめる
    - 案 2（45%）: FFmpeg の最新版と別のドライバーで 1 回再現を取り、上流に報告する。直れば既定の経路だけで済む
    - その他（10%）: `d3d12va` をやめて `cuvid` を既定にする。素材の種類が増えて逃げ道が広がるほど、この案が正しくなる
@@ -26,7 +26,7 @@
 # 決まったこと
 
 1. wgpu の面と WebView2: 並べられたので、別の窓の案と対案 C（全部ネイティブ）は要らない（2026-11-06、試作の結果）。Tauri の構成を保つ。未確認は 150% の DPI などで、[進め方](15-roadmap.md#段階-0-の終わりの条件の判定)に残した [window](spikes/window.md)
-2. NVDEC の経路: `d3d12va` を既定にする。開いた直後の数コマで失敗する素材（NVENC で作った 4K の HEVC など）は `cuvid` に切り替え、最後は CPU 経由（2026-11-06、ユーザー） [nvdec](spikes/nvdec.md#既定の経路の推奨)
+2. NVDEC の経路: `d3d12va` を既定にする。開いた直後の数フレームで失敗する素材（NVENC で作った 4K の HEVC など）は `cuvid` に切り替え、最後は CPU 経由（2026-11-06、ユーザー） [nvdec](spikes/nvdec.md#既定の経路の推奨)
 3. 色空間の名前 `bt709`: Rec.1886 の表示の式を指す。BT.709 の OETF は別の名前で持つ（2026-11-06、ユーザー） [ocio](spikes/ocio.md#詰まった所)
 4. wgpu を口に出さない形: 口に wgpu の型を出さず、`GpuHelper` トレイトで囲う形を正式にする（2026-11-06、ユーザー）。RFC と `04-nodes.md` と `14-dev-structure.md` の直しは別の担当が進めている
 

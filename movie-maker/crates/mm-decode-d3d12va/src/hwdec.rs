@@ -1,4 +1,4 @@
-//! FFmpeg の d3d12va で復号する層。wgpu の `ID3D12Device` を FFmpeg に渡し、同じデバイスの上に復号結果を置く。
+//! FFmpeg の d3d12va でデコードする層。wgpu の `ID3D12Device` を FFmpeg に渡し、同じデバイスの上にデコード結果を置く。
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -14,12 +14,12 @@ use mm_decode_hw::yuv::stream_bit_depth;
 
 use crate::ffi::{AvD3d12vaDeviceContext, RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS};
 
-/// 復号器が DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が握る面の数より大きくする。
+/// デコーダーが DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が握る面の数より大きくする。
 const EXTRA_HW_FRAMES: i32 = 16;
 
 const _: () = assert!(
     EXTRA_HW_FRAMES as usize > MAX_PENDING,
-    "握る面の上限より予備を多くしないと、復号が面を取れなくなる"
+    "握る面の上限より予備を多くしないと、デコードが面を取れなくなる"
 );
 
 /// FFmpeg を 1 回だけ初期化する。

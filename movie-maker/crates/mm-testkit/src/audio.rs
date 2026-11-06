@@ -158,7 +158,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
     let out = mixer
         .mix(std::slice::from_ref(&silence), frames)
         .expect("混ぜる");
-    assert_eq!(out.frames(), frames, "頼んだコマ数");
+    assert_eq!(out.frames(), frames, "頼んだフレーム数");
     assert!(out.is_silent(), "無音は無音");
 
     let tone = MixInput {
@@ -192,7 +192,7 @@ fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, f
         ..tone.clone()
     };
     let out = mixer.mix(&[short], frames).expect("混ぜる");
-    assert_eq!(out.frames(), frames, "短い入力でも頼んだコマ数");
+    assert_eq!(out.frames(), frames, "短い入力でも頼んだフレーム数");
     let cut = half * samples_per_frame;
     let expected_head = &tone.block.samples[..cut];
     let diff = out.samples[..cut]
@@ -221,7 +221,7 @@ fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, f
         ..tone.clone()
     };
     let out = mixer.mix(&[long], frames).expect("混ぜる");
-    assert_eq!(out.frames(), frames, "長い入力は頼んだコマ数に切る");
+    assert_eq!(out.frames(), frames, "長い入力は頼んだフレーム数に切る");
     let diff = out.max_diff(&long_block).expect("同じ形");
     assert!(
         diff <= PASSTHROUGH_TOLERANCE,
@@ -229,7 +229,7 @@ fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, f
     );
 }
 
-/// `tone` の頭から `frames` コマ。
+/// `tone` の頭から `frames` フレーム。
 fn tone_block_head(tone: &MixInput, frames: usize, rate: u32, ch: u16) -> AudioBlock {
     let n = frames * ch as usize;
     AudioBlock::from_samples(rate, ch, tone.block.samples[..n].to_vec()).expect("形は合う")

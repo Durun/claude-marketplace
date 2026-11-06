@@ -1,4 +1,4 @@
-//! 命令の記録の取り出し（`mm diff` と `mm log` の元）、名前付きの版、コメント、検索、`versions/` の書き出しと取り込み。
+//! 操作の記録の取り出し（`mm diff` と `mm log` の元）、名前付きの版、コメント、検索、`versions/` の書き出しと取り込み。
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -30,7 +30,7 @@ fn op_from_row(r: &Row) -> rusqlite::Result<(i64, i64, String, String, String, S
 }
 
 /// 取り消しと元のまとまりを対で消す。やり直しは直前の取り消しと対で消す。
-/// 範囲に元のまとまりが無い取り消し（範囲の前に当てたものの取り消し）は、逆命令のまとまりとして残る。
+/// 範囲に元のまとまりが無い取り消し（範囲の前に当てたものの取り消し）は、逆操作のまとまりとして残る。
 pub fn fold_history(txns: Vec<StoredTxn>) -> Vec<StoredTxn> {
     let mut out: Vec<StoredTxn> = Vec::with_capacity(txns.len());
     for txn in txns {
@@ -50,7 +50,7 @@ pub fn fold_history(txns: Vec<StoredTxn>) -> Vec<StoredTxn> {
 }
 
 impl Store {
-    /// まとまりの命令を当てた順に返す。
+    /// まとまりの操作を当てた順に返す。
     pub(crate) fn txn_ops(&self, txn_id: i64) -> Result<Vec<StoredOp>> {
         let mut st = self
             .conn
@@ -80,7 +80,7 @@ impl Store {
             .collect()
     }
 
-    /// 版番号が `(from, to]` の間に当たったまとまりを、命令つきで当てた順に返す。
+    /// 版番号が `(from, to]` の間に当たったまとまりを、操作つきで当てた順に返す。
     /// 取り消しと元のまとまりは対で畳む（[`fold_history`]）。`mm diff` の元。
     pub fn txns_between(&self, from: i64, to: i64) -> Result<Vec<StoredTxn>> {
         let raw = self.load_txns(
@@ -136,7 +136,7 @@ impl Store {
             .collect()
     }
 
-    /// `base` より後に当たった命令（取り消しとやり直しも）の (seq, touches)。古い版を元にした命令の競合の判定に使う。
+    /// `base` より後に当たった操作（取り消しとやり直しも）の (seq, touches)。古い版を元にした操作の競合の判定に使う。
     pub fn touches_since(&self, base: i64) -> Result<Vec<(i64, Vec<String>)>> {
         let mut st = self
             .conn

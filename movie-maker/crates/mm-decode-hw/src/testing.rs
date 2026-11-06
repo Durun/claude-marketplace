@@ -1,7 +1,7 @@
 //! GPU のデコーダー（d3d12va、cuvid）の統合テストが共有する補助。feature `testing` で入る。
 //!
-//! GPU のコマは `ReadbackFactory` で CPU の絵に読み戻して、`mm_testkit` の契約（CPU の絵を前提に
-//! 同じコマの一致を比べる）に通す。読み戻しは描画器と同じ手順（`import`、`before_submit`、`after_submit`）。
+//! GPU のフレームは `ReadbackFactory` で CPU の絵にリードバックて、`mm_testkit` の契約（CPU の絵を前提に
+//! 同じフレームの一致を比べる）に通す。リードバックはレンダラーと同じ手順（`import`、`before_submit`、`after_submit`）。
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -88,12 +88,12 @@ fn run_generate(root: &Path) -> std::result::Result<(), String> {
     ))
 }
 
-/// 描画器と同じ文脈。`request` はデコーダーの `gpu_request`。プロセスで 1 つを共有する。
+/// レンダラーと同じ文脈。`request` はデコーダーの `gpu_request`。プロセスで 1 つを共有する。
 pub fn gpu(request: GpuRequest) -> Arc<GpuContext> {
     GpuContext::shared(&request).expect("GPU の文脈")
 }
 
-/// デコードしたコマから焼いた番号を読む。`scale` は絵を整数倍に拡大した倍率。
+/// デコードしたフレームから焼いた番号を読む。`scale` は絵を整数倍に拡大した倍率。
 pub fn read_frame_number(image: &RgbaImage, scale: u32) -> i64 {
     (0..BIT_COUNT)
         .map(|k| {
@@ -136,7 +136,7 @@ impl DecoderFactory for ReadbackFactory {
     }
 }
 
-/// GPU のコマを、描画器と同じ手順で CPU の絵に読み戻す。
+/// GPU のフレームを、レンダラーと同じ手順で CPU の絵に読み戻す。
 pub struct FrameReader {
     helper: WgpuGpu,
 }
@@ -148,18 +148,18 @@ impl FrameReader {
         }
     }
 
-    /// GPU のコマを CPU の絵にする。
+    /// GPU のフレームを CPU の絵にする。
     pub fn read(&mut self, f: &DecodedFrame) -> RgbaImage {
-        let handle = f.gpu.as_ref().expect("GPU のコマ");
+        let handle = f.gpu.as_ref().expect("GPU のフレーム");
         let frame = self.helper.import(handle).expect("import");
         self.helper.before_submit();
-        let image = self.helper.download(&frame).expect("読み戻し");
+        let image = self.helper.download(&frame).expect("リードバック");
         self.helper.after_submit();
         (*image).clone()
     }
 }
 
-/// GPU のコマを CPU の絵にして返すデコーダー。
+/// GPU のフレームを CPU の絵にして返すデコーダー。
 pub struct ReadbackDecoder {
     inner: Box<dyn Decoder>,
     reader: FrameReader,
@@ -178,7 +178,7 @@ impl Decoder for ReadbackDecoder {
         let Some(f) = self.inner.next_frame()? else {
             return Ok(None);
         };
-        assert!(f.image.is_none() && f.gpu.is_some(), "GPU のコマで返る");
+        assert!(f.image.is_none() && f.gpu.is_some(), "GPU のフレームで返る");
         let image = self.reader.read(&f);
         Ok(Some(DecodedFrame::cpu(f.index, f.pts, image)))
     }
@@ -360,7 +360,7 @@ pub fn chroma_ramp_fixture() -> PathBuf {
 /// 色差の傾きの行で、隣り合う画素の青が同じ値になる割合。最近傍で 2 倍に広げると 2 画素ずつ同じ値になって半分ほど、
 /// 線形に補間すれば 1 割に満たない。
 pub fn equal_neighbor_ratio(image: &RgbaImage, y: u32) -> f32 {
-    // 傾きの両端は符号化で平らにつぶれるので、傾きが一定の中ほどだけを見る
+    // 傾きの両端はエンコードで平らにつぶれるので、傾きが一定の中ほどだけを見る
     let (from, to) = (100, 230);
     let same = (from..to - 1)
         .filter(|x| (image.pixel(*x, y).b - image.pixel(x + 1, y).b).abs() < 1e-6)

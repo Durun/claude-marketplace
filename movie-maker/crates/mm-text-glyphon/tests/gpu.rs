@@ -1,5 +1,5 @@
-//! glyphon（GPU）の描画器の検査。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
-//! CPU の描画器と同じ整形の結果から描いて、絵が許容差の中で一致することを確かめる。
+//! glyphon（GPU）のレンダラーの検査。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! CPU のレンダラーと同じ整形の結果から描いて、絵が許容差の中で一致することを確かめる。
 
 use std::sync::Arc;
 use std::time::Instant;

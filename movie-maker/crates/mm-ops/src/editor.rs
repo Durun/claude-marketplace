@@ -1,6 +1,6 @@
 //! 文書を 1 本の列で編む [`Editor`]。版番号、同時書き込みの判定、取り消しとやり直し。
 //!
-//! メモリの上の見本の実装。保存の層（`mm_store::Store`）は同じ数え方（命令 1 つで版が 1 進み、
+//! メモリの上の見本の実装。保存の層（`mm_store::Store`）は同じ数え方（操作 1 つで版が 1 進み、
 //! 取り消しとやり直しも [`TxnRecord`] として記録する）を SQLite の上で行い、
 //! 読み込みは [`Editor::with_version`] で版を引き継ぐ。
 
@@ -18,11 +18,11 @@ use crate::txn::{apply_transaction, OpRecord, Transaction};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TxnKind {
-    /// 普通の命令のまとまり。
+    /// 普通の操作のまとまり。
     Normal,
-    /// `of` のまとまりの取り消し（逆命令を逆の順に）。
+    /// `of` のまとまりの取り消し（逆操作を逆の順に）。
     Undo { of: u64 },
-    /// `of` のまとまりのやり直し（元の命令を当て直す）。
+    /// `of` のまとまりのやり直し（元の操作を当て直す）。
     Redo { of: u64 },
 }
 
@@ -54,26 +54,26 @@ pub struct TxnRecord {
     pub name: String,
     /// 当てる前の文書の版。
     pub base_version: u64,
-    /// 当てた後の文書の版。`base_version + ops.len()`（命令 1 つで 1 進む）。
+    /// 当てた後の文書の版。`base_version + ops.len()`（操作 1 つで 1 進む）。
     pub version: u64,
-    /// 命令ごとの記録（当てた順）。
+    /// 操作ごとの記録（当てた順）。
     pub ops: Vec<OpRecord>,
 }
 
 impl TxnRecord {
-    /// `i` 番目の命令を当てた後の版。
+    /// `i` 番目の操作を当てた後の版。
     pub fn op_version(&self, i: usize) -> u64 {
         self.base_version + i as u64 + 1
     }
 }
 
-/// 文書と、その上に当てた命令の記録。
+/// 文書と、その上に当てた操作の記録。
 #[derive(Debug, Clone)]
 pub struct Editor {
     project: Project,
     version: u64,
     log: Vec<TxnRecord>,
-    /// 命令ごとの（当てた後の版、触った所）。古い版を元にした命令の判定に使う。
+    /// 操作ごとの（当てた後の版、触った所）。古い版を元にした操作の判定に使う。
     history: Vec<(u64, Touches)>,
     /// 取り消せる普通のまとまりの ID の列と、今の位置。
     undo_stack: Vec<u64>,
@@ -123,7 +123,7 @@ impl Editor {
         self.undo_pos < self.undo_stack.len()
     }
 
-    /// まとまりを当てる。古い版を元にしていて、その後の命令と触る所が重なれば `Conflict`。
+    /// まとまりを当てる。古い版を元にしていて、その後の操作と触る所が重なれば `Conflict`。
     pub fn apply(&mut self, txn: Transaction, ctx: &OpContext) -> OpResult<&TxnRecord> {
         let base = txn.base_version.unwrap_or(self.version);
         if base > self.version {
@@ -197,7 +197,7 @@ impl Editor {
             .expect("undo_stack の ID は log に在る")
     }
 
-    /// 版 `base` より後に当てた命令が触った所。
+    /// 版 `base` より後に当てた操作が触った所。
     fn touches_since(&self, base: u64) -> Touches {
         let mut t = Touches::new();
         for (version, touches) in self.history.iter().rev() {
@@ -209,7 +209,7 @@ impl Editor {
         t
     }
 
-    /// 記録を積み、版を命令の数だけ進める。
+    /// 記録を積み、版を操作の数だけ進める。
     fn record(&mut self, kind: TxnKind, name: String, ops: Vec<OpRecord>) -> u64 {
         let base_version = self.version;
         for record in &ops {

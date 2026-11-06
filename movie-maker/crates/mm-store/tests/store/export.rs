@@ -53,7 +53,7 @@ fn 書き出し_取り込み_書き出しでバイトが同じ() {
     let imported =
         Store::import_versions(b.path(), &a.path().join("versions"), false, NOW).unwrap();
     assert_eq!(imported.project(), first.project());
-    assert_eq!(imported.doc_version(), 0, "命令の記録は入らない");
+    assert_eq!(imported.doc_version(), 0, "操作の記録は入らない");
     let report2 = imported.export_versions().unwrap();
 
     assert_eq!(report1.hash, report2.hash);

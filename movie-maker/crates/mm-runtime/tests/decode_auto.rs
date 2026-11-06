@@ -1,8 +1,8 @@
-//! GPU で復号する腕（`d3d12va`、`cuvid`、`auto`）を、実機の GPU と見本の素材で `Engine` の口まで通す。
+//! GPU でデコードする腕（`d3d12va`、`cuvid`、`auto`）を、実機の GPU と見本の素材で `Engine` の口まで通す。
 //! 実機の NVIDIA と FFmpeg が要るので、3 つの feature がそろったときだけ走る。
 //!
-//! 描画器の `footage` の種類はまだ GPU のコマを受けない（段階 2）ので、ここでは `Engine::decoders` の
-//! 口でコマを開き、描画器と同じ手順（`GpuHelper::import`）で読み戻して番号を確かめる。
+//! レンダラーの `footage` の種類はまだ GPU のフレームを受けない（段階 2）ので、ここでは `Engine::decoders` の
+//! 口でフレームを開き、レンダラーと同じ手順（`GpuHelper::import`）でリードバックて番号を確かめる。
 #![cfg(all(feature = "ffmpeg", feature = "d3d12va", feature = "cuvid"))]
 
 use std::path::PathBuf;
@@ -54,19 +54,19 @@ fn shared_gpu() -> Arc<GpuContext> {
     GpuContext::shared(&mm_decode_d3d12va::gpu_request(None).unwrap()).unwrap()
 }
 
-/// コマの絵を CPU に読み戻す。CPU のコマはそのまま。
+/// フレームの絵を CPU に読み戻す。CPU のフレームはそのまま。
 fn pixels(helper: &mut WgpuGpu, f: &DecodedFrame) -> RgbaImage {
     if let Some(image) = &f.image {
         return image.clone();
     }
-    let frame = helper.import(f.gpu.as_ref().expect("GPU のコマ")).unwrap();
+    let frame = helper.import(f.gpu.as_ref().expect("GPU のフレーム")).unwrap();
     helper.before_submit();
     let image = helper.download(&frame).unwrap();
     helper.after_submit();
     (*image).clone()
 }
 
-/// `Engine` の口で `cfr.mp4` を開き、コマ 0、1、17、29 の焼いた番号を読む。
+/// `Engine` の口で `cfr.mp4` を開き、フレーム 0、1、17、29 の焼いた番号を読む。
 fn engine_numbers(decode: Backend) -> Vec<i64> {
     let engine = assemble(&config(decode)).expect("組める");
     let ctx = shared_gpu();
@@ -93,7 +93,7 @@ fn engine_numbers(decode: Backend) -> Vec<i64> {
 }
 
 #[test]
-fn auto_で開いたコマの番号が合う() {
+fn auto_で開いたフレームの番号が合う() {
     assert_eq!(engine_numbers(Backend::Auto), vec![0, 1, 17, 29]);
 }
 
@@ -169,7 +169,7 @@ fn nvenc_の_4k_hevc_は_gpu_の実装で開ける() {
     eprintln!("nvenc4k.mp4 は {chosen} で開いた");
     assert_ne!(chosen, "ffmpeg", "GPU の実装のどちらかで開く");
     for i in 0..3 {
-        let f = dec.next_frame().expect("復号").expect("コマ");
+        let f = dec.next_frame().expect("デコード").expect("フレーム");
         assert_eq!(number(&pixels(&mut helper, &f), 12), i);
     }
 }

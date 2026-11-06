@@ -122,7 +122,7 @@ fn 日本語と英語の混在を描き同じ入力で同じ絵になる() {
 }
 
 #[test]
-fn 別に作った描画器でも同じ絵になる() {
+fn 別に作ったレンダラーでも同じ絵になる() {
     let engine = TextEngine::new();
     let other = CpuRasterizer::new();
     let st = style(None);
@@ -134,7 +134,7 @@ fn 別に作った描画器でも同じ絵になる() {
     let b = other.rasterize(&shaped, &st, 1.0).expect("描く");
     assert_eq!(
         a, b,
-        "字体と字形の番号だけで描けるので、同じ字体があれば同じ絵"
+        "字体とグリフの番号だけで描けるので、同じ字体があれば同じ絵"
     );
     assert!(ink(&a) > 10.0);
 }

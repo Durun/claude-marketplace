@@ -37,7 +37,7 @@ pub fn eval_param(param: &Param, t: RationalTime) -> ParamValue {
     lerp_value(&from.value, &to.value, eased)
 }
 
-/// 動画オブジェクトの全パラメータを時刻 `t` で評価する。
+/// ノードの全パラメータを時刻 `t` で評価する。
 pub fn node_params_at(node: &Node, t: RationalTime) -> Params {
     let mut out = Params::new();
     for (k, p) in &node.params {

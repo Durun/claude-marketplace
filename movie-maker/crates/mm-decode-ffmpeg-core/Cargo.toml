@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-ffmpeg-core"
-description = "FFmpeg を使うデコーダーの共有部（FFmpeg の CPU の部分だけ）。映像の時間軸、シークの判断、コマの取り出し、YUV の行列"
+description = "FFmpeg を使うデコーダーの共有部（FFmpeg の CPU の部分だけ）。映像の時間軸、シークの判断、フレームの取り出し、YUV の行列"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

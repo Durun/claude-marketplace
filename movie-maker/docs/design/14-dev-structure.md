@@ -11,7 +11,7 @@ flowchart BT
     types[mm-types<br>時刻・有理数・色・矩形・ID]
     doc[mm-doc<br>文書のスキーマと移行]
     eval[mm-eval<br>パラメータの評価・時間の写像・sequence の配置]
-    ops[mm-ops<br>命令・逆命令・touches・トランザクション]
+    ops[mm-ops<br>操作・逆操作・touches・トランザクション]
     store[mm-store<br>SQLite の正本・ops・バックアップ・export/import]
     trace[mm-trace<br>スパンの決まり・カウンタ・出力の層]
     trace --> types
@@ -23,7 +23,7 @@ flowchart BT
   subgraph API[口（トレイトと型だけ）]
     direction BT
     node_api[mm-node-api<br>NodeKind・FrameCx]
-    render_api[mm-render-api<br>描画器・キャッシュのキー]
+    render_api[mm-render-api<br>レンダラー・キャッシュのキー]
     decode_api[mm-decode-api<br>デコーダー・エンコーダー]
     color_api[mm-color-api<br>色空間の変換]
     audio_api[mm-audio-api<br>ミキサー・出力]
@@ -34,7 +34,7 @@ flowchart BT
   end
   subgraph IMPL[実装（差し替えられる）]
     direction BT
-    gpu[mm-gpu<br>wgpu の文脈・GpuHelper の実装・GPU のコマの型（実装の共有部）]
+    gpu[mm-gpu<br>wgpu の文脈・GpuHelper の実装・GPU のフレームの型（実装の共有部）]
     render[mm-render]
     render --> gpu
     decode --> gpu
@@ -50,7 +50,7 @@ flowchart BT
   end
   subgraph ASM[組み立てと入口]
     direction BT
-    runtime[mm-runtime<br>assemble・登録簿・再生の状態]
+    runtime[mm-runtime<br>assemble・レジストリ・再生の状態]
     export[mm-export]
     serve[mm-serve<br>HTTP・MCP]
     app[movie-maker（Tauri）]
@@ -78,7 +78,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の層だけを持つ。実装と組み立てはこれを使ってスパンを置き、口のクレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. 口は基礎だけに依存する。口と口の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「実装の共有部」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw` の 3 つ。GPU を触る実装は `mm-gpu`（wgpu の文脈とアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のコマの中身の型）に依存してよい（RFC 0001）。口は wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU で復号する 2 つはさらに `mm-decode-hw`（アダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。共有部は口と基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
+3. 実装は口と基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「実装の共有部」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw` の 3 つ。GPU を触る実装は `mm-gpu`（wgpu の文脈とアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。口は wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（アダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。共有部は口と基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。入口（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 循環は `cargo` が断る（クレート間の循環依存はビルドできない）ので、この図のとおりに分けていれば起きない。クレートの中のモジュールの循環は、口と実装を別のクレートに置くことで防ぐ。
@@ -93,31 +93,31 @@ movie-maker/
     mm-types/           時刻（有理数）、色、矩形、ID、ParamSchema、エラー。依存なし
     mm-doc/             文書（Project、Composition、Layer、Node、Param）の serde、スキーマの版と移行
     mm-eval/            時刻 t でのパラメータの値、キーフレームの補間、時間の写像、sequence のカットの配置（純関数）
-    mm-ops/             命令（1 命令 1 ファイル）、検証・適用・逆命令・touches、トランザクション
+    mm-ops/             操作（1 操作 1 ファイル）、検証・適用・逆操作・touches、トランザクション
     mm-store/           project.mmdb（rusqlite）の読み書き。表と DDL の移行、ops と undo_stack の記録、1 つの書き手の印（.mm/lock）、WAL とチェックポイント、バックアップ（VACUUM INTO）、FTS5 の検索、決定的な JSON の export と import、mm diff、同期のフォルダーの検出
     mm-trace/           計装。スパンの決まり（名前、レベル、フィールド）、counter!/gauge!、出力の層（metrics.jsonl、Chrome の trace、Tracy、ETW）、時計の補正、負担の見張り、JSON Schema。依存は tracing と tracing-subscriber だけ
     mm-node-api/        NodeKind、FrameCx、AudioCx、Traits、FrameRef、GPU のヘルパーのトレイト
-    mm-render-api/      Renderer（コンポジションと t からコマ）、Scheduler、コマのキャッシュのキー
-    mm-decode-api/      Decoder（開く、シーク、コマをテクスチャか CPU で）、Encoder、FrameSource
-    mm-color-api/       ColorTransform（入力の色空間 → 作業空間 → 表示・出力。WGSL か 3D LUT を返す）
+    mm-render-api/      Renderer（コンポジションと t からフレーム）、Scheduler、フレームのキャッシュのキー
+    mm-decode-api/      Decoder（開く、シーク、フレームをテクスチャか CPU で）、Encoder、FrameSource
+    mm-color-api/       ColorTransform（入力の色空間 → 作業色空間 → 表示・出力。WGSL か 3D LUT を返す）
     mm-audio-api/       Mixer、AudioSink、AudioBlock、ラウドネスのメーター
     mm-text-api/        TextShaper（整形と行組み）、TextRasterizer
     mm-host-api/        別プロセスのプロトコル（起動、共有テクスチャの受け渡し、時間切れ、再起動）
     mm-cache-api/       CacheStore（キーで引く、置く、大きさ、消す）
     mm-ingest-api/      付属ファイルの JSON Schema と型
-    mm-gpu/             実装の共有部。wgpu の Device と Queue（アダプターを 1 回選ぶ、LUID）、GpuHelper の wgpu 実装、デコーダーの GPU のコマの型
-    mm-render/          描画器の実装（wgpu、compute の合成、変形の折りたたみ、ベクターの倍率）
+    mm-gpu/             実装の共有部。wgpu の Device と Queue（アダプターを 1 回選ぶ、LUID）、GpuHelper の wgpu 実装、デコーダーの GPU のフレームの型
+    mm-render/          レンダラーの実装（wgpu、compute の合成、変形の折りたたみ、ベクターの倍率）
     mm-nodes-basic/     footage、audio、image、solid、shape、svg、composition、sequence、text、shader.wgsl、color.*
     mm-nodes-cef/       web.cef（mm-host-cef に頼む側）
     mm-nodes-ofx/       ofx（mm-host-ofx に頼む側）
     mm-nodes-lottie/    lottie
-    mm-decode-ffmpeg/   FFmpeg のライブラリ。CPU の復号と、ProRes・DNxHR・EXR の読み
+    mm-decode-ffmpeg/   FFmpeg のライブラリ。CPU のデコードと、ProRes・DNxHR・EXR の読み
     mm-decode-d3d12va/  NVDEC を d3d12va で。コピーなしで wgpu に包む
     mm-decode-cuvid/    NVDEC を cuvid で。CUDA の外部メモリで 1 コピー
     mm-decode-ffmpeg-core/  実装の共有部。FFmpeg の CPU の部分（映像の時間軸、シーク、YUV の行列）
-    mm-decode-hw/       実装の共有部。GPU で復号する実装の部品（アダプター、キューの待ち、YUV の変換）
+    mm-decode-hw/       実装の共有部。GPU でデコードする実装の部品（アダプター、キューの待ち、YUV の変換）
     mm-encode-nvenc/    NVENC（GPU の中で渡す）
-    mm-encode-ffmpeg/   ProRes、DNxHR、2 パス（読み戻して渡す）
+    mm-encode-ffmpeg/   ProRes、DNxHR、2 パス（リードバックて渡す）
     mm-color-ocio/      OCIO 2.5 の bindgen と、GLSL → naga → WGSL
     mm-color-lut/       ASC CDL と .cube を WGSL で。OCIO が動かないときの 3D LUT の逃げ道
     mm-audio-dsp/       自前の DSP のミキサー、バス、ダッキング、ebur128
@@ -129,22 +129,22 @@ movie-maker/
     mm-host-audio/      実行ファイル。VST3 と CLAP のホスト
     mm-cache-fs/        <project>/cache/ の実装（contentHash で引く、大きさ、消す）
     mm-ingest/          取り込みの流れ（ハッシュ、プレビュー動画、波形、サムネイル、外の道具の起動、付属ファイルの取り込み）
-    mm-runtime/         assemble()（実装を選んで Engine を作る）、種類の登録簿、再生の状態（再生位置、選択）
+    mm-runtime/         assemble()（実装を選んで Engine を作る）、種類のレジストリ、再生の状態（再生位置、選択）
     mm-export/          レンダーターゲット → 区間 → 並行の描画 → mux、ラウドネスの正規化、字幕とチャプター
-    mm-serve/           HTTP（axum）と MCP。命令と描画を外に出す
+    mm-serve/           HTTP（axum）と MCP。操作と描画を外に出す
     mm-ui-layout/       wgpu の面の計算（端のつまみ、スナップ、範囲）。純関数
     mm-ui-wgpu/         Program、Timeline、Graph、メーターの描画と入力
     mm-improve/         自動の改善の回（worktree、claude -p、検査、取り込み）
     mm-testkit/         見本のプロジェクト、見本の素材の生成、契約テストの本体、見本の絵の比較、gpu_contract!、soak の実行ファイル
     mm-bench/           性能。divan のベンチ（基礎の層）と、mm perf run の場面（playback、scrub、export、startup）。結果の比較と履歴は mm-trace の形で
-  fuzz/                 cargo-fuzz の目標（versions/ の JSON、命令の引数、壊した project.mmdb、付属ファイル、字幕、OTIO、壊れた動画）と corpus/
+  fuzz/                 cargo-fuzz の目標（versions/ の JSON、操作の引数、壊した project.mmdb、付属ファイル、字幕、OTIO、壊れた動画）と corpus/
   xtask/                開発の道具（golden-update、perf の履歴の整理）
   apps/
     movie-maker/        Tauri のアプリ。窓の組み立て、子 HWND、IPC
     mm/                 CLI（render、frame、op、ingest、serve）
   ui/                   WebView の画面（pnpm のワークスペース、TypeScript、Preact、esbuild）
     theme/              theme.json（色、角丸、字、ベベル）と、CSS 変数に出す生成器。wgpu の面も同じ JSON を読む
-    sdk/                Tauri の IPC と HTTP のクライアント。命令と型は mm-ops の JSON Schema から生成
+    sdk/                Tauri の IPC と HTTP のクライアント。操作と型は mm-ops の JSON Schema から生成
     panels/
       story/            文字起こしのストーリー
       review/           コメント、承認
@@ -168,19 +168,19 @@ movie-maker/
 
 - 口のクレートは、トレイト、入出力の型、エラーの型、契約（文書化した約束）だけを持つ。`impl` を持たない。依存は基礎と `serde` だけで、wgpu の型は出さない（GPU は `GpuHelper` などの型を消したトレイトで囲い、`as_any` で `mm-gpu` の型に降りる。RFC 0001）。
 - 実装のクレートは 1 つの口を 1 つの方式で実装する。名前は `mm-<話題>-<方式>`。同じ口の実装が複数あってよい（`mm-decode-d3d12va` と `mm-decode-cuvid`、`mm-text-glyphon` と `mm-text-cef`、`mm-color-ocio` と `mm-color-lut`）。
-- 動画オブジェクトの種類は `mm-node-api` の実装で、`mm-nodes-*` にまとめて置く。種類を足すのは実装のクレートの追加で、口は変わらない。
+- ノードの種類は `mm-node-api` の実装で、`mm-nodes-*` にまとめて置く。種類を足すのは実装のクレートの追加で、口は変わらない。
 - 別プロセスのホストは、口（`mm-host-api` のプロトコル）を挟んで 2 つに分かれる。アプリの側の `mm-nodes-cef` が頼み、実行ファイルの `mm-host-cef` が描く。OpenFX がホストとプラグインを版つきの関数の表で切り離しているのと同じ型 [32]。
 - 組み立ては `mm-runtime::assemble(config) -> Engine` の 1 か所。設定で実装を選ぶ（`decode = "d3d12va" | "cuvid" | "ffmpeg"`、`text = "glyphon" | "cef"`）。Bevy が `Plugin::build` で `App` に部品を足し、`PluginGroup` の `set` で中の部品を差し替えるのと同じ型 [33]。入口は `Engine` を受け取るだけで、実装のクレートに依存しない。
 - 実装の裏が安全でない所（D3D12 のハンドル、CUDA、CEF、OFX の C API、`mm-gpu` の LUID の読み）は実装のクレートの中に閉じ、口の型には `unsafe` を出さない。wgpu が `wgpu-hal`（unsafe な裏）と `wgpu-core`（検証）を分けているのと同じ [31]。
-- 口を通すと遅くなる所（毎コマの呼び出し）は、口の粒度を「コマ 1 枚」でなく「区間」や「バッチ」にして、動的ディスパッチの回数を減らす。トレイトオブジェクトの呼び出しの費用は 1 コマあたり数十回なら問題にならない〔推〕。
-- 先行事例から採るもの: ports and adapters（核を UI やデータベースなしで動かし、テストも人も同じ口から駆動する）[30] を全体の型に、wgpu の hal と core の分け方 [31] を裏の隔離に、OpenFX の host と plugin の切り離し [32] を別プロセスの口に、Bevy の Plugin [33] を組み立てに、Zed の小さなクレートの多いワークスペース [34] と Cargo の `workspace.dependencies` [36] を木に。rustc のクエリ（結果のメモ化と提供者の差し替え）[37] はコマのキャッシュと `mm-render-api` の `Scheduler` の参考にする（時刻とキーで引く計算と、その提供者を差し替えられる形）。
+- 口を通すと遅くなる所（毎フレームの呼び出し）は、口の粒度を「フレーム 1 枚」でなく「区間」や「バッチ」にして、動的ディスパッチの回数を減らす。トレイトオブジェクトの呼び出しの費用は 1 フレームあたり数十回なら問題にならない〔推〕。
+- 先行事例から採るもの: ports and adapters（核を UI やデータベースなしで動かし、テストも人も同じ口から駆動する）[30] を全体の型に、wgpu の hal と core の分け方 [31] を裏の隔離に、OpenFX の host と plugin の切り離し [32] を別プロセスの口に、Bevy の Plugin [33] を組み立てに、Zed の小さなクレートの多いワークスペース [34] と Cargo の `workspace.dependencies` [36] を木に。rustc のクエリ（結果のメモ化と提供者の差し替え）[37] はフレームのキャッシュと `mm-render-api` の `Scheduler` の参考にする（時刻とキーで引く計算と、その提供者を差し替えられる形）。
 
 ## 契約テストと再実装
 
 - 口ごとに契約テストを `mm-testkit` に置く。`mm_testkit::decode::contract(|| MyDecoder::new())` のように、実装を作る関数を渡して呼ぶ。どの実装も同じテストを通す。
-- 契約テストの中身は[テスト](11-testing.md)の表の各行（動画オブジェクトの契約、描画器の見本の絵、ミキサーの決定性、デコーダーのコマの番号の一致と VFR）。実装のクレートの `tests/contract.rs` が 1 行で呼ぶ。
+- 契約テストの中身は[テスト](11-testing.md)の表の各行（ノードの契約、レンダラーの見本の絵、ミキサーの決定性、デコーダーのフレームの番号の一致と VFR）。実装のクレートの `tests/contract.rs` が 1 行で呼ぶ。
 - 再実装の手順: 新しい実装のクレートを足す → 契約テストと見本の絵のテストを通す → `assemble` の設定に選択肢を足す → 既定を切り替える → 古い実装は、1 つの段階が過ぎるまで残して消す。口は変えない。
-- 仮の実装: 口を決めた直後に、`mm-testkit` に見本の実装（単色のコマを返すデコーダー、無音のミキサー、矩形だけの文字）を置く。ほかの話題は本物の実装を待たずに組める。段階 0 の縦の 1 本は、この見本の実装で先に通す。
+- 仮の実装: 口を決めた直後に、`mm-testkit` に見本の実装（単色のフレームを返すデコーダー、無音のミキサー、矩形だけの文字）を置く。ほかの話題は本物の実装を待たずに組める。段階 0 の縦の 1 本は、この見本の実装で先に通す。
 
 ## 口の版と変え方
 
@@ -188,7 +188,7 @@ movie-maker/
 - 口を変えるときは、`docs/rfcs/NNNN-<題>.md` に、変える理由、新しいシグネチャ、影響する実装のクレート、移行の手順を書いてから変える。1 つの PR で、口の変更と、全部の実装と契約テストの更新を一緒に入れる。
 - 足すだけの変更（メソッドの追加は既定の実装つき、`Traits` のフィールドの追加）は RFC なしでよい。消す・形を変える変更は RFC。
 - 口のクレートは各自の `Cargo.toml` に版を持ち、ワークスペースの版を使わない。壊す変更は 0.x の minor を上げる（0.1 から 0.2）。
-- 動画オブジェクトの種類の版（`NodeKind::version` と `migrate`）と文書のスキーマの版は、口の版とは別に持つ（文書の互換性の話）。
+- ノードの種類の版（`NodeKind::version` と `migrate`）と文書のスキーマの版は、口の版とは別に持つ（文書の互換性の話）。
 
 ## 並行開発の境界
 
@@ -196,8 +196,8 @@ movie-maker/
 
 | 話題 | 書いてよい所 | 触らない所 |
 |---|---|---|
-| 文書と命令 | `crates/mm-doc`、`mm-eval`、`mm-ops`、`mm-store` | 口のクレート |
-| 描画器 | `crates/mm-render`、`mm-nodes-basic` | `mm-node-api`、`mm-render-api` |
+| 文書と操作 | `crates/mm-doc`、`mm-eval`、`mm-ops`、`mm-store` | 口のクレート |
+| レンダラー | `crates/mm-render`、`mm-nodes-basic` | `mm-node-api`、`mm-render-api` |
 | デコードとエンコード | `crates/mm-decode-*`、`mm-encode-*` | `mm-decode-api` |
 | 色 | `crates/mm-color-*` | `mm-color-api` |
 | 音 | `crates/mm-audio-*` | `mm-audio-api` |
@@ -224,7 +224,7 @@ movie-maker/
 | 領域 | 自動の回 | 中身 |
 |---|---|---|
 | `ui/panels/*`、`ui/theme` | 書いて取り込む（検査が通れば） | 画面の直し。esbuild の束ね直しとリロードだけで反映 |
-| `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 命令の追加と直し、配置の計算。性質テストが守る |
+| `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 操作の追加と直し、配置の計算。性質テストが守る |
 | `crates/mm-nodes-*`、`mm-text-*`、`mm-color-lut`、`mm-audio-dsp` | 書いて取り込む | 種類の追加、文字と色と音の実装。契約テストと見本の絵が守る |
 | `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | 見本とベンチとパックと外の道具。見本の絵（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
 | `crates/mm-trace` | PR までで止める | 計装の決まりと出力の形。変えると比較の相手が変わる |
@@ -233,7 +233,7 @@ movie-maker/
 | `crates/mm-improve`、`mm-serve`、`apps/` | PR までで止める | 自分自身と入口の変更 |
 
 - 回の worktree では、書いてよい領域の外のファイルを変えた PR は検査で落とす（`git diff --name-only` を `areas.toml` と突き合わせる）。
-- 費用のかかる命令（`gen.ai`）と実際のプロジェクトは、回からは触れない（[自動の改善](10-review-improve.md#自動の改善)の囲い）。
+- 費用のかかる操作（`gen.ai`）と実際のプロジェクトは、回からは触れない（[自動の改善](10-review-improve.md#自動の改善)の囲い）。
 
 
 ---

@@ -85,6 +85,6 @@ fn gpu_の時間が_mm_trace_に載る() {
     assert!(snap.gauges["render.gpu_frame_us"] >= 0.0);
     assert!(
         snap.spans["render.gpu_frame"].count >= 2,
-        "2 コマ目から前のコマの分が出る"
+        "2 フレーム目から前のフレームの分が出る"
     );
 }

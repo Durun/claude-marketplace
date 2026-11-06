@@ -20,7 +20,7 @@ Web で確かめたもの。〔推〕は確かめられなかった推測。
 15. OCIO の Rust は置き場所だけの空のクレート（`opencolorio` 0.1.0、2020）: https://lib.rs/crates/opencolorio
 16. OCIO の GPU の言語（GLSL、HLSL SM 5.0、MSL、OSL）: https://deepwiki.com/AcademySoftwareFoundation/OpenColorIO/2.5-gpu-processing-system （二次情報。公式の `GpuShaderDesc` で確かめ直す）
 17. `ffmpeg-the-third`（FFmpeg 5.1〜8.1）: https://docs.rs/crate/ffmpeg-the-third/latest 。`ffmpeg-next` は保守モード。`hwaccel` の扱いは各クレートの文書で確かめ直す〔推〕
-18. FFmpeg 7.0 の D3D12VA の復号（H.264、HEVC、VP9、AV1、MPEG-2、VC1）: https://ffmpeg.org/doxygen/7.0/d3d12va__decode_8h_source.html
+18. FFmpeg 7.0 の D3D12VA のデコード（H.264、HEVC、VP9、AV1、MPEG-2、VC1）: https://ffmpeg.org/doxygen/7.0/d3d12va__decode_8h_source.html
 19. `cudarc` の `import_external_memory`（Win32 の不透明なハンドル。D3D12 の種類は生の `sys`）: https://docs.rs/crate/cudarc/0.19.3/source/src/driver/safe/external_memory.rs
 20. `ebur128` クレート（libebur128 の移植。EBU TECH 3341・3342 のテストを通る）: https://docs.rs/crate/ebur128/latest
 21. `opentimelineio-bind`（vfx-rs。Linux だけ）: https://github.com/vfx-rs/opentimelineio-bind
@@ -65,10 +65,10 @@ Web で確かめたもの。〔推〕は確かめられなかった推測。
 60. criterion（`--save-baseline`、`--baseline`、`--load-baseline`）: https://bheisler.github.io/criterion.rs/book/user_guide/command_line_options.html 。divan（`#[divan::bench]`、`args`）: https://docs.rs/divan/latest/divan/ 。iai-callgrind（Gungraun に改名。Valgrind か Linux の perf が要り、Windows では動かない）: https://github.com/iai-callgrind/iai-callgrind
 61. Tauri 2 の WebDriver（tauri-driver はデスクトップでは Windows と Linux。推奨は WebdriverIO の `@wdio/tauri-service`）: https://v2.tauri.app/develop/tests/webdriver/ 。Windows は msedgedriver を WebView2 の版と合わせる: https://webdriver.io/docs/desktop-testing/tauri/edge-webdriver-windows 、https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/webdriver 。Playwright の WebView2（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`、`chromium.connectOverCDP`、並列は worker ごとにポートと `WEBVIEW2_USER_DATA_FOLDER`）: https://playwright.dev/docs/webview2
 62. WARP（Direct3D の CPU のラスタライザ。D3D12 は Windows 10 1709 から、機能レベル 12_0 と 12_1。`IDXGIFactory4::EnumWarpAdapter`）: https://learn.microsoft.com/windows/win32/direct3darticles/directx-warp 。wgpu の CI（Windows は WARP、Linux は Mesa の lavapipe。`cargo xtask test`、`LVP_POISON_MEMORY`）: https://github.com/gfx-rs/wgpu/blob/trunk/.github/workflows/ci.yml 。wgpu のテストの型（`gpu_test!`。全 GPU で回し、裏ごとに失敗を期待できる。validation は `noop` の裏）: https://github.com/gfx-rs/wgpu/blob/trunk/docs/testing.md 。wgpu の CI で SwiftShader を使っているかは未確認
-63. FFmpeg の lavfi の `testsrc`、`testsrc2`、`smptebars` と `drawtext` の `%{pts}`（二次情報）: https://vse-docs.readthedocs.io/video_editing/setup/creating-test-files.html 。`sine` と `drawtext` のコマ番号の書式は ffmpeg.org で確かめ直す〔推〕
+63. FFmpeg の lavfi の `testsrc`、`testsrc2`、`smptebars` と `drawtext` の `%{pts}`（二次情報）: https://vse-docs.readthedocs.io/video_editing/setup/creating-test-files.html 。`sine` と `drawtext` のフレーム番号の書式は ffmpeg.org で確かめ直す〔推〕
 64. `dhat` のテストモード（`Profiler::builder().testing()`、`HeapStats::get()`、`dhat::assert!`。実験的、同時に 1 つ、release で、グローバルアロケータを置き換える）: https://docs.rs/dhat/latest/dhat/
 65. `cargo-llvm-cov`（`-C instrument-coverage`。`cargo llvm-cov nextest`。json、lcov、cobertura、html。`x86_64-pc-windows-msvc` で動く）: https://github.com/taiki-e/cargo-llvm-cov 。`cargo-mutants`（Windows の対応は未確認）: https://mutants.rs/
-66. `assert_cmd`（`Command::cargo_bin`、`.assert().success()`）: https://docs.rs/assert_cmd/latest/assert_cmd/ 。`trycmd`（`.toml`、`.trycmd`、`.md` に書いた命令と期待の出力。`TRYCMD=overwrite`）: https://docs.rs/trycmd/latest/trycmd/
+66. `assert_cmd`（`Command::cargo_bin`、`.assert().success()`）: https://docs.rs/assert_cmd/latest/assert_cmd/ 。`trycmd`（`.toml`、`.trycmd`、`.md` に書いた操作と期待の出力。`TRYCMD=overwrite`）: https://docs.rs/trycmd/latest/trycmd/
 67. `httpmock`（同期と非同期の両方。`when`/`then`、`mock.assert()`）: https://docs.rs/httpmock/latest/httpmock/ 。`wiremock` は非同期専用: https://docs.rs/wiremock/latest/wiremock/
 68. `@testing-library/preact`（DOM Testing Library の上。描画に `waitFor` が要る）: https://testing-library.com/docs/preact-testing-library/intro/ 、https://preactjs.com/guide/v10/preact-testing-library/ 。happy-dom で `getByRole` が落ちる報告（二次情報）: https://github.com/capricorn86/happy-dom/wiki/Setup-as-Test-Environment
 69. EBU の loudness test set（約 87 MB、70 ファイル。Tech 3341 と 3342 の検査用。利用条件あり）: https://tech.ebu.ch/publications/ebu_loudness_test_set

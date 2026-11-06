@@ -1,4 +1,4 @@
-//! 復号したコマ（YUV など）を CPU の RGBA f32 にする。
+//! デコードしたフレーム（YUV など）を CPU の RGBA f32 にする。
 
 use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
@@ -32,7 +32,7 @@ fn sws_id(matrix: Matrix) -> i32 {
 pub struct RgbaConverter {
     scaler: Option<(SourceKey, Scaler)>,
     out: Option<frame::Video>,
-    /// 符号化値 → 線形。作業空間は線形の premultiplied なので、アルファを掛ける前に当てる。
+    /// 符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に当てる。
     linear: [f32; 256],
 }
 
@@ -51,7 +51,7 @@ impl Default for RgbaConverter {
 unsafe impl Send for RgbaConverter {}
 
 impl RgbaConverter {
-    /// 1 コマを RGBA の絵にする。アルファがあれば premultiplied にする。
+    /// 1 フレームを RGBA の絵にする。アルファがあれば premultiplied にする。
     pub fn convert(&mut self, src: &frame::Video) -> Result<RgbaImage> {
         let key = SourceKey {
             format: src.format(),

@@ -164,7 +164,7 @@ impl GpuEval {
         })
     }
 
-    /// 読み戻し用のバッファを待って、RGB の並びにする。
+    /// リードバック用のバッファを待って、RGB の並びにする。
     fn read(&self, staging: &wgpu::Buffer) -> Result<Vec<[f32; 3]>, String> {
         let slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();

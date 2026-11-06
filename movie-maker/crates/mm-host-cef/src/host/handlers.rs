@@ -67,7 +67,7 @@ impl Shared {
         }
     }
 
-    /// 逃げ道。CPU の BGRA を毎コマ GPU へ上げる。
+    /// 逃げ道。CPU の BGRA を毎フレーム GPU へ上げる。
     fn upload_cpu(&self, buffer: &[u8], width: u32, height: u32) {
         let _span = tracing::info_span!("host_cef.upload").entered();
         let size = wgpu::Extent3d {

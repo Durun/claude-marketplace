@@ -1,6 +1,6 @@
-//! 命令の記録を、人が読める 1 行にする（`mm diff`、`mm log`）。
+//! 操作の記録を、人が読める 1 行にする（`mm diff`、`mm log`）。
 //!
-//! 同じ所への連続した `setParam` は 1 行に畳む。知らない命令は名前と欄をそのまま出す。
+//! 同じ所への連続した `setParam` は 1 行に畳む。知らない操作は名前と欄をそのまま出す。
 
 use serde_json::Value;
 
@@ -13,7 +13,7 @@ struct Line {
     count: usize,
 }
 
-/// 範囲のトランザクションを、命令ごとの文にして並べる。
+/// 範囲のトランザクションを、操作ごとの文にして並べる。
 pub fn describe_txns(txns: &[StoredTxn]) -> Vec<String> {
     let mut lines: Vec<Line> = Vec::new();
     for op in txns.iter().flat_map(|t| t.ops.iter()) {
@@ -51,7 +51,7 @@ fn describe_op(op: &Value) -> (String, Option<String>) {
     (text, None)
 }
 
-/// 並びのカットを動かす命令。
+/// 並びのカットを動かす操作。
 fn cut_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "ripple" => ripple(op),
@@ -100,7 +100,7 @@ fn cut_op(name: &str, op: &Value) -> Option<String> {
     Some(text)
 }
 
-/// レイヤーの命令。
+/// レイヤーの操作。
 fn layer_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "addLayer" => format!(

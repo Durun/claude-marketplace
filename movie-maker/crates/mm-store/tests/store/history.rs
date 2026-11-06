@@ -25,7 +25,7 @@ fn apply(store: &mut Store, name: &str, ops: Vec<Op>, base: Option<u64>) -> mm_o
 }
 
 #[test]
-fn 取り消しの後も古い版を元にした命令は競合で断られる() {
+fn 取り消しの後も古い版を元にした操作は競合で断られる() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
     assert_eq!(
@@ -37,7 +37,7 @@ fn 取り消しの後も古い版を元にした命令は競合で断られる()
         .unwrap();
     assert_eq!(s.doc_version(), 2, "取り消しも版を進める");
 
-    // 版 1 を元にした l0 への命令は、版 2 の取り消しと触る所が重なる。
+    // 版 1 を元にした l0 への操作は、版 2 の取り消しと触る所が重なる。
     let err = apply(&mut s, "古い", vec![lock(0, true)], Some(1)).unwrap_err();
     assert!(matches!(err, OpError::Conflict { .. }), "{err:?}");
 
@@ -76,7 +76,7 @@ fn 当てた版は取り消しても変わらず_diff_は取り消しと対で�
     assert_eq!(undo_only.len(), 1);
     assert_eq!(
         undo_only[0].ops[0].record.op["lock"], false,
-        "取り消しの行は逆命令"
+        "取り消しの行は逆操作"
     );
 
     s.redo_last(&OpContext::human(), actor(), NOW)

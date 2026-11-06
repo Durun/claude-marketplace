@@ -1,4 +1,4 @@
-//! 動画オブジェクト。種類の名前と版、パラメータ、入力。
+//! ノード。種類の名前と版、パラメータ、入力。
 
 use std::collections::BTreeMap;
 
@@ -17,7 +17,7 @@ pub const SEQUENCE_KIND: &str = "sequence";
 /// sequence の ID を持つパラメータの名前。
 pub const SEQUENCE_PARAM: &str = "sequence";
 
-/// 動画オブジェクト。種類の名前と版、パラメータ、入力。
+/// ノード。種類の名前と版、パラメータ、入力。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Node {

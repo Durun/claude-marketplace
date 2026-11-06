@@ -1,4 +1,4 @@
-//! 命令の束 [`Op`] と、命令ごとの実装の口 [`Apply`]。
+//! 操作の束 [`Op`] と、操作ごとの実装の口 [`Apply`]。
 
 use serde::{Deserialize, Serialize};
 
@@ -10,19 +10,19 @@ use crate::error::{OpError, OpResult};
 use crate::ops::*;
 use crate::touches::Touches;
 
-/// 命令ごとの実装。`ops/` の各ファイルが実装する。
+/// 操作ごとの実装。`ops/` の各ファイルが実装する。
 pub(crate) trait Apply {
     /// 読む・書く所の ID。適用の前の文書で決める。
     fn touches(&self, project: &Project) -> Result<Touches>;
 
-    /// 文書に当て、逆命令を返す。失敗したら文書を途中のままにしてよい（トランザクションが戻す）。
+    /// 文書に当て、逆操作を返す。失敗したら文書を途中のままにしてよい（トランザクションが戻す）。
     fn apply(&self, project: &mut Project) -> Result<Op>;
 }
 
-/// 命令を当てた結果。
+/// 操作を当てた結果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Applied {
-    /// 当てた命令を打ち消す命令。
+    /// 当てた操作を打ち消す操作。
     pub inverse: Op,
     /// 触った所。
     pub touches: Touches,
@@ -30,7 +30,7 @@ pub struct Applied {
 
 macro_rules! define_ops {
     ($( $(#[$doc:meta])* $variant:ident => $name:literal, )*) => {
-        /// 命令。JSON では `op` の欄に名前（camelCase）、残りの欄に引数。
+        /// 操作。JSON では `op` の欄に名前（camelCase）、残りの欄に引数。
         /// 引数の大きさが枝ごとに違うので、全部 `Box` で持つ。
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
         #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
@@ -39,12 +39,12 @@ macro_rules! define_ops {
         }
 
         impl Op {
-            /// 命令の名前（JSON の `op` の値）。
+            /// 操作の名前（JSON の `op` の値）。
             pub fn name(&self) -> &'static str {
                 match self { $( Self::$variant(_) => $name, )* }
             }
 
-            /// 全部の命令の名前。
+            /// 全部の操作の名前。
             pub const NAMES: &'static [&'static str] = &[ $( $name, )* ];
 
             /// 読む・書く所の ID。
@@ -131,9 +131,9 @@ define_ops! {
 }
 
 impl Op {
-    /// 命令を 1 つ当てる。失敗したら文書は変わらない。
+    /// 操作を 1 つ当てる。失敗したら文書は変わらない。
     ///
-    /// Claude の入口からは、ロックの付いた所に触る命令を断る。当てた後に `Project::validate` を通す。
+    /// Claude の入口からは、ロックの付いた所に触る操作を断る。当てた後に `Project::validate` を通す。
     pub fn apply(&self, project: &mut Project, ctx: &OpContext) -> OpResult<Applied> {
         let before = project.clone();
         match self.apply_unchecked(project, ctx) {

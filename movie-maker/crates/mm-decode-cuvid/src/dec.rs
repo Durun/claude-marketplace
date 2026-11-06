@@ -1,4 +1,4 @@
-//! FFmpeg の cuvid（NVDEC）で復号する層。出てくるコマは `AV_PIX_FMT_CUDA` で、NV12 か P010 が CUDA のメモリにある。
+//! FFmpeg の cuvid（NVDEC）でデコードする層。出てくるフレームは `AV_PIX_FMT_CUDA` で、NV12 か P010 が CUDA のメモリにある。
 
 use std::ffi::CString;
 use std::path::Path;
@@ -12,7 +12,7 @@ use crate::cuda::{CuContext, CuStream};
 use mm_decode_ffmpeg_core::reader::StreamReader;
 use mm_decode_hw::yuv::stream_bit_depth;
 
-/// 選ぶ表面形式は CUDA だけ。cuvid は CPU の NV12 も申し出るが、使うのは GPU の上のコマ。
+/// 選ぶ表面形式は CUDA だけ。cuvid は CPU の NV12 も申し出るが、使うのは GPU の上のフレーム。
 unsafe extern "C" fn pick_cuda(
     _ctx: *mut ffi::AVCodecContext,
     fmts: *const ffi::AVPixelFormat,
@@ -38,7 +38,7 @@ unsafe impl Send for DeviceRef {}
 
 impl Drop for DeviceRef {
     fn drop(&mut self) {
-        // SAFETY: open で作った参照。コーデック側の参照は復号器が手放す。
+        // SAFETY: open で作った参照。コーデック側の参照はデコーダーが手放す。
         unsafe { ffi::av_buffer_unref(&mut self.0) };
     }
 }

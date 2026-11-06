@@ -1,7 +1,7 @@
 //! デコードとエンコードの見本と契約テスト。
 //!
-//! 見本のデコーダーは単色のコマを返し、コマの番号を G の成分に `index / FRAME_INDEX_SCALE` で
-//! 焼き込む。契約テストとの縦の 1 本は、この値を読んで「どのコマが出たか」を確かめる。
+//! 見本のデコーダーは単色のフレームを返し、フレームの番号を G の成分に `index / FRAME_INDEX_SCALE` で
+//! 焼き込む。契約テストとの縦の 1 本は、この値を読んで「どのフレームが出たか」を確かめる。
 
 use std::f32::consts::TAU;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use mm_types::{
     ColorSpace, MmError, Rational, RationalTime, Result, Rgba, RgbaImage, Size, TimeRange,
 };
 
-/// コマの番号を G に焼くときの分母。f32 で整数が正確に表せる範囲（2^24）に収まる。
+/// フレームの番号を G に焼くときの分母。f32 で整数が正確に表せる範囲（2^24）に収まる。
 pub const FRAME_INDEX_SCALE: f32 = 65_536.0;
 /// 見本の音のトーンの周波数（Hz）。
 pub const TONE_HZ: f32 = 440.0;
@@ -64,12 +64,12 @@ impl SampleMedia {
     }
 }
 
-/// コマの番号を焼き込んだ画素の色。
+/// フレームの番号を焼き込んだ画素の色。
 pub fn frame_color(base: Rgba, index: i64) -> Rgba {
     Rgba::new(base.r, index as f32 / FRAME_INDEX_SCALE, base.b, base.a)
 }
 
-/// 画素からコマの番号を読む。
+/// 画素からフレームの番号を読む。
 pub fn frame_index_of(pixel: Rgba) -> i64 {
     (pixel.g * FRAME_INDEX_SCALE).round() as i64
 }
@@ -147,7 +147,7 @@ impl Decoder for SampleDecoder {
     }
 }
 
-/// `Decoder` を時刻で引ける `FrameSource` にする。直前のコマを覚え、同じコマなら復号しない。
+/// `Decoder` を時刻で引ける `FrameSource` にする。直前のフレームを覚え、同じフレームならデコードしない。
 pub struct DecoderFrameSource {
     decoder: Box<dyn Decoder>,
     last: Option<DecodedFrame>,
@@ -179,7 +179,7 @@ impl FrameSource for DecoderFrameSource {
         let frame = self
             .decoder
             .next_frame()?
-            .ok_or_else(|| MmError::NotFound(format!("コマ {index}（t = {t}）")))?;
+            .ok_or_else(|| MmError::NotFound(format!("フレーム {index}（t = {t}）")))?;
         self.last = Some(frame.clone());
         Ok(frame)
     }
@@ -207,7 +207,7 @@ impl EncoderFactory for SampleEncoderFactory {
     }
 }
 
-/// 見本のエンコーダー。コマと音を数え、`output_path` に JSON の報告を書く。
+/// 見本のエンコーダー。フレームと音を数え、`output_path` に JSON の報告を書く。
 #[derive(Debug, Default)]
 pub struct SampleEncoder {
     settings: Option<EncodeSettings>,
@@ -217,7 +217,7 @@ pub struct SampleEncoder {
 }
 
 impl SampleEncoder {
-    /// 押されたコマから読んだ番号の列。縦の 1 本のテストが見る。
+    /// 押されたフレームから読んだ番号の列。縦の 1 本のテストが見る。
     pub fn frame_indices(&self) -> &[i64] {
         &self.frame_indices
     }
@@ -236,7 +236,7 @@ impl Encoder for SampleEncoder {
             .ok_or_else(|| MmError::InvalidArgument("begin の前に push_frames".into()))?;
         for f in frames {
             if f.size() != settings.size {
-                return Err(MmError::InvalidArgument("コマの大きさが設定と違う".into()));
+                return Err(MmError::InvalidArgument("フレームの大きさが設定と違う".into()));
             }
             self.frame_indices.push(frame_index_of(f.pixel(0, 0)));
         }
@@ -299,19 +299,19 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
 
     let count = dec.info().frame_count();
     let mut n = 0;
-    while dec.next_frame().expect("復号").is_some() {
+    while dec.next_frame().expect("デコード").is_some() {
         n += 1;
     }
-    assert_eq!(n, count, "コマの数が duration と fps から数えた数と合う");
+    assert_eq!(n, count, "フレームの数が duration と fps から数えた数と合う");
 
     let t = RationalTime::from_frames(count / 2, fx.fps).expect("表せる");
     dec.seek(t).expect("シーク");
-    let f1 = dec.next_frame().expect("復号").expect("コマがある");
-    assert_eq!(f1.index, t.frame_index(fx.fps), "シーク先のコマの番号");
+    let f1 = dec.next_frame().expect("デコード").expect("フレームがある");
+    assert_eq!(f1.index, t.frame_index(fx.fps), "シーク先のフレームの番号");
     assert_eq!(f1.pts, t, "シーク先の PTS");
     dec.seek(t).expect("シーク");
-    let f2 = dec.next_frame().expect("復号").expect("コマがある");
-    assert_eq!(f1, f2, "同じ時刻にシークし直すと同じコマ");
+    let f2 = dec.next_frame().expect("デコード").expect("フレームがある");
+    assert_eq!(f1, f2, "同じ時刻にシークし直すと同じフレーム");
 
     let end = RationalTime::from_frames(5, fx.fps).expect("表せる");
     let range = TimeRange::new(RationalTime::ZERO, end).unwrap();
@@ -366,7 +366,7 @@ pub fn encoder_contract(
     ))
     .expect("audio");
     let report = enc.finish().expect("finish");
-    assert_eq!(report.frames, 6, "押したコマの数");
-    assert_eq!(report.audio_frames, 9_600, "押した音のコマの数");
+    assert_eq!(report.frames, 6, "押したフレームの数");
+    assert_eq!(report.audio_frames, 9_600, "押した音のフレームの数");
     assert!(settings.output_path.exists(), "出力ができている");
 }

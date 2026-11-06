@@ -15,7 +15,7 @@ pub enum EffectMarker {}
 #[derive(Debug)]
 pub enum MaskMarker {}
 
-/// 効果の ID。命令の `touches` と `mm diff` が指す。
+/// 効果の ID。操作の `touches` と `mm diff` が指す。
 pub type EffectId = Id<EffectMarker>;
 /// マスクの ID。
 pub type MaskId = Id<MaskMarker>;
@@ -30,7 +30,7 @@ pub fn default_true() -> bool {
     true
 }
 
-/// レイヤー。動画オブジェクトを 1 つ持ち、時間と重ね方を足す。
+/// レイヤー。ノードを 1 つ持ち、時間と重ね方を足す。
 ///
 /// コンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。
 /// `time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。
@@ -62,7 +62,7 @@ pub struct Layer {
     #[serde(default)]
     pub blend: BlendMode,
     pub opacity: Param,
-    /// 位置・拡大・回転・アンカー。描画器が合成で掛ける（種類には渡さない）。
+    /// 位置・拡大・回転・アンカー。レンダラーが合成で掛ける（種類には渡さない）。
     #[serde(default)]
     pub transform: Transform,
     #[serde(default)]
@@ -77,7 +77,7 @@ pub struct Layer {
     /// 無効にしたレイヤーは描かず、鳴らさない。
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 人が直した所。Claude の入口からの命令は断る。
+    /// 人が直した所。Claude の入口からの操作は断る。
     #[serde(default)]
     pub lock: bool,
 }
@@ -113,7 +113,7 @@ impl Layer {
         }
     }
 
-    /// レイヤーが持つ動画オブジェクトの根（source と効果）。
+    /// レイヤーが持つノードの根（source と効果）。
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         std::iter::once(&self.source).chain(self.effects.iter().map(|e| &e.node))
     }
@@ -212,7 +212,7 @@ impl Transform {
         *self == Self::default()
     }
 
-    /// 持っているパラメータの列（検証と命令が巡る）。
+    /// 持っているパラメータの列（検証と操作が巡る）。
     pub fn params(&self) -> impl Iterator<Item = &Param> {
         [&self.position, &self.scale, &self.rotation]
             .into_iter()
@@ -266,7 +266,7 @@ pub enum MatteKind {
     Luma,
 }
 
-/// 効果。動画オブジェクトの種類を 1 つ、レイヤーの絵を入力にして掛ける。
+/// 効果。ノードの種類を 1 つ、レイヤーの絵を入力にして掛ける。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Effect {

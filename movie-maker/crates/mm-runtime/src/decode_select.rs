@@ -1,7 +1,7 @@
-//! デコードの選択肢の切り替え。GPU で復号する実装を素材ごとに試し、だめなら次へ落とす。
+//! デコードの選択肢の切り替え。GPU でデコードする実装を素材ごとに試し、だめなら次へ落とす。
 //!
-//! - [`AutoDecoderFactory`]: `d3d12va` → `cuvid` → `ffmpeg` の順に、素材ごとに開く。開いた直後の数コマを
-//!   復号して通った実装を使う（NVENC で作った 4K の HEVC は d3d12va が 1 コマ目で落ちる）。
+//! - [`AutoDecoderFactory`]: `d3d12va` → `cuvid` → `ffmpeg` の順に、素材ごとに開く。開いた直後の数フレームを
+//!   デコードして通った実装を使う（NVENC で作った 4K の HEVC は d3d12va が 1 フレーム目で落ちる）。
 //!   GPU の文脈が無ければ最初から `ffmpeg`。
 //! - [`WithAudio`]: 映像を GPU の実装、音と素材の情報（音のストリーム、頭のずれ）を別のデコーダーが受け持つ。
 //!   GPU の実装は音を持たないため。
@@ -13,8 +13,8 @@ use mm_audio_api::AudioBlock;
 use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, TimeRange};
 
-// 開いた直後に復号して確かめるコマ数。0 コマ目で落ちる素材だけでなく、数コマ後に落ちるものも拾う。
-// d3d12va が別プロセスで試すコマ数と同じにそろえる。
+// 開いた直後にデコードして確かめるフレーム数。0 フレーム目で落ちる素材だけでなく、数フレーム後に落ちるものも拾う。
+// d3d12va が別プロセスで試すフレーム数と同じにそろえる。
 #[cfg(feature = "d3d12va")]
 use mm_decode_d3d12va::PROBE_FRAMES;
 #[cfg(not(feature = "d3d12va"))]
@@ -27,7 +27,7 @@ pub struct GpuCandidate {
 }
 
 impl GpuCandidate {
-    /// `open` では復号しない実装。`auto` が開いた直後の数コマを復号して確かめる。
+    /// `open` ではデコードしない実装。`auto` が開いた直後の数フレームをデコードして確かめる。
     pub fn new(factory: Arc<dyn DecoderFactory>) -> Self {
         Self {
             factory,
@@ -35,7 +35,7 @@ impl GpuCandidate {
         }
     }
 
-    /// `open` の中で、落ちる素材を別プロセスで試し済みの実装。`auto` は試し復号を重ねない。
+    /// `open` の中で、落ちる素材を別プロセスで試し済みの実装。`auto` は試しデコードを重ねない。
     pub fn probed_on_open(factory: Arc<dyn DecoderFactory>) -> Self {
         Self {
             factory,
@@ -70,7 +70,7 @@ impl AutoDecoderFactory {
             match open_and_probe(candidate, path, gpu) {
                 Ok(dec) => return Ok((dec, factory.id())),
                 Err(e) => {
-                    tracing::warn!(backend = factory.id(), path = %path.display(), error = %e, "GPU の復号を使えない。次の実装を試す");
+                    tracing::warn!(backend = factory.id(), path = %path.display(), error = %e, "GPU のデコードを使えない。次の実装を試す");
                     last_error = Some(e);
                 }
             }
@@ -94,7 +94,7 @@ impl DecoderFactory for AutoDecoderFactory {
     }
 }
 
-/// 開いて先頭の数コマを復号し、通れば最初の位置に戻して返す。`open` の中で試し済みの実装は開くだけ。
+/// 開いて先頭の数フレームをデコードし、通れば最初の位置に戻して返す。`open` の中で試し済みの実装は開くだけ。
 fn open_and_probe(
     candidate: &GpuCandidate,
     path: &Path,
@@ -189,7 +189,7 @@ mod tests {
         }
     }
 
-    /// 開けるが、`fail_at` 番目のコマで落ちる実装。
+    /// 開けるが、`fail_at` 番目のフレームで落ちる実装。
     struct FailsAt(usize);
     struct FailingDecoder {
         inner: Box<dyn Decoder>,
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn 開いた直後の数コマで落ちる実装は飛ばす() {
+    fn 開いた直後の数フレームで落ちる実装は飛ばす() {
         for at in [0, PROBE_FRAMES - 1] {
             let a = auto(vec![Arc::new(FailsAt(at))]);
             let (_, chosen) = a
@@ -271,13 +271,13 @@ mod tests {
             assert_eq!(
                 chosen,
                 mm_testkit::SAMPLE_ID,
-                "{at} コマ目で落ちる実装は使わない"
+                "{at} フレーム目で落ちる実装は使わない"
             );
         }
     }
 
     #[test]
-    fn 試したコマの後は先頭から出る() {
+    fn 試したフレームの後は先頭から出る() {
         let a = auto(vec![Arc::new(FailsAt(usize::MAX))]);
         let (mut dec, chosen) = a
             .open_with_choice(Path::new("x.mp4"), Some(&ctx()))
@@ -311,7 +311,7 @@ mod tests {
         ));
     }
 
-    /// `open` で何コマ復号されたかを数える実装。
+    /// `open` で何フレームデコードされたかを数える実装。
     struct Counting(Arc<std::sync::atomic::AtomicUsize>);
     struct CountingDecoder {
         inner: Box<dyn Decoder>,
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn open_で試し済みの実装には試し復号を重ねない() {
+    fn open_で試し済みの実装には試しデコードを重ねない() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let count = Arc::new(AtomicUsize::new(0));
         open_with(GpuCandidate::probed_on_open(Arc::new(Counting(

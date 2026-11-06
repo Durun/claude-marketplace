@@ -1,4 +1,4 @@
-//! 1 コマの時間を測る。時刻はこちらが決め、描いた絵を受け取るまでをスパンで測る。
+//! 1 フレームの時間を測る。時刻はこちらが決め、描いた絵を受け取るまでをスパンで測る。
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -30,7 +30,7 @@ fn pump_until(shared: &Shared, what: &str, cond: impl Fn(&Shared) -> bool) -> Re
     Ok(())
 }
 
-/// 時刻 `t` の画面にして、1 コマ受け取る。
+/// 時刻 `t` の画面にして、1 フレーム受け取る。
 fn render_frame(
     browser: &Browser,
     shared: &Shared,
@@ -163,7 +163,7 @@ pub fn run(opts: &BenchOptions) -> Result<(), String> {
     let wall = wall.elapsed();
 
     if opts.verify {
-        println!("古い時刻の絵が来たコマ: {stale} / {}", opts.frames);
+        println!("古い時刻の絵が来たフレーム: {stale} / {}", opts.frames);
         verify(&browser, &shared, dt, &hashes, &shots, opts)?;
     }
     report(&metrics.snapshot(), wall, opts);
@@ -192,7 +192,7 @@ fn verify(
     let (first_seq, first_hash) = hashes
         .get(hashes.len() / 2)
         .copied()
-        .ok_or("検証するコマが無い")?;
+        .ok_or("検証するフレームが無い")?;
     render_frame(browser, shared, opts, first_seq, first_seq as f64 * dt)?;
     let (again, _) = read_hash(shared)?;
     println!(

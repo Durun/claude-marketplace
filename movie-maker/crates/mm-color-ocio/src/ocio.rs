@@ -231,7 +231,7 @@ impl ColorTransform for OcioColor {
 }
 
 /// 組み込みの studio 設定には Rec.1886 の Rec.2020 の色空間が無いので、`bt2020` は
-/// `mm-color-lut` で作業空間に直してから（作業空間から）OCIO に渡す。
+/// `mm-color-lut` で作業色空間に直してから（作業色空間から）OCIO に渡す。
 const BT2020: &str = "bt2020";
 
 fn is_bt2020(cs: &ColorSpace) -> bool {
@@ -244,7 +244,7 @@ impl OcioColor {
         processor_for(&mut inner, from, to)?.apply_rgb(rgb)
     }
 
-    /// `bt2020` の端を LUT で作業空間と行き来し、反対側を OCIO に任せる。
+    /// `bt2020` の端を LUT で作業色空間と行き来し、反対側を OCIO に任せる。
     fn bt2020_apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
         let working = ColorSpace::working();
         let mid = if is_bt2020(from) {

@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-d3d12va"
-description = "FFmpeg の d3d12va で復号した NV12 / P010 を、描画器と同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
+description = "FFmpeg の d3d12va でデコードした NV12 / P010 を、レンダラーと同じ wgpu のデバイスの上で Rgba16Float にして返すデコーダー"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

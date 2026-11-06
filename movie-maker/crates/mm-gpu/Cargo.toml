@@ -1,6 +1,6 @@
 [package]
 name = "mm-gpu"
-description = "GPU を触る実装の共有部。wgpu の文脈とアダプターの選び方、GpuHelper の wgpu 実装、GPU のコマの受け渡しの型"
+description = "GPU を触る実装の共有部。wgpu の文脈とアダプターの選び方、GpuHelper の wgpu 実装、GPU のフレームの受け渡しの型"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

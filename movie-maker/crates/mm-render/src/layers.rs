@@ -12,7 +12,7 @@ use crate::compose::DrawItem;
 use crate::renderer::WgpuRenderer;
 use crate::transform::{uv_to_ndc, LayerTransform};
 
-/// 入れ子のコンポジションの種類の名前。種類の口から文書が見えないので、展開は描画器が行う。
+/// 入れ子のコンポジションの種類の名前。種類の口から文書が見えないので、展開はレンダラーが行う。
 pub const NESTED_KIND: &str = "composition";
 /// 入れ子の種類がコンポジションの ID を持つパラメータの名前。
 pub const NESTED_PARAM: &str = "composition";
@@ -92,7 +92,7 @@ impl WgpuRenderer {
         }
         self.composite(encoder, target, &prepared);
         mm_trace::counter!("render.layers_drawn", prepared.len());
-        // 命令がテクスチャを握っているので、提出の前に置き場から外してよい。
+        // 操作がテクスチャを握っているので、提出の前に置き場から外してよい。
         for id in temps {
             self.gpu.release_id(id);
         }

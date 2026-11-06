@@ -202,7 +202,7 @@ pub fn contract(
     }
 }
 
-/// 字形の参照が `faces` と文字列の中を指す。
+/// グリフの参照が `faces` と文字列の中を指す。
 fn check_glyph_refs(shaped: &ShapedText, text: &str) {
     for g in shaped.lines.iter().flat_map(|l| &l.glyphs) {
         assert!(

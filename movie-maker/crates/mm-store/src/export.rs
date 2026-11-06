@@ -55,7 +55,7 @@ fn sorted(v: &Value) -> Value {
 }
 
 /// ファイル名に使えない文字を `%XX` にする。大文字と小文字を区別しないファイルシステム（NTFS、APFS）で
-/// `Comp` と `comp` が同じファイルにならないよう、大文字も符号化する。
+/// `Comp` と `comp` が同じファイルにならないよう、大文字もエンコードする。
 fn file_stem(id: &str) -> String {
     let mut out = String::new();
     for b in id.bytes() {
@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn ファイル名に使えない_id_は符号化する() {
+    fn ファイル名に使えない_id_はエンコードする() {
         assert_eq!(file_stem("a/b c"), "a%2Fb%20c");
         assert_eq!(file_stem("c-1_x.v"), "c-1_x.v");
         assert_ne!(file_stem("Comp"), file_stem("comp"));

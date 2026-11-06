@@ -15,7 +15,7 @@
 | ProRes | 中間コーデック | 仕様は非公開。FFmpeg は逆解析の実装〔知〕 | WebCodecs は不可。WASM のデコーダー TurboRes と mediabunny の拡張（1080p で約 42 fps と自称） | 読み込みは必須。書き出しは FFmpeg | https://mediabunny.dev/guide/extensions/prores |
 | DNxHR、DPX、MXF | 中間コーデックと入れ物 | | WebCodecs は不可。FFmpeg は可 | あると良い | |
 | OpenEXR | 浮動小数の画像（VFX） | BSD-3 | WASM 版、tinyexr、exrjs がある | あると良い（VFX なら必須） | |
-| PQ（ST 2084）、HLG、Rec.2020 | HDR | 式は自由。Dolby Vision は商用 | WebGPU の canvas を rgba16float と `toneMapping: extended` にすると白を超えて出せる（Chrome 138〜）。WebGL2 の canvas は SDR のまま | あると良い。内部の作業空間は最初から線形の浮動小数にする | https://developer.chrome.com/blog/new-in-webgpu-129 |
+| PQ（ST 2084）、HLG、Rec.2020 | HDR | 式は自由。Dolby Vision は商用 | WebGPU の canvas を rgba16float と `toneMapping: extended` にすると白を超えて出せる（Chrome 138〜）。WebGL2 の canvas は SDR のまま | あると良い。内部の作業色空間は最初から線形の浮動小数にする | https://developer.chrome.com/blog/new-in-webgpu-129 |
 | VST3 | 音の効果のプラグイン | 2025-11 に MIT へ変わったという報告（二次情報、公式は未確認） | 不可。ネイティブのホスト。Node のホスト audiojs/host はプラグインが落ちるとホストごと落ちる | あると良い（ネイティブの補助プロセスが前提） | https://github.com/audiojs/host |
 | CLAP | 音の効果のプラグイン | MIT | WCLAP（WASM を AudioWorklet で）の試みがある（発展途上） | あると良い | https://github.com/WebCLAP |
 | BWF、iXML | 放送用の WAV のメタデータ | 自由〔知〕 | WAV のチャンクの解析なので自前で書ける | 読み込みは必須 | |
@@ -36,5 +36,5 @@ OFX、VST3、ProRes・DNxHR・MXF・DPX のデコード（WASM のデコーダ�
 
 - **A. ブラウザで描画 + ネイティブの補助プロセス**: 取り込みで FFmpeg がプロキシを作り、ブラウザで編集する。重い処理（OFX、VST3、OCIO のシェーダーの生成、OTIO の変換、書き出し）はネイティブが受け持つ。MasterSelects は WebGPU の描画と、小さな Rust の補助プロセスを組み合わせている〔確〕。
 - **B. Rust の共通の核 + wgpu で、ネイティブと WASM の両方**: OpenCut は GPU の合成、効果、マスクを含む Rust の核に WASM の口を付け、ネイティブの版も作っている（MIT、TypeScript から移行中）〔確〕。同じ描画をネイティブでも動かせ、OFX、OCIO、FFmpeg をネイティブ側で直接組み込める。移行の手間が大きく、成熟した先行事例は少ない。
-- **C. ネイティブの描画器がホストを持つ従来の形**: Resolve、Nuke の形。OFX のホストの実装は Natron（GPLv2）が参考になるが、流用すると GPL が及ぶ。
+- **C. ネイティブのレンダラーがホストを持つ従来の形**: Resolve、Nuke の形。OFX のホストの実装は Natron（GPLv2）が参考になるが、流用すると GPL が及ぶ。
 - 調べた人の意見〔推〕: A で始め、時刻（有理数）と色（線形の浮動小数）のモデルを規格に合わせておけば、後で B に移れる。

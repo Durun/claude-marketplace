@@ -60,7 +60,7 @@ pub enum HostRequest {
     Ping,
     /// 種類の準備（HTML の読み込み、プラグインの読み込み）。
     Prepare { params: serde_json::Value },
-    /// 時刻 `time` のコマを `size` で描く。
+    /// 時刻 `time` のフレームを `size` で描く。
     RenderFrame {
         time: RationalTime,
         size: Size,
@@ -80,7 +80,7 @@ pub enum HostResponse {
     Error { message: String },
 }
 
-/// ホストが描いたコマ。`HostResponse::Frame` の中身で外側のタグが `type` なので、こちらは
+/// ホストが描いたフレーム。`HostResponse::Frame` の中身で外側のタグが `type` なので、こちらは
 /// `kind` にする（同じ名前だと JSON のキーが重なって読めない）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

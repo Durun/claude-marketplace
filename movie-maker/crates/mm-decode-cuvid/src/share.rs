@@ -1,4 +1,4 @@
-//! CUDA と wgpu が共有する D3D12 のバッファの輪。cuvid のコマを 1 回コピーして wgpu に渡す。
+//! CUDA と wgpu が共有する D3D12 のバッファの輪。cuvid のフレームを 1 回コピーして wgpu に渡す。
 //!
 //! 各枠のフェンスは CUDA と wgpu が交互に進める。値は 1, 2, 3, ... と増え、
 //! 奇数が「CUDA がコピーを終えた」、偶数が「wgpu が読み終えた」。CUDA は次のコピーの前に
@@ -117,7 +117,7 @@ impl Drop for Imports {
         if self.memory.is_none() && self.semaphore.is_none() {
             return;
         }
-        // SAFETY: 文脈は復号器のもの。呼び出し側が GPU の仕事の完了を保証する。
+        // SAFETY: 文脈はデコーダーのもの。呼び出し側が GPU の仕事の完了を保証する。
         let Ok(_ctx) = (unsafe { self.cuda.scoped(self.ctx) }) else {
             return;
         };
@@ -187,7 +187,7 @@ impl SharedRing {
     /// `layout` の配置の共有バッファを `count` 枠つくる。
     ///
     /// # Safety
-    /// `ctx` と `stream` は、復号器が使う有効な CUDA の文脈とストリーム。
+    /// `ctx` と `stream` は、デコーダーが使う有効な CUDA の文脈とストリーム。
     pub unsafe fn new(
         (device, queue): (wgpu::Device, wgpu::Queue),
         cuda: Arc<CudaApi>,
@@ -236,7 +236,7 @@ impl SharedRing {
         &self.slots[index]
     }
 
-    /// cuvid のコマ（CUDA の NV12 か P010）を次の枠にコピーする。CPU は待たない。
+    /// cuvid のフレーム（CUDA の NV12 か P010）を次の枠にコピーする。CPU は待たない。
     /// その枠を wgpu が前に読んだ分の完了を CUDA のストリームの中で待ってからコピーし、
     /// 終わったらフェンスを進める。戻り値は枠の番号。
     ///
@@ -270,10 +270,10 @@ impl SharedRing {
         Ok(index)
     }
 
-    /// cuvid のコマの 2 面（Y と UV）のコピー元と、共有バッファの中のコピー先。
+    /// cuvid のフレームの 2 面（Y と UV）のコピー元と、共有バッファの中のコピー先。
     fn planes_of(&self, f: &ffmpeg_next::frame::Video) -> [PlaneCopy; 2] {
         let l = self.layout;
-        // SAFETY: cuvid のコマは CUDA のデバイスポインタを data[0] と data[1] に持つ。
+        // SAFETY: cuvid のフレームは CUDA のデバイスポインタを data[0] と data[1] に持つ。
         let (raw, y_pitch, uv_pitch) = unsafe {
             let raw = f.as_ptr();
             (raw, (*raw).linesize[0], (*raw).linesize[1])
@@ -357,7 +357,7 @@ impl Drop for SharedRing {
         // wgpu 側の読み取りが残っていれば終わるまで待ち、CUDA のコピーも終えてから取り込みを外す
         // （外すのは枠の `Imports` の Drop）。
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
-        // SAFETY: 文脈とストリームは復号器のもの。
+        // SAFETY: 文脈とストリームはデコーダーのもの。
         if let Ok(_ctx) = unsafe { self.cuda.scoped(self.ctx) } {
             let _ = unsafe { self.cuda.sync(self.stream) };
         }
