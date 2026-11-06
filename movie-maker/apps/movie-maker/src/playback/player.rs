@@ -272,7 +272,8 @@ impl Player {
     /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。逆操作も返す。
     fn commit(&mut self, ops: &[Op]) -> std::result::Result<(EditOutcome, Vec<Op>), String> {
         let mut project = (*self.project).clone();
-        let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
+        let ops = mm_ops::with_fitted_layers(&project, ops);
+        let outcome = apply_transaction(&mut project, &ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
         let touched = outcome.touches.to_vec();
         let inverse = outcome.inverse_ops().map_err(|e| e.to_string())?;
