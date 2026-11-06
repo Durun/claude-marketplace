@@ -127,6 +127,10 @@ pub struct Shared {
     pub cpu_frames: AtomicBool,
     /// 再生スレッドがまだ適用していない操作。
     pub edits: Mutex<Vec<PendingEdit>>,
+    /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
+    pub core: OnceLock<Arc<mm_serve::Core>>,
+    /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
+    pub reload_touched: Mutex<Vec<String>>,
     /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
     doc: Mutex<Option<OpenDoc>>,
     /// `doc` を置き直すたびに進む。読む側が作り直すかどうかの判定に使う。
@@ -158,6 +162,8 @@ impl Shared {
             gpu: Mutex::new(None),
             cpu_frames: AtomicBool::new(false),
             edits: Mutex::new(Vec::new()),
+            core: OnceLock::new(),
+            reload_touched: Mutex::new(Vec::new()),
             doc: Mutex::new(None),
             doc_serial: AtomicU64::new(0),
             selected_layer: Mutex::new(None),
