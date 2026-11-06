@@ -249,3 +249,17 @@ fn 二パスのエンコーダーには同じ映像を_2_回押し_進み具合�
         (2 * frames as u64, 2 * frames as u64)
     );
 }
+
+#[test]
+fn プロレスと_dnxhr_は_mov_以外の出力先を書き出す前に断る() {
+    for (codec, name, ok) in [
+        ("prores_422hq", "a.mp4", false),
+        ("dnxhr_hq", "a.mxf", false),
+        ("prores_4444", "a.MOV", true),
+        ("h264", "a.mp4", true),
+        ("h264_nvenc", "a.mov", true),
+    ] {
+        let r = check_container(codec, Path::new(name));
+        assert_eq!(r.is_ok(), ok, "{codec} {name}");
+    }
+}

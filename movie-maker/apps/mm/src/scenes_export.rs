@@ -118,8 +118,8 @@ fn measure(
     let work = args.out_dir.join("export-work");
     let (mut fps, mut elapsed_ms) = (Vec::new(), Vec::new());
     for i in 0..args.repeat {
-        // 拡張子は ProRes の MOV と MP4 の両方で通るよう、コンテナに合わせず固定の名前にする（muxer は設定で決まる）。
-        let output = work.join(format!("run{i}.out"));
+        // ProRes と DNxHR は .mov でないと断られる。muxer は拡張子ではなくコーデックで決まるので、全部 .mov にする。
+        let output = work.join(format!("run{i}.mov"));
         let summary = export_project(
             engine,
             project,

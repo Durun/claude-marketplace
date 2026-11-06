@@ -235,6 +235,15 @@ pub fn export_run(
                 .map_or("", |t| &t.output_path),
         )
     });
+    let codec = options.codec.as_deref().or_else(|| {
+        project
+            .render_target(&target)
+            .ok()
+            .map(|t| t.codec.as_str())
+    });
+    if let Some(codec) = codec {
+        check_container(codec, &output_path)?;
+    }
     ensure_parent(&output_path)?;
     let partial = PartialFile::new(partial_path(&output_path));
     set_output(&mut project, &target, &partial_path(&output_path))?;
@@ -278,6 +287,22 @@ fn set_output(project: &mut Project, target: &RenderTargetId, path: &Path) -> Re
         .find(|t| t.id == *target)
         .ok_or_else(|| MmError::NotFound(format!("render target {target}")))?;
     t.output_path = path.to_string_lossy().into_owned();
+    Ok(())
+}
+
+/// ProRes と DNxHR は MOV に書くので、出力先の拡張子が `.mov` でなければ書き出す前に断る
+/// （MP4 の拡張子の中身が MOV になって、プレーヤーや納品先が開けなくなるのを防ぐ）。
+fn check_container(codec: &str, output: &Path) -> Result<()> {
+    let needs_mov = codec.starts_with("prores") || codec.starts_with("dnx");
+    let is_mov = output
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("mov"));
+    if needs_mov && !is_mov {
+        return Err(MmError::InvalidArgument(format!(
+            "コーデック {codec} は MOV に書く。出力先の拡張子を .mov にする（{}）",
+            output.display()
+        )));
+    }
     Ok(())
 }
 
