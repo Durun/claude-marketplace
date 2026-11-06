@@ -15,8 +15,24 @@ fn 色の契約を満たす() {
 #[test]
 fn 名前の表の空間を全部知っている() {
     let known = OcioColor::builtin().expect("設定").known_spaces();
-    for name in ["lin_rec709", "srgb", "bt709", "bt709_oetf"] {
-        assert!(known.contains(&ColorSpace(name.into())), "{name} を知る");
+    for name in mm_color_api::UNIT_WHITE_SPACES {
+        assert!(known.contains(&ColorSpace((*name).into())), "{name} を知る");
+    }
+}
+
+#[test]
+fn bt2020_の行列は_ocio_の_linear_rec2020_と一致する() {
+    let ocio = OcioColor::builtin().expect("設定");
+    let (from, to) = (ColorSpace("Linear Rec.2020".into()), ColorSpace::working());
+    for (i, unit) in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        .iter()
+        .enumerate()
+    {
+        let got = ocio.apply(&from, &to, *unit).expect("OCIO");
+        for (row, g) in got.iter().enumerate() {
+            let want = mm_color_api::REC2020_TO_REC709[row][i];
+            assert!((g - want).abs() < 1e-3, "[{row}][{i}] {g} vs {want}");
+        }
     }
 }
 

@@ -23,6 +23,21 @@
 
 契約の白の確認は、符号化値 (1,1,1) が白になる上の全部（`UNIT_WHITE_SPACES`）に限る。それ以外（`acescg` など）は往復と `program` だけ確かめる。
 
+## bt601 と bt2020 の扱い
+
+デコーダーは SD の素材を `bt601`、UHD の素材を `bt2020` と名乗る。描画器が `color_space` を引くので、
+名前の表の全部を `mm-color-lut` と `mm-color-ocio` が引けるようにする（契約テストが表の全部を引く）。
+
+- 伝達関数は 3 つとも Rec.1886（`linear = v^2.4`）。YUV → RGB の行列はデコーダーが済ませている。
+- `bt601`: 原色は Rec.709 と同じものとして扱い、`bt709` と同じ変換にする。SMPTE 170M と Rec.709 の原色の差は小さく、
+  組み込みの OCIO 設定にも Rec.601 の色空間が無い。差を厳密に出す必要が出たら、別の名前を足す。
+- `bt2020`: 原色を作業空間（Rec.709）に変える。広色域の色は Rec.709 の線形で負や 1 超になるので、切らずに持ち回る。
+  `mm-color-api` の `REC2020_TO_REC709`（BT.2407 の行列）を `mm-color-lut` と見本が使い、`mm-color-ocio` の
+  `Linear Rec.2020` と一致することを試験で確かめる。
+- 負の値は伝達関数が符号を保って折り返す（`sign(v) * f(abs(v))`。CPU と WGSL で同じ）。
+- OCIO の組み込み設定（studio-config）には `Rec.1886 Rec.2020 - Display` の色空間が無いので、`bt2020` は
+  `mm-color-lut` で作業空間に直してから OCIO に渡す。OCIO の別名は `bt601` → `Rec.1886 Rec.709 - Display`。
+
 ## 影響するクレート
 
 - `mm-color-api`: 名前の表と `UNIT_WHITE_SPACES`。

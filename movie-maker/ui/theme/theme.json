@@ -8,7 +8,9 @@
   "shape": {
     "radius": { "sm": 3, "md": 4, "lg": 6 },
     "borderWidth": 1,
-    "space": { "xs": 4, "sm": 6, "md": 10, "lg": 16 }
+    "space": { "xs": 4, "sm": 6, "md": 10, "lg": 16 },
+    "size": { "chevron": 6, "bullet": 8, "left-column": 260, "focus-offset": 1 },
+    "stroke": { "chevron": 2, "focus": 2 }
   },
   "modes": {
     "light": {

@@ -13,23 +13,48 @@ use mm_audio_api::AudioBlock;
 use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, TimeRange};
 
-/// 開いた直後に復号して確かめるコマ数。0 コマ目で落ちる素材だけでなく、数コマ後に落ちるものも拾う。
+// 開いた直後に復号して確かめるコマ数。0 コマ目で落ちる素材だけでなく、数コマ後に落ちるものも拾う。
+// d3d12va が別プロセスで試すコマ数と同じにそろえる。
+#[cfg(feature = "d3d12va")]
+use mm_decode_d3d12va::PROBE_FRAMES;
+#[cfg(not(feature = "d3d12va"))]
 const PROBE_FRAMES: usize = 4;
+
+/// `auto` が試す GPU の実装 1 つ。
+pub struct GpuCandidate {
+    factory: Arc<dyn DecoderFactory>,
+    probed_on_open: bool,
+}
+
+impl GpuCandidate {
+    /// `open` では復号しない実装。`auto` が開いた直後の数コマを復号して確かめる。
+    pub fn new(factory: Arc<dyn DecoderFactory>) -> Self {
+        Self {
+            factory,
+            probed_on_open: false,
+        }
+    }
+
+    /// `open` の中で、落ちる素材を別プロセスで試し済みの実装。`auto` は試し復号を重ねない。
+    pub fn probed_on_open(factory: Arc<dyn DecoderFactory>) -> Self {
+        Self {
+            factory,
+            probed_on_open: true,
+        }
+    }
+}
 
 /// 素材ごとに GPU の実装を試して、通ったものを使う口。
 pub struct AutoDecoderFactory {
     /// 試す順に並べた GPU の実装。
-    gpu: Vec<Arc<dyn DecoderFactory>>,
+    gpu: Vec<GpuCandidate>,
     /// 最後の逃げ道（CPU）。
     fallback: Option<Arc<dyn DecoderFactory>>,
 }
 
 impl AutoDecoderFactory {
     /// `gpu` を前から順に試し、全部だめなら `fallback`。
-    pub fn new(
-        gpu: Vec<Arc<dyn DecoderFactory>>,
-        fallback: Option<Arc<dyn DecoderFactory>>,
-    ) -> Self {
+    pub fn new(gpu: Vec<GpuCandidate>, fallback: Option<Arc<dyn DecoderFactory>>) -> Self {
         Self { gpu, fallback }
     }
 
@@ -40,8 +65,9 @@ impl AutoDecoderFactory {
         gpu: Option<&dyn GpuContextRef>,
     ) -> Result<(Box<dyn Decoder>, &'static str)> {
         let mut last_error = None;
-        for factory in self.gpu.iter().filter(|_| gpu.is_some()) {
-            match open_and_probe(factory.as_ref(), path, gpu) {
+        for candidate in self.gpu.iter().filter(|_| gpu.is_some()) {
+            let factory = &candidate.factory;
+            match open_and_probe(candidate, path, gpu) {
                 Ok(dec) => return Ok((dec, factory.id())),
                 Err(e) => {
                     tracing::warn!(backend = factory.id(), path = %path.display(), error = %e, "GPU の復号を使えない。次の実装を試す");
@@ -68,13 +94,16 @@ impl DecoderFactory for AutoDecoderFactory {
     }
 }
 
-/// 開いて先頭の数コマを復号し、通れば最初の位置に戻して返す。
+/// 開いて先頭の数コマを復号し、通れば最初の位置に戻して返す。`open` の中で試し済みの実装は開くだけ。
 fn open_and_probe(
-    factory: &dyn DecoderFactory,
+    candidate: &GpuCandidate,
     path: &Path,
     gpu: Option<&dyn GpuContextRef>,
 ) -> Result<Box<dyn Decoder>> {
-    let mut dec = factory.open(path, gpu)?;
+    let mut dec = candidate.factory.open(path, gpu)?;
+    if candidate.probed_on_open {
+        return Ok(dec);
+    }
     for _ in 0..PROBE_FRAMES {
         if dec.next_frame()?.is_none() {
             break;
@@ -219,6 +248,7 @@ mod tests {
     }
 
     fn auto(gpu: Vec<Arc<dyn DecoderFactory>>) -> AutoDecoderFactory {
+        let gpu = gpu.into_iter().map(GpuCandidate::new).collect();
         AutoDecoderFactory::new(gpu, Some(Arc::new(SampleDecoderFactory::default())))
     }
 
@@ -265,7 +295,7 @@ mod tests {
 
     #[test]
     fn 逃げ道が無ければ最後の失敗を返す() {
-        let a = AutoDecoderFactory::new(vec![Arc::new(CannotOpen)], None);
+        let a = AutoDecoderFactory::new(vec![GpuCandidate::new(Arc::new(CannotOpen))], None);
         assert!(matches!(
             a.open_with_choice(Path::new("x.mp4"), Some(&ctx())),
             Err(MmError::Unsupported(_))
@@ -279,6 +309,60 @@ mod tests {
             a.open_with_choice(Path::new("x.broken.mp4"), Some(&ctx())),
             Err(MmError::Corrupt(_))
         ));
+    }
+
+    /// `open` で何コマ復号されたかを数える実装。
+    struct Counting(Arc<std::sync::atomic::AtomicUsize>);
+    struct CountingDecoder {
+        inner: Box<dyn Decoder>,
+        decoded: Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl DecoderFactory for Counting {
+        fn id(&self) -> &'static str {
+            "counting"
+        }
+        fn open(&self, p: &Path, g: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
+            Ok(Box::new(CountingDecoder {
+                inner: SampleDecoderFactory::default().open(p, g)?,
+                decoded: self.0.clone(),
+            }))
+        }
+    }
+    impl Decoder for CountingDecoder {
+        fn info(&self) -> &MediaInfo {
+            self.inner.info()
+        }
+        fn seek(&mut self, t: RationalTime) -> Result<()> {
+            self.inner.seek(t)
+        }
+        fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
+            self.decoded
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.next_frame()
+        }
+        fn decode_audio(&mut self, r: TimeRange) -> Result<AudioBlock> {
+            self.inner.decode_audio(r)
+        }
+    }
+
+    fn open_with(candidate: GpuCandidate) {
+        let a = AutoDecoderFactory::new(vec![candidate], None);
+        let (_, chosen) = a
+            .open_with_choice(Path::new("x.mp4"), Some(&ctx()))
+            .unwrap();
+        assert_eq!(chosen, "counting");
+    }
+
+    #[test]
+    fn open_で試し済みの実装には試し復号を重ねない() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let count = Arc::new(AtomicUsize::new(0));
+        open_with(GpuCandidate::probed_on_open(Arc::new(Counting(
+            count.clone(),
+        ))));
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+        open_with(GpuCandidate::new(Arc::new(Counting(count.clone()))));
+        assert_eq!(count.load(Ordering::SeqCst), PROBE_FRAMES);
     }
 
     #[test]

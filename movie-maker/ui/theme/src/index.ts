@@ -14,6 +14,10 @@ export interface Theme {
     radius: Record<string, number>;
     borderWidth: number;
     space: Record<string, number>;
+    /** 部品の寸法（矢印、箇条書きの点、左の列の幅など）。 */
+    size: Record<string, number>;
+    /** 線の太さ（矢印、フォーカスの枠）。`borderWidth` は面の境界。 */
+    stroke: Record<string, number>;
   };
   modes: Record<ModeName, Mode>;
 }
@@ -79,6 +83,8 @@ const sharedVars = (t: Theme): string[] => [
   ...Object.entries(t.shape.radius).map(([k, v]) => `${PREFIX}-radius-${k}: ${px(v)};`),
   `${PREFIX}-border-width: ${px(t.shape.borderWidth)};`,
   ...Object.entries(t.shape.space).map(([k, v]) => `${PREFIX}-space-${k}: ${px(v)};`),
+  ...Object.entries(t.shape.size).map(([k, v]) => `${PREFIX}-size-${k}: ${px(v)};`),
+  ...Object.entries(t.shape.stroke).map(([k, v]) => `${PREFIX}-stroke-${k}: ${px(v)};`),
 ];
 
 const block = (selector: string, lines: string[]): string =>
