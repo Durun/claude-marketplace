@@ -1,4 +1,4 @@
-//! 変形、不透明度、入れ子、GPU の時間、見本の絵。GPU が無い環境では飛ばし、
+//! 変形、不透明度、入れ子、GPU の時間、期待画像。GPU が無い環境ではスキップし、
 //! `MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::path::Path;
@@ -31,7 +31,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
@@ -100,7 +100,7 @@ fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
     }
 }
 
-/// 見本の素材 `clip` を持つプロジェクト。
+/// フィクスチャの素材 `clip` を持つプロジェクト。
 fn project(comps: Vec<Composition>) -> Project {
     let media = SampleMedia::default();
     let mut p = Project::new();
@@ -133,7 +133,7 @@ fn request<'a>(
     }
 }
 
-/// 1 コマ描いて CPU の絵にする。
+/// 1 フレーム描いて CPU の画像にする。
 fn render_image(r: &mut WgpuRenderer, p: &Project, name: &str, size: Size) -> Arc<RgbaImage> {
     let id = Id::new(name);
     let nodes = registry();
@@ -158,7 +158,7 @@ fn assert_pixel(img: &RgbaImage, x: u32, y: u32, want: Rgba) {
 }
 
 #[test]
-fn 変形が無ければ_cpu_の見本と同じ絵() {
+fn 変形が無ければ_cpu_のモックと同じ画像() {
     let Some(ctx) = gpu() else { return };
     let media = SampleMedia::default();
     let (project, id, _) = vertical_project(&media, Path::new("out.mp4"));
@@ -170,14 +170,14 @@ fn 変形が無ければ_cpu_の見本と同じ絵() {
         sample_services(),
     );
     let want = {
-        let f = cpu.render_frame(&req).expect("見本が描ける");
+        let f = cpu.render_frame(&req).expect("モックが描ける");
         cpu.gpu().download(&f).expect("読み戻せる")
     };
     let mut r = renderer(&ctx);
     let f = r.render_frame(&req).expect("描ける");
     let got = r.gpu().download(&f).expect("読み戻せる");
     let diff = got.max_diff(&want).expect("同じ大きさ");
-    assert!(diff <= TOLERANCE, "CPU の見本との差 {diff}");
+    assert!(diff <= TOLERANCE, "CPU のモックとの差 {diff}");
     assert!(r.take_errors().is_empty());
 }
 
@@ -216,7 +216,7 @@ fn 九十度回すと縦長になる() {
 }
 
 #[test]
-fn 不透明度は下の絵と混ざる() {
+fn 不透明度は下の画像と混ざる() {
     let Some(ctx) = gpu() else { return };
     let mut top = layer("top", solid(Rgba::WHITE));
     top.opacity = Param::constant(ParamValue::Number(0.5));
@@ -227,7 +227,7 @@ fn 不透明度は下の絵と混ざる() {
 }
 
 #[test]
-fn 入れ子は中を描いたものと同じ絵() {
+fn 入れ子は中を描いたものと同じ画像() {
     let Some(ctx) = gpu() else { return };
     let inner = comp(
         "inner",
@@ -257,7 +257,7 @@ fn 入れ子の循環は透明にして続ける() {
     let mut r = renderer(&ctx);
     let img = render_image(&mut r, &p, "loop", SMALL);
     assert_pixel(&img, 10, 10, Rgba::TRANSPARENT);
-    assert!(!r.take_errors().is_empty(), "循環は印を残す");
+    assert!(!r.take_errors().is_empty(), "循環はフラグを残す");
 }
 
 #[test]
@@ -308,14 +308,14 @@ fn 区間を描いてもテクスチャが溜まらない() {
         )
         .expect("区間が描ける");
     assert_eq!((n, seen), (30, 30));
-    assert_eq!(r.texture_count(), before, "区間のコマは捨てる");
+    assert_eq!(r.texture_count(), before, "区間のフレームはドロップする");
     for _ in 0..20 {
         render_image(&mut r, &p, "main", SMALL);
     }
-    assert!(r.texture_count() <= 8, "単発のコマは直近の分だけ持つ");
+    assert!(r.texture_count() <= 8, "単発のフレームは直近の分だけ持つ");
 }
 
-/// 見本の絵: 背景、素材、回した単色、入れ子、拡大した文字を重ねる。
+/// 期待画像: 背景、素材、回した単色、入れ子、拡大した文字を重ねる。
 fn showcase() -> (Project, Size) {
     let size = Size::new(640, 360);
     let footage = Node::new("footage", 1)
@@ -396,7 +396,7 @@ fn to_srgb8(img: &RgbaImage) -> Vec<u8> {
 }
 
 #[test]
-fn 見本の絵を_png_に書く() {
+fn 期待画像を_png_に書く() {
     let Some(ctx) = gpu() else { return };
     let (p, size) = showcase();
     let mut r = renderer(&ctx);
@@ -412,5 +412,5 @@ fn 見本の絵を_png_に書く() {
         .expect("ヘッダー")
         .write_image_data(&to_srgb8(&img))
         .expect("画素");
-    eprintln!("見本の絵: {}", path.display());
+    eprintln!("期待画像: {}", path.display());
 }

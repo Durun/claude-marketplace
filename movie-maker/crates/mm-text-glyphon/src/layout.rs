@@ -1,4 +1,4 @@
-//! cosmic-text の行組みを `ShapedText` に写す。字体と字形の番号を結果に残すので、描画は行組みをやり直さない。
+//! cosmic-text の行組みを `ShapedText` に変換する。フォントとグリフの番号を結果に残すので、描画は行組みをやり直さない。
 
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap,
@@ -25,7 +25,7 @@ fn family(name: &str) -> Family<'_> {
     }
 }
 
-/// 行高の画素数。0 以下の指定でも cosmic-text が落ちないようにする。
+/// 行高の画素数。0 以下の指定でも cosmic-text がクラッシュしないようにする。
 pub(crate) fn line_height_px(style: &TextStyle) -> f32 {
     (style.size_px * style.line_height).max(1.0)
 }
@@ -68,7 +68,7 @@ fn line_starts(text: &str) -> Vec<usize> {
     starts
 }
 
-/// fontdb の字体を名前と太さで引ける形にする。
+/// fontdb のフェイスを名前と太さで引ける形にする。
 fn face_ref(
     fs: &FontSystem,
     id: cosmic_text::fontdb::ID,

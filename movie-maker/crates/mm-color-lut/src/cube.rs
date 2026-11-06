@@ -40,7 +40,7 @@ impl Cube3d {
                     domain_min = [low; 3];
                     domain_max = [high; 3];
                 }
-                // 知らないキーワードの行は読み飛ばす。値の行は数字・符号・小数点で始まる。
+                // 知らないキーワードの行はスキップする。値の行は数字・符号・小数点で始まる。
                 Some(first) if first.starts_with(|c: char| c.is_ascii_alphabetic()) => {}
                 Some(first) => {
                     let row = parse_triple(std::iter::once(first).chain(words))?;
@@ -65,7 +65,7 @@ impl Cube3d {
         })
     }
 
-    /// 入力を 0..=1 に切る口の約束に合わせ、領域が 0..=1 の LUT だけ渡せる。
+    /// 入力を 0..=1 に切るインターフェースの契約に合わせ、領域が 0..=1 の LUT だけ渡せる。
     pub fn to_program(&self) -> Result<TransformProgram> {
         if self.domain_min != [0.0; 3] || self.domain_max != [1.0; 3] {
             return Err(MmError::Unsupported(
@@ -78,7 +78,7 @@ impl Cube3d {
         })
     }
 
-    /// 三線形補間で 1 画素に当てる。領域の外は端に切る。
+    /// 三線形補間で 1 画素に適用する。領域の外は端に切る。
     pub fn sample(&self, rgb: [f32; 3]) -> [f32; 3] {
         sample_trilinear(self.size, &self.data, self.normalize(rgb))
     }
@@ -91,7 +91,7 @@ impl Cube3d {
     }
 }
 
-/// `Lut3d` の中身を三線形補間で引く。入力は 0..=1 に切る。
+/// `Lut3d` の内容を三線形補間で引く。入力は 0..=1 に切る。
 pub fn sample_trilinear(size: u32, data: &[f32], rgb: [f32; 3]) -> [f32; 3] {
     let n = size as usize;
     let max = (n - 1) as f32;
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn resolveの入力範囲の行は領域として読み知らない行は読み飛ばす() {
+    fn resolveの入力範囲の行は領域として読み知らない行はスキップする() {
         let text = to_text(&identity(2)).replace(
             "LUT_3D_SIZE 2",
             "LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.0 2.0\nFOO bar",

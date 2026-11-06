@@ -1,8 +1,8 @@
-//! パラメータの指し方。レイヤーかカットの ID と、その中の道筋。
+//! パラメータの指し方。レイヤーかカットの ID と、その中のパス。
 //!
-//! 道筋は `.` で区切る。レイヤーは `opacity`、`transform.position|scale|rotation|anchor`、
+//! パスは `.` で区切る。レイヤーは `opacity`、`transform.position|scale|rotation|anchor`、
 //! `source.<名前>`、`effects.<効果の ID>.<名前>`、`masks.<マスクの ID>.path|feather|opacity`、
-//! `audio.gain_db|pan`。カットは `source.<名前>`。種類のパラメータの名前は `.` を含んでよい。
+//! `audio.gain_db|pan`。カットは `source.<名前>`。ノードのパラメータの名前は `.` を含んでよい。
 
 use std::collections::BTreeMap;
 
@@ -27,10 +27,10 @@ pub struct ParamRef {
     /// レイヤーの ID（レイヤーのパラメータを指すとき）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<LayerId>,
-    /// カットの ID（カットの種類のパラメータを指すとき）。
+    /// カットの ID（カットのノードのパラメータを指すとき）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cut: Option<CutId>,
-    /// 持ち主の中の道筋。
+    /// 持ち主の中のパス。
     pub path: String,
 }
 
@@ -44,7 +44,7 @@ impl ParamRef {
         }
     }
 
-    /// カットの種類のパラメータ。
+    /// カットのノードのパラメータ。
     pub fn cut(cut: &CutId, path: impl Into<String>) -> Self {
         Self {
             layer: None,
@@ -64,7 +64,7 @@ impl ParamRef {
         }
     }
 
-    /// 触る所。種類のパラメータ（`source.*`、`effects.*`）は入れ子の参照先を変えうるので、
+    /// 触る所。ノードのパラメータ（`source.*`、`effects.*`）は入れ子の参照先を変えうるので、
     /// 持ち主を含むコンポジションか sequence と、新しい値 `value` が指す先とその先の全部も含める。
     pub(crate) fn touches_in(
         &self,
@@ -91,7 +91,7 @@ impl ParamRef {
         Ok(t)
     }
 
-    /// 指す場所を文書の中から引く。
+    /// 指す場所をプロジェクトのデータの中から引く。
     pub(crate) fn resolve<'a>(&self, project: &'a mut Project) -> Result<ParamSlot<'a>> {
         self.touches()?;
         if let Some(cut) = &self.cut {
@@ -107,7 +107,7 @@ impl ParamRef {
 }
 
 fn unknown_path(path: &str) -> MmError {
-    MmError::NotFound(format!("パラメータの道筋 {path}"))
+    MmError::NotFound(format!("パラメータのパス {path}"))
 }
 
 fn resolve_layer<'a>(layer: &'a mut Layer, path: &str) -> Result<ParamSlot<'a>> {
@@ -159,7 +159,7 @@ fn resolve_mask<'a>(layer: &'a mut Layer, rest: &str) -> Option<ParamSlot<'a>> {
     }
 }
 
-/// パラメータの置き場。必ず在る欄、無くてもよい欄、種類のパラメータのマップの 1 項目。
+/// パラメータの置き場所。必ず在るフィールド、無くてもよいフィールド、ノードのパラメータのマップの 1 項目。
 pub(crate) enum ParamSlot<'a> {
     Fixed(&'a mut Param),
     Optional(&'a mut Option<Param>),
@@ -197,7 +197,7 @@ impl ParamSlot<'_> {
         }
     }
 
-    /// 値を外す。必ず在る欄は外せない。
+    /// 値を外す。必ず在るフィールドは外せない。
     pub fn remove(&mut self) -> Result<Param> {
         let removed = match self {
             Self::Fixed(_) => {

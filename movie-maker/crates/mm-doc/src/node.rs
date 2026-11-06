@@ -1,4 +1,4 @@
-//! 動画オブジェクト。種類の名前と版、パラメータ、入力。
+//! ノード。ノードの種類の名前とバージョン、パラメータ、入力。
 
 use std::collections::BTreeMap;
 
@@ -8,16 +8,16 @@ use mm_types::ParamValue;
 
 use crate::param::Param;
 
-/// 入れ子のコンポジションの種類の名前。パラメータ [`NESTED_PARAM`] に中のコンポジションの ID（文字）。
+/// 入れ子のコンポジションのノードの種類の名前。パラメータ [`NESTED_PARAM`] に中のコンポジションの ID（文字）。
 pub const NESTED_KIND: &str = "composition";
 /// 入れ子のコンポジションの ID を持つパラメータの名前。
 pub const NESTED_PARAM: &str = "composition";
-/// 磁気の並びの種類の名前。パラメータ [`SEQUENCE_PARAM`] に sequence の ID（文字）。
+/// マグネティックシーケンスのノードの種類の名前。パラメータ [`SEQUENCE_PARAM`] に sequence の ID（文字）。
 pub const SEQUENCE_KIND: &str = "sequence";
 /// sequence の ID を持つパラメータの名前。
 pub const SEQUENCE_PARAM: &str = "sequence";
 
-/// 動画オブジェクト。種類の名前と版、パラメータ、入力。
+/// ノード。ノードの種類の名前とバージョン、パラメータ、入力。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Node {
@@ -30,7 +30,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// パラメータ無しの種類。
+    /// パラメータ無しのノードの種類。
     pub fn new(kind: impl Into<String>, version: u32) -> Self {
         Self {
             kind: kind.into(),

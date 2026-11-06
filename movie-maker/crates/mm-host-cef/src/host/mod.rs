@@ -1,4 +1,4 @@
-//! CEF の起動と、コマンドラインの入口。
+//! CEF の起動と、コマンドラインのエントリーポイント。
 
 mod bench;
 mod gpu;
@@ -52,7 +52,7 @@ fn parse_args() -> Result<BenchOptions, String> {
         return Err("使い方: mm-host-cef bench [--path accel|cpu] [--frames N] [--warmup N] [--size WxH] [--fps N] [--out DIR] [--verify]".into());
     }
     while let Some(flag) = it.next() {
-        // `--名前=値` は Chromium のスイッチ。CEF が自分で読むのでここでは飛ばす。
+        // `--名前=値` は Chromium のスイッチ。CEF が自分で読むのでここではスキップする。
         if flag.starts_with("--") && flag.contains('=') {
             continue;
         }
@@ -85,7 +85,7 @@ fn parse_args() -> Result<BenchOptions, String> {
     Ok(opts)
 }
 
-/// 入口。CEF はサブプロセス（GPU、レンダラ）にも同じ実行ファイルを使うので、最初に判定する。
+/// エントリーポイント。CEF はサブプロセス（GPU、レンダラ）にも同じ実行ファイルを使うので、最初に判定する。
 pub fn run() -> ExitCode {
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
     let args = Args::new();
@@ -124,7 +124,7 @@ pub fn run() -> ExitCode {
 
 fn start_and_bench(args: &Args, opts: &BenchOptions) -> Result<(), String> {
     let cef_dir = std::env::var("CEF_PATH")
-        .map_err(|_| "環境変数 CEF_PATH（CEF の配布物の置き場）が無い".to_string())?;
+        .map_err(|_| "環境変数 CEF_PATH（CEF の配布物の配置先）が無い".to_string())?;
     let cache = std::env::temp_dir().join("mm-host-cef-cache");
     let log_file = std::env::var("MM_CEF_LOG").ok();
     let settings = Settings {

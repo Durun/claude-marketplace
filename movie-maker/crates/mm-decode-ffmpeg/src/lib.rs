@@ -1,10 +1,10 @@
 //! FFmpeg のライブラリによるデコーダー（`mm-decode-api` の実装）。
 //!
-//! - コマの番号は、開くときに読む映像パケットの PTS の索引の位置で決める。B フレーム、
+//! - フレームの番号は、開くときに読む映像パケットの PTS の索引の位置で決める。B フレーム、
 //!   シーク後、VFR でも同じ素材は同じ番号になる。
-//! - 素材の時間軸の 0 は最初のコマの PTS。コンテナの開始時刻が 0 でなくてもコマ 0 が t = 0。
-//! - 固定フレームレート（CFR）なら `fps` を返し、コマの `pts` は `index / fps`。
-//!   そうでなければ VFR として `pts_index` に各コマの時刻を返す。
+//! - 素材の時間軸の 0 は最初のフレームの PTS。コンテナの開始時刻が 0 でなくてもフレーム 0 が t = 0。
+//! - 固定フレームレート（CFR）なら `fps` を返し、フレームの `pts` は `index / fps`。
+//!   そうでなければ VFR として `pts_index` に各フレームの時刻を返す。
 //! - 壊れた素材は `Err(Corrupt)`。
 //!
 //! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
@@ -26,7 +26,7 @@ pub use video::FfmpegDecoder;
 /// 実装の名前。`mm-runtime` の設定で選ぶ。
 pub const ID: &str = "ffmpeg";
 
-/// FFmpeg を開くデコーダーの口。
+/// FFmpeg を開くデコーダーのインターフェース。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FfmpegDecoderFactory;
 
@@ -35,7 +35,7 @@ impl DecoderFactory for FfmpegDecoderFactory {
         ID
     }
 
-    /// CPU で復号するので GPU の文脈は使わない。
+    /// CPU でデコードするので GPU のコンテキストは使わない。
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         init()?;
         Ok(Box::new(FfmpegDecoder::open(path)?))

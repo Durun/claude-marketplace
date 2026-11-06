@@ -1,5 +1,5 @@
-//! CPU 側の絵。GPU のテクスチャ（Rgba16Float）と同じ意味（線形、premultiplied）を f32 で持つ。
-//! 見本の実装と契約テスト、CPU で描く種類（Lottie、SVG）のアップロード元に使う。
+//! CPU 側の画像。GPU のテクスチャ（Rgba16Float）と同じ意味（線形、premultiplied）を f32 で持つ。
+//! モックの実装と契約テスト、CPU で描くノードの種類（Lottie、SVG）のアップロード元に使う。
 
 use crate::color::Rgba;
 use crate::error::{MmError, Result};
@@ -8,7 +8,7 @@ use crate::geom::{Rect, Size};
 /// 1 画素の成分の数。
 pub const CHANNELS: usize = 4;
 
-/// RGBA f32 の絵。行は上から、画素は左から。
+/// RGBA f32 の画像。行は上から、画素は左から。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RgbaImage {
     size: Size,
@@ -16,7 +16,7 @@ pub struct RgbaImage {
 }
 
 impl RgbaImage {
-    /// 1 色で埋めた絵。
+    /// 1 色で埋めた画像。
     pub fn filled(size: Size, color: Rgba) -> Self {
         let mut data = Vec::with_capacity(size.area() * CHANNELS);
         for _ in 0..size.area() {
@@ -25,7 +25,7 @@ impl RgbaImage {
         Self { size, data }
     }
 
-    /// 透明の絵。
+    /// 透明の画像。
     pub fn transparent(size: Size) -> Self {
         Self::filled(size, Rgba::TRANSPARENT)
     }
@@ -125,7 +125,7 @@ impl RgbaImage {
         }
     }
 
-    /// 2 枚の絵の、全画素・全成分の差の最大。大きさが違えば `None`。
+    /// 2 枚の画像の、全画素・全成分の差の最大。大きさが違えば `None`。
     pub fn max_diff(&self, other: &RgbaImage) -> Option<f32> {
         if self.size != other.size {
             return None;

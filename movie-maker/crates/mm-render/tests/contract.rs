@@ -1,4 +1,4 @@
-//! 描画器の契約テスト（`mm_testkit::render::contract`）。GPU が無い環境では飛ばし、
+//! レンダラーの契約テスト（`mm_testkit::render::contract`）。GPU が無い環境では飛ばし、
 //! `MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::path::Path;
@@ -20,14 +20,14 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
 }
 
 #[test]
-fn wgpu_の描画器は契約を満たす() {
+fn wgpu_のレンダラーは契約を満たす() {
     let Some(ctx) = gpu() else {
         return;
     };

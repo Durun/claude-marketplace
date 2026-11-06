@@ -49,7 +49,7 @@ fn aces_の表示変換は_3d_lut_で返り格子の値がapplyと一致する()
     let n = size as usize;
     assert_eq!(data.len(), n * n * n * 3);
     assert!(data.iter().all(|v| v.is_finite()));
-    // R が最も速く変わる並びの、格子の 1 点（r=2, g=5, b=7）。
+    // R が最も速く変わる順序の、格子の 1 点（r=2, g=5, b=7）。
     let step = (n - 1) as f32;
     let rgb = [2.0 / step, 5.0 / step, 7.0 / step];
     let want = ocio.apply(&from, &to, rgb).expect("CPU");

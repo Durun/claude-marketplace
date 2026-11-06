@@ -1,11 +1,11 @@
-//! パラメータの指し方と値の種。レイヤーが持つ効果・マスク・音の道筋も出す。
+//! パラメータの指し方と値の種。レイヤーが持つ効果・マスク・音のパスも出す。
 
 use super::build::{cut_id, layer_id, pick};
 use mm_doc::{Layer, Project};
 use mm_ops::ParamRef;
 use mm_types::ParamValue;
 
-/// 数のパラメータ（キーフレームを置ける）の道筋。
+/// 数のパラメータ（キーフレームを置ける）のパス。
 fn numeric_paths(l: &Layer) -> Vec<String> {
     let mut paths: Vec<String> = ["opacity", "transform.scale", "transform.rotation"]
         .map(String::from)
@@ -20,7 +20,7 @@ fn numeric_paths(l: &Layer) -> Vec<String> {
     paths
 }
 
-/// レイヤーの道筋の全部。種類のパラメータの参照（入れ子と sequence）も含む。
+/// レイヤーのパスの全部。ノードのパラメータの参照（入れ子と sequence）も含む。
 fn layer_paths(l: &Layer) -> Vec<String> {
     let mut paths = numeric_paths(l);
     paths.extend(
@@ -48,7 +48,7 @@ const CUT_PATHS: [&str; 4] = [
     "source.sequence",
 ];
 
-/// パラメータの指し方を文書から選ぶ。`numeric` なら数のパラメータだけ。
+/// パラメータの指し方をプロジェクトのデータから選ぶ。`numeric` なら数のパラメータだけ。
 pub fn param_ref(p: &Project, i: u8, path: u8, numeric: bool) -> Option<ParamRef> {
     if i % 2 == 1 && !numeric {
         let cut = cut_id(p, i)?;
@@ -64,7 +64,7 @@ pub fn param_ref(p: &Project, i: u8, path: u8, numeric: bool) -> Option<ParamRef
     Some(ParamRef::layer(&id, pick(&paths, path)?.clone()))
 }
 
-/// 道筋に合う値。入れ子と sequence の参照は文書の ID を指す。
+/// パスに合う値。入れ子と sequence の参照はプロジェクトのデータの ID を指す。
 pub fn value_for(p: &Project, path: &str, v: i64) -> ParamValue {
     let pick_u8 = v.unsigned_abs() as u8;
     if path.ends_with(".composition") {

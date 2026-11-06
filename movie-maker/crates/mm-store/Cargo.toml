@@ -1,6 +1,6 @@
 [package]
 name = "mm-store"
-description = "プロジェクトの保存（SQLite の project.mmdb、命令の記録、バックアップと復旧、versions/ の JSON）"
+description = "プロジェクトの保存（SQLite の project.mmdb、操作の記録、バックアップと復旧、versions/ の JSON）"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

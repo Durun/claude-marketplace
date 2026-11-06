@@ -1,13 +1,13 @@
 import { useState } from "preact/hooks";
 import { DEFAULT_GROUPS, type TaskGroup } from "./groups.ts";
 
-/** 項目を押したときの口。後で ui/sdk の invoke につなぐのはここ 1 か所。 */
+/** 項目を押したときに呼ぶコールバック。後で ui/sdk の invoke につなぐのはここ 1 か所。 */
 export type OnInvoke = (command: string) => void;
 
 export interface TasksPanelProps {
   groups?: TaskGroup[];
   onInvoke: OnInvoke;
-  /** 最初から閉じておくまとまりの id。 */
+  /** 最初から閉じておくグループの id。 */
   initiallyClosed?: readonly string[];
 }
 
@@ -56,7 +56,7 @@ const GroupView = ({ group, open, onToggle, onInvoke }: GroupViewProps) => {
   );
 };
 
-/** XP のムービーメーカー風の作業ウィンドウ。まとまりごとに開け閉めできる。 */
+/** XP のムービーメーカー風の作業ウィンドウ。グループごとに開け閉めできる。 */
 export const TasksPanel = ({
   groups = DEFAULT_GROUPS,
   onInvoke,

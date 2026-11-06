@@ -1,7 +1,7 @@
-//! デコードとエンコードの見本と契約テスト。
+//! デコードとエンコードのモックと契約テスト。
 //!
-//! 見本のデコーダーは単色のコマを返し、コマの番号を G の成分に `index / FRAME_INDEX_SCALE` で
-//! 焼き込む。契約テストとの縦の 1 本は、この値を読んで「どのコマが出たか」を確かめる。
+//! モックのデコーダーは単色のフレームを返し、フレームの番号を G の成分に `index / FRAME_INDEX_SCALE` で
+//! 焼き込む。契約テストとの縦の 1 本は、この値を読んで「どのフレームが出たか」を確かめる。
 
 use std::f32::consts::TAU;
 use std::path::{Path, PathBuf};
@@ -16,16 +16,16 @@ use mm_types::{
     ColorSpace, MmError, Rational, RationalTime, Result, Rgba, RgbaImage, Size, TimeRange,
 };
 
-/// コマの番号を G に焼くときの分母。f32 で整数が正確に表せる範囲（2^24）に収まる。
+/// フレームの番号を G に焼き込むときの分母。f32 で整数が正確に表せる範囲（2^24）に収まる。
 pub const FRAME_INDEX_SCALE: f32 = 65_536.0;
-/// 見本の音のトーンの周波数（Hz）。
+/// モックの音のトーンの周波数（Hz）。
 pub const TONE_HZ: f32 = 440.0;
-/// 見本の音の振幅。
+/// モックの音の振幅。
 pub const TONE_AMPLITUDE: f32 = 0.1;
 /// パスにこの語が入っていれば壊れたファイルとして扱う。
 pub const BROKEN_MARKER: &str = "broken";
 
-/// 見本の素材の形。
+/// モックの素材の形。
 #[derive(Debug, Clone, PartialEq)]
 pub struct SampleMedia {
     pub duration: RationalTime,
@@ -64,17 +64,17 @@ impl SampleMedia {
     }
 }
 
-/// コマの番号を焼き込んだ画素の色。
+/// フレームの番号を焼き込んだ画素の色。
 pub fn frame_color(base: Rgba, index: i64) -> Rgba {
     Rgba::new(base.r, index as f32 / FRAME_INDEX_SCALE, base.b, base.a)
 }
 
-/// 画素からコマの番号を読む。
+/// 画素からフレームの番号を読む。
 pub fn frame_index_of(pixel: Rgba) -> i64 {
     (pixel.g * FRAME_INDEX_SCALE).round() as i64
 }
 
-/// 見本のデコーダーを開く口。パスは無視し、`BROKEN_MARKER` を含むパスだけ `Corrupt` を返す。
+/// モックのデコーダーを開くファクトリー。パスは無視し、`BROKEN_MARKER` を含むパスだけ `Corrupt` を返す。
 #[derive(Debug, Clone, Default)]
 pub struct SampleDecoderFactory {
     pub media: SampleMedia,
@@ -97,7 +97,7 @@ impl DecoderFactory for SampleDecoderFactory {
     }
 }
 
-/// 見本のデコーダー。
+/// モックのデコーダー。
 #[derive(Debug)]
 pub struct SampleDecoder {
     media: SampleMedia,
@@ -147,14 +147,14 @@ impl Decoder for SampleDecoder {
     }
 }
 
-/// `Decoder` を時刻で引ける `FrameSource` にする。直前のコマを覚え、同じコマなら復号しない。
+/// `Decoder` を時刻で引ける `FrameSource` にする。直前のフレームを保持し、同じフレームならデコードしない。
 pub struct DecoderFrameSource {
     decoder: Box<dyn Decoder>,
     last: Option<DecodedFrame>,
 }
 
 impl DecoderFrameSource {
-    /// デコーダーを包む。
+    /// デコーダーをラップする。
     pub fn new(decoder: Box<dyn Decoder>) -> Self {
         Self {
             decoder,
@@ -179,7 +179,7 @@ impl FrameSource for DecoderFrameSource {
         let frame = self
             .decoder
             .next_frame()?
-            .ok_or_else(|| MmError::NotFound(format!("コマ {index}（t = {t}）")))?;
+            .ok_or_else(|| MmError::NotFound(format!("フレーム {index}（t = {t}）")))?;
         self.last = Some(frame.clone());
         Ok(frame)
     }
@@ -189,7 +189,7 @@ impl FrameSource for DecoderFrameSource {
     }
 }
 
-/// 見本のエンコーダーを作る口。
+/// モックのエンコーダーを作るファクトリー。
 #[derive(Debug, Clone, Default)]
 pub struct SampleEncoderFactory;
 
@@ -207,7 +207,7 @@ impl EncoderFactory for SampleEncoderFactory {
     }
 }
 
-/// 見本のエンコーダー。コマと音を数え、`output_path` に JSON の報告を書く。
+/// モックのエンコーダー。フレームと音を数え、`output_path` に JSON の報告を書く。
 #[derive(Debug, Default)]
 pub struct SampleEncoder {
     settings: Option<EncodeSettings>,
@@ -217,7 +217,7 @@ pub struct SampleEncoder {
 }
 
 impl SampleEncoder {
-    /// 押されたコマから読んだ番号の列。縦の 1 本のテストが見る。
+    /// 押されたフレームから読んだ番号の列。縦の 1 本のテストが見る。
     pub fn frame_indices(&self) -> &[i64] {
         &self.frame_indices
     }
@@ -236,7 +236,9 @@ impl Encoder for SampleEncoder {
             .ok_or_else(|| MmError::InvalidArgument("begin の前に push_frames".into()))?;
         for f in frames {
             if f.size() != settings.size {
-                return Err(MmError::InvalidArgument("コマの大きさが設定と違う".into()));
+                return Err(MmError::InvalidArgument(
+                    "フレームの大きさが設定と違う".into(),
+                ));
             }
             self.frame_indices.push(frame_index_of(f.pixel(0, 0)));
         }
@@ -274,12 +276,12 @@ pub struct DecodeFixture {
     pub path: PathBuf,
     pub duration: RationalTime,
     pub fps: Rational,
-    /// 壊れたファイル。`None` なら壊れた入力の検査を飛ばす。
+    /// 壊れたファイル。`None` なら壊れた入力の検査をスキップする。
     pub broken_path: Option<PathBuf>,
 }
 
 impl DecodeFixture {
-    /// 見本のデコーダー向け。
+    /// モックのデコーダー向け。
     pub fn sample(media: &SampleMedia) -> Self {
         Self {
             path: PathBuf::from("sample.mp4"),
@@ -290,7 +292,7 @@ impl DecodeFixture {
     }
 }
 
-/// デコーダーの契約。`make` は毎回新しい口を作る。
+/// デコーダーの契約。`make` は毎回新しいインターフェースを作る。
 pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) {
     let factory = make();
     let mut dec = factory.open(&fx.path, None).expect("開ける");
@@ -299,19 +301,22 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
 
     let count = dec.info().frame_count();
     let mut n = 0;
-    while dec.next_frame().expect("復号").is_some() {
+    while dec.next_frame().expect("デコード").is_some() {
         n += 1;
     }
-    assert_eq!(n, count, "コマの数が duration と fps から数えた数と合う");
+    assert_eq!(
+        n, count,
+        "フレームの数が duration と fps から数えた数と合う"
+    );
 
     let t = RationalTime::from_frames(count / 2, fx.fps).expect("表せる");
     dec.seek(t).expect("シーク");
-    let f1 = dec.next_frame().expect("復号").expect("コマがある");
-    assert_eq!(f1.index, t.frame_index(fx.fps), "シーク先のコマの番号");
+    let f1 = dec.next_frame().expect("デコード").expect("フレームがある");
+    assert_eq!(f1.index, t.frame_index(fx.fps), "シーク先のフレームの番号");
     assert_eq!(f1.pts, t, "シーク先の PTS");
     dec.seek(t).expect("シーク");
-    let f2 = dec.next_frame().expect("復号").expect("コマがある");
-    assert_eq!(f1, f2, "同じ時刻にシークし直すと同じコマ");
+    let f2 = dec.next_frame().expect("デコード").expect("フレームがある");
+    assert_eq!(f1, f2, "同じ時刻にシークし直すと同じフレーム");
 
     let end = RationalTime::from_frames(5, fx.fps).expect("表せる");
     let range = TimeRange::new(RationalTime::ZERO, end).unwrap();
@@ -321,7 +326,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn DecoderFactory>, fx: &DecodeFixture) 
     assert_eq!(
         indices,
         dec.info().frame_range(range).collect::<Vec<_>>(),
-        "口の frame_range と同じ番号"
+        "インターフェースの frame_range と同じ番号"
     );
 
     if let Some(broken) = &fx.broken_path {
@@ -352,7 +357,7 @@ pub fn encoder_contract(
             channels: DEFAULT_CHANNELS,
         }),
     };
-    assert!(enc.push_frames(&[]).is_err(), "begin の前は断る");
+    assert!(enc.push_frames(&[]).is_err(), "begin の前は拒否する");
     enc.begin(&settings).expect("begin");
     let frames: Vec<RgbaImage> = (0..6)
         .map(|i| RgbaImage::filled(size, frame_color(Rgba::BLACK, i)))
@@ -366,7 +371,7 @@ pub fn encoder_contract(
     ))
     .expect("audio");
     let report = enc.finish().expect("finish");
-    assert_eq!(report.frames, 6, "押したコマの数");
-    assert_eq!(report.audio_frames, 9_600, "押した音のコマの数");
+    assert_eq!(report.frames, 6, "押したフレームの数");
+    assert_eq!(report.audio_frames, 9_600, "押した音のフレームの数");
     assert!(settings.output_path.exists(), "出力ができている");
 }

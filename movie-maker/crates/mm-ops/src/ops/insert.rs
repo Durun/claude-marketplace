@@ -1,4 +1,4 @@
-//! `insert`。カットを並びに差し込む。
+//! `insert`。カットをシーケンスに差し込む。
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_refs_reach, cuts_around_gap, invalid, Extract};
 use crate::touches::Touches;
 
-/// `sequence` の `index`（頭から数えた位置）に `cut` を差し込む。後ろのカットはずれる。
+/// `sequence` の `index`（先頭から数えた位置）に `cut` を差し込む。後ろのカットはずれる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Insert {

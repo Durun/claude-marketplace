@@ -1,4 +1,4 @@
-//! CPU で動く `GpuHelper`。テクスチャは番号で引く絵として持つ。
+//! CPU で動く `GpuHelper`。テクスチャは番号で引く画像として持つ。
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
-/// 見本の GPU。`upload` した絵を番号で覚え、`download` で返す。
+/// モックの GPU。`upload` した画像を番号で保持し、`download` で返す。
 #[derive(Debug, Default)]
 pub struct CpuGpu {
     next_id: u64,

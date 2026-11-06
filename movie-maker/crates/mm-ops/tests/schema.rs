@@ -1,4 +1,4 @@
-//! `schema/ops.json` が今の命令の型と一致するか。
+//! `schema/ops.json` が今の操作の型と一致するか。
 //! 変えたときは `MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test schema` で書き直す。
 
 use std::path::Path;
@@ -23,7 +23,7 @@ fn 凍結したスキーマは最新() {
 }
 
 #[test]
-fn スキーマは全部の命令の名前を持つ() {
+fn スキーマは全部の操作の名前を持つ() {
     let schema: serde_json::Value = serde_json::from_str(&ops_schema_json()).unwrap();
     let text = schema.to_string();
     for name in Op::NAMES {

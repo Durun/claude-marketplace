@@ -1,4 +1,4 @@
-//! 描画器の見本と契約テスト。見本は CPU でレイヤーを下から順に source-over で重ねる。
+//! レンダラーのモックと契約テスト。モックは CPU でレイヤーを下から順に source-over で重ねる。
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -23,10 +23,10 @@ use crate::gpu::CpuGpu;
 use crate::render_cases;
 use crate::xform::apply_transform;
 
-/// 見本の描画器の版。
+/// モックのレンダラーのバージョン。
 pub const SAMPLE_RENDERER_VERSION: u32 = 1;
 
-/// 見本の描画器。
+/// モックのレンダラー。
 pub struct SampleRenderer {
     decoders: Arc<dyn DecoderFactory>,
     mixers: Arc<dyn MixerFactory>,
@@ -37,7 +37,7 @@ pub struct SampleRenderer {
 }
 
 impl SampleRenderer {
-    /// 口を受け取って組む。
+    /// インターフェースを受け取って組む。
     pub fn new(
         decoders: Arc<dyn DecoderFactory>,
         mixers: Arc<dyn MixerFactory>,
@@ -53,7 +53,7 @@ impl SampleRenderer {
         }
     }
 
-    /// 透明にしたレイヤーのエラーを取り出す（印の元）。
+    /// 透明にしたレイヤーのエラーを取り出す（フラグの元）。
     pub fn take_errors(&mut self) -> Vec<String> {
         std::mem::take(&mut self.errors)
     }
@@ -185,13 +185,13 @@ impl SampleRenderer {
     }
 }
 
-/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければ素通し。
+/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければパススルー。
 fn layer_mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
     let a = evaluate_audio(layer, t);
     (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
 }
 
-/// `block` を `offset` コマ目から置き、全体を `total` コマにそろえる。
+/// `block` を `offset` フレーム目から置き、全体を `total` フレームにそろえる。
 pub fn place_block(block: &AudioBlock, offset: usize, total: usize) -> AudioBlock {
     let ch = block.channels as usize;
     let mut samples = vec![0.0f32; total * ch];
@@ -256,7 +256,7 @@ impl Renderer for SampleRenderer {
     }
 }
 
-/// 見本のスケジューラ。再生位置に近い範囲から。
+/// モックのスケジューラ。再生位置に近い範囲から。
 #[derive(Debug, Default)]
 pub struct NearestFirstScheduler;
 
@@ -278,7 +278,7 @@ pub struct RenderFixture<'a> {
     pub size: Size,
 }
 
-/// 描画器の契約。
+/// レンダラーの契約。
 pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     let comp = fx.project.composition(fx.composition).expect("ある");
     let mut r = make();
@@ -293,25 +293,25 @@ pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     };
     let a = r.render_frame(&req).expect("描ける");
     assert_eq!(a.size(), fx.size, "頼んだ大きさ");
-    let a = r.gpu().download(&a).expect("読み戻し");
+    let a = r.gpu().download(&a).expect("リードバック");
     let b = r.render_frame(&req).expect("描ける");
-    let b = r.gpu().download(&b).expect("読み戻し");
+    let b = r.gpu().download(&b).expect("リードバック");
     assert_eq!(*a, *b, "同じ入力で bit 一致");
 
     let end = RationalTime::from_frames(3, comp.fps).expect("表せる");
     let range = TimeRange::new(RationalTime::ZERO, end).unwrap();
     let got = render_range_frames(r.as_mut(), fx, range, comp.fps);
     let indices: Vec<i64> = got.iter().map(|(i, _)| *i).collect();
-    assert_eq!(indices, vec![0, 1, 2], "区間のコマの番号");
+    assert_eq!(indices, vec![0, 1, 2], "区間のフレームの番号");
     assert_eq!(
         *got[1].1, *a,
-        "区間の 2 コマ目は render_frame の同じ時刻と同じ"
+        "区間の 2 フレーム目は render_frame の同じ時刻と同じ"
     );
 
     r.invalidate(fx.composition, range);
     let c = r.render_frame(&req).expect("描ける");
-    let c = r.gpu().download(&c).expect("読み戻し");
-    assert_eq!(*a, *c, "invalidate の後も同じ絵");
+    let c = r.gpu().download(&c).expect("リードバック");
+    assert_eq!(*a, *c, "invalidate の後も同じ画像");
 
     check_audio(r.as_mut(), fx, range);
     render_cases::check_frame_lifetime(r.as_mut(), &req);
@@ -343,7 +343,7 @@ fn render_range_frames(
             &mut sink,
         )
         .expect("区間が描ける");
-    assert_eq!(n, got.len(), "返すのは渡したコマの数");
+    assert_eq!(n, got.len(), "返すのは渡したフレームの数");
     got
 }
 
@@ -361,6 +361,6 @@ fn check_audio(r: &mut dyn Renderer, fx: &RenderFixture<'_>, range: TimeRange) {
     assert_eq!(
         audio.frames(),
         audio_frames_in(range, mm_audio_api::DEFAULT_SAMPLE_RATE),
-        "音のコマ数は区間と合う"
+        "音のフレーム数は区間と合う"
     );
 }

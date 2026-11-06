@@ -9,13 +9,13 @@ use crate::op::{Apply, Op};
 use crate::ops::{invalid, Unprecompose};
 use crate::touches::Touches;
 
-/// 入れ子の種類の版。
+/// 入れ子のノードの種類のバージョン。
 const NESTED_VERSION: u32 = 1;
 
 /// `layers`（同じコンポジションの中で、重なりの上で続いている範囲）を新しいコンポジション
 /// `new_composition` に移し、その位置に、それを参照するレイヤー `new_layer` を置く。
 /// 新しいコンポジションは元と同じ大きさ・fps・長さ。移すレイヤーの `start` はそのまま。
-/// 続いていない範囲は断る（逆命令の `unprecompose` が重なりの順を戻せないため）。
+/// 続いていない範囲は拒否する（逆操作の `unprecompose` が重なりの順を戻せないため）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Precompose {

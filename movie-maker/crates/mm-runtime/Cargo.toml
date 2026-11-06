@@ -1,6 +1,6 @@
 [package]
 name = "mm-runtime"
-description = "組み立て。assemble(config) -> Engine、種類の登録簿"
+description = "組み立て。assemble(config) -> Engine、ノードの種類のレジストリ"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,7 +37,7 @@ tracing = { workspace = true }
 ocio = ["dep:mm-color-ocio", "mm-color-ocio/native"]
 # FFmpeg の開発ファイルと libclang が要る（mm-decode-ffmpeg/README.md）。切ったときは ffmpeg の腕が Unsupported を返す。
 ffmpeg = ["dep:mm-decode-ffmpeg", "dep:mm-encode-ffmpeg", "mm-decode-ffmpeg/ffmpeg", "mm-encode-ffmpeg/ffmpeg"]
-# 描画器と同じ D3D12 のデバイスの上で復号する。実機の NVIDIA が要る。ffmpeg も入れると音が付く。
+# レンダラーと同じ D3D12 のデバイスの上でデコードする。実機の NVIDIA が要る。ffmpeg も入れると音が付く。
 d3d12va = ["dep:mm-decode-d3d12va", "mm-decode-d3d12va/d3d12va"]
 cuvid = ["dep:mm-decode-cuvid", "mm-decode-cuvid/cuvid"]
 

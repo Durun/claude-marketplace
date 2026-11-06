@@ -1,25 +1,25 @@
-//! デコーダーとエンコーダーの口。
+//! デコーダーとエンコーダーのインターフェース。
 //!
-//! コマは CPU の [`RgbaImage`] か、GPU のテクスチャ（[`GpuFrameHandle`]）で受け渡す。
-//! GPU のコマの中身（wgpu のテクスチャ）は口に出さず、[`GpuFrame`] の型を消した値として運ぶ。
-//! 描画器が `GpuHelper::import` で受け、`as_any` で実装の共有部（`mm-gpu`）の型に戻す。
+//! フレームは CPU の [`RgbaImage`] か、GPU のテクスチャ（[`GpuFrameHandle`]）で受け渡す。
+//! GPU のフレームの中身（wgpu のテクスチャ）はインターフェースに出さず、[`GpuFrame`] の型を消した値として運ぶ。
+//! レンダラーが `GpuHelper::import` で受け、`as_any` で共通実装（`mm-gpu`）の型に戻す。
 //!
-//! GPU のコマの寿命（RFC 0001）:
-//! - `FrameSource::frame_at` が返す GPU のコマは、描画器の次の `submit` が終わるまでの借り物。
-//!   描画器はそれより長く持たず、キャッシュに置くなら中間形式（`Rgba16Float`）に写す。
-//! - デコーダーは、復号の完了を待たせる手続きをコマに付ける。描画器は `submit` の前にそれを呼ぶ。
-//! - デコーダーが GPU で復号するには、描画器と同じデバイスが要る。`DecoderFactory::open` に
-//!   [`GpuContextRef`] を渡し、`None` なら CPU のコマを返す。
+//! GPU のフレームの寿命（RFC 0001）:
+//! - `FrameSource::frame_at` が返す GPU のフレームは、レンダラーの次の `submit` が終わるまでの借用したもの。
+//!   レンダラーはそれより長く持たず、キャッシュに置くなら中間形式（`Rgba16Float`）にコピーする。
+//! - デコーダーは、デコードの完了を待たせる手続きをフレームに付ける。レンダラーは `submit` の前にそれを呼ぶ。
+//! - デコーダーが GPU でデコードするには、レンダラーと同じデバイスが要る。`DecoderFactory::open` に
+//!   [`GpuContextRef`] を渡し、`None` なら CPU のフレームを返す。
 //!
 //! 契約（`mm_testkit::decode::contract`）:
-//! - `info()` の `duration` と `fps` から数えたコマ数だけ `next_frame` が出て、その後 `None`。
-//! - `seek(t)` の直後の `next_frame` は `index == t.frame_index(fps)`、`pts` はそのコマの時刻。
-//! - 同じ時刻にシークし直すと同じコマが出る（bit 一致）。
+//! - `info()` の `duration` と `fps` から数えたフレーム数だけ `next_frame` が出て、その後 `None`。
+//! - `seek(t)` の直後の `next_frame` は `index == t.frame_index(fps)`、`pts` はそのフレームの時刻。
+//! - 同じ時刻にシークし直すと同じフレームが出る（bit 一致）。
 //! - `decode_range(r)` は `info().frame_range(r)` と同じ番号の列を返す。CFR は
-//!   `r.frame_indices(fps)`、VFR は PTS が `[start, end)` に入るコマ全部（最後のコマも落とさない）。
-//! - `frame_index_at(t)` は最初のコマより前の `t` で CFR も VFR も -1。
+//!   `r.frame_indices(fps)`、VFR は PTS が `[start, end)` に入るフレーム全部（最後のフレームも取りこぼさない）。
+//! - `frame_index_at(t)` は最初のフレームより前の `t` で CFR も VFR も -1。
 //! - 壊れたファイルは `Err(Corrupt)` を返し、panic しない。
-//! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のコマ数が押した数と一致する。
+//! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のフレーム数が押した数と一致する。
 
 use std::any::Any;
 use std::fmt;
@@ -41,17 +41,17 @@ pub struct MediaInfo {
     pub fps: Option<Rational>,
     pub size: Size,
     pub color_space: ColorSpace,
-    /// 音と映像の頭のずれ。映像の最初の PTS − 音の最初の PTS。
+    /// 音と映像の先頭のずれ。映像の最初の PTS − 音の最初の PTS。
     pub timebase_offset: RationalTime,
     pub audio: Option<AudioStreamInfo>,
-    /// VFR のとき、各コマの PTS（昇順）。CFR では空。
+    /// VFR のとき、各フレームの PTS（昇順）。CFR では空。
     #[serde(default)]
     pub pts_index: Vec<RationalTime>,
 }
 
 impl MediaInfo {
-    /// `t` に映っているコマの番号。CFR は `frame_index` の規則、VFR は PTS の索引で `t` 以下の最後。
-    /// 最初のコマより前の `t` は、CFR も VFR も -1。
+    /// `t` に映っているフレームの番号。CFR は `frame_index` の規則、VFR は PTS の索引で `t` 以下の最後。
+    /// 最初のフレームより前の `t` は、CFR も VFR も -1。
     pub fn frame_index_at(&self, t: RationalTime) -> i64 {
         match self.fps {
             Some(fps) => t.frame_index(fps),
@@ -59,7 +59,7 @@ impl MediaInfo {
         }
     }
 
-    /// コマの数。
+    /// フレームの数。
     pub fn frame_count(&self) -> i64 {
         match self.fps {
             Some(fps) => self.duration.frame_index(fps),
@@ -67,8 +67,8 @@ impl MediaInfo {
         }
     }
 
-    /// 区間 `[start, end)` に含まれるコマの番号。`decode_range` が返す番号の列。
-    /// CFR は `TimeRange::frame_indices`、VFR は PTS が区間に入るコマ
+    /// 区間 `[start, end)` に含まれるフレームの番号。`decode_range` が返す番号の列。
+    /// CFR は `TimeRange::frame_indices`、VFR は PTS が区間に入るフレーム
     /// （`end` より前の PTS の数 − `start` より前の PTS の数）。
     pub fn frame_range(&self, range: TimeRange) -> std::ops::Range<i64> {
         match self.fps {
@@ -89,27 +89,27 @@ pub struct AudioStreamInfo {
     pub channels: u16,
 }
 
-/// GPU の文脈への口。中身は実装の共有部（`mm-gpu`）の型で、`as_any` で降りる。
+/// GPU のコンテキストを運ぶインターフェース。中身は共通実装（`mm-gpu`）の型で、`as_any` で降りる。
 pub trait GpuContextRef: Send + Sync {
     /// 使っているアダプター。
     fn adapter(&self) -> &GpuAdapterId;
-    /// 実装の型に降りる口。
+    /// 実装の型に降りる関数。
     fn as_any(&self) -> &dyn Any;
 }
 
-/// GPU の上にあるコマの中身。wgpu の型は口に出さず、実装の共有部の型を `as_any` で戻す。
-/// 復号の完了を待たせる手続きも中身が持つ（描画器が `submit` の前に呼ぶ）。
+/// GPU の上にあるフレームの中身。wgpu の型はインターフェースに出さず、共通実装の型を `as_any` で戻す。
+/// デコードの完了を待たせる手続きも中身が持つ（レンダラーが `submit` の前に呼ぶ）。
 pub trait GpuFrame: Send + Sync {
-    /// 実装の型に降りる口。
+    /// 実装の型に降りる関数。
     fn as_any(&self) -> &dyn Any;
 }
 
-/// GPU の上にあるコマへの参照。`id` はデコーダーの中で一意。
+/// GPU の上にあるフレームへの参照。`id` はデコーダーの中で一意。
 #[derive(Clone)]
 pub struct GpuFrameHandle {
     pub id: u64,
     pub size: Size,
-    /// 型を消した中身。持っている間は復号器のプールを 1 つ占める。
+    /// 型を消した中身。持っている間はデコーダーのプールを 1 つ占める。
     pub frame: Arc<dyn GpuFrame>,
 }
 
@@ -128,19 +128,19 @@ impl PartialEq for GpuFrameHandle {
     }
 }
 
-/// 復号した 1 コマ。
+/// デコードした 1 フレーム。
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedFrame {
     pub index: i64,
     pub pts: RationalTime,
-    /// CPU の絵。GPU で渡すときは `None`。
+    /// CPU の画像。GPU で渡すときは `None`。
     pub image: Option<RgbaImage>,
     /// GPU のテクスチャ。CPU で渡すときは `None`。
     pub gpu: Option<GpuFrameHandle>,
 }
 
 impl DecodedFrame {
-    /// CPU の絵として。
+    /// CPU の画像として。
     pub fn cpu(index: i64, pts: RationalTime, image: RgbaImage) -> Self {
         Self {
             index,
@@ -155,12 +155,12 @@ impl DecodedFrame {
 pub trait Decoder: Send {
     /// 素材の情報。
     fn info(&self) -> &MediaInfo;
-    /// `t` のコマが次に出るように位置を動かす。
+    /// `t` のフレームが次に出るように位置を動かす。
     fn seek(&mut self, t: RationalTime) -> Result<()>;
-    /// 次のコマ。終わりなら `None`。
+    /// 次のフレーム。終わりなら `None`。
     fn next_frame(&mut self) -> Result<Option<DecodedFrame>>;
-    /// 区間のコマをまとめて返す（毎コマの口の呼び出しを避ける）。番号は `MediaInfo::frame_range`
-    /// と同じ（VFR は PTS が区間に入るコマ全部）。素材の終わりで足りなければそこまで。
+    /// 区間のフレームをまとめて返す（毎フレームのインターフェース越しの呼び出しを避ける）。番号は `MediaInfo::frame_range`
+    /// と同じ（VFR は PTS が区間に入るフレーム全部）。素材の終わりで足りなければそこまで。
     fn decode_range(&mut self, range: TimeRange) -> Result<Vec<DecodedFrame>> {
         let wanted = self.info().frame_range(range);
         self.seek(range.start)?;
@@ -169,7 +169,7 @@ pub trait Decoder: Send {
             if f.index >= wanted.end {
                 break;
             }
-            // 区間の頭が PTS の途中だと、シーク先は頭より前のコマ。区間の外なので捨てる。
+            // 区間の先頭が PTS の途中だと、シーク先は先頭より前のフレーム。区間の外なので破棄する。
             if f.index >= wanted.start {
                 out.push(f);
             }
@@ -180,20 +180,20 @@ pub trait Decoder: Send {
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock>;
 }
 
-/// デコーダーを開く口。`mm-runtime` が設定で選ぶ。
+/// デコーダーを開くインターフェース。`mm-runtime` が設定で選ぶ。
 pub trait DecoderFactory: Send + Sync {
-    /// 実装の名前（`ffmpeg`、`d3d12va`、`cuvid`、見本は `sample`）。
+    /// 実装の名前（`ffmpeg`、`d3d12va`、`cuvid`、モックは `sample`）。
     fn id(&self) -> &'static str;
     /// 素材を開く。壊れていれば `Err(Corrupt)`。`gpu` が `Some` なら、同じデバイスの上の
-    /// GPU のコマを返してよい。`None` か GPU の復号に向かない素材では CPU のコマを返す。
+    /// GPU のフレームを返してよい。`None` か GPU のデコードに向かない素材では CPU のフレームを返す。
     fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>>;
 }
 
-/// 時刻で引けるコマの供給元。`FrameCx` が動画オブジェクトに渡す。描画のスレッドに移すので `Send`。
+/// 時刻で引けるフレームの供給元。`FrameCx` がノードに渡す。描画のスレッドに移すので `Send`。
 pub trait FrameSource: Send {
     /// 素材の情報。
     fn info(&self) -> &MediaInfo;
-    /// 素材の時間軸の `t` のコマ。範囲の外は `Err(NotFound)`。
+    /// 素材の時間軸の `t` のフレーム。範囲の外は `Err(NotFound)`。
     fn frame_at(&mut self, t: RationalTime) -> Result<DecodedFrame>;
     /// 素材の時間軸の区間の音。
     fn audio_in(&mut self, range: TimeRange) -> Result<AudioBlock>;
@@ -204,7 +204,7 @@ pub trait FrameSource: Send {
 pub struct EncodeSettings {
     pub size: Size,
     pub fps: Rational,
-    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、見本は `sample`）。
+    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。
     pub codec: String,
     pub output_path: PathBuf,
     pub audio: Option<AudioStreamInfo>,
@@ -218,11 +218,11 @@ pub struct EncodeReport {
     pub bytes_written: u64,
 }
 
-/// エンコーダー。コマはバッチで押す。
+/// エンコーダー。フレームはバッチで押す。
 pub trait Encoder: Send {
     /// 出力を開く。
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()>;
-    /// コマの列を押す。順序は再生順。
+    /// フレームの列を押す。順序は再生順。
     fn push_frames(&mut self, frames: &[RgbaImage]) -> Result<()>;
     /// 音を押す。
     fn push_audio(&mut self, block: &AudioBlock) -> Result<()>;
@@ -230,7 +230,7 @@ pub trait Encoder: Send {
     fn finish(&mut self) -> Result<EncodeReport>;
 }
 
-/// エンコーダーを作る口。
+/// エンコーダーを作るインターフェース。
 pub trait EncoderFactory: Send + Sync {
     /// 実装の名前。
     fn id(&self) -> &'static str;
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn vfr_の区間は最後のコマも含む() {
+    fn vfr_の区間は最後のフレームも含む() {
         let info = vfr_info();
         assert_eq!(info.frame_range(range((0, 1), (1, 1))), 0..3);
         assert_eq!(
@@ -302,12 +302,12 @@ mod tests {
         assert_eq!(
             info.frame_range(range((1, 4), (1, 1))),
             1..3,
-            "頭が PTS の途中なら次のコマから"
+            "先頭が PTS の途中なら次のフレームから"
         );
     }
 
     #[test]
-    fn vfr_の最初のコマより前は_cfr_と同じ_マイナス_1() {
+    fn vfr_の最初のフレームより前は_cfr_と同じ_マイナス_1() {
         let info = vfr_info();
         assert_eq!(info.frame_index_at(RationalTime::new(-1, 10).unwrap()), -1);
         let cfr = MediaInfo {

@@ -1,6 +1,6 @@
 //! movie-maker の基礎の型。GPU と FFmpeg に依存しない。
 //!
-//! 時刻は有理数（[`RationalTime`]）で持ち、浮動小数の秒を文書に書かない。
+//! 時刻は有理数（[`RationalTime`]）で持ち、浮動小数の秒をプロジェクトのデータに書かない。
 //! 色は線形の Rec.709、premultiplied のアルファ（[`Rgba`]）。
 
 pub mod color;

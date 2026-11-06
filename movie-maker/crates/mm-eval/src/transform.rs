@@ -1,4 +1,4 @@
-//! レイヤーの変形と音の設定を時刻 t で評価する。描画器と見本の描画器が同じ値を読む。
+//! レイヤーの変形と音の設定を時刻 t で評価する。レンダラーとモックのレンダラーが同じ値を読む。
 
 use mm_doc::{Layer, Transform};
 use mm_types::{ParamValue, RationalTime};
@@ -11,7 +11,7 @@ pub struct EvaluatedTransform {
     pub position: [f64; 2],
     pub scale: [f64; 2],
     pub rotation_deg: f64,
-    /// 回転と拡大の中心。`None` はレイヤーの絵の中心。
+    /// 回転と拡大の中心。`None` はレイヤーの画像の中心。
     pub anchor: Option<[f64; 2]>,
 }
 
@@ -26,7 +26,7 @@ impl Default for EvaluatedTransform {
     }
 }
 
-/// 文書の変形を時刻 `t` で評価する。型が合わないパラメータは既定の値。
+/// プロジェクトのデータの変形を時刻 `t` で評価する。型が合わないパラメータは既定の値。
 pub fn evaluate_transform(doc: &Transform, t: RationalTime) -> EvaluatedTransform {
     let mut out = EvaluatedTransform::default();
     if let Some(v) = eval_param(&doc.position, t).as_vec2() {
@@ -55,7 +55,7 @@ pub struct EvaluatedAudio<'a> {
 /// 音の設定が無いときの役割。
 pub const DEFAULT_AUDIO_ROLE: &str = "voice";
 
-/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。設定が無ければ素通し。
+/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。設定が無ければパススルー。
 pub fn evaluate_audio(layer: &Layer, t: RationalTime) -> EvaluatedAudio<'_> {
     let Some(a) = &layer.audio else {
         return EvaluatedAudio {

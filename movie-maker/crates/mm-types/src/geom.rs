@@ -50,7 +50,7 @@ pub struct Rect {
 }
 
 impl Rect {
-    /// 空の矩形。何も描かない印。
+    /// 空の矩形。何も描かないことを表す。
     pub const EMPTY: Self = Self::new(0.0, 0.0, 0.0, 0.0);
 
     /// 左上と大きさから。

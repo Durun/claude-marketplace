@@ -1,4 +1,4 @@
-//! 任意の変換を 3D LUT に焼く。OCIO の GPU のシェーダーが使えない（テクスチャを持つ）ときの逃げ道。
+//! 任意の変換を 3D LUT にベイクする。OCIO の GPU のシェーダーが使えない（テクスチャを持つ）ときのフォールバック。
 
 use mm_color_api::TransformProgram;
 use mm_types::Result;
@@ -61,7 +61,7 @@ mod tests {
     use crate::cube::sample_trilinear;
 
     #[test]
-    fn 焼いたlutは元の変換に近い() {
+    fn ベイクしたlutは元の変換に近い() {
         let f = |c: [f32; 3]| Ok(c.map(|v| v * v));
         let TransformProgram::Lut3d { size, data } = bake_lut3d(33, f).unwrap() else {
             panic!("Lut3d のはず");

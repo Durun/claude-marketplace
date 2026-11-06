@@ -4,7 +4,7 @@
 
 const GAMMA: f32 = 2.4;
 
-/// 8 ビットの符号化値 0..=255 → 線形の表。全画素で `powf` を呼ばないための引き表。
+/// 8 ビットの符号化値 0..=255 → 線形の表。全画素で `powf` を呼ばないためのルックアップテーブル。
 pub fn decode_table() -> [f32; 256] {
     std::array::from_fn(|code| (code as f32 / 255.0).powf(GAMMA))
 }

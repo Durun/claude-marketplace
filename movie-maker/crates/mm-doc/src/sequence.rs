@@ -1,4 +1,4 @@
-//! 磁気の並び（`sequence`）。カットの位置は前のカットの尻から決まり、文書には書かない。
+//! マグネティックシーケンス（`sequence`）。カットの位置は前のカットのアウト点から決まり、プロジェクトのデータには書かない。
 //! 配置の計算は `mm-eval`。
 
 use serde::{Deserialize, Serialize};
@@ -8,24 +8,24 @@ use mm_types::{Id, Rational, RationalTime, Result, TimeRange};
 use crate::layer::{default_true, unit_speed};
 use crate::node::Node;
 
-/// sequence の印。
+/// sequence のマーカー。
 #[derive(Debug)]
 pub enum SequenceMarker {}
-/// カットの印。
+/// カットのマーカー。
 #[derive(Debug)]
 pub enum CutMarker {}
 
 /// sequence の ID。
 pub type SequenceId = Id<SequenceMarker>;
-/// カットの ID。`attachTo` と命令の `touches` が指す。
+/// カットの ID。`attachTo` と操作の `touches` が指す。
 pub type CutId = Id<CutMarker>;
 
-/// 磁気の並び。OTIO の `Track` に写せる形。
+/// マグネティックシーケンス。OTIO の `Track` に対応づけられる形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Sequence {
     pub id: SequenceId,
-    /// 頭から順。
+    /// 先頭から順。
     pub cuts: Vec<Cut>,
     /// ショートが本編を参照・複製した元。本編なら `None`。
     #[serde(default)]
@@ -38,7 +38,7 @@ pub struct Sequence {
 pub struct Cut {
     pub id: CutId,
     pub source: Node,
-    /// 素材の時間軸での入り。
+    /// 素材の時間軸でのイン点。
     #[serde(rename = "in")]
     pub in_point: RationalTime,
     /// 素材の時間軸での出（含まない）。`in < out`。
@@ -77,7 +77,7 @@ impl Cut {
         }
     }
 
-    /// カットが持つ動画オブジェクトの根（source とトランジション）。
+    /// カットが持つノードの根（source とトランジション）。
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         std::iter::once(&self.source).chain(self.transition_in.iter().map(|t| &t.node))
     }
@@ -87,7 +87,7 @@ impl Cut {
         TimeRange::new(self.in_point, self.out_point)
     }
 
-    /// 並びの上での長さ `(out - in) / speed`。
+    /// シーケンスの上での長さ `(out - in) / speed`。
     pub fn duration(&self) -> Result<RationalTime> {
         self.out_point
             .checked_sub(self.in_point)?

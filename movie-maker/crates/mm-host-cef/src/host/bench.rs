@@ -1,4 +1,4 @@
-//! 1 コマの時間を測る。時刻はこちらが決め、描いた絵を受け取るまでをスパンで測る。
+//! 1 フレームの時間を測る。時刻はこちらが決め、描いたフレームを受け取るまでをスパンで測る。
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -30,7 +30,7 @@ fn pump_until(shared: &Shared, what: &str, cond: impl Fn(&Shared) -> bool) -> Re
     Ok(())
 }
 
-/// 時刻 `t` の画面にして、1 コマ受け取る。
+/// 時刻 `t` の画面にして、1 フレーム受け取る。
 fn render_frame(
     browser: &Browser,
     shared: &Shared,
@@ -95,12 +95,12 @@ fn create_browser(shared: &Rc<Shared>, opts: &BenchOptions, url: &str) -> Result
 
 fn read_hash(shared: &Shared) -> Result<(u64, Vec<u8>), String> {
     let frame = shared.frame.borrow();
-    let texture = frame.as_ref().ok_or("絵が無い")?;
+    let texture = frame.as_ref().ok_or("フレームが無い")?;
     let rgba = gpu::read_rgba(&shared.device, &shared.queue, texture)?;
     Ok((gpu::fnv1a(&rgba), rgba))
 }
 
-/// ページが左上に塗る 16px の四角から、どの `seq` の絵かを読む。古い絵が来ていないかの確認に使う。
+/// ページが左上に塗る 16px の四角から、どの `seq` のフレームかを読む。古いフレームが来ていないかの確認に使う。
 fn marker_seq(rgba: &[u8], width: u32) -> u64 {
     let at = ((8 * width + 8) * 4) as usize;
     u64::from(rgba[at]) | u64::from(rgba[at + 1]) << 8 | u64::from(rgba[at + 2]) << 16
@@ -163,7 +163,10 @@ pub fn run(opts: &BenchOptions) -> Result<(), String> {
     let wall = wall.elapsed();
 
     if opts.verify {
-        println!("古い時刻の絵が来たコマ: {stale} / {}", opts.frames);
+        println!(
+            "古い時刻のフレームが来たフレーム: {stale} / {}",
+            opts.frames
+        );
         verify(&browser, &shared, dt, &hashes, &shots, opts)?;
     }
     report(&metrics.snapshot(), wall, opts);
@@ -177,7 +180,7 @@ pub fn run(opts: &BenchOptions) -> Result<(), String> {
     Ok(())
 }
 
-/// 同じ時刻を描き直して同じ絵になるか、PNG に書く。
+/// 同じ時刻を描き直して同じ画像になるか、PNG に書く。
 fn verify(
     browser: &Browser,
     shared: &Shared,
@@ -192,7 +195,7 @@ fn verify(
     let (first_seq, first_hash) = hashes
         .get(hashes.len() / 2)
         .copied()
-        .ok_or("検証するコマが無い")?;
+        .ok_or("検証するフレームが無い")?;
     render_frame(browser, shared, opts, first_seq, first_seq as f64 * dt)?;
     let (again, _) = read_hash(shared)?;
     println!(

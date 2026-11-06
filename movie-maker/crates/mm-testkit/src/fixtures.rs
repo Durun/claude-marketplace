@@ -1,4 +1,4 @@
-//! 見本のプロジェクトと、見本の口の束。
+//! フィクスチャのプロジェクトと、モックのインターフェースの一式。
 
 use std::path::Path;
 use std::sync::Arc;
@@ -15,16 +15,16 @@ use crate::decode::SampleMedia;
 use crate::node::SAMPLE_KIND_VERSION;
 use crate::text::{SampleRasterizer, SampleShaper};
 
-/// 見本の素材のパス。見本のデコーダーはパスを見ないので何でもよい。
+/// フィクスチャの素材のパス。モックのデコーダーはパスを見ないので何でもよい。
 pub const SAMPLE_ASSET_PATH: &str = "fixtures/media/sample.mp4";
-/// 縦の 1 本で素材を切る入りの時刻（秒）。
+/// 縦の 1 本で素材を切るイン点の時刻（秒）。
 pub const VERTICAL_IN_SECONDS: i64 = 3;
 /// 縦の 1 本のコンポジションの長さ（秒）。
 pub const VERTICAL_DURATION_SECONDS: i64 = 2;
 /// 縦の 1 本で載せる文字。
 pub const VERTICAL_TEXT: &str = "Hello";
 
-/// 見本の口の束。
+/// モックのインターフェースの一式。
 pub fn sample_services() -> Services {
     Services {
         text_shaper: Arc::new(SampleShaper),
@@ -93,7 +93,9 @@ fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalT
                 .with_param("asset", ParamValue::AssetRef(asset_id.clone())),
             RationalTime::ZERO,
             in_point,
-            in_point.checked_add(duration).expect("見本の長さは表せる"),
+            in_point
+                .checked_add(duration)
+                .expect("フィクスチャの長さは表せる"),
         )
     }
 }

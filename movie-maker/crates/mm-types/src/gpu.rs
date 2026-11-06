@@ -1,4 +1,4 @@
-//! 使う GPU の識別。複数の GPU がある PC で、描画器・デコーダー・別プロセスのホストが
+//! 使う GPU の識別。複数の GPU がある PC で、レンダラー・デコーダー・別プロセスのホストが
 //! 同じアダプターを選ぶために `mm-runtime` の組み立てで 1 回決めて渡す。
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ pub struct GpuAdapterId {
     /// ドライバが返す名前（`NVIDIA GeForce RTX 5090`）。
     pub name: String,
     /// D3D12 の LUID。起動のたびに変わるので設定には残さず、その回のホストへの受け渡しにだけ使う。
-    /// 取れない裏では `None`。
+    /// 取れないバックエンドでは `None`。
     #[serde(default)]
     pub luid: Option<u64>,
 }

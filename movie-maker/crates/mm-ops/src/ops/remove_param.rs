@@ -10,7 +10,7 @@ use crate::ops::SetParam;
 use crate::param_ref::ParamRef;
 use crate::touches::Touches;
 
-/// `target` を外す。種類のパラメータと `transform.anchor` だけ外せる（必ず在る欄は断る）。
+/// `target` を外す。ノードのパラメータと `transform.anchor` だけ外せる（必ず在るフィールドは拒否する）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveParam {

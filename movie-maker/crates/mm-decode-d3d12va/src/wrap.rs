@@ -1,4 +1,4 @@
-//! FFmpeg の `ID3D12Resource`（NV12 か P010）を wgpu のテクスチャに包む。コピーはしない。
+//! FFmpeg の `ID3D12Resource`（NV12 か P010）を wgpu のテクスチャにラップする。コピーはしない。
 
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -12,26 +12,26 @@ use mm_decode_hw::device::queue_wait;
 
 use crate::ffi::{AvD3d12vaFrame, DXGI_FORMAT_NV12, DXGI_FORMAT_P010};
 
-/// 包んだコマ。`y` と `uv` が 2 つの面の見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
+/// ラップしたフレーム。`y` と `uv` が 2 つのプレーンの見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
 /// 10 bit は `R16Unorm` と `Rg16Unorm`。
 #[derive(Clone)]
 pub struct PlaneViews {
     pub y: wgpu::TextureView,
     pub uv: wgpu::TextureView,
-    /// 復号の完了を知らせるフェンスと値。
+    /// デコードの完了を知らせるフェンスと値。
     pub fence: ID3D12Fence,
     pub fence_value: u64,
 }
 
 impl PlaneViews {
-    /// キューの以後の実行を、復号の完了まで GPU の側で待たせる（CPU は待たない）。
+    /// キューの以後の実行を、デコードの完了まで GPU の側で待たせる（CPU は待たない）。
     /// 待ちはキューへ直接積むので、別のスレッドの submit が挟まっても変換より前に効く。
     pub fn wait_decode_on(&self, queue: &wgpu::Queue) -> Result<()> {
         queue_wait(queue, &self.fence, self.fence_value)
     }
 }
 
-/// FFmpeg の `hw_frames_ctx`（面のプール）への参照。プールが作り直されたかを、アドレスの再利用に
+/// FFmpeg の `hw_frames_ctx`（サーフェスのプール）への参照。プールが作り直されたかを、アドレスの再利用に
 /// 惑わされず見分けるために、参照を持って生かしておく。
 struct FramesRef(*mut ffmpeg_next::ffi::AVBufferRef);
 
@@ -53,7 +53,7 @@ impl Drop for FramesRef {
     }
 }
 
-/// 資源ごとの wgpu のテクスチャと見え方。FFmpeg のプールは同じ資源を使い回すので、包むのは資源ごとに 1 回。
+/// 資源ごとの wgpu のテクスチャと見え方。FFmpeg のプールは同じ資源を使い回すので、ラップするのは資源ごとに 1 回。
 struct Entry {
     texture: wgpu::Texture,
     views: HashMap<u32, (wgpu::TextureView, wgpu::TextureView)>,
@@ -61,16 +61,16 @@ struct Entry {
     bits: u32,
 }
 
-/// 包む係。
+/// ラッパー。
 pub struct Wrapper {
     device: wgpu::Device,
     cache: HashMap<usize, Entry>,
-    /// 覚えが対応する面のプール。変わったら覚えを捨てる。
+    /// キャッシュが対応するサーフェスのプール。変わったらキャッシュを破棄する。
     pool: Option<FramesRef>,
 }
 
 impl Wrapper {
-    /// 空の係。
+    /// 空のラッパー。
     pub fn new(device: wgpu::Device) -> Self {
         Self {
             device,
@@ -79,29 +79,29 @@ impl Wrapper {
         }
     }
 
-    /// コマのプールが前と違えば、古いプールの面の覚えを捨てる（面は覚えが握っていて、捨てないと残り続ける）。
+    /// フレームのプールが前と違えば、古いプールのサーフェスのキャッシュを破棄する（サーフェスはキャッシュが保持していて、破棄しないと残り続ける）。
     fn follow_pool(&mut self, frames_ctx: *mut ffmpeg_next::ffi::AVBufferRef) {
         if frames_ctx.is_null() || self.pool.as_ref().is_some_and(|p| p.same_pool(frames_ctx)) {
             return;
         }
         self.cache.clear();
-        // SAFETY: コマが持つ有効な hw_frames_ctx。参照を足して、コマより長く持つ。
+        // SAFETY: フレームが持つ有効な hw_frames_ctx。参照を足して、フレームより長く持つ。
         let held = unsafe { ffmpeg_next::ffi::av_buffer_ref(frames_ctx) };
         self.pool = (!held.is_null()).then_some(FramesRef(held));
     }
 
-    /// 包んだ資源の数。
+    /// ラップした資源の数。
     pub fn resource_count(&self) -> usize {
         self.cache.len()
     }
 
-    /// d3d12va のコマを包む。
+    /// d3d12va のフレームをラップする。
     pub fn wrap(&mut self, frame: &frame::Video) -> Result<PlaneViews> {
-        // SAFETY: d3d12va のコマは data[0] に AVD3D12VAFrame を持つ。コマが生きている間だけ読む。
+        // SAFETY: d3d12va のフレームは data[0] に AVD3D12VAFrame を持つ。フレームが生きている間だけ読む。
         let (resource_ptr, layer, fence_ptr, fence_value, frames_ctx) = unsafe {
             let f = frame.as_ptr();
             if (*f).format != ffmpeg_next::ffi::AVPixelFormat::AV_PIX_FMT_D3D12 as i32 {
-                return Err(MmError::Unsupported("d3d12 のコマではない".into()));
+                return Err(MmError::Unsupported("d3d12 のフレームではない".into()));
             }
             let d = (*f).data[0] as *const AvD3d12vaFrame;
             if d.is_null() {
@@ -131,7 +131,7 @@ impl Wrapper {
             entry.views.insert(layer, views);
         }
         let (y, uv) = entry.views[&layer].clone();
-        // SAFETY: fence は FFmpeg が所有する有効な ID3D12Fence。参照を数え直して借りる。
+        // SAFETY: fence は FFmpeg が所有する有効な ID3D12Fence。参照を数え直して借用する。
         let fence = unsafe { ID3D12Fence::from_raw_borrowed(&fence_ptr) }
             .ok_or_else(|| MmError::Corrupt("フェンスが無い".into()))?
             .clone();
@@ -175,7 +175,7 @@ impl Wrapper {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
-        // SAFETY: 資源は wgpu と同じ ID3D12Device の上にあり、2D で、中身は復号済み。
+        // SAFETY: 資源は wgpu と同じ ID3D12Device の上にあり、2D で、中身はデコード済み。
         // 同時アクセスのフラグ付きなので、暗黙の昇格で SRV として読める（初期状態は RESOURCE）。
         let texture = unsafe {
             let hal = wgpu::hal::dx12::Device::texture_from_raw(

@@ -1,12 +1,12 @@
-//! 段階 0 の縦の 1 本に要る動画オブジェクトの種類。
+//! 段階 0 の縦の 1 本に要るノードの種類。
 //!
-//! - `footage`: 撮影素材。描画器が開いた素材を `FrameCx::footage` で受ける。
-//! - `image`: 静止画。素材の最初のコマを使い、時間で変わらない。
+//! - `footage`: 撮影素材。レンダラーが開いた素材を `FrameCx::footage` で受ける。
+//! - `image`: 静止画。素材の最初のフレームを使い、時間で変わらない。
 //! - `solid`: 単色。
-//! - `text`: 文字。整形と描画は `FrameCx::services` の口に任せる。
-//! - `composition`: 入れ子。中身の展開は描画器が行い、種類自身は透明を返す。
+//! - `text`: 文字。シェーピングと描画は `FrameCx::services` のインターフェースに任せる。
+//! - `composition`: 入れ子。内容の展開はレンダラーが行い、種類自身は透明を返す。
 //!
-//! どの種類も絵の大きさは `cx.size` にそろえる（描画器は (0, 0) に重ねるだけでよい）。
+//! どの種類も画像の大きさは `cx.size` にそろえる（レンダラーは (0, 0) に重ねるだけでよい）。
 
 mod composition;
 mod footage;
@@ -23,10 +23,10 @@ pub use footage::{FootageKind, ImageKind};
 pub use solid::SolidKind;
 pub use text::TextKind;
 
-/// 種類の版。パラメータの形を変えたら上げる。
+/// 種類のバージョン。パラメータの形を変えたら上げる。
 pub const KIND_VERSION: u32 = 1;
 
-/// このクレートの全部の種類。登録簿に入れるときに使う。
+/// このクレートの全部の種類。レジストリに入れるときに使う。
 pub fn all_kinds() -> Vec<Arc<dyn NodeKind>> {
     vec![
         Arc::new(FootageKind),

@@ -1,7 +1,7 @@
-//! 組み立て。実装を選ぶのはこのクレートだけで、入口（アプリ、CLI、サーバー）は [`Engine`] を受け取る。
+//! 組み立て。実装を選ぶのはこのクレートだけで、操作経路（アプリ、CLI、サーバー）は [`Engine`] を受け取る。
 //!
-//! 設定の各欄は見本（`sample`）か本物（`wgpu`、`glyphon`、`dsp`、`ffmpeg`）を選ぶ。
-//! `ffmpeg` は feature `ffmpeg`、`d3d12va` と `cuvid` は同名の feature のときだけ組める。`auto` は素材ごとに d3d12va、cuvid、ffmpeg の順に試す。本物の実装が増えたら [`assemble`] に腕を足す（口は変えない）。
+//! 設定の各フィールドはモック（`sample`）か実際の実装（`wgpu`、`glyphon`、`dsp`、`ffmpeg`）を選ぶ。
+//! `ffmpeg` は feature `ffmpeg`、`d3d12va` と `cuvid` は同名の feature のときだけ組める。`auto` は素材ごとに d3d12va、cuvid、ffmpeg の順に試す。実際の実装が増えたら [`assemble`] に腕を足す（インターフェースは変えない）。
 
 mod assemble;
 mod config;

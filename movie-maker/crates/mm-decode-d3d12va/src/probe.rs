@@ -1,10 +1,10 @@
 //! 開く前に、別プロセス（`mm-d3d12va-probe`）で素材を試す。
 //!
-//! NVIDIA の d3d12va が復号に失敗すると、ドライバーの内部エラーでプロセスの D3D12 のデバイスが全部消える
-//! （別のデバイスを作って試しても、描画器のデバイスも道連れになる）。失敗しうる素材は、描画器のデバイスで
+//! NVIDIA の d3d12va がデコードに失敗すると、ドライバーの内部エラーでプロセスの D3D12 のデバイスが全部消える
+//! （別のデバイスを作って試しても、レンダラーのデバイスも道連れになる）。失敗しうる素材は、レンダラーのデバイスで
 //! 開く前に別プロセスで確かめ、だめなら `Err(Unsupported)` で次の実装（cuvid、CPU）へ譲る。
-//! 試せなかったとき（実行ファイルが無い、起動できない、時間切れ）も同じく譲る。素材が復号できる証拠が無いまま
-//! 描画器のプロセスで復号すると、落ちたときにデバイスが消えるため。
+//! 試せなかったとき（実行ファイルが無い、起動できない、時間切れ）も同じく譲る。素材がデコードできる証拠が無いまま
+//! レンダラーのプロセスでデコードすると、クラッシュしたときにデバイスが消えるため。
 
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use mm_types::{MmError, Result};
 
-/// 試す復号のコマ数。開いた直後に落ちる素材は 1 コマ目で落ちるので、数コマで足りる。
+/// 試すデコードのフレーム数。開いた直後にクラッシュする素材は 1 フレーム目でクラッシュするので、数フレームで足りる。
 pub const PROBE_FRAMES: usize = 4;
 
 /// 別プロセスの待ちの上限。
@@ -35,15 +35,15 @@ type Key = (PathBuf, u64, Option<SystemTime>);
 /// 別プロセスで試した結果。
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
-    /// 数コマを復号できた。
+    /// 数フレームをデコードできた。
     Passed,
-    /// 子が明示的に失敗した（終了コードが 0 でない）。素材のせいなので覚えてよい。
+    /// 子が明示的に失敗した（終了コードが 0 でない）。素材のせいなのでキャッシュしてよい。
     Failed(String),
-    /// 試せなかった（実行ファイルが無い、起動できない、時間切れ）。一時の事情かもしれないので覚えない。
+    /// 試せなかった（実行ファイルが無い、起動できない、時間切れ）。一時の事情かもしれないのでキャッシュしない。
     Unavailable(String),
 }
 
-/// 結果の覚え。同じ素材を開くたびに別プロセスを起こさないため。
+/// 結果のキャッシュ。同じ素材を開くたびに別プロセスを起こさないため。
 static CACHE: Mutex<Option<HashMap<Key, std::result::Result<(), String>>>> = Mutex::new(None);
 
 /// 実行ファイルを探す。環境変数が指すファイル、なければ実行ファイルと同じ場所かテストの `deps` の一つ上。
@@ -59,7 +59,7 @@ fn locate_exe(env: Option<OsString>, current_exe: Option<&Path>) -> Option<PathB
         .find(|p| p.exists())
 }
 
-/// `path` を別プロセスで試す。試せなかったときも `Err(Unsupported)` で、その結果は覚えない。
+/// `path` を別プロセスで試す。試せなかったときも `Err(Unsupported)` で、その結果はキャッシュしない。
 pub fn probe(path: &Path, luid: u64) -> Result<()> {
     let meta = std::fs::metadata(path).ok();
     let key: Key = (
@@ -83,7 +83,7 @@ pub fn probe(path: &Path, luid: u64) -> Result<()> {
     to_result(settle(cached, key, outcome))
 }
 
-/// 結果を覚える種類なら覚えて、判定を返す。
+/// 結果をキャッシュする種類ならキャッシュして、判定を返す。
 fn settle(
     cached: &mut HashMap<Key, std::result::Result<(), String>>,
     key: Key,
@@ -99,7 +99,7 @@ fn settle(
 }
 
 fn to_result(verdict: std::result::Result<(), String>) -> Result<()> {
-    verdict.map_err(|e| MmError::Unsupported(format!("d3d12va の試し復号に失敗: {e}")))
+    verdict.map_err(|e| MmError::Unsupported(format!("d3d12va の試しデコードに失敗: {e}")))
 }
 
 fn run_exe(exe: &Path, path: &Path, luid: u64) -> Outcome {
@@ -244,13 +244,18 @@ mod tests {
     }
 
     #[test]
-    fn 試せなかった結果は覚えず_失敗と成功は覚える() {
+    fn 試せなかった結果はキャッシュせず_失敗と成功はキャッシュする() {
         let key = |n: &str| -> Key { (PathBuf::from(n), 0, None) };
         let mut cache = HashMap::new();
         let unavailable = settle(&mut cache, key("a"), Outcome::Unavailable("無い".into()));
         assert!(unavailable.is_err() && cache.is_empty());
         assert!(settle(&mut cache, key("b"), Outcome::Passed).is_ok());
-        assert!(settle(&mut cache, key("c"), Outcome::Failed("落ちた".into())).is_err());
+        assert!(settle(
+            &mut cache,
+            key("c"),
+            Outcome::Failed("クラッシュした".into())
+        )
+        .is_err());
         assert_eq!(cache.len(), 2);
     }
 

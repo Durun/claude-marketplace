@@ -1,4 +1,4 @@
-//! WAL（`project.mmdb-wal`）の中身の見分け。確定していない書きかけのフレームを数える。
+//! WAL（`project.mmdb-wal`）の内容の見分け。確定していない書きかけのフレームを数える。
 //!
 //! 書き込みの途中で止まったプロセスの WAL には、最後の確定の後ろにフレームが残る。
 //! kill の試験が「本当に書き込みの最中に止めた」ことを確かめるのに使う。
@@ -9,7 +9,7 @@ use mm_types::Result;
 
 const HEADER_LEN: usize = 32;
 const FRAME_HEADER_LEN: usize = 24;
-/// 1 回の WAL の書き始めで決まる印（ヘッダーの 16..24）。フレームの 8..16 と一致しないものは古い残り。
+/// 1 回の WAL の書き始めで決まる識別値（ヘッダーの 16..24）。フレームの 8..16 と一致しないものは古い残り。
 const SALT: std::ops::Range<usize> = 16..24;
 const FRAME_SALT: std::ops::Range<usize> = 8..16;
 /// 確定のフレームだけ、確定後のページ数が 0 以外になる。

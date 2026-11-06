@@ -13,7 +13,7 @@ pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-/// ミキサーを作る口。設定は `create` で受ける。
+/// ミキサーを作るファクトリー。設定は `create` で受ける。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DspMixerFactory;
 
@@ -54,20 +54,20 @@ pub struct DspMixer {
     duck_gain: f32,
     /// トリガーの振幅の保持した最大値。ゼロ交差で鳴っていないと見なさないための検出値。
     peak: f32,
-    /// `peak` を保持する残りのコマ数。
+    /// `peak` を保持する残りのフレーム数。
     hold_left: usize,
 }
 
 /// トリガーの検出値を保持する時間（ms）。50 Hz より低い音の半周期より長く、ゼロ交差をまたぐ。
 const DUCK_HOLD_MS: f32 = 10.0;
 
-/// 中央で両方 1.0 になるパン（バランス型）。中央の素通しを保つため等電力則は使わない。
+/// 中央で両方 1.0 になるパン（バランス型）。中央のパススルーを保つため等電力則は使わない。
 fn pan_gains(pan: f32) -> (f32, f32) {
     let p = pan.clamp(-1.0, 1.0);
     ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
 }
 
-/// 1 コマで動かす 0..1 の全幅に対する割合。`ms` で動ききる。0 ms は即時。
+/// 1 フレームで動かす 0..1 の全幅に対する割合。`ms` で動ききる。0 ms は即時。
 fn slew_step(ms: f32, sample_rate: u32) -> f32 {
     if ms <= 0.0 {
         return f32::INFINITY;
@@ -83,7 +83,7 @@ impl DspMixer {
         Ok(())
     }
 
-    /// 入力を役割ごとのバスに足す。役割の並びは `BTreeMap` で固定し、足す順を決定的にする。
+    /// 入力を役割ごとのバスに足す。役割の順序は `BTreeMap` で固定し、足す順を決定的にする。
     fn sum_buses<'a>(
         &self,
         inputs: &'a [MixInput],
@@ -113,7 +113,7 @@ impl DspMixer {
         Ok(buses)
     }
 
-    /// トリガーの検出値を 1 コマ進める。大きい値は即座に取り、小さい値は保持時間が過ぎるまで待つ。
+    /// トリガーの検出値を 1 フレーム進める。大きい値は即座に取り、小さい値は保持時間が過ぎるまで待つ。
     fn detect(&mut self, level: f32) -> f32 {
         let hold = (DUCK_HOLD_MS * self.sample_rate as f32 / 1000.0) as usize;
         if level >= self.peak || self.hold_left == 0 {

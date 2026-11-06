@@ -1,8 +1,8 @@
-//! FFmpeg 系の統合テストが共有する補助。見本の素材の用意と、コマの番号の読み書き。
+//! FFmpeg 系の統合テストが共有する補助。フィクスチャの素材の用意と、フレームの番号の読み書き。
 //!
-//! 本物の素材のコマ番号は、左上の 16x16 の箱 16 個（下位ビットが左）の白黒に焼いてある
-//! （`fixtures/media/generate.sh`）。見本の実装の「G 成分に焼く」やり方は、
-//! 圧縮と色変換で値が崩れる本物の素材では使えない。
+//! 実素材のフレーム番号は、左上の 16x16 の箱 16 個（下位ビットが左）の白黒に焼き込んである
+//! （`fixtures/media/generate.sh`）。モックの実装の「G 成分に焼き込む」やり方は、
+//! 圧縮と色変換で値が崩れる実素材では使えない。
 
 use std::fs::OpenOptions;
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ fn media_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media")
 }
 
-/// 生成済みの見本の素材のディレクトリ。無ければ `generate.sh` で作る。
+/// 生成済みのフィクスチャの素材のディレクトリ。無ければ `generate.sh` で作る。
 pub fn fixtures() -> PathBuf {
     let root = media_root();
     let out = root.join("out");
@@ -36,10 +36,10 @@ pub fn fixtures() -> PathBuf {
         {
             let result = run_generate(&root);
             let _ = std::fs::remove_file(&lock);
-            result.expect("見本の素材を作れた");
+            result.expect("フィクスチャの素材を作れた");
         } else if Instant::now() > deadline {
             panic!(
-                "見本の素材の生成を待ち切れない（{} が残っていないか）",
+                "フィクスチャの素材の生成を待ち切れない（{} が残っていないか）",
                 lock.display()
             );
         } else {
@@ -69,7 +69,7 @@ fn run_generate(root: &std::path::Path) -> Result<(), String> {
     ))
 }
 
-/// デコードしたコマから焼いた番号を読む。
+/// デコードしたフレームから焼き込んだ番号を読む。
 pub fn read_frame_number(image: &RgbaImage) -> i64 {
     (0..BIT_COUNT)
         .map(|k| {

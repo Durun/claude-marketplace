@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mm_doc::Project;
 use tauri::State;
 
-/// コマンド側（先端のクレート）の印。
+/// コマンド側（バイナリのクレート）のマーカー。
 const CMD_MARK: &str = "cmd-v1";
 
 fn epoch_ms() -> u128 {
@@ -16,13 +16,13 @@ fn epoch_ms() -> u128 {
         .map_or(0, |d| d.as_millis())
 }
 
-/// 文書と呼び出しの通し番号。Tauri の管理する状態に置くので patch をまたいで残る。
+/// プロジェクトのデータと呼び出しの通し番号。Tauri の管理する状態に置くので patch をまたいで残る。
 struct Doc {
     project: Mutex<Project>,
     seq: AtomicU64,
 }
 
-/// Tauri のコマンド。本体は subsecond::call で包み、patch 後は新しい関数に入る。
+/// Tauri のコマンド。本体は subsecond::call でラップし、patch 後は新しい関数に入る。
 /// subsecond はポインタ 1 本分の大きさのクロージャを関数ポインタとみなして差し替えを素通りするので、
 /// 参照に通し番号を足して 2 本分にする。
 #[tauri::command]
@@ -33,7 +33,7 @@ fn apply_op(doc: State<'_, Doc>) -> String {
 }
 
 fn op_body(doc: &Doc, seq: u64) -> String {
-    let mut project = doc.project.lock().expect("文書の錠");
+    let mut project = doc.project.lock().expect("プロジェクトのデータのロック");
     let lib = ops_sample::set_opacity(&mut project, 0.5);
     let line = format!("{CMD_MARK} | {lib} | seq={seq}");
     println!("TICK {} | {line}", epoch_ms());
@@ -44,7 +44,7 @@ fn op_body(doc: &Doc, seq: u64) -> String {
 const BG_MARK: &str = "bg-v1";
 
 fn main() {
-    // patch を受ける口。dx が起動時に渡す環境変数で接続先が決まる。
+    // patch を受けるエントリーポイント。dx が起動時に渡す環境変数で接続先が決まる。
     dioxus_devtools::connect_subsecond();
     std::thread::spawn(|| loop {
         subsecond::call(|| println!("TICK {} | {BG_MARK}", epoch_ms()));

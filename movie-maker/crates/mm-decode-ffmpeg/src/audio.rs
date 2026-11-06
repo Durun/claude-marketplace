@@ -1,7 +1,7 @@
-//! 音の復号。映像とは別に素材を開き直し、映像のシークと干渉しないようにする。
+//! 音のデコード。映像とは別に素材を開き直し、映像のシークと干渉しないようにする。
 //!
 //! 出力は素材のレートとチャンネル数によらず 48 kHz・ステレオに固定する（ミキサーが形の違う
-//! 入力を受けないため）。リサンプラーは 1 つで、復号器の位置が続く間は同じものを使い回す。
+//! 入力を受けないため）。リサンプラーは 1 つで、デコーダーの位置が続く間は同じものを使い回す。
 
 use std::path::Path;
 
@@ -13,7 +13,7 @@ use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_decode_ffmpeg_core::timeline::TimeBase;
 use mm_types::{MmError, Rational, RationalTime, Result, TimeRange};
 
-/// 区間の頭より前から復号を始める長さ（秒）。AAC などの前の窓の分を捨てるため。
+/// 区間の先頭より前からデコードを始める長さ（秒）。AAC などの前のウィンドウの分を破棄するため。
 const PREROLL_SECONDS: i64 = 1;
 
 /// 変換先のサンプル数に足す余裕。リサンプラーの内部の遅れで 1 回の出力が入力の換算より増えても収まる。
@@ -28,12 +28,12 @@ pub struct AudioReader {
     stream_index: usize,
     decoder: ff::decoder::Audio,
     tb: TimeBase,
-    /// 素材の時間軸の 0（映像の最初のコマ）を、出力のサンプル数で表した値。
+    /// 素材の時間軸の 0（映像の最初のフレーム）を、出力のサンプル数で表した値。
     origin_samples: i64,
     resampler: Option<Resampler>,
     /// 最後に変換したフレーム。次の区間が続きなら、ここから先を使う。
     chunk: Option<Chunk>,
-    /// 復号器が終端まで出し切った。
+    /// デコーダーが終端まで出し切った。
     eof: bool,
 }
 
@@ -77,7 +77,7 @@ pub fn probe(input: &ff::format::context::Input) -> Result<Option<AudioProbe>> {
 }
 
 impl AudioReader {
-    /// 素材を開き直して音のストリームを復号できる状態にする。
+    /// 素材を開き直して音のストリームをデコードできる状態にする。
     pub fn open(path: &Path, probe: AudioProbe, origin: RationalTime) -> Result<Self> {
         let input = ff::format::input(&path)
             .map_err(|e| MmError::Corrupt(format!("{}: {e}", path.display())))?;
@@ -143,13 +143,13 @@ impl AudioReader {
                 Err(ff::Error::Other { errno }) if errno == ff::error::EAGAIN => {
                     self.feed(&mut packet)?;
                 }
-                Err(e) => return Err(MmError::Corrupt(format!("音の復号: {e}"))),
+                Err(e) => return Err(MmError::Corrupt(format!("音のデコード: {e}"))),
             }
         }
         Ok(())
     }
 
-    /// パケットを 1 つ復号器へ送る。終端なら終端を伝える。
+    /// パケットを 1 つデコーダーへ送る。終端なら終端を伝える。
     fn feed(&mut self, packet: &mut Packet) -> Result<()> {
         match packet.read(&mut self.input) {
             Ok(()) if packet.stream() == self.stream_index => {
@@ -168,7 +168,7 @@ impl AudioReader {
         Ok(())
     }
 
-    /// 復号したフレームを変換して `out` に写す。`end` に届いたら true。
+    /// デコードしたフレームを変換して `out` にコピーする。`end` に届いたら true。
     fn accept(
         &mut self,
         decoded: &mut frame::Audio,
@@ -196,7 +196,7 @@ impl AudioReader {
         Ok(reached)
     }
 
-    /// 直前の区間の続きとして、復号器の今の位置から読み進めてよいか。
+    /// 直前の区間の続きとして、デコーダーの今の位置から読み進めてよいか。
     fn continues_at(&self, first: i64) -> bool {
         match &self.chunk {
             Some(c) if self.eof => first >= c.start,
@@ -235,7 +235,7 @@ impl AudioReader {
         Ok(())
     }
 
-    /// 復号したフレームを、48 kHz・ステレオ・チャンネル交互の f32 にそろえる。
+    /// デコードしたフレームを、48 kHz・ステレオ・チャンネル交互の f32 にそろえる。
     fn resample_packed(&mut self, decoded: &mut frame::Audio) -> Result<Vec<f32>> {
         if decoded.channel_layout().is_empty() {
             decoded.set_channel_layout(ChannelLayout::default(decoded.channels() as i32));
@@ -253,7 +253,7 @@ impl AudioReader {
                 .map_err(|e| MmError::Unsupported(format!("音の形式の変換: {e}")))?,
             );
         }
-        // 出力の枠が小さいと変換し切れず、残りが内部に溜まって位置が遅れ続ける
+        // 出力バッファが小さいと変換し切れず、残りが内部に溜まって位置が遅れ続ける
         let capacity = decoded.samples() * DEFAULT_SAMPLE_RATE as usize
             / decoded.rate().max(1) as usize
             + OUTPUT_SLACK;
@@ -275,7 +275,7 @@ fn round_to_samples(t: RationalTime) -> Result<i64> {
     Ok((scaled.num() * 2 + scaled.den() as i128).div_euclid(scaled.den() as i128 * 2) as i64)
 }
 
-/// フレーム（`start` から並ぶ）のうち、`[first, end)` に入る分を `out` に写す。
+/// フレーム（`start` から並ぶ）のうち、`[first, end)` に入る分を `out` にコピーする。
 fn copy_overlap(
     packed: &[f32],
     start: i64,

@@ -1,6 +1,6 @@
 [package]
 name = "mm-ops"
-description = "命令の層。命令ごとの引数の型（serde + JSON Schema）、検証、適用、逆命令、touches、トランザクション、同時書き込みの判定、ロック"
+description = "操作の層。操作ごとの引数の型（serde + JSON Schema）、検証、適用、逆操作、touches、トランザクション、同時書き込みの判定、ロック"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

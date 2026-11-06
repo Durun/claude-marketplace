@@ -1,6 +1,6 @@
 [package]
 name = "mm-nodes-basic"
-description = "段階 0 の動画オブジェクト: footage、solid、image、composition、text"
+description = "段階 0 のノード: footage、solid、image、composition、text"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

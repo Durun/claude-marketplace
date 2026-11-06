@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_referrers, cut_refs_reach, cuts_beside, invalid};
 use crate::touches::Touches;
 
-/// `cut` を `replacement` で置き換える。並びの数と位置は変わらない。
+/// `cut` を `replacement` で置き換える。シーケンスのカットの数と位置は変わらない。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Overwrite {

@@ -1,17 +1,17 @@
-# 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」の表と同じ中身。
+# 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」の表と同じ内容。
 # worktree やエージェントに任せるときは、この表の 1 つの [[area]] を渡す。
 # 自動の改善の回は、`git diff --name-only` を `write` と突き合わせ、外のファイルを変えた PR を落とす。
 # パスは movie-maker/ からの相対で、末尾の "/" はその配下の全部。glob は "*" だけ。
 
 [[area]]
 name = "doc-and-ops"
-title = "文書と命令"
+title = "プロジェクトのデータと操作"
 write = ["crates/mm-doc/", "crates/mm-eval/", "crates/mm-ops/", "crates/mm-store/"]
 avoid = ["crates/mm-*-api/"]
 
 [[area]]
 name = "render"
-title = "描画器"
+title = "レンダラー"
 write = ["crates/mm-render/", "crates/mm-nodes-basic/"]
 avoid = ["crates/mm-node-api/", "crates/mm-render-api/"]
 
@@ -41,7 +41,7 @@ avoid = ["crates/mm-text-api/"]
 
 [[area]]
 name = "hosts"
-title = "Web の種類と OFX のホスト"
+title = "Web のノードの種類と OFX のホスト"
 write = ["crates/mm-host-*/", "crates/mm-nodes-cef/", "crates/mm-nodes-ofx/"]
 avoid = ["crates/mm-host-api/"]
 
@@ -59,7 +59,7 @@ avoid = []
 
 [[area]]
 name = "ui-wgpu"
-title = "UI（wgpu の面）"
+title = "UI（wgpu のサーフェス）"
 write = ["crates/mm-ui-layout/", "crates/mm-ui-wgpu/"]
 avoid = ["ui/"]
 
@@ -72,7 +72,7 @@ note = "1 つの worktree は 1 つのパネルだけを書く。ほかのパネ
 
 [[area]]
 name = "claude-entry"
-title = "Claude の入口"
+title = "Claude の操作経路"
 write = ["crates/mm-serve/", "apps/mm/"]
 avoid = []
 
@@ -84,7 +84,7 @@ avoid = []
 
 [[area]]
 name = "testkit-and-bench"
-title = "見本とベンチ"
+title = "テストキットとベンチ"
 write = ["crates/mm-testkit/", "crates/mm-bench/", "fixtures/", "fuzz/"]
 avoid = []
 
@@ -93,11 +93,11 @@ name = "instrumentation"
 title = "計装"
 write = ["crates/mm-trace/", "xtask/"]
 avoid = []
-note = "ほかのクレートのスパンの名前は各話題が付ける。mm-trace は決まりだけ持つ"
+note = "ほかのクレートのスパンの名前は各領域が付ける。mm-trace は決まりだけ持つ"
 
 [[area]]
 name = "integration"
-title = "口と組み立て（統合の担当）"
+title = "インターフェースと組み立て（統合の担当）"
 write = [
   "crates/mm-*-api/",
   "crates/mm-types/",

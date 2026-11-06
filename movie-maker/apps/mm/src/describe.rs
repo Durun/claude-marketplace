@@ -1,19 +1,19 @@
-//! 命令の記録を、人が読める 1 行にする（`mm diff`、`mm log`）。
+//! 操作の記録を、人が読める 1 行にする（`mm diff`、`mm log`）。
 //!
-//! 同じ所への連続した `setParam` は 1 行に畳む。知らない命令は名前と欄をそのまま出す。
+//! 同じ所への連続した `setParam` は 1 行に集約する。知らない操作は名前とフィールドをそのまま出す。
 
 use serde_json::Value;
 
 use mm_store::StoredTxn;
 
-/// 1 行の説明と、畳むための鍵（同じ鍵が続けば 1 行にする）。
+/// 1 行の説明と、集約するためのキー（同じキーが続けば 1 行にする）。
 struct Line {
     text: String,
     fold_key: Option<String>,
     count: usize,
 }
 
-/// 範囲のトランザクションを、命令ごとの文にして並べる。
+/// 範囲のトランザクションを、操作ごとの文にして並べる。
 pub fn describe_txns(txns: &[StoredTxn]) -> Vec<String> {
     let mut lines: Vec<Line> = Vec::new();
     for op in txns.iter().flat_map(|t| t.ops.iter()) {
@@ -51,7 +51,7 @@ fn describe_op(op: &Value) -> (String, Option<String>) {
     (text, None)
 }
 
-/// 並びのカットを動かす命令。
+/// シーケンスのカットを動かす操作。
 fn cut_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "ripple" => ripple(op),
@@ -81,7 +81,7 @@ fn cut_op(name: &str, op: &Value) -> Option<String> {
         ),
         "join" => format!("カット {} と {} をつないだ", id(op, "cut"), id(op, "next")),
         "insert" => format!(
-            "カット {} を並び {} に挿入した",
+            "カット {} をシーケンス {} に挿入した",
             cut_id_of(&op["cut"]),
             id(op, "sequence")
         ),
@@ -100,7 +100,7 @@ fn cut_op(name: &str, op: &Value) -> Option<String> {
     Some(text)
 }
 
-/// レイヤーの命令。
+/// レイヤーの操作。
 fn layer_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "addLayer" => format!(
@@ -124,15 +124,15 @@ fn layer_op(name: &str, op: &Value) -> Option<String> {
     Some(text)
 }
 
-/// 並び、コンポジション、マーカーの出し入れ。
+/// シーケンス、コンポジション、マーカーの出し入れ。
 fn project_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "addSequence" => format!(
-            "並び {}（カット {} 個）を足した",
+            "シーケンス {}（カット {} 個）を足した",
             op["sequence"]["id"].as_str().unwrap_or("?"),
             op["sequence"]["cuts"].as_array().map_or(0, Vec::len)
         ),
-        "removeSequence" => format!("並び {} を外した", id(op, "sequence")),
+        "removeSequence" => format!("シーケンス {} を外した", id(op, "sequence")),
         "addComposition" => format!(
             "コンポジション {} を足した",
             op["composition"]["id"].as_str().unwrap_or("?")
@@ -151,12 +151,12 @@ fn project_op(name: &str, op: &Value) -> Option<String> {
 fn ripple(op: &Value) -> String {
     let edge_in = op["edge"] == "in";
     let by = &op["by"];
-    // 頭は正に動かすと短く、尻は正に動かすと長くなる。
+    // イン点は正に動かすと短く、アウト点は正に動かすと長くなる。
     let shorter = edge_in == is_positive(by);
     format!(
         "カット {} の{}を {} 秒{}",
         id(op, "cut"),
-        if edge_in { "頭" } else { "尻" },
+        if edge_in { "イン点" } else { "アウト点" },
         time_abs(by),
         if shorter { "詰めた" } else { "伸ばした" }
     )
@@ -265,10 +265,10 @@ mod tests {
     }
 
     #[test]
-    fn 尻を負に動かすと詰めたと読む() {
+    fn アウト点を負に動かすと詰めたと読む() {
         let op = json!({"op": "ripple", "cut": "c12", "edge": "out", "by": {"num": -2, "den": 5}});
-        assert_eq!(describe_op(&op).0, "カット c12 の尻を 0.4 秒詰めた");
+        assert_eq!(describe_op(&op).0, "カット c12 のアウト点を 0.4 秒詰めた");
         let op = json!({"op": "ripple", "cut": "c12", "edge": "in", "by": {"num": -2, "den": 5}});
-        assert_eq!(describe_op(&op).0, "カット c12 の頭を 0.4 秒伸ばした");
+        assert_eq!(describe_op(&op).0, "カット c12 のイン点を 0.4 秒伸ばした");
     }
 }

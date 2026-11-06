@@ -1,4 +1,4 @@
-//! トランザクション、版番号、同時書き込みの判定、ロック、取り消しとやり直し。
+//! トランザクション、バージョン番号、同時書き込みの判定、ロック、取り消しとやり直し。
 
 mod common;
 
@@ -36,7 +36,7 @@ fn missing_layer() -> Op {
 }
 
 #[test]
-fn 途中で失敗したトランザクションは文書を変えない() {
+fn 途中で失敗したトランザクションはプロジェクトのデータを変えない() {
     let mut p = project();
     let before = canon(&p);
     let ops = vec![ripple("k1", 1), set_opacity("l1", 0.5), missing_layer()];
@@ -46,7 +46,7 @@ fn 途中で失敗したトランザクションは文書を変えない() {
 }
 
 #[test]
-fn 版は命令の数だけ進み記録に残る() {
+fn バージョンは操作の数だけ進み記録に残る() {
     let mut ed = Editor::new(project());
     let txn = Transaction::new("編集", vec![ripple("k1", 1), set_opacity("l1", 0.5)]);
     let rec = ed.apply(txn, &OpContext::human()).unwrap();
@@ -62,18 +62,18 @@ fn 版は命令の数だけ進み記録に残る() {
 }
 
 #[test]
-fn 古い版の命令は触る所が重ならなければ当たり重なれば断る() {
+fn 古いバージョンの操作は触る所が重ならなければ適用され重なれば拒否する() {
     let mut ed = Editor::new(project());
     let human = OpContext::human();
     ed.apply(Transaction::new("a", vec![ripple("k1", 1)]), &human)
         .unwrap();
-    // 版 0 を元にした、k3 だけ触る命令は当たる。
+    // バージョン 0 を元にした、k3 だけ触る操作は適用される。
     ed.apply(
         Transaction::new("b", vec![ripple("k3", 1)]).based_on(0),
         &human,
     )
     .unwrap();
-    // 版 0 を元にした、k1 を触る命令は断る。文書は変わらない。
+    // バージョン 0 を元にした、k1 を触る操作は拒否する。プロジェクトのデータは変わらない。
     let before = canon(ed.project());
     let err = ed
         .apply(
@@ -90,7 +90,7 @@ fn 古い版の命令は触る所が重ならなければ当たり重なれば�
     }
     assert_eq!(canon(ed.project()), before);
     assert_eq!(ed.version(), 2);
-    // 先の版を元にした命令は断る。
+    // 先のバージョンを元にした操作は拒否する。
     let err = ed
         .apply(
             Transaction::new("d", vec![ripple("k2", 1)]).based_on(9),
@@ -107,7 +107,7 @@ fn 古い版の命令は触る所が重ならなければ当たり重なれば�
 }
 
 #[test]
-fn ロックの付いたレイヤーは_claude_の入口から触れない() {
+fn ロックの付いたレイヤーは_claude_の操作経路から触れない() {
     let mut p = project();
     let human = OpContext::human();
     let claude = OpContext::claude();
@@ -118,7 +118,7 @@ fn ロックの付いたレイヤーは_claude_の入口から触れない() {
     .apply_op(&mut p, &human);
     let err = set_opacity("l1", 0.5).apply(&mut p, &claude).unwrap_err();
     assert!(matches!(err, OpError::Locked(_)));
-    // 外すのも断る。
+    // 外すのも拒否する。
     let unlock: Op = LockLayer {
         layer: Id::new("l1"),
         lock: false,
@@ -131,7 +131,7 @@ fn ロックの付いたレイヤーは_claude_の入口から触れない() {
     // ほかのレイヤーは触れる。人は触れる。
     set_opacity("l2", 0.5).apply(&mut p, &claude).unwrap();
     set_opacity("l1", 0.5).apply(&mut p, &human).unwrap();
-    // ロックのレイヤーを巻き込む precompose も断る。
+    // ロックのレイヤーを巻き込む precompose も拒否する。
     let pre: Op = Precompose {
         composition: Id::new("c1"),
         layers: vec![Id::new("l1"), Id::new("l2")],
@@ -156,7 +156,7 @@ impl<T: Into<Op>> ApplyOp for T {
 }
 
 #[test]
-fn 取り消しとやり直しはまとまりの単位() {
+fn 取り消しとやり直しはトランザクションの単位() {
     let mut ed = Editor::new(project());
     let human = OpContext::human();
     let v0 = canon(ed.project());
@@ -190,7 +190,7 @@ fn 取り消しとやり直しはまとまりの単位() {
     assert_eq!(canon(ed.project()), v2);
     assert!(!ed.can_redo());
 
-    // 取り消した後に新しい命令を当てると、やり直しの先は捨てる。
+    // 取り消した後に新しい操作を適用すると、やり直しの先は破棄する。
     ed.undo(&human).unwrap();
     ed.apply(Transaction::new("c", vec![ripple("k4", 1)]), &human)
         .unwrap();
@@ -208,7 +208,7 @@ fn slip(cut: &str, by: i64) -> Op {
 }
 
 #[test]
-fn 命令は_json_を往復し名前が_op_の欄に出る() {
+fn 操作は_json_を往復し名前が_op_のフィールドに出る() {
     let op: Op = Insert {
         sequence: Id::new("s1"),
         index: 1,
@@ -234,7 +234,7 @@ fn 命令は_json_を往復し名前が_op_の欄に出る() {
 }
 
 #[test]
-fn 適用の後は_validate_が通り_逆命令で戻る() {
+fn 適用の後は_validate_が通り_逆操作で戻る() {
     let mut p = project();
     let human = OpContext::human();
     let op: Op = AddLayer {

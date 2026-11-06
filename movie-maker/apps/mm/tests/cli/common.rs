@@ -33,7 +33,7 @@ pub fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
-/// 段階 0 の見本のプロジェクト（1 つの JSON）。
+/// 段階 0 のフィクスチャのプロジェクト（1 つの JSON）。
 pub fn stage0_json() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage0/project.json")
 }
@@ -52,7 +52,7 @@ fn cut_json(id: &str, out_secs: i64) -> serde_json::Value {
     })
 }
 
-/// `addSequence --json` に渡す、カット c1（4 秒）と c2（2 秒）を持つ並び s1。
+/// `addSequence --json` に渡す、カット c1（4 秒）と c2（2 秒）を持つシーケンス s1。
 pub fn sequence_json() -> String {
     serde_json::json!({"sequence": {"id": "s1", "cuts": [cut_json("c1", 4), cut_json("c2", 2)]}})
         .to_string()

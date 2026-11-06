@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, Result};
 
-/// コマの番号を決めるときに足す丸めの余裕（1/2^20 コマ）。
-/// 有理数の演算で 1 コマ境界ちょうどに乗った時刻が、前のコマに落ちないようにする。
+/// フレームの番号を決めるときに足す丸めの余裕（1/2^20 フレーム）。
+/// 有理数の演算で 1 フレーム境界ちょうどに乗った時刻が、前のフレームに落ちないようにする。
 pub const FRAME_SNAP_SHIFT: u32 = 20;
 
-/// 時刻の分子の絶対値の上限。文書に書く形（i64）に必ず収め、通分の掛け算が i128 であふれないようにする。
+/// 時刻の分子の絶対値の上限。プロジェクトのデータに書く形（i64）に必ず収め、通分の掛け算が i128 であふれないようにする。
 const MAX_NUM: i128 = i64::MAX as i128;
 
 /// 正の有理数。fps と再生の速さに使う。常に既約で、分子も分母も 1 以上。
@@ -26,7 +26,7 @@ pub struct Rational {
     den: u32,
 }
 
-/// 文書に書く形の有理数。
+/// プロジェクトのデータに書く形の有理数。
 #[derive(Deserialize)]
 struct RawRational {
     num: u32,
@@ -89,7 +89,7 @@ impl fmt::Display for Rational {
 
 /// 有理数の時刻（秒）。負の値も持てる。常に既約で、分母は正。
 ///
-/// 分子の絶対値は `i64::MAX` 以下（文書に書く形 [`RawTime`] の分子が i64 のため）。
+/// 分子の絶対値は `i64::MAX` 以下（プロジェクトのデータに書く形 [`RawTime`] の分子が i64 のため）。
 /// den が 2^32 でも約 68 年を表せる。範囲を超える演算は `Err`。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(into = "RawTime", try_from = "RawTime")]
@@ -98,7 +98,7 @@ pub struct RationalTime {
     den: u32,
 }
 
-/// 文書に書く形の時刻。
+/// プロジェクトのデータに書く形の時刻。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RawTime {
     pub num: i64,
@@ -145,7 +145,7 @@ impl RationalTime {
         }
     }
 
-    /// コマの番号から時刻へ（`frames / fps`）。
+    /// フレームの番号から時刻へ（`frames / fps`）。
     pub fn from_frames(frames: i64, fps: Rational) -> Result<Self> {
         Self::reduced(frames as i128 * fps.den as i128, fps.num as u128)
     }
@@ -215,8 +215,8 @@ impl RationalTime {
         Self::reduced(self.num * r.den as i128, self.den as u128 * r.num as u128)
     }
 
-    /// 素材のコマを選ぶ唯一の規則: `floor(t * fps + 1/2^20)`。
-    /// 呼ぶ側は先に `t - offset` を素材の時間軸に写しておく。結果が i64 を超えるときは端に丸める。
+    /// 素材のフレームを選ぶ唯一の規則: `floor(t * fps + 1/2^20)`。
+    /// 呼ぶ側は先に `t - offset` を素材の時間軸に変換しておく。結果が i64 を超えるときは端に丸める。
     pub fn frame_index(self, fps: Rational) -> i64 {
         let shift = 1i128 << FRAME_SNAP_SHIFT;
         let den = self.den as i128 * fps.den as i128;
@@ -295,7 +295,7 @@ pub struct TimeRange {
     pub end: RationalTime,
 }
 
-/// 文書に書く形の範囲。
+/// プロジェクトのデータに書く形の範囲。
 #[derive(Deserialize)]
 struct RawRange {
     start: RationalTime,
@@ -348,7 +348,7 @@ impl TimeRange {
         (start < end).then_some(Self { start, end })
     }
 
-    /// この範囲に含まれるコマの番号の列 `[first, last)`。
+    /// この範囲に含まれるフレームの番号の列 `[first, last)`。
     pub fn frame_indices(&self, fps: Rational) -> std::ops::Range<i64> {
         self.start.frame_index(fps)..self.end.frame_index(fps)
     }
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn コマ境界ちょうどは次のコマになる() {
+    fn フレーム境界ちょうどは次のフレームになる() {
         let fps = Rational::new(30000, 1001).unwrap();
         for i in 0..10_000 {
             let time = RationalTime::from_frames(i, fps).unwrap();
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn コマ境界の少し手前は前のコマになる() {
+    fn フレーム境界の少し手前は前のフレームになる() {
         let fps = Rational::integer(60);
         let eps = t(1, 1_000_000);
         let time = RationalTime::from_frames(10, fps)
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn 範囲は読み込みでも逆順を断る() {
+    fn 範囲は読み込みでも逆順を拒否する() {
         let s = r#"{"start":{"num":2,"den":1},"end":{"num":1,"den":1}}"#;
         assert!(serde_json::from_str::<TimeRange>(s).is_err());
     }

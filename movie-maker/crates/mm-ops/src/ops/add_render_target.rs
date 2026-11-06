@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{invalid, RemoveRenderTarget};
 use crate::touches::Touches;
 
-/// レンダーターゲットを足す。無いコンポジションは `Project::validate` が断る。
+/// レンダーターゲットを足す。無いコンポジションは `Project::validate` が拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddRenderTarget {

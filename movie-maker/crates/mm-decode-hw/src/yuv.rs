@@ -1,7 +1,7 @@
 //! YUV 4:2:0（NV12 と P010）から、線形の RGB への変換の係数と WGSL。
 //!
 //! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に Rec.1886 の式（べき 2.4）を当てて線形にする。
-//! 10 bit は符号語のまま f32 で扱い、8 bit に落とさない。色差は左寄せ（MPEG-2 の配置）の位置から線形に補間する。
+//! 10 bit は符号語のまま f32 で扱い、8 bit に下げない。色差は左寄せ（MPEG-2 の配置）の位置から線形に補間する。
 
 use ffmpeg_next as ff;
 use mm_decode_ffmpeg_core::matrix::Matrix;
@@ -26,7 +26,7 @@ pub fn stream_bit_depth(stream: &ff::format::stream::Stream<'_>) -> mm_types::Re
     }
 }
 
-/// 輝度の幅と高さから、4:2:0 の色差の面の幅と高さ。奇数なら切り上げる。
+/// 輝度の幅と高さから、4:2:0 の色差プレーンの幅と高さ。奇数なら切り上げる。
 pub fn chroma_size(width: u32, height: u32) -> (u32, u32) {
     (width.div_ceil(2), height.div_ceil(2))
 }
@@ -44,7 +44,7 @@ pub struct YuvParams {
     pub gu: f32,
     pub gv: f32,
     pub bu: f32,
-    /// 色差の面の画のある幅と高さ（画素）。面の余白を補間に混ぜないための端。
+    /// 色差プレーンの画のある幅と高さ（画素）。プレーンの余白を補間に混ぜないための端。
     pub chroma_w: f32,
     pub chroma_h: f32,
 }
@@ -121,7 +121,7 @@ impl YuvParams {
         out
     }
 
-    /// 符号語から線形の RGB（CPU で同じ式を当てる確かめ用）。
+    /// 符号語から線形の RGB（CPU で同じ式を適用する確かめ用）。
     pub fn to_linear(self, y: f32, u: f32, v: f32) -> [f32; 3] {
         let luma = (y - self.y_off) / self.y_range;
         let cb = (u - self.c_mid) / self.c_range;
@@ -138,7 +138,7 @@ impl YuvParams {
 /// WGSL の共通部。呼ぶ側が `var<uniform> params: Params` を宣言する。
 ///
 /// `chroma_taps` は画素 (x, y) の色差の補間に使う 4 点と重みを返す。色差は横が輝度の左端、
-/// 縦が 2 行の中間にあるので、色差の面の座標は (x / 2, (y - 0.5) / 2)。端は面の画のある範囲に留める。
+/// 縦が 2 行の中間にあるので、色差プレーンの座標は (x / 2, (y - 0.5) / 2)。端はプレーンの画のある範囲に留める。
 pub const YUV_WGSL: &str = r"
 struct Params {
     code_scale: f32,
@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn 奇数の大きさの色差の面は切り上げる() {
+    fn 奇数の大きさの色差プレーンは切り上げる() {
         assert_eq!(chroma_size(320, 240), (160, 120));
         assert_eq!(chroma_size(321, 241), (161, 121));
         assert_eq!(chroma_size(1, 1), (1, 1));

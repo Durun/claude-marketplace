@@ -1,12 +1,12 @@
-//! 描画器の口。文書と時刻 t からレイヤーを評価して合成する。
+//! レンダラーのインターフェース。プロジェクトのデータと時刻 t からレイヤーを評価して合成する。
 //!
 //! 契約（`mm_testkit::render::contract`）:
-//! - 同じ文書、同じ t、同じ大きさで 2 回描いて bit 一致。
-//! - 返す絵の大きさは頼んだ大きさ。
-//! - `render_range` が返すコマの番号は `range.frame_indices(fps)` と一致し、
-//!   各コマは `render_frame` で同じ時刻を描いたものと一致する（プレビューと `mm frame` で同じコマ）。
-//! - `FrameCacheKey::digest` は同じ入力で同じ値、どの欄を変えても別の値。
-//! - `invalidate` の後も同じ絵（キャッシュを捨てても結果は変わらない）。
+//! - 同じプロジェクトのデータ、同じ t、同じ大きさで 2 回描いて bit 一致。
+//! - 返す画像の大きさは頼んだ大きさ。
+//! - `render_range` が返すフレームの番号は `range.frame_indices(fps)` と一致し、
+//!   各フレームは `render_frame` で同じ時刻を描いたものと一致する（プレビューと `mm frame` で同じフレーム）。
+//! - `FrameCacheKey::digest` は同じ入力で同じ値、どのフィールドを変えても別の値。
+//! - `invalidate` の後も同じ画像（キャッシュを破棄しても結果は変わらない）。
 
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +32,7 @@ pub fn size_bucket(scale: f32) -> f32 {
         .unwrap_or(SIZE_BUCKETS[SIZE_BUCKETS.len() - 1])
 }
 
-/// コマのキャッシュのキー。`time_varying` が偽の種類は `frame_index` を `None` にする。
+/// フレームのキャッシュのキー。`time_varying` が偽のノードの種類は `frame_index` を `None` にする。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrameCacheKey {
     pub kind: String,
@@ -51,8 +51,8 @@ pub struct FrameCacheKey {
 }
 
 impl FrameCacheKey {
-    /// 全欄を畳んだ 64 bit。同じ入力で同じ値で、Rust の版やプロセスをまたいでも変わらない
-    /// （ディスクのキャッシュの名前に使える）。FNV-1a で、可変長の欄は長さを先に畳む。
+    /// 全フィールドをハッシュに含めた 64 bit。同じ入力で同じ値で、Rust のバージョンやプロセスをまたいでも変わらない
+    /// （ディスクのキャッシュの名前に使える）。FNV-1a で、可変長のフィールドは長さを先にハッシュに含める。
     pub fn digest(&self) -> u64 {
         let mut h = Fnv1a::new();
         h.str(&self.kind);
@@ -75,7 +75,7 @@ impl FrameCacheKey {
     }
 }
 
-/// FNV-1a の 64 bit。`DefaultHasher` と違い、値が実装の版で変わらない。
+/// FNV-1a の 64 bit。`DefaultHasher` と違い、値が実装のバージョンで変わらない。
 struct Fnv1a(u64);
 
 impl Fnv1a {
@@ -101,7 +101,7 @@ impl Fnv1a {
         self.bytes(s.as_bytes());
     }
 
-    /// 有無の印を先に畳むので、`None` と空の値が混ざらない。
+    /// 有無のフラグを先にハッシュに含めるので、`None` と空の値が混ざらない。
     fn opt<T>(&mut self, v: Option<T>, put: impl FnOnce(&mut Self, T)) {
         match v {
             Some(v) => {
@@ -113,7 +113,7 @@ impl Fnv1a {
     }
 }
 
-/// 1 コマの要求。
+/// 1 フレームの要求。
 pub struct RenderRequest<'a> {
     pub project: &'a Project,
     pub composition: &'a CompositionId,
@@ -144,23 +144,23 @@ pub struct AudioRequest<'a> {
     pub nodes: &'a dyn NodeRegistry,
 }
 
-/// 描画器。プレビューも書き出しも同じ経路で、最後に面か読み戻しかが違うだけ。
+/// レンダラー。プレビューも書き出しも同じ経路で、最後にサーフェスかリードバックかが違うだけ。
 pub trait Renderer: Send {
-    /// 実装の名前（`wgpu`、見本は `sample`）。
+    /// 実装の名前（`wgpu`、モックは `sample`）。
     fn id(&self) -> &'static str;
-    /// 描画器の版。合成の式を変えたら上げる（キャッシュのキーに入る）。
+    /// レンダラーのバージョン。合成の式を変えたら上げる（キャッシュのキーに入る）。
     fn version(&self) -> u32;
-    /// 時刻 t のコマ。
+    /// 時刻 t のフレーム。
     ///
     /// 返す `FrameRef::Gpu` の寿命: 実装は直近 [`KEPT_RENDERED_FRAMES`] 回の `render_frame` が返した
-    /// コマを有効に保つ（古いほうから捨ててよい）。長く持つ側は `GpuHelper::download` で CPU に写す。
-    /// 実装を捨てた後は無効。
+    /// フレームを有効に保つ（古いほうからドロップしてよい）。長く持つ側は `GpuHelper::download` で CPU にコピーする。
+    /// 実装をドロップした後は無効。
     fn render_frame(&mut self, req: &RenderRequest<'_>) -> Result<FrameRef>;
-    /// 区間のコマを順に `sink` に渡す。`sink` は読み戻しのために GPU のヘルパーも受け取る。
-    /// 返すのは渡したコマの数。
+    /// 区間のフレームを順に `sink` に渡す。`sink` はリードバックのために GPU のヘルパーも受け取る。
+    /// 返すのは渡したフレームの数。
     ///
     /// `sink` に渡す `FrameRef::Gpu` は、その `sink` の呼び出しの中だけ有効。`sink` が返ったら
-    /// 実装が捨てるので、残したいときは `sink` の中で `download` する。`sink` が `Err` を返したら
+    /// 実装がドロップするので、残したいときは `sink` の中で `download` する。`sink` が `Err` を返したら
     /// そこで止め、その `Err` をそのまま返す。
     fn render_range(
         &mut self,
@@ -184,14 +184,14 @@ pub trait Renderer: Send {
     }
     /// 区間の音を混ぜる。
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock>;
-    /// 文書のこの範囲が変わった。キャッシュを捨てる。
+    /// プロジェクトのデータのこの範囲が変わった。キャッシュを破棄する。
     fn invalidate(&mut self, composition: &CompositionId, range: TimeRange);
-    /// GPU のヘルパー。読み戻し（`mm frame`、書き出し）に使う。
+    /// GPU のヘルパー。リードバック（`mm frame`、書き出し）に使う。
     fn gpu(&mut self) -> &mut dyn GpuHelper;
 }
 
-/// 先回りで描く順を決める。rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に寄せ、
-/// 提供者（この口の実装）を差し替えられる。
+/// 先読みの描画の順を決める。rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に倣い、
+/// 提供者（このインターフェースの実装）を差し替えられる。
 pub trait Scheduler: Send {
     /// 再生位置と、変わった範囲から、先に描くべき範囲を優先順に返す。
     fn prioritize(&mut self, playhead: RationalTime, dirty: &[TimeRange]) -> Vec<TimeRange>;
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn キーは全欄のどれを変えても変わる() {
+    fn キーは全フィールドのどれを変えても変わる() {
         let base = key().digest();
         type Edit = fn(&mut FrameCacheKey);
         let edits: Vec<(&str, Edit)> = vec![
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn 欄の境目をまたぐ移し替えは別の値になる() {
+    fn フィールドの境目をまたぐ移し替えは別の値になる() {
         let mut a = key();
         a.kind = "ab".into();
         a.params_json = "c".into();
@@ -269,8 +269,8 @@ mod tests {
     }
 
     #[test]
-    fn キーの値は実装の版によらず固定() {
-        // ディスクのキャッシュの名前になるので、この値を変える変更はキャッシュの版を上げる変更。
+    fn キーの値は実装のバージョンによらず固定() {
+        // ディスクのキャッシュの名前になるので、この値を変える変更はキャッシュのバージョンを上げる変更。
         assert_eq!(key().digest(), 0x8c3f_77f0_eb41_6954);
     }
 }

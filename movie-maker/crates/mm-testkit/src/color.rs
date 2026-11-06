@@ -1,4 +1,4 @@
-//! 色の見本と契約テスト。見本は bt709（Rec.1886）、srgb、bt709_oetf、bt601、bt2020 を作業空間（線形）へ変換する。
+//! 色のモックと契約テスト。モックは bt709（Rec.1886）、srgb、bt709_oetf、bt601、bt2020 を作業色空間（線形）へ変換する。
 
 use std::sync::Arc;
 
@@ -54,7 +54,7 @@ fn linear_to_bt709_oetf(v: f32) -> f32 {
     }
 }
 
-/// 見本の色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
+/// モックの色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
 #[derive(Debug, Clone, Default)]
 pub struct SampleColor;
 
@@ -104,7 +104,7 @@ impl ColorTransform for SampleColor {
         for (o, v) in linear.iter_mut().zip(rgb) {
             *o = self.to_linear(from, v)?;
         }
-        // 原色が Rec.2020 の側だけ行列で作業空間（Rec.709）に合わせる。
+        // 原色が Rec.2020 の側だけ行列で作業色空間（Rec.709）に合わせる。
         let matrix = match (from.0 == "bt2020", to.0 == "bt2020") {
             (true, false) => Some(REC2020_TO_REC709),
             (false, true) => Some(REC709_TO_REC2020),
@@ -137,13 +137,13 @@ pub fn contract(make: impl Fn() -> Arc<dyn ColorTransform>) {
     let ct = make();
     let working = ColorSpace::working();
     let spaces = ct.known_spaces();
-    assert!(spaces.contains(&working), "作業空間を知っている");
+    assert!(spaces.contains(&working), "作業色空間を知っている");
 
     let same = ct.program(&working, &working).expect("作れる");
     assert_eq!(
         same,
         TransformProgram::Identity,
-        "作業空間から作業空間は恒等"
+        "作業色空間から作業色空間は恒等"
     );
 
     for space in &spaces {
@@ -205,7 +205,7 @@ fn named_spaces_contract(ct: &dyn ColorTransform) {
         );
     }
 
-    // 符号化値 (1,0,0) は線形でも (1,0,0)。作業空間では行列の第 1 列になる。
+    // 符号化値 (1,0,0) は線形でも (1,0,0)。作業色空間では行列の第 1 列になる。
     let red = ct
         .apply(&ColorSpace::bt2020(), &working, [1.0, 0.0, 0.0])
         .expect("bt2020");

@@ -16,11 +16,11 @@ use crate::sync::detect_sync_folder;
 use crate::{backup, SqlExt};
 
 const BUSY_TIMEOUT_MS: u64 = 5000;
-/// 作る途中のファイル。全部書けてから `project.mmdb` の名前にするので、途中で落ちても半端な DB が残らない。
+/// 作る途中のファイル。全部書けてから `project.mmdb` の名前にするので、途中でクラッシュしても半端な DB が残らない。
 const NEW_FILE: &str = "project.mmdb.new";
 
 impl Store {
-    /// 空の DB を作って文書を入れる。すでにあれば断る。書き手になれなければ断る。
+    /// 空の DB を作ってプロジェクトのデータを入れる。すでにあれば拒否する。書き手になれなければ拒否する。
     pub fn create(dir: &Path, project: &Project, now_ms: i64) -> Result<Self> {
         fs::create_dir_all(dir)?;
         if dir.join(DB_FILE).exists() {
@@ -156,7 +156,7 @@ fn existing_db(dir: &Path) -> Result<std::path::PathBuf> {
     Ok(db)
 }
 
-/// `project.mmdb.new` に表と文書と meta を書き、閉じる。
+/// `project.mmdb.new` に表とプロジェクトのデータと meta を書き、閉じる。
 fn write_new_db(dir: &Path, rows: &docio::RowMap, now_ms: i64) -> Result<()> {
     let path = dir.join(NEW_FILE);
     for suffix in ["", "-wal", "-shm"] {
@@ -223,7 +223,7 @@ fn check_integrity(conn: &Connection, dir: &Path) -> Result<()> {
 fn require_current_schema(conn: &Connection) -> Result<()> {
     if schema::user_version(conn)? != schema::SCHEMA_VERSION {
         return Err(MmError::Unsupported(
-            "古い版の DB は書き手のプロセスだけが移行できる".into(),
+            "古いバージョンの DB は書き手のプロセスだけが移行できる".into(),
         ));
     }
     Ok(())

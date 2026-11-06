@@ -17,7 +17,7 @@ enum Transfer {
     Bt709Oetf,
 }
 
-/// 原色。作業空間は Rec.709。
+/// 原色。作業色空間は Rec.709。
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Primaries {
     Rec709,
@@ -88,7 +88,7 @@ impl Space {
         }
     }
 
-    /// 線形の値 `arg` を符号化する WGSL の式。
+    /// 線形の値 `arg` をエンコードする WGSL の式。
     pub(crate) fn wgsl_from_linear(self, arg: &str) -> String {
         match self.transfer {
             Transfer::Linear => arg.to_owned(),

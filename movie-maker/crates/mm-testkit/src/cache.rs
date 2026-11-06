@@ -1,4 +1,4 @@
-//! キャッシュの見本と契約テスト。見本はメモリの中に置き、触った順で古いものから消す。
+//! キャッシュのモックと契約テスト。モックはメモリの中に置き、触った順で古いものから消す。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -40,7 +40,7 @@ impl Inner {
     }
 }
 
-/// 見本のキャッシュ。
+/// モックのキャッシュ。
 #[derive(Debug, Default)]
 pub struct MemoryCache {
     limit: Option<u64>,
@@ -112,7 +112,7 @@ fn key(hash: &str, variant: &str) -> CacheKey {
     }
 }
 
-/// キャッシュの契約。`make` は上限 `limit` バイトの置き場を作る。
+/// キャッシュの契約。`make` は上限 `limit` バイトのキャッシュを作る。
 pub fn contract(make: impl Fn(u64) -> Arc<dyn CacheStore>, limit: u64) {
     let store = make(limit);
     assert_eq!(store.limit_bytes(), Some(limit));
@@ -153,6 +153,6 @@ pub fn contract(make: impl Fn(u64) -> Arc<dyn CacheStore>, limit: u64) {
     assert_eq!(
         store.get(&key("same-hash", "x")).unwrap(),
         other.get(&key("same-hash", "x")).unwrap(),
-        "別の置き場でも同じ contentHash で当たる"
+        "別のキャッシュでも同じ contentHash で当たる"
     );
 }

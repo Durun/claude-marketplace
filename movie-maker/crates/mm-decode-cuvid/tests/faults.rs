@@ -1,4 +1,4 @@
-//! 共有バッファの輪の途中で失敗させ（故障の注入）、後始末と回復を確かめる。
+//! 共有リングバッファの途中で失敗させ（故障の注入）、後始末と回復を確かめる。
 //! 故障と資源の数は全体で 1 つなので、このファイルのテストは 1 つずつ走らせる。
 #![cfg(feature = "cuvid")]
 
@@ -17,7 +17,7 @@ static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 /// 回復を確かめる待ちの上限。止まるバグでは永遠に返らないので、時間で見切る。
 const DEADLINE: Duration = Duration::from_secs(60);
 
-/// GPU や CUDA が無い環境（CI）ではテストを飛ばす。
+/// GPU や CUDA が無い環境（CI）ではテストをスキップする。
 fn available() -> bool {
     gpu_available(|| {
         let ctx = GpuContext::shared(&gpu_request(None)?)?;
@@ -40,32 +40,32 @@ fn within_deadline(what: &str, f: impl FnOnce() + Send + 'static) {
         .unwrap_or_else(|_| panic!("{what}: CUDA のストリームが止まった"));
 }
 
-/// コピーの途中で失敗しても、枠のフェンスの回数がずれて 4 コマ後に止まることがない。
+/// コピーの途中で失敗しても、スロットのフェンスの回数がずれて 4 フレーム後に止まることがない。
 fn recovers_after(fault: Fault) {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let ctx = ctx();
     let path = fixtures(&["cfr.mp4"]).join("cfr.mp4");
-    within_deadline("故障のあとの復号", move || {
+    within_deadline("故障のあとのデコード", move || {
         let mut dec = CuvidDecoder::open(&path, &ctx).expect("開ける");
         inject(fault);
         assert!(
             dec.next_frame().is_err(),
-            "仕掛けた故障で 1 コマ目が失敗する"
+            "仕掛けた故障で 1 フレーム目が失敗する"
         );
-        // 輪は 4 枠。故障の枠を含めて何周もして、止まらず全コマが出る。
+        // リングバッファは 4 スロット。故障のスロットを含めて何周もして、止まらず全フレームが出る。
         let mut count = 0;
-        while let Some(frame) = dec.next_frame().expect("故障のあとは復号できる") {
+        while let Some(frame) = dec.next_frame().expect("故障のあとはデコードできる") {
             drop(frame);
             count += 1;
         }
-        assert!(count >= 50, "残りのコマが出た: {count}");
+        assert!(count >= 50, "残りのフレームが出た: {count}");
         dec.seek(RationalTime::ZERO).expect("seek");
-        assert!(dec.next_frame().expect("復号").is_some());
+        assert!(dec.next_frame().expect("デコード").is_some());
     });
 }
 
 #[test]
-fn コピーを積む前に失敗しても輪が止まらない() {
+fn コピーを積む前に失敗してもリングバッファが止まらない() {
     if !available() {
         return;
     }
@@ -73,16 +73,16 @@ fn コピーを積む前に失敗しても輪が止まらない() {
 }
 
 #[test]
-fn コピーを積んだあとシグナルの前に失敗しても輪が止まらない() {
+fn コピーを積んだあとシグナルの前に失敗してもリングバッファが止まらない() {
     if !available() {
         return;
     }
     recovers_after(Fault::CopySignal);
 }
 
-/// 輪を作る途中で失敗しても、それまでに取り込んだ CUDA の外部メモリとセマフォを漏らさない。
+/// リングバッファを作る途中で失敗しても、それまでに取り込んだ CUDA の外部メモリとセマフォを漏らさない。
 #[test]
-fn 輪の途中で失敗しても取り込みを漏らさない() {
+fn リングバッファの途中で失敗しても取り込みを漏らさない() {
     if !available() {
         return;
     }
@@ -91,11 +91,18 @@ fn 輪の途中で失敗しても取り込みを漏らさない() {
     let path = fixtures(&["cfr.mp4"]).join("cfr.mp4");
     let before = live_imports();
     inject(Fault::SlotImport { at: 3 });
-    assert!(CuvidDecoder::open(&path, &ctx).is_err(), "4 枠目で失敗する");
-    assert_eq!(live_imports(), before, "3 枠分の取り込みを手放した");
+    assert!(
+        CuvidDecoder::open(&path, &ctx).is_err(),
+        "4 スロット目で失敗する"
+    );
+    assert_eq!(live_imports(), before, "3 スロット分の取り込みを解放した");
 
     let dec = CuvidDecoder::open(&path, &ctx).expect("故障のあとは開ける");
-    assert!(live_imports() > before, "4 枠が取り込まれている");
+    assert!(live_imports() > before, "4 スロットが取り込まれている");
     drop(dec);
-    assert_eq!(live_imports(), before, "デコーダーを捨てると全部手放す");
+    assert_eq!(
+        live_imports(),
+        before,
+        "デコーダーをドロップすると全部解放する"
+    );
 }

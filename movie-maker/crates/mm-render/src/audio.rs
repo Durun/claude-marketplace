@@ -1,5 +1,5 @@
-//! 音。レイヤーごとに種類の `render_audio` を呼び、置く位置をそろえてミキサーに渡す。
-//! 入れ子（種類 `composition`）は、中のコンポジションを同じ手順で混ぜた音を 1 本の入力にする。
+//! 音。レイヤーごとにノードの種類の `render_audio` を呼び、置く位置をそろえてミキサーに渡す。
+//! 入れ子（ノードの種類 `composition`）は、中のコンポジションを同じ手順で混ぜた音を 1 本の入力にする。
 
 use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig};
 use mm_doc::{Composition, Layer};
@@ -72,7 +72,7 @@ impl WgpuRenderer {
             .create(sample_rate, channels, &MixerConfig::default())
     }
 
-    /// コンポジションの区間に鳴るレイヤーの音を、区間の頭に置いた入力として集める。
+    /// コンポジションの区間に鳴るレイヤーの音を、区間の先頭に置いた入力として集める。
     fn comp_inputs(&mut self, scope: &AudioScope<'_>) -> Result<Vec<MixInput>> {
         let mut inputs = Vec::new();
         for layer in &scope.comp.layers {
@@ -172,13 +172,13 @@ impl WgpuRenderer {
     }
 }
 
-/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。設定が無ければ素通し。
+/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。設定が無ければパススルー。
 fn mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
     let a = evaluate_audio(layer, t);
     (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
 }
 
-/// `block` を `offset` コマ目から置き、全体を `total` コマにそろえる。
+/// `block` を `offset` フレーム目から置き、全体を `total` フレームにそろえる。
 fn place_block(block: &AudioBlock, offset: usize, total: usize) -> AudioBlock {
     let ch = block.channels as usize;
     let mut samples = vec![0.0f32; total * ch];

@@ -1,12 +1,12 @@
 //! WGSL を GPU で実行して CPU の値と突き合わせる。`--features gpu-eval` のときだけ動き、
-//! アダプターが無ければ飛ばす。
+//! アダプターが無ければスキップする。
 #![cfg(feature = "gpu-eval")]
 
 use mm_color_api::{ColorTransform, TransformProgram};
 use mm_color_lut::gpu_eval::GpuEval;
 use mm_color_lut::{bake_lut3d, sample_trilinear, Cdl, LutColor, LUT3D_APPLY_WGSL};
 
-/// 見本の色。黒、18% グレー、白、原色、彩度の高い色。
+/// テスト用の色。黒、18% グレー、白、原色、彩度の高い色。
 const SAMPLES: [[f32; 3]; 8] = [
     [0.0, 0.0, 0.0],
     [0.18, 0.18, 0.18],
@@ -28,7 +28,7 @@ fn max_diff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 #[test]
 fn 伝達関数のwgslがcpuと一致する() {
     let Some(gpu) = GpuEval::new() else {
-        eprintln!("アダプターが無いので飛ばす");
+        eprintln!("アダプターが無いのでスキップする");
         return;
     };
     let ct = LutColor;

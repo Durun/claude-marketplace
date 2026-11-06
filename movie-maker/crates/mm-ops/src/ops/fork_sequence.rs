@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_refs, invalid, RemoveSequence};
 use crate::touches::Touches;
 
-/// `sequence` を写して `new_sequence` を作る。カットは `cuts` の ID で写し（数が合うこと）、
+/// `sequence` をコピーして `new_sequence` を作る。カットは `cuts` の ID でコピーし（数が合うこと）、
 /// 各カットの `origin` に元のカットを残す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

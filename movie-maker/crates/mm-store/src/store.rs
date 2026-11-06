@@ -1,4 +1,4 @@
-//! `Store`: 開いたプロジェクト。文書と命令の記録を 1 つのトランザクションで書く。
+//! `Store`: 開いたプロジェクト。プロジェクトのデータと操作の記録を 1 つのトランザクションで書く。
 //! 開き方（作る、開く、読み取りだけ）は `open.rs`。
 
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ pub enum OpenMode {
     ReadOnly,
 }
 
-/// 開いたときの注意。開くのは断らない。
+/// 開いたときの注意。開くのは拒否しない。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreWarning {
     /// 同期のフォルダーかネットワークの下にある。バックアップの間隔を縮める。
@@ -44,7 +44,7 @@ pub enum StoreWarning {
 pub struct SearchHit {
     /// `layer`、`marker`、`composition`、`asset`。
     pub kind: String,
-    /// 持ち主の行の鍵（`layers/<comp>/<id>` など）。
+    /// 持ち主の行のキー（`layers/<comp>/<id>` など）。
     pub owner: String,
     pub text: String,
 }
@@ -86,17 +86,17 @@ impl Store {
         &self.dir
     }
 
-    /// 今の文書。
+    /// 今のプロジェクトのデータ。
     pub fn project(&self) -> &Project {
         &self.project
     }
 
-    /// 今の文書の版番号。命令 1 つで 1 進む。取り消しとやり直しも命令の数だけ進める。
+    /// 今のプロジェクトのデータのバージョン番号。操作 1 つで 1 進む。取り消しとやり直しも操作の数だけ進める。
     pub fn doc_version(&self) -> i64 {
         self.doc_version
     }
 
-    /// 取り消せるまとまりの数。
+    /// 取り消せるトランザクションの数。
     pub fn undo_depth(&self) -> i64 {
         self.undo_pos
     }
@@ -123,14 +123,14 @@ impl Store {
         }
     }
 
-    /// 文書の変更とまとまりの記録を 1 つのトランザクションで書く。`project` は命令を当てた後の文書。
-    /// 取り消し（やり直し）は、逆命令（元の命令）を当てた記録を同じ形で書き、版も命令の数だけ進む。
-    /// 当てたまとまりの行は後から書き換えない。途中で落ちたら、開き直すと書く前の版に戻る。
+    /// プロジェクトのデータの変更とトランザクションの記録を 1 つのトランザクションで書く。`project` は操作を適用した後のプロジェクトのデータ。
+    /// 取り消し（やり直し）は、逆操作（元の操作）を適用した記録を同じ形で書き、バージョンも操作の数だけ進む。
+    /// 適用したトランザクションの行は後から書き換えない。途中でクラッシュしたら、開き直すと書く前のバージョンに戻る。
     pub fn commit(&mut self, project: &Project, input: &TxnInput) -> Result<StoredTxn> {
         self.require_writer()?;
         if input.ops.is_empty() {
             return Err(MmError::InvalidArgument(
-                "命令の無いトランザクション".into(),
+                "操作の無いトランザクション".into(),
             ));
         }
         let pos = self.next_undo_pos(input.kind)?;
@@ -154,14 +154,14 @@ impl Store {
         Ok(stored)
     }
 
-    /// 書いた後の取り消しの位置。取り消しとやり直しは、列の今の位置のまとまりを指していなければ断る。
+    /// 書いた後の取り消しの位置。取り消しとやり直しは、列の今の位置のトランザクションを指していなければ拒否する。
     fn next_undo_pos(&self, kind: TxnKind) -> Result<i64> {
         let expect = |pos: i64, of: u64| -> Result<()> {
             if self.stack_at(pos)? == Some(of as i64) {
                 Ok(())
             } else {
                 Err(MmError::InvalidArgument(format!(
-                    "まとまり {of} は取り消しの列の位置 {pos} に無い"
+                    "トランザクション {of} は取り消しの列の位置 {pos} に無い"
                 )))
             }
         };
@@ -187,7 +187,7 @@ impl Store {
             .sql()
     }
 
-    /// 今の文書との差だけを直列化して、新しい文書の行を作る。
+    /// 今のプロジェクトのデータとの差だけを直列化して、新しいプロジェクトのデータの行を作る。
     fn next_rows(&self, project: &Project) -> Result<RowMap> {
         let prev = docio::Prev {
             project: &self.project,
@@ -205,7 +205,7 @@ impl Store {
         self.undo_pos = pos;
     }
 
-    /// 取り消すまとまり。無ければ `None`。呼ぶ側が逆命令を逆順に当て、`TxnKind::Undo` の [`Store::commit`] で書く。
+    /// 取り消すトランザクション。無ければ `None`。呼ぶ側が逆操作を逆順に適用し、`TxnKind::Undo` の [`Store::commit`] で書く。
     pub fn undo_plan(&self) -> Result<Option<UndoPlan>> {
         if self.undo_pos == 0 {
             return Ok(None);
@@ -213,7 +213,7 @@ impl Store {
         self.plan_at(self.undo_pos)
     }
 
-    /// やり直すまとまり。無ければ `None`。命令を当てた順に当て、`TxnKind::Redo` の [`Store::commit`] で書く。
+    /// やり直すトランザクション。無ければ `None`。操作を適用した順に適用し、`TxnKind::Redo` の [`Store::commit`] で書く。
     pub fn redo_plan(&self) -> Result<Option<UndoPlan>> {
         self.plan_at(self.undo_pos + 1)
     }
@@ -239,7 +239,7 @@ impl Store {
         Ok(Some(UndoPlan { txn_id, name, ops }))
     }
 
-    /// 一貫した写しを `backups/` に作り、世代を整理する。
+    /// 一貫したコピーを `backups/` に作り、世代を整理する。
     pub fn backup(&mut self, now_ms: i64) -> Result<PathBuf> {
         let path = backup::run(&self.conn, &self.dir, now_ms)?;
         self.last_backup_ms = now_ms;
@@ -277,8 +277,8 @@ impl Store {
         self.close_with(now_ms, true)
     }
 
-    /// 閉じる。バックアップは間隔が過ぎていたときだけ作る。1 命令ごとに開き直す `mm` が使う
-    /// （毎回写すと直近 10 個の世代が数分で埋まり、古い状態に戻れなくなる）。
+    /// 閉じる。バックアップは間隔が過ぎていたときだけ作る。1 操作ごとに開き直す `mm` が使う
+    /// （毎回コピーすると直近 10 個の世代が数分で埋まり、古い状態に戻れなくなる）。
     pub fn close_brief(self, now_ms: i64) -> Result<()> {
         self.close_with(now_ms, false)
     }
@@ -303,7 +303,7 @@ fn not_writer() -> MmError {
     MmError::Unsupported("読み取りだけで開いているので書けない".into())
 }
 
-/// まとまりと命令を表に書く。ID は通し番号、版は命令ごとに 1 進む。
+/// トランザクションと操作を表に書く。ID は通し番号、バージョンは操作ごとに 1 進む。
 fn insert_txn(tx: &rusqlite::Transaction, input: &TxnInput, base: i64) -> Result<StoredTxn> {
     let id: i64 = tx
         .query_row("SELECT coalesce(max(id), 0) + 1 FROM txns", [], |r| {
@@ -386,7 +386,7 @@ fn insert_ops(
     Ok(out)
 }
 
-/// 命令の名前（`op` の欄）。
+/// 操作の名前（`op` のフィールド）。
 fn op_name(op: &serde_json::Value) -> String {
     op["op"].as_str().unwrap_or("?").to_string()
 }

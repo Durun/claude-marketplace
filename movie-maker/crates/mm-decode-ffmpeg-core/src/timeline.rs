@@ -1,4 +1,4 @@
-//! 映像の時間軸。パケットの PTS を先に全部読み、コマの番号を PTS の位置で決める。
+//! 映像の時間軸。パケットの PTS を先に全部読み、フレームの番号を PTS の位置で決める。
 //!
 //! 番号を「時刻 × fps」から逆算せず索引の位置にするのは、B フレームや VFR でも
 //! デコーダーが返す順序に依らず、シーク後も同じ番号が付くため。
@@ -8,7 +8,7 @@ use ffmpeg_next as ff;
 use mm_decode_api::MediaInfo;
 use mm_types::{ColorSpace, MmError, Rational, RationalTime, Result, Size};
 
-/// PTS の索引を作れなかった素材の 1 コマの長さの仮定（秒）。コマが 1 つだけのときに使う。
+/// PTS の索引を作れなかった素材の 1 フレームの長さの仮定（秒）。フレームが 1 つだけのときに使う。
 const FALLBACK_FRAME_SECONDS: (i128, u32) = (1, 30);
 
 /// ストリームの時間の単位（`num / den` 秒）。
@@ -55,16 +55,16 @@ impl TimeBase {
 pub struct VideoScan {
     /// 昇順で重複のない PTS（ストリームの ticks）。
     pub raw_pts: Vec<i64>,
-    /// 最後のコマの長さ（ticks）。分からなければ 0。
+    /// 最後のフレームの長さ（ticks）。分からなければ 0。
     pub last_duration: i64,
-    /// キーフレームのコマの番号（昇順）。
+    /// キーフレームのフレームの番号（昇順）。
     pub keyframes: Vec<i64>,
 }
 
 /// 映像ストリームの PTS を全部読む。パケットが 1 つも無ければ `Corrupt`。
 ///
-/// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）は復号しても絵が出ないので、
-/// 索引に入れない。入れるとコマの番号が出るコマからずれる。
+/// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）はデコードしても画像が出ないので、
+/// 索引に入れない。入れるとフレームの番号が出るフレームからずれる。
 pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoScan> {
     let mut input = ff::format::input(&path)
         .map_err(|e| MmError::Corrupt(format!("{}: {e}", path.display())))?;
@@ -115,12 +115,12 @@ pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoSc
 }
 
 fn is_discarded(packet: &ff::Packet) -> bool {
-    // ffmpeg-next の `Flags` は DISCARD を持たず、`flags()` が未知のビットを落とすので生で読む
+    // ffmpeg-next の `Flags` は DISCARD を持たず、`flags()` が未知のビットを破棄するので生で読む
     let raw = unsafe { (*packet.as_ptr()).flags };
     raw & ff::ffi::AV_PKT_FLAG_DISCARD != 0
 }
 
-/// 次に出すコマ `next` の位置から `target` へ、シークせず読み進めてよいか。
+/// 次に出すフレーム `next` の位置から `target` へ、シークせず読み進めてよいか。
 /// `next..=target` の間に（`next` の次以降の）キーフレームが無ければ、同じ GOP の中なので読み進めるほうが速い。
 pub fn can_read_forward(keyframes: &[i64], next: i64, target: i64) -> bool {
     if target < next {
@@ -132,7 +132,7 @@ pub fn can_read_forward(keyframes: &[i64], next: i64, target: i64) -> bool {
 
 /// PTS の列が固定フレームレートなら、その fps。
 ///
-/// 候補（ストリームの宣言、PTS の最初の間隔）のうち、全コマが 1 tick 以内で
+/// 候補（ストリームの宣言、PTS の最初の間隔）のうち、全フレームが 1 tick 以内で
 /// `i / fps` に載るものを採る。mkv の ms 単位のような丸めの揺れは CFR と見なす。
 pub fn detect_fps(raw: &[i64], tb: TimeBase, declared: &[ff::Rational]) -> Option<Rational> {
     let mut candidates: Vec<Rational> = declared.iter().filter_map(|r| to_rational(*r)).collect();
@@ -166,7 +166,7 @@ fn fits(raw: &[i64], tb: TimeBase, fps: Rational) -> bool {
     })
 }
 
-/// VFR の素材の、全コマの時刻（先頭が 0）と全体の長さ。最後のコマの長さは、パケットの長さ、
+/// VFR の素材の、全フレームの時刻（先頭が 0）と全体の長さ。最後のフレームの長さは、パケットの長さ、
 /// 直前との間隔、仮定の順に決める。
 pub fn vfr_index(scan: &VideoScan, tb: TimeBase) -> Result<(RationalTime, Vec<RationalTime>)> {
     let raw = &scan.raw_pts;
@@ -183,22 +183,22 @@ pub fn vfr_index(scan: &VideoScan, tb: TimeBase) -> Result<(RationalTime, Vec<Ra
     Ok((last.checked_add(tail)?, index))
 }
 
-/// 素材の時間軸。コマの番号と PTS の対応、キーフレーム、`MediaInfo`。
+/// 素材の時間軸。フレームの番号と PTS の対応、キーフレーム、`MediaInfo`。
 #[derive(Debug)]
 pub struct Timeline {
-    /// 昇順で重複のない映像の PTS（ストリームの ticks）。位置がコマの番号。
+    /// 昇順で重複のない映像の PTS（ストリームの ticks）。位置がフレームの番号。
     pub raw_pts: Vec<i64>,
-    /// キーフレームのコマの番号（昇順）。シークするか読み進めるかの判断に使う。
+    /// キーフレームのフレームの番号（昇順）。シークするか読み進めるかの判断に使う。
     pub keyframes: Vec<i64>,
-    /// CFR のとき、コマの時刻を `index / fps` にする。
+    /// CFR のとき、フレームの時刻を `index / fps` にする。
     pub fps: Option<Rational>,
-    /// 素材の時間軸の 0（最初のコマ）の秒。
+    /// 素材の時間軸の 0（最初のフレーム）の秒。
     pub origin: RationalTime,
     pub info: MediaInfo,
 }
 
 impl Timeline {
-    /// 素材を走査して作る。`size` と `color_space` は復号器の宣言から。
+    /// 素材を走査して作る。`size` と `color_space` はデコーダーの宣言から。
     pub fn build(
         path: &std::path::Path,
         stream: &ff::format::stream::Stream<'_>,
@@ -234,12 +234,12 @@ impl Timeline {
         })
     }
 
-    /// コマの数。
+    /// フレームの数。
     pub fn count(&self) -> i64 {
         self.raw_pts.len() as i64
     }
 
-    /// 番号のコマの時刻。
+    /// 番号のフレームの時刻。
     pub fn pts_of(&self, index: i64) -> Result<RationalTime> {
         match self.fps {
             Some(fps) => RationalTime::from_frames(index, fps),
@@ -247,7 +247,7 @@ impl Timeline {
         }
     }
 
-    /// PTS(ticks) のコマの番号。索引に無ければ、それ以下で最後のコマ。
+    /// PTS(ticks) のフレームの番号。索引に無ければ、それ以下で最後のフレーム。
     pub fn index_of(&self, pts: i64) -> i64 {
         match self.raw_pts.binary_search(&pts) {
             Ok(i) => i as i64,
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn vfr_の長さは最後のコマの長さを足す() {
+    fn vfr_の長さは最後のフレームの長さを足す() {
         let scan = VideoScan {
             raw_pts: vec![0, 100, 300],
             last_duration: 0,

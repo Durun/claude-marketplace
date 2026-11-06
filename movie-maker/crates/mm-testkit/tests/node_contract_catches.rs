@@ -1,4 +1,4 @@
-//! 種類の契約が、約束を破る種類を落とすことの確認。
+//! 種類の契約が、契約を破る種類を検出することの確認。
 
 use std::sync::Arc;
 
@@ -6,7 +6,7 @@ use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
 use mm_testkit::node::{contract, NodeFixture};
 use mm_types::{ParamSchema, Params, Rect, Result, Rgba, RgbaImage, Size};
 
-/// 入力 0 を返す効果。`lie` が真なら描画は入力と違う絵を返すのに `is_identity` を真にする。
+/// 入力 0 を返す効果。`lie` が真なら描画は入力と違う画像を返すのに `is_identity` を真にする。
 struct InputAware {
     lie: bool,
 }

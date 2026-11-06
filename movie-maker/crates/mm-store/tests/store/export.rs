@@ -38,7 +38,7 @@ fn prepared(dir: &Path) -> Store {
     s.commit(&p, &input).unwrap();
     s.put_comment(&json!({ "id": "r2", "state": "done", "comp_id": "c" }))
         .unwrap();
-    s.put_comment(&json!({ "id": "r1", "state": "open", "text": "尻を詰める" }))
+    s.put_comment(&json!({ "id": "r1", "state": "open", "text": "アウト点を詰める" }))
         .unwrap();
     s
 }
@@ -53,7 +53,7 @@ fn 書き出し_取り込み_書き出しでバイトが同じ() {
     let imported =
         Store::import_versions(b.path(), &a.path().join("versions"), false, NOW).unwrap();
     assert_eq!(imported.project(), first.project());
-    assert_eq!(imported.doc_version(), 0, "命令の記録は入らない");
+    assert_eq!(imported.doc_version(), 0, "操作の記録は入らない");
     let report2 = imported.export_versions().unwrap();
 
     assert_eq!(report1.hash, report2.hash);
@@ -107,7 +107,7 @@ fn 変わらない書き出しはファイルを触らない() {
 }
 
 #[test]
-fn 文書から消えた_id_のファイルは消える() {
+fn プロジェクトのデータから消えた_id_のファイルは消える() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = prepared(tmp.path());
     s.export_versions().unwrap();
@@ -131,7 +131,7 @@ fn json_は決定的な形で書かれる() {
 }
 
 #[test]
-fn 名前付きの版は表に残り_import_は置き換え前の写しを残す() {
+fn 名前付きバージョンは表に残り_import_は置き換え前のコピーを残す() {
     let tmp = tempfile::tempdir().unwrap();
     let s = prepared(tmp.path());
     let report = s

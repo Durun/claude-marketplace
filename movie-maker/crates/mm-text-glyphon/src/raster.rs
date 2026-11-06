@@ -1,4 +1,4 @@
-//! `ShapedText` の字形を、字体の名前と字形の番号で引いて CPU で RGBA に描く。
+//! `ShapedText` のグリフを、フォントの名前とグリフの番号で引いて CPU で RGBA に描く。
 
 use std::collections::HashMap;
 
@@ -11,7 +11,7 @@ use mm_types::{Rect, Rgba, RgbaImage, Size};
 /// インクの矩形に足す余白（1 倍の画素）。倍率ごとのヒンティングのずれで端が切れないようにする。
 const INK_MARGIN: f32 = 1.0;
 
-/// 絵の大きさは `bounds * scale` を切り上げた大きさ（口の契約）。
+/// 画像の大きさは `bounds * scale` を切り上げた大きさ（インターフェースの契約）。
 pub(crate) fn raster_size(shaped: &ShapedText, scale: f32) -> Size {
     Size::new(
         (shaped.bounds.width * scale).ceil() as u32,
@@ -19,7 +19,7 @@ pub(crate) fn raster_size(shaped: &ShapedText, scale: f32) -> Size {
     )
 }
 
-/// sRGB の 8 bit を線形にする。色つきの字形（絵文字）は sRGB で来るため。
+/// sRGB の 8 bit を線形にする。色つきのグリフ（絵文字）は sRGB で来るため。
 fn srgb_to_linear(v: u8) -> f32 {
     let c = f32::from(v) / 255.0;
     if c <= 0.04045 {
@@ -29,7 +29,7 @@ fn srgb_to_linear(v: u8) -> f32 {
     }
 }
 
-/// 字形の 1 画素の色。Mask は文字色にカバレッジを掛け、Color は字形の色そのまま。
+/// グリフの 1 画素の色。Mask は文字色にカバレッジを掛け、Color はグリフの色そのまま。
 fn pixel_color(content: SwashContent, data: &[u8], index: usize, color: Rgba) -> Option<Rgba> {
     match content {
         SwashContent::Mask => {
@@ -55,7 +55,7 @@ fn pixel_color(content: SwashContent, data: &[u8], index: usize, color: Rgba) ->
     }
 }
 
-/// `faces` の各字体を fontdb の ID に引く。無い字体は `None`（その字形は描かない）。
+/// `faces` の各フェイスを fontdb の ID に引く。無いフェイスは `None`（そのグリフは描かない）。
 fn resolve_faces(fs: &FontSystem, faces: &[FaceRef]) -> Vec<Option<(ID, Weight)>> {
     let mut by_name: HashMap<&str, ID> = HashMap::new();
     for face in fs.db().faces() {
@@ -73,7 +73,7 @@ fn resolve_faces(fs: &FontSystem, faces: &[FaceRef]) -> Vec<Option<(ID, Weight)>
         .collect()
 }
 
-/// 字形の絵を `img` に重ねる。`left`/`top` は絵の中の左上。
+/// グリフのビットマップを `img` に重ねる。`left`/`top` はビットマップの中の左上。
 fn blend_glyph(
     img: &mut RgbaImage,
     image: &cosmic_text::SwashImage,
@@ -101,7 +101,7 @@ fn blend_glyph(
     }
 }
 
-/// `shaped` の字形を `scale` 倍で描く。絵の原点は `shaped.bounds` の左上。
+/// `shaped` のグリフを `scale` 倍で描く。画像の原点は `shaped.bounds` の左上。
 pub(crate) fn draw(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
@@ -126,8 +126,8 @@ pub(crate) fn draw(
     img
 }
 
-/// 字形のインクが 1 倍で占める矩形の和。行の送り幅や高さを越える部分（斜体の張り出し、
-/// 行より高いアクセントや絵文字）を絵の範囲に含めるために使う。
+/// グリフのインクが 1 倍で占める矩形の和。行の送り幅や高さを越える部分（斜体の張り出し、
+/// 行より高いアクセントや絵文字）を画像の範囲に含めるために使う。
 pub(crate) fn ink_bounds(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
@@ -155,7 +155,7 @@ pub(crate) fn ink_bounds(
     bounds
 }
 
-/// 各字形の絵を引き、絵の左上の位置（`origin` を原点とする `scale` 倍の画素）と一緒に `f` に渡す。
+/// 各グリフのビットマップを引き、ビットマップの左上の位置（`origin` を原点とする `scale` 倍の画素）と一緒に `f` に渡す。
 pub(crate) fn for_each_glyph_image(
     fs: &mut FontSystem,
     cache: &mut SwashCache,

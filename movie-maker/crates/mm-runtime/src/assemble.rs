@@ -61,7 +61,7 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
     }))
 }
 
-/// 口に合わない実装を選んだときの断り。
+/// インターフェースに合わない実装を選んだときのエラー。
 fn unsupported(port: &str, backend: Backend) -> MmError {
     MmError::Unsupported(format!(
         "{port} に実装 {} は選べない（または feature が切ってある）",
@@ -109,7 +109,7 @@ fn gpu_decoders() -> Vec<GpuCandidate> {
     ]
 }
 
-/// `auto`: 入っている GPU の実装を d3d12va、cuvid の順に並べ、最後に ffmpeg。何も入っていなければ断る。
+/// `auto`: 入っている GPU の実装を d3d12va、cuvid の順に並べ、最後に ffmpeg。何も入っていなければ拒否する。
 fn auto_decoders() -> Result<Arc<dyn DecoderFactory>> {
     let gpu = gpu_decoders();
     #[cfg(feature = "ffmpeg")]
@@ -140,13 +140,13 @@ fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
     }
 }
 
-/// GPU を使う実装があるときだけ、文脈を 1 回作る。設定のアダプターが無ければ高性能のもの。
-/// 要否は描画器とデコーダーの両方の選択で決まる（GPU で復号する実装は描画器と同じデバイスが要る）。
+/// GPU を使う実装があるときだけ、コンテキストを 1 回作る。設定のアダプターが無ければ高性能のもの。
+/// 要否はレンダラーとデコーダーの両方の選択で決まる（GPU でデコードする実装はレンダラーと同じデバイスが要る）。
 fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
     gpu_context_with(config, GpuContext::shared)
 }
 
-/// `create` で文脈を作る。`decode: auto` だけが GPU を欲しがるときは、作れなくても `None` で続け、
+/// `create` でコンテキストを作る。`decode: auto` だけが GPU を欲しがるときは、作れなくても `None` で続け、
 /// ffmpeg にする（GPU の無い CI でも組める）。
 fn gpu_context_with(
     config: &RuntimeConfig,
@@ -158,15 +158,15 @@ fn gpu_context_with(
     match create(&gpu_request(config)?) {
         Ok(ctx) => Ok(Some(ctx)),
         Err(e) if !config.requires_gpu() => {
-            tracing::warn!(error = %e, "GPU の文脈を作れないので decode: auto は ffmpeg で動く");
+            tracing::warn!(error = %e, "GPU のコンテキストを作れないので decode: auto は ffmpeg で動く");
             Ok(None)
         }
         Err(e) => Err(e),
     }
 }
 
-/// 文脈の頼み方。GPU で復号する実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
-/// 描画器もそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
+/// コンテキストの頼み方。GPU でデコードする実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
+/// レンダラーもそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
 fn gpu_request(config: &RuntimeConfig) -> Result<GpuRequest> {
     let default = GpuRequest {
         adapter: config.gpu.clone(),
@@ -207,8 +207,8 @@ fn color(backend: Backend) -> Result<Arc<dyn ColorTransform>> {
     }
 }
 
-/// 整形器と描画器の組。cpu と glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
-/// glyphon は GPU の文脈が要る（`RuntimeConfig::needs_gpu` が文脈を作らせる）。
+/// シェーパーとレンダラーの組。cpu と glyphon はフォントの読み込みを共有するため同じ `TextEngine` から両方を取る。
+/// glyphon は GPU のコンテキストが要る（`RuntimeConfig::needs_gpu` がコンテキストを作らせる）。
 fn text(
     backend: Backend,
     gpu: Option<&Arc<GpuContext>>,
@@ -251,7 +251,7 @@ fn renderer(
     }
 }
 
-/// 描画器に合う種類の登録簿。見本の描画器は見本の種類、wgpu の描画器は `mm-nodes-basic`。
+/// レンダラーに合うノードの種類のレジストリ。モックのレンダラーはモックのノード、wgpu のレンダラーは `mm-nodes-basic`。
 fn registry(render: Backend) -> Result<Registry> {
     let mut r = Registry::new();
     if render == Backend::Wgpu {

@@ -1,4 +1,4 @@
-//! CEF のコールバック。絵はここで wgpu のテクスチャにして `Shared` に置く。
+//! CEF のコールバック。フレームはここで wgpu のテクスチャにして `Shared` に置く。
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -17,9 +17,9 @@ pub struct Shared {
     /// true なら `on_accelerated_paint`（共有テクスチャ）、false なら `on_paint`（CPU の BGRA）で受ける。
     pub accelerated: bool,
     pub size: Cell<(u32, u32)>,
-    /// 最後に受け取った絵。CEF のハンドルとは別の、こちらが持つテクスチャ。
+    /// 最後に受け取ったフレーム。CEF のハンドルとは別の、こちらが持つテクスチャ。
     pub frame: RefCell<Option<wgpu::Texture>>,
-    /// 絵を受け取った回数。
+    /// フレームを受け取った回数。
     pub painted: Cell<u64>,
     pub loaded: Cell<bool>,
     pub title: RefCell<String>,
@@ -56,7 +56,7 @@ impl Shared {
         self.painted.set(self.painted.get() + 1);
     }
 
-    /// 共有ハンドルはコールバックの外で使えないので、この中で自前のテクスチャへ写して待つ。
+    /// 共有ハンドルはコールバックの外で使えないので、この中で自前のテクスチャへコピーして待つ。
     fn import_shared(&self, info: &AcceleratedPaintInfo) {
         let _span = tracing::info_span!("host_cef.import").entered();
         let handle = SharedTextureHandle::new(info);
@@ -67,7 +67,7 @@ impl Shared {
         }
     }
 
-    /// 逃げ道。CPU の BGRA を毎コマ GPU へ上げる。
+    /// フォールバック。CPU の BGRA を毎フレーム GPU へ上げる。
     fn upload_cpu(&self, buffer: &[u8], width: u32, height: u32) {
         let _span = tracing::info_span!("host_cef.upload").entered();
         let size = wgpu::Extent3d {

@@ -1,11 +1,11 @@
-//! `Decoder` の口で d3d12va の 1 コマの時間と fps を、mm-trace のスパンで測る。
+//! `Decoder` を通して d3d12va の 1 フレームの時間と fps を、mm-trace のスパンで測る。
 //!
 //! 使い方: `cargo run --release --features d3d12va --example bench_d3d12va -- <素材> <mode> [--frames N] [--warmup N]`
 //!
 //! mode:
-//! - `decode`: `next_frame` を回し、コマを捨てる。変換の提出までを含む。最後に GPU の完了を待つ。
-//! - `render`: 描画器と同じ手順（`import` → `before_submit` → 空の提出 → `after_submit`）まで回す。
-//! - `seek`: 40 か所へシークし、頼んでから 1 コマ目が出るまで。
+//! - `decode`: `next_frame` を回し、フレームを破棄する。変換の提出までを含む。最後に GPU の完了を待つ。
+//! - `render`: レンダラーと同じ手順（`import` → `before_submit` → 空の提出 → `after_submit`）まで回す。
+//! - `seek`: 40 か所へシークし、頼んでから 1 フレーム目が出るまで。
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -114,7 +114,7 @@ fn main() {
     } else {
         let (secs, n) = run(&a, &ctx);
         println!(
-            "{} {} {n} コマ {secs:.3} s = {:.1} fps",
+            "{} {} {n} フレーム {secs:.3} s = {:.1} fps",
             a.path.file_name().unwrap().to_string_lossy(),
             a.mode,
             n as f64 / secs

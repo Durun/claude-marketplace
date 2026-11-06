@@ -1,13 +1,13 @@
-//! 全部の命令の JSON Schema。`mm op --schema`、MCP のツールの型、`ui/sdk` の型の生成の元。
+//! 全部の操作の JSON Schema。`mm op --schema`、MCP のツールの型、`ui/sdk` の型の生成の元。
 
 use schemars::schema_for;
 
 use crate::op::Op;
 
-/// 凍結したスキーマの置き場（クレートの根からの相対パス）。テストが最新かを確かめる。
+/// 凍結したスキーマの置き場所（クレートの根からの相対パス）。テストが最新かを確かめる。
 pub const SCHEMA_PATH: &str = "schema/ops.json";
 
-/// [`Op`] のスキーマ。`op` の欄で枝が決まる `oneOf`。
+/// [`Op`] のスキーマ。`op` のフィールドでバリアントが決まる `oneOf`。
 pub fn ops_schema() -> schemars::Schema {
     schema_for!(Op)
 }

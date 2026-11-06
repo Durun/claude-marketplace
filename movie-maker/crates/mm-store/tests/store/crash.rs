@@ -1,10 +1,10 @@
-//! 書き込み、取り消し、バックアップの途中でプロセスを kill しても、開き直すと最後に確定した版に戻ること。
+//! 書き込み、取り消し、バックアップの途中でプロセスを kill しても、開き直すと最後に確定したバージョンに戻ること。
 //!
-//! 子のプロセスはこのテストの実行ファイル自身を `crash_child` だけ走らせて作る。子は命令を当てる時間を
+//! 子のプロセスはこのテストの実行ファイル自身を `crash_child` だけ走らせて作る。子は操作を適用する時間を
 //! 省くため、全レイヤーのロックを反転する記録をあらかじめ作り、書き込みだけを繰り返す。
 //! 親は子の WAL を見張り、確定していないフレームが現れた（SQLite が書き始めた）直後にばらけた間を置いて kill する。
 //! 「本当に書き込みの最中に止めた」回は、kill の直後の WAL にそのフレームが残っていることで数える。
-//! SQLite はページのキャッシュに収まる書き込みを確定の瞬間にまとめて書くので、窓を広げるために
+//! SQLite はページのキャッシュに収まる書き込みを確定の瞬間にまとめて書くので、時間幅を広げるために
 //! レイヤーごとに大きな文字を持たせ、1 回の書き込みがキャッシュ（既定 2 MB）からあふれるようにする。
 
 use std::fs;
@@ -22,22 +22,22 @@ use crate::common::{actor, lock_records, locked, project_with, NOW};
 
 const DIR_ENV: &str = "MM_STORE_CRASH_DIR";
 const MODE_ENV: &str = "MM_STORE_CRASH_MODE";
-/// 1 回のまとまりの命令の数（レイヤーの数）。書き込みの窓を広げるため多めにする。
+/// 1 回のトランザクションの操作の数（レイヤーの数）。書き込みの時間幅を広げるため多めにする。
 const OPS_PER_TXN: usize = 500;
 const ROUNDS: u64 = 20;
-/// 書き込みの最中に止めた回がこれより少なければ、見張りが窓に当たっていない。
+/// 書き込みの最中に止めた回がこれより少なければ、見張りがその時間幅に入っていない。
 const MIN_MID_WRITE: u32 = 10;
 /// 見張りの間隔と、子が終わるまでの待ちの上限。
 const POLL: Duration = Duration::from_millis(1);
 const DEADLINE: Duration = Duration::from_secs(20);
 /// 書き始めを見てから kill するまでの、ばらけた余分の待ち（ミリ秒）の上限。
 const EXTRA_WAIT_MS: u64 = 60;
-/// 取り消しの試験で、親が先に書いておくまとまりの数。
+/// 取り消しの試験で、親が先に書いておくトランザクションの数。
 const PREPARED_TXNS: usize = 4;
 /// レイヤーごとの文字の長さ。全レイヤーで 3 MB になり、1 回の書き込みが SQLite のキャッシュからあふれる。
 const TEXT_LEN: usize = 6_000;
 
-/// 全レイヤーのロックを `toggles` 回反転した文書。
+/// 全レイヤーのロックを `toggles` 回反転したプロジェクトのデータ。
 fn toggled(toggles: usize) -> Project {
     let mut p = project_with(OPS_PER_TXN);
     for l in &mut p.compositions[0].layers {
@@ -125,7 +125,7 @@ fn has_tmp_backup(dir: &Path) -> bool {
     backup_names(dir).iter().any(|n| n.contains(".tmp"))
 }
 
-/// 1 つ目の写しが残った後の、2 つ目以降の書きかけ。
+/// 1 つ目のコピーが残った後の、2 つ目以降の書きかけ。
 fn writing_second_backup(dir: &Path) -> bool {
     let names = backup_names(dir);
     names.iter().any(|n| n.contains(".tmp")) && names.iter().any(|n| !n.contains(".tmp"))
@@ -187,7 +187,7 @@ fn open_writer(dir: &Path, round: u64) -> Store {
 }
 
 #[test]
-fn 書き込みの途中で_kill_しても最後に確定した版に戻る() {
+fn 書き込みの途中で_kill_しても最後に確定したバージョンに戻る() {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
     let mut mid_write = 0u32;
     for round in 0..ROUNDS {
@@ -202,10 +202,10 @@ fn 書き込みの途中で_kill_しても最後に確定した版に戻る() {
         assert_eq!(
             version % per,
             0,
-            "round {round}: まとまりの途中で止まっている"
+            "round {round}: トランザクションの途中で止まっている"
         );
         let n = (version / per) as u64;
-        // 確定の表示の後に落ちれば n は確定の回数、確定した直後で表示の前なら 1 多い。
+        // 確定の表示の後にクラッシュすれば n は確定の回数、確定した直後で表示の前なら 1 多い。
         let confirmed = after.confirmed;
         assert!(
             n == confirmed || n == confirmed + 1,
@@ -279,7 +279,7 @@ fn 取り消しの途中で_kill_しても対で残らず_続けて取り消せ�
 }
 
 #[test]
-fn バックアップの途中で_kill_しても壊れた写しが残らない() {
+fn バックアップの途中で_kill_しても壊れたコピーが残らない() {
     let mut seed = 0x1234_5678_9ABC_DEF1;
     let mut mid_backup = 0u32;
     let mut finished = 0u32;
@@ -311,7 +311,7 @@ fn バックアップの途中で_kill_しても壊れた写しが残らない()
         }
         finished += u32::from(checked > 0);
     }
-    println!("{mid_backup}/{rounds} 回はバックアップの最中に止め、{finished} 回は写しが残った");
+    println!("{mid_backup}/{rounds} 回はバックアップの最中に止め、{finished} 回はコピーが残った");
     assert!(mid_backup > 0, "バックアップの最中に止められていない");
-    assert!(finished > 0, "写しが 1 つも残らなかった");
+    assert!(finished > 0, "コピーが 1 つも残らなかった");
 }

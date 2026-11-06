@@ -1,4 +1,4 @@
-//! `slip`。カットの中身をずらす。
+//! `slip`。カットの内容をずらす。
 
 use serde::{Deserialize, Serialize};
 
@@ -9,8 +9,8 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_referrers, negate};
 use crate::touches::Touches;
 
-/// `cut` の `in` と `out` を、並びの時間軸で `by` だけ同じ量ずらす（素材の時間では `by × speed`）。
-/// 並びの上での位置と長さは変わらない。
+/// `cut` の `in` と `out` を、シーケンスの時間軸で `by` だけ同じ量ずらす（素材の時間では `by × speed`）。
+/// シーケンスの上での位置と長さは変わらない。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Slip {

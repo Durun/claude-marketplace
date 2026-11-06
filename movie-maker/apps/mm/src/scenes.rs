@@ -1,4 +1,4 @@
-//! 性能の場面。`startup` は別プロセスを起動して測り、`export` は同じプロセスで書き出しを繰り返す。
+//! 性能のシナリオ。`startup` は別プロセスを起動して測り、`export` は同じプロセスで書き出しを繰り返す。
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
@@ -15,7 +15,7 @@ use crate::project::load_project;
 
 /// 子プロセスが「入力を受け付けられる」ときに標準出力へ出す行。
 pub const READY_LINE: &str = "ready";
-/// 子プロセスが最初のコマを描き終えたときの行。
+/// 子プロセスが最初のフレームを描き終えたときの行。
 pub const FIRST_FRAME_LINE: &str = "first_frame";
 
 const STARTUP_ROW: &str = "起動";
@@ -24,7 +24,7 @@ const MS_PER_SECOND: f64 = 1000.0;
 /// 起動の測定の子プロセス 1 回に待つ上限。予算（2 秒）の桁を大きく超えたら固まったとみなす。
 const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// `startup`: 起動から入力を受け付けるまでと、プロジェクトを開いてから最初のコマまで。
+/// `startup`: 起動から入力を受け付けるまでと、プロジェクトを開いてから最初のフレームまで。
 pub fn startup(args: &PerfArgs) -> Result<Vec<Item>> {
     let exe = std::env::current_exe()?;
     let (mut ready, mut first) = (Vec::new(), Vec::new());
@@ -45,7 +45,7 @@ pub fn startup(args: &PerfArgs) -> Result<Vec<Item>> {
     ])
 }
 
-/// 子プロセスを 1 回起動し、(起動から ready まで, ready から最初のコマまで) をミリ秒で返す。
+/// 子プロセスを 1 回起動し、(起動から ready まで, ready から最初のフレームまで) をミリ秒で返す。
 fn probe_once(exe: &std::path::Path, project: &std::path::Path) -> Result<(f64, f64)> {
     let mut command = Command::new(exe);
     command.arg("probe-startup").arg(project);
@@ -128,7 +128,7 @@ fn kill_on_timeout(child: &mut std::process::Child, limit: Duration) -> MmError 
     }
 }
 
-/// 子プロセス側（`mm probe-startup`）。ready を出し、プロジェクトを開いて最初のコマを描く。
+/// 子プロセス側（`mm probe-startup`）。ready を出し、プロジェクトを開いて最初のフレームを描く。
 pub fn probe_child(project: &std::path::Path) -> Result<()> {
     let mut engine = assemble(&RuntimeConfig::real())?;
     println!("{READY_LINE}");
@@ -157,7 +157,7 @@ fn flush_stdout() {
     let _ = std::io::stdout().flush();
 }
 
-/// `export`: 見本のプロジェクトを `--size` で書き出し、速さを測る。
+/// `export`: フィクスチャのプロジェクトを `--size` で書き出し、速さを測る。
 pub fn export(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
     let mut project = load_project(&args.project)?;
     for comp in &mut project.compositions {

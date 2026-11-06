@@ -1,5 +1,5 @@
-//! 描画器の契約のうち、文書の見本とは別に自前の文書を組んで確かめる項目。
-//! レイヤーの変形、失敗したレイヤー、コマの寿命。
+//! レンダラーの契約のうち、フィクスチャのプロジェクトとは別に自前のプロジェクトのデータを組んで確かめる項目。
+//! レイヤーの変形、失敗したレイヤー、フレームの寿命。
 
 use std::sync::Arc;
 
@@ -12,18 +12,24 @@ use crate::render::RenderFixture;
 
 const CASE_COMPOSITION: &str = "mm-contract-cases";
 
-/// 直近 `KEPT_RENDERED_FRAMES` 回の `render_frame` が返したコマは読み戻せる。
+/// 直近 `KEPT_RENDERED_FRAMES` 回の `render_frame` が返したフレームは読み戻せる。
 pub(crate) fn check_frame_lifetime(r: &mut dyn Renderer, req: &RenderRequest<'_>) {
     let first = r.render_frame(req).expect("描ける");
     for _ in 1..KEPT_RENDERED_FRAMES {
         let later = r.render_frame(req).expect("描ける");
-        r.gpu().download(&later).expect("新しいコマは読み戻せる");
+        r.gpu()
+            .download(&later)
+            .expect("新しいフレームは読み戻せる");
     }
     let oldest = r
         .gpu()
         .download(&first)
-        .expect("直近 KEPT_RENDERED_FRAMES 回のうち最も古いコマも有効");
-    assert_eq!(oldest.size(), req.size, "寿命の内側のコマは中身も壊れない");
+        .expect("直近 KEPT_RENDERED_FRAMES 回のうち最も古いフレームも有効");
+    assert_eq!(
+        oldest.size(),
+        req.size,
+        "寿命の内側のフレームは内容も壊れない"
+    );
 }
 
 fn layer(kind: &str, version: u32, transform: Transform) -> Layer {
@@ -66,7 +72,7 @@ fn render_layers(
             nodes: fx.nodes,
         })
         .expect("失敗したレイヤーがあっても、フレーム全体は描ける");
-    r.gpu().download(&frame).expect("読み戻し")
+    r.gpu().download(&frame).expect("リードバック")
 }
 
 fn alpha(img: &RgbaImage, x: u32, y: u32) -> f32 {

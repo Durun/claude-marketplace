@@ -1,4 +1,4 @@
-//! wgpu の Device と Queue を持つ文脈。headless（面なし）で作り、アダプターを 1 回選んで全実装で共有する。
+//! wgpu の Device と Queue を持つコンテキスト。headless（サーフェスなし）で作り、アダプターを 1 回選んで全実装で共有する。
 
 use std::any::Any;
 use std::sync::{Arc, Mutex};
@@ -6,15 +6,15 @@ use std::sync::{Arc, Mutex};
 use mm_decode_api::GpuContextRef;
 use mm_types::{GpuAdapterId, MmError, Result};
 
-/// 中間のテクスチャの形式。口の約束（`Rgba16Float`、premultiplied、線形）のとおり。
+/// 中間のテクスチャの形式。インターフェースの契約（`Rgba16Float`、premultiplied、線形）のとおり。
 pub const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
-/// 文脈の作り方。`mm-runtime` が設定から 1 回決める。
+/// コンテキストの作り方。`mm-runtime` が設定から 1 回決める。
 #[derive(Debug, Clone)]
 pub struct GpuRequest {
     /// 使うアダプター。`None` なら高性能のアダプター。
     pub adapter: Option<GpuAdapterId>,
-    /// あれば有効にする機能。無いアダプターでは落とさずに外す。
+    /// あれば有効にする機能。無いアダプターでは失敗させずに外す。
     pub optional_features: wgpu::Features,
     /// 選べるバックエンド。D3D12 の資源を FFmpeg や CUDA と共有するデコーダーは D3D12 だけにする。
     pub backends: wgpu::Backends,
@@ -31,7 +31,7 @@ impl Default for GpuRequest {
     }
 }
 
-/// GPU の文脈。描画器、デコーダー、GpuHelper が共有する。
+/// GPU のコンテキスト。レンダラー、デコーダー、GpuHelper が共有する。
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -39,7 +39,7 @@ pub struct GpuContext {
     pub adapter: GpuAdapterId,
     /// タイムスタンプのクエリが使えるか。
     pub timestamps: bool,
-    /// 作るときに求められた任意の機能。後の求めがこの部分集合なら `shared` は同じ文脈を返す。
+    /// 作るときに求められた任意の機能。後の求めがこの部分集合なら `shared` は同じコンテキストを返す。
     requested_features: wgpu::Features,
     /// 選んだアダプターのバックエンド。`shared` が後の求めのバックエンドの範囲と照合する。
     backend: wgpu::Backend,
@@ -56,8 +56,8 @@ impl GpuContext {
         pollster::block_on(Self::new_async(request))
     }
 
-    /// プロセスで 1 つの文脈を共有する。Device の生成と破棄が並行すると Windows の
-    /// ドライバが終了時に落ちることがあるため、テストと書き出しはこちらを使う。
+    /// プロセスで 1 つのコンテキストを共有する。Device の生成と破棄が並行すると Windows の
+    /// ドライバが終了時にクラッシュすることがあるため、テストと書き出しはこちらを使う。
     /// 2 回目以降は、作ってあるものが `request` に合えばそれを返し、合わなければ `Err`。
     /// アダプターは指定があるときだけ照合し、バックエンドは選んだアダプターが求めの範囲にあるか、
     /// 機能は作ったときの希望が求めを含むかで照合する。

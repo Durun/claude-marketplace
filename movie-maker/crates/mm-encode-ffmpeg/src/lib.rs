@@ -1,7 +1,7 @@
 //! FFmpeg のライブラリによるエンコーダー（`mm-decode-api` の `Encoder` の実装）。
 //!
-//! H.264（libx264）+ AAC を MP4 に書く。コマは線形の RGBA の f32 で受け取り、Rec.1886 の
-//! 符号化値に直してから Rec.709・tv レンジの YUV420P にして押す。コマの時刻は 1 コマごとに `1 / fps` 進める（書き出しは CFR）。
+//! H.264（libx264）+ AAC を MP4 に書く。フレームは線形の RGBA の f32 で受け取り、Rec.1886 の
+//! 符号化値に直してから Rec.709・tv レンジの YUV420P にして押す。フレームの時刻は 1 フレームごとに `1 / fps` 進める（書き出しは CFR）。
 //!
 //! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
 #![cfg(feature = "ffmpeg")]
@@ -26,7 +26,7 @@ pub const ID: &str = "ffmpeg";
 /// `EncodeSettings::codec` に書ける H.264 の名前。
 pub const H264_NAMES: [&str; 2] = ["h264", "libx264"];
 
-/// FFmpeg のエンコーダーを作る口。
+/// FFmpeg のエンコーダーを作るインターフェース。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FfmpegEncoderFactory;
 
@@ -66,8 +66,8 @@ struct Session {
     audio_frames: u64,
 }
 
-// FFmpeg の文脈は生ポインタを持つため自動では Send にならない。Session は 1 つの
-// FfmpegEncoder だけが所有し、文脈はスレッドに紐づかないので、別スレッドへ移してよい。
+// FFmpeg のコンテキストは生ポインタを持つため自動では Send にならない。Session は 1 つの
+// FfmpegEncoder だけが所有し、コンテキストはスレッドに紐づかないので、別スレッドへ移してよい。
 unsafe impl Send for Session {}
 
 impl Encoder for FfmpegEncoder {
@@ -163,8 +163,8 @@ impl FfmpegEncoder {
     }
 }
 
-/// 符号化器から出たパケットを全部出力に書く。`duration` は符号化器の時間の単位での 1 パケットの長さで、
-/// 0 以外なら上書きする（libx264 は入れず、最後のコマの長さが muxer に伝わらないため）。
+/// エンコーダーから出たパケットを全部出力に書く。`duration` はエンコーダーの時間の単位での 1 パケットの長さで、
+/// 0 以外なら上書きする（libx264 は入れず、最後のフレームの長さが muxer に伝わらないため）。
 fn drain_packets(
     encoder: &mut codec::encoder::Encoder,
     output: &mut Output,
@@ -188,7 +188,7 @@ fn drain_packets(
             }
             Err(ff::Error::Other { errno }) if errno == ff::error::EAGAIN => return Ok(()),
             Err(ff::Error::Eof) => return Ok(()),
-            Err(e) => return Err(MmError::Internal(format!("符号化: {e}"))),
+            Err(e) => return Err(MmError::Internal(format!("エンコード: {e}"))),
         }
     }
 }

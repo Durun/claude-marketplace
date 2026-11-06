@@ -1,4 +1,4 @@
-//! 組み立ての設定。口ごとにどの実装を使うかを名前で選ぶ。
+//! 組み立ての設定。インターフェースごとにどの実装を使うかを名前で選ぶ。
 
 use std::str::FromStr;
 
@@ -7,16 +7,16 @@ use serde::{Deserialize, Serialize};
 use mm_types::{GpuAdapterId, MmError};
 
 /// 実装の名前。`FromStr` で設定ファイルと環境変数から読む。
-/// 口ごとに選べる名前は決まっていて、合わない組み合わせは `assemble` が `Unsupported` で断る。
+/// インターフェースごとに選べる名前は決まっていて、合わない組み合わせは `assemble` が `Unsupported` で拒否する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    /// `mm-testkit` の見本。
+    /// `mm-testkit` のモック。
     #[default]
     Sample,
     /// `mm-render`（描画）。
     Wgpu,
-    /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU の文脈を使う。
+    /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU のコンテキストを使う。
     Glyphon,
     /// `mm-text-glyphon` の CPU（swash）の描画。
     Cpu,
@@ -28,11 +28,11 @@ pub enum Backend {
     Dsp,
     /// `mm-decode-ffmpeg` と `mm-encode-ffmpeg`。feature `ffmpeg` のときだけ組める。
     Ffmpeg,
-    /// `mm-decode-d3d12va`（デコードだけ）。feature `d3d12va` のときだけ組める。描画器と同じ D3D12 のデバイスが要る。
+    /// `mm-decode-d3d12va`（デコードだけ）。feature `d3d12va` のときだけ組める。レンダラーと同じ D3D12 のデバイスが要る。
     D3d12va,
     /// `mm-decode-cuvid`（デコードだけ）。feature `cuvid` のときだけ組める。NVIDIA の GPU が要る。
     Cuvid,
-    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数コマで判断する。
+    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数フレームで判断する。
     Auto,
 }
 
@@ -56,8 +56,8 @@ impl Backend {
 }
 
 impl Backend {
-    /// この実装が GPU の文脈を使うか。GPU で復号する実装（`d3d12va`、`cuvid`、それを試す `auto`）は
-    /// 描画器と同じデバイスが要る。
+    /// この実装が GPU のコンテキストを使うか。GPU でデコードする実装（`d3d12va`、`cuvid`、それを試す `auto`）は
+    /// レンダラーと同じデバイスが要る。
     pub fn uses_gpu(self) -> bool {
         matches!(
             self,
@@ -65,12 +65,12 @@ impl Backend {
         )
     }
 
-    /// GPU の文脈が無いと組めない実装か。`auto` は文脈が無ければ ffmpeg で動くので含まない。
+    /// GPU のコンテキストが無いと組めない実装か。`auto` はコンテキストが無ければ ffmpeg で動くので含まない。
     pub fn requires_gpu(self) -> bool {
         self.uses_gpu() && self != Backend::Auto
     }
 
-    /// 復号に D3D12 のデバイスが要る実装か（描画器のデバイスを D3D12 のアダプターで作る）。
+    /// デコードに D3D12 のデバイスが要る実装か（レンダラーのデバイスを D3D12 のアダプターで作る）。
     pub fn needs_d3d12(self) -> bool {
         matches!(self, Backend::D3d12va | Backend::Cuvid | Backend::Auto)
     }
@@ -97,7 +97,7 @@ impl FromStr for Backend {
     }
 }
 
-/// 口ごとの実装の選択。
+/// インターフェースごとの実装の選択。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
@@ -110,29 +110,29 @@ pub struct RuntimeConfig {
     pub cache: Backend,
     /// キャッシュの大きさの上限（バイト）。`None` は無制限。
     pub cache_limit_bytes: Option<u64>,
-    /// 使う GPU。`None` なら高性能のアダプター。描画器・デコーダー・別プロセスのホストが同じものを使う。
+    /// 使う GPU。`None` なら高性能のアダプター。レンダラー・デコーダー・別プロセスのホストが同じものを使う。
     pub gpu: Option<GpuAdapterId>,
 }
 
 impl RuntimeConfig {
-    /// 全部を見本にした設定。
+    /// 全部をモックにした設定。
     pub fn sample() -> Self {
         Self::default()
     }
 
-    /// GPU の文脈を作る要る組み合わせか。描画器、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
+    /// GPU のコンテキストを作る要る組み合わせか。レンダラー、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
     pub fn needs_gpu(&self) -> bool {
         self.render.uses_gpu() || self.decode.uses_gpu() || self.text == Backend::Glyphon
     }
 
-    /// GPU の文脈が作れないと組めない組み合わせか。`needs_gpu` のうち、`decode: auto` だけが理由なら偽
+    /// GPU のコンテキストが作れないと組めない組み合わせか。`needs_gpu` のうち、`decode: auto` だけが理由なら偽
     /// （GPU の無い環境では ffmpeg で動く）。
     pub fn requires_gpu(&self) -> bool {
         self.render.requires_gpu() || self.decode.requires_gpu() || self.text == Backend::Glyphon
     }
 
-    /// 本物の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
-    /// デコードとエンコードは ffmpeg。キャッシュは本物がまだ無いので見本のまま。
+    /// 実際の実装の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
+    /// デコードとエンコードは ffmpeg。キャッシュは実際の実装がまだ無いのでモックのまま。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_で復号する実装は_gpu_を使う() {
+    fn gpu_でデコードする実装は_gpu_を使う() {
         for b in [
             Backend::D3d12va,
             Backend::Cuvid,
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_の要否は描画器の選択で決まる() {
+    fn gpu_の要否はレンダラーの選択で決まる() {
         assert!(!RuntimeConfig::sample().needs_gpu());
         assert!(RuntimeConfig::real().needs_gpu());
         let decode_only = RuntimeConfig {
@@ -188,7 +188,7 @@ mod tests {
         };
         assert!(
             decode_only.needs_gpu(),
-            "デコーダーが GPU を使う選択でも文脈は要る"
+            "デコーダーが GPU を使う選択でもコンテキストは要る"
         );
     }
 

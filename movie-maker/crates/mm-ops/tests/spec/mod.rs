@@ -1,4 +1,4 @@
-//! 命令の種と、文書の ID への当てはめ。性質テストが使う。
+//! 操作の種と、プロジェクトのデータの ID への当てはめ。性質テストが使う。
 
 mod build;
 mod params;
@@ -13,7 +13,7 @@ use proptest::prelude::*;
 
 pub use build::{arb_cut, arb_id, arb_layer, CutSpec, LayerSpec};
 
-/// 命令の種。文書を見ずに作り、[`materialize`] で文書の ID に当てはめる。
+/// 操作の種。プロジェクトのデータを見ずに作り、[`materialize`] でプロジェクトのデータの ID に当てはめる。
 #[derive(Debug, Clone)]
 pub enum Spec {
     AddLayer {
@@ -61,7 +61,7 @@ pub enum Spec {
     Disable(u8, bool),
 }
 
-/// 文書を編集する命令の種（レイヤー、パラメータ、コンポジション）。
+/// プロジェクトのデータを編集する操作の種（レイヤー、パラメータ、コンポジション）。
 fn arb_doc_spec() -> impl Strategy<Value = Spec> {
     let s = || any::<u8>();
     let t = || -6i64..6;
@@ -104,7 +104,7 @@ fn arb_doc_spec() -> impl Strategy<Value = Spec> {
     ]
 }
 
-/// sequence とカットを編集する命令の種。
+/// sequence とカットを編集する操作の種。
 fn arb_seq_spec() -> impl Strategy<Value = Spec> {
     let s = || any::<u8>();
     let t = || -6i64..6;
@@ -135,7 +135,7 @@ pub fn arb_spec() -> impl Strategy<Value = Spec> {
     prop_oneof![3 => arb_doc_spec(), 2 => arb_seq_spec()]
 }
 
-/// 種を今の文書の ID に当てはめる。当てはめる相手が無ければ `None`。
+/// 種を今のプロジェクトのデータの ID に当てはめる。当てはめる相手が無ければ `None`。
 pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
     layer_op(spec, p)
         .or_else(|| param_op(spec, p))
@@ -352,7 +352,7 @@ fn sequence_op(spec: &Spec, p: &Project) -> Option<Op> {
     })
 }
 
-/// 時間を動かすカットの命令（ripple、roll、slip、slide、disable）。
+/// 時間を動かすカットの操作（ripple、roll、slip、slide、disable）。
 fn timing_op(spec: &Spec, p: &Project) -> Option<Op> {
     Some(match spec {
         Spec::Ripple(i, out, by) => Ripple {
@@ -385,7 +385,7 @@ fn timing_op(spec: &Spec, p: &Project) -> Option<Op> {
     })
 }
 
-/// レンダーターゲットとマーカーの命令。
+/// レンダーターゲットとマーカーの操作。
 fn misc_op(spec: &Spec, p: &Project) -> Option<Op> {
     Some(match spec {
         Spec::AddRenderTarget(i, id) => AddRenderTarget {

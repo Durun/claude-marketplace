@@ -1,4 +1,4 @@
-//! 詳しくの層。全部のスパンを Chrome trace event（`ph: "X"`、`ts` と `dur` はマイクロ秒）に残す。
+//! 詳細の `Layer`。全部のスパンを Chrome trace event（`ph: "X"`、`ts` と `dur` はマイクロ秒）に残す。
 //! Perfetto UI で開け、Trace Processor の SQL で読める。
 
 use std::io::Write;
@@ -30,7 +30,7 @@ struct Inner {
     events: Vec<ChromeEvent>,
 }
 
-/// 集めたイベントを読む取っ手。
+/// 集めたイベントを読むハンドル。
 #[derive(Clone)]
 pub struct ChromeTraceHandle {
     origin: Instant,
@@ -70,13 +70,13 @@ impl ChromeTraceHandle {
     }
 }
 
-/// 全部のスパンを complete event として残す層。
+/// 全部のスパンを complete event として残す `Layer`。
 pub struct ChromeTraceLayer {
     handle: ChromeTraceHandle,
 }
 
 impl ChromeTraceLayer {
-    /// 層と取っ手の組。`ts` は作られた時刻を 0 とする。
+    /// `Layer` とハンドルの組。`ts` は作られた時刻を 0 とする。
     pub fn new() -> (Self, ChromeTraceHandle) {
         let handle = ChromeTraceHandle {
             origin: Instant::now(),
@@ -92,7 +92,7 @@ impl ChromeTraceLayer {
 }
 
 fn thread_id() -> u64 {
-    // ThreadId の中身は非公開なので、Debug の表現から数字を取り出す。
+    // ThreadId の内部は非公開なので、Debug の表現から数字を取り出す。
     let s = format!("{:?}", std::thread::current().id());
     s.chars()
         .filter(|c| c.is_ascii_digit())

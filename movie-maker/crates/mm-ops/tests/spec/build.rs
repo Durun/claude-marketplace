@@ -1,4 +1,4 @@
-//! 種から、参照を持つ動画オブジェクト・レイヤー・カットを組み立てる。
+//! 種から、参照を持つノード・レイヤー・カットを組み立てる。
 
 use crate::common::{cut, layer};
 use mm_doc::{
@@ -9,7 +9,7 @@ use mm_doc::{
 use mm_types::{Id, LayerId, ParamValue, RationalTime};
 use proptest::prelude::*;
 
-/// 動画オブジェクトの種。
+/// ノードの種。
 #[derive(Debug, Clone)]
 pub struct NodeSpec {
     /// 0 は solid、1 は入れ子のコンポジション、2 は sequence、3 は solid の入力に入れ子を持つ。
@@ -133,7 +133,7 @@ fn text_node(kind: &str, param: &str, target: &str) -> Node {
     Node::new(kind, 1).with_param(param, ParamValue::Text(target.to_owned()))
 }
 
-/// 種を今の文書の ID を指す動画オブジェクトにする。指す先が無ければ solid。
+/// 種を今のプロジェクトのデータの ID を指すノードにする。指す先が無ければ solid。
 pub fn build_node(spec: &NodeSpec, p: &Project) -> Node {
     let comp = pick(&p.compositions, spec.pick).map(|c| c.id.as_str());
     let seq = pick(&p.sequences, spec.pick).map(|s| s.id.as_str());

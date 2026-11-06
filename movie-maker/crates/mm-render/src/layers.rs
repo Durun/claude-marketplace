@@ -1,4 +1,4 @@
-//! レイヤーの評価。種類を呼んで絵を作り、変形の行列と一緒に合成の入力にする。
+//! レイヤーの評価。ノードの種類を呼んで画像を作り、変形の行列と一緒に合成の入力にする。
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use crate::compose::DrawItem;
 use crate::renderer::WgpuRenderer;
 use crate::transform::{uv_to_ndc, LayerTransform};
 
-/// 入れ子のコンポジションの種類の名前。種類の口から文書が見えないので、展開は描画器が行う。
+/// 入れ子のコンポジションの種類の名前。ノードのインターフェースからプロジェクトのデータが見えないので、展開はレンダラーが行う。
 pub const NESTED_KIND: &str = "composition";
 /// 入れ子の種類がコンポジションの ID を持つパラメータの名前。
 pub const NESTED_PARAM: &str = "composition";
@@ -50,7 +50,7 @@ struct Prepared {
     opacity: f32,
 }
 
-/// レイヤーの絵のテクスチャと、コンポジションの画素での大きさ。
+/// レイヤーの画像のテクスチャと、コンポジションの画素での大きさ。
 struct LayerImage {
     texture: u64,
     logical: (f32, f32),
@@ -64,13 +64,13 @@ pub(crate) fn evaluate(
 ) -> Result<(Arc<dyn NodeKind>, Params)> {
     let kind = nodes
         .get(&layer.source.kind)
-        .ok_or_else(|| MmError::NotFound(format!("種類 {}", layer.source.kind)))?;
+        .ok_or_else(|| MmError::NotFound(format!("ノードの種類 {}", layer.source.kind)))?;
     let params = node_params_at(&layer.source, t).with_defaults(&kind.params());
     Ok((kind, params))
 }
 
 impl WgpuRenderer {
-    /// コンポジションを新しいテクスチャに描くパスを `encoder` に積む。返すテクスチャは呼んだ側が捨てる。
+    /// コンポジションを新しいテクスチャに描くパスを `encoder` に積む。返すテクスチャは呼んだ側がドロップする。
     pub(crate) fn encode_comp(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -92,7 +92,7 @@ impl WgpuRenderer {
         }
         self.composite(encoder, target, &prepared);
         mm_trace::counter!("render.layers_drawn", prepared.len());
-        // 命令がテクスチャを握っているので、提出の前に置き場から外してよい。
+        // 操作がテクスチャを握っているので、提出の前にプールから外してよい。
         for id in temps {
             self.gpu.release_id(id);
         }
@@ -153,7 +153,7 @@ impl WgpuRenderer {
         }))
     }
 
-    /// 種類を呼んで、絵を GPU のテクスチャにする。透明か領域が空なら `None`。
+    /// ノードの種類を呼んで、画像を GPU のテクスチャにする。透明か領域が空なら `None`。
     fn kind_image(
         &mut self,
         cx: &CompCx<'_>,

@@ -236,7 +236,7 @@ fn ダッキングは同じ入力で同じ出力() {
 }
 
 #[test]
-fn 形の違う入力は断る() {
+fn 形の違う入力は拒否する() {
     let mut m = mixer(MixerConfig::default());
     let wrong = AudioBlock::silence(44_100, 2, 100);
     assert!(m.mix(&[input(wrong, "voice", 0.0, 0.0)], 100).is_err());

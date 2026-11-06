@@ -1,20 +1,20 @@
-/** 作業のまとまりの中の 1 項目。command は押したときに呼ぶ命令の名前。 */
+/** 作業のグループの中の 1 項目。command は押したときに呼ぶ操作の名前。 */
 export interface TaskItem {
   id: string;
   label: string;
   command: string;
-  /** 今は押せない項目。薄い色で出し、押しても命令は呼ばない。 */
+  /** 今は押せない項目。薄い色で出し、押しても操作は呼ばない。 */
   disabled?: boolean;
 }
 
-/** 作業のまとまり。見出しを押すと開け閉めする。 */
+/** 作業のグループ。見出しを押すと開け閉めする。 */
 export interface TaskGroup {
   id: string;
   title: string;
   items: TaskItem[];
 }
 
-/** 取り込む → 切る → 文字と音を足す → 書き出す、の順（docs/design/08-ui.md）。命令の名前は仮。 */
+/** 取り込む → 切る → 文字と音を足す → 書き出す、の順（docs/design/08-ui.md）。操作の名前は仮。 */
 export const DEFAULT_GROUPS: TaskGroup[] = [
   {
     id: "import",

@@ -1,4 +1,4 @@
-//! テスト共通の文書と命令の作り方。命令の記録は本物の `mm_ops::Op` を当てて作る。
+//! テスト共通のプロジェクトのデータと操作の作り方。操作の記録は実際の `mm_ops::Op` を適用して作る。
 
 use mm_doc::{Asset, Composition, Layer, Marker, Node, Project};
 use mm_ops::{apply_transaction, LockLayer, Op, OpContext, OpRecord, Touches};
@@ -53,7 +53,7 @@ pub fn actor() -> Actor {
     }
 }
 
-/// レイヤー `l{i}` のロックを反転する命令。
+/// レイヤー `l{i}` のロックを反転する操作。
 pub fn toggle_lock(project: &Project, i: usize) -> Op {
     let id = LayerId::new(format!("l{i}"));
     let lock = project
@@ -65,7 +65,7 @@ pub fn toggle_lock(project: &Project, i: usize) -> Op {
     LockLayer { layer: id, lock }.into()
 }
 
-/// 全レイヤーのロックを `lock` にする命令の記録を、当てずに作る（kill の試験で、書き込みだけの子を速く回すため）。
+/// 全レイヤーのロックを `lock` にする操作の記録を、適用せずに作る（kill の試験で、書き込みだけの子を速く回すため）。
 pub fn lock_records(layers: usize, lock: bool) -> Vec<OpRecord> {
     (0..layers)
         .map(|i| {
@@ -85,8 +85,8 @@ pub fn lock_records(layers: usize, lock: bool) -> Vec<OpRecord> {
         .collect()
 }
 
-/// `project` に（互いに違う）レイヤーのロックの反転を当て、その記録を持つまとまりを作る。
-/// `project` は当てた後の文書になる。
+/// `project` に（互いに違う）レイヤーのロックの反転を適用し、その記録を持つトランザクションを作る。
+/// `project` は適用した後のプロジェクトのデータになる。
 pub fn locked(project: &mut Project, name: &str, layers: &[usize]) -> TxnInput {
     let ops: Vec<Op> = layers.iter().map(|&i| toggle_lock(project, i)).collect();
     let outcome = apply_transaction(project, &ops, &OpContext::human()).unwrap();

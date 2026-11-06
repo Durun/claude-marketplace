@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{invalid, RemoveMarker};
 use crate::touches::Touches;
 
-/// マーカーを時刻の順の位置に差し込む。同じ時刻のマーカーが既にあれば断る（順が決まらない）。
+/// マーカーを時刻の順の位置に差し込む。同じ時刻のマーカーが既にあれば拒否する（順が決まらない）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddMarker {

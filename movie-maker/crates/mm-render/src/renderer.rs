@@ -1,4 +1,4 @@
-//! wgpu の描画器。`Renderer` の実装。
+//! wgpu のレンダラー。`Renderer` の実装。
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -16,12 +16,12 @@ use crate::source::SourcePool;
 use crate::timer::GpuTimer;
 use mm_gpu::{GpuContext, WgpuGpu};
 
-/// 描画器の版。合成の式を変えたら上げる（コマのキャッシュのキーに入る）。
+/// レンダラーのバージョン。合成の式を変えたら上げる（フレームのキャッシュのキーに入る）。
 pub const WGPU_RENDERER_VERSION: u32 = 1;
-/// `render_frame` が返したテクスチャを持っておく数。これより古いコマの `FrameRef` は無効になる。
+/// `render_frame` が返したテクスチャを持っておく数。これより古いフレームの `FrameRef` は無効になる。
 const KEPT_OUTPUTS: usize = mm_render_api::KEPT_RENDERED_FRAMES;
 
-/// wgpu の描画器。
+/// wgpu のレンダラー。
 pub struct WgpuRenderer {
     pub(crate) gpu: WgpuGpu,
     pub(crate) compositor: Compositor,
@@ -36,7 +36,7 @@ pub struct WgpuRenderer {
 }
 
 impl WgpuRenderer {
-    /// 文脈と口を受け取って組む。
+    /// コンテキストとインターフェースの実装を受け取って組む。
     pub fn new(
         ctx: Arc<GpuContext>,
         decoders: Arc<dyn DecoderFactory>,
@@ -57,7 +57,7 @@ impl WgpuRenderer {
         }
     }
 
-    /// 透明にしたレイヤーのエラーを取り出す（印の元）。
+    /// 透明にしたレイヤーのエラーを取り出す（フラグの元）。
     pub fn take_errors(&mut self) -> Vec<String> {
         std::mem::take(&mut self.errors)
     }
@@ -67,7 +67,7 @@ impl WgpuRenderer {
         self.gpu.texture_count()
     }
 
-    /// 前のコマの GPU の時間を読んで `mm-trace` に載せる。
+    /// 前のフレームの GPU の時間を読んで `mm-trace` に載せる。
     ///
     /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
     /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
@@ -109,7 +109,7 @@ impl WgpuRenderer {
             });
         let target = self.encode_comp(&mut encoder, &cx);
         self.timer.resolve(&mut encoder);
-        // 借りた GPU のコマは、この提出が終わるまでの借り物（RFC 0001）。前に待ち、後に返す。
+        // 借用した GPU のフレームは、この提出が終わるまでの借用（RFC 0001）。前に待ち、後に返す。
         self.gpu.before_submit();
         ctx.queue.submit([encoder.finish()]);
         self.gpu.after_submit();
@@ -152,7 +152,7 @@ impl Renderer for WgpuRenderer {
             let id = self.draw_frame(&frame_req)?;
             let frame = FrameRef::Gpu(GpuTexture { id, size: req.size });
             let sent = sink(index, frame, &mut self.gpu);
-            // 区間のコマは受け取った側が読み戻して終わりなので、溜めずに捨てる。
+            // 区間のフレームは受け取った側がリードバックして終わりなので、溜めずにドロップする。
             self.gpu.release_id(id);
             sent?;
             count += 1;
@@ -167,7 +167,7 @@ impl Renderer for WgpuRenderer {
 
     fn invalidate(&mut self, _composition: &CompositionId, _range: TimeRange) {
         self.sources.clear();
-        // 編集で音が変わるので、ダッキングなどの持ち越しも捨てる。
+        // 編集で音が変わるので、ダッキングなどの持ち越しも破棄する。
         self.audio = None;
     }
 

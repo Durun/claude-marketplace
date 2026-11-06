@@ -1,12 +1,12 @@
-//! 命令の層。文書（[`mm_doc::Project`]）を変える唯一の道。
+//! 操作の層。プロジェクトのデータ（[`mm_doc::Project`]）を変える唯一の道。
 //!
-//! - 命令は [`Op`] の 1 つの枝で、`ops/` に 1 つ 1 ファイル。引数の型（serde + JSON Schema）、
-//!   検証、適用、逆命令、`touches`（触る所の ID の集合）を持つ。
-//! - 複数の命令は [`Transaction`] として当て、途中で失敗したら全部戻す。
-//!   [`Editor`] が文書の版番号、同時書き込みの判定（`touches` の重なり）、取り消しとやり直しを持つ。
-//! - ロックの付いたレイヤーに触る命令は、Claude の入口（[`Entry::is_claude`]）からは断る。
+//! - 操作は [`Op`] の 1 つのバリアントで、`ops/` に 1 つ 1 ファイル。引数の型（serde + JSON Schema）、
+//!   検証、適用、逆操作、`touches`（触る所の ID の集合）を持つ。
+//! - 複数の操作は [`Transaction`] として適用し、途中で失敗したら全部戻す。
+//!   [`Editor`] がプロジェクトのデータのバージョン番号、同時書き込みの判定（`touches` の重なり）、取り消しとやり直しを持つ。
+//! - ロックの付いたレイヤーに触る操作は、Claude の操作経路（[`Entry::is_claude`]）からは拒否する。
 //! - 保存の層は [`OpRecord`] と [`TxnRecord`] をそのまま表に書く。
-//! - 全部の命令の JSON Schema は [`ops_schema`]（`schema/ops.json` に凍結）。
+//! - 全部の操作の JSON Schema は [`ops_schema`]（`schema/ops.json` に凍結）。
 
 mod context;
 mod editor;

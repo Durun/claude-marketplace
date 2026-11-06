@@ -1,4 +1,4 @@
-//! `mm-testkit` のデコーダーの契約を、本物の素材で通す。
+//! `mm-testkit` のデコーダーの契約を、実素材で通す。
 #![cfg(feature = "ffmpeg")]
 
 mod common;
@@ -48,9 +48,9 @@ fn hdr_transfer_fixture(trc: &str) -> std::path::PathBuf {
     target
 }
 
-/// PQ と HLG は Rec.1886 の式で線形にすると明るさが大きく狂うので、GPU の実装と同じ判定で断る。
+/// PQ と HLG は Rec.1886 の式で線形にすると明るさが大きく狂うので、GPU の実装と同じ判定で拒否する。
 #[test]
-fn pq_と_hlg_の素材は断る() {
+fn pq_と_hlg_の素材は拒否する() {
     for trc in ["smpte2084", "arib-std-b67"] {
         let path = hdr_transfer_fixture(trc);
         let opened = FfmpegDecoderFactory.open(&path, None);
@@ -63,7 +63,7 @@ fn pq_と_hlg_の素材は断る() {
 }
 
 #[test]
-fn 契約の素材でも焼いた番号がコマの番号と一致する() {
+fn 契約の素材でも焼き込んだ番号がフレームの番号と一致する() {
     let dir = common::fixtures();
     let mut dec = FfmpegDecoderFactory
         .open(&dir.join("cfr.mp4"), None)

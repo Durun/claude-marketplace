@@ -9,8 +9,8 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_referrers, invalid, negate};
 use crate::touches::Touches;
 
-/// `cut` とそのすぐ後ろのカットの境目を、並びの時間軸で `by` だけ動かす。
-/// `cut` の尻と次の頭が同じ量だけ動くので、全体の長さは変わらない。
+/// `cut` とそのすぐ後ろのカットの境目を、シーケンスの時間軸で `by` だけ動かす。
+/// `cut` のアウト点と次のカットのイン点が同じ量だけ動くので、全体の長さは変わらない。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Roll {

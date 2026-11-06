@@ -1,4 +1,4 @@
-//! 磁気の並びのカットの配置。有効なカットを頭から詰め、位置は長さの和で決まる。
+//! マグネティックシーケンスのカットの配置。有効なカットを先頭から詰め、位置は長さの和で決まる。
 
 use mm_doc::{Cut, CutId, Sequence};
 use mm_types::{RationalTime, Result, TimeRange};
@@ -12,7 +12,7 @@ pub struct PlacedCut {
     pub range: TimeRange,
 }
 
-/// 有効なカットを頭から隙間なく並べる。無効なカットは飛ばす。
+/// 有効なカットを先頭から隙間なく並べる。無効なカットはスキップする。
 /// トランジションは境目をまたいで掛けるもので、配置を変えない。
 pub fn place_cuts(seq: &Sequence) -> Result<Vec<PlacedCut>> {
     let mut out = Vec::with_capacity(seq.cuts.len());
@@ -32,7 +32,7 @@ pub fn place_cuts(seq: &Sequence) -> Result<Vec<PlacedCut>> {
     Ok(out)
 }
 
-/// 並び全体の長さ（有効なカットの長さの和）。
+/// シーケンス全体の長さ（有効なカットの長さの和）。
 pub fn sequence_duration(seq: &Sequence) -> Result<RationalTime> {
     seq.cuts
         .iter()
@@ -46,7 +46,7 @@ pub fn cut_at(placed: &[PlacedCut], t: RationalTime) -> Option<&PlacedCut> {
     placed[..i].last().filter(|p| p.range.contains(t))
 }
 
-/// 配置したカットの sequence の時刻を、そのカットの素材の時刻に写す。
+/// 配置したカットの sequence の時刻を、そのカットの素材の時刻に変換する。
 pub fn cut_source_time(cut: &Cut, placed: &PlacedCut, t: RationalTime) -> Result<RationalTime> {
     t.checked_sub(placed.range.start)?
         .scale(cut.speed)?
@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn 無効なカットは飛ばして詰める() {
+    fn 無効なカットはスキップして詰める() {
         let s = seq(vec![
             cut("a", 2, true),
             cut("b", 5, false),
@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn カットの中の時刻は速さで素材に写す() {
+    fn カットの中の時刻は速さで素材に変換する() {
         let mut c = cut("a", 4, true);
         c.speed = Rational::integer(2);
         let s = seq(vec![cut("z", 1, true), c.clone()]);

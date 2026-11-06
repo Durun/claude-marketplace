@@ -1,9 +1,9 @@
-//! 文書の形。Project、Asset、Composition、Layer、Node、Param、Sequence、RenderTarget。
+//! プロジェクトのデータの形。Project、Asset、Composition、Layer、Node、Param、Sequence、RenderTarget。
 //!
-//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde と版の移行と不変条件を持つ。
-//! 文書に浮動小数の秒を書かず、時刻は全部 [`RationalTime`]。
+//! キーフレームの補間と時間の写像は `mm-eval` の仕事で、ここは形と serde とバージョンの移行と不変条件を持つ。
+//! プロジェクトのデータに浮動小数の秒を書かず、時刻は全部 [`RationalTime`]。
 //!
-//! 古い版の JSON は [`load`]（[`migrate`]）で今の版に上げてから読む。
+//! 古いバージョンの JSON は [`load`]（[`migrate`]）で今のバージョンに上げてから読む。
 //! 保存の JSON をバイトで決めるため、ID で引く列は [`Project::normalize`] で ID の順に並べる。
 
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,9 @@ use mm_types::{
     Result, TimeRange,
 };
 
-/// 文書のスキーマの版。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
+/// プロジェクトのデータのスキーマのバージョン。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
 ///
-/// - v1: 最初の形。レイヤーの変形は動画オブジェクトのパラメータ `transform.*` に書いていた。
+/// - v1: 最初の形。レイヤーの変形はノードのパラメータ `transform.*` に書いていた。
 /// - v2: `Layer.transform`（位置・拡大・回転・アンカー、キーフレームつき）。
 /// - v3: 段階 1 の形。レイヤーの速さ・タイムリマップ・親・接続・合成モード・マスク・効果・有効、
 ///   キーフレームのイージングとベジェ、コンポジションのマーカー、`sequences`。
@@ -42,7 +42,7 @@ pub use sequence::{
     Transition,
 };
 
-/// マーカーの印。
+/// マーカーの ID の型タグ。
 #[derive(Debug)]
 pub enum MarkerMarker {}
 /// マーカーの ID。
@@ -64,7 +64,7 @@ pub struct Project {
 }
 
 impl Project {
-    /// 空のプロジェクト。今の版。
+    /// 空のプロジェクト。今のバージョン。
     pub fn new() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -160,7 +160,7 @@ impl Project {
             .ok_or_else(|| MmError::NotFound(format!("layer {id}")))
     }
 
-    /// カットの置き場所（sequence の ID と、頭から数えた位置）。
+    /// カットの置き場所（sequence の ID と、先頭から数えた位置）。
     pub fn cut_index(&self, id: &CutId) -> Result<(SequenceId, usize)> {
         self.sequences
             .iter()
@@ -197,7 +197,7 @@ impl Default for Project {
     }
 }
 
-/// 素材。原本のパス、中身のハッシュ、色空間、時間軸。
+/// 素材。原本のパス、コンテンツハッシュ、色空間、時間軸。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Asset {
@@ -208,7 +208,7 @@ pub struct Asset {
     pub duration: RationalTime,
     /// 固定フレームレートなら fps。VFR は `None`（PTS の索引で引く）。
     pub fps: Option<Rational>,
-    /// 音と映像の頭のずれ。OBS の mkv で起きる。
+    /// 音と映像の先頭のずれ。OBS の mkv で起きる。
     #[serde(default = "RationalTime::zero")]
     pub timebase_offset: RationalTime,
 }
@@ -264,7 +264,7 @@ pub struct RenderTarget {
     pub width: u32,
     pub height: u32,
     pub fps: Rational,
-    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、見本は `sample`）。
+    /// エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。
     pub codec: String,
     pub output_path: String,
     #[serde(default)]
@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn 文書は_json_を往復する() {
+    fn プロジェクトのデータは_json_を往復する() {
         let mut p = Project::new();
         let node =
             Node::new("solid", 1).with_param("color", ParamValue::Color(mm_types::Rgba::WHITE));

@@ -3,7 +3,7 @@
 <title>subsecond spike</title>
 <pre id="out">waiting...</pre>
 <script>
-  // 200ms ごとに Tauri のコマンドを呼び、返りの印を出す。
+  // 200ms ごとに Tauri のコマンドを呼び、返りのマーカーを出す。
   const out = document.getElementById("out");
   setInterval(async () => {
     out.textContent = await window.__TAURI__.core.invoke("apply_op");

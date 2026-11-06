@@ -1,10 +1,10 @@
 //! レイヤーの変形（位置・拡大・回転）を 2D のアフィン行列にする。
 //!
-//! 値は文書の `Layer.transform`（`mm_doc::Transform`）を `mm-eval` で時刻 t に評価して読む。
+//! 値はプロジェクトのデータの `Layer.transform`（`mm_doc::Transform`）を `mm-eval` で時刻 t に評価して読む。
 //! - `position`（Vec2）: 動かす量。コンポジションの画素。
 //! - `scale`（Number か Vec2）: 倍率。1 が等倍。
 //! - `rotation`（Number）: 度。正が時計回り。
-//! - `anchor`（Vec2）: 回転と拡大の中心。無ければレイヤーの絵の中心。
+//! - `anchor`（Vec2）: 回転と拡大の中心。無ければレイヤーの画像の中心。
 
 use mm_doc::Transform;
 use mm_eval::evaluate_transform;
@@ -32,7 +32,7 @@ impl Affine {
         ty: 0.0,
     };
 
-    /// 点を写す。
+    /// 点を変換する。
     pub fn apply(&self, x: f32, y: f32) -> (f32, f32) {
         (
             self.a * x + self.c * y + self.tx,
@@ -94,7 +94,7 @@ impl Default for LayerTransform {
 }
 
 impl LayerTransform {
-    /// 文書の変形を時刻 `t` で評価する（キーフレームの補間を含む）。
+    /// プロジェクトのデータの変形を時刻 `t` で評価する（キーフレームの補間を含む）。
     pub fn from_doc(doc: &Transform, t: RationalTime) -> Self {
         let e = evaluate_transform(doc, t);
         let f = |v: [f64; 2]| [v[0] as f32, v[1] as f32];
@@ -116,7 +116,7 @@ impl LayerTransform {
         self.scale[0].abs().max(self.scale[1].abs())
     }
 
-    /// 大きさ `(w, h)` の絵（左上がコンポジションの原点）を、コンポジションの画素の上に置く変換。
+    /// 大きさ `(w, h)` の画像（左上がコンポジションの原点）を、コンポジションの画素の上に置く変換。
     pub fn to_comp(&self, w: f32, h: f32) -> Affine {
         let [ax, ay] = self.anchor.unwrap_or([w / 2.0, h / 2.0]);
         Affine::translate(-ax, -ay)
@@ -132,7 +132,7 @@ impl LayerTransform {
     }
 }
 
-/// 絵の UV（0..1）を出力の NDC に写す、列優先の 4x4 行列。
+/// 画像の UV（0..1）を出力の NDC に変換する、列優先の 4x4 行列。
 /// `comp_to_out` はコンポジションの画素から出力の画素への倍率、`out` は出力の大きさ。
 pub fn uv_to_ndc(
     transform: &LayerTransform,
@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn 恒等なら絵が画面全体に重なる() {
+    fn 恒等なら画像が画面全体に重なる() {
         let m = uv_to_ndc(
             &LayerTransform::default(),
             (320.0, 180.0),
@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn 文書の変形を読む() {
+    fn プロジェクトのデータの変形を読む() {
         let doc = Transform {
             scale: mm_doc::Param::constant(mm_types::ParamValue::Number(2.0)),
             rotation: mm_doc::Param::constant(mm_types::ParamValue::Number(30.0)),

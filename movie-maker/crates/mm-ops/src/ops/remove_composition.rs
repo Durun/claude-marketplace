@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{composition_referrers, AddComposition};
 use crate::touches::Touches;
 
-/// コンポジションを外す。入れ子やレンダーターゲットから参照されていれば `Project::validate` が断る。
+/// コンポジションを外す。入れ子やレンダーターゲットから参照されていれば `Project::validate` が拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveComposition {

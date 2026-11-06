@@ -86,7 +86,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                 } else if mode == SYNC_EMIT {
                     let _ = app.emit("playhead", tick);
                 }
-                // 戻ってこなかった古い通知は捨てる（止めた直後など）。
+                // 戻ってこなかった古い通知は破棄する（止めた直後など）。
                 let mut p = state.pending.lock().expect("pending");
                 if p.len() > 600 {
                     p.retain(|k, _| *k + 300 > seq);

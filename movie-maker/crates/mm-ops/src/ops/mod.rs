@@ -1,4 +1,4 @@
-//! 命令。1 つ 1 ファイル。各ファイルは引数の型と [`crate::op::Apply`] の実装を持つ。
+//! 操作。1 つ 1 ファイル。各ファイルは引数の型と [`crate::op::Apply`] の実装を持つ。
 
 use mm_doc::{
     Composition, Cut, CutId, Layer, Node, Project, Sequence, NESTED_KIND, NESTED_PARAM,
@@ -84,10 +84,10 @@ pub(crate) fn negate(t: RationalTime) -> Result<RationalTime> {
     RationalTime::ZERO.checked_sub(t)
 }
 
-// `touches` は書く所だけでなく読む所（参照先、参照元、並びの隣）も含める。
-// 重ならない 2 つの命令は順を入れ替えても同じ文書になる、という性質を保つため。
+// `touches` は書く所だけでなく読む所（参照先、参照元、シーケンスの隣）も含める。
+// 重ならない 2 つの操作は順を入れ替えても同じプロジェクトのデータになる、という性質を保つため。
 
-/// 動画オブジェクトが参照するコンポジションと sequence。
+/// ノードが参照するコンポジションと sequence。
 pub(crate) fn node_refs(node: &Node, t: &mut Touches) {
     for n in node.descendants() {
         if n.kind == NESTED_KIND {
@@ -168,7 +168,7 @@ pub(crate) fn composition_referrers(project: &Project, id: &CompositionId, t: &m
     }
 }
 
-/// sequence を参照する所（種類 `sequence` のレイヤーとカット、カットに接続したレイヤー、分岐した sequence）。
+/// sequence を参照する所（ノードの種類が `sequence` のレイヤーとカット、カットに接続したレイヤー、分岐した sequence）。
 pub(crate) fn sequence_referrers(project: &Project, seq: &Sequence, t: &mut Touches) {
     let cut_ids: Vec<&str> = seq.cuts.iter().map(|c| c.id.as_str()).collect();
     let layers = project.compositions.iter().flat_map(|c| c.layers.iter());
@@ -204,7 +204,7 @@ pub(crate) fn cut_referrers(project: &Project, id: &CutId, t: &mut Touches) {
     }
 }
 
-/// 入れ子の先（コンポジションと sequence）のうち、`id` の中身が直接指す ID。
+/// 入れ子の先（コンポジションと sequence）のうち、`id` の内容が直接指す ID。
 fn direct_nesting(project: &Project, id: &str) -> Touches {
     let mut refs = Touches::new();
     if let Some(comp) = project.compositions.iter().find(|c| c.id.as_str() == id) {
@@ -224,7 +224,7 @@ fn direct_nesting(project: &Project, id: &str) -> Touches {
 
 /// `roots` の ID から入れ子でたどれる先の全部を `t` に足す（`roots` も含む）。
 ///
-/// 入れ子の循環を作る命令は、参照先の先を読んでいる。先の中身を書き換える命令の `touches` と
+/// 入れ子の循環を作る操作は、参照先の先を読んでいる。先の内容を書き換える操作の `touches` と
 /// 重なるよう、読む側が先の全部を持つ。
 pub(crate) fn add_nesting_reach(project: &Project, roots: &Touches, t: &mut Touches) {
     let mut seen = std::collections::HashSet::new();
