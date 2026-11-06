@@ -8,10 +8,14 @@ mod common;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use mm_decode_api::DecoderFactory;
 use mm_decode_ffmpeg::FfmpegDecoderFactory;
-use mm_types::{RationalTime, TimeRange};
+use mm_export::{export_run, ExportControl, ExportOptions, ExportOutcome};
+use mm_runtime::{assemble, RuntimeConfig};
+use mm_types::{Id, RationalTime, TimeRange};
 
 /// 素材を in 点（0.5 秒）で切るので、書き出しの最初のフレームは素材の 15 フレーム目。
 const FIRST_SOURCE_FRAME: i64 = 15;
@@ -156,4 +160,129 @@ fn 取り込んだ_mmdb_のレイヤーを動かして書き出せる() {
     );
     assert!(!b.is_empty() && !a.is_empty());
     assert_ne!(b, a, "レイヤーを動かした書き出しが変わっていない");
+}
+
+/// sequence `talk` は 1 秒のカット 2 つ（30 fps）。
+const SEQUENCE_FRAMES: u64 = 60;
+const CANCEL_AFTER_FRAMES: u64 = 10;
+
+/// 段階 3 の見本のプロジェクトを、素材を絶対パス、出力を `dir` の下にして書き出した JSON のパス。
+fn stage3_project(dir: &Path) -> PathBuf {
+    let media = common::fixtures();
+    let src =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage3/project.json");
+    let mut doc: serde_json::Value = serde_json::from_slice(&std::fs::read(src).unwrap()).unwrap();
+    doc["assets"][0]["path"] = media.join("cfr.mp4").to_string_lossy().into_owned().into();
+    for t in doc["render_targets"].as_array_mut().unwrap() {
+        let name = format!("{}.mp4", t["id"].as_str().unwrap());
+        t["output_path"] = dir.join(name).to_string_lossy().into_owned().into();
+    }
+    let path = dir.join("project.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+    path
+}
+
+fn mm_stdout(args: &[&str]) -> String {
+    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+        .args(args)
+        .output()
+        .expect("mm を実行できる");
+    assert!(
+        out.status.success(),
+        "mm {args:?} が失敗した: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+#[test]
+fn sequence_を_2_つのレンダーターゲットで書き出して_ffprobe_で確かめる() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = stage3_project(dir.path());
+    let stdout = mm_stdout(&[
+        "render",
+        project.to_str().unwrap(),
+        "--all",
+        "--sequence",
+        "talk",
+    ]);
+    assert_eq!(
+        stdout.matches("検証 OK").count(),
+        2,
+        "両方検証を通る: {stdout}"
+    );
+    print!("{stdout}");
+
+    for (id, w, h) in [("h1080", "1920", "1080"), ("h720", "1280", "720")] {
+        let path = dir.path().join(format!("{id}.mp4"));
+        let v = probe(
+            &path,
+            "v:0",
+            "stream=codec_name,width,height,nb_read_frames,duration",
+        );
+        assert_eq!(v["codec_name"], "h264");
+        assert_eq!((v["width"].as_str(), v["height"].as_str()), (w, h));
+        assert_eq!(v["nb_read_frames"], SEQUENCE_FRAMES.to_string());
+        let seconds: f64 = v["duration"].parse().unwrap();
+        assert!((seconds - 2.0).abs() < 0.05, "{id} の映像の長さ {seconds}");
+        let a = probe(&path, "a:0", "stream=codec_name,duration");
+        let audio: f64 = a["duration"].parse().unwrap();
+        assert!((audio - 2.0).abs() < 0.1, "{id} の音の長さ {audio}");
+        assert!(!dir.path().join(format!("{id}.partial.mp4")).exists());
+    }
+}
+
+#[test]
+fn 区間を指定した書き出しはその区間のフレーム数になる() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = stage3_project(dir.path());
+    mm_ok(&[
+        "render",
+        project.to_str().unwrap(),
+        "--target",
+        "h720",
+        "--sequence",
+        "talk",
+        "--range",
+        "0.5:1.5",
+    ]);
+    let v = probe(&dir.path().join("h720.mp4"), "v:0", "stream=nb_read_frames");
+    assert_eq!(v["nb_read_frames"], "30");
+}
+
+#[test]
+fn 取り消すと書きかけも出力も残らない() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = mm_store::load_project(&stage3_project(dir.path())).unwrap();
+    let out = dir.path().join("cancelled.mp4");
+    let flag = Arc::new(AtomicBool::new(false));
+    let f = flag.clone();
+    let control = ExportControl::default()
+        .with_cancel(flag)
+        .with_progress(Arc::new(move |p| {
+            if p.frames_done == CANCEL_AFTER_FRAMES {
+                f.store(true, Ordering::Relaxed);
+            }
+        }));
+    let mut engine = assemble(&RuntimeConfig::real()).unwrap();
+    let outcome = export_run(
+        &mut engine,
+        &project,
+        &ExportOptions {
+            output: Some(out),
+            target: Some(Id::new("h720")),
+            sequence: Some(Id::new("talk")),
+            control,
+            ..ExportOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(outcome, ExportOutcome::Cancelled);
+    let left: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".mp4"))
+        .collect();
+    assert!(left.is_empty(), "動画のファイルが残っている: {left:?}");
 }
