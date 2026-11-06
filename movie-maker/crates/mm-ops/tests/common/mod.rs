@@ -82,6 +82,7 @@ pub fn project() -> Project {
         codec: "sample".into(),
         output_path: "out.mp4".into(),
         loudness_lufs: None,
+        delivery: Default::default(),
     });
     add_bins(&mut p);
     add_footage_sequence(&mut p);

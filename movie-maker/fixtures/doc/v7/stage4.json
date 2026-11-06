@@ -1,0 +1,72 @@
+{
+  "schema_version": 7,
+  "assets": [
+    {
+      "id": "a1",
+      "path": "talk.mp4",
+      "content_hash": "hash-talk",
+      "color_space": "bt709",
+      "duration": { "num": 60, "den": 1 },
+      "fps": { "num": 30, "den": 1 },
+      "timebase_offset": { "num": 0, "den": 1 }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main", "width": 1920, "height": 1080, "fps": { "num": 30, "den": 1 },
+      "duration": { "num": 60, "den": 1 }, "layers": [],
+      "markers": [{ "id": "m1", "time": { "num": 0, "den": 1 }, "duration": { "num": 0, "den": 1 }, "name": "冒頭" }]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "s1",
+      "cuts": [
+        {
+          "id": "k1",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "a1" } } } },
+          "in": { "num": 2, "den": 1 },
+          "out": { "num": 9, "den": 2 }
+        }
+      ]
+    }
+  ],
+  "render_targets": [
+    {
+      "id": "yt", "composition": "main", "width": 1920, "height": 1080,
+      "fps": { "num": 30, "den": 1 }, "codec": "h264", "output_path": "out/yt.mp4",
+      "loudness_lufs": -14.0,
+      "delivery": { "subtitles": "sidecar", "chapters": true, "true_peak_dbtp": -1.5 }
+    }
+  ],
+  "bins": {
+    "marks": [
+      { "asset": "a1", "in": { "num": 1, "den": 1 }, "out": null }
+    ],
+    "selections": [
+      {
+        "id": "sel1",
+        "asset": "a1",
+        "in": { "num": 0, "den": 1 },
+        "out": { "num": 5, "den": 1 },
+        "rating": "favorite",
+        "tags": ["intro", "outdoor"]
+      }
+    ],
+    "topics": [
+      {
+        "id": "t1",
+        "asset": "a1",
+        "in": { "num": 2, "den": 1 },
+        "out": { "num": 9, "den": 2 },
+        "title": "挨拶",
+        "rating": "unrated",
+        "tags": []
+      }
+    ]
+  },
+  "transcript_edits": [
+    { "asset": "a1", "word": "w_hash-talk_2_1", "text": null, "deleted": true },
+    { "asset": "a1", "word": "w_hash-talk_5_2", "text": "編集", "deleted": false }
+  ]
+}
