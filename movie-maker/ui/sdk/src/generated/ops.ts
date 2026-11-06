@@ -16,6 +16,13 @@ export type Asset = {
 };
 /** 合成モード。式は W3C Compositing and Blending Level 1。`Add` は線形の加算（linear dodge）。 */
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color_dodge" | "color_burn" | "hard_light" | "soft_light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity" | "add";
+/** 字幕の置き場所。値はコンポジションの画素。 */
+export type CaptionPlacement = {
+  /** 字幕の帯の下端の中央（Vec2）。 */
+  "position": Param;
+  /** 字幕の帯の幅（Number）。これを超える行は折り返す。 */
+  "width": Param;
+};
 /** 色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。 */
 export type ColorSpace = string;
 /** コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。 */
@@ -48,12 +55,42 @@ export type Cut = {
   "in": RationalTime;
   /** 参照・複製の元のカット。ショートで in/out を上書きしたときの対応に使う。 */
   "origin"?: string | null;
+  /** 複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。 */
+  "origin_base"?: CutBase | null;
   /** 素材の時間軸での出（含まない）。`in < out`。 */
   "out": RationalTime;
+  /** 参照のショートで、元のカットから上書きした所。上書きしていない所は元のカットに従う。 */
+  "overrides"?: CutOverrides;
   "source": Node;
   "speed"?: Rational;
   /** 前のカットからこのカットへのトランジション。境目をまたいで掛け、配置は変えない。 */
   "transition_in"?: Transition | null;
+};
+/** 元のカットの、ショートが従う・比べる値（素材、イン点、アウト点、速さ、有効）。 */
+export type CutBase = {
+  "enabled": boolean;
+  "in": RationalTime;
+  "out": RationalTime;
+  "source": Node;
+  "speed": Rational;
+};
+/** 参照のショートのカットで上書きした所。真の所は元のカットに従わない。 */
+export type CutOverrides = {
+  "in": boolean;
+  "out": boolean;
+};
+/** sequence の中の続いたカットの範囲。`first` が `last` より前か同じ。 */
+export type CutRange = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "first": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "last": string;
+};
+/** カット 1 つの再フレーミング。カットの画像（コンポジションの画布に縦横比を保って収めたもの）に掛ける変形。 キーフレームの時刻は素材の時刻（被写体の位置は素材の時刻で決まるので、カットを動かしても切り出しがずれない）。 */
+export type CutReframe = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "transform": Transform;
 };
 /** シーケンスの `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。 */
 export type CutSplice = {
@@ -71,6 +108,13 @@ export type Effect = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "id": string;
   "node": Node;
+};
+/** sequence のレイヤーの、コンポジションごとの見せ方。同じ素材を本編（16:9）とショート（9:16）で別の位置から切り出す。 */
+export type Framing = {
+  /** 字幕の置き場所。`None` は字幕を描く側の既定。 */
+  "caption"?: CaptionPlacement | null;
+  /** カットごとの再フレーミング。カットの ID は重ならない。無いカットは変形なし。 */
+  "cuts": CutReframe[];
 };
 /** キーフレームの補間。区間 `[k_i, k_{i+1})` の形は始点 `k_i` の補間で決まる。 数の型（数、2・3 次元の数、色）だけ `Linear` と `Bezier` が効き、ほかはホールド。 */
 export type Interpolation = "hold" | "linear" | "bezier";
@@ -94,6 +138,8 @@ export type Layer = {
   "effects"?: Effect[];
   /** 無効にしたレイヤーは描かず、鳴らさない。 */
   "enabled"?: boolean;
+  /** sequence のレイヤーで、このコンポジションでのカットごとの再フレーミングと字幕の置き場所。 */
+  "framing"?: Framing;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "id": string;
   /** 素材の時間軸でのイン点。 */
@@ -444,11 +490,13 @@ export type AddSequenceOp = {
 };
 /** sequence を参照か複製で分岐する。 */
 export type ForkSequenceOp = {
-  /** 新しいカットの ID。元のカットと同じ数。 */
+  /** 新しいカットの ID。コピーする元のカットと同じ数。 */
   "cuts": string[];
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "new_sequence": string;
   "op": "forkSequence";
+  /** コピーする続いたカットの範囲（両端を含む）。省くと全部。 */
+  "range"?: CutRange | null;
   "relation": OriginRelation;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "sequence": string;
@@ -458,6 +506,38 @@ export type RemoveSequenceOp = {
   "op": "removeSequence";
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "sequence": string;
+};
+/** 参照のショートのカットの in/out を上書きする・上書きを外す。 */
+export type OverrideCutOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  /** 上書きするイン点（素材の時間軸）。 */
+  "in"?: RationalTime | null;
+  "op": "overrideCut";
+  /** 上書きするアウト点（素材の時間軸、含まない）。 */
+  "out"?: RationalTime | null;
+};
+/** 参照のショートのカットの上書きを全部外す。 */
+export type ResetCutOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "resetCut";
+};
+/** sequence のレイヤーのカットの再フレーミングを置く・外す。 */
+export type SetReframeOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "setReframe";
+  "transform"?: Transform | null;
+};
+/** sequence のレイヤーの字幕の置き場所を置く・外す。 */
+export type SetCaptionOp = {
+  "caption"?: CaptionPlacement | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "setCaption";
 };
 /** レンダーターゲットを足す。 */
 export type AddRenderTargetOp = {
@@ -708,6 +788,10 @@ export type Op =
   | AddSequenceOp
   | ForkSequenceOp
   | RemoveSequenceOp
+  | OverrideCutOp
+  | ResetCutOp
+  | SetReframeOp
+  | SetCaptionOp
   | AddRenderTargetOp
   | RemoveRenderTargetOp
   | AddMarkerOp
@@ -771,6 +855,10 @@ export const OP_NAMES: readonly OpName[] = [
   "addSequence",
   "forkSequence",
   "removeSequence",
+  "overrideCut",
+  "resetCut",
+  "setReframe",
+  "setCaption",
   "addRenderTarget",
   "removeRenderTarget",
   "addMarker",
