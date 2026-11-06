@@ -135,21 +135,21 @@ const resume = (r: Recognizer): void => {
   }
 };
 
-const create = (SR: RecognizerClass): Recognizer => {
+/** Chrome は、黙っている間などに聞き続けるのをやめるので、again が真の間は聞き直す。 */
+const create = (SR: RecognizerClass, onHear: (text: string, final: boolean) => void, onFatal: (message: string) => void, again: (r: Recognizer) => boolean): Recognizer => {
   const r = Object.assign(new SR(), { lang: LANG, continuous: true, interimResults: true, processLocally: true });
   r.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const result = e.results.item(i);
-      hear(result.item(0).transcript, result.isFinal);
+      onHear(result.item(0).transcript, result.isFinal);
     }
   };
   r.onerror = (e) => {
     const message = FATAL[e.error];
-    if (message) fail(message);
+    if (message) onFatal(message);
   };
-  // Chrome は、黙っている間などに聞き続けるのをやめるので、ON の間は聞き直す。読み上げている間は、イルカの声を聞かないよう止めておく。
   r.onend = () => {
-    if (rec === r && !speaking) setTimeout(() => rec === r && !speaking && resume(r), RESTART_MS);
+    if (again(r)) setTimeout(() => again(r) && resume(r), RESTART_MS);
   };
   return r;
 };
@@ -173,33 +173,44 @@ const setPreparing = (on: boolean): void => {
   changed();
 };
 
-/** 日本語の認識データが無ければ Chrome にダウンロードさせてから、聞き始める。signal は、準備している間にマイクを手放したら立つ。 */
-const start = async (signal?: AbortSignal): Promise<void> => {
-  const w = window as unknown as { SpeechRecognition?: RecognizerClass };
-  const SR = w.SpeechRecognition;
-  if (!SR?.available || !SR.install) return fail('この Chrome は、Mac の中で音声を認識できません');
+/** 日本語の認識データが無ければ Chrome にダウンロードさせる。使える SpeechRecognition か、使えない理由を返す。 */
+const prepare = async (): Promise<RecognizerClass | string> => {
+  const SR = (window as unknown as { SpeechRecognition?: RecognizerClass }).SpeechRecognition;
+  if (!SR?.available || !SR.install) return 'この Chrome は、Mac の中で音声を認識できません';
   const options = { langs: [LANG], processLocally: true };
+  const status = await SR.available(options);
+  if (status === 'unavailable') return NO_JAPANESE;
+  if (status === 'available') return SR;
+  setPreparing(true);
+  try {
+    return (await SR.install(options)) ? SR : '日本語の認識データをダウンロードできませんでした';
+  } finally {
+    setPreparing(false);
+  }
+};
+
+let endDictation: ((error?: string) => void) | undefined;
+
+/** イルカが居て、マイクが ON で、入力欄に音声入力していない間だけ聞く。 */
+const listens = (): boolean => mic && handlers.size > 0 && !endDictation;
+
+/** 準備してから聞き始める。signal は、準備している間にマイクを手放したら立つ。 */
+const start = async (signal?: AbortSignal): Promise<void> => {
   starting = true;
   try {
-    const status = await SR.available(options);
-    if (status === 'unavailable') return fail(NO_JAPANESE);
-    if (status !== 'available') {
-      setPreparing(true);
-      const installed = await SR.install(options);
-      setPreparing(false);
-      if (!installed) return fail('日本語の認識データをダウンロードできませんでした');
-    }
+    const SR = await prepare();
+    if (typeof SR === 'string') return fail(SR);
     // 準備している間に OFF にされたか、ほかのタブにマイクを渡していたら、聞き始めない。
-    if (!mic || handlers.size === 0 || signal?.aborted) return;
+    if (!listens() || signal?.aborted) return;
     // 読み上げに使う声は、初めて読んだときに読み込み始めるので、答えるときまでに読み込んでおく。
     speechSynthesis.getVoices();
-    rec = create(SR);
+    // 読み上げている間は、イルカの声を聞かないよう止めておく。
+    rec = create(SR, hear, fail, (r) => rec === r && !speaking);
     rec.start();
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   } finally {
     starting = false;
-    setPreparing(false);
   }
 };
 
@@ -235,9 +246,8 @@ const hold = (steal: boolean): void => {
   });
 };
 
-/** イルカが居て、マイクが ON の間だけ聞く。 */
 const sync = (): void => {
-  if (!mic || handlers.size === 0) {
+  if (!listens()) {
     drop();
     stop();
   } else if (!lock && !rec && !starting) {
@@ -258,7 +268,7 @@ const onStorage = (e: StorageEvent): void => {
 
 // 人間が前に出したタブで聞く。答えや開いた画面を、人間が見ているタブに出すため。
 const onFocus = (): void => {
-  if (mic && handlers.size > 0 && navigator.locks && !rec && !starting) hold(true);
+  if (listens() && navigator.locks && !rec && !starting) hold(true);
 };
 
 export const setMic = (on: boolean): void => {
@@ -333,4 +343,32 @@ const listenAgain = (): void => {
   if (!rec) return;
   resume(rec);
   wake();
+};
+
+/**
+ * 入力欄への音声入力。確定した文を onText に渡し、終わったら onEnd に、止まった理由があれば添えて知らせる。止める関数を返す。
+ * 聞いている間はイルカのマイクを止め、入力欄に話した文を頼みと取り違えないようにする。聞くのは 1 つの入力欄に限る。
+ */
+export const dictate = (onText: (text: string) => void, onEnd: (error?: string) => void): (() => void) => {
+  endDictation?.();
+  let r: Recognizer | undefined;
+  const end = (error?: string): void => {
+    if (endDictation !== end) return;
+    endDictation = undefined;
+    r?.abort();
+    sync();
+    onEnd(error);
+  };
+  endDictation = end;
+  sync();
+  prepare().then(
+    (SR) => {
+      if (endDictation !== end) return;
+      if (typeof SR === 'string') return end(SR);
+      r = create(SR, (text, final) => final && text.trim() && onText(text.trim()), end, (x) => endDictation === end && x === r);
+      resume(r);
+    },
+    (e) => end(e instanceof Error ? e.message : String(e)),
+  );
+  return () => end();
 };

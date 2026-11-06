@@ -2,5 +2,8 @@
   "name": "@mm/sdk",
   "private": true,
   "type": "module",
-  "main": "src/index.ts"
+  "main": "src/index.ts",
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4"
+  }
 }

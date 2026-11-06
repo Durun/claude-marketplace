@@ -1,22 +1,32 @@
-//! Tauri のウィンドウに wgpu のサーフェス（子 HWND）と WebView2（子 WebView）を並べる試作。
-//! 結果は docs/design/spikes/window.md。`--selftest <out.json>` で自己診断を回す。
+//! movie-maker のアプリ。Tauri のウィンドウに wgpu のサーフェス（子 HWND。Program と Timeline）と WebView2 を並べ、
+//! プロジェクトを開いて入れ子のコンポジションを再生する。ウィンドウの組み立ての経緯は docs/design/spikes/window.md。
+//!
+//! `movie-maker [PROJECT] [--composition ID] [--no-audio] [--play-test SECS --report OUT.json [--screenshot OUT.png]]`
 
 #[cfg(windows)]
 mod app;
 #[cfg(windows)]
-mod gpu;
+mod capture;
 #[cfg(windows)]
-mod input;
+mod cli;
+#[cfg(windows)]
+mod clock;
+#[cfg(windows)]
+mod ipc;
 #[cfg(windows)]
 mod keys;
 #[cfg(windows)]
-mod selftest;
+mod playback;
 #[cfg(windows)]
-mod shared;
+mod project;
+#[cfg(windows)]
+mod render;
+#[cfg(windows)]
+mod state;
 #[cfg(windows)]
 mod surface;
 #[cfg(windows)]
-mod sync;
+mod verify;
 
 #[cfg(windows)]
 fn main() {
@@ -25,5 +35,5 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("この試作は Windows 専用（WebView2 と Win32 の子 HWND を使う）");
+    eprintln!("このアプリは Windows 専用（WebView2 と Win32 の子 HWND を使う）");
 }

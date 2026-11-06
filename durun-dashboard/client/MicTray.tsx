@@ -5,6 +5,14 @@ import { setMic, setWakeWords, useMic } from './voice.ts';
 
 const MIC_ID = 'mic-flyout';
 
+export const MicIcon = ({ on }: { on: boolean }) => (
+  <svg viewBox="0 0 20 20" aria-hidden="true">
+    <rect class="mic-head" x="7" y="2.5" width="6" height="10" rx="3" />
+    <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" />
+    {!on && <path class="mic-slash" d="M3.5 3.5l13 13" />}
+  </svg>
+);
+
 /** 軽量モードではイルカが居ないので、出さない。 */
 export const MicTray = () => {
   const light = useLightMode();
@@ -29,11 +37,7 @@ export const MicTray = () => {
           flyout.current?.showPopover();
         }}
       >
-        <svg viewBox="0 0 20 20" aria-hidden="true">
-          <rect class="mic-head" x="7" y="2.5" width="6" height="10" rx="3" />
-          <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" />
-          {!on && <path class="mic-slash" d="M3.5 3.5l13 13" />}
-        </svg>
+        <MicIcon on={on} />
       </button>
       <div id={MIC_ID} class="mic-flyout" popover ref={flyout}>
         <b class="mic-flyout-head">イルカのマイク</b>

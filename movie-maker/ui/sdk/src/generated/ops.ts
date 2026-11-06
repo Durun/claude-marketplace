@@ -1,0 +1,669 @@
+// ops.json から tools/gen-sdk.ts が生成する。直接は書き換えない。
+import type { JsonSchema } from "../codegen.ts";
+
+/** 素材。原本のパス、コンテンツハッシュ、色空間、時間軸。 */
+export type Asset = {
+  "color_space": ColorSpace;
+  "content_hash": string;
+  "duration": RationalTime;
+  /** 固定フレームレートなら fps。VFR は `None`（PTS の索引で引く）。 */
+  "fps"?: Rational | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  "path": string;
+  /** 音と映像の先頭のずれ。OBS の mkv で起きる。 */
+  "timebase_offset"?: RationalTime;
+};
+/** 合成モード。式は W3C Compositing and Blending Level 1。`Add` は線形の加算（linear dodge）。 */
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color_dodge" | "color_burn" | "hard_light" | "soft_light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity" | "add";
+/** 色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。 */
+export type ColorSpace = string;
+/** コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。 */
+export type Composition = {
+  "duration": RationalTime;
+  "fps": Rational;
+  "height": number;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** 下から上の順。 */
+  "layers": Layer[];
+  /** 時刻の順。 */
+  "markers"?: Marker[];
+  "width": number;
+};
+/** 進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。 `x1`、`x2` は `[0,1]` に収める（時間が単調になる）。 */
+export type CubicBezier = {
+  "x1": number;
+  "x2": number;
+  "y1": number;
+  "y2": number;
+};
+/** カット。素材の範囲を 1 つ切り出す。 */
+export type Cut = {
+  /** 外したカットは消さずに残し、配置から除く。 */
+  "enabled"?: boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** 素材の時間軸でのイン点。 */
+  "in": RationalTime;
+  /** 参照・複製の元のカット。ショートで in/out を上書きしたときの対応に使う。 */
+  "origin"?: string | null;
+  /** 素材の時間軸での出（含まない）。`in < out`。 */
+  "out": RationalTime;
+  "source": Node;
+  "speed"?: Rational;
+  /** 前のカットからこのカットへのトランジション。境目をまたいで掛け、配置は変えない。 */
+  "transition_in"?: Transition | null;
+};
+/** `Linear` の進み具合に掛けるイージングの型。 */
+export type Ease = "none" | "in" | "out" | "in_out";
+/** 動かす端。 */
+export type Edge = "in" | "out";
+/** 効果。ノードの種類を 1 つ、レイヤーの画像を入力にして掛ける。 */
+export type Effect = {
+  "enabled"?: boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  "node": Node;
+};
+/** キーフレームの補間。区間 `[k_i, k_{i+1})` の形は始点 `k_i` の補間で決まる。 数の型（数、2・3 次元の数、色）だけ `Linear` と `Bezier` が効き、ほかはホールド。 */
+export type Interpolation = "hold" | "linear" | "bezier";
+/** キーフレーム。 */
+export type Keyframe = {
+  /** `Bezier` の制御点。無ければ [`CubicBezier::EASE_IN_OUT`]。 */
+  "bezier"?: CubicBezier | null;
+  /** `Linear` の進み具合に掛ける。 */
+  "ease"?: Ease;
+  "interpolation": Interpolation;
+  "time": RationalTime;
+  "value": ParamValue;
+};
+/** レイヤー。ノードを 1 つ持ち、時間と重ね方を足す。 コンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。 `time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。 */
+export type Layer = {
+  /** 接続先のカット。カットがリップルで動くと一緒に動く。 */
+  "attach_to"?: string | null;
+  "audio"?: LayerAudio | null;
+  "blend"?: BlendMode;
+  /** 効果の列。上から順に掛ける。 */
+  "effects"?: Effect[];
+  /** 無効にしたレイヤーは描かず、鳴らさない。 */
+  "enabled"?: boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** 素材の時間軸でのイン点。 */
+  "in": RationalTime;
+  /** 人が直した所。Claude の操作経路からの操作は拒否する。 */
+  "lock"?: boolean;
+  "masks"?: Mask[];
+  "opacity": Param;
+  /** 素材の時間軸での出（含まない）。`in < out`。 */
+  "out": RationalTime;
+  /** 親のレイヤー（同じコンポジションの中）。変形を親に続けて掛ける。 */
+  "parent"?: string | null;
+  "source": Node;
+  /** 再生の速さ。1 が等速。型が正を保つので 0 にならない。 */
+  "speed"?: Rational;
+  /** コンポジションの時間軸での始まり。 */
+  "start": RationalTime;
+  /** 時間の写像の上書き。あれば `in` と `speed` の代わりに使う。 */
+  "time_remap"?: TimeRemap | null;
+  "track_matte"?: TrackMatte | null;
+  /** 位置・拡大・回転・アンカー。レンダラーが合成で掛ける（ノードの種類には渡さない）。 */
+  "transform"?: Transform;
+};
+/** レイヤーの音の設定。 */
+export type LayerAudio = {
+  "gain_db": Param;
+  "pan": Param;
+  /** 役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。 */
+  "role": string;
+};
+/** マーカー。YouTube のチャプターの書き出しに使う。`duration` が 0 なら点。 */
+export type Marker = {
+  "duration"?: RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  "name": string;
+  "time": RationalTime;
+};
+/** マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。 */
+export type Mask = {
+  /** ぼかしの幅（画素）。 */
+  "feather": Param;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  "inverted"?: boolean;
+  "mode"?: MaskMode;
+  "opacity": Param;
+  /** 頂点の列（コンポジションの画素）。キーフレームで形を動かせる。 */
+  "path": Param;
+};
+/** マスクの組み合わせ方。 */
+export type MaskMode = "add" | "subtract" | "intersect";
+/** マットに使う成分。 */
+export type MatteKind = "alpha" | "luma";
+/** ノード。ノードの種類の名前とバージョン、パラメータ、入力。 */
+export type Node = {
+  "inputs"?: Node[];
+  "kind": string;
+  "params"?: Record<string, Param>;
+  "version": number;
+};
+/** 参照（本編を直すとショートも変わる）か、複製（分岐。元が変わったら知らせる）か。 */
+export type OriginRelation = "reference" | "fork";
+/** パラメータ。固定の値か、キーフレームの列（時刻の昇順）。 キーフレームがあるときは `value` を使わず、最初のキーフレームより前は最初の値、 最後より後は最後の値になる（`mm-eval`）。 */
+export type Param = {
+  "keyframes"?: Keyframe[];
+  "value": ParamValue;
+};
+/** パラメータの指し方。`layer` か `cut` のどちらか 1 つ。 */
+export type ParamRef = {
+  /** カットの ID（カットのノードのパラメータを指すとき）。 */
+  "cut"?: string | null;
+  /** レイヤーの ID（レイヤーのパラメータを指すとき）。 */
+  "layer"?: string | null;
+  /** 持ち主の中のパス。 */
+  "path": string;
+};
+/** 評価済みのパラメータの値（時刻 t での値）。 */
+export type ParamValue = {
+  "type": "number";
+  "value": number;
+} | {
+  "type": "vec2";
+  "value": number[];
+} | {
+  "type": "vec3";
+  "value": number[];
+} | {
+  "type": "color";
+  "value": Rgba;
+} | {
+  "type": "bool";
+  "value": boolean;
+} | {
+  "type": "text";
+  "value": string;
+} | {
+  "type": "choice";
+  "value": string;
+} | {
+  "type": "asset_ref";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "value": string;
+} | {
+  "type": "json";
+  "value": unknown;
+};
+/** 正の有理数 num/den（fps、再生の速さ） */
+export type Rational = {
+  "den": number;
+  "num": number;
+};
+/** 有理数の時刻 num/den 秒（負も表せる） */
+export type RationalTime = {
+  "den": number;
+  "num": number;
+};
+/** レンダーターゲット。成果物の形式。 */
+export type RenderTarget = {
+  /** エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。 */
+  "codec": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "fps": Rational;
+  "height": number;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  "loudness_lufs"?: number | null;
+  "output_path": string;
+  "width": number;
+};
+/** 線形、premultiplied の RGBA。各成分は 0..=1 の範囲が基本だが、HDR では 1 を超えてよい。 */
+export type Rgba = {
+  "a": number;
+  "b": number;
+  "g": number;
+  "r": number;
+};
+/** マグネティックシーケンス。OTIO の `Track` に対応づけられる形。 */
+export type Sequence = {
+  /** 先頭から順。 */
+  "cuts": Cut[];
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "id": string;
+  /** ショートが本編を参照・複製した元。本編なら `None`。 */
+  "origin"?: SequenceOrigin | null;
+};
+/** ショートと本編の関係。 */
+export type SequenceOrigin = {
+  "relation": OriginRelation;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。 */
+export type TimeKeyframe = {
+  "interpolation": Interpolation;
+  /** 素材の時刻。 */
+  "source": RationalTime;
+  /** レイヤーの始まりからの時刻。 */
+  "time": RationalTime;
+};
+/** タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。 最初より前と最後より後は端の値を保つ。 */
+export type TimeRemap = {
+  "keyframes": TimeKeyframe[];
+};
+/** トラックマット。同じコンポジションの別のレイヤーのアルファか輝度で切り抜く。 */
+export type TrackMatte = {
+  "inverted"?: boolean;
+  "kind": MatteKind;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+};
+/** レイヤーの変形。値はコンポジションの画素と度。 */
+export type Transform = {
+  /** 回転と拡大の中心（Vec2）。`None` はレイヤーの画像の中心。 */
+  "anchor"?: Param | null;
+  /** 動かす量（Vec2）。 */
+  "position"?: Param;
+  /** 度。正が時計回り。 */
+  "rotation"?: Param;
+  /** 倍率（Number か Vec2）。1 が等倍。 */
+  "scale"?: Param;
+};
+/** カットの間のトランジション。 */
+export type Transition = {
+  "duration": RationalTime;
+  "node": Node;
+};
+
+/** 素材を足す。 */
+export type AddAssetOp = {
+  "asset": Asset;
+  "op": "addAsset";
+};
+/** 素材を外す。 */
+export type RemoveAssetOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "asset": string;
+  "op": "removeAsset";
+};
+/** レイヤーを足す。 */
+export type AddLayerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "index"?: number | null;
+  "layer": Layer;
+  "op": "addLayer";
+};
+/** レイヤーを外す。 */
+export type RemoveLayerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "removeLayer";
+};
+/** レイヤーの重なりの位置を変える。 */
+export type MoveLayerOp = {
+  "index": number;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "moveLayer";
+};
+/** パラメータの固定の値を置く。 */
+export type SetParamOp = {
+  "keyframes"?: Keyframe[] | null;
+  "op": "setParam";
+  "target": ParamRef;
+  "value": ParamValue;
+};
+/** パラメータを外す（無くてもよいフィールドだけ）。 */
+export type RemoveParamOp = {
+  "op": "removeParam";
+  "target": ParamRef;
+};
+/** キーフレームを置く。 */
+export type SetKeyframeOp = {
+  "keyframe": Keyframe;
+  "op": "setKeyframe";
+  "target": ParamRef;
+};
+/** キーフレームを外す。 */
+export type RemoveKeyframeOp = {
+  "op": "removeKeyframe";
+  "target": ParamRef;
+  "time": RationalTime;
+};
+/** キーフレームの補間とイージングを変える。 */
+export type SetEaseOp = {
+  /** `Bezier` の制御点。`None` は既定（ease-in-out）。 */
+  "bezier"?: CubicBezier | null;
+  "ease"?: Ease;
+  "interpolation": Interpolation;
+  "op": "setEase";
+  "target": ParamRef;
+  "time": RationalTime;
+};
+/** 親のレイヤーを付ける・外す。 */
+export type ParentLayerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "parentLayer";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "parent"?: string | null;
+};
+/** カットへの接続を付ける・外す。 */
+export type AttachLayerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut"?: string | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "attachLayer";
+};
+/** ロックを付ける・外す。 */
+export type LockLayerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "lock": boolean;
+  "op": "lockLayer";
+};
+/** レイヤーの組を新しいコンポジションに入れ、入れ子のレイヤーで置き換える。 */
+export type PrecomposeOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "layers": string[];
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "new_composition": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "new_layer": string;
+  "op": "precompose";
+};
+/** 入れ子のレイヤーを中のレイヤーに戻す（precompose の逆）。 */
+export type UnprecomposeOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "unprecompose";
+};
+/** コンポジションを足す。 */
+export type AddCompositionOp = {
+  "composition": Composition;
+  "op": "addComposition";
+};
+/** コンポジションを外す。 */
+export type RemoveCompositionOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "op": "removeComposition";
+};
+/** sequence を足す。 */
+export type AddSequenceOp = {
+  "op": "addSequence";
+  "sequence": Sequence;
+};
+/** sequence を参照か複製で分岐する。 */
+export type ForkSequenceOp = {
+  /** 新しいカットの ID。元のカットと同じ数。 */
+  "cuts": string[];
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "new_sequence": string;
+  "op": "forkSequence";
+  "relation": OriginRelation;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** sequence を外す。 */
+export type RemoveSequenceOp = {
+  "op": "removeSequence";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** レンダーターゲットを足す。 */
+export type AddRenderTargetOp = {
+  "op": "addRenderTarget";
+  "target": RenderTarget;
+};
+/** レンダーターゲットを外す。 */
+export type RemoveRenderTargetOp = {
+  "op": "removeRenderTarget";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "target": string;
+};
+/** マーカーを足す。 */
+export type AddMarkerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "marker": Marker;
+  "op": "addMarker";
+};
+/** マーカーを外す。 */
+export type RemoveMarkerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "marker": string;
+  "op": "removeMarker";
+};
+/** カットをシーケンスに差し込む（後ろがずれる）。 */
+export type InsertOp = {
+  "cut": Cut;
+  "index": number;
+  "op": "insert";
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "sequence": string;
+};
+/** カットを別のカットで置き換える（数は変わらない）。 */
+export type OverwriteOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "overwrite";
+  "replacement": Cut;
+};
+/** カットを抜く（後ろが詰まる）。 */
+export type ExtractOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "extract";
+};
+/** カットを 2 つに割る。 */
+export type SplitOp = {
+  "at": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "new_cut": string;
+  "op": "split";
+};
+/** 続きの 2 つのカットを 1 つに戻す。 */
+export type JoinOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "next": string;
+  "op": "join";
+};
+/** カットのイン点かアウト点を動かし、後ろをずらす。 */
+export type RippleOp = {
+  "by": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "edge": Edge;
+  "op": "ripple";
+};
+/** 次のカットとの境目を動かす（全体の長さは変わらない）。 */
+export type RollOp = {
+  "by": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "roll";
+};
+/** カットの内容をずらす（位置と長さは変わらない）。 */
+export type SlipOp = {
+  "by": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "slip";
+};
+/** カットを前後のカットの中で動かす（全体の長さは変わらない）。 */
+export type SlideOp = {
+  "by": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "slide";
+};
+/** カットを配置から外す・戻す。 */
+export type DisableOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  /** `true` で外し、`false` で戻す。 */
+  "disabled"?: boolean;
+  "op": "disable";
+};
+
+/** 全部の操作。`op` が名前。 */
+export type Op =
+  | AddAssetOp
+  | RemoveAssetOp
+  | AddLayerOp
+  | RemoveLayerOp
+  | MoveLayerOp
+  | SetParamOp
+  | RemoveParamOp
+  | SetKeyframeOp
+  | RemoveKeyframeOp
+  | SetEaseOp
+  | ParentLayerOp
+  | AttachLayerOp
+  | LockLayerOp
+  | PrecomposeOp
+  | UnprecomposeOp
+  | AddCompositionOp
+  | RemoveCompositionOp
+  | AddSequenceOp
+  | ForkSequenceOp
+  | RemoveSequenceOp
+  | AddRenderTargetOp
+  | RemoveRenderTargetOp
+  | AddMarkerOp
+  | RemoveMarkerOp
+  | InsertOp
+  | OverwriteOp
+  | ExtractOp
+  | SplitOp
+  | JoinOp
+  | RippleOp
+  | RollOp
+  | SlipOp
+  | SlideOp
+  | DisableOp;
+
+/** 操作の名前の和。 */
+export type OpName = Op["op"];
+
+/** 名前から操作を引く。 */
+export type OpOf<N extends OpName> = Extract<Op, { op: N }>;
+
+/** 名前から、`op` を除いた引数の型を引く。 */
+export type OpArgs<N extends OpName> = Omit<OpOf<N>, "op">;
+
+/** 全部の操作の名前。 */
+export const OP_NAMES: readonly OpName[] = [
+  "addAsset",
+  "removeAsset",
+  "addLayer",
+  "removeLayer",
+  "moveLayer",
+  "setParam",
+  "removeParam",
+  "setKeyframe",
+  "removeKeyframe",
+  "setEase",
+  "parentLayer",
+  "attachLayer",
+  "lockLayer",
+  "precompose",
+  "unprecompose",
+  "addComposition",
+  "removeComposition",
+  "addSequence",
+  "forkSequence",
+  "removeSequence",
+  "addRenderTarget",
+  "removeRenderTarget",
+  "addMarker",
+  "removeMarker",
+  "insert",
+  "overwrite",
+  "extract",
+  "split",
+  "join",
+  "ripple",
+  "roll",
+  "slip",
+  "slide",
+  "disable"
+];
+
+/** パラメータの値の種類（`ParamValue.type`）ごとの、`value` の JSON Schema。 */
+export const PARAM_VALUE_SCHEMAS: Record<ParamValue["type"], JsonSchema> = {
+  "number": {
+    "type": "number",
+    "format": "double"
+  },
+  "vec2": {
+    "type": "array",
+    "items": {
+      "type": "number",
+      "format": "double"
+    },
+    "maxItems": 2,
+    "minItems": 2
+  },
+  "vec3": {
+    "type": "array",
+    "items": {
+      "type": "number",
+      "format": "double"
+    },
+    "maxItems": 3,
+    "minItems": 3
+  },
+  "color": {
+    "description": "線形、premultiplied の RGBA。各成分は 0..=1 の範囲が基本だが、HDR では 1 を超えてよい。",
+    "type": "object",
+    "properties": {
+      "a": {
+        "type": "number",
+        "format": "float"
+      },
+      "b": {
+        "type": "number",
+        "format": "float"
+      },
+      "g": {
+        "type": "number",
+        "format": "float"
+      },
+      "r": {
+        "type": "number",
+        "format": "float"
+      }
+    },
+    "required": [
+      "r",
+      "g",
+      "b",
+      "a"
+    ]
+  },
+  "bool": {
+    "type": "boolean"
+  },
+  "text": {
+    "type": "string"
+  },
+  "choice": {
+    "type": "string"
+  },
+  "asset_ref": {
+    "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+    "type": "string"
+  },
+  "json": true
+};

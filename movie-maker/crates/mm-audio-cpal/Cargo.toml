@@ -1,0 +1,16 @@
+[package]
+name = "mm-audio-cpal"
+description = "プレビューの音の出力（cpal）。リングバッファに溜めた音をデバイスに流し、実際に鳴った位置を再生の主の時計として返す"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-audio-api = { workspace = true }
+cpal = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

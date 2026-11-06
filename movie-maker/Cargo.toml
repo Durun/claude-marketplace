@@ -40,6 +40,9 @@ mm-encode-ffmpeg = { path = "crates/mm-encode-ffmpeg" }
 mm-export = { path = "crates/mm-export" }
 mm-ops = { path = "crates/mm-ops" }
 mm-store = { path = "crates/mm-store" }
+mm-ui-layout = { path = "crates/mm-ui-layout" }
+mm-ui-wgpu = { path = "crates/mm-ui-wgpu" }
+mm-audio-cpal = { path = "crates/mm-audio-cpal" }
 mm-ingest = { path = "crates/mm-ingest" }
 
 serde = { version = "1.0", features = ["derive"] }
@@ -58,6 +61,8 @@ pollster = "1.0"
 windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
 glyphon = { version = "0.12", default-features = false }
+# プレビューの音の出力（mm-audio-cpal）。
+cpal = "0.18"
 ebur128 = "0.1"
 half = "2.7"
 bytemuck = { version = "1.20", features = ["derive"] }
