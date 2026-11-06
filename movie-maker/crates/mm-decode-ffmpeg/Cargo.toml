@@ -28,5 +28,9 @@ mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
 mm-node-api = { workspace = true }
 
+[[example]]
+name = "bench_upload"
+required-features = ["gpu"]
+
 [lints]
 workspace = true
