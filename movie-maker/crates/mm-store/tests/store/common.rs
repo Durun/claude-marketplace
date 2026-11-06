@@ -1,10 +1,9 @@
-//! テスト共通の文書と命令の作り方。
-
-use serde_json::json;
+//! テスト共通の文書と命令の作り方。命令の記録は本物の `mm_ops::Op` を当てて作る。
 
 use mm_doc::{Asset, Composition, Layer, Marker, Node, Project};
-use mm_store::{Actor, OpRecord, TxnInput};
-use mm_types::{ColorSpace, Id, ParamValue, Rational, RationalTime};
+use mm_ops::{apply_transaction, LockLayer, Op, OpContext, OpRecord, Touches};
+use mm_store::{Actor, TxnInput};
+use mm_types::{ColorSpace, Id, LayerId, ParamValue, Rational, RationalTime};
 
 pub const NOW: i64 = 1_793_880_000_000;
 
@@ -47,24 +46,49 @@ pub fn project_with(layers: usize) -> Project {
     p
 }
 
-pub fn op_record(i: usize) -> OpRecord {
-    OpRecord {
-        op: json!({ "type": "addLayer", "id": format!("l{i}"), "pad": "x".repeat(300) }),
-        inverse: json!({ "type": "removeLayer", "id": format!("l{i}") }),
-        touches: vec![format!("layer:c/l{i}")],
+pub fn actor() -> Actor {
+    Actor {
+        kind: "cli".into(),
+        name: "test".into(),
     }
 }
 
-pub fn txn(id: &str, ops: &[usize]) -> TxnInput {
-    TxnInput {
-        id: id.into(),
-        name: "テスト".into(),
-        actor: Actor {
-            kind: "cli".into(),
-            name: "test".into(),
-        },
-        at_ms: NOW,
-        responds_to: None,
-        ops: ops.iter().map(|i| op_record(*i)).collect(),
-    }
+/// レイヤー `l{i}` のロックを反転する命令。
+pub fn toggle_lock(project: &Project, i: usize) -> Op {
+    let id = LayerId::new(format!("l{i}"));
+    let lock = project
+        .compositions
+        .iter()
+        .flat_map(|c| c.layers.iter())
+        .find(|l| l.id == id)
+        .is_some_and(|l| !l.lock);
+    LockLayer { layer: id, lock }.into()
+}
+
+/// 全レイヤーのロックを `lock` にする命令の記録を、当てずに作る（kill の試験で、書き込みだけの子を速く回すため）。
+pub fn lock_records(layers: usize, lock: bool) -> Vec<OpRecord> {
+    (0..layers)
+        .map(|i| {
+            let id = LayerId::new(format!("l{i}"));
+            let op: Op = LockLayer {
+                layer: id.clone(),
+                lock,
+            }
+            .into();
+            let inverse: Op = LockLayer {
+                layer: id.clone(),
+                lock: !lock,
+            }
+            .into();
+            OpRecord::new(&op, &inverse, &Touches::of(&id)).unwrap()
+        })
+        .collect()
+}
+
+/// `project` に（互いに違う）レイヤーのロックの反転を当て、その記録を持つまとまりを作る。
+/// `project` は当てた後の文書になる。
+pub fn locked(project: &mut Project, name: &str, layers: &[usize]) -> TxnInput {
+    let ops: Vec<Op> = layers.iter().map(|&i| toggle_lock(project, i)).collect();
+    let outcome = apply_transaction(project, &ops, &OpContext::human()).unwrap();
+    TxnInput::normal(name, actor(), NOW, outcome.records)
 }

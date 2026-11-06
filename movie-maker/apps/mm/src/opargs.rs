@@ -161,19 +161,32 @@ fn coerce(field: &Value, raw: &str) -> Result<Value> {
         Some("ParamRef") if !raw.trim_start().starts_with('{') => return parse_param_ref(raw),
         _ => {}
     }
+    if raw == "null" && allows_null(field) {
+        return Ok(Value::Null);
+    }
     if is_string_field(field) {
         return Ok(Value::String(raw.to_owned()));
     }
     Ok(serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_owned())))
 }
 
+fn type_names(field: &Value) -> Vec<&str> {
+    match &field["type"] {
+        Value::String(t) => vec![t.as_str()],
+        Value::Array(ts) => ts.iter().filter_map(Value::as_str).collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// 文字列だけを取る欄か（`"123"` のような ID を数に読まない）。
 fn is_string_field(field: &Value) -> bool {
-    match &field["type"] {
-        Value::String(t) => t == "string",
-        Value::Array(ts) => ts.iter().all(|t| t == "string" || t == "null"),
-        _ => false,
-    }
+    let names = type_names(field);
+    !names.is_empty() && names.iter().all(|t| *t == "string" || *t == "null")
+}
+
+/// null も取れる欄か（`--cut null` を文字の "null" にしない）。
+fn allows_null(field: &Value) -> bool {
+    type_names(field).contains(&"null")
 }
 
 /// `layer:<ID>:<道筋>` か `cut:<ID>:<道筋>` を `{layer|cut, path}` にする。
@@ -255,6 +268,15 @@ mod tests {
         assert_eq!(v["op"], "ripple");
         assert_eq!(v["cut"], "c12");
         assert_eq!(v["by"], json!({"num": -2, "den": 5}));
+    }
+
+    #[test]
+    fn null_も取れる欄の_null_は_json_の_null() {
+        let p = parse_op("attachLayer", &tokens("--layer l1 --cut null")).unwrap();
+        let v = serde_json::to_value(&p.op).unwrap();
+        assert_eq!(v["cut"], Value::Null, "{v}");
+        let p = parse_op("attachLayer", &tokens("--layer l1 --cut c1")).unwrap();
+        assert_eq!(serde_json::to_value(&p.op).unwrap()["cut"], "c1");
     }
 
     #[test]

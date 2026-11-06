@@ -7,8 +7,6 @@ use mm_doc::Project;
 use mm_store::Store;
 use mm_types::{MmError, Result};
 
-use crate::commands::now_ms;
-
 /// `project.mmdb` のファイル名。
 const DB_FILE: &str = "project.mmdb";
 
@@ -29,7 +27,8 @@ pub fn load_project(path: &Path) -> Result<Project> {
     let Some(dir) = store_dir(path) else {
         return load_json(path);
     };
-    let store = Store::open(&dir, now_ms())?;
+    // 描画は数分かかるので、書き手のロックを取らずに読む（アプリの編集を止めない）。
+    let store = Store::open_read_only(&dir)?;
     let mut project = store.project().clone();
     rebase_project(&mut project, &dir);
     Ok(project)

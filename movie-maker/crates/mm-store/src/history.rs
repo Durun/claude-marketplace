@@ -1,4 +1,4 @@
-//! 命令の記録の取り出し（`mm diff` の元）、名前付きの版、コメント、検索、`versions/` の書き出しと取り込み。
+//! 命令の記録の取り出し（`mm diff` と `mm log` の元）、名前付きの版、コメント、検索、`versions/` の書き出しと取り込み。
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -11,8 +11,8 @@ use mm_types::{MmError, Result};
 
 use crate::export::{self, ExportReport, VERSIONS_DIR};
 use crate::lock::WriterLock;
-use crate::records::{Actor, OpRecord, StoredOp, StoredTxn, TxnState, VersionRow};
-use crate::store::{OpenMode, SearchHit, Store, DB_FILE};
+use crate::records::{kind_of, Actor, OpRecord, StoredOp, StoredTxn, TxnKind, VersionRow};
+use crate::store::{SearchHit, Store, DB_FILE};
 use crate::{backup, SqlExt};
 
 /// FTS5 の trigram は 3 文字未満の語を引けないので、それ未満は部分一致で探す。
@@ -29,9 +29,29 @@ fn op_from_row(r: &Row) -> rusqlite::Result<(i64, i64, String, String, String, S
     ))
 }
 
+/// 取り消しと元のまとまりを対で消す。やり直しは直前の取り消しと対で消す。
+/// 範囲に元のまとまりが無い取り消し（範囲の前に当てたものの取り消し）は、逆命令のまとまりとして残る。
+pub fn fold_history(txns: Vec<StoredTxn>) -> Vec<StoredTxn> {
+    let mut out: Vec<StoredTxn> = Vec::with_capacity(txns.len());
+    for txn in txns {
+        let cancels = |t: &StoredTxn| match txn.kind {
+            TxnKind::Normal => false,
+            TxnKind::Undo { of } => t.id as u64 == of || t.kind == TxnKind::Redo { of },
+            TxnKind::Redo { of } => t.kind == TxnKind::Undo { of },
+        };
+        match out.iter().rposition(cancels) {
+            Some(i) => {
+                out.remove(i);
+            }
+            None => out.push(txn),
+        }
+    }
+    out
+}
+
 impl Store {
-    /// トランザクションの命令を当てた順に返す。
-    pub(crate) fn txn_ops(&self, txn_id: &str) -> Result<Vec<StoredOp>> {
+    /// まとまりの命令を当てた順に返す。
+    pub(crate) fn txn_ops(&self, txn_id: i64) -> Result<Vec<StoredOp>> {
         let mut st = self
             .conn
             .prepare_cached(
@@ -60,16 +80,17 @@ impl Store {
             .collect()
     }
 
-    /// 版番号が `(from, to]` の間に当たったトランザクションを、命令つきで当てた順に返す。
-    /// 取り消されたものは含めない。`mm diff` の元。
+    /// 版番号が `(from, to]` の間に当たったまとまりを、命令つきで当てた順に返す。
+    /// 取り消しと元のまとまりは対で畳む（[`fold_history`]）。`mm diff` の元。
     pub fn txns_between(&self, from: i64, to: i64) -> Result<Vec<StoredTxn>> {
-        self.load_txns(
-            "WHERE doc_version > ?1 AND doc_version <= ?2 AND state = 'applied'",
+        let raw = self.load_txns(
+            "WHERE doc_version > ?1 AND doc_version <= ?2",
             params![from, to],
-        )
+        )?;
+        Ok(fold_history(raw))
     }
 
-    /// 取り消したものも含め、書いた順の全トランザクション（`mm log`）。
+    /// 取り消しとやり直しも含め、書いた順の全まとまり（`mm log`）。
     pub fn txn_log(&self) -> Result<Vec<StoredTxn>> {
         self.load_txns("", params![])
     }
@@ -78,65 +99,48 @@ impl Store {
         let mut st = self
             .conn
             .prepare(&format!(
-                "SELECT id, name, actor_kind, actor_name, at_ms, state, doc_version FROM txns
-                 {filter} ORDER BY first_seq"
+                "SELECT id, kind, of_txn, name, actor_kind, actor_name, at_ms, responds_to,
+                        base_version, doc_version, first_seq, last_seq
+                 FROM txns {filter} ORDER BY id"
             ))
             .sql()?;
-        let heads: Vec<(String, String, Actor, i64, String, i64)> = st
+        let heads: Vec<StoredTxn> = st
             .query_map(args, |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    Actor {
-                        kind: r.get(2)?,
-                        name: r.get(3)?,
+                let kind: String = r.get(1)?;
+                Ok(StoredTxn {
+                    id: r.get(0)?,
+                    kind: kind_of(&kind, r.get(2)?),
+                    name: r.get(3)?,
+                    actor: Actor {
+                        kind: r.get(4)?,
+                        name: r.get(5)?,
                     },
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                ))
+                    at_ms: r.get(6)?,
+                    responds_to: r.get(7)?,
+                    base_version: r.get(8)?,
+                    doc_version: r.get(9)?,
+                    first_seq: r.get(10)?,
+                    last_seq: r.get(11)?,
+                    ops: Vec::new(),
+                })
             })
             .sql()?
             .collect::<rusqlite::Result<_>>()
             .sql()?;
         heads
             .into_iter()
-            .map(|(id, name, actor, at_ms, state, doc_version)| {
-                Ok(StoredTxn {
-                    ops: self.txn_ops(&id)?,
-                    responds_to: self.responds_to(&id)?,
-                    id,
-                    name,
-                    actor,
-                    at_ms,
-                    state: TxnState::parse(&state),
-                    doc_version,
-                })
+            .map(|mut t| {
+                t.ops = self.txn_ops(t.id)?;
+                Ok(t)
             })
             .collect()
     }
 
-    fn responds_to(&self, txn_id: &str) -> Result<Option<String>> {
-        let v: Option<Option<String>> = self
-            .conn
-            .query_row(
-                "SELECT responds_to FROM ops WHERE txn_id = ?1 ORDER BY seq LIMIT 1",
-                [txn_id],
-                |r| r.get(0),
-            )
-            .optional()
-            .sql()?;
-        Ok(v.flatten())
-    }
-
-    /// `base` より後に当たった命令の (seq, touches)。古い版を元にした命令の競合の判定に使う。
+    /// `base` より後に当たった命令（取り消しとやり直しも）の (seq, touches)。古い版を元にした命令の競合の判定に使う。
     pub fn touches_since(&self, base: i64) -> Result<Vec<(i64, Vec<String>)>> {
         let mut st = self
             .conn
-            .prepare(
-                "SELECT o.seq, o.touches FROM ops o JOIN txns t ON t.id = o.txn_id
-                 WHERE o.doc_version > ?1 AND t.state = 'applied' ORDER BY o.seq",
-            )
+            .prepare("SELECT seq, touches FROM ops WHERE doc_version > ?1 ORDER BY seq")
             .sql()?;
         let raw: Vec<(i64, String)> = st
             .query_map([base], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -148,7 +152,7 @@ impl Store {
             .collect()
     }
 
-    /// 時刻（UNIX のミリ秒）までに書かれた最後の版番号。`@{時刻}` の指定を版番号にする。
+    /// 時刻（UNIX のミリ秒）までに書かれた最後の版番号（取り消しとやり直しも数える）。`@{時刻}` の指定を版番号にする。
     pub fn doc_version_at(&self, at_ms: i64) -> Result<i64> {
         let v: Option<i64> = self
             .conn
@@ -360,14 +364,18 @@ impl Store {
 }
 
 /// 既存の DB の写しを `backups/` に残し、DB のファイルを消す。書き手のロックを取って他の書き手を締め出す。
+/// 壊れていて写しを作れないときは、生のファイル（`-wal`、`-shm` も）をそのまま `backups/` に移す。
 fn replace_existing(dir: &Path, now_ms: i64) -> Result<()> {
     let lock = WriterLock::try_acquire(dir)?
         .ok_or_else(|| MmError::InvalidArgument("別のプロセスが書き手".into()))?;
-    let old = Store::open_for_backup(dir)?;
-    backup::run(&old, dir, now_ms)?;
-    drop(old);
-    for suffix in ["", "-wal", "-shm"] {
-        let _ = fs::remove_file(dir.join(format!("{DB_FILE}{suffix}")));
+    let copied = Store::open_for_backup(dir).and_then(|old| backup::run(&old, dir, now_ms));
+    match copied {
+        Ok(_) => {
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = fs::remove_file(dir.join(format!("{DB_FILE}{suffix}")));
+            }
+        }
+        Err(_) => backup::move_broken(dir, now_ms)?,
     }
     drop(lock);
     Ok(())
@@ -381,10 +389,5 @@ impl Store {
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )
         .sql()
-    }
-
-    /// 開き方が読み取りだけか。
-    pub fn is_read_only(&self) -> bool {
-        self.mode == OpenMode::ReadOnly
     }
 }

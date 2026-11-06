@@ -41,6 +41,18 @@ pub fn describe_txns(txns: &[StoredTxn]) -> Vec<String> {
 
 fn describe_op(op: &Value) -> (String, Option<String>) {
     let name = op["op"].as_str().unwrap_or("?");
+    if name == "setParam" {
+        return set_param(op);
+    }
+    let text = cut_op(name, op)
+        .or_else(|| layer_op(name, op))
+        .or_else(|| project_op(name, op))
+        .unwrap_or_else(|| generic(name, op));
+    (text, None)
+}
+
+/// 並びのカットを動かす命令。
+fn cut_op(name: &str, op: &Value) -> Option<String> {
     let text = match name {
         "ripple" => ripple(op),
         "roll" => format!(
@@ -83,8 +95,16 @@ fn describe_op(op: &Value) -> (String, Option<String>) {
                 "無効にした"
             }
         ),
+        _ => return None,
+    };
+    Some(text)
+}
+
+/// レイヤーの命令。
+fn layer_op(name: &str, op: &Value) -> Option<String> {
+    let text = match name {
         "addLayer" => format!(
-            "レイヤー {} を構成 {} に足した",
+            "レイヤー {} をコンポジション {} に足した",
             op["layer"]["id"].as_str().unwrap_or("?"),
             id(op, "composition")
         ),
@@ -99,7 +119,14 @@ fn describe_op(op: &Value) -> (String, Option<String>) {
                 "ロックした"
             }
         ),
-        "setParam" => return set_param(op),
+        _ => return None,
+    };
+    Some(text)
+}
+
+/// 並び、コンポジション、マーカーの出し入れ。
+fn project_op(name: &str, op: &Value) -> Option<String> {
+    let text = match name {
         "addSequence" => format!(
             "並び {}（カット {} 個）を足した",
             op["sequence"]["id"].as_str().unwrap_or("?"),
@@ -107,18 +134,18 @@ fn describe_op(op: &Value) -> (String, Option<String>) {
         ),
         "removeSequence" => format!("並び {} を外した", id(op, "sequence")),
         "addComposition" => format!(
-            "構成 {} を足した",
+            "コンポジション {} を足した",
             op["composition"]["id"].as_str().unwrap_or("?")
         ),
-        "removeComposition" => format!("構成 {} を外した", id(op, "composition")),
+        "removeComposition" => format!("コンポジション {} を外した", id(op, "composition")),
         "addMarker" => format!(
             "マーカー {} を足した",
             op["marker"]["id"].as_str().unwrap_or("?")
         ),
         "removeMarker" => format!("マーカー {} を外した", id(op, "marker")),
-        _ => generic(name, op),
+        _ => return None,
     };
-    (text, None)
+    Some(text)
 }
 
 fn ripple(op: &Value) -> String {

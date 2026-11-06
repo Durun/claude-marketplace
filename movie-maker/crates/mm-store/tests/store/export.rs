@@ -8,7 +8,7 @@ use serde_json::json;
 
 use mm_store::Store;
 
-use crate::common::{project_with, txn, NOW};
+use crate::common::{locked, project_with, NOW};
 
 fn read_tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut out = BTreeMap::new();
@@ -32,8 +32,10 @@ fn read_tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 }
 
 fn prepared(dir: &Path) -> Store {
-    let mut s = Store::create(dir, &project_with(0), NOW).unwrap();
-    s.commit(&project_with(3), &txn("t1", &[0, 1, 2])).unwrap();
+    let mut p = project_with(3);
+    let mut s = Store::create(dir, &p, NOW).unwrap();
+    let input = locked(&mut p, "t1", &[0, 1, 2]);
+    s.commit(&p, &input).unwrap();
     s.put_comment(&json!({ "id": "r2", "state": "done", "comp_id": "c" }))
         .unwrap();
     s.put_comment(&json!({ "id": "r1", "state": "open", "text": "尻を詰める" }))
@@ -64,6 +66,39 @@ fn 書き出し_取り込み_書き出しでバイトが同じ() {
 }
 
 #[test]
+fn 大文字小文字だけ違う_id_は別のファイルになる() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = project_with(0);
+    let mut upper = p.compositions[0].clone();
+    upper.id = mm_types::Id::new("C");
+    upper.markers.clear();
+    p.compositions.push(upper);
+    let s = Store::create(tmp.path(), &p, NOW).unwrap();
+    let report = s.export_versions().unwrap();
+    let comps: Vec<&String> = report
+        .files
+        .iter()
+        .filter(|f| f.starts_with("comps/"))
+        .collect();
+    assert_eq!(comps.len(), 2, "{comps:?}");
+    assert_eq!(
+        fs::read_dir(tmp.path().join("versions/comps"))
+            .unwrap()
+            .count(),
+        2,
+        "NTFS でも 2 つのファイルになる"
+    );
+    let back = Store::import_versions(
+        &tmp.path().join("q"),
+        &tmp.path().join("versions"),
+        false,
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(back.project(), s.project());
+}
+
+#[test]
 fn 変わらない書き出しはファイルを触らない() {
     let tmp = tempfile::tempdir().unwrap();
     let s = prepared(tmp.path());
@@ -77,8 +112,9 @@ fn 文書から消えた_id_のファイルは消える() {
     let mut s = prepared(tmp.path());
     s.export_versions().unwrap();
     let mut p = s.project().clone();
+    let input = locked(&mut p, "t2", &[0]);
     p.compositions.clear();
-    s.commit(&p, &txn("t2", &[9])).unwrap();
+    s.commit(&p, &input).unwrap();
     s.export_versions().unwrap();
     assert!(!tmp.path().join("versions/comps/c.json").exists());
 }

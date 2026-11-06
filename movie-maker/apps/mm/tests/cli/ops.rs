@@ -54,11 +54,39 @@ fn 命令から取り消しとやり直しと_export_import_の往復() {
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1/2",
     ]);
-    mm_ok(&["undo", ps]);
-    mm_ok(&["undo", ps]);
-    mm_ok(&["redo", ps]);
+    // 版 3。取り消して版 4（c2 の ripple の逆命令）。
+    let undo = stdout(&mm_ok(&["undo", ps]));
+    assert!(
+        undo.contains("版 4") && undo.contains("取り消し: ripple"),
+        "{undo}"
+    );
+
+    // 版 3 を元にした c2 への命令は、版 4 の取り消しと触る所が重なるので断られる。
+    let out = mm(&[
+        "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "3",
+    ]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("重なる"), "{}", stderr(&out));
+
+    let redo = stdout(&mm_ok(&["redo", ps]));
+    assert!(
+        redo.contains("版 5") && redo.contains("やり直し: ripple"),
+        "{redo}"
+    );
     let log = stdout(&mm_ok(&["log", ps]));
-    assert!(log.contains("取消"), "{log}");
+    assert!(log.contains("取消") && log.contains("再適用"), "{log}");
+    assert!(log.contains("版    3"), "当てた版は書き換えない: {log}");
+
+    // diff は取り消しとやり直しを畳み、c1 と c2 の ripple だけが出る。
+    let diff = stdout(&mm_ok(&["diff", ps, "1", "head"]));
+    assert!(diff.contains("2 件"), "{diff}");
+    assert!(diff.contains("カット c1 の尻を 0.4 秒詰めた"), "{diff}");
+    assert!(diff.contains("カット c2 の尻を 0.5 秒伸ばした"), "{diff}");
+    let only_undo = stdout(&mm_ok(&["diff", ps, "3", "4"]));
+    assert!(
+        only_undo.contains("カット c2 の尻を 0.5 秒詰めた"),
+        "{only_undo}"
+    );
 
     mm_ok(&["export", ps]);
     let versions = p.join("versions");
@@ -66,6 +94,51 @@ fn 命令から取り消しとやり直しと_export_import_の往復() {
     mm_ok(&["import", q.to_str().unwrap(), versions.to_str().unwrap()]);
     mm_ok(&["export", q.to_str().unwrap()]);
     assert_eq!(read_tree(&versions), read_tree(&q.join("versions")));
+}
+
+#[test]
+fn 別のプロセスが書き手なら_op_は断り_log_と_export_は読める() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = project_with_sequence(&tmp);
+    let ps = p.to_str().unwrap();
+    let writer = mm_store::Store::open(&p, 0).unwrap();
+    assert_eq!(writer.mode(), mm_store::OpenMode::Writer);
+
+    let out = mm(&[
+        "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "-0.4",
+    ]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("別のプロセスが書いている"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!mm(&["undo", ps]).status.success());
+
+    let log = mm_ok(&["log", ps]);
+    assert!(stdout(&log).contains("addSequence"), "{}", stdout(&log));
+    mm_ok(&["diff", ps, "0", "head"]);
+    mm_ok(&["export", ps]);
+    assert!(p.join("versions/project.json").exists());
+    drop(writer);
+    mm_ok(&[
+        "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "-0.4",
+    ]);
+}
+
+#[test]
+fn op_のたびに写しを作らない() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = project_with_sequence(&tmp);
+    let ps = p.to_str().unwrap();
+    for _ in 0..3 {
+        mm_ok(&[
+            "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "-0.1",
+        ]);
+    }
+    mm_ok(&["undo", ps]);
+    let backups = fs::read_dir(p.join("backups")).map_or(0, |rd| rd.count());
+    assert!(backups <= 1, "間隔の内に {backups} 個の写しができた");
 }
 
 #[test]
