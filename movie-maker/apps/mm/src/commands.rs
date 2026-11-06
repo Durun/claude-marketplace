@@ -10,9 +10,12 @@ use mm_ops::{Entry, OpContext, OpError, Transaction};
 use mm_store::{format_timestamp, Actor, OpenMode, Store, StoreWarning, TxnKind};
 use mm_types::{MmError, Result};
 
+use mm_serve::Client;
+
 use crate::describe::describe_txns;
 use crate::opargs::{parse_op, usage};
 use crate::project::load_json_absolute;
+use crate::remote;
 
 /// 記録に残す操作経路の種類と名前。
 const ACTOR_KIND: &str = "cli";
@@ -60,16 +63,31 @@ fn writer_elsewhere(store: &Store) -> String {
         _ => None,
     });
     let who = match info {
-        Some(i) => match i.http_port {
-            Some(port) => format!("pid {}、HTTP ポート {port}", i.pid),
-            None => format!("pid {}", i.pid),
-        },
+        Some(i) => format!("pid {}", i.pid),
         None => "pid 不明".to_owned(),
     };
     format!(
-        "別のプロセスが書いている（{who}）ので書けない。読み取りだけできる（mm log、mm diff、mm export）。\
-         アプリへの HTTP での転送は mm-serve まで無い"
+        "別のプロセスが書いている（{who}）が、HTTP の入口が無いので書けない。\
+         読み取りだけできる（mm log、mm diff、mm export）"
     )
+}
+
+/// 書く操作の送り先。自分が書き手になれればローカル、別のプロセス（アプリ）が書き手で HTTP の入口が
+/// あれば転送、どちらでもなければ拒否。
+pub(crate) enum Target {
+    Local(Box<Store>),
+    Remote(Client),
+}
+
+pub(crate) fn open_target(dir: &Path) -> Result<Target> {
+    let store = Store::open(dir, now_ms())?;
+    if store.mode() == OpenMode::Writer {
+        return Ok(Target::Local(Box::new(store)));
+    }
+    match Client::for_project(dir) {
+        Some(client) => Ok(Target::Remote(client)),
+        None => Err(MmError::InvalidArgument(writer_elsewhere(&store))),
+    }
 }
 
 /// 読むだけの用途で開く。ロックを取らず、別のプロセスが書き手でもそのまま読む。
@@ -154,7 +172,10 @@ pub fn op(
         }
         (None, Some(file)) => read_txn(file, tokens)?,
     };
-    let mut store = open_writer(dir)?;
+    let mut store = match open_target(dir)? {
+        Target::Local(store) => *store,
+        Target::Remote(client) => return remote::op(&client, &txn),
+    };
     let stored = store
         .apply_txn(txn, &cli_context(), actor(), now_ms(), None)
         .map_err(op_error)?;
@@ -195,7 +216,10 @@ pub fn schema() {
 
 /// `mm undo`。
 pub fn undo(dir: &Path) -> Result<()> {
-    let mut store = open_writer(dir)?;
+    let mut store = match open_target(dir)? {
+        Target::Local(store) => *store,
+        Target::Remote(client) => return remote::history(&client, "/undo", "取り消すものが無い"),
+    };
     match store
         .undo_last(&cli_context(), actor(), now_ms())
         .map_err(op_error)?
@@ -208,7 +232,10 @@ pub fn undo(dir: &Path) -> Result<()> {
 
 /// `mm redo`。
 pub fn redo(dir: &Path) -> Result<()> {
-    let mut store = open_writer(dir)?;
+    let mut store = match open_target(dir)? {
+        Target::Local(store) => *store,
+        Target::Remote(client) => return remote::history(&client, "/redo", "やり直すものが無い"),
+    };
     match store
         .redo_last(&cli_context(), actor(), now_ms())
         .map_err(op_error)?

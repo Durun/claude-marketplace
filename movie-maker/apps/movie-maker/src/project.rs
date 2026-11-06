@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use mm_doc::Project;
+use mm_store::{OpenMode, Store};
 use mm_types::{CompositionId, Id, MmError, Result};
 
 /// 再生するコンポジションを指定しなかったときの既定の ID。
@@ -11,23 +12,45 @@ const DEFAULT_COMPOSITION: &str = "main";
 
 /// 開いたプロジェクト。
 pub struct Opened {
+    /// 素材のパスを絶対に直したプロジェクトのデータ。
     pub project: Project,
     /// 表示用の名前（フォルダー名か、JSON のあるフォルダー名）。
     pub name: String,
+    /// 書き手として開いた `project.mmdb`。JSON のプロジェクトと、別のプロセスが書き手のときは `None`
+    /// （そのときは操作を保存せず、メモリの上だけで適用する）。
+    pub store: Option<Store>,
 }
 
-/// プロジェクトを開く。ストアは書き手のロックを取らずに読む（再生は編集を止めない）。
+/// プロジェクトを開く。`project.mmdb` のフォルダーは書き手として開き、操作を保存して HTTP の入口に出す。
+/// 別のプロセスが書き手のときは、ロックを取らずに読む（再生は編集を止めない）。
 pub fn open(path: &Path) -> Result<Opened> {
-    let project = mm_store::load_project(path)?;
+    let store_dir = mm_store::store_dir(path);
+    let store = match &store_dir {
+        Some(dir) => Some(Store::open(dir, now_ms())?).filter(|s| s.mode() == OpenMode::Writer),
+        None => None,
+    };
+    let project = match &store {
+        Some(s) => {
+            let mut p = s.project().clone();
+            mm_store::rebase_project(&mut p, s.dir());
+            p
+        }
+        None => mm_store::load_project(path)?,
+    };
     project.validate()?;
-    let dir: PathBuf = match mm_store::store_dir(path) {
+    let dir: PathBuf = match store_dir {
         Some(dir) => dir,
         None => path.parent().unwrap_or(Path::new(".")).to_path_buf(),
     };
     Ok(Opened {
         project,
         name: folder_name(&dir),
+        store,
     })
+}
+
+fn now_ms() -> i64 {
+    mm_serve::now_ms()
 }
 
 fn folder_name(dir: &Path) -> String {

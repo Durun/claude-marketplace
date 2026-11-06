@@ -4,11 +4,13 @@
 use std::sync::{Arc, Mutex};
 
 use mm_doc::Project;
+use mm_serve::{Core, EngineFrames, FrameSource, Server};
 use mm_trace::{ChromeTraceLayer, MetricsLayer};
 use mm_types::{CompositionId, MmError};
 use mm_ui_wgpu::timeline_model;
 use tauri::webview::WebviewBuilder;
 use tauri::window::WindowBuilder;
+use tauri::Emitter;
 use tauri::{
     PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl, Window, WindowEvent,
 };
@@ -20,7 +22,7 @@ use crate::edit;
 use crate::ipc::{self, ProjectInfo, SyncState};
 use crate::media::{self, MediaState};
 use crate::media_ipc;
-use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
+use crate::playback::{Command, Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
 use crate::state::Shared;
@@ -39,11 +41,17 @@ const TIMER_RESOLUTION_MS: u32 = 1;
 const UI_ENTRY: &str = "index.html";
 /// WebView に重ねる再生の操作列。
 const TRANSPORT_JS: &str = include_str!("../web/transport.js");
+/// 保存した変更を WebView に知らせる Tauri のイベント名。中身は `mm_serve::Change`。
+const DOC_CHANGED_EVENT: &str = "mm:doc-changed";
 
 /// 描画スレッドと再生スレッド。ウィンドウが閉じる前に止めるため、`Option` で持って取り出して落とす。
 struct Workers {
     renderer: Mutex<Option<Renderer>>,
     playback: Mutex<Option<Playback>>,
+    /// HTTP の入口。落とすと `.mm/` のポートと合い言葉が消える。
+    server: Mutex<Option<Server>>,
+    /// 書き手の `project.mmdb`。再生が止まった後に閉じて、バックアップと WAL の書き戻しをする。
+    core: Option<Arc<Core>>,
 }
 
 impl Workers {
@@ -53,6 +61,12 @@ impl Workers {
             r.stop();
         }
         drop(self.playback.lock().expect("playback").take());
+        drop(self.server.lock().expect("server").take());
+        if let Some(core) = &self.core {
+            if let Err(e) = core.close() {
+                tracing::warn!("プロジェクトを閉じられない: {e}");
+            }
+        }
     }
 }
 
@@ -114,6 +128,55 @@ fn project_info(
     })
 }
 
+/// 書き手として開いた `project.mmdb` を `Core` に渡し、HTTP の入口を起こす。入口が起きなくても、
+/// IPC の操作は `Core` を通して保存する。
+fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server> {
+    let store = store?;
+    let config = mm_runtime::RuntimeConfig {
+        present: false,
+        ..crate::playback::runtime_config()
+    };
+    let frames = match EngineFrames::spawn(config) {
+        Ok(f) => Some(Arc::new(f) as Arc<dyn FrameSource>),
+        Err(e) => {
+            tracing::warn!("フレームの描画を始められない（GET /frame は使えない）: {e}");
+            None
+        }
+    };
+    let core = Core::new(store, frames);
+    let _ = shared.core.set(core.clone());
+    match Server::start(core) {
+        Ok(server) => {
+            eprintln!("HTTP の入口: 127.0.0.1:{}", server.port());
+            Some(server)
+        }
+        Err(e) => {
+            tracing::warn!("HTTP の入口を起こせない: {e}");
+            None
+        }
+    }
+}
+
+/// 保存した変更を再生スレッドと WebView に伝える。HTTP と IPC のどちらから書かれても同じ道を通る。
+fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
+    let Some(core) = shared.core.get() else {
+        return;
+    };
+    let (handle, shared) = (app.clone(), shared.clone());
+    let started = core.on_change(move |change| {
+        shared
+            .reload_touched
+            .lock()
+            .expect("reload")
+            .extend(change.touched.iter().cloned());
+        shared.send(Command::Reload);
+        let _ = handle.emit(DOC_CHANGED_EVENT, &change);
+    });
+    if let Err(e) = started {
+        tracing::warn!("変更の通知を受けるスレッドを始められない: {e}");
+    }
+}
+
 fn fail(message: &str) -> ! {
     eprintln!("{message}");
     std::process::exit(2);
@@ -126,11 +189,12 @@ pub fn run() {
     let telemetry = init_tracing();
     let args =
         cli::parse(&std::env::args().skip(1).collect::<Vec<_>>()).unwrap_or_else(|e| fail(&e));
-    let opened = project::open(&args.project).unwrap_or_else(|e| fail(&e.to_string()));
+    let mut opened = project::open(&args.project).unwrap_or_else(|e| fail(&e.to_string()));
     let comp_id = project::pick_composition(&opened.project, args.composition.as_deref())
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
+    let server = start_serve(&shared, opened.store.take());
     if args.play_test.is_some() {
         shared.collect_series();
     }
@@ -148,6 +212,8 @@ pub fn run() {
     let workers = Arc::new(Workers {
         renderer: Mutex::new(None),
         playback: Mutex::new(Some(playback)),
+        server: Mutex::new(server),
+        core: shared.core.get().cloned(),
     });
     let boot = Boot {
         shared,
@@ -227,6 +293,7 @@ impl Boot {
             model.clone(),
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
+        forward_changes(app.handle(), &self.shared);
         watch_window(
             &window,
             webview,

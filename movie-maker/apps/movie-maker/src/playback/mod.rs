@@ -13,7 +13,7 @@ use mm_types::{CompositionId, MmError, Result};
 
 use crate::state::Shared;
 
-pub use player::PlayerOptions;
+pub use player::{runtime_config, PlayerOptions};
 
 /// 再生スレッドへのコマンド。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,6 +27,8 @@ pub enum Command {
     Step(i64),
     /// `Shared::edits` に積んだ操作を適用する。
     Edit,
+    /// `Shared::core` の最新のプロジェクトのデータに置き換え、`Shared::reload_touched` のキャッシュを捨てる。
+    Reload,
     Quit,
 }
 

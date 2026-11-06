@@ -4,3 +4,4 @@ mod common;
 mod crash;
 mod ingest;
 mod ops;
+mod remote;
