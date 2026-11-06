@@ -140,7 +140,7 @@ fn render_image(r: &mut WgpuRenderer, p: &Project, name: &str, size: Size) -> Ar
     let frame = r
         .render_frame(&request(p, &id, &nodes, size))
         .expect("描ける");
-    r.gpu().download(&frame).expect("読み戻せる")
+    r.gpu().download(&frame).expect("リードバックできる")
 }
 
 fn assert_pixel(img: &RgbaImage, x: u32, y: u32, want: Rgba) {
@@ -171,11 +171,11 @@ fn 変形が無ければ_cpu_のモックと同じ画像() {
     );
     let want = {
         let f = cpu.render_frame(&req).expect("モックが描ける");
-        cpu.gpu().download(&f).expect("読み戻せる")
+        cpu.gpu().download(&f).expect("リードバックできる")
     };
     let mut r = renderer(&ctx);
     let f = r.render_frame(&req).expect("描ける");
-    let got = r.gpu().download(&f).expect("読み戻せる");
+    let got = r.gpu().download(&f).expect("リードバックできる");
     let diff = got.max_diff(&want).expect("同じ大きさ");
     assert!(diff <= TOLERANCE, "CPU のモックとの差 {diff}");
     assert!(r.take_errors().is_empty());

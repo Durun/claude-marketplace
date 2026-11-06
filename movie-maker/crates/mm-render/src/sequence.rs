@@ -17,7 +17,7 @@ use crate::effects::NodeRun;
 use crate::layers::{CompCx, LayerImage, Prepared, MAX_DEPTH};
 use crate::renderer::WgpuRenderer;
 
-/// トランジションが担う進み具合のパラメータの名前（`transition.*` の約束）。
+/// トランジションが担う進み具合のパラメータの名前（`transition.*` の規約）。
 const PROGRESS_PARAM: &str = "progress";
 
 /// 境のトランジションを描く手順。種類は `Transition.node.kind` で引いたもの。

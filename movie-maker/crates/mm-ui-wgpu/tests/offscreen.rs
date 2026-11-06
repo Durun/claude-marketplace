@@ -1,4 +1,4 @@
-//! `Ui` をオフスクリーンのテクスチャに描いて、画素を読み戻す。GPU が無ければ飛ばす（`MM_REQUIRE_GPU` があれば失敗）。
+//! `Ui` をオフスクリーンのテクスチャに描いて、画素をリードバックする。GPU が無ければスキップする（`MM_REQUIRE_GPU` があれば失敗）。
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{palette, Item, ItemKind, TimelineModel};
@@ -24,7 +24,7 @@ fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
@@ -182,7 +182,7 @@ fn program_は同じデバイスのテクスチャをそのまま出す() {
     let p = ui.layout().program;
     let centre = px(&out, (p.x + p.w / 2.0) as u32, (p.y + p.h / 2.0) as u32);
     assert!(close(centre, [191, 191, 191], 2), "{centre:?}");
-    // 借りたテクスチャの後に CPU の画像が来たら、自前のテクスチャに上げ直す（借りたものには書かない）。
+    // 借用したテクスチャの後に CPU の画像が来たら、自前のテクスチャに上げ直す（借用したものには書かない）。
     let img = RgbaImage::filled(Size::new(16, 9), Rgba::new(1.0, 1.0, 1.0, 1.0));
     ui.set_frame(&device, &queue, &img);
     let out = render(&device, &queue, &mut ui);

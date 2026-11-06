@@ -106,7 +106,7 @@ struct Loaded {
     lut: Arc<Lut>,
 }
 
-/// `.cube` の 3D LUT を当てる。
+/// `.cube` の 3D LUT を適用する。
 #[derive(Default)]
 pub struct ColorLutKind {
     cache: PassCache,
@@ -127,7 +127,7 @@ impl ColorLutKind {
         let mut guard = self
             .loaded
             .lock()
-            .map_err(|_| MmError::Internal("LUT の取り置きが壊れた".into()))?;
+            .map_err(|_| MmError::Internal("LUT のキャッシュが壊れた".into()))?;
         if let Some(l) = guard
             .as_ref()
             .filter(|l| l.path == path && l.modified == modified)
@@ -259,7 +259,7 @@ fn lut_asset(params: &Params) -> Option<&AssetId> {
         .filter(|id| !id.as_str().is_empty())
 }
 
-/// LUT の素材のファイル。素材をパスに直すのは、プロジェクトのデータを持つ呼び手（`InputFrames::asset_path`）。
+/// LUT の素材のファイル。素材をパスに直すのは、プロジェクトのデータを持つ呼び出し側（`InputFrames::asset_path`）。
 fn lut_path(cx: &FrameCx<'_>) -> Result<PathBuf> {
     let id =
         lut_asset(cx.params).ok_or_else(|| MmError::InvalidArgument("LUT の素材が無い".into()))?;
@@ -335,7 +335,7 @@ impl ColorConvertKind {
         let mut guard = self
             .converted
             .lock()
-            .map_err(|_| MmError::Internal("変換の取り置きが壊れた".into()))?;
+            .map_err(|_| MmError::Internal("変換のキャッシュが壊れた".into()))?;
         if let Some(c) = guard.as_ref().filter(|c| &c.from == from && &c.to == to) {
             return Ok(c.program.clone());
         }

@@ -1,4 +1,4 @@
-//! WebView（Inspector など）から届いた操作の適用。操作は再生スレッドが持つプロジェクトのデータに当て、
+//! WebView（Inspector など）から届いた操作の適用。操作は再生スレッドが持つプロジェクトのデータに適用し、
 //! 触った ID に頼ったフレームのキャッシュと素材だけを `Engine::invalidate_touched` で捨てる。
 //!
 //! 再生スレッドだけが `Engine` とプロジェクトのデータを持つので、操作は `Shared::edits` に積んで
@@ -15,22 +15,22 @@ use serde::Serialize;
 use crate::playback::Command;
 use crate::state::Shared;
 
-/// 再生スレッドが操作を当てるまで待つ上限。描画 1 フレームと適用より十分長い。
+/// 再生スレッドが操作を適用するまで待つ上限。描画 1 フレームと適用より十分長い。
 const APPLY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// 当てた結果。WebView に返す。
+/// 適用した結果。WebView に返す。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EditOutcome {
     /// 触った ID（レイヤー、素材、コンポジションなど）。
     pub touched: Vec<String>,
 }
 
-/// 操作の持ち主の状態。待っている間は、再生スレッドが当てると決めるか、送った側が取り下げるかの早い者勝ち。
+/// 操作の持ち主の状態。待っている間は、再生スレッドが適用すると決めるか、送った側が取り下げるかの早い者勝ち。
 const WAITING: u8 = 0;
 const CLAIMED: u8 = 1;
 const WITHDRAWN: u8 = 2;
 
-/// 再生スレッドに渡す、まだ当てていない操作。
+/// 再生スレッドに渡す、まだ適用していない操作。
 pub struct PendingEdit {
     pub ops: Vec<Op>,
     pub reply: Sender<Result<EditOutcome, String>>,
@@ -38,7 +38,7 @@ pub struct PendingEdit {
 }
 
 impl PendingEdit {
-    /// 当てる権利を取る。送った側が時間切れで取り下げた操作は偽を返すので、当てずに捨てる。
+    /// 適用する権利を取る。送った側が時間切れで取り下げた操作は偽を返すので、適用せずに捨てる。
     pub fn claim(&self) -> bool {
         self.state
             .compare_exchange(WAITING, CLAIMED, Ordering::SeqCst, Ordering::SeqCst)
@@ -46,13 +46,13 @@ impl PendingEdit {
     }
 }
 
-/// 操作を 1 つのトランザクションとして再生スレッドに当てさせ、結果を待つ。
+/// 操作を 1 つのトランザクションとして再生スレッドに適用させ、結果を待つ。
 pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
     submit_within(shared, ops, APPLY_TIMEOUT)
 }
 
-/// `submit` の待ちの上限を決められる版。時間切れで返した `Err` は「当てていない」を意味する。
-/// 再生スレッドがもう当て始めていたら、結果が出るまで待つ（失敗と答えて再送で二重に当たるのを防ぐ）。
+/// 待ちの上限を引数で決められる `submit`。時間切れで返した `Err` は「適用していない」を意味する。
+/// 再生スレッドがもう適用し始めていたら、結果が出るまで待つ（失敗と答えて再送で二重に適用されるのを防ぐ）。
 pub fn submit_within(
     shared: &Shared,
     ops: Vec<Op>,
@@ -77,7 +77,7 @@ pub fn submit_within(
                 state.compare_exchange(WAITING, WITHDRAWN, Ordering::SeqCst, Ordering::SeqCst);
             if withdrawn.is_ok() {
                 return Err(
-                    "再生スレッドが時間内に操作を当てなかったので取り下げた（当たっていない）"
+                    "再生スレッドが時間内に操作を適用しなかったので取り下げた（適用されていない）"
                         .into(),
                 );
             }
@@ -114,16 +114,16 @@ mod tests {
     }
 
     #[test]
-    fn 時間切れで返した操作は後から当たらない() {
+    fn 時間切れで返した操作は後から適用されない() {
         let shared = Shared::new();
         let r = submit_within(&shared, vec![op()], Duration::from_millis(20));
         assert!(r.is_err());
         let late = shared.edits.lock().unwrap().pop().expect("積まれたまま");
-        assert!(!late.claim(), "取り下げた操作は当てる権利を取れない");
+        assert!(!late.claim(), "取り下げた操作は適用する権利を取れない");
     }
 
     #[test]
-    fn 当て始めた操作は時間を超えても結果を待つ() {
+    fn 適用し始めた操作は時間を超えても結果を待つ() {
         let shared = Arc::new(Shared::new());
         let s = shared.clone();
         let player = std::thread::spawn(move || {
@@ -141,6 +141,6 @@ mod tests {
         });
         let r = submit_within(&shared, vec![op()], Duration::from_millis(30));
         player.join().unwrap();
-        assert_eq!(r.expect("当たった結果を返す").touched, ["l"]);
+        assert_eq!(r.expect("適用した結果を返す").touched, ["l"]);
     }
 }

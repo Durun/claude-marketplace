@@ -12,7 +12,7 @@ use mm_types::{ColorSpace, RationalTime};
 const LUT_KIND: &str = "color.lut";
 const OLD_PARAM: &str = "path";
 const NEW_PARAM: &str = "lut";
-/// 作る素材の ID の頭。後ろはパスの FNV-1a（64 bit）の 16 進。
+/// 作る素材の ID の接頭辞。後ろはパスの FNV-1a（64 bit）の 16 進。
 const ASSET_PREFIX: &str = "lut-";
 
 /// v4 → v5。プロジェクトのデータの中の全部のノード（レイヤー、効果、カット、トランジション、入力）を見る。

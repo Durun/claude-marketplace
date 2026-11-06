@@ -89,11 +89,11 @@ def find_schema() -> Path | None:
 
 
 def validate(sidecar: dict[str, Any], schema_path: Path) -> None:
-    """スキーマに合わなければ例外。jsonschema が無ければ飛ばす。"""
+    """スキーマに合わなければ例外。jsonschema が無ければスキップする。"""
     try:
         import jsonschema
     except ImportError:
-        print("jsonschema が無いのでスキーマの検査を飛ばす", file=sys.stderr)
+        print("jsonschema が無いのでスキーマの検査をスキップする", file=sys.stderr)
         return
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.validate(sidecar, schema)

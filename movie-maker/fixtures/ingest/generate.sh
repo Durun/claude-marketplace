@@ -1,6 +1,6 @@
 #!/bin/sh
-# 取り込みの見本を out/ に作る。生成物は git に入れない（transcript-ja.json だけが控え）。
-#   speech-ja.wav    日本語の短い音声（Windows の音声合成 Microsoft Haruka）。文字起こしの見本
+# 取り込みのフィクスチャを out/ に作る。生成物は git に入れない（transcript-ja.json だけは git に入れる）。
+#   speech-ja.wav    日本語の短い音声（Windows の音声合成 Microsoft Haruka）。文字起こしのフィクスチャ
 #   long-1080p.mp4   1 分の 1080p（H.264、音つき）。取り込みの時間の計測用
 set -eu
 

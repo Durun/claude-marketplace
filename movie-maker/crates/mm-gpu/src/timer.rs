@@ -1,7 +1,7 @@
 //! GPU のパスごとの時間。wgpu のタイムスタンプをフレーム単位でまとめ、数フレーム遅れて読む。
 //!
 //! 読む側が GPU の完了を待つと CPU と GPU が毎フレーム同期し、書き出しのリードバックの先行が重ならない。
-//! そのためリードバックのバッファを数枚の輪にして、`map_async` の完了を `Poll` で拾うだけにする。
+//! そのためリードバックのバッファを数枚のリングバッファにして、`map_async` の完了を `Poll` で拾うだけにする。
 //! 合成・`fill`・効果・NV12 の変換のどのパスも `pass_writes` で同じ問い合わせの集まりに書ける。
 
 use std::collections::VecDeque;
@@ -28,7 +28,7 @@ struct Slot {
     state: Arc<AtomicU8>,
 }
 
-/// 輪の状態。
+/// リングバッファの状態。
 #[derive(Default)]
 struct Ring {
     /// 提出した順の（スロット、パスの数）。
@@ -111,7 +111,7 @@ impl PassTimer {
         })
     }
 
-    /// ここまでに積んだクエリを、空いている読み取りバッファへコピーする命令を足す。
+    /// ここまでに積んだクエリを、空いている読み取りバッファへコピーするコマンドを足す。
     /// 空きが無い（GPU が遅れている）ときは、この回の分は計らない。続けて `after_submit` を呼ぶ。
     pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder) {
         let Some(inner) = self.inner.as_ref() else {
@@ -131,7 +131,7 @@ impl PassTimer {
         ring.staged = Some((slot, used));
     }
 
-    /// `resolve` を含む命令を提出した後に呼ぶ。読み取りを頼み、次のフレームの数え直しを始める。
+    /// `resolve` を含むコマンドを提出した後に呼ぶ。読み取りを頼み、次のフレームの数え直しを始める。
     pub fn after_submit(&self) {
         let Some(inner) = self.inner.as_ref() else {
             return;
@@ -181,7 +181,7 @@ impl Inner {
         self.ring.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// 写像した範囲から、`used` 個のパスの長さの合計を ns で返し、アンマップする。
+    /// マップした範囲から、`used` 個のパスの長さの合計を ns で返し、アンマップする。
     fn read(&self, slot: usize, used: u32) -> Option<u64> {
         let buffer = &self.slots[slot].buffer;
         let ticks: Option<Vec<u64>> = buffer.slice(..).get_mapped_range().ok().map(|data| {

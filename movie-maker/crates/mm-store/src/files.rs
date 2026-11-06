@@ -89,7 +89,7 @@ mod tests {
     }
 
     #[test]
-    fn 読めないファイルは_not_found_に畳まず_io_で返す() {
+    fn 読めないファイルは_not_found_にまとめず_io_で返す() {
         let dir = std::env::temp_dir().join(format!("mm_store_files_dir_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let result = load_project(&dir);

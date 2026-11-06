@@ -1,6 +1,6 @@
 # transcribe
 
-素材の音声を [faster-whisper](https://github.com/SYSTRAN/faster-whisper) で文字起こしし、取り込みの付属ファイル（`kind = "transcript"`）を書く外の道具。
+素材の音声を [faster-whisper](https://github.com/SYSTRAN/faster-whisper) で文字起こしし、取り込みの付属ファイル（`kind = "transcript"`）を書く外部のツール。
 形は `crates/mm-ingest-api/schema/sidecar.schema.json`。書き先は `<project>/cache/ingest/<コンテンツハッシュ>.transcript.json` で、次の `mm ingest` が読んで検証する。
 
 ## 入れ方
@@ -35,13 +35,13 @@ py -3 -m venv .venv
 
 ```sh
 .venv/Scripts/python.exe -I -m unittest discover                    # モデルなし。スキーマと変換
-MM_TRANSCRIBE_E2E=1 .venv/Scripts/python.exe -I -m unittest discover # 日本語の見本の音で通しで確かめる
+MM_TRANSCRIBE_E2E=1 .venv/Scripts/python.exe -I -m unittest discover # 日本語のフィクスチャの音声で通しで確かめる
 ```
 
 通しの試験は `fixtures/ingest/generate.sh` が作る `fixtures/ingest/out/speech-ja.wav`（Windows の音声合成）を使う。
-`fixtures/ingest/transcript-ja.json` はその出力の控えで、Rust 側（`crates/mm-ingest/tests/sidecar_fixture.rs`）が読めることを確かめている。
+`fixtures/ingest/transcript-ja.json` はその出力を git に入れたもので、Rust 側（`crates/mm-ingest/tests/sidecar_fixture.rs`）が読めることを確かめている。
 
-## 別の道具を書くとき
+## 別のツールを書くとき
 
 どんな言語でも、`sidecar.schema.json` に合う JSON を `cache/ingest/<ハッシュ>.<種類>.json` に書けばよい。
 `content_hash` は素材のバイト列の BLAKE3（小文字の 16 進 64 文字）で、`mm_ingest::hash_file` と同じ値にする。

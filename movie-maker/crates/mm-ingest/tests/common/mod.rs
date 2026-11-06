@@ -5,7 +5,7 @@ use std::process::Command;
 
 use mm_ingest::{CacheLayout, IngestOptions, PreviewEncoder, Tools};
 
-/// ffmpeg が使えれば道具を返す。無ければ飛ばす（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
+/// ffmpeg が使えればツールを返す。無ければスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 pub fn tools() -> Option<Tools> {
     let tools = Tools::default();
     if tools.available() {
@@ -15,7 +15,7 @@ pub fn tools() -> Option<Tools> {
         std::env::var_os("MM_REQUIRE_FFMPEG").is_none(),
         "MM_REQUIRE_FFMPEG が立っているのに ffmpeg が使えない"
     );
-    eprintln!("ffmpeg が無いので飛ばす");
+    eprintln!("ffmpeg が無いのでスキップする");
     None
 }
 
@@ -53,7 +53,7 @@ pub fn options(tools: Tools, root: &Path) -> IngestOptions {
     }
 }
 
-/// 320x180、2 秒、映像と音つきの見本。
+/// 320x180、2 秒、映像と音つきのフィクスチャ。
 pub fn sample(dir: &Path, tools: &Tools) -> PathBuf {
     let path = dir.join("sample.mp4");
     make_media(tools, &path, "320x180", 2, true);

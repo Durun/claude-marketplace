@@ -24,7 +24,7 @@ pub const BACKEND_ENV: &str = "MM_GOLDEN_BACKEND";
 /// 設定すると、期待画像のフォルダーが無いバックエンドでもスキップせず失敗にする。
 pub const REQUIRE_ENV: &str = "MM_REQUIRE_GOLDEN";
 
-/// SSIM の窓の一辺。
+/// SSIM のブロックの一辺。
 const WINDOW: usize = 8;
 /// 市松の一辺（画素）と、2 色の輝度（線形）。透明な所を見分けるために敷く。
 const CHECKER_SIDE: u32 = 16;
@@ -173,7 +173,7 @@ fn luma(rgb: &[u8]) -> Vec<f64> {
         .collect()
 }
 
-/// 輝度の SSIM。重ならない 8x8 の窓の平均。
+/// 輝度の SSIM。重ならない 8x8 のブロックの平均。
 fn ssim(a: &[f64], b: &[f64], size: Size) -> f64 {
     const C1: f64 = (0.01 * 255.0) * (0.01 * 255.0);
     const C2: f64 = (0.03 * 255.0) * (0.03 * 255.0);

@@ -1,4 +1,4 @@
-//! `mm ingest`: 素材を取り込み、素材を足す操作（`addAsset`）をプロジェクトに当てる。
+//! `mm ingest`: 素材を取り込み、素材を足す操作（`addAsset`）をプロジェクトに適用する。
 //! 取り込み（`mm-ingest`）は `cache/` に出力を作るだけで、プロジェクトのデータを変えるのはここ。
 
 use std::collections::HashSet;
@@ -110,7 +110,7 @@ fn print_report(input: &Path, r: &IngestReport) {
 
 fn describe(a: &ArtifactReport) -> String {
     match a.state {
-        ArtifactState::Cached => "飛ばした（すでにある）".to_owned(),
+        ArtifactState::Cached => "スキップした（すでにある）".to_owned(),
         ArtifactState::Created => {
             let note = a
                 .note

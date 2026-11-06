@@ -141,7 +141,7 @@ impl VideoTrack {
     }
 }
 
-/// 行の余白の無いプレーンを、FFmpeg のフレームのプレーン `plane`（行の余白つき）へ写す。
+/// 行の余白の無いプレーンを、FFmpeg のフレームのプレーン `plane`（行の余白つき）へコピーする。
 fn copy_plane(dst: &mut frame::Video, plane: usize, src: &[u8], row: usize) {
     let stride = dst.stride(plane);
     let data = dst.data_mut(plane);

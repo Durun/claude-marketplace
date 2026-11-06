@@ -49,7 +49,7 @@ describe("tsType", () => {
   });
 });
 
-describe("IPC の裏", () => {
+describe("IPC のトランスポート", () => {
   it("apply_op に op を渡し、結果を value で返す", async () => {
     const call = vi.fn().mockResolvedValue({ rev: 3 });
     const client = createClient(createIpcTransport(call));
@@ -58,7 +58,7 @@ describe("IPC の裏", () => {
     expect(result).toEqual({ ok: true, value: { rev: 3 } });
   });
 
-  it("命令が拒否したら error にして返す", async () => {
+  it("コマンドが拒否したら error にして返す", async () => {
     const call = vi.fn().mockRejectedValue("レイヤーが無い");
     const result = await createClient(createIpcTransport(call)).sendOp({ op: "removeLayer", layer: "x" });
     expect(result).toEqual({ ok: false, error: "レイヤーが無い" });

@@ -117,7 +117,7 @@ describe("InspectorPanel", () => {
     expect(host.textContent).toContain("No layer selected");
   });
 
-  it("キーフレームのあるパラメータは印を出し、編集できない", () => {
+  it("キーフレームのあるパラメータはマーカーを出し、編集できない", () => {
     mount(vi.fn());
     expect(host.querySelectorAll(".mm-insp-kf").length).toBe(1);
     expect(input("opacity")?.disabled).toBe(true);

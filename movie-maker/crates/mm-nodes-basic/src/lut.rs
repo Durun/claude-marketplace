@@ -133,7 +133,7 @@ impl Lut {
         let mut guard = self
             .uploaded
             .lock()
-            .map_err(|_| MmError::Internal("LUT のテクスチャの取り置きが壊れた".into()))?;
+            .map_err(|_| MmError::Internal("LUT のテクスチャのキャッシュが壊れた".into()))?;
         let current = Arc::downgrade(ctx);
         if let Some(up) = guard.as_ref().filter(|u| Weak::ptr_eq(&u.ctx, &current)) {
             return Ok(up.texture.clone());

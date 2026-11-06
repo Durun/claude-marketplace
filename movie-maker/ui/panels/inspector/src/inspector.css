@@ -108,7 +108,7 @@
   overflow-wrap: anywhere;
 }
 
-/* キーフレームの印は、回した正方形（ひし形）にする。 */
+/* キーフレームのマーカーは、回した正方形（ひし形）にする。 */
 .mm-insp-kf {
   flex: none;
   width: var(--mm-size-bullet);

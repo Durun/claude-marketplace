@@ -43,7 +43,7 @@ pub fn load_transcript(layout: &CacheLayout, hash: &str) -> Result<Option<Transc
     }
 }
 
-/// プレビュー動画の記録を付属ファイルの控えに書く。`video` はプレビュー動画の映像（大きさを書く）。
+/// プレビュー動画の記録を付属ファイルに書く。`video` はプレビュー動画の映像（大きさを書く）。
 pub fn write_preview_record(
     layout: &CacheLayout,
     hash: &str,

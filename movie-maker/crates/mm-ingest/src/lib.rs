@@ -3,10 +3,10 @@
 //!
 //! - 作る処理（プレビュー動画、波形、サムネイル）は別のスレッドで並行に回す。それぞれ `ingest.preview`、
 //!   `ingest.waveform`、`ingest.thumbnail` のスパンで、全体は `ingest.file`（ハッシュは `ingest.hash`、調べは `ingest.probe`）。
-//! - 出力は `cache/` の下に、素材のコンテンツハッシュのフォルダーで置く（[`CacheLayout`]）。すでにあれば作らずに飛ばす。
+//! - 出力は `cache/` の下に、素材のコンテンツハッシュのフォルダーで置く（[`CacheLayout`]）。すでにあれば作らずにスキップする。
 //!   書きかけは `.part` に書いて完成してから置くので、止まった出力を完成品と取り違えない。
 //! - 素材を足す操作の適用は呼ぶ側（`mm` の CLI）が持つ。このクレートは `mm-ops` と `mm-store` に依存しない。
-//! - 文字起こしなどの付属ファイルは外の道具（`tools/`）が書く。ここは読んで検証する（[`sidecar`]）。
+//! - 文字起こしなどの付属ファイルは外部のツール（`tools/`）が書く。ここは読んで検証する（[`sidecar`]）。
 
 mod hash;
 mod layout;
@@ -47,19 +47,19 @@ pub struct IngestOptions {
     pub encoder: PreviewEncoder,
 }
 
-/// 出力が今回作られたか、すでにあって飛ばしたか。
+/// 出力が今回作られたか、すでにあってスキップしたか。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtifactState {
     Created,
     Cached,
 }
 
-/// 作った（または飛ばした）出力 1 つ。
+/// 作った（またはスキップした）出力 1 つ。
 #[derive(Debug, Clone)]
 pub struct ArtifactReport {
     pub path: PathBuf,
     pub state: ArtifactState,
-    /// 作るのにかかった時間。飛ばしたときは 0。
+    /// 作るのにかかった時間。スキップしたときは 0。
     pub elapsed: Duration,
     /// 補足（プレビュー動画のエンコーダー）。
     pub note: Option<String>,
@@ -127,12 +127,12 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
     })
 }
 
-/// 文字起こしの区間の数。付属ファイルは外の道具が書くので、壊れていても取り込み全体は止めず、警告にして無いものとする。
+/// 文字起こしの区間の数。付属ファイルは外部のツールが書くので、壊れていても取り込み全体は止めず、警告にして無いものとする。
 fn transcript_segments(cache: &CacheLayout, hash: &str) -> Option<usize> {
     match sidecar::load_transcript(cache, hash) {
         Ok(t) => t.map(|t| t.segments.len()),
         Err(e) => {
-            tracing::warn!(error = %e, "文字起こしの付属ファイルを読めないので飛ばす");
+            tracing::warn!(error = %e, "文字起こしの付属ファイルを読めないのでスキップする");
             None
         }
     }
@@ -187,7 +187,7 @@ fn timed<T>(f: impl FnOnce() -> Result<T>) -> Result<Timed<T>> {
 
 fn join<T>(h: std::thread::ScopedJoinHandle<'_, T>) -> Result<T> {
     h.join()
-        .map_err(|_| MmError::Internal("取り込みのスレッドが落ちた".into()))
+        .map_err(|_| MmError::Internal("取り込みのスレッドがパニックした".into()))
 }
 
 struct Made {
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn すでにある出力は作らずに飛ばす() {
+    fn すでにある出力は作らずにスキップする() {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("x.bin");
         let first = ensure(out.clone(), |p| {

@@ -1,4 +1,4 @@
-//! サーフェスの配色。WebView と同じ `ui/theme` の theme.json の色を、Timeline の色に当てる。
+//! サーフェスの配色。WebView と同じ `ui/theme` の theme.json の色を、Timeline の色に使う。
 //! サーフェスは映像の周りなので、ダークのモードを使う。
 
 use mm_ui_layout::palette::{parse_hex, Palette};
@@ -32,7 +32,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ダークのモードの面の色を使う() {
+    fn ダークのモードの_surface_の色を使う() {
         let p = palette_from(THEME_JSON, MODE).expect("読める");
         let theme: Value = serde_json::from_str(THEME_JSON).unwrap();
         let surface = theme["modes"]["dark"]["color"]["surface"].as_str().unwrap();

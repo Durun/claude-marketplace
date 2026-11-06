@@ -1,18 +1,18 @@
 //! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の画像との行き来は f32 と f16 の変換で行う。
 //! デコーダーから借用したフレームは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
-//! 使い終えたテクスチャとリードバックのバッファは大きさごとに取り置き、毎フレームの確保を避ける。
+//! 使い終えたテクスチャとリードバックのバッファは大きさごとにプールに戻し、毎フレームの確保を避ける。
 //!
-//! # 取り置きと提出の順序
+//! # プールと提出の順序
 //!
-//! 呼び手（レンダラー）はパスを 1 つのコマンドに積んでから提出するが、`fill`・`upload`・種類の自前のパスは
+//! 呼び出し側（レンダラー）はパスを 1 つのコマンドに積んでから提出するが、`fill`・`upload`・種類の自前のパスは
 //! その場で提出する。後から提出したものほど GPU で後に走るという順序だけが保証される。そこで次を決まりにする。
 //!
 //! - `release_id` で手放したテクスチャは「提出待ち」に置き、`create` は使い回さない。積んだまま提出していない
 //!   コマンドが、まだそのテクスチャを読むかもしれないため。
-//! - 呼び手は積んだコマンドを提出した直後に `recycle`（フレームの終わりは `after_submit`。中で `recycle` を呼ぶ）を
-//!   呼ぶ。それまでに手放したテクスチャがここで取り置きに入り、次の `create` から使い回せる。以後の書き込みは
+//! - 呼び出し側は積んだコマンドを提出した直後に `recycle`（フレームの終わりは `after_submit`。中で `recycle` を呼ぶ）を
+//!   呼ぶ。それまでに手放したテクスチャがここでプールに入り、次の `create` から使い回せる。以後の書き込みは
 //!   提出済みのコマンドより後に走るので、読み終えた後になる。
-//! - コマンドを積まずにその場で提出する呼び手は、手放した後に `recycle` を呼んでよい。
+//! - コマンドを積まずにその場で提出する呼び出し側は、手放した後に `recycle` を呼んでよい。
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -34,11 +34,11 @@ const BYTES_PER_PIXEL: u32 = 8;
 const CHANNELS: usize = 4;
 /// wgpu がリードバックの行に課す境界。
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-/// 大きさごとに取り置く空きのテクスチャの上限。入れ子の深い合成でも足りる数。
+/// 大きさごとにプールに置く空きのテクスチャの上限。入れ子の深い合成でも足りる数。
 const MAX_FREE_TEXTURES: usize = 8;
 /// 提出待ちに置くテクスチャの上限。1 フレームで手放す中間のテクスチャ（入れ子とシーケンスの深さの分）に足りる数。
 const MAX_RELEASED_TEXTURES: usize = 64;
-/// 取り置くリードバックのバッファの上限。先行させる読み戻し（2〜3 枚）に足りる数。
+/// プールに置くリードバックのバッファの上限。先行させるリードバック（2〜3 枚）に足りる数。
 const MAX_FREE_BUFFERS: usize = 4;
 
 /// wgpu の GPU ヘルパー。具象型は `as_any` で降りて `context()` と `texture()` を使える。
@@ -50,17 +50,17 @@ pub struct WgpuGpu {
     textures: HashMap<u64, wgpu::Texture>,
     /// 借用しているフレーム。`after_submit` で破棄する。
     borrowed: Vec<(u64, Arc<dyn mm_decode_api::GpuFrame>)>,
-    /// 借用した番号。デコーダーのプールのものなので、解放しても取り置かない。
+    /// 借用した番号。デコーダーのプールのものなので、解放してもプールに戻さない。
     imported: HashSet<u64>,
-    /// 解放された中間形式のテクスチャ。大きさごとに取り置く。
+    /// 解放された中間形式のテクスチャ。大きさごとにプールに置く。
     free: HashMap<(u32, u32), Vec<wgpu::Texture>>,
     /// 手放したが、読むコマンドがまだ提出されていないかもしれないテクスチャ。`recycle` で `free` に移す。
     released: Vec<wgpu::Texture>,
-    /// 読み終えたリードバックのバッファ。バイト数ごとに取り置く。
+    /// 読み終えたリードバックのバッファ。バイト数ごとにプールに置く。
     free_buffers: HashMap<u64, Vec<wgpu::Buffer>>,
 }
 
-/// 提出済みで、まだ CPU に写していないリードバック。`WgpuGpu::finish_readback` で画像にする。
+/// 提出済みで、まだ CPU にコピーしていないリードバック。`WgpuGpu::finish_readback` で画像にする。
 pub struct Readback {
     /// 提出したときのコンテキスト。作り直された後の別のデバイスで待つと終わらないので、照合に使う。
     ctx: Arc<GpuContext>,
@@ -94,7 +94,7 @@ impl WgpuGpu {
         &self.ctx
     }
 
-    /// パスの時間を計るタイマー。自前のパスを持つ呼び手は `pass_writes` を `timestamp_writes` に渡す。
+    /// パスの時間を計るタイマー。自前のパスを持つ呼び出し側は `pass_writes` を `timestamp_writes` に渡す。
     pub fn timer(&self) -> &Arc<PassTimer> {
         &self.timer
     }
@@ -104,17 +104,17 @@ impl WgpuGpu {
         self.textures.get(&id)
     }
 
-    /// 番号がデコーダーから借用したフレームか。借用は次の `submit` までなので、持ち続けるなら写しが要る。
+    /// 番号がデコーダーから借用したフレームか。借用は次の `submit` までなので、持ち続けるならコピーが要る。
     pub fn is_borrowed(&self, id: u64) -> bool {
         self.imported.contains(&id)
     }
 
-    /// 持っているテクスチャの数（取り置きは含まない）。漏れの検査に使う。
+    /// 持っているテクスチャの数（プールの分は含まない）。漏れの検査に使う。
     pub fn texture_count(&self) -> usize {
         self.textures.len()
     }
 
-    /// 番号のテクスチャを手放す。中間形式のものは提出待ちに置き（`recycle` で取り置きに入る）、借用したものは返す。
+    /// 番号のテクスチャを手放す。中間形式のものは提出待ちに置き（`recycle` でプールに入る）、借用したものは返す。
     pub fn release_id(&mut self, id: u64) {
         let Some(texture) = self.textures.remove(&id) else {
             return;
@@ -122,13 +122,13 @@ impl WgpuGpu {
         if self.imported.remove(&id) {
             return;
         }
-        // 提出しない呼び手でも溜まり続けないよう、上限を超えた分は取り置かずに捨てる。
+        // 提出しない呼び出し側でも溜まり続けないよう、上限を超えた分はプールに戻さずに捨てる。
         if self.released.len() < MAX_RELEASED_TEXTURES {
             self.released.push(texture);
         }
     }
 
-    /// 積んだコマンドを提出した直後に呼ぶ。それまでに手放したテクスチャを取り置きに入れ、使い回せるようにする。
+    /// 積んだコマンドを提出した直後に呼ぶ。それまでに手放したテクスチャをプールに入れ、使い回せるようにする。
     pub fn recycle(&mut self) {
         for texture in self.released.drain(..) {
             let free = self
@@ -152,7 +152,7 @@ impl WgpuGpu {
         }
     }
 
-    /// `submit` の直後。借用したフレームを返し（デコーダーのプールが空く）、手放したテクスチャを取り置く。
+    /// `submit` の直後。借用したフレームを返し（デコーダーのプールが空く）、手放したテクスチャをプールに入れる。
     pub fn after_submit(&mut self) {
         for (id, _) in self.borrowed.drain(..) {
             self.textures.remove(&id);
@@ -168,7 +168,7 @@ impl WgpuGpu {
         id
     }
 
-    /// 透明の（中身が未定の）テクスチャを作って番号を返す。同じ大きさの取り置きがあればそれを使う。
+    /// 透明の（中身が未定の）テクスチャを作って番号を返す。同じ大きさのものがプールにあればそれを使う。
     pub fn create(&mut self, size: Size) -> Result<u64> {
         if let Some(texture) = self
             .free
@@ -216,7 +216,7 @@ impl WgpuGpu {
         })
     }
 
-    /// テクスチャ全体をバッファへ写す命令を提出する。待たずに返すので、次のフレームの描画と重ねられる。
+    /// テクスチャ全体をバッファへコピーするコマンドを提出する。待たずに返すので、次のフレームの描画と重ねられる。
     /// `bytes_per_pixel` はテクスチャの形式の 1 画素のバイト数。
     pub fn begin_readback(&mut self, texture: &wgpu::Texture, bytes_per_pixel: u32) -> Readback {
         let (width, height) = (texture.width(), texture.height());
@@ -251,7 +251,7 @@ impl WgpuGpu {
         }
     }
 
-    /// 提出したリードバックの完了を待ち、行の余白を外したバイト列にする。バッファは取り置く。
+    /// 提出したリードバックの完了を待ち、行の余白を外したバイト列にする。バッファはプールに戻す。
     pub fn finish_readback(&mut self, readback: Readback) -> Result<Vec<u8>> {
         let mut out = Vec::with_capacity(readback.row as usize * readback.rows as usize);
         self.finish_readback_rows(readback, |line| out.extend_from_slice(line))?;
@@ -259,7 +259,7 @@ impl WgpuGpu {
     }
 
     /// 提出したリードバックの完了を待ち、余白を外した行を上から順に `visit` に渡す。
-    /// 写した先で変換する呼び手が、中間のバイト列を作らずに済む。バッファは取り置く。
+    /// コピーした先で変換する呼び出し側が、中間のバイト列を作らずに済む。バッファはプールに戻す。
     pub fn finish_readback_rows(
         &mut self,
         readback: Readback,
@@ -335,7 +335,7 @@ impl WgpuGpu {
             let Some(dst) = rows.next() else {
                 return;
             };
-            // 写像した範囲の行は通常 2 バイト境界にあるのでそのまま f16 として読み、無いときだけ写してから読む。
+            // マップした範囲の行は通常 2 バイト境界にあるのでそのまま f16 として読み、無いときだけコピーしてから読む。
             let words: &[u16] = match bytemuck::try_cast_slice(line) {
                 Ok(words) => words,
                 Err(_) => {

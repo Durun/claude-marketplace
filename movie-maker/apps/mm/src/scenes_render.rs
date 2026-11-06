@@ -56,7 +56,7 @@ enum FrameCache {
 
 fn rig(args: &PerfArgs, env: &mut Environment, frame_cache: FrameCache) -> Result<Rig> {
     let mut project = load_project(&args.project)?;
-    // 遅い GPU（CI の WARP）では小さく描いて回数を稼ぐ。既定の大きさは見本と同じ 1080p。
+    // 遅い GPU（CI の WARP）では小さく描いて回数を稼ぐ。既定の大きさはフィクスチャと同じ 1080p。
     for comp in &mut project.compositions {
         (comp.width, comp.height) = args.size;
     }

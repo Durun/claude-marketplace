@@ -13,7 +13,7 @@ use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::GpuHelper;
 use mm_types::{RationalTime, RgbaImage};
 
-/// 色差の補間（CPU は bicubic、GPU は双線形）と f16 の丸めの差の許容。番号の箱は輝度だけなので十分に小さい。
+/// 色差の補間（CPU は bicubic、GPU は双線形）と f16 の丸めの差の許容。番号の矩形は輝度だけなので十分に小さい。
 const TOLERANCE: f32 = 0.05;
 
 fn gpu() -> Option<Arc<GpuContext>> {
@@ -32,7 +32,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
 fn download(helper: &mut WgpuGpu, frame: &DecodedFrame) -> RgbaImage {
     let handle = frame.gpu.as_ref().expect("GPU のフレーム");
     let imported = helper.import(handle).expect("借用できる");
-    let image = helper.download(&imported).expect("読み戻せる");
+    let image = helper.download(&imported).expect("リードバックできる");
     helper.before_submit();
     helper.after_submit();
     (*image).clone()

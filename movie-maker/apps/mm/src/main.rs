@@ -104,7 +104,7 @@ enum Command {
         #[arg(long)]
         target: Option<String>,
     },
-    /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を当てる。
+    /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を適用する。
     Ingest {
         dir: PathBuf,
         /// 取り込む素材のパス（1 つ以上）。
@@ -149,7 +149,7 @@ enum PerfCommand {
         /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
         #[arg(long)]
         baseline: bool,
-        /// 描画の場面（playback、scrub）で使う GPU を、名前の一部（大小文字を区別しない）で選ぶ。
+        /// 描画のシナリオ（playback、scrub）で使う GPU を、名前の一部（大小文字を区別しない）で選ぶ。
         /// CI は `Microsoft Basic Render Driver`（WARP、D3D12 のソフトウェアの GPU）を指す。
         #[arg(long)]
         adapter: Option<String>,

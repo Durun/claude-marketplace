@@ -10,12 +10,12 @@ use mm_types::{
 use crate::util::migrate_same_version;
 use crate::KIND_VERSION;
 
-/// 覚えておく整形の結果の数。字幕の入れ替わりと、アニメーションの数値が数通り行き来する程度。
+/// 覚えておくシェーピングの結果の数。字幕の入れ替わりと、アニメーションの数値が数通り行き来する程度。
 const KEPT_SHAPES: usize = 8;
 /// 覚えておく描いた画布の数。倍率や領域が変わるたび（ズームの途中）に増えるので小さく保つ。
 const KEPT_CANVASES: usize = 8;
 
-/// 整形の結果の持ち主を決める入力。
+/// シェーピングの結果の持ち主を決める入力。
 #[derive(Debug, Clone, PartialEq)]
 struct ShapeKey {
     text: String,
@@ -31,7 +31,7 @@ struct CanvasKey {
     offset: [i64; 2],
 }
 
-/// 整形の結果と描いた画布の取り置き。新しい順に並べ、上限を超えたら古いものから捨てる。
+/// シェーピングの結果と描いた画布のキャッシュ。新しい順に並べ、上限を超えたら古いものから捨てる。
 #[derive(Debug, Default)]
 struct TextCache {
     shapes: Vec<(ShapeKey, Arc<ShapedText>)>,
@@ -50,8 +50,8 @@ fn remember<K: PartialEq, V: Clone>(entries: &mut Vec<(K, V)>, key: &K, limit: u
 /// 文字。`position`（1 倍の画素）に `size` の字で描く。シェーピングと描画は `Services` のインターフェースに任せ、
 /// 倍率 `cx.scale` で描くので拡大してもぼやけない（`vector`）。
 ///
-/// `time_varying: false` なので同じパラメータが毎フレーム来る。整形の結果（`region_of_definition` と `render` で共有）と
-/// 描いた画布を覚え、2 回目からは整形も描画も画布の確保もしない。
+/// `time_varying: false` なので同じパラメータが毎フレーム来る。シェーピングの結果（`region_of_definition` と `render` で共有）と
+/// 描いた画布を覚え、2 回目からはシェーピングも描画も画布の確保もしない。
 #[derive(Debug, Default)]
 pub struct TextKind {
     cache: Mutex<TextCache>,
@@ -96,7 +96,7 @@ impl TextKind {
     fn cache(&self) -> Result<std::sync::MutexGuard<'_, TextCache>> {
         self.cache
             .lock()
-            .map_err(|_| MmError::Internal("文字の取り置きが壊れた".into()))
+            .map_err(|_| MmError::Internal("文字のキャッシュが壊れた".into()))
     }
 
     fn shape_key(params: &Params) -> ShapeKey {
@@ -106,7 +106,7 @@ impl TextKind {
         }
     }
 
-    /// 整形の結果。同じ文字とスタイルなら取り置きから返す。
+    /// シェーピングの結果。同じ文字とスタイルならキャッシュから返す。
     fn shaped(&self, cx: &FrameCx<'_>, key: &ShapeKey) -> Result<Arc<ShapedText>> {
         if let Some(hit) = remember(&mut self.cache()?.shapes, key, KEPT_SHAPES) {
             return Ok(hit);
@@ -216,7 +216,7 @@ mod tests {
 
     use super::*;
 
-    /// 呼ばれた回数を数えて、中身は本物のモックに任せる。
+    /// 呼ばれた回数を数えて、中身はラップしたモックに任せる。
     struct Counting {
         inner: Services,
         shapes: Arc<AtomicUsize>,
@@ -302,14 +302,18 @@ mod tests {
     }
 
     #[test]
-    fn 同じパラメータの_2_フレーム目は整形も描画もしない() {
+    fn 同じパラメータの_2_フレーム目はシェーピングも描画もしない() {
         let counting = counting();
         let services = counting.services();
         let kind = TextKind::default();
         let params = kind.params().defaults();
         let first = draw_frame(&kind, &services, &params);
         let second = draw_frame(&kind, &services, &params);
-        assert_eq!(counting.shapes.load(Ordering::SeqCst), 1, "整形は 1 回");
+        assert_eq!(
+            counting.shapes.load(Ordering::SeqCst),
+            1,
+            "シェーピングは 1 回"
+        );
         assert_eq!(counting.rasters.load(Ordering::SeqCst), 1, "描画は 1 回");
         match (first, second) {
             (FrameRef::Cpu(a), FrameRef::Cpu(b)) => {
@@ -320,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn 文字が変わったら整形し直す() {
+    fn 文字が変わったらシェーピングし直す() {
         let counting = counting();
         let services = counting.services();
         let kind = TextKind::default();

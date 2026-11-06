@@ -1,5 +1,5 @@
 //! フレームのキャッシュと PTS の索引のキャッシュの効きを測る。時間は `mm-trace` のスパン `render.frame`
-//! （読み戻しを含まない、1 フレームを描く CPU の時間）、当たりはカウンターで読む。
+//! （リードバックを含まない、1 フレームを描く CPU の時間）、ヒットはカウンターで読む。
 //!
 //! `cargo run -p mm-runtime --release --example bench_frame_cache --features ffmpeg -- <素材> <cache のフォルダー> [decode]`
 //!
@@ -144,7 +144,7 @@ fn main() -> Result<()> {
     let (_, snap) = frame(&mut second, &p, 0, &metrics)?;
     let open2 = started.elapsed().as_secs_f64() * 1000.0;
     println!(
-        "開く（1 フレーム目まで、読み戻しを含む）: 1 回目 {open1:.0} ms、2 回目 {open2:.0} ms（索引の当たり {}）",
+        "開く（1 フレーム目まで、リードバックを含む）: 1 回目 {open1:.0} ms、2 回目 {open2:.0} ms（索引のヒット {}）",
         counter(&snap, "decode.index_cache_hits")
     );
 
@@ -152,7 +152,7 @@ fn main() -> Result<()> {
     let (seek1, s1) = frame(&mut second, &p, seek, &metrics)?;
     let (seek2, s2) = frame(&mut second, &p, seek, &metrics)?;
     println!(
-        "同じ位置（{SEEK_SECONDS} 秒）へのシーク render.frame: 1 回目 {seek1:.1} ms（当たり {}/{}）、2 回目 {seek2:.1} ms（当たり {}/{}）",
+        "同じ位置（{SEEK_SECONDS} 秒）へのシーク render.frame: 1 回目 {seek1:.1} ms（ヒット {}/{}）、2 回目 {seek2:.1} ms（ヒット {}/{}）",
         counter(&s1, "cache.frame_hits"),
         counter(&s1, "cache.frame_lookups"),
         counter(&s2, "cache.frame_hits"),
@@ -162,7 +162,7 @@ fn main() -> Result<()> {
     let (cold, _) = pass(&mut second, &p, &metrics)?;
     let (warm, snap) = pass(&mut second, &p, &metrics)?;
     println!(
-        "{PASS_FRAMES} フレームの区間 render.frame の合計: 1 回目 {cold:.0} ms、2 回目 {warm:.0} ms（2 回目の当たり {}/{}）、キャッシュ {} 枚 / {:.0} MiB",
+        "{PASS_FRAMES} フレームの区間 render.frame の合計: 1 回目 {cold:.0} ms、2 回目 {warm:.0} ms（2 回目のヒット {}/{}）、キャッシュ {} 枚 / {:.0} MiB",
         counter(&snap, "cache.frame_hits"),
         counter(&snap, "cache.frame_lookups"),
         snap.gauges.get("cache.frame_entries").copied().unwrap_or(0.0),

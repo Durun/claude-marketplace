@@ -1,5 +1,5 @@
-//! `Engine::render_frame_texture`: 読み戻さずに返すテクスチャが、読み戻した画像と同じ画素を持つ。
-//! GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! `Engine::render_frame_texture`: リードバックせずに返すテクスチャが、リードバックした画像と同じ画素を持つ。
+//! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::sync::Arc;
 
@@ -29,7 +29,7 @@ fn wgpu_engine() -> Option<Engine> {
 }
 
 #[test]
-fn テクスチャのまま返したフレームは読み戻した画像と同じ() {
+fn テクスチャのまま返したフレームはリードバックした画像と同じ() {
     let Some(mut engine) = wgpu_engine() else {
         return;
     };

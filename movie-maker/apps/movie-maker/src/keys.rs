@@ -17,7 +17,7 @@ pub fn vk_name(vk: u32) -> String {
     }
 }
 
-/// キーに割り当てた再生の命令。
+/// キーに割り当てた再生のコマンド。
 pub fn command_for(key: &str) -> Option<Command> {
     match key {
         "Space" => Some(Command::Toggle),
@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    fn サーフェスと_webview_のどちらのキーも同じ命令になる() {
+    fn サーフェスと_webview_のどちらのキーも同じコマンドになる() {
         let shared = Shared::new();
         let (tx, rx) = channel();
         *shared.commands.lock().unwrap() = Some(tx);

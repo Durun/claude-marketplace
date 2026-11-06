@@ -99,7 +99,7 @@ pub struct SceneCut {
     pub score: Option<f32>,
 }
 
-/// 凍結したスキーマの置き場所（クレートの根からの相対パス）。テストが最新かを確かめる。
+/// 凍結したスキーマの置き場所（クレートのルートからの相対パス）。テストが最新かを確かめる。
 pub const SCHEMA_PATH: &str = "schema/sidecar.schema.json";
 
 /// 付属ファイルの JSON Schema を決定的な JSON の文字列にする（インデント 2、末尾に改行 1 つ）。

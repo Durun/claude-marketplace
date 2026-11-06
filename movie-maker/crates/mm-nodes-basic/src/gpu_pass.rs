@@ -28,7 +28,7 @@ fn mm_vs(@builtin(vertex_index) i: u32) -> MmVsOut {
 }
 ";
 
-/// 取り置くパイプラインの数の上限。`shader.wgsl` が毎フレーム違うコードを渡しても増え続けない。
+/// キャッシュするパイプラインの数の上限。`shader.wgsl` が毎フレーム違うコードを渡しても増え続けない。
 const MAX_PIPELINES: usize = 32;
 
 /// 1 パスの入力。
@@ -37,9 +37,9 @@ pub(crate) struct Pass<'a> {
     pub body: &'a str,
     /// uniform の中身。大きさは 16 の倍数。
     pub uniform: &'a [u8],
-    /// 入力の 2D テクスチャの番号。`mm_t0`、`mm_t1` … に束ねる。
+    /// 入力の 2D テクスチャの番号。`mm_t0`、`mm_t1` … にバインドする。
     pub inputs: &'a [u64],
-    /// 3D LUT。あれば `mm_lut` に束ねる。
+    /// 3D LUT。あれば `mm_lut` にバインドする。
     pub lut: Option<&'a wgpu::Texture>,
     /// 出力の大きさ。
     pub size: Size,
@@ -57,7 +57,7 @@ struct Entries {
     map: HashMap<String, std::result::Result<Arc<Pipeline>, String>>,
 }
 
-/// パイプラインの取り置き。WGSL の全文で引き、コンパイルの失敗も覚える（毎フレーム作り直さない）。
+/// パイプラインのキャッシュ。WGSL の全文で引き、コンパイルの失敗も覚える（毎フレーム作り直さない）。
 #[derive(Default)]
 pub(crate) struct PassCache {
     entries: Mutex<Option<Entries>>,
@@ -69,7 +69,7 @@ impl std::fmt::Debug for PassCache {
     }
 }
 
-/// 束縛の宣言。0 が uniform、1.. が入力、その次が標本化、最後が LUT。
+/// WGSL のバインディングの宣言。0 が uniform、1.. が入力、その次がサンプラー、最後が LUT。
 fn bindings_wgsl(inputs: usize, lut: bool) -> String {
     let mut s = String::from("@group(0) @binding(0) var<uniform> u: U;\n");
     for i in 0..inputs {
@@ -214,7 +214,7 @@ impl PassCache {
         let mut guard = self
             .entries
             .lock()
-            .map_err(|_| MmError::Internal("パイプラインの取り置きが壊れた".into()))?;
+            .map_err(|_| MmError::Internal("パイプラインのキャッシュが壊れた".into()))?;
         let current = Arc::downgrade(ctx);
         let entries = guard.get_or_insert_with(|| Entries {
             ctx: current.clone(),

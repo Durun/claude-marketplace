@@ -1,4 +1,4 @@
-//! サムネイル。素材の中ほどの 1 コマを JPEG にする。
+//! サムネイル。素材の中ほどの 1 フレームを JPEG にする。
 
 use std::path::Path;
 
@@ -10,7 +10,7 @@ use crate::tools::{run, Tools};
 
 /// サムネイルの幅。
 const THUMBNAIL_WIDTH: u32 = 320;
-/// 1 コマを取る位置（長さに対する割合の分子 / 分母）。先頭は黒いことが多いので中ほどにする。
+/// 1 フレームを取る位置（長さに対する割合の分子 / 分母）。先頭は黒いことが多いので中ほどにする。
 const POSITION_NUM: f64 = 1.0;
 const POSITION_DEN: f64 = 3.0;
 /// JPEG の品質（ffmpeg の `-q:v`。小さいほど高画質）。

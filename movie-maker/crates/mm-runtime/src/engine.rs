@@ -149,12 +149,12 @@ impl Engine {
         self.parts.renderer.gpu().download(&frame)
     }
 
-    /// 時刻 t のフレームを、CPU に読み戻さずに GPU のテクスチャのまま返す（プレビューのサーフェス）。
+    /// 時刻 t のフレームを、CPU にリードバックせずに GPU のテクスチャのまま返す（プレビューのサーフェス）。
     ///
     /// テクスチャは中間形式（`FRAME_FORMAT`、線形の premultiplied）。中身はレンダラーの契約どおり直近
     /// `KEPT_RENDERED_FRAMES` 回の描画のあいだ保たれ、それより古いものは次のフレームに使い回される。
-    /// 描いた命令は提出済みなので、同じ `context` のキューに積めばそのまま標本化できる。
-    /// wgpu のレンダラーでなければ `Unsupported`（呼び手は [`Engine::render_frame`] に戻る）。
+    /// 描いたコマンドは提出済みなので、同じ `context` のキューに積めばそのままサンプリングできる。
+    /// wgpu のレンダラーでなければ `Unsupported`（呼び出し側は [`Engine::render_frame`] に戻る）。
     pub fn render_frame_texture(
         &mut self,
         project: &Project,

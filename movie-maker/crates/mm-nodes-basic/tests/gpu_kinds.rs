@@ -84,7 +84,7 @@ fn params_of(kind: &dyn NodeKind, set: &[(&str, ParamValue)]) -> Params {
     params
 }
 
-/// GPU と CPU の経路の最大の差を返す。GPU の結果は `WgpuGpu` から読み戻す。
+/// GPU と CPU の経路の最大の差を返す。GPU の結果は `WgpuGpu` からリードバックする。
 fn gpu_cpu_diff(ctx: &Arc<GpuContext>, kind: &dyn NodeKind, params: &Params) -> f32 {
     let mut wgpu = WgpuGpu::new(ctx.clone());
     let frame = render_with(kind, params, &mut wgpu, vec![gradient()]).expect("GPU で描ける");
@@ -92,7 +92,7 @@ fn gpu_cpu_diff(ctx: &Arc<GpuContext>, kind: &dyn NodeKind, params: &Params) -> 
         matches!(frame, FrameRef::Gpu(_)),
         "GPU の経路はテクスチャを返す"
     );
-    let on_gpu = wgpu.download(&frame).expect("読み戻せる");
+    let on_gpu = wgpu.download(&frame).expect("リードバックできる");
     let mut cpu = CpuGpu::new();
     let frame = render_with(kind, params, &mut cpu, vec![gradient()]).expect("CPU で描ける");
     let on_cpu = cpu.download(&frame).expect("CPU の画像");
@@ -183,7 +183,7 @@ fn transition_dissolve_は_gpu_と_cpu_で一致する() {
     let mut wgpu = WgpuGpu::new(ctx);
     let frame = render_with(&kind, &params, &mut wgpu, vec![gradient(), other.clone()])
         .expect("GPU で描ける");
-    let on_gpu = wgpu.download(&frame).expect("読み戻せる");
+    let on_gpu = wgpu.download(&frame).expect("リードバックできる");
     let mut cpu = CpuGpu::new();
     let frame = render_with(&kind, &params, &mut cpu, vec![gradient(), other]).expect("CPU");
     let diff = on_gpu
@@ -207,7 +207,7 @@ fn shader_wgsl_は入力の無い_uv_を描く() {
     let params = kind.params().defaults();
     let mut wgpu = WgpuGpu::new(ctx);
     let frame = render_with(&kind, &params, &mut wgpu, Vec::new()).expect("描ける");
-    let img = wgpu.download(&frame).expect("読み戻せる");
+    let img = wgpu.download(&frame).expect("リードバックできる");
     assert_eq!(img.size(), SIZE);
     let corner = img.pixel(0, 0);
     let far = img.pixel(SIZE.width - 1, SIZE.height - 1);

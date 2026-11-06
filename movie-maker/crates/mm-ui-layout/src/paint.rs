@@ -11,7 +11,7 @@ use crate::timeline::{bar_span, row_top, Hit, Part, TimelineModel, HANDLE_PX, RO
 const LABEL_H: f32 = 10.0;
 /// 再生位置の線の幅。
 const PLAYHEAD_W: f32 = 2.0;
-/// 再生位置の頭の一辺。
+/// 再生位置の線の上端に付ける四角の一辺。
 const PLAYHEAD_CAP: f32 = 10.0;
 
 /// 描く時点の状態。
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn テーマの色で面と帯の段を塗る() {
+    fn テーマの色で_surface_と帯の段を塗る() {
         let v = TimeView {
             origin: 0.0,
             px_per_sec: 100.0,
@@ -184,7 +184,7 @@ mod tests {
             ..state(0.0)
         };
         let quads = timeline_quads(&model(), &v, (800.0, 120.0), &st);
-        assert_eq!(quads[0].color, surface, "面");
+        assert_eq!(quads[0].color, surface, "surface");
         assert_eq!(
             themed.playhead,
             palette::PLAYHEAD,
