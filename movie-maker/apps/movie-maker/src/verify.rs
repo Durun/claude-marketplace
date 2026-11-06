@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use mm_trace::chrome::ChromeTraceHandle;
 use mm_trace::MetricsHandle;
+use mm_ui_layout::{split_surface, TimeView, TimelineModel, RULER_H, VIEW_MARGIN};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Window};
 
@@ -14,6 +15,7 @@ use crate::capture;
 use crate::cli::PlayTest;
 use crate::playback::{Command, PlaybackInfo};
 use crate::state::Shared;
+use crate::surface;
 
 /// 描画が安定して WebView の初期化が終わるまでの待ち。
 const SETTLE: Duration = Duration::from_millis(2500);
@@ -23,6 +25,20 @@ const START_TIMEOUT: Duration = Duration::from_secs(5);
 const FINISH_SLACK: Duration = Duration::from_secs(5);
 /// 状態を見に行く間隔。
 const POLL: Duration = Duration::from_millis(25);
+
+/// スクラブで狙う時刻（秒）。
+const SCRUB_TARGET: f64 = 3.0;
+/// 入力を投げてから結果を見るまでの待ち。
+const INPUT_WAIT: Duration = Duration::from_millis(400);
+/// スペースキーの仮想キーコード。
+const VK_SPACE: u32 = 0x20;
+
+/// 試験の対象。ウィンドウと、サーフェスの子 HWND と、Timeline のモデル。
+pub struct Target {
+    pub window: Window,
+    pub surface_hwnd: isize,
+    pub model: TimelineModel,
+}
 
 /// 計測の出力先。
 pub struct Telemetry {
@@ -52,7 +68,7 @@ impl Baseline {
 /// 試験のスレッドを始める。終わったらアプリを閉じる。
 pub fn spawn(
     app: AppHandle,
-    window: Window,
+    target: Target,
     shared: Arc<Shared>,
     info: PlaybackInfo,
     telemetry: Telemetry,
@@ -61,7 +77,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("play-test".into())
         .spawn(move || {
-            let report = run(&window, &shared, &info, &telemetry, &test);
+            let report = run(&target, &shared, &info, &telemetry, &test);
             let text = serde_json::to_string_pretty(&report).unwrap_or_default();
             if let Err(e) = std::fs::write(&test.report, text) {
                 eprintln!("結果を書けない: {e}");
@@ -93,12 +109,13 @@ fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
 }
 
 fn run(
-    window: &Window,
+    target: &Target,
     shared: &Arc<Shared>,
     info: &PlaybackInfo,
     telemetry: &Telemetry,
     test: &PlayTest,
 ) -> Value {
+    let window = &target.window;
     let hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     wait_until(Duration::from_secs(20), || {
         shared.frames_presented.load(Ordering::SeqCst) > 30
@@ -118,8 +135,10 @@ fn run(
     let t0 = Instant::now();
     let shot = play_and_capture(shared, info, test, hwnd, t0);
     let wall = t0.elapsed().as_secs_f64();
+    let mut report = report(shared, info, test, &base, started, wall, shot);
+    report["interaction"] = interaction(shared, info, target);
     let _ = window.set_always_on_top(false);
-    report(shared, info, test, &base, started, wall, shot)
+    report
 }
 
 /// 再生が終わるまで待ち、半分まで進んだところでスクリーンショットを撮る。
@@ -187,5 +206,31 @@ fn report(
         "audio_underruns": now.underruns - base.underruns,
         "series": series,
         "screenshot": shot,
+    })
+}
+
+/// 実際のウィンドウへの入力で、Timeline のスクラブとキー操作が効くか確かめる。
+fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
+    let (w, h) = shared.surface_size();
+    let tl = split_surface(w as f32, h as f32, target.model.content_height()).timeline;
+    let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
+    let x = tl.x + view.x_of(SCRUB_TARGET);
+    surface::post_click(target.surface_hwnd, x as i32, (tl.y + RULER_H / 2.0) as i32);
+    std::thread::sleep(INPUT_WAIT);
+    let scrubbed = shared.playhead();
+    let playing = || shared.playing.load(Ordering::SeqCst);
+    let before = playing();
+    surface::post_key(target.surface_hwnd, VK_SPACE);
+    std::thread::sleep(INPUT_WAIT);
+    let started = playing();
+    surface::post_key(target.surface_hwnd, VK_SPACE);
+    std::thread::sleep(INPUT_WAIT);
+    let stopped = !playing();
+    json!({
+        "scrub_target_secs": SCRUB_TARGET,
+        "scrub_result_secs": scrubbed,
+        "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= 2.0 / info.fps,
+        "space_starts_playback": !before && started,
+        "space_stops_playback": stopped,
     })
 }

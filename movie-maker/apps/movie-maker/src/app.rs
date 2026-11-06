@@ -181,17 +181,7 @@ struct Boot {
 }
 
 fn build_and_run(boot: Boot) {
-    let Boot {
-        shared,
-        state,
-        workers,
-        project,
-        comp_id,
-        pinfo,
-        telemetry,
-        args,
-    } = boot;
-    let managed = state.clone();
+    let managed = boot.state.clone();
     tauri::Builder::default()
         .manage(managed)
         .invoke_handler(tauri::generate_handler![
@@ -201,46 +191,71 @@ fn build_and_run(boot: Boot) {
             ipc::project_info,
             ipc::key_event
         ])
-        .setup(move |app| {
-            let window = WindowBuilder::new(app, "main")
-                .title("movie-maker")
-                .inner_size(INITIAL_SIZE.0, INITIAL_SIZE.1)
-                .build()?;
-            let size = window.inner_size()?;
-            let (s, v) = split_rects(size.width, size.height);
-            let surface_hwnd = surface::create(window.hwnd()?.0 as isize, shared.clone(), s)?;
-            let webview = window.add_child(
-                WebviewBuilder::new("ui", WebviewUrl::App(UI_ENTRY.into()))
-                    .initialization_script(TRANSPORT_JS),
-                PhysicalPosition::new(v.0, v.1),
-                PhysicalSize::new(v.2 as u32, v.3 as u32),
-            )?;
-            shared.set_surface_size(s.2 as u32, s.3 as u32);
-            let model = timeline_model(project.composition(&comp_id)?);
-            *workers.renderer.lock().expect("renderer") =
-                Some(Renderer::spawn(shared.clone(), surface_hwnd, model));
-            ipc::spawn(app.handle().clone(), state.clone());
-            watch_window(
-                &window,
-                webview,
-                shared.clone(),
-                surface_hwnd,
-                workers.clone(),
-            );
-            if let Some(test) = args.play_test.clone() {
-                verify::spawn(
-                    app.handle().clone(),
-                    window,
-                    shared.clone(),
-                    pinfo.clone(),
-                    telemetry,
-                    test,
-                );
-            }
-            Ok(())
-        })
+        .setup(move |app| boot.setup(app))
         .run(tauri::generate_context!())
         .expect("tauri の実行に失敗");
+}
+
+type SetupResult = Result<(), Box<dyn std::error::Error>>;
+
+impl Boot {
+    /// ウィンドウと描画スレッドを作り、同期と自動試験を始める。
+    fn setup(self, app: &mut tauri::App) -> SetupResult {
+        let (window, webview, surface_hwnd) = self.create_window(app)?;
+        let model = timeline_model(self.project.composition(&self.comp_id)?);
+        *self.workers.renderer.lock().expect("renderer") = Some(Renderer::spawn(
+            self.shared.clone(),
+            surface_hwnd,
+            model.clone(),
+        ));
+        ipc::spawn(app.handle().clone(), self.state.clone());
+        watch_window(
+            &window,
+            webview,
+            self.shared.clone(),
+            surface_hwnd,
+            self.workers.clone(),
+        );
+        if let Some(test) = self.args.play_test {
+            let handle = app.handle().clone();
+            let target = verify::Target {
+                window,
+                surface_hwnd,
+                model: model.clone(),
+            };
+            verify::spawn(
+                handle,
+                target,
+                self.shared,
+                self.pinfo,
+                self.telemetry,
+                test,
+            );
+        }
+        Ok(())
+    }
+
+    /// ウィンドウの下に、サーフェスの子 HWND と子 WebView を並べる。サーフェスの HWND を返す。
+    fn create_window(
+        &self,
+        app: &mut tauri::App,
+    ) -> Result<(Window, Webview, isize), Box<dyn std::error::Error>> {
+        let window = WindowBuilder::new(app, "main")
+            .title("movie-maker")
+            .inner_size(INITIAL_SIZE.0, INITIAL_SIZE.1)
+            .build()?;
+        let size = window.inner_size()?;
+        let (s, v) = split_rects(size.width, size.height);
+        let surface_hwnd = surface::create(window.hwnd()?.0 as isize, self.shared.clone(), s)?;
+        let webview = window.add_child(
+            WebviewBuilder::new("ui", WebviewUrl::App(UI_ENTRY.into()))
+                .initialization_script(TRANSPORT_JS),
+            PhysicalPosition::new(v.0, v.1),
+            PhysicalSize::new(v.2 as u32, v.3 as u32),
+        )?;
+        self.shared.set_surface_size(s.2 as u32, s.3 as u32);
+        Ok((window, webview, surface_hwnd))
+    }
 }
 
 /// 大きさの変更に配置を合わせ、閉じるときに HWND より先に描画と再生を止める。

@@ -12,9 +12,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, RegisterClassW, SetWindowPos,
-    CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WNDCLASSW, WS_CHILD,
+    CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
+    SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WNDCLASSW, WS_CHILD,
     WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
@@ -91,6 +91,28 @@ pub fn set_rect(hwnd: isize, rect: PixelRect) {
 /// HWND がまだ生きているか。破棄された HWND への present を止めるのに使う。
 pub fn is_alive(hwnd: isize) -> bool {
     unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
+}
+
+/// サーフェスの HWND に左クリックのメッセージを投げる（自動試験用。座標はクライアントの物理ピクセル）。
+pub fn post_click(hwnd: isize, x: i32, y: i32) {
+    let lparam = LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
+    let h = HWND(hwnd as *mut _);
+    unsafe {
+        let _ = PostMessageW(Some(h), WM_LBUTTONDOWN, WPARAM(0), lparam);
+        let _ = PostMessageW(Some(h), WM_LBUTTONUP, WPARAM(0), lparam);
+    }
+}
+
+/// サーフェスの HWND にキー押下のメッセージを投げる（自動試験用）。
+pub fn post_key(hwnd: isize, vk: u32) {
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            WM_KEYDOWN,
+            WPARAM(vk as usize),
+            LPARAM(0),
+        );
+    }
 }
 
 fn push(ev: PointerEvent) {

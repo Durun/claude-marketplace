@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_audio_cpal::AudioOutput;
-use mm_doc::Project;
+use mm_doc::{Composition, Project};
 use mm_node_api::Quality;
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
@@ -107,22 +107,7 @@ impl Player {
         };
         let _ = shared.clock.set(clock.clone());
         let fps_f = fps.to_f64();
-        let info = PlaybackInfo {
-            duration,
-            fps: fps_f,
-            width: size.width,
-            height: size.height,
-            clock: clock.kind(),
-            audio_device: audio.as_ref().map(|a| {
-                let (name, rate, ch) = a.device();
-                format!("{name} ({rate} Hz, {ch} ch)")
-            }),
-            backends: engine
-                .backend_names()
-                .into_iter()
-                .map(|(k, v)| (k.to_owned(), v.to_owned()))
-                .collect(),
-        };
+        let info = describe(&engine, comp, &clock, audio.as_deref());
         let player = Self {
             engine,
             project,
@@ -341,6 +326,31 @@ impl Player {
             tracing::warn!(error = %e, start, "音を描けなかった");
             mm_audio_api::AudioBlock::silence(rate, DEFAULT_CHANNELS, frames as usize)
         })
+    }
+}
+
+/// 開いたコンポジションと選ばれた実装の情報。
+fn describe(
+    engine: &Engine,
+    comp: &Composition,
+    clock: &Arc<dyn PlayClock>,
+    audio: Option<&AudioOutput>,
+) -> PlaybackInfo {
+    PlaybackInfo {
+        duration: comp.duration.to_f64(),
+        fps: comp.fps.to_f64(),
+        width: comp.width,
+        height: comp.height,
+        clock: clock.kind(),
+        audio_device: audio.map(|a| {
+            let (name, rate, ch) = a.device();
+            format!("{name} ({rate} Hz, {ch} ch)")
+        }),
+        backends: engine
+            .backend_names()
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect(),
     }
 }
 

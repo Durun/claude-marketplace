@@ -3,14 +3,11 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::{
     fit_rect, palette, split_surface, timeline_quads, Action, PointerEvent, Quad, Rect,
-    SurfaceLayout, TimeView, TimelineController, TimelineModel,
+    SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
 };
 
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
-
-/// Timeline の左右の余白（全体表示のとき）。
-const VIEW_MARGIN: f32 = 16.0;
 
 /// サーフェスの UI。描画の資源と、Timeline の表示・操作の状態を持つ。
 pub struct Ui {
@@ -118,8 +115,26 @@ impl Ui {
         target: &wgpu::TextureView,
     ) {
         let (w, h) = self.size;
+        let count = self
+            .quads
+            .prepare(device, queue, &self.timeline_quads(), (w, h));
+        if let Some((iw, ih)) = self.program.image_size() {
+            let rect = fit_rect(iw as f32, ih as f32, self.layout.program);
+            self.program.prepare(queue, rect, (w, h));
+        }
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let mut pass = begin_pass(&mut enc, target);
+            self.program.draw(&mut pass);
+            self.quads.draw(&mut pass, count);
+        }
+        queue.submit([enc.finish()]);
+    }
+
+    /// Timeline の矩形を、サーフェスの座標に置いた並びにする。
+    fn timeline_quads(&self) -> Vec<Quad> {
         let t = self.layout.timeline;
-        let mut quads: Vec<Quad> = timeline_quads(
+        let mut quads = timeline_quads(
             &self.model,
             &self.controller.view,
             (t.w, t.h),
@@ -128,40 +143,35 @@ impl Ui {
         for q in &mut quads {
             q.rect = q.rect.translated(t.x, t.y);
         }
-        let count = self.quads.prepare(device, queue, &quads, (w, h));
-        let image = self.program.image_size();
-        if let Some((iw, ih)) = image {
-            let rect = fit_rect(iw as f32, ih as f32, self.layout.program);
-            self.program.prepare(queue, rect, (w, h));
-        }
-
-        let mut enc = device.create_command_encoder(&Default::default());
-        {
-            let c = palette::PROGRAM_BACKDROP.0;
-            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ui"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: f64::from(c[0]),
-                            g: f64::from(c[1]),
-                            b: f64::from(c[2]),
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            self.program.draw(&mut pass);
-            self.quads.draw(&mut pass, count);
-        }
-        queue.submit([enc.finish()]);
+        quads
     }
+}
+
+/// サーフェス全体を Program の背景色で塗るパスを始める。
+fn begin_pass<'a>(
+    enc: &'a mut wgpu::CommandEncoder,
+    target: &'a wgpu::TextureView,
+) -> wgpu::RenderPass<'a> {
+    let c = palette::PROGRAM_BACKDROP.0;
+    enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("ui"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: target,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: f64::from(c[0]),
+                    g: f64::from(c[1]),
+                    b: f64::from(c[2]),
+                    a: 1.0,
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
 }

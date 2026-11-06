@@ -23,7 +23,7 @@ pub use digits::{text_quads, text_width};
 pub use geom::{fit_rect, Color, Quad, Rect};
 pub use paint::{timeline_quads, PaintState};
 pub use ruler::{label, major_step, ticks, Tick};
-pub use screen::{split_surface, SurfaceLayout};
+pub use screen::{split_surface, SurfaceLayout, VIEW_MARGIN};
 pub use snap::{quantize, snap, Snapped, SNAP_PX};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
