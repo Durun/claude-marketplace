@@ -13,6 +13,10 @@ ffmpeg = ["dep:ffmpeg-next"]
 [dependencies]
 mm-types = { workspace = true }
 mm-decode-api = { workspace = true }
+mm-cache-api = { workspace = true }
+mm-trace = { workspace = true }
+blake3 = { workspace = true }
+tracing = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 
 [lints]

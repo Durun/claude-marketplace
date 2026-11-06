@@ -79,6 +79,9 @@
 | 提出 | GPU のキューへコマンドを送ること | `Queue::submit` |
 | リードバック | GPU の結果を CPU へ読むこと | `GpuHelper::download` |
 | 先読みの描画 | 再生より先に描いてキャッシュに置くこと | `Scheduler` |
+| メモ | キーで引いた計算の結果を覚え、頼った ID が変わったら該当するものだけ捨てる表 | `mm_render_api::Memo` |
+| 退避 | メモリから追い出した画像を `cache/` に書くこと | `RenderCache::flush` |
+| 指紋 | 素材の大きさと先頭・中央・末尾の一部から作る短いハッシュ。全体を読まずに素材を見分ける | `index_cache::fingerprint` |
 | ヒット率 | キャッシュが当たった割合 | 17-instrumentation |
 | フラグ | 真偽の状態 | — |
 | ガード | ドロップされたときに後片付けをする値 | `GpuFrameTexture` |

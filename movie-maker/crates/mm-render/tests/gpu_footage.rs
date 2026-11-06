@@ -161,7 +161,9 @@ fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) 
         r.take_errors().is_empty(),
         "footage が GPU のフレームを受ける"
     );
-    assert_eq!(r.texture_count(), 1, "借用したフレームは提出の後に返す");
+    // 持っているのは出力と、キャッシュが覚えた画像だけ。借用したフレームは残らない。
+    let kept = 1 + r.frame_cache_stats().entries;
+    assert_eq!(r.texture_count(), kept, "借用したフレームは提出の後に返す");
     img
 }
 

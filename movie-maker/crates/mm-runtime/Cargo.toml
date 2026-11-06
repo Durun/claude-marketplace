@@ -17,6 +17,7 @@ mm-color-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-text-api = { workspace = true }
 mm-cache-api = { workspace = true }
+mm-cache-fs = { workspace = true }
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
 mm-render = { workspace = true }
@@ -26,6 +27,7 @@ mm-color-lut = { workspace = true }
 mm-color-ocio = { workspace = true, optional = true }
 mm-audio-dsp = { workspace = true }
 mm-decode-ffmpeg = { workspace = true, optional = true }
+mm-decode-ffmpeg-core = { workspace = true, optional = true }
 mm-decode-d3d12va = { workspace = true, optional = true }
 mm-decode-cuvid = { workspace = true, optional = true }
 mm-encode-ffmpeg = { workspace = true, optional = true }
@@ -36,7 +38,7 @@ tracing = { workspace = true }
 # OpenColorIO を使う。OCIO_ROOT と libclang が要る（mm-color-ocio/README.md）。切ったときは ocio の腕が Unsupported を返す。
 ocio = ["dep:mm-color-ocio", "mm-color-ocio/native"]
 # FFmpeg の開発ファイルと libclang が要る（mm-decode-ffmpeg/README.md）。切ったときは ffmpeg の腕が Unsupported を返す。
-ffmpeg = ["dep:mm-decode-ffmpeg", "dep:mm-encode-ffmpeg", "mm-decode-ffmpeg/gpu", "mm-encode-ffmpeg/ffmpeg"]
+ffmpeg = ["dep:mm-decode-ffmpeg", "dep:mm-decode-ffmpeg-core", "dep:mm-encode-ffmpeg", "mm-decode-ffmpeg/gpu", "mm-encode-ffmpeg/ffmpeg"]
 # レンダラーと同じ D3D12 のデバイスの上でデコードする。実機の NVIDIA が要る。ffmpeg も入れると音が付く。
 d3d12va = ["dep:mm-decode-d3d12va", "mm-decode-d3d12va/d3d12va"]
 cuvid = ["dep:mm-decode-cuvid", "mm-decode-cuvid/cuvid"]
@@ -47,3 +49,7 @@ serde_json = { workspace = true }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "bench_frame_cache"
+required-features = ["ffmpeg"]

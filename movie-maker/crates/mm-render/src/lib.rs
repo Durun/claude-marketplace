@@ -13,6 +13,7 @@
 //! - デバイスが消えたら（`GpuContext::is_lost`）、次のフレームの前にコンテキストとその上の全部を作り直す。
 
 mod audio;
+mod cache;
 mod compose;
 mod export;
 mod layers;
@@ -21,6 +22,7 @@ mod source;
 mod timer;
 pub mod transform;
 
+pub use cache::{FrameCacheConfig, DEFAULT_MEMORY_BYTES};
 pub use layers::{NESTED_KIND, NESTED_PARAM};
 pub use mm_gpu::{GpuContext, GpuRequest, WgpuGpu, FRAME_FORMAT};
 pub use renderer::{WgpuRenderer, WGPU_RENDERER_VERSION};

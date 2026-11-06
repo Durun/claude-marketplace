@@ -5,12 +5,13 @@ use std::sync::Arc;
 use mm_audio_api::MixerFactory;
 use mm_audio_dsp::DspMixerFactory;
 use mm_cache_api::CacheStore;
+use mm_cache_fs::FsCache;
 use mm_color_api::ColorTransform;
 use mm_color_lut::LutColor;
 use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_node_api::Services;
-use mm_render::WgpuRenderer;
+use mm_render::{FrameCacheConfig, WgpuRenderer, DEFAULT_MEMORY_BYTES};
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::cache::MemoryCache;
@@ -38,16 +39,14 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
     let color = color(config.color)?;
     let gpu = gpu_context(config)?;
     let (text_shaper, text_rasterizer) = text(config.text, gpu.as_ref())?;
-    let cache: Arc<dyn CacheStore> = match config.cache {
-        Backend::Sample => Arc::new(MemoryCache::new(config.cache_limit_bytes)),
-        other => return Err(unsupported("cache", other)),
-    };
+    let cache = cache(config)?;
+    install_index_cache(&cache);
     let services = Services {
         text_shaper,
         text_rasterizer,
         color,
     };
-    let renderer = renderer(config.render, gpu.as_ref(), &decoders, &mixers, &services)?;
+    let renderer = renderer(config, gpu.as_ref(), &decoders, &mixers, &services, &cache)?;
     Ok(Engine::from_parts(EngineParts {
         config: config.clone(),
         registry: registry(config.render)?,
@@ -228,25 +227,60 @@ fn text(
     }
 }
 
+fn cache(config: &RuntimeConfig) -> Result<Arc<dyn CacheStore>> {
+    match config.cache {
+        Backend::Sample => Ok(Arc::new(MemoryCache::new(config.cache_limit_bytes))),
+        Backend::Fs => {
+            let dir = config.cache_dir.clone().ok_or_else(|| {
+                MmError::InvalidArgument("cache: fs には cache_dir が要る".into())
+            })?;
+            Ok(Arc::new(FsCache::open(dir, config.cache_limit_bytes)?))
+        }
+        other => Err(unsupported("cache", other)),
+    }
+}
+
+/// PTS の索引を同じキャッシュに置く。FFmpeg を使うデコーダーは全部が通る共通の道なので、組み立てで 1 回決める。
+fn install_index_cache(cache: &Arc<dyn CacheStore>) {
+    #[cfg(feature = "ffmpeg")]
+    mm_decode_ffmpeg_core::index_cache::set_index_cache(Some(cache.clone()));
+    #[cfg(not(feature = "ffmpeg"))]
+    let _ = cache;
+}
+
+/// レンダラーのフレームのキャッシュの設定。追い出した画像の退避先はディスクのキャッシュのときだけ
+/// （メモリのモックに退避すると、メモリが二重に増える）。
+fn frame_cache(config: &RuntimeConfig, cache: &Arc<dyn CacheStore>) -> FrameCacheConfig {
+    FrameCacheConfig {
+        memory_bytes: config.frame_memory_bytes.unwrap_or(DEFAULT_MEMORY_BYTES),
+        store: (config.cache == Backend::Fs).then(|| cache.clone()),
+    }
+}
+
 fn renderer(
-    backend: Backend,
+    config: &RuntimeConfig,
     gpu: Option<&Arc<GpuContext>>,
     decoders: &Arc<dyn DecoderFactory>,
     mixers: &Arc<dyn MixerFactory>,
     services: &Services,
+    cache: &Arc<dyn CacheStore>,
 ) -> Result<Box<dyn Renderer>> {
+    let backend = config.render;
     match backend {
         Backend::Sample => Ok(Box::new(SampleRenderer::new(
             decoders.clone(),
             mixers.clone(),
             services.clone(),
         ))),
-        Backend::Wgpu => Ok(Box::new(WgpuRenderer::new(
-            gpu.ok_or_else(|| unsupported("render", backend))?.clone(),
-            decoders.clone(),
-            mixers.clone(),
-            services.clone(),
-        ))),
+        Backend::Wgpu => Ok(Box::new(
+            WgpuRenderer::new(
+                gpu.ok_or_else(|| unsupported("render", backend))?.clone(),
+                decoders.clone(),
+                mixers.clone(),
+                services.clone(),
+            )
+            .with_frame_cache(frame_cache(config, cache)),
+        )),
         other => Err(unsupported("render", other)),
     }
 }
@@ -298,6 +332,36 @@ mod tests {
         ] {
             assert!(gpu_context_with(&config, no_gpu).is_err(), "{config:?}");
         }
+    }
+
+    #[test]
+    fn fs_のキャッシュは置き場所が要り_上限を渡して開く() {
+        let missing = RuntimeConfig {
+            cache: Backend::Fs,
+            ..RuntimeConfig::sample()
+        };
+        assert!(cache(&missing).is_err());
+        let dir = std::env::temp_dir().join(format!("mm-runtime-cache-{}", std::process::id()));
+        let config = RuntimeConfig {
+            cache_dir: Some(dir.clone()),
+            cache_limit_bytes: Some(1024),
+            ..missing
+        };
+        let store = cache(&config).unwrap();
+        assert_eq!((store.id(), store.limit_bytes()), ("fs", Some(1024)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn 退避先はディスクのキャッシュのときだけ渡す() {
+        let sample = RuntimeConfig::sample();
+        let memory = cache(&sample).unwrap();
+        assert!(frame_cache(&sample, &memory).store.is_none());
+        let fs = RuntimeConfig {
+            cache: Backend::Fs,
+            ..sample
+        };
+        assert!(frame_cache(&fs, &memory).store.is_some());
     }
 
     #[test]

@@ -207,7 +207,7 @@ impl Timeline {
     ) -> Result<Self> {
         let tb = TimeBase::new(stream.time_base())?;
         let declared = [stream.avg_frame_rate(), stream.rate()];
-        let scan = scan_video(path, stream.index())?;
+        let scan = crate::index_cache::scan_video_cached(path, stream.index())?;
         let fps = detect_fps(&scan.raw_pts, tb, &declared);
         let (duration, pts_index) = match fps {
             Some(fps) => (

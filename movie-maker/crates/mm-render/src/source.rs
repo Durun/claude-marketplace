@@ -60,6 +60,12 @@ impl SourcePool {
         self.sources.clear();
     }
 
+    /// 素材 ID が `ids` にあるものだけ閉じる。素材の中身やパスが変わったとき。
+    pub fn forget(&mut self, ids: &[String]) {
+        self.sources
+            .retain(|id, _| !ids.iter().any(|i| i == id.as_str()));
+    }
+
     /// 評価済みのパラメータの `AssetRef` の素材を返す（無ければ開く）。`AssetRef` が無いか空なら `None`。
     pub fn footage_for<'s>(
         &'s mut self,
