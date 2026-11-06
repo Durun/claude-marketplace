@@ -170,6 +170,8 @@ export type LogSummary = {
   bgTasks: Map<string, BgTaskLog>;
   /** 結果が届くまでの、バックグラウンドのツール呼び出し。キーは tool_use の id。 */
   pendingBg: Map<string, Pick<BgTaskLog, 'kind' | 'description' | 'command' | 'startedAt'>>;
+  /** このログが動かしていないタスクの終わり。サブエージェントが返し終えた後の通知は、親のログにだけ届く。 */
+  bgEnded: Map<string, Pick<BgTaskLog, 'status' | 'summary'>>;
   /** claude.ai に公開した artifact。キーは URL で、同じ URL に公開し直したら新しいほうを残す。 */
   artifacts: Map<string, Artifact>;
 };
@@ -216,7 +218,9 @@ type LogEntry = {
   /** queued_command は、作業中に届いた依頼とタスク通知。誰から届いたかを origin に持つ。 */
   attachment?: SkillListing & { prompt?: string; origin?: { kind?: string } };
   /** shell は backgroundTaskId、Monitor は taskId に、動かしたタスクの id を持つ。 */
-  toolUseResult?: { backgroundTaskId?: string; taskId?: string };
+  toolUseResult?: { backgroundTaskId?: string; taskId?: string; task_id?: string; message?: string };
+  /** queue-operation エントリが持つ、待ち行列に積んだ依頼や通知の文。 */
+  content?: unknown;
   /** frame-link エントリが持つ、公開した artifact の URL と題名と元のファイル。 */
   frameUrl?: string;
   /** 使用制限で断られたときに、Claude Code が合成した発言に添える理由と、リセットの時刻（epoch 秒）。 */
@@ -245,6 +249,7 @@ const emptySummary = (): LogSummary => ({
   skills: new Map(),
   bgTasks: new Map(),
   pendingBg: new Map(),
+  bgEnded: new Map(),
   artifacts: new Map(),
 });
 
@@ -308,8 +313,21 @@ const rememberBg = (s: LogSummary, b: ContentBlock, ts: number | undefined): voi
   s.pendingBg.set(b.id, { kind, description: str(input.description), command: str(input.command), startedAt: ts });
 };
 
+const endBg = (s: LogSummary, id: string, status: BgTask['status'], summary?: string): void => {
+  const t = s.bgTasks.get(id);
+  if (t) Object.assign(t, { status, summary });
+  else s.bgEnded.set(id, { status, summary });
+};
+
+/** TaskStop で止めたタスクには、終わった通知が届かない。 */
+const applyTaskStop = (s: LogSummary, e: LogEntry): void => {
+  const { task_id: id, message } = e.toolUseResult ?? {};
+  if (id && message?.startsWith('Successfully stopped')) endBg(s, id, 'killed');
+};
+
 /** ツールの結果に載るタスクの id を、呼び出したときの入力と結びつける。 */
 const applyBgResult = (s: LogSummary, e: LogEntry): void => {
+  applyTaskStop(s, e);
   const id = e.toolUseResult?.backgroundTaskId ?? e.toolUseResult?.taskId;
   const content = e.message?.content;
   if (!id || !Array.isArray(content)) return;
@@ -328,14 +346,13 @@ const BG_STATUSES = new Set<string>(['completed', 'failed', 'killed', 'stopped']
 const applyNotifications = (s: LogSummary, text: string): void => {
   for (const [, body = ''] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
     const tag = (name: string): string | undefined => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(body)?.[1];
-    const t = s.bgTasks.get(tag('task-id') ?? '');
-    if (!t) continue;
+    const id = tag('task-id') ?? '';
     const status = tag('status');
-    if (status && BG_STATUSES.has(status)) {
-      t.status = status as BgTask['status'];
-      t.summary = tag('summary');
-    }
-    t.outputFile ??= tag('output-file');
+    if (status && BG_STATUSES.has(status)) endBg(s, id, status as BgTask['status'], tag('summary'));
+    // 期限が切れた Monitor の通知は、イベントの通知と同じ形で status を持たない。
+    else if (tag('event')?.startsWith('[Monitor expired')) endBg(s, id, 'stopped', tag('summary'));
+    const t = s.bgTasks.get(id);
+    if (t) t.outputFile ??= tag('output-file');
   }
 };
 
@@ -477,7 +494,8 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
     applyNotifications(s, e.attachment.prompt ?? '');
     // 作業中に届いた依頼は、user のエントリにならず、ターンの途中に差し込まれた記録だけが残る。ターンの途中へは巻き戻させないので、親を渡さない。
     applyRequest(s, { origin: e.attachment.origin, message: { content: e.attachment.prompt } }, ts);
-  } else if (e.type === 'system' && e.subtype === 'turn_duration') s.turnEndedAt = ts;
+  } else if (e.type === 'queue-operation' && typeof e.content === 'string') applyNotifications(s, e.content);
+  else if (e.type === 'system' && e.subtype === 'turn_duration') s.turnEndedAt = ts;
   if (e.type !== 'user' && e.type !== 'assistant') return;
   s.turnEndedAt = undefined;
   if (e.cwd) s.cwd = e.cwd;
@@ -600,6 +618,15 @@ const subagentLogs = (transcript: string): string[] => {
   return listDir(dir)
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => path.join(dir, f));
+};
+
+/** セッションとサブエージェントのログが動かしたタスク。ほかのログに届いた終わりの通知も当てる。 */
+export const backgroundOf = (logs: LogSummary[]): BgTaskLog[] => {
+  const ended = new Map(logs.flatMap((l) => [...l.bgEnded]));
+  return logs.flatMap((l) => [...l.bgTasks.values()]).map((t) => {
+    const end = t.status === 'running' ? ended.get(t.id) : undefined;
+    return end ? { ...t, ...end } : t;
+  });
 };
 
 export const readSubagents = (transcript: string): SubagentLog[] =>

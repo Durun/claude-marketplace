@@ -215,7 +215,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     lastMessageAt: log?.lastMessageAt,
     tasks: claude.readTasks(meta.id),
     subagents: subs.map((s) => toSubagent(s, !!live)),
-    background: [log, ...subs.map((s) => s.log)].flatMap((l) => [...(l?.bgTasks.values() ?? [])].map((t) => toBgTask(t, !!live))),
+    background: claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, !!live)),
     pr,
     prs,
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),
