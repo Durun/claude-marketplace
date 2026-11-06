@@ -15,6 +15,22 @@ use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::GpuHelper;
 use mm_types::{RationalTime, Result, RgbaImage, TimeRange};
 
+/// この環境でデコーダーが使えるか。`check` は GPU の文脈を作って基本の素材を開く試し（結果はプロセスで 1 回だけ得る）。
+/// 使えなければ eprintln して `false`（テストは飛ばす）。`MM_REQUIRE_GPU` があるときは失敗にする。
+pub fn gpu_available(check: impl FnOnce() -> Result<()>) -> bool {
+    static OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OK.get_or_init(|| match check() {
+        Ok(()) => true,
+        Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
+            panic!("MM_REQUIRE_GPU が有るのにデコーダーを使えない: {e}")
+        }
+        Err(e) => {
+            eprintln!("GPU のデコーダーを使えないので飛ばす: {e}");
+            false
+        }
+    })
+}
+
 /// 番号の箱の数と、1 つの箱の一辺（画素）。
 pub const BIT_COUNT: u32 = 16;
 pub const BIT_SIZE: u32 = 16;
@@ -268,4 +284,104 @@ pub fn distinct_in_row(image: &RgbaImage, y: u32) -> usize {
     values.sort_unstable();
     values.dedup();
     values.len()
+}
+
+/// 元の素材（`fixtures/media/generate.sh` の生成物）の置き場に、派生した素材を無ければ ffmpeg の CLI で作る。
+/// `lavfi` は入力の式、`encode` は出力の引数。テストのプロセスが同時に作っても壊れないよう、別名で書いてから置く。
+pub fn derived_fixture(name: &str, lavfi: &str, encode: &[&str]) -> PathBuf {
+    let out = media_root().join("out");
+    let target = out.join(name);
+    if target.exists() {
+        return target;
+    }
+    std::fs::create_dir_all(&out).expect("out/ を作れた");
+    let tmp = out.join(format!("{}.{}.tmp.mp4", name, std::process::id()));
+    let status = Command::new("ffmpeg")
+        .args(["-y", "-v", "error", "-f", "lavfi", "-i", lavfi])
+        .args(encode)
+        .arg(&tmp)
+        .status()
+        .expect("ffmpeg の CLI を起動できた");
+    assert!(status.success(), "{name} を作れた");
+    if std::fs::rename(&tmp, &target).is_err() {
+        // 別のプロセスが先に置いた
+        let _ = std::fs::remove_file(&tmp);
+    }
+    target
+}
+
+/// 伝達特性を PQ か HLG と宣言した素材（中身は単色）。`trc` は ffmpeg の `-color_trc` の名前。
+pub fn hdr_transfer_fixture(trc: &str) -> PathBuf {
+    derived_fixture(
+        &format!("trc_{trc}.mp4"),
+        &format!(
+            "color=c=0x606060:s=320x180:r=30,format=yuv420p,\
+             setparams=color_primaries=bt2020:color_trc={trc}:colorspace=bt2020nc,trim=end_frame=10"
+        ),
+        &[
+            "-c:v",
+            "libx264",
+            "-crf",
+            "12",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            trc,
+            "-colorspace",
+            "bt2020nc",
+        ],
+    )
+}
+
+/// 色差だけが左から右へなだらかに増える素材（輝度は一定）。色差の補間の確認に使う。
+pub fn chroma_ramp_fixture() -> PathBuf {
+    derived_fixture(
+        "chroma_ramp.mp4",
+        "color=c=gray:s=320x240:r=30,format=yuv420p,geq=lum=128:cb='255*X/W':cr=128,trim=end_frame=3",
+        &[
+            "-c:v",
+            "libx264",
+            "-crf",
+            "8",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+        ],
+    )
+}
+
+/// 色差の傾きの行で、隣り合う画素の青が同じ値になる割合。最近傍で 2 倍に広げると 2 画素ずつ同じ値になって半分ほど、
+/// 線形に補間すれば 1 割に満たない。
+pub fn equal_neighbor_ratio(image: &RgbaImage, y: u32) -> f32 {
+    // 傾きの両端は符号化で平らにつぶれるので、傾きが一定の中ほどだけを見る
+    let (from, to) = (100, 230);
+    let same = (from..to - 1)
+        .filter(|x| (image.pixel(*x, y).b - image.pixel(x + 1, y).b).abs() < 1e-6)
+        .count();
+    same as f32 / (to - from - 1) as f32
+}
+
+/// 別のスレッドが同じキューに提出し続ける間 `f` を実行する。デコーダーが積む待ちが
+/// 別のスレッドの提出に奪われないことの確認に使う。
+pub fn with_background_submits<T>(ctx: &GpuContext, f: impl FnOnce() -> T) -> T {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !stop.load(Ordering::Relaxed) {
+                ctx.queue.submit([]);
+                std::thread::yield_now();
+            }
+        });
+        let result = f();
+        stop.store(true, Ordering::Relaxed);
+        result
+    })
 }

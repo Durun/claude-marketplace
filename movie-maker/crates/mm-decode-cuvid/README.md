@@ -25,7 +25,7 @@ cargo test -p mm-decode-cuvid --features cuvid
 4. 共有バッファをストレージバッファとして読む描画パスが、`Rgba16Float`（線形、premultiplied）の `GpuFrameTexture` に変える。
 5. FFmpeg の面（CUDA のメモリ）は、コピーの完了までだけ握る（`shared/release.rs`）。
 
-時間軸（PTS の索引、VFR）、シーク、変換の係数は `mm-decode-d3d12va/src/shared/` と同じソースを `#[path]` で取り込む。音は無音を返す（`mm-runtime` が FFmpeg の音を付ける）。
+時間軸（PTS の索引、VFR）、シーク、行列は `mm-decode-ffmpeg-core`、変換の係数、描画パス、キューの待ちは `mm-decode-hw` を使う（[RFC 0007](../../docs/rfcs/0007-decode-shared-crates.md)）。音は無音を返す（`mm-runtime` が FFmpeg の音を付ける）。
 
 ## テスト
 
