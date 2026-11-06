@@ -1,17 +1,21 @@
 //! 期待画像のテスト。各種類の見本の絵を `fixtures/golden/<バックエンド>/` の PNG と比べる（`mm_testkit::golden`）。
 //! 更新は `cargo xtask golden-update`。GPU が無い環境と、期待画像のフォルダーが無いバックエンドではスキップする。
+//! `MM_GOLDEN_BACKEND=warp` のときは WARP のアダプターを選ぶ（CI の WARP と、手元で WARP の期待画像を作るとき）。
 
 mod common;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use common::{
     comp, dissolve, effect, gpu, layer, project, render_at, renderer, seconds, shader, solid,
 };
 use mm_doc::{Asset, Cut, Node, Project, Sequence};
+use mm_gpu::enumerate_adapters;
+use mm_render::{GpuContext, GpuRequest};
 use mm_testkit::decode::SampleMedia;
-use mm_testkit::fixtures::SAMPLE_ASSET_PATH;
-use mm_testkit::golden::{backend_name, Golden, GOLDEN_SIZE};
+use mm_testkit::fixtures::{invert_lut_asset, INVERT_LUT_ID, SAMPLE_ASSET_PATH};
+use mm_testkit::golden::{backend_name, Golden, BACKEND_ENV, GOLDEN_SIZE};
 use mm_types::{ColorSpace, Id, ParamValue, RationalTime, Rgba};
 
 /// 見本の絵: 上段に 6 色のパッチ、中段に線形の灰色のランプ、下段に肌色と暗部のパッチ。`p0` は動く縦線の明るさ、
@@ -98,8 +102,29 @@ fn two_cuts() -> Project {
 }
 
 /// 見本の絵を描いて、期待画像 `name` と比べる。
+/// WARP のアダプターの名前（D3D12 のソフトウェアの GPU）。
+const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
+
+/// 期待画像を描く GPU。`MM_GOLDEN_BACKEND=warp` のときは、実機の GPU がある PC でも WARP を選ぶ
+/// （`cargo xtask golden-update --backend warp` で WARP の期待画像を作れるように）。
+fn golden_gpu() -> Option<Arc<GpuContext>> {
+    if std::env::var(BACKEND_ENV).as_deref() != Ok("warp") {
+        return gpu();
+    }
+    let adapter = enumerate_adapters()
+        .into_iter()
+        .find(|a| a.name == WARP_ADAPTER)
+        .expect("WARP のアダプターが無い");
+    let request = GpuRequest {
+        adapter: Some(adapter),
+        backends: wgpu::Backends::DX12,
+        ..GpuRequest::default()
+    };
+    Some(GpuContext::shared(&request).expect("WARP のコンテキストを作れる"))
+}
+
 fn check(name: &str, project: &Project, t: RationalTime) {
-    let Some(ctx) = gpu() else { return };
+    let Some(ctx) = golden_gpu() else { return };
     let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
     let actual = Path::new(env!("CARGO_TARGET_TMPDIR")).join("golden-actual");
@@ -142,14 +167,12 @@ fn color_cdl_の見本() {
 
 #[test]
 fn color_lut_の見本() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/luts/invert.cube"
-    );
     let node = Node::new("color.lut", 1)
-        .with_param("path", ParamValue::Text(path.into()))
+        .with_param("lut", ParamValue::AssetRef(Id::new(INVERT_LUT_ID)))
         .with_param("input_space", ParamValue::Choice("srgb".into()));
-    check("color-lut", &effect_on_card(node), seconds(1));
+    let mut p = effect_on_card(node);
+    p.assets.push(invert_lut_asset());
+    check("color-lut", &p, seconds(1));
 }
 
 #[test]

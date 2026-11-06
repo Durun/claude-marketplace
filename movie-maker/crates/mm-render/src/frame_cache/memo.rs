@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mm_cache_api::{CacheKey, CacheKind, ContentHash};
 
-use crate::FrameCacheKey;
+use mm_render_api::FrameCacheKey;
 
 /// 覚える値の大きさ。メモリの上限の数え方。
 pub trait Weighted {
@@ -209,16 +209,14 @@ impl<V> Slot<V> {
     }
 }
 
-impl FrameCacheKey {
-    /// ディスクのキャッシュ（`CacheStore`）に置くときのキー。素材があるときはその `contentHash` の下に置くので、
-    /// プロジェクトを別の場所にコピーしても当たる。素材が無いものは `digest` の 16 進の下に置く。
-    pub fn store_key(&self) -> CacheKey {
-        let digest = format!("{:016x}", self.digest());
-        CacheKey {
-            kind: CacheKind::Frame,
-            content_hash: ContentHash(self.content_hash.clone().unwrap_or_else(|| digest.clone())),
-            variant: digest,
-        }
+/// ディスクのキャッシュ（`CacheStore`）に置くときのキー。素材があるときはその `contentHash` の下に置くので、
+/// プロジェクトを別の場所にコピーしても当たる。素材が無いものは `digest` の 16 進の下に置く。
+pub(crate) fn store_key(key: &FrameCacheKey) -> CacheKey {
+    let digest = format!("{:016x}", key.digest());
+    CacheKey {
+        kind: CacheKind::Frame,
+        content_hash: ContentHash(key.content_hash.clone().unwrap_or_else(|| digest.clone())),
+        variant: digest,
     }
 }
 
@@ -331,11 +329,11 @@ mod tests {
 
     #[test]
     fn ディスクのキーは素材の_content_hash_の下に置く() {
-        let k = key(7).store_key();
+        let k = store_key(&key(7));
         assert_eq!(k.content_hash.0, "abc");
         assert_eq!(k.variant, format!("{:016x}", key(7).digest()));
         let mut none = key(7);
         none.content_hash = None;
-        assert_eq!(none.store_key().content_hash.0, none.store_key().variant);
+        assert_eq!(store_key(&none).content_hash.0, store_key(&none).variant);
     }
 }

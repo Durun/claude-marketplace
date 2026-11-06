@@ -1,0 +1,30 @@
+{
+  "schema_version": 5,
+  "assets": [],
+  "compositions": [
+    {
+      "id": "c1",
+      "width": 320,
+      "height": 180,
+      "fps": { "num": 30, "den": 1 },
+      "duration": { "num": 10, "den": 1 },
+      "layers": [
+        {
+          "id": "l1",
+          "start": { "num": 0, "den": 1 },
+          "in": { "num": 0, "den": 1 },
+          "out": { "num": 4, "den": 1 },
+          "opacity": { "value": { "type": "number", "value": 1.0 } },
+          "source": { "kind": "solid", "version": 1, "params": {} }
+        }
+      ],
+      "markers": [
+        { "id": "m1", "time": { "num": 1, "den": 1 }, "duration": { "num": 0, "den": 1 }, "name": "first" },
+        { "id": "m2", "time": { "num": 1001, "den": 1000 }, "duration": { "num": 0, "den": 1 }, "name": "same time" },
+        { "id": "m3", "time": { "num": 5, "den": 1 }, "duration": { "num": 0, "den": 1 }, "name": "later" }
+      ]
+    }
+  ],
+  "sequences": [],
+  "render_targets": []
+}

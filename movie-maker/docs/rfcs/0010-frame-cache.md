@@ -35,20 +35,26 @@
 
 | 足したもの | 内容 |
 |---|---|
-| `Memo<V>`、`Weighted`、`Evicted`、`Dropped`、`MemoStats` | キーで引く覚え。メモリの上限（`weight_bytes` の合計）で、触った順に古いものから追い出す。追い出した値は呼んだ側へ返す |
-| `Memo::invalidate(ids)` | `ids` のどれかに頼った値だけを捨てて返す |
-| `FrameCacheKey::store_key()` | ディスクのキャッシュのキー。素材があれば `contentHash` の下、無ければ `digest` の 16 進の下 |
 | `digest_bytes(bytes)` | FNV-1a。`input_keys` に中身の指紋を入れるのに使う |
 | `Renderer::invalidate_touched(ids)` | 既定は何もしない。操作の `touches` に頼ったキャッシュを捨て、素材 ID が入っていればその素材だけ閉じる |
-| 依存 | `mm-cache-api` |
 
 `Scheduler` の `prioritize`（先読みの順）は変えていない。
+
+### `mm-render` の覚え（`frame_cache::memo`）
+
+API クレートは impl を持たないので、覚えの実装はレンダラーの側に置く（RFC 0013 で `mm-render-api` から移した）。
+
+| もの | 内容 |
+|---|---|
+| `Memo<V>`、`Weighted`、`Evicted`、`Dropped`、`MemoStats` | キーで引く覚え。メモリの上限（`weight_bytes` の合計）で、触った順に古いものから追い出す。追い出した値は呼んだ側へ返す。`MemoStats` は `mm_render::MemoStats` |
+| `Memo::invalidate(ids)` | `ids` のどれかに頼った値だけを捨てて返す |
+| `store_key(key)` | ディスクのキャッシュのキー。素材があれば `contentHash` の下、無ければ `digest` の 16 進の下 |
 
 ### `mm-render`
 
 - `kind_image`（レイヤーの画像）と `nested_image`（入れ子のコンポジションの画像）が `Memo` を引く。決定的でない種類は覚えない。
-- レイヤーの画像のキー: 種類・版・評価済みのパラメータ・画布の大きさ・領域・品質・色の変換とデコーダーの名前・素材の `contentHash`・素材のフレームの番号（素材が無く時間で変わる種類は正確な時刻）。頼る ID はレイヤーと素材。
-- 入れ子の画像のキー: 上に加えて、入れ子の先までのコンポジションの JSON と素材のハッシュの指紋。頼る ID は入れ子の先までのコンポジション・レイヤー・素材。描けなかったレイヤーがあった画像は覚えない。
+- レイヤーの画像のキー: 種類・版・評価済みのパラメータ・画布の大きさ・領域・品質・色の変換の設定の指紋と素材を読むデコーダーの実装（RFC 0013）・素材の `contentHash`・素材のフレームの番号（素材が無く時間で変わる種類は正確な時刻）。頼る ID はレイヤーと素材。
+- 入れ子の画像のキー: 上に加えて、入れ子の先までのコンポジションの JSON と、レイヤー・効果・カット・トランジションが参照する素材のハッシュとデコーダーの実装の指紋。頼る ID は入れ子の先までのコンポジション・レイヤー・効果・素材。効果も含めて決定的でない種類があるか、描けなかったレイヤーがあった画像は覚えない。
 - 覚えるのはレンダラーが持つ GPU のテクスチャ。デコーダーが借用したフレームは、`Rgba16Float` で `COPY_SRC` があれば GPU でコピーして覚え、そうでなければ覚えない。
 - `FrameCacheConfig { memory_bytes, store }`（既定は 1 GiB、退避先なし）と `WgpuRenderer::with_frame_cache`。
 - `invalidate(composition, range)`: そのコンポジションに頼った入れ子の画像だけ捨てる。素材は閉じない（範囲は見ない。時刻はキーに入っている）。

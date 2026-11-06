@@ -133,6 +133,10 @@ impl SplitDecoder {
 }
 
 impl Decoder for SplitDecoder {
+    fn backend_id(&self) -> Option<&'static str> {
+        self.video.backend_id()
+    }
+
     fn info(&self) -> &MediaInfo {
         &self.info
     }

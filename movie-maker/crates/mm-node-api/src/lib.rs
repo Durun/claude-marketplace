@@ -17,6 +17,7 @@
 //! - `render` の `Err` はそのレイヤーだけ透明とフラグ（レンダラーの契約。種類は `Err` を返すだけでよい）。
 
 use std::any::Any;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,7 +27,9 @@ use mm_audio_api::AudioBlock;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{FrameSource, GpuFrameHandle};
 use mm_text_api::{TextRasterizer, TextShaper};
-use mm_types::{ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange};
+use mm_types::{
+    AssetId, ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange,
+};
 
 /// インターフェースのバージョン。`NodeKind` の形を変えたら上げる（RFC）。
 pub const NODE_API_VERSION: u32 = 1;
@@ -188,6 +191,11 @@ pub trait InputFrames {
     /// 入力が無いか。
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+    /// 素材（`ParamValue::AssetRef`）のファイルのパス。素材を読む種類（`color.lut` の `.cube`）が使う。
+    /// プロジェクトのデータを持つレンダラーが答え、引けない素材と、素材を渡さない呼び手は `None`。
+    fn asset_path(&self, _id: &AssetId) -> Option<PathBuf> {
+        None
     }
 }
 

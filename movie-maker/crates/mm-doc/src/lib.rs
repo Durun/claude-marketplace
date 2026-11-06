@@ -21,10 +21,12 @@ use mm_types::{
 ///   キーフレームのイージングとベジェ、コンポジションのマーカー、`sequences`。
 ///   v3 のマーカーは同じ時刻を持てた。
 /// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
-pub const SCHEMA_VERSION: u32 = 4;
+/// - v5: `color.lut` の LUT は素材（`lut` の `AssetRef`）。v4 の `path` はその場所の素材（`contentHash` は空）に移す。
+pub const SCHEMA_VERSION: u32 = 5;
 
 mod layer;
 mod migrate;
+mod migrate_lut;
 mod node;
 mod param;
 mod sequence;

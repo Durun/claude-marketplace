@@ -4,28 +4,36 @@
 //! 中にあるうちは読めない。呼ぶ前に積んだコマンドを提出する（[`WgpuRenderer::flush`]）。
 
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 
-use mm_doc::Layer;
+use mm_doc::{Layer, Project};
 use mm_eval::node_params_at;
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, GpuTexture, InputFrames, NodeKind};
-use mm_types::{MmError, Params, RationalTime, Result, Size};
+use mm_types::{AssetId, MmError, Params, RationalTime, Result, Size};
 
 use crate::layers::{CompCx, LayerImage};
 use crate::renderer::WgpuRenderer;
 
-/// 入力の列を、時刻によらず同じフレームで返す。
-struct FrameList(Vec<FrameRef>);
+/// 入力の列を、時刻によらず同じフレームで返す。素材のパスはプロジェクトのデータから引く。
+struct FrameList<'p> {
+    frames: Vec<FrameRef>,
+    project: &'p Project,
+}
 
-impl InputFrames for FrameList {
+impl InputFrames for FrameList<'_> {
     fn frame(&mut self, index: usize, _t: RationalTime) -> Result<FrameRef> {
-        self.0
+        self.frames
             .get(index)
             .cloned()
             .ok_or_else(|| MmError::NotFound(format!("入力 {index} は無い")))
     }
 
     fn len(&self) -> usize {
-        self.0.len()
+        self.frames.len()
+    }
+
+    fn asset_path(&self, id: &AssetId) -> Option<PathBuf> {
+        self.project.asset(id).ok().map(|a| PathBuf::from(&a.path))
     }
 }
 
@@ -51,6 +59,8 @@ impl WgpuRenderer {
         let done = std::mem::replace(encoder, fresh);
         self.gpu.before_submit();
         ctx.queue.submit([done.finish()]);
+        // 提出した後なので、それまでに手放した中間のテクスチャを使い回してよい。
+        self.gpu.recycle();
     }
 
     /// 入力のテクスチャを与えて種類を呼び、出力のテクスチャの番号を返す。透明なら `None`。
@@ -63,7 +73,10 @@ impl WgpuRenderer {
     ) -> Result<Option<u64>> {
         self.flush(encoder);
         let Self { gpu, services, .. } = self;
-        let mut inputs = FrameList(run.inputs.iter().cloned().map(FrameRef::Gpu).collect());
+        let mut inputs = FrameList {
+            frames: run.inputs.iter().cloned().map(FrameRef::Gpu).collect(),
+            project: cx.project,
+        };
         let mut frame_cx = FrameCx {
             time: cx.t,
             params: run.params,

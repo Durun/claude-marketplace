@@ -1,6 +1,18 @@
 //! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の画像との行き来は f32 と f16 の変換で行う。
 //! デコーダーから借用したフレームは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
 //! 使い終えたテクスチャとリードバックのバッファは大きさごとに取り置き、毎フレームの確保を避ける。
+//!
+//! # 取り置きと提出の順序
+//!
+//! 呼び手（レンダラー）はパスを 1 つのコマンドに積んでから提出するが、`fill`・`upload`・種類の自前のパスは
+//! その場で提出する。後から提出したものほど GPU で後に走るという順序だけが保証される。そこで次を決まりにする。
+//!
+//! - `release_id` で手放したテクスチャは「提出待ち」に置き、`create` は使い回さない。積んだまま提出していない
+//!   コマンドが、まだそのテクスチャを読むかもしれないため。
+//! - 呼び手は積んだコマンドを提出した直後に `recycle`（フレームの終わりは `after_submit`。中で `recycle` を呼ぶ）を
+//!   呼ぶ。それまでに手放したテクスチャがここで取り置きに入り、次の `create` から使い回せる。以後の書き込みは
+//!   提出済みのコマンドより後に走るので、読み終えた後になる。
+//! - コマンドを積まずにその場で提出する呼び手は、手放した後に `recycle` を呼んでよい。
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -24,6 +36,8 @@ const CHANNELS: usize = 4;
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 /// 大きさごとに取り置く空きのテクスチャの上限。入れ子の深い合成でも足りる数。
 const MAX_FREE_TEXTURES: usize = 8;
+/// 提出待ちに置くテクスチャの上限。1 フレームで手放す中間のテクスチャ（入れ子とシーケンスの深さの分）に足りる数。
+const MAX_RELEASED_TEXTURES: usize = 64;
 /// 取り置くリードバックのバッファの上限。先行させる読み戻し（2〜3 枚）に足りる数。
 const MAX_FREE_BUFFERS: usize = 4;
 
@@ -40,6 +54,8 @@ pub struct WgpuGpu {
     imported: HashSet<u64>,
     /// 解放された中間形式のテクスチャ。大きさごとに取り置く。
     free: HashMap<(u32, u32), Vec<wgpu::Texture>>,
+    /// 手放したが、読むコマンドがまだ提出されていないかもしれないテクスチャ。`recycle` で `free` に移す。
+    released: Vec<wgpu::Texture>,
     /// 読み終えたリードバックのバッファ。バイト数ごとに取り置く。
     free_buffers: HashMap<u64, Vec<wgpu::Buffer>>,
 }
@@ -68,6 +84,7 @@ impl WgpuGpu {
             borrowed: Vec::new(),
             imported: HashSet::new(),
             free: HashMap::new(),
+            released: Vec::new(),
             free_buffers: HashMap::new(),
         }
     }
@@ -97,7 +114,7 @@ impl WgpuGpu {
         self.textures.len()
     }
 
-    /// 番号のテクスチャを手放す。中間形式のものは取り置き、借用したものは返す。
+    /// 番号のテクスチャを手放す。中間形式のものは提出待ちに置き（`recycle` で取り置きに入る）、借用したものは返す。
     pub fn release_id(&mut self, id: u64) {
         let Some(texture) = self.textures.remove(&id) else {
             return;
@@ -105,12 +122,22 @@ impl WgpuGpu {
         if self.imported.remove(&id) {
             return;
         }
-        let free = self
-            .free
-            .entry((texture.width(), texture.height()))
-            .or_default();
-        if free.len() < MAX_FREE_TEXTURES {
-            free.push(texture);
+        // 提出しない呼び手でも溜まり続けないよう、上限を超えた分は取り置かずに捨てる。
+        if self.released.len() < MAX_RELEASED_TEXTURES {
+            self.released.push(texture);
+        }
+    }
+
+    /// 積んだコマンドを提出した直後に呼ぶ。それまでに手放したテクスチャを取り置きに入れ、使い回せるようにする。
+    pub fn recycle(&mut self) {
+        for texture in self.released.drain(..) {
+            let free = self
+                .free
+                .entry((texture.width(), texture.height()))
+                .or_default();
+            if free.len() < MAX_FREE_TEXTURES {
+                free.push(texture);
+            }
         }
     }
 
@@ -125,12 +152,13 @@ impl WgpuGpu {
         }
     }
 
-    /// `submit` の直後。借用したフレームを返す（デコーダーのプールが空く）。
+    /// `submit` の直後。借用したフレームを返し（デコーダーのプールが空く）、手放したテクスチャを取り置く。
     pub fn after_submit(&mut self) {
         for (id, _) in self.borrowed.drain(..) {
             self.textures.remove(&id);
             self.imported.remove(&id);
         }
+        self.recycle();
     }
 
     fn insert(&mut self, texture: wgpu::Texture) -> u64 {

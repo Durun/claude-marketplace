@@ -23,6 +23,22 @@ pub const VERTICAL_IN_SECONDS: i64 = 3;
 pub const VERTICAL_DURATION_SECONDS: i64 = 2;
 /// 縦の 1 本で載せる文字。
 pub const VERTICAL_TEXT: &str = "Hello";
+/// 色を反転する 3D LUT（`fixtures/luts/invert.cube`）の素材の ID。
+pub const INVERT_LUT_ID: &str = "invert-lut";
+
+/// 色を反転する 3D LUT の素材。`color.lut` の `lut` に `AssetRef(INVERT_LUT_ID)` で渡す。
+pub fn invert_lut_asset() -> Asset {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/luts/invert.cube");
+    Asset {
+        id: Id::new(INVERT_LUT_ID),
+        path: path.to_string_lossy().into_owned(),
+        content_hash: "invertcube000000".into(),
+        color_space: ColorSpace::working(),
+        duration: RationalTime::ZERO,
+        fps: None,
+        timebase_offset: RationalTime::ZERO,
+    }
+}
 
 /// モックのインターフェースの一式。
 pub fn sample_services() -> Services {

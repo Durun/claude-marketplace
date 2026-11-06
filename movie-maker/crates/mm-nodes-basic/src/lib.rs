@@ -30,7 +30,7 @@ use std::sync::Arc;
 use mm_node_api::NodeKind;
 
 pub use color::{ColorAdjustKind, ColorCdlKind};
-pub use color_lut::{ColorConvertKind, ColorLutKind};
+pub use color_lut::{ColorConvertKind, ColorLutKind, LUT_PARAM};
 pub use composition::{CompositionKind, COMPOSITION_PARAM};
 pub use footage::{FootageKind, ImageKind};
 pub use sequence::{SequenceKind, SEQUENCE_PARAM};
