@@ -122,14 +122,22 @@ fn 半分の長さは延ばす側の素材の余白で切る() {
         },
         _ => Handles::UNLIMITED,
     };
-    assert_eq!(fade_with(&seq, at(3, 2), &handles), None, "境の 0.25 秒より前");
+    assert_eq!(
+        fade_with(&seq, at(3, 2), &handles),
+        None,
+        "境の 0.25 秒より前"
+    );
     let f = fade_with(&seq, secs(2), &handles).unwrap();
     assert!((f.progress - 0.5).abs() < 1e-6, "{f:?}");
     let none = |_: &Cut| Handles {
         head: 0.0,
         tail: 0.0,
     };
-    assert_eq!(fade_with(&seq, secs(2), &none), None, "余白が無ければ掛けない");
+    assert_eq!(
+        fade_with(&seq, secs(2), &none),
+        None,
+        "余白が無ければ掛けない"
+    );
 }
 
 #[test]
@@ -144,8 +152,7 @@ fn 素材の余白はイン点の前と出の後ろ_速さで割る() {
         fps: None,
         timebase_offset: RationalTime::ZERO,
     });
-    let node =
-        Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
+    let node = Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
     let mut cut = Cut::new("a", node, secs(0), secs(4));
     assert_eq!(
         handles_in(&project, &cut),

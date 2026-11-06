@@ -4,7 +4,9 @@
 
 mod common;
 
-use common::{comp, dissolve, effect, gpu, layer, project, render_at, renderer, seconds, solid};
+use common::{
+    comp, dissolve, effect, gpu, layer, project, render_at, renderer, seconds, shader, solid,
+};
 use mm_doc::{Cut, Node, Param, Sequence};
 use mm_render::FrameCacheConfig;
 use mm_types::{Id, ParamValue, Rgba, RgbaImage, Size};
@@ -53,7 +55,10 @@ fn nested_with_effect() -> mm_doc::Project {
     );
     let mut top = layer("top", solid(GREEN), 4);
     top.transform.scale = Param::constant(ParamValue::Number(0.5));
-    project(vec![inner, comp("main", SIZE, 4, vec![nested, top])], vec![])
+    project(
+        vec![inner, comp("main", SIZE, 4, vec![nested, top])],
+        vec![],
+    )
 }
 
 #[test]
@@ -61,14 +66,25 @@ fn 入れ子の効果の出力を親の単色が上書きしない() {
     let Some(ctx) = gpu() else { return };
     let p = nested_with_effect();
     // 入れ子だけを描いた画像が正しい色（親の単色が混ざる余地が無い）。
-    let want = pixel(&render_at(&mut renderer(&ctx), &p, "inner", seconds(1), SIZE), 0, 0);
+    let want = pixel(
+        &render_at(&mut renderer(&ctx), &p, "inner", seconds(1), SIZE),
+        0,
+        0,
+    );
     for (name, mut r) in [
         ("キャッシュあり", renderer(&ctx)),
-        ("キャッシュなし", renderer(&ctx).with_frame_cache(no_cache())),
+        (
+            "キャッシュなし",
+            renderer(&ctx).with_frame_cache(no_cache()),
+        ),
     ] {
         for frame in 0..2 {
             let img = render_at(&mut r, &p, "main", seconds(1), SIZE);
-            assert_near(pixel(&img, 0, 0), want, &format!("{name} の {frame} 枚目の隅"));
+            assert_near(
+                pixel(&img, 0, 0),
+                want,
+                &format!("{name} の {frame} 枚目の隅"),
+            );
             let center = pixel(&img, SIZE.width / 2, SIZE.height / 2);
             assert_near(
                 center,
@@ -80,13 +96,17 @@ fn 入れ子の効果の出力を親の単色が上書きしない() {
     }
 }
 
-/// 赤の 2 秒（画布と同じ大きさの入れ子の単色）、青の 2 秒（頭に長さ 2 秒のクロスディゾルブ）。
-/// 出ていくカットが中間のテクスチャを 2 枚手放すので、入ってくるカットの画布と単色の両方が使い回しに当たる。
+/// 青を返すシェーダー。シェーダーの種類も自前のパスをその場で提出する。
+const BLUE_WGSL: &str =
+    "fn mm_main(uv: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.1, 0.2, 0.7, 1.0); }";
+
+/// 赤の 2 秒（画布と同じ大きさの入れ子の単色）、青の 2 秒（シェーダー。頭に長さ 2 秒のクロスディゾルブ）。
+/// 出ていくカットが中間のテクスチャを 2 枚手放すので、入ってくるカットの画布とシェーダーの出力の両方が使い回しに当たる。
 fn two_solid_cuts() -> mm_doc::Project {
     let red = comp("red", SIZE, 4, vec![layer("red-solid", solid(RED), 4)]);
     let nested =
         Node::new("composition", 1).with_param("composition", ParamValue::Text("red".into()));
-    let mut second = Cut::new("b", solid(BLUE), seconds(0), seconds(2));
+    let mut second = Cut::new("b", shader(BLUE_WGSL), seconds(0), seconds(2));
     second.transition_in = Some(dissolve(seconds(2)));
     let seq = Sequence {
         id: Id::new("s"),
@@ -103,10 +123,18 @@ fn シーケンスの出ていくカットの画布を入ってくるカット�
     let Some(ctx) = gpu() else { return };
     let p = two_solid_cuts();
     let mix = |a: f32, b: f32| (a + b) / 2.0;
-    let want = [mix(RED.r, BLUE.r), mix(RED.g, BLUE.g), mix(RED.b, BLUE.b), 1.0];
+    let want = [
+        mix(RED.r, BLUE.r),
+        mix(RED.g, BLUE.g),
+        mix(RED.b, BLUE.b),
+        1.0,
+    ];
     for (name, mut r) in [
         ("キャッシュあり", renderer(&ctx)),
-        ("キャッシュなし", renderer(&ctx).with_frame_cache(no_cache())),
+        (
+            "キャッシュなし",
+            renderer(&ctx).with_frame_cache(no_cache()),
+        ),
     ] {
         for frame in 0..2 {
             let img = render_at(&mut r, &p, "main", seconds(2), SIZE);

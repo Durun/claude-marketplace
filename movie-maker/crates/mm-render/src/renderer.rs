@@ -6,13 +6,13 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixerFactory};
 use mm_decode_api::{DecoderFactory, Encoder};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture, Services};
-use mm_render_api::{AudioRequest, MemoStats, RangeRequest, RenderRequest, Renderer};
+use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::audio::AudioStream;
-use crate::cache::{FrameCacheConfig, RenderCache};
 use crate::compose::Compositor;
 use crate::export::ExportPipe;
+use crate::frame_cache::{FrameCacheConfig, MemoStats, RenderCache};
 use crate::layers::CompCx;
 use crate::source::SourcePool;
 use mm_gpu::{GpuContext, PassTimer, WgpuGpu};
@@ -79,6 +79,11 @@ impl WgpuRenderer {
     /// フレームのキャッシュの数え上げ（引いた回数、当たった回数、大きさ）。
     pub fn frame_cache_stats(&self) -> MemoStats {
         self.cache.stats()
+    }
+
+    /// 追い出した画像のディスクへの退避（別のスレッドで書く）が、ここまでの分だけ終わるまで待つ。
+    pub fn wait_frame_cache_spills(&mut self) {
+        self.cache.wait_spills();
     }
 
     /// 透明にしたレイヤーのエラーを取り出す（フラグの元）。
