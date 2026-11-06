@@ -38,6 +38,7 @@ const fakeStory = (): StoryApi => ({
   range: vi.fn(),
   search: vi.fn().mockResolvedValue([]),
   timelineTime: vi.fn().mockResolvedValue(null),
+  cutTime: vi.fn().mockResolvedValue(null),
   apply: vi.fn().mockResolvedValue({ ok: true, value: {} }),
   seek: vi.fn(),
 });
@@ -77,6 +78,31 @@ describe("Shell の左の列", () => {
     expect(story.overview).toHaveBeenCalledTimes(2);
   });
 
+});
+
+describe("Shell の外からの変更", () => {
+  it("mm:doc-changed が届くと Story と Media が読み直す", async () => {
+    let fire: (e: { payload: unknown }) => void = () => undefined;
+    const off = vi.fn();
+    const listen = vi.fn(async (_event: string, handler: typeof fire) => {
+      fire = handler;
+      return off;
+    });
+    const story = fakeStory();
+    const media = fakeMedia();
+    act(() => render(<Shell sendOp={vi.fn()} media={media} story={story} listen={listen} />, host));
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(listen.mock.calls[0]?.[0]).toBe("mm:doc-changed");
+    const before = [vi.mocked(story.overview).mock.calls.length, vi.mocked(media.list).mock.calls.length];
+    await act(async () => {
+      fire({ payload: { version: 2, txn_id: "x", kind: "op", name: "n", actor: "cli", touched: [] } });
+    });
+    expect(vi.mocked(story.overview).mock.calls.length).toBe((before[0] ?? 0) + 1);
+    expect(vi.mocked(media.list).mock.calls.length).toBe((before[1] ?? 0) + 1);
+    act(() => render(null, host));
+    expect(off).toHaveBeenCalled();
+  });
+
   it("Tasks の取り込みの項目は Media を開いてファイルの選択を始める", async () => {
     const media = fakeMedia();
     act(() => render(<Shell sendOp={vi.fn()} media={media} />, host));
@@ -88,6 +114,20 @@ describe("Shell の左の列", () => {
 });
 
 describe("Shell", () => {
+  it("操作が断られたら理由を画面に出す", async () => {
+    const sendOp = vi.fn().mockResolvedValue("setParam: no such layer");
+    act(() => render(<Shell sendOp={sendOp} />, host));
+    act(() => {
+      window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: { layer } }));
+    });
+    const opacity = host.querySelector<HTMLInputElement>('.mm-shell-right [aria-label="opacity"]');
+    await act(async () => {
+      if (opacity) opacity.value = "0.5";
+      opacity?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(host.querySelector(".mm-shell-error")?.textContent).toBe("setParam: no such layer");
+  });
+
   it("右の列の Inspector は選択のイベントでレイヤーを出し、値の変更を sendOp に渡す", () => {
     const sendOp = vi.fn();
     act(() => render(<Shell sendOp={sendOp} />, host));

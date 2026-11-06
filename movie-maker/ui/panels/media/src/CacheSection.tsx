@@ -6,6 +6,8 @@ export interface CacheSectionProps {
   api: MediaApi;
   /** 値が変わるたびに大きさを読み直す（取り込みの後など）。 */
   refreshKey: unknown;
+  /** 取り込み中か。取り込みが作っている途中の出力を消さないよう、その間は掃除を出さない。 */
+  busy?: boolean;
   /** 掃除した後に呼ぶ。素材の状態を読み直すのに使う。 */
   onCleared: () => void;
 }
@@ -39,7 +41,7 @@ const Confirm = ({ folders, onDelete, onCancel }: ConfirmProps) => (
 );
 
 /** `cache/` の大きさと、掃除の入口。 */
-export const CacheSection = ({ api, refreshKey, onCleared }: CacheSectionProps) => {
+export const CacheSection = ({ api, refreshKey, busy = false, onCleared }: CacheSectionProps) => {
   const [info, setInfo] = useState<CacheInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +76,13 @@ export const CacheSection = ({ api, refreshKey, onCleared }: CacheSectionProps) 
         <button
           type="button"
           class="mm-media-button"
-          disabled={clearable.every((f) => f.bytes === 0)}
+          disabled={busy || clearable.every((f) => f.bytes === 0)}
           onClick={() => setConfirming(true)}
         >
           Clean up…
         </button>
       </div>
-      {confirming && (
+      {confirming && !busy && (
         <Confirm folders={clearable} onDelete={clear} onCancel={() => setConfirming(false)} />
       )}
       {error && <p class="mm-media-error">{error}</p>}

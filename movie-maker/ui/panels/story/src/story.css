@@ -108,7 +108,7 @@
 .mm-story-hits {
   margin: 0;
   padding: 0;
-  max-height: calc(var(--mm-size-media-list-min) * 1.2);
+  max-height: var(--mm-size-story-hits-max);
   overflow-y: auto;
   list-style: none;
   border: var(--mm-border-width) solid var(--mm-color-border);
@@ -270,7 +270,7 @@
 }
 
 .mm-story-tag-input {
-  width: calc(var(--mm-size-media-list-min) / 2);
+  width: var(--mm-size-story-tag-input);
   padding-block: 0;
   font-size: var(--mm-font-size-sm);
 }

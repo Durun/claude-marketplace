@@ -31,7 +31,7 @@ export interface MediaState {
 }
 
 /** 素材の一覧、取り込みの進み具合、ドロップの状態を持ち、アプリのイベントを購読する。 */
-export const useMedia = (api: MediaApi, importRequest: number): MediaState => {
+export const useMedia = (api: MediaApi, importRequest: number, refreshKey = 0): MediaState => {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cacheKey, setCacheKey] = useState(0);
@@ -55,7 +55,7 @@ export const useMedia = (api: MediaApi, importRequest: number): MediaState => {
     api.pickFiles().then(startImport).catch(fail);
   }, [api, startImport]);
 
-  useEffect(refresh, [refresh]);
+  useEffect(refresh, [refresh, refreshKey]);
   useEffect(() => {
     if (importRequest > 0) pickAndImport();
   }, [importRequest]);

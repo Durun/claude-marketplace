@@ -10,6 +10,12 @@
   const ASSET_SELECTED_EVENT = "mm:asset-selected";
   // キー操作を再生に渡さない入力部品。値を打つ・選ぶ操作が Space や矢印を使う。
   const TEXT_ENTRY = "input, select, textarea, [contenteditable]";
+  // ボタンや単語などフォーカスを受ける部品。編集のキーはここから送らない（Timeline と Source はネイティブのサーフェスで、キーは Rust 側が受ける）。
+  const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
+  // keys.rs の edit_for と同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
+  const EDIT_KEYS = new Set([
+    "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
+  ]);
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
 
   const CSS = `
@@ -207,9 +213,14 @@
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
     window.addEventListener("keydown", (e) => {
-      if (e.repeat || (e.target instanceof Element && e.target.closest(TEXT_ENTRY))) return;
+      // パネルが処理したキー（単語の矢印など）は二重に送らない。
+      if (e.repeat || e.defaultPrevented) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(TEXT_ENTRY)) return;
+      const key = keyName(e);
+      if (EDIT_KEYS.has(key) && target?.closest(FOCUSABLE)) return;
       if (e.code === "Space") e.preventDefault();
-      invoke("key_event", { source: "webview", key: keyName(e) });
+      invoke("key_event", { source: "webview", key });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {

@@ -53,6 +53,7 @@ const fake = (topics: Topic[] = [], over: Partial<StoryApi> = {}): StoryApi => (
   range: vi.fn().mockResolvedValue({ start: t(1), end: t(4) }),
   search: vi.fn().mockResolvedValue([]),
   timelineTime: vi.fn().mockResolvedValue(2.5),
+  cutTime: vi.fn().mockResolvedValue(7.5),
   apply: vi.fn().mockResolvedValue({ ok: true, value: {} }),
   seek: vi.fn().mockResolvedValue(undefined),
   ...over,
@@ -95,6 +96,43 @@ describe("StoryPanel の表示", () => {
     });
     await mount(api);
     expect(host.querySelector(".mm-story-empty")).not.toBeNull();
+  });
+});
+
+describe("StoryPanel のキーボード", () => {
+  const key = (el: HTMLElement, k: string, init: KeyboardEventInit = {}) => {
+    const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init });
+    act(() => void el.dispatchEvent(e));
+    return e;
+  };
+
+  it("Tab で止まる単語は 1 つだけで、矢印で移る", async () => {
+    await mount(fake());
+    const stops = () => [...host.querySelectorAll(".mm-story-word")].filter((w) => w.getAttribute("tabindex") === "0");
+    expect(stops().length).toBe(1);
+    key(wordEl(0), "ArrowRight");
+    expect(stops()[0]).toBe(wordEl(1));
+    expect(document.activeElement === wordEl(1) || host.contains(document.activeElement)).toBe(true);
+  });
+
+  it("Shift+矢印で範囲を伸ばし、処理したキーは外へ伝えない", async () => {
+    await mount(fake());
+    const outside = vi.fn();
+    window.addEventListener("keydown", outside);
+    key(wordEl(1), "ArrowRight", { shiftKey: true });
+    key(wordEl(2), "ArrowRight", { shiftKey: true });
+    window.removeEventListener("keydown", outside);
+    expect([1, 2, 3].map((i) => wordEl(i).dataset.selected)).toEqual(["true", "true", "true"]);
+    expect(wordEl(0).dataset.selected).toBe("false");
+    expect(outside).not.toHaveBeenCalled();
+  });
+
+  it("Enter で 1 語を選び、Escape で外す", async () => {
+    await mount(fake());
+    key(wordEl(2), "Enter");
+    expect(wordEl(2).dataset.selected).toBe("true");
+    key(wordEl(2), "Escape");
+    expect(wordEl(2).dataset.selected).toBe("false");
   });
 });
 
@@ -248,8 +286,9 @@ describe("StoryPanel の検索と並べる", () => {
     const [op] = sent(api);
     expect(op).toMatchObject({ op: "insertTopics", sequence: "s1", topics: ["t2", "t1"] });
     expect((op as { cuts: string[] }).cuts.length).toBe(2);
-    expect(api.timelineTime).toHaveBeenCalledWith("a1", 1.5);
-    expect(api.seek).toHaveBeenCalledWith(2.5);
+    const [firstCut] = (op as { cuts: string[] }).cuts;
+    expect(api.cutTime).toHaveBeenCalledWith(firstCut);
+    expect(api.seek).toHaveBeenCalledWith(7.5);
     expect(host.querySelector(".mm-story-tray")).toBeNull();
   });
 });

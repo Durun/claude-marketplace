@@ -4,13 +4,13 @@
 use std::sync::Arc;
 
 use mm_ops::{MarkIn, MarkOut, Op};
-use mm_types::RationalTime;
 
 use crate::edit;
 use crate::playback::Command;
 use crate::sequence_edit::{self as plan, Ctx, Planned};
 use crate::source::SourceHandle;
 use crate::state::Shared;
+use crate::timebase;
 
 /// 名前のついた編集。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,26 +48,29 @@ impl EditAction {
     }
 }
 
-/// 編集を実行する。計画は呼び元のスレッドで、適用と結果の待ちは別のスレッドで行う。
+/// 編集を実行する。計画と適用は編集の列（`edit::queue`）で順に行い、呼び元を止めない。
 pub fn run(shared: &Arc<Shared>, action: EditAction) {
-    match action {
-        EditAction::Undo => return shared.send(Command::Undo),
-        EditAction::Redo => return shared.send(Command::Redo),
-        _ => {}
-    }
-    let shared = shared.clone();
-    let spawned = std::thread::Builder::new()
-        .name("edit-action".into())
-        .spawn(move || {
-            let result = plan_and_apply(&shared, action);
-            shared.edit.set_message(result.err().unwrap_or_default());
-        });
-    if let Err(e) = spawned {
-        tracing::warn!(error = %e, "編集のスレッドを作れない");
-    }
+    let s = shared.clone();
+    let job: Box<dyn FnOnce() + Send> = match (action, shared.core.get().is_some()) {
+        (EditAction::Undo | EditAction::Redo, false) => {
+            let undo = action == EditAction::Undo;
+            return shared.send(if undo { Command::Undo } else { Command::Redo });
+        }
+        (EditAction::Undo | EditAction::Redo, true) => Box::new(move || {
+            if let Some(core) = s.core.get() {
+                edit::step_saved(&s, core, action == EditAction::Undo);
+            }
+        }),
+        _ => Box::new(move || {
+            let result = plan_and_apply(&s, action);
+            s.edit.set_message(result.err().unwrap_or_default());
+        }),
+    };
+    edit::queue(shared, job);
 }
 
 /// 編集を計画して適用し、成功したら新しいカットを選ぶ。失敗は文言で返す。
+/// 計画に使ったデータのバージョンを付けて適用するので、間に CLI などが同じ所を触っていたら衝突で断られる。
 pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String> {
     let doc = shared.doc().ok_or("プロジェクトを開いていない")?;
     let comp = doc
@@ -84,7 +87,7 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
         playhead: shared.playhead(),
     };
     let planned = plan_action(shared, &ctx, action)?;
-    edit::submit(shared, vec![planned.op])?;
+    edit::submit_based(shared, vec![planned.op], doc.version)?;
     // 印は素材の整理で、Timeline で選んだカットには関係しない。
     if !matches!(action, EditAction::MarkIn | EditAction::MarkOut) {
         shared
@@ -121,8 +124,7 @@ fn source_range(shared: &Shared, ctx: &Ctx<'_>) -> Result<plan::SourceRange, Str
 /// Source の今の位置（素材のフレーム）に印を付ける操作。
 fn mark(shared: &Shared, is_in: bool) -> Result<Planned, String> {
     let h = open_source(shared)?;
-    let frame = (h.shared.playhead() * h.fps.to_f64()).round() as i64;
-    let at = RationalTime::from_frames(frame, h.fps).map_err(|e| e.to_string())?;
+    let at = timebase::frame_start(h.shared.playhead(), h.fps)?;
     let (asset, at) = (h.asset.clone(), Some(at));
     let op: Op = if is_in {
         MarkIn { asset, at }.into()

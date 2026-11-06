@@ -49,18 +49,22 @@ pub async fn media_waveform(
         .map_err(|e| e.to_string())?
 }
 
-/// ファイルの選択ダイアログを開き、選んだパスを返す。キャンセルは空の配列。
+/// ファイルの選択ダイアログを開き、選んだパスを返す。キャンセルは空の配列。選んだパスは取り込んでよいパスとして覚える。
 #[tauri::command]
-pub async fn media_pick_files() -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        rfd::FileDialog::new()
+pub async fn media_pick_files(state: Media<'_>) -> Result<Vec<String>, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let picked = rfd::FileDialog::new()
             .add_filter("動画と音", &MEDIA_EXTENSIONS)
             .add_filter("すべてのファイル", &["*"])
             .pick_files()
-            .unwrap_or_default()
-            .into_iter()
+            .unwrap_or_default();
+        let paths = picked
+            .iter()
             .map(|p| p.to_string_lossy().into_owned())
-            .collect()
+            .collect();
+        state.offer(picked);
+        paths
     })
     .await
     .map_err(|e| e.to_string())

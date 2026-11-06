@@ -24,6 +24,7 @@ describe("パネルとシェルの CSS", () => {
   const files = [
     "../../panels/tasks/src/tasks.css",
     "../../panels/media/src/media.css",
+    "../../panels/story/src/story.css",
     "../../shell/src/shell.css",
   ];
 
@@ -41,6 +42,17 @@ describe("パネルとシェルの CSS", () => {
       for (const [, name] of css.matchAll(/--mm-color-([a-z-]+)/g)) {
         expect(names.has(name ?? ""), `${f}: ${name}`).toBe(true);
       }
+    }
+  });
+});
+
+describe("パネルが使う寸法の変数", () => {
+  it("他のパネル用の名前を借りず、theme.json の size にある", () => {
+    const sizes = new Set(Object.keys(theme.shape.size));
+    const css = readFileSync(new URL("../../panels/story/src/story.css", import.meta.url), "utf8");
+    for (const [, name] of css.matchAll(/--mm-size-([a-z-]+)/g)) {
+      expect(sizes.has(name ?? ""), name).toBe(true);
+      expect(name).toMatch(/^(story-|focus-offset)/);
     }
   });
 });

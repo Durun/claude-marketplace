@@ -40,7 +40,10 @@ export const tagOp = (topic: Topic, tag: string, remove: boolean): Op => ({
 });
 
 /** 話題の列を、並べた順にカットにして sequence の末尾へ差し込む。 */
-export const insertTopicsOp = (sequence: string, topics: readonly Topic[]): Op => ({
+export const insertTopicsOp = (
+  sequence: string,
+  topics: readonly Topic[],
+): Extract<Op, { op: "insertTopics" }> => ({
   op: "insertTopics",
   sequence,
   topics: topics.map((t) => t.id),

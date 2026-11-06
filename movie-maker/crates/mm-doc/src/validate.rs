@@ -35,9 +35,17 @@ impl<'a> IdSet<'a> {
     }
 }
 
+/// コンテンツハッシュに使える文字か。ハッシュは `cache/` の下のファイル名になるので、区切りと `.` を通さない。
+/// 試験の素材は `stage0-cfr` のような名前を持つので、16 進に限らず英数字と `-`、`_` を受ける。
+pub(crate) fn is_hash_name(hash: &str) -> bool {
+    hash.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 impl Project {
     /// プロジェクトのデータの不変条件を確かめる。
     ///
+    /// - 素材のコンテンツハッシュが英数字と `-`、`_` だけ（`cache/` の外を指さない）。
     /// - 素材とコンポジションの長さが負でない。レイヤーとカットは `in < out`。
     /// - ID が種類ごとに重複しない。
     /// - 親・トラックマット・接続・レンダーターゲット・入れ子・sequence の参照先が在る。
@@ -49,6 +57,12 @@ impl Project {
         for asset in &self.assets {
             if asset.duration.is_negative() {
                 return Err(invalid(format!("素材 {} の長さが負", asset.id)));
+            }
+            if !is_hash_name(&asset.content_hash) {
+                return Err(invalid(format!(
+                    "素材 {} のコンテンツハッシュに使えない文字: {:?}",
+                    asset.id, asset.content_hash
+                )));
             }
         }
         for comp in &self.compositions {

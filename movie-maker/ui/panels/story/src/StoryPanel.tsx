@@ -59,7 +59,7 @@ export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
   const select = useDragSelect((i) => {
     const word = words[i];
     if (word) void actions.jump(word);
-  });
+  }, words.length);
   const selected = select.dragging ? [] : wordsIn(words, select.span);
   const actions = createActions({ api, loaded, tray, selected, clearSelection: select.clear, setFocusWord, setNotice });
   const assets = loaded.overview?.assets ?? [];

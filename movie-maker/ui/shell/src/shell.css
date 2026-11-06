@@ -78,3 +78,12 @@ body {
   width: var(--mm-size-right-column);
   border-left: var(--mm-border-width) solid var(--mm-color-border);
 }
+
+.mm-shell-error {
+  margin: 0;
+  padding: var(--mm-space-sm);
+  border-bottom: var(--mm-border-width) solid var(--mm-color-danger);
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}

@@ -1,7 +1,8 @@
-//! WebView（Inspector など）から届いた操作の適用。操作は再生スレッドが持つプロジェクトのデータに適用し、
-//! 触った ID に頼ったフレームのキャッシュと素材だけを `Engine::invalidate_touched` で捨てる。
+//! WebView（Inspector など）とキーとドラッグから届いた操作の適用。
 //!
-//! 再生スレッドだけが `Engine` とプロジェクトのデータを持つので、操作は `Shared::edits` に積んで
+//! `project.mmdb` を書き手として開いていれば `Core` に保存し、保存した後のデータを `Shared::doc` に置き直してから返る
+//! （返った直後に読み直す Story や Media が古いデータを見ないように）。描き直しは変更の通知を受けた再生スレッドが行う。
+//! JSON のプロジェクトでは、再生スレッドだけが `Engine` とデータを持つので、操作は `Shared::edits` に積んで
 //! `Command::Edit` で知らせ、結果を返りのチャンネルで受ける。
 
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -12,11 +13,14 @@ use std::time::Duration;
 use mm_ops::Op;
 use serde::Serialize;
 
+use crate::history::HistoryMirror;
 use crate::playback::Command;
 use crate::state::Shared;
 
 /// 再生スレッドが操作を適用するまで待つ上限。描画 1 フレームと適用より十分長い。
 const APPLY_TIMEOUT: Duration = Duration::from_secs(5);
+/// WebView から届いた操作のトランザクションの名前。
+const WEBVIEW_TXN: &str = "WebView の操作";
 
 /// 適用した結果。WebView に返す。
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -46,11 +50,42 @@ impl PendingEdit {
     }
 }
 
-/// 操作を 1 つのトランザクションとして適用し、結果を待つ。`project.mmdb` を書き手として開いていれば `Core` が保存し、
-/// 描き直しは変更の通知を受けた再生スレッドが行う（Media の取り込みも同じ道）。開いていなければ再生スレッドがメモリの上で適用する。
+/// 編集の列に積む仕事。計画から適用までを 1 つの仕事にする。
+pub type EditJob = Box<dyn FnOnce() + Send>;
+
+/// 計画と適用を 1 本のスレッドで順に回す。キーを続けて押しても、前の編集を適用した後のデータで次を計画する。
+pub fn queue(shared: &Shared, job: impl FnOnce() + Send + 'static) {
+    let mut lane = shared.edit_lane.lock().expect("edit lane");
+    if lane.is_none() {
+        let (tx, rx) = channel::<EditJob>();
+        let spawned = std::thread::Builder::new()
+            .name("edit-lane".into())
+            .spawn(move || rx.into_iter().for_each(|job| job()));
+        if let Err(e) = spawned {
+            tracing::warn!(error = %e, "編集のスレッドを作れない");
+            return;
+        }
+        *lane = Some(tx);
+    }
+    if let Some(tx) = lane.as_ref() {
+        let _ = tx.send(Box::new(job));
+    }
+}
+
+/// 操作を 1 つのトランザクションとして今のバージョンに適用し、結果を待つ。
 pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
+    submit_based(shared, ops, None)
+}
+
+/// 操作を、計画に使ったバージョン `base` を元にしたトランザクションとして適用する。
+/// その後に別の書き手（CLI など）が同じ所を触っていたら、衝突として断る。JSON のプロジェクトでは `base` を見ない。
+pub fn submit_based(
+    shared: &Shared,
+    ops: Vec<Op>,
+    base: Option<i64>,
+) -> Result<EditOutcome, String> {
     match shared.core.get() {
-        Some(core) => apply_saved(core, ops),
+        Some(core) => apply_saved(shared, core, ops, base),
         None => submit_within(shared, ops, APPLY_TIMEOUT),
     }
 }
@@ -104,58 +139,96 @@ pub async fn apply_op(
         .map_err(|e| e.to_string())?
 }
 
-/// 書き手の `Store` に適用して `project.mmdb` に書く。描き直しは変更の通知を受けた再生スレッドが行う。
-fn apply_saved(core: &mm_serve::Core, ops: Vec<Op>) -> Result<EditOutcome, String> {
-    let txn = mm_ops::Transaction::new("WebView の操作", ops);
+/// 書き手の `Store` に適用して `project.mmdb` に書き、書いた後のデータを置き直す。
+fn apply_saved(
+    shared: &Shared,
+    core: &mm_serve::Core,
+    ops: Vec<Op>,
+    base: Option<i64>,
+) -> Result<EditOutcome, String> {
+    let mut txn = mm_ops::Transaction::new(WEBVIEW_TXN, ops);
+    if let Some(version) = base {
+        txn = txn.based_on(version.max(0) as u64);
+    }
     let change = core
         .apply(txn, &mm_serve::Caller::webview(), None)
         .map_err(|e| e.to_string())?;
+    shared.history.record(&change);
+    refresh_saved(shared, core)?;
     Ok(EditOutcome {
         touched: change.touched,
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// 保存した最新のプロジェクトのデータを `Shared::doc` に置く。置いてあるものより新しいときだけ置き直す。
+pub fn refresh_saved(shared: &Shared, core: &mm_serve::Core) -> Result<(), String> {
+    let Some(comp) = shared.doc().map(|d| d.comp) else {
+        return Ok(());
+    };
+    let (version, project) = core.render_project().map_err(|e| e.to_string())?;
+    shared.publish_saved(version, Arc::new(project), comp);
+    Ok(())
+}
 
-    fn op() -> Op {
-        mm_ops::SetParam {
-            target: mm_ops::ParamRef::layer(&mm_types::Id::new("l"), "opacity"),
-            value: mm_types::ParamValue::Number(0.5),
-            keyframes: None,
+/// `project.mmdb` の直前のトランザクションを取り消す（`undo` が偽ならやり直す）。書き手を問わず戻し、
+/// 何を戻したか（人でない書き手ならその名前も）を編集の文言に出す。
+pub fn step_saved(shared: &Shared, core: &mm_serve::Core, undo: bool) {
+    let before = shared.history.next(undo);
+    let caller = mm_serve::Caller::webview();
+    let done = if undo {
+        core.undo(&caller)
+    } else {
+        core.redo(&caller)
+    };
+    let done = done.map_err(|e| e.to_string());
+    if let Ok(Some(change)) = &done {
+        shared.history.record(change);
+        if let Err(e) = refresh_saved(shared, core) {
+            tracing::warn!("保存したプロジェクトのデータを読めない: {e}");
         }
-        .into()
     }
-
-    #[test]
-    fn 時間切れで返した操作は後から適用されない() {
-        let shared = Shared::new();
-        let r = submit_within(&shared, vec![op()], Duration::from_millis(20));
-        assert!(r.is_err());
-        let late = shared.edits.lock().unwrap().pop().expect("積まれたまま");
-        assert!(!late.claim(), "取り下げた操作は適用する権利を取れない");
-    }
-
-    #[test]
-    fn 適用し始めた操作は時間を超えても結果を待つ() {
-        let shared = Arc::new(Shared::new());
-        let s = shared.clone();
-        let player = std::thread::spawn(move || {
-            let edit = loop {
-                if let Some(e) = s.edits.lock().unwrap().pop() {
-                    break e;
-                }
-                std::thread::sleep(Duration::from_millis(2));
-            };
-            assert!(edit.claim());
-            std::thread::sleep(Duration::from_millis(80));
-            let _ = edit.reply.send(Ok(EditOutcome {
-                touched: vec!["l".into()],
-            }));
-        });
-        let r = submit_within(&shared, vec![op()], Duration::from_millis(30));
-        player.join().unwrap();
-        assert_eq!(r.expect("適用した結果を返す").touched, ["l"]);
+    let failed = !matches!(done, Ok(Some(_)));
+    let message = HistoryMirror::message(undo, done, before);
+    if failed {
+        shared.edit.set_message(message);
+    } else {
+        shared.edit.notify(message);
     }
 }
+
+/// 保存した変更（HTTP と IPC のどちらから書かれても）を受けたときの仕事。データを置き直してから、
+/// 再生スレッドに描き直させる。画面への通知は、これが返った後に送る（読み直した側が新しいデータを見る）。
+pub fn relay_change(shared: &Shared, change: &mm_serve::Change) {
+    shared.history.record(change);
+    if let Some(core) = shared.core.get() {
+        if let Err(e) = refresh_saved(shared, core) {
+            tracing::warn!("保存したプロジェクトのデータを読めない: {e}");
+        }
+    }
+    shared
+        .reload_touched
+        .lock()
+        .expect("reload")
+        .extend(change.touched.iter().cloned());
+    shared.send(Command::Reload);
+}
+
+/// `Core` の変更を受けるスレッドを始める。変更ごとに [`relay_change`] でデータを置き直してから `notify` を呼ぶ。
+/// JSON のプロジェクト（`Core` が無い）では何もしない。
+pub fn watch_changes(
+    shared: &Arc<Shared>,
+    mut notify: impl FnMut(&mm_serve::Change) + Send + 'static,
+) -> std::io::Result<()> {
+    let Some(core) = shared.core.get() else {
+        return Ok(());
+    };
+    let shared = shared.clone();
+    core.on_change(move |change| {
+        relay_change(&shared, &change);
+        notify(&change);
+    })
+    .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests;

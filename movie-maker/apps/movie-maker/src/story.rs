@@ -17,6 +17,7 @@ use mm_types::{AssetId, Id, RationalTime};
 use serde::Serialize;
 
 use crate::state::Shared;
+use crate::timebase;
 
 /// 全文検索の語の長さ（文字数）の上限。`mm search` と同じ。
 pub const QUERY_MAX_CHARS: usize = mm_store::RUN_EXTRA_CHARS;
@@ -146,7 +147,7 @@ impl StoryState {
             .map(|s| StorySequence {
                 id: s.id.to_string(),
                 cuts: s.cuts.len(),
-                duration: placed_cuts(s).last().map_or(0.0, |p| p.end),
+                duration: mm_eval::sequence_duration(s).map_or(0.0, RationalTime::to_f64),
             })
             .collect();
         Ok(Overview { assets, sequences })
@@ -272,34 +273,15 @@ impl StoryState {
     pub fn timeline_time(&self, asset: &str, at: f64) -> Result<Option<f64>, String> {
         let (project, comp) = self.project()?;
         let composition = project.composition(&comp).map_err(|e| e.to_string())?;
-        Ok(composition
-            .layers
-            .iter()
-            .find_map(|layer| layer_time(&project, layer, asset, at)))
+        Ok(timebase::source_to_comp(&project, composition, asset, at))
     }
-}
 
-/// レイヤー 1 つの中での、素材の時刻 `at` の再生位置。
-fn layer_time(project: &Project, layer: &mm_doc::Layer, asset: &str, at: f64) -> Option<f64> {
-    let start = layer.start.to_f64();
-    let node = &layer.source;
-    if node.kind == mm_doc::FOOTAGE_KIND && layer.time_remap.is_none() {
-        let own = node.params.get(mm_doc::FOOTAGE_PARAM)?.value.as_asset()?;
-        let (from, to) = (layer.in_point.to_f64(), layer.out_point.to_f64());
-        let inside = own.as_str() == asset && (from..to).contains(&at);
-        return inside.then(|| start + (at - from) / layer.speed.to_f64());
+    /// カット `cut` の始まりの再生位置（秒）。いま開いているコンポジションに映っていなければ `None`。
+    pub fn cut_time(&self, cut: &str) -> Result<Option<f64>, String> {
+        let (project, comp) = self.project()?;
+        let composition = project.composition(&comp).map_err(|e| e.to_string())?;
+        Ok(timebase::cut_to_comp(&project, composition, cut))
     }
-    if node.kind != mm_doc::SEQUENCE_KIND {
-        return None;
-    }
-    let seq = project
-        .sequence(&Id::new(node.text_param(mm_doc::SEQUENCE_PARAM)?))
-        .ok()?;
-    let offset = start - layer.in_point.to_f64();
-    placed_cuts(seq)
-        .iter()
-        .find(|p| p.asset.as_deref() == Some(asset) && p.contains_source(at))
-        .map(|p| offset + p.start + (at - p.source_in) / p.speed)
 }
 
 /// 単語 `b` で終わる範囲の終わり。単語の終わりを、次の単語の始まりまでに詰める。
@@ -393,48 +375,6 @@ fn find_in(asset: &str, words: &[StoryWord], q: &str, limit: usize) -> Vec<Story
         });
     }
     hits
-}
-
-/// 配置したカット（秒）。`sequence` の時間軸で隙間なく詰める。
-struct Placed {
-    asset: Option<String>,
-    start: f64,
-    end: f64,
-    source_in: f64,
-    source_out: f64,
-    speed: f64,
-}
-
-impl Placed {
-    fn contains_source(&self, at: f64) -> bool {
-        (self.source_in..self.source_out).contains(&at)
-    }
-}
-
-fn placed_cuts(seq: &mm_doc::Sequence) -> Vec<Placed> {
-    let mut head = 0.0;
-    seq.cuts
-        .iter()
-        .filter(|c| c.enabled)
-        .map(|c| {
-            let len = c.duration().map_or(0.0, |d| d.to_f64());
-            let placed = Placed {
-                asset: c
-                    .source
-                    .params
-                    .get(mm_doc::FOOTAGE_PARAM)
-                    .and_then(|p| p.value.as_asset())
-                    .map(ToString::to_string),
-                start: head,
-                end: head + len,
-                source_in: c.in_point.to_f64(),
-                source_out: c.out_point.to_f64(),
-                speed: c.speed.to_f64(),
-            };
-            head += len;
-            placed
-        })
-        .collect()
 }
 
 #[cfg(test)]

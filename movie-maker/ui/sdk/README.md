@@ -69,6 +69,7 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 | `story_range` | `{ asset, first, last }` | `{ start, end }`。単語 `first` から `last`（先後はどちらでもよい）までの時刻。`addTopic` の `in`、`out` にそのまま使う |
 | `story_search` | `{ query, limit? }` | `[{ asset, word, start, end, context }]`。`mm search` と同じ規則（単語の境をまたぐ、消した単語は外す、直した文字で探す）。語は 1 から 32 文字。`limit` の既定は 50 |
 | `story_timeline_time` | `{ asset, at }` | 素材の時刻 `at`（秒）に当たる再生位置（秒）。開いているコンポジションの sequence のカットに入っていなければ `null` |
+| `story_cut_time` | `{ cut }` | カット `cut` の始まりの再生位置（秒）。開いているコンポジションの sequence のレイヤーに出ていなければ `null` |
 
 文字起こしの本文は、`project.mmdb` の `Store::transcript_words` があればそれを、無ければ取り込みの付属ファイル（`cache/ingest/<hash>.transcript.json`）を読む。消した単語と直した文字は、アプリが開いているプロジェクトのデータの `transcript_edits` を重ねる。
 
