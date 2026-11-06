@@ -1,4 +1,4 @@
-import { type ComponentType, render } from 'preact';
+import { type ComponentChildren, type ComponentType, render } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { JIRA_ISSUE_KEY, PR_URL, type Snapshot, notionPageId } from '../shared/types.ts';
@@ -131,9 +131,11 @@ const useLinks = (route: Route, snapshot: Snapshot | null): void => {
   }, []);
 };
 
+// 時刻の更新で App ごと描き直さず、NowContext を読む部品だけを描き直す。App の要素は作り直さないので、Preact は中を比べずに済ませる。
+const NowProvider = ({ children }: { children: ComponentChildren }) => <NowContext.Provider value={useNow()}>{children}</NowContext.Provider>;
+
 const App = () => {
   const route = useRoute();
-  const now = useNow();
   const light = useLightMode();
   const { snapshot, fresh, connected } = useSnapshot(light);
   const [searching, setSearching] = useState(false);
@@ -173,31 +175,29 @@ const App = () => {
   useDeliveryFailureEffects(fresh);
   useLinks(route, snapshot);
   return (
-    <NowContext.Provider value={now}>
-      <CacheVersionContext.Provider value={snapshot?.cacheVersion ?? 0}>
-        <Header
-          snapshot={snapshot}
-          assets={fresh?.assets}
-          connected={connected}
-          home={route.page === 'home'}
-          onSearch={() => setSearching(true)}
-          onEdit={hasDashboard ? () => setEditing(true) : undefined}
-          onFeedback={() => setFeedbackOpen((v) => !v)}
-        />
-        <main class="app">
-          {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
-        </main>
-        {snapshot && <Floats snapshot={snapshot} />}
-        {/* 前に受け取ったスナップショットから描くと、もう答えた停止や認証を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
-        <OfflineDialog snapshot={fresh} />
-        <AuthDialog snapshot={fresh} />
-        <Toasts />
-        <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
-        {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
-        {!light && <Dolphin jev={snapshot?.jev} />}
-        <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
-      </CacheVersionContext.Provider>
-    </NowContext.Provider>
+    <CacheVersionContext.Provider value={snapshot?.cacheVersion ?? 0}>
+      <Header
+        snapshot={snapshot}
+        assets={fresh?.assets}
+        connected={connected}
+        home={route.page === 'home'}
+        onSearch={() => setSearching(true)}
+        onEdit={hasDashboard ? () => setEditing(true) : undefined}
+        onFeedback={() => setFeedbackOpen((v) => !v)}
+      />
+      <main class="app">
+        {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
+      </main>
+      {snapshot && <Floats snapshot={snapshot} />}
+      {/* 前に受け取ったスナップショットから描くと、もう答えた停止や認証を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
+      <OfflineDialog snapshot={fresh} />
+      <AuthDialog snapshot={fresh} />
+      <Toasts />
+      <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
+      {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
+      {!light && <Dolphin jev={snapshot?.jev} />}
+      <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
+    </CacheVersionContext.Provider>
   );
 };
 
@@ -243,4 +243,10 @@ if (PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
 }
 
 const root = document.getElementById('app');
-if (root) render(<App />, root);
+if (root)
+  render(
+    <NowProvider>
+      <App />
+    </NowProvider>,
+    root,
+  );
