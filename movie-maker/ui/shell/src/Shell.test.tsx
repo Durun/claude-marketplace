@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { Layer, MediaApi } from "@mm/sdk";
+import type { Layer, MediaApi, StoryApi } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
 
@@ -32,6 +32,16 @@ const fakeMedia = (over: Partial<MediaApi> = {}): MediaApi => ({
   ...over,
 });
 
+const fakeStory = (): StoryApi => ({
+  overview: vi.fn().mockResolvedValue({ assets: [], sequences: [] }),
+  transcript: vi.fn().mockResolvedValue({ asset: "", words: [], topics: [], selections: [] }),
+  range: vi.fn(),
+  search: vi.fn().mockResolvedValue([]),
+  timelineTime: vi.fn().mockResolvedValue(null),
+  apply: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+  seek: vi.fn(),
+});
+
 const click = (el: Element | null | undefined) =>
   act(() => {
     (el as HTMLElement).click();
@@ -51,6 +61,20 @@ describe("Shell の左の列", () => {
     click(host.querySelectorAll(".mm-shell-tab")[1]);
     expect([panels[0]?.hidden, panels[1]?.hidden]).toEqual([true, false]);
     expect(host.querySelector(".mm-media")).not.toBeNull();
+  });
+
+  it("Story を渡すと Story のタブが出て、開くたびに読み直す", async () => {
+    const story = fakeStory();
+    act(() => render(<Shell sendOp={vi.fn()} media={fakeMedia()} story={story} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Media", "Story"]);
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
+    expect(panels[2]?.hidden).toBe(true);
+    click(tabs[2]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(panels[2]?.hidden).toBe(false);
+    expect(host.querySelector(".mm-story")).not.toBeNull();
+    expect(story.overview).toHaveBeenCalledTimes(2);
   });
 
   it("Tasks の取り込みの項目は Media を開いてファイルの選択を始める", async () => {

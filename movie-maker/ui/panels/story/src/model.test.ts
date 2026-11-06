@@ -1,0 +1,87 @@
+import type { StoryWord, Topic } from "@mm/sdk";
+import { describe, expect, it } from "vitest";
+import { buildBlocks, compareTime, defaultTitle, formatClock, newId, spanOf } from "./model.ts";
+
+const word = (id: string, start: number, segment = 0, over: Partial<StoryWord> = {}): StoryWord => ({
+  id,
+  segment,
+  start: { num: start, den: 2 },
+  end: { num: start + 1, den: 2 },
+  text: id,
+  fixed: null,
+  deleted: false,
+  ...over,
+});
+
+const topic = (id: string, from: number, to: number): Topic => ({
+  id,
+  asset: "a1",
+  title: id,
+  in: { num: from, den: 2 },
+  out: { num: to, den: 2 },
+});
+
+describe("buildBlocks", () => {
+  const words = [word("a", 0), word("b", 1), word("c", 2, 1), word("d", 3, 1), word("e", 4, 1)];
+
+  it("話題ごとに塊を分け、話題に入らない単語は題の無い塊になる", () => {
+    const blocks = buildBlocks(words, [topic("t1", 1, 3)]);
+    expect(blocks.map((b) => [b.topic?.id ?? null, b.paragraphs.flat().map((p) => p.word.id)])).toEqual([
+      [null, ["a"]],
+      ["t1", ["b", "c"]],
+      [null, ["d", "e"]],
+    ]);
+  });
+
+  it("区間が変わるところで段落を分け、単語の番号を持つ", () => {
+    const [block] = buildBlocks(words, []);
+    expect(block?.paragraphs.map((p) => p.map((x) => x.index))).toEqual([
+      [0, 1],
+      [2, 3, 4],
+    ]);
+  });
+
+  it("話題の範囲は始まりを含み終わりを含まない", () => {
+    const blocks = buildBlocks(words, [topic("t1", 0, 2)]);
+    expect(blocks[0]?.paragraphs.flat().map((p) => p.word.id)).toEqual(["a", "b"]);
+  });
+
+  it("話題が重なったところは、後から始まる話題に入れる", () => {
+    const blocks = buildBlocks(words, [topic("t1", 0, 4), topic("t2", 2, 6)]);
+    expect(blocks.map((b) => [b.topic?.id, b.paragraphs.flat().map((p) => p.word.id)])).toEqual([
+      ["t1", ["a", "b"]],
+      ["t2", ["c", "d", "e"]],
+    ]);
+  });
+
+  it("話題は渡す順に関わらず時刻の順に当てる", () => {
+    const blocks = buildBlocks(words, [topic("late", 3, 5), topic("early", 0, 2)]);
+    expect(blocks.map((b) => b.topic?.id ?? null)).toEqual(["early", null, "late"]);
+  });
+});
+
+describe("時刻と選択", () => {
+  it("分数のまま大小を比べる", () => {
+    expect(compareTime({ num: 1, den: 3 }, { num: 2, den: 6 })).toBe(0);
+    expect(compareTime({ num: 1, den: 3 }, { num: 1, den: 2 })).toBe(-1);
+  });
+
+  it("m:ss.t の形にする", () => {
+    expect(formatClock(0)).toBe("0:00.0");
+    expect(formatClock(75.25)).toBe("1:15.3");
+  });
+
+  it("範囲は先後どちらからつかんでも小さい方が先", () => {
+    expect(spanOf(5, 2)).toEqual({ from: 2, to: 5 });
+  });
+
+  it("題の既定は消していない単語の文字を頭から", () => {
+    const selected = [word("あ", 0), word("い", 1, 0, { deleted: true }), word("う", 2, 0, { fixed: "宇" })];
+    expect(defaultTitle(selected, 5)).toBe("あ宇");
+    expect(defaultTitle(selected, 1)).toBe("あ");
+  });
+
+  it("ID は呼ぶたびに変わる", () => {
+    expect(newId("k")).not.toBe(newId("k"));
+  });
+});

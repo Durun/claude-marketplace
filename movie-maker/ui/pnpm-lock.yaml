@@ -51,6 +51,15 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/story:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/tasks:
     dependencies:
       preact:
@@ -74,6 +83,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mm/story':
+        specifier: workspace:*
+        version: link:../panels/story
       '@mm/tasks':
         specifier: workspace:*
         version: link:../panels/tasks

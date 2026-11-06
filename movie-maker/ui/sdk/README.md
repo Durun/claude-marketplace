@@ -57,3 +57,19 @@ Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハン�
 | `finished` | `added`、`skipped`、`failed` |
 
 ファイルのドロップは Tauri の `tauri://drag-enter`、`tauri://drag-leave`、`tauri://drag-drop`（`{ paths }`）を `MediaApi.onDrop` で受ける。
+
+## Story の命令
+
+Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `src/story.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `story_overview` | なし | `{ assets: [{ id, name, duration, has_transcript }], sequences: [{ id, cuts, duration }] }` |
+| `story_transcript` | `{ asset }` | `{ asset, words, topics, selections }`。`words` は時刻順の `{ id, segment, start, end, text, fixed, deleted }`（`text` は取り込んだままの文字、`fixed` は直した文字、表示は `fixed ?? text`）。`topics` と `selections` はその素材のもの（`ops.ts` の `Topic`、`Selection`） |
+| `story_range` | `{ asset, first, last }` | `{ start, end }`。単語 `first` から `last`（先後はどちらでもよい）までの時刻。`addTopic` の `in`、`out` にそのまま使う |
+| `story_search` | `{ query, limit? }` | `[{ asset, word, start, end, context }]`。`mm search` と同じ規則（単語の境をまたぐ、消した単語は外す、直した文字で探す）。語は 1 から 32 文字。`limit` の既定は 50 |
+| `story_timeline_time` | `{ asset, at }` | 素材の時刻 `at`（秒）に当たる再生位置（秒）。開いているコンポジションの sequence のカットに入っていなければ `null` |
+
+文字起こしの本文は、`project.mmdb` の `Store::transcript_words` があればそれを、無ければ取り込みの付属ファイル（`cache/ingest/<hash>.transcript.json`）を読む。消した単語と直した文字は、アプリが開いているプロジェクトのデータの `transcript_edits` を重ねる。
+
+編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`deleteWords`、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。

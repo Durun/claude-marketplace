@@ -30,6 +30,10 @@ mod render;
 #[cfg(windows)]
 mod state;
 #[cfg(windows)]
+mod story;
+#[cfg(windows)]
+mod story_ipc;
+#[cfg(windows)]
 mod surface;
 #[cfg(windows)]
 mod theme;
