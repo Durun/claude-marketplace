@@ -113,7 +113,10 @@ fn color_cdl_は契約を満たす() {
 
 #[test]
 fn color_lut_は契約を満たす() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/luts/invert.cube");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/luts/invert.cube"
+    );
     let mut params = Params::new();
     params.set("path", ParamValue::Text(path.into()));
     contract(

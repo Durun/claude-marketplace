@@ -56,12 +56,7 @@ fn red_blue(transition_secs: i64) -> Sequence {
 
 fn seq_project(seq: Sequence) -> mm_doc::Project {
     project(
-        vec![comp(
-            "main",
-            SMALL,
-            6,
-            vec![sequence_layer("seq", "s", 4)],
-        )],
+        vec![comp("main", SMALL, 6, vec![sequence_layer("seq", "s", 4)])],
         vec![seq],
     )
 }
@@ -81,11 +76,7 @@ fn 明るさは線形の光で露出を上げる() {
 #[test]
 fn 半透明の画素は色だけが変わりアルファは保たれる() {
     let Some(ctx) = gpu() else { return };
-    let mut l = layer(
-        "l",
-        solid(Rgba::from_straight(0.1, 0.2, 0.3, 0.5)),
-        2,
-    );
+    let mut l = layer("l", solid(Rgba::from_straight(0.1, 0.2, 0.3, 0.5)), 2);
     l.effects.push(effect("e", adjust("brightness", 1.0)));
     let p = project(vec![comp("main", SMALL, 2, vec![l])], vec![]);
     let mut r = renderer(&ctx);
@@ -143,7 +134,10 @@ fn 効果を重ねると上から順に掛かる() {
 #[test]
 fn lut_は入力の色空間に符号化して引く() {
     let Some(ctx) = gpu() else { return };
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/luts/invert.cube");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/luts/invert.cube"
+    );
     let lut = Node::new("color.lut", 1)
         .with_param("path", ParamValue::Text(path.into()))
         .with_param("input_space", ParamValue::Choice("lin_rec709".into()));
@@ -175,7 +169,10 @@ fn shader_wgsl_は時刻とパラメータを受けて描く() {
     let Some(ctx) = gpu() else { return };
     let code = "fn mm_main(uv: vec2<f32>) -> vec4<f32> { return vec4<f32>(u.p0.x, u.time * 0.25, 0.0, 1.0); }";
     let node = shader(code).with_param("p0", ParamValue::Number(0.5));
-    let p = project(vec![comp("main", SMALL, 4, vec![layer("l", node, 4)])], vec![]);
+    let p = project(
+        vec![comp("main", SMALL, 4, vec![layer("l", node, 4)])],
+        vec![],
+    );
     let mut r = renderer(&ctx);
     let img = render_at(&mut r, &p, "main", seconds(2), SMALL);
     assert_pixel(&img, 7, 7, Rgba::new(0.5, 0.5, 0.0, 1.0));

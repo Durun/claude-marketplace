@@ -4,9 +4,7 @@
 //! `progress` はレンダラーが境の中の位置（0..1）に直して渡す。
 
 use mm_gpu::WgpuGpu;
-use mm_node_api::{
-    FrameCx, FrameRef, GpuTexture, InputSchema, InputSpec, NodeKind, Traits,
-};
+use mm_node_api::{FrameCx, FrameRef, GpuTexture, InputSchema, InputSpec, NodeKind, Traits};
 use mm_types::{
     MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, Rgba, RgbaImage,
 };
@@ -47,7 +45,11 @@ fn mix_images(from: &RgbaImage, to: &RgbaImage, k: f32) -> Result<RgbaImage> {
         for x in 0..from.width() {
             let (a, b) = (from.pixel(x, y), to.pixel(x, y));
             let m = |p: f32, q: f32| p + (q - p) * k;
-            out.set_pixel(x, y, Rgba::new(m(a.r, b.r), m(a.g, b.g), m(a.b, b.b), m(a.a, b.a)));
+            out.set_pixel(
+                x,
+                y,
+                Rgba::new(m(a.r, b.r), m(a.g, b.g), m(a.b, b.b), m(a.a, b.a)),
+            );
         }
     }
     Ok(out)

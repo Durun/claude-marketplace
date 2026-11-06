@@ -78,10 +78,7 @@ fn bindings_wgsl(inputs: usize, lut: bool) -> String {
             i + 1
         );
     }
-    s += &format!(
-        "@group(0) @binding({}) var mm_samp: sampler;\n",
-        inputs + 1
-    );
+    s += &format!("@group(0) @binding({}) var mm_samp: sampler;\n", inputs + 1);
     if lut {
         s += &format!(
             "@group(0) @binding({}) var mm_lut: texture_3d<f32>;\n",
@@ -133,13 +130,22 @@ fn layout_entries(inputs: usize, lut: bool) -> Vec<wgpu::BindGroupLayoutEntry> {
         wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
     ));
     if lut {
-        entries.push(texture_entry(next + 1, wgpu::TextureViewDimension::D3, false));
+        entries.push(texture_entry(
+            next + 1,
+            wgpu::TextureViewDimension::D3,
+            false,
+        ));
     }
     entries
 }
 
 /// WGSL を組み、検証つきでパイプラインを作る。失敗は検証のメッセージ。
-fn build(ctx: &GpuContext, source: &str, inputs: usize, lut: bool) -> std::result::Result<Pipeline, String> {
+fn build(
+    ctx: &GpuContext,
+    source: &str,
+    inputs: usize,
+    lut: bool,
+) -> std::result::Result<Pipeline, String> {
     let device = &ctx.device;
     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -222,9 +228,9 @@ impl PassCache {
         let built = entries.map.entry(key).or_insert_with(|| {
             build(ctx, &source, pass.inputs.len(), pass.lut.is_some()).map(Arc::new)
         });
-        built
-            .clone()
-            .map_err(|message| MmError::InvalidArgument(format!("WGSL のコンパイルに失敗: {message}")))
+        built.clone().map_err(|message| {
+            MmError::InvalidArgument(format!("WGSL のコンパイルに失敗: {message}"))
+        })
     }
 
     /// パスを描いて提出し、出力のテクスチャの番号を返す。コンパイルの失敗は `Err(InvalidArgument)`。

@@ -84,7 +84,11 @@ pub(crate) fn apply(
         return Ok(input);
     }
     if cx.gpu.as_any().is::<WgpuGpu>() {
-        let gpu = cx.gpu.as_any().downcast_mut::<WgpuGpu>().expect("直前に型を確かめた");
+        let gpu = cx
+            .gpu
+            .as_any()
+            .downcast_mut::<WgpuGpu>()
+            .expect("直前に型を確かめた");
         apply_gpu(gpu, cache, pass, &input)
     } else {
         apply_cpu(cx.gpu, pass, &input)

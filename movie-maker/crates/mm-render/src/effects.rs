@@ -105,9 +105,10 @@ impl WgpuRenderer {
     ) -> Result<Option<LayerImage>> {
         let mut image = image;
         for effect in layer.effects.iter().filter(|e| e.enabled) {
-            let kind = cx.nodes.get(&effect.node.kind).ok_or_else(|| {
-                MmError::NotFound(format!("効果の種類 {}", effect.node.kind))
-            })?;
+            let kind = cx
+                .nodes
+                .get(&effect.node.kind)
+                .ok_or_else(|| MmError::NotFound(format!("効果の種類 {}", effect.node.kind)))?;
             let params = node_params_at(&effect.node, cx.t).with_defaults(&kind.params());
             let input = GpuTexture {
                 id: image.texture,

@@ -181,7 +181,10 @@ impl NodeKind for TextKind {
             shape,
             scale_bits: cx.scale.to_bits(),
             canvas: [canvas_size.width, canvas_size.height],
-            offset: [x as i64 - region.x.floor() as i64, y as i64 - region.y.floor() as i64],
+            offset: [
+                x as i64 - region.x.floor() as i64,
+                y as i64 - region.y.floor() as i64,
+            ],
         };
         if let Some(hit) = remember(&mut self.cache()?.canvases, &key, KEPT_CANVASES) {
             return Ok(FrameRef::Cpu(hit));
@@ -339,6 +342,10 @@ mod tests {
         draw_frame(&kind, &services, &params);
         params.set("position", ParamValue::Vec2([10.0, 6.0]));
         draw_frame(&kind, &services, &params);
-        assert_eq!(counting.rasters.load(Ordering::SeqCst), 1, "領域の原点からの差が同じ");
+        assert_eq!(
+            counting.rasters.load(Ordering::SeqCst),
+            1,
+            "領域の原点からの差が同じ"
+        );
     }
 }

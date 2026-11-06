@@ -75,7 +75,9 @@ fn crossfade(from: usize, to: usize, t: f64, boundary: f64, half: f64) -> Crossf
 
 fn half_of(tr: &Transition, before: &PlacedCut, after: &PlacedCut) -> Result<f64> {
     let len = |p: &PlacedCut| p.range.duration().map(|d| d.to_f64());
-    Ok((tr.duration.to_f64() / 2.0).min(len(before)?).min(len(after)?))
+    Ok((tr.duration.to_f64() / 2.0)
+        .min(len(before)?)
+        .min(len(after)?))
 }
 
 /// カットを、シーケンスの時間軸の上にある 1 枚のレイヤーとして見たもの。
@@ -174,15 +176,15 @@ impl WgpuRenderer {
         let cut = &seq.cuts[placed.index];
         let target = self.gpu.create(cx.size)?;
         let mut temps = Vec::new();
-        let items: Vec<Prepared> = match self.layer_item(encoder, cx, &cut_layer(cut, placed), &mut temps)
-        {
-            Ok(item) => item.into_iter().collect(),
-            Err(e) => {
-                self.errors
-                    .push(format!("sequence {}: cut {}: {e}", seq.id, cut.id));
-                Vec::new()
-            }
-        };
+        let items: Vec<Prepared> =
+            match self.layer_item(encoder, cx, &cut_layer(cut, placed), &mut temps) {
+                Ok(item) => item.into_iter().collect(),
+                Err(e) => {
+                    self.errors
+                        .push(format!("sequence {}: cut {}: {e}", seq.id, cut.id));
+                    Vec::new()
+                }
+            };
         self.composite(encoder, target, &items);
         for id in temps {
             self.gpu.release_id(id);
