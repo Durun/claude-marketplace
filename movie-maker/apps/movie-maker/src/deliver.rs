@@ -24,6 +24,13 @@ use serde::{Deserialize, Serialize};
 use crate::playback::runtime_config;
 use crate::state::Shared;
 
+mod guards;
+mod progress;
+
+pub use guards::output_extensions;
+use guards::{ffprobe_available, pick, stop_all};
+use progress::progress_reporter;
+
 /// 進み具合を画面へ送る間隔（ミリ秒）。1 フレームごとに送ると WebView の側が詰まる。
 const EMIT_INTERVAL_MS: u64 = 100;
 
@@ -346,78 +353,6 @@ impl DeliverState {
     }
 }
 
-/// 依頼のレンダーターゲットと sequence が在るか、同じ出力先を指す組が無いかを確かめて、列の順に返す。
-/// 同じ出力先に順に書くと、先に書いた成果物を黙って上書きするため。
-fn pick(project: &Project, request: &StartRequest) -> Result<Vec<RenderTarget>, String> {
-    if request.targets.is_empty() {
-        return Err("書き出すレンダーターゲットを選んでいない".into());
-    }
-    if let Some(sequence) = &request.sequence {
-        project
-            .sequence(&Id::new(sequence.as_str()))
-            .map_err(|e| e.to_string())?;
-    }
-    let ids: Vec<RenderTargetId> = request
-        .targets
-        .iter()
-        .map(|t| Id::new(t.as_str()))
-        .collect();
-    let picked = ids
-        .iter()
-        .map(|id| project.render_target(id).cloned())
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    reject_shared_outputs(&case_folded_outputs(project), &ids).map_err(|e| e.to_string())?;
-    Ok(picked)
-}
-
-/// 出力先を小文字にしたデータ。Windows のファイル名は大文字小文字を区別しないので、
-/// `Out.mp4` と `out.mp4` を同じ出力先として判定に渡す。
-fn case_folded_outputs(project: &Project) -> Project {
-    let mut folded = project.clone();
-    for target in &mut folded.render_targets {
-        target.output_path = target.output_path.to_lowercase();
-    }
-    folded
-}
-
-/// ffprobe を起動できるか。検証の出口と同じ起動の道（`MM_FFPROBE`）を通すため、存在しないパスを読ませて、
-/// 「起動できない」（`NotFound`）かどうかだけを見る。
-fn ffprobe_available() -> bool {
-    let expected = Expected {
-        frames: 0,
-        size: Size::new(1, 1),
-        fps: 1.0,
-        audio_seconds: None,
-    };
-    !matches!(
-        verify_output(Path::new(""), &expected),
-        Err(MmError::NotFound(_))
-    )
-}
-
-/// コーデックに合う出力ファイルの拡張子。保存ダイアログの絞り込みに使う。ProRes と DNxHR は MOV にしか書けない。
-pub fn output_extensions(codec: &str) -> &'static [&'static str] {
-    if codec.starts_with("prores") || codec.starts_with("dnx") {
-        &["mov"]
-    } else {
-        &["mp4", "mov"]
-    }
-}
-
-/// 列を止まった状態にして返す。動いていない項目に理由を付けて失敗にする。
-fn stop_all(status: &Mutex<ExportStatus>, message: &str) -> ExportStatus {
-    let mut status = status.lock().expect("export status");
-    status.running = false;
-    for item in &mut status.items {
-        if matches!(item.state, ItemState::Queued | ItemState::Running) {
-            item.state = ItemState::Failed;
-            item.error.get_or_insert_with(|| message.to_owned());
-        }
-    }
-    status.clone()
-}
-
 /// 書き出しのスレッドが持つもの。
 struct Job {
     project: Arc<Project>,
@@ -524,37 +459,6 @@ impl Job {
         };
         (self.emit)(&snapshot);
     }
-}
-
-/// 列の `index` 番目の進み具合を状態に写し、`EMIT_INTERVAL_MS` ごと（と最後のフレーム）にだけ状態を送る。
-/// 状態の複製は送るときだけにして、フレームごとの負担を小さくする。
-fn progress_reporter(status: Arc<Mutex<ExportStatus>>, emit: Emit, index: usize) -> ProgressFn {
-    let started = Instant::now();
-    let last_ms = AtomicU64::new(0);
-    Arc::new(move |p: &ExportProgress| {
-        let now = started.elapsed().as_millis() as u64;
-        let finished = p.frames_total > 0 && p.frames_done >= p.frames_total;
-        let due = now.saturating_sub(last_ms.load(Ordering::Relaxed)) >= EMIT_INTERVAL_MS;
-        let mut status = status.lock().expect("export status");
-        if let Some(item) = status.items.get_mut(index) {
-            apply_progress(item, p);
-        }
-        if finished || due {
-            last_ms.store(now, Ordering::Relaxed);
-            let snapshot = status.clone();
-            drop(status);
-            emit(&snapshot);
-        }
-    })
-}
-
-fn apply_progress(item: &mut ExportItem, p: &ExportProgress) {
-    item.frames_done = p.frames_done;
-    item.frames_total = p.frames_total;
-    item.elapsed = p.elapsed.as_secs_f64();
-    item.fps = p.frames_done as f64 / item.elapsed.max(f64::EPSILON);
-    item.eta = (p.frames_done > 0 && item.fps > 0.0)
-        .then(|| p.frames_total.saturating_sub(p.frames_done) as f64 / item.fps);
 }
 
 /// 書き出しに使う実装の組み合わせ。再生と同じで、サーフェスには出さない（`present` を切る）。

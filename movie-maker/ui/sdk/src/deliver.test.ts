@@ -15,7 +15,7 @@ describe("createIpcDeliverApi", () => {
     await api.start({ targets: ["yt", "shorts"], sequence: "main", verify: true });
     await api.cancel();
     await api.reveal("C:/out/yt.mp4");
-    await api.pickOutput("C:/out/yt.mp4");
+    await api.pickOutput("C:/out/yt.mp4", "prores_ks");
     expect(call.mock.calls).toEqual([
       ["export_overview", undefined],
       ["export_status", undefined],
@@ -23,7 +23,7 @@ describe("createIpcDeliverApi", () => {
       ["export_start", { request: { targets: ["yt", "shorts"], sequence: "main", verify: true } }],
       ["export_cancel", undefined],
       ["export_reveal", { path: "C:/out/yt.mp4" }],
-      ["export_pick_output", { current: "C:/out/yt.mp4" }],
+      ["export_pick_output", { current: "C:/out/yt.mp4", codec: "prores_ks" }],
     ]);
   });
 

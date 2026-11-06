@@ -7,6 +7,9 @@ import type { MediaInvoke, MediaListen } from "./media.ts";
 export interface DeliverComposition {
   id: string;
   duration: number;
+  /** 画素。縦長のレンダーターゲット（Shorts）の既定のコンポジションを選ぶのに使う。 */
+  width: number;
+  height: number;
 }
 
 /** sequence 1 つ。選ぶとレンダーターゲットのコンポジションの代わりに、全長を書き出す。時間は秒。 */
@@ -85,8 +88,8 @@ export interface DeliverApi {
   cancel: () => Promise<void>;
   /** 書き出したファイルをエクスプローラーで選んで開く。 */
   reveal: (path: string) => Promise<void>;
-  /** 出力先の保存ダイアログ。キャンセルは `null`。 */
-  pickOutput: (current?: string) => Promise<string | null>;
+  /** 出力先の保存ダイアログ。`codec` に合う拡張子で絞る。キャンセルは `null`。 */
+  pickOutput: (current?: string, codec?: string) => Promise<string | null>;
   onProgress: (handler: (status: ExportStatus) => void) => Promise<() => void>;
 }
 
@@ -120,7 +123,7 @@ export const createIpcDeliverApi = (
     reveal: async (path) => {
       await run("export_reveal", { path });
     },
-    pickOutput: (current) => run("export_pick_output", { current: current ?? null }),
+    pickOutput: (current, codec) => run("export_pick_output", { current: current ?? null, codec: codec ?? null }),
     onProgress: (handler) => listen(EXPORT_PROGRESS_EVENT, (e) => handler(e.payload as ExportStatus)),
   };
 };

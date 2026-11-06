@@ -554,6 +554,7 @@ export type SetCaptionOp = {
 };
 /** レンダーターゲットを足す。 */
 export type AddRenderTargetOp = {
+  "index"?: number | null;
   "op": "addRenderTarget";
   "target": RenderTarget;
 };
