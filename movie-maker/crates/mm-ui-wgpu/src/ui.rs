@@ -1,19 +1,29 @@
-//! サーフェス 1 枚分の UI。上に Program、下に Timeline を描き、Timeline のポインター操作を受ける。
+//! サーフェス 1 枚分の UI。上に Program（素材を開いていれば左に Source）、下に Timeline を描き、Timeline のポインター操作を受ける。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_surface, timeline_quads, Action, PaintState, PointerEvent, Quad, Rect,
+    fit_rect, split_viewers, timeline_quads, Action, PaintState, PointerEvent, Quad, Rect,
     SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
 };
 
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 
+/// サーフェスの上のどの領域か。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Region {
+    Source,
+    Program,
+    Timeline,
+    Outside,
+}
+
 /// サーフェスの UI。描画の資源と、Timeline の表示・操作の状態を持つ。
 pub struct Ui {
     quads: QuadRenderer,
     program: ProgramViewer,
+    source: ProgramViewer,
     model: TimelineModel,
     controller: TimelineController,
     layout: SurfaceLayout,
@@ -29,6 +39,7 @@ impl Ui {
         Self {
             quads: QuadRenderer::new(device, format),
             program: ProgramViewer::new(device, format),
+            source: ProgramViewer::new(device, format),
             model: TimelineModel::default(),
             controller: TimelineController::new(TimeView {
                 origin: 0.0,
@@ -37,6 +48,7 @@ impl Ui {
             layout: SurfaceLayout {
                 program: Rect::default(),
                 timeline: Rect::default(),
+                source: None,
             },
             size: (0.0, 0.0),
             playhead: 0.0,
@@ -53,7 +65,12 @@ impl Ui {
     /// サーフェスの大きさ（物理ピクセル）。割り付けを計算し直す。
     pub fn resize(&mut self, width: u32, height: u32) {
         self.size = (width as f32, height as f32);
-        self.layout = split_surface(self.size.0, self.size.1, self.model.content_height());
+        self.layout = split_viewers(
+            self.size.0,
+            self.size.1,
+            self.model.content_height(),
+            self.source.has_image(),
+        );
         if !self.fitted {
             self.fit();
         }
@@ -68,7 +85,7 @@ impl Ui {
 
     /// 編集で並びや長さが変わったモデルに置き換える。拡大と位置は保ち、範囲の外の選択だけ外す。
     pub fn update_model(&mut self, model: TimelineModel) {
-        self.controller.model_changed(model.items.len());
+        self.controller.model_changed(&model);
         self.model = model;
         self.resize(self.size.0 as u32, self.size.1 as u32);
     }
@@ -76,6 +93,16 @@ impl Ui {
     /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
     pub fn select(&mut self, index: Option<usize>) {
         self.controller.selected = index.filter(|i| *i < self.model.items.len());
+    }
+
+    /// 選んだカットを置く（`None` で外す）。添字は `TimelineModel::items` とそのカットのもの。
+    pub fn select_cut(&mut self, cut: Option<(usize, usize)>) {
+        self.controller.selected_cut = cut.filter(|(i, c)| {
+            self.model
+                .items
+                .get(*i)
+                .is_some_and(|item| *c < item.cuts.len())
+        });
     }
 
     /// 全体が収まる表示にする。
@@ -97,6 +124,28 @@ impl Ui {
         self.program.set_image(device, queue, image);
     }
 
+    /// Source に出すフレーム。最初のフレームが来ると Source の領域が現れる。
+    pub fn set_source_frame(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &RgbaImage,
+    ) {
+        let had = self.source.has_image();
+        self.source.set_image(device, queue, image);
+        if had != self.source.has_image() {
+            self.resize(self.size.0 as u32, self.size.1 as u32);
+        }
+    }
+
+    /// Source を閉じる（領域を畳んで Program を広げる）。
+    pub fn close_source(&mut self) {
+        if self.source.has_image() {
+            self.source.clear();
+            self.resize(self.size.0 as u32, self.size.1 as u32);
+        }
+    }
+
     /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
     pub fn set_frame_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
         self.program.set_texture(device, texture);
@@ -107,15 +156,30 @@ impl Ui {
         self.layout
     }
 
+    /// サーフェスの座標の点がどの領域か。
+    pub fn region_at(&self, x: f32, y: f32) -> Region {
+        let l = self.layout;
+        if l.timeline.contains(x, y) {
+            Region::Timeline
+        } else if l.source.is_some_and(|s| s.contains(x, y)) {
+            Region::Source
+        } else if l.program.contains(x, y) {
+            Region::Program
+        } else {
+            Region::Outside
+        }
+    }
+
     /// サーフェスの座標のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
     pub fn pointer(&mut self, ev: PointerEvent) -> Vec<Action> {
         let t = self.layout.timeline;
         let local = match ev {
-            PointerEvent::Down { x, y } if !t.contains(x, y) => return Vec::new(),
+            PointerEvent::Down { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Wheel { x, y, .. } if !t.contains(x, y) => return Vec::new(),
-            PointerEvent::Down { x, y } => PointerEvent::Down {
+            PointerEvent::Down { x, y, mods } => PointerEvent::Down {
                 x: x - t.x,
                 y: y - t.y,
+                mods,
             },
             PointerEvent::Move { x, y } => PointerEvent::Move {
                 x: x - t.x,
@@ -147,10 +211,15 @@ impl Ui {
             let rect = fit_rect(iw as f32, ih as f32, self.layout.program);
             self.program.prepare(queue, rect, (w, h));
         }
+        if let (Some((iw, ih)), Some(area)) = (self.source.image_size(), self.layout.source) {
+            let rect = fit_rect(iw as f32, ih as f32, area);
+            self.source.prepare(queue, rect, (w, h));
+        }
         let mut enc = device.create_command_encoder(&Default::default());
         {
             let mut pass = begin_pass(&mut enc, target);
             self.program.draw(&mut pass);
+            self.source.draw(&mut pass);
             self.quads.draw(&mut pass, count);
         }
         queue.submit([enc.finish()]);

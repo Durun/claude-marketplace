@@ -17,6 +17,7 @@ use crate::cli::PlayTest;
 use crate::playback::{Command, PlaybackInfo};
 use crate::state::Shared;
 use crate::surface;
+use crate::verify_edit;
 
 /// 描画が安定して WebView の初期化が終わるまでの待ち。
 const SETTLE: Duration = Duration::from_millis(2500);
@@ -109,7 +110,7 @@ fn write_telemetry(t: &Telemetry, test: &PlayTest) {
     }
 }
 
-fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
+pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
     let start = Instant::now();
     while start.elapsed() < limit {
         if done() {
@@ -151,6 +152,12 @@ fn run(
     let mut report = report(shared, info, test, &base, started, wall, shot);
     report["interaction"] = interaction(shared, info, target);
     report["inspector"] = inspector_flow(app, shared, target, hwnd, test);
+    report["timeline_edit"] = verify_edit::run(&verify_edit::Env {
+        shared,
+        surface_hwnd: target.surface_hwnd,
+        window_hwnd: hwnd,
+        test,
+    });
     let _ = window.set_always_on_top(false);
     report
 }

@@ -1,0 +1,249 @@
+{
+  "schema_version": 6,
+  "assets": [
+    {
+      "id": "clip",
+      "path": "../../media/out/cfr.mp4",
+      "content_hash": "stage0-cfr",
+      "color_space": "bt709",
+      "duration": {
+        "num": 2,
+        "den": 1
+      },
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "timebase_offset": {
+        "num": 0,
+        "den": 1
+      }
+    },
+    {
+      "id": "take2",
+      "path": "../../media/out/cfr.mp4",
+      "content_hash": "stage0-cfr-take2",
+      "color_space": "bt709",
+      "duration": {
+        "num": 2,
+        "den": 1
+      },
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "timebase_offset": {
+        "num": 0,
+        "den": 1
+      }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main",
+      "width": 640,
+      "height": 360,
+      "fps": {
+        "num": 30,
+        "den": 1
+      },
+      "duration": {
+        "num": 10,
+        "den": 1
+      },
+      "layers": [
+        {
+          "id": "l-bg",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.02,
+                    "g": 0.05,
+                    "b": 0.18,
+                    "a": 1
+                  }
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1
+            },
+            "keyframes": []
+          },
+          "audio": null,
+          "lock": false
+        },
+        {
+          "id": "l-seq",
+          "source": {
+            "kind": "sequence",
+            "version": 1,
+            "params": {
+              "sequence": {
+                "value": {
+                  "type": "text",
+                  "value": "talk"
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1
+            },
+            "keyframes": []
+          },
+          "audio": null,
+          "lock": false
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "talk",
+      "origin": null,
+      "cuts": [
+        {
+          "id": "c1",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 1,
+            "den": 1
+          },
+          "speed": {
+            "num": 1,
+            "den": 1
+          },
+          "enabled": true,
+          "transition_in": null,
+          "origin": null
+        },
+        {
+          "id": "c2",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 0
+                  }
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 1,
+            "den": 2
+          },
+          "speed": {
+            "num": 1,
+            "den": 1
+          },
+          "enabled": true,
+          "transition_in": null,
+          "origin": null
+        },
+        {
+          "id": "c3",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            },
+            "inputs": []
+          },
+          "in": {
+            "num": 1,
+            "den": 1
+          },
+          "out": {
+            "num": 2,
+            "den": 1
+          },
+          "speed": {
+            "num": 1,
+            "den": 1
+          },
+          "enabled": true,
+          "transition_in": null,
+          "origin": null
+        }
+      ]
+    }
+  ],
+  "render_targets": []
+}
