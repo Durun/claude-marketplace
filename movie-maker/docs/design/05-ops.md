@@ -7,7 +7,7 @@
 - 操作は `mm_ops::Op` の 1 つのバリアントで、`mm-ops/src/ops/` に 1 つ 1 ファイル。引数の型（serde + JSON Schema）、検証、適用、逆操作、`touches` を持つ。JSON では `op` のフィールドに名前（camelCase）、残りのフィールドに引数（`{"op":"ripple","cut":"k1","edge":"out","by":{"num":-2,"den":5}}`）。知らないフィールドは拒否する。
 - 汎用の操作: `addAsset`、`removeAsset`、`addLayer`、`removeLayer`、`moveLayer`、`setParam`、`removeParam`、`setKeyframe`、`removeKeyframe`、`setEase`、`parentLayer`、`attachLayer`、`lockLayer`、`precompose`、`unprecompose`、`addComposition`、`removeComposition`、`addSequence`、`forkSequence`、`removeSequence`、`addRenderTarget`、`removeRenderTarget`、`addMarker`、`removeMarker`。`remove*` と `unprecompose` は `add*` と `precompose` の逆操作で、人も呼べる。
 - 編集の操作（マグネティックシーケンス）: `insert`、`overwrite`、`extract`、`split`、`join`、`ripple`、`roll`、`slip`、`slide`、`disable`、`lift`、`insertCuts`、`extractCuts`。`by` と `at` はシーケンスの時間軸の長さで、素材の時間には `speed` を掛けて変換する。`lift` はカットのノードを隙間（[データの形](03-data-model.md#素材の整理と文字起こし)の `Node::gap`）に替え、長さと後ろの位置を変えない。逆操作は元のカットへの `overwrite`。`insertCuts` と `extractCuts` は続いたカットの列（貼り付けと範囲の削除）で、互いの逆操作。
-- レイヤーの時間の操作: `trimLayer`（Timeline の帯の端のつまみ）。`by` はコンポジションの時間軸。イン点は `start` と `in` を一緒に動かして画を止めたまま帯の左端を動かし、アウト点は `out` だけ。タイムリマップのあるレイヤーのイン点は拒否する。
+- レイヤーの時間の操作: `trimLayer`（Timeline の帯の端のつまみ）。`by` はコンポジションの時間軸。イン点は `start` と `in` を一緒に動かして画を止めたまま帯の左端を動かし、アウト点は `out` だけ。タイムリマップのあるレイヤーのイン点は拒否する。撮影素材のレイヤーは、動かした後の `in` が 0 未満、`out` が素材の長さ超になる動かし方を拒否する。
 - 選別の操作: `markIn`・`markOut`（素材の印。`at: null` で外す）、`addSelection`・`removeSelection`、`addTopic`・`removeTopic`、`rate`（`target` は選別か話題の ID）、`tag`（`remove: true` で外す。付いているタグを付ける・付いていないタグを外すのは拒否）。どれも素材の ID を `touches` に入れる（素材を外す操作と重ねるため）。`rate` と `tag` は `target` だけ。
 - 文字起こしの操作: `deleteWords`（単語の列を消す。`restore: true` で戻す。既にその状態の単語は拒否）、`fixTranscript`（単語 1 つの文字。`text: null` で元に戻す）。本文の表は変えず、`transcript_edits` を変える。`touches` は素材と単語の ID。
 - 話題から並びを作る操作: `insertTopics { sequence, index?, topics, cuts }`。話題の素材の範囲を切り出したカット（撮影素材のノード、等速）を、話題の順に 1 つの操作で差し込む（`index` を省くと末尾）。カットの ID は呼び出し側が話題と同じ数だけ決める（やり直しで同じ ID に戻るため）。逆操作は `extractCuts` で、1 回の取り消しで全部抜ける。マクロ（操作の列）にしないのは、取り消しと `mm diff` で 1 つの編集として扱うため。
@@ -21,7 +21,7 @@
 
 ## `touches`
 
-- 操作が読む・書く所の ID の集合（文字列）。書く所だけでなく、参照先（親とその祖先の鎖、接続先、入れ子のコンポジションと、そこから入れ子でたどれる先の全部）、参照元（レンダーターゲット、接続したレイヤー）、シーケンスの隣のカットも含める。入れ子や親の循環を作る操作は、先の内容を読んでいるため。
+- 操作が読む・書く所の ID の集合（文字列）。書く所だけでなく、参照先（親とその祖先の鎖、接続先、入れ子のコンポジションと、そこから入れ子でたどれる先の全部）、参照元（レンダーターゲット、接続したレイヤー）、ノードが参照する素材（撮影素材、LUT）、シーケンスの隣のカットも含める。入れ子や親の循環を作る操作は、先の内容を読んでいるため。
 - 守る性質: `touches` が重ならない 2 つの操作は、1 つずつ別に適用すると、順を入れ替えても各操作の成否と最後のプロジェクトのデータが同じになる。性質テスト（`crates/mm-ops/tests/props.rs`）が、同じプロジェクトのデータに適用する操作の全部の組で守る。
 - 同時書き込みの判定と `mm diff` がこれで指す。
 
