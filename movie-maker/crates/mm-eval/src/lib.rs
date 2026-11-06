@@ -11,7 +11,7 @@ mod time;
 mod transform;
 
 pub use param::{ease, eval_param, lerp_value, node_params_at, BezierCurve};
-pub use sequence::{cut_at, cut_source_time, place_cuts, sequence_duration, PlacedCut};
+pub use sequence::{cut_at, cut_source_time, place_cuts, reframe_at, sequence_duration, PlacedCut};
 pub use time::{
     comp_time, comp_time_along, remap_forward, remap_inverse, source_time, source_time_along,
 };

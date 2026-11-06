@@ -80,6 +80,60 @@ pub struct Layer {
     /// 人が直した所。Claude の操作経路からの操作は拒否する。
     #[serde(default)]
     pub lock: bool,
+    /// sequence のレイヤーで、このコンポジションでのカットごとの再フレーミングと字幕の置き場所。
+    #[serde(default)]
+    pub framing: Framing,
+}
+
+/// sequence のレイヤーの、コンポジションごとの見せ方。同じ素材を本編（16:9）とショート（9:16）で別の位置から切り出す。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Framing {
+    /// カットごとの再フレーミング。カットの ID は重ならない。無いカットは変形なし。
+    pub cuts: Vec<CutReframe>,
+    /// 字幕の置き場所。`None` は字幕を描く側の既定。
+    pub caption: Option<CaptionPlacement>,
+}
+
+impl Framing {
+    /// カットの再フレーミング。
+    pub fn reframe(&self, cut: &CutId) -> Option<&CutReframe> {
+        self.cuts.iter().find(|r| &r.cut == cut)
+    }
+
+    /// 持っているパラメータの列（検証が巡る）。
+    pub fn params(&self) -> impl Iterator<Item = &Param> {
+        self.cuts
+            .iter()
+            .flat_map(|r| r.transform.params())
+            .chain(self.caption.iter().flat_map(CaptionPlacement::params))
+    }
+}
+
+/// カット 1 つの再フレーミング。カットの画像（コンポジションの画布に縦横比を保って収めたもの）に掛ける変形。
+/// キーフレームの時刻は素材の時刻（被写体の位置は素材の時刻で決まるので、カットを動かしても切り出しがずれない）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CutReframe {
+    pub cut: CutId,
+    pub transform: Transform,
+}
+
+/// 字幕の置き場所。値はコンポジションの画素。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CaptionPlacement {
+    /// 字幕の帯の下端の中央（Vec2）。
+    pub position: Param,
+    /// 字幕の帯の幅（Number）。これを超える行は折り返す。
+    pub width: Param,
+}
+
+impl CaptionPlacement {
+    /// 持っているパラメータの列。
+    pub fn params(&self) -> impl Iterator<Item = &Param> {
+        [&self.position, &self.width].into_iter()
+    }
 }
 
 impl Layer {
@@ -110,6 +164,7 @@ impl Layer {
             audio: None,
             enabled: true,
             lock: false,
+            framing: Framing::default(),
         }
     }
 

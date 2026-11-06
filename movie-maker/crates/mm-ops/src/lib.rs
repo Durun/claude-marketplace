@@ -15,6 +15,7 @@ mod op;
 mod ops;
 mod param_ref;
 mod schema;
+mod shorts;
 mod touches;
 mod txn;
 

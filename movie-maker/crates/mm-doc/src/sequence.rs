@@ -55,6 +55,70 @@ pub struct Cut {
     /// 参照・複製の元のカット。ショートで in/out を上書きしたときの対応に使う。
     #[serde(default)]
     pub origin: Option<CutId>,
+    /// 参照のショートで、元のカットから上書きした所。上書きしていない所は元のカットに従う。
+    #[serde(default)]
+    pub overrides: CutOverrides,
+    /// 複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。
+    #[serde(default)]
+    pub origin_base: Option<CutBase>,
+}
+
+/// 参照のショートのカットで上書きした所。真の所は元のカットに従わない。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CutOverrides {
+    #[serde(rename = "in")]
+    pub in_point: bool,
+    #[serde(rename = "out")]
+    pub out_point: bool,
+}
+
+impl CutOverrides {
+    /// どこかを上書きしているか。
+    pub fn any(self) -> bool {
+        self.in_point || self.out_point
+    }
+}
+
+/// 元のカットの、ショートが従う・比べる値（素材、イン点、アウト点、速さ、有効）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct CutBase {
+    pub source: Node,
+    #[serde(rename = "in")]
+    pub in_point: RationalTime,
+    #[serde(rename = "out")]
+    pub out_point: RationalTime,
+    pub speed: Rational,
+    pub enabled: bool,
+}
+
+impl CutBase {
+    /// カットの今の値。
+    pub fn of(cut: &Cut) -> Self {
+        Self {
+            source: cut.source.clone(),
+            in_point: cut.in_point,
+            out_point: cut.out_point,
+            speed: cut.speed,
+            enabled: cut.enabled,
+        }
+    }
+
+    /// `other` と違うフィールドの名前（JSON の名前）。
+    pub fn changed_fields(&self, other: &CutBase) -> Vec<&'static str> {
+        let pairs = [
+            ("source", self.source != other.source),
+            ("in", self.in_point != other.in_point),
+            ("out", self.out_point != other.out_point),
+            ("speed", self.speed != other.speed),
+            ("enabled", self.enabled != other.enabled),
+        ];
+        pairs
+            .into_iter()
+            .filter_map(|(name, changed)| changed.then_some(name))
+            .collect()
+    }
 }
 
 impl Cut {
@@ -74,6 +138,8 @@ impl Cut {
             enabled: true,
             transition_in: None,
             origin: None,
+            overrides: CutOverrides::default(),
+            origin_base: None,
         }
     }
 

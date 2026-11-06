@@ -3,6 +3,7 @@
 mod bins;
 mod build;
 mod params;
+mod shorts;
 
 use crate::common::{marker, quarters, secs};
 use build::{build_cut, build_layer, cut_id, layer_id, pick};
@@ -44,7 +45,8 @@ pub enum Spec {
     AddComposition(String, Vec<LayerSpec>),
     RemoveComposition(u8),
     AddSequence(String, Vec<CutSpec>, Option<u8>),
-    ForkSequence(u8, bool, String, String),
+    /// 元の番号、複製か、新しい ID、カットの ID の接頭辞、範囲（元のカットの番号の組）。
+    ForkSequence(u8, bool, String, String, Option<(u8, u8)>),
     RemoveSequence(u8),
     AddRenderTarget(u8, String),
     RemoveRenderTarget(u8),
@@ -64,6 +66,8 @@ pub enum Spec {
     Disable(u8, bool),
     /// 段階 3 の操作。
     Bin(bins::BinSpec),
+    /// 本編とショートの操作。
+    Short(shorts::ShortSpec),
 }
 
 /// プロジェクトのデータを編集する操作の種（レイヤー、パラメータ、コンポジション）。
@@ -122,8 +126,14 @@ fn arb_seq_spec() -> impl Strategy<Value = Spec> {
             prop::option::weighted(0.3, s())
         )
             .prop_map(|(id, cuts, origin)| Spec::AddSequence(id, cuts, origin)),
-        (s(), any::<bool>(), arb_id(), arb_id())
-            .prop_map(|(a, b, c, d)| Spec::ForkSequence(a, b, c, d)),
+        (
+            s(),
+            any::<bool>(),
+            arb_id(),
+            arb_id(),
+            prop::option::of((s(), s()))
+        )
+            .prop_map(|(a, b, c, d, e)| Spec::ForkSequence(a, b, c, d, e)),
         s().prop_map(Spec::RemoveSequence),
         (s(), s(), arb_cut()).prop_map(|(a, b, c)| Spec::Insert(a, b, c)),
         (s(), arb_cut()).prop_map(|(a, b)| Spec::Overwrite(a, b)),
@@ -143,6 +153,7 @@ pub fn arb_spec() -> impl Strategy<Value = Spec> {
         3 => arb_doc_spec(),
         2 => arb_seq_spec(),
         3 => bins::arb_bin_spec().prop_map(Spec::Bin),
+        1 => shorts::arb_short_spec().prop_map(Spec::Short),
     ]
 }
 
@@ -150,6 +161,9 @@ pub fn arb_spec() -> impl Strategy<Value = Spec> {
 pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
     if let Spec::Bin(b) = spec {
         return bins::bin_op(b, p);
+    }
+    if let Spec::Short(s) = spec {
+        return shorts::short_op(s, p);
     }
     layer_op(spec, p)
         .or_else(|| param_op(spec, p))
@@ -306,21 +320,41 @@ fn comp_op(spec: &Spec, p: &Project) -> Option<Op> {
     })
 }
 
-fn fork_sequence(p: &Project, i: u8, fork: bool, new_seq: &str, prefix: &str) -> Option<Op> {
+fn fork_sequence(
+    p: &Project,
+    (i, fork): (u8, bool),
+    new_seq: &str,
+    prefix: &str,
+    range: Option<(u8, u8)>,
+) -> Option<Op> {
     let s = pick(&p.sequences, i)?;
     let relation = if fork {
         OriginRelation::Fork
     } else {
         OriginRelation::Reference
     };
+    let (range, count) = match range {
+        Some((a, b)) if !s.cuts.is_empty() => {
+            let n = s.cuts.len();
+            let (a, b) = (usize::from(a) % n, usize::from(b) % n);
+            let (first, last) = (a.min(b), a.max(b));
+            let range = CutRange {
+                first: s.cuts[first].id.clone(),
+                last: s.cuts[last].id.clone(),
+            };
+            (Some(range), last - first + 1)
+        }
+        _ => (None, s.cuts.len()),
+    };
     Some(
         ForkSequence {
             sequence: s.id.clone(),
             new_sequence: Id::new(new_seq),
             relation,
-            cuts: (0..s.cuts.len())
+            cuts: (0..count)
                 .map(|k| Id::new(format!("{prefix}{k}")))
                 .collect(),
+            range,
         }
         .into(),
     )
@@ -341,8 +375,8 @@ fn sequence_op(spec: &Spec, p: &Project) -> Option<Op> {
             },
         }
         .into(),
-        Spec::ForkSequence(i, fork, new_seq, prefix) => {
-            return fork_sequence(p, *i, *fork, new_seq, prefix)
+        Spec::ForkSequence(i, fork, new_seq, prefix, range) => {
+            return fork_sequence(p, (*i, *fork), new_seq, prefix, *range)
         }
         Spec::RemoveSequence(i) => RemoveSequence {
             sequence: pick(&p.sequences, *i)?.id.clone(),
