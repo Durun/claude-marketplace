@@ -7,6 +7,7 @@
 //! 整形器と描画器は別々に作れる。フォントの読み込みは重いので、同じプロセスでは
 //! [`TextEngine`] を共有して両方を取り出すと速い。
 
+mod glyph_ids;
 mod gpu;
 mod layout;
 mod raster;
