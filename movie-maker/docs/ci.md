@@ -56,6 +56,8 @@ GitHub Actions の runner に GPU は無く、FFmpeg の素材も無い。CI は
 | ラウンド | 基点と PR を 3 回ずつ交互 | 全部を束ねた中央値で比べる。外れ値の 1 回に引きずられない |
 | 確認 | 回帰が出たらさらに 3 ラウンドを足し、束ね直して再判定 | 1 度の揺れで落とさない |
 
+所要時間は、キャッシュが冷たい最初の実行で `perf-gate` が 7 分（基点の mm のビルド 5 分 12 秒、PR の mm 26 秒、測定は 6 秒）。測定そのものは数十秒で、残りはビルド。runner の値は手元の約 2 倍（`ops.apply_ms` 3.7 ms、`store.commit_ms` 8.5 ms）で、予算には収まる。
+
 環境変数 `PERF_THRESHOLD`、`PERF_MIN_DELTA`、`PERF_ROUNDS`、`PERF_REPEAT` で `scripts/perf-gate.sh` の値を変えられる。基点に `perf run cpu` がまだ無い PR（このシナリオを足す PR 自身）では、比較を飛ばして PR の側だけ測る。
 
 ### ベースラインの置き場所と更新
