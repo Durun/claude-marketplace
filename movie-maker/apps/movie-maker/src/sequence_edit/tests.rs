@@ -247,6 +247,50 @@ fn ripple_の出は後ろのカットをずらす() {
 }
 
 #[test]
+fn 速さ_2_のレイヤーではカットの操作の量はシーケンスの時間軸で_2_倍_trim_layer_はそのまま() {
+    let mut p = sample_project();
+    p.compositions[0].layers[0].speed = Rational::integer(2);
+    let comp = p.compositions[0].clone();
+    let layers = vec!["l-seq".to_owned()];
+    let cuts = vec![vec!["k1".to_owned(), "k2".to_owned(), "k3".to_owned()]];
+    let half = RationalTime::new(1, 2).unwrap();
+    let slip = gesture_op(
+        EditKind::Slip { item: 0, cut: 0 },
+        0.5,
+        &ids(&layers, &cuts),
+        &comp,
+    );
+    let Some(Op::Slip(slip)) = slip else {
+        panic!("slip になる")
+    };
+    assert_eq!(
+        slip.by,
+        RationalTime::seconds(1),
+        "画面の 0.5 秒 = シーケンスの 1 秒"
+    );
+    let trim = EditKind::TrimLayer {
+        item: 0,
+        side: Side::Out,
+    };
+    let Some(Op::TrimLayer(trim)) = gesture_op(trim, 0.5, &ids(&layers, &cuts), &comp) else {
+        panic!("trimLayer になる")
+    };
+    assert_eq!(trim.by, half, "レイヤーの端はコンポジションの時間軸");
+}
+
+#[test]
+fn 再生位置がフレームの後半でも_split_は表示中のフレームで割る() {
+    let p = sample_project();
+    // 1 秒 + 0.9 フレーム。表示は 30 フレーム目なので、割る位置は 1 秒。
+    let at = 1.0 + 0.9 / 30.0;
+    let planned = plan_split(&ctx(&p, None, at), Id::new("k1b")).unwrap();
+    let Op::Split(split) = planned.op else {
+        panic!("split になる")
+    };
+    assert_eq!(split.at, RationalTime::seconds(1));
+}
+
+#[test]
 fn 量が_0_フレームか_対応が無ければ操作にしない() {
     let p = sample_project();
     let comp = p.compositions[0].clone();

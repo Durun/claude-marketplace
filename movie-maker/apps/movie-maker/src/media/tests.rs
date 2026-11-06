@@ -221,3 +221,63 @@ fn 取り込んだ素材は一覧で_ready_になり_サムネイルと波形が
     assert_eq!(wave.peaks.len(), 50);
     assert!(wave.peaks.iter().any(|p| *p > 0.05));
 }
+
+#[test]
+fn 同じ中身のファイルを_1_回に_2_つ渡すと_2_つ目は足さない() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(clip) = make_clip(dir.path()) else {
+        return;
+    };
+    let copy = dir.path().join("copy.mp4");
+    std::fs::copy(&clip, &copy).unwrap();
+    let paths = [clip, copy].map(|p| p.to_string_lossy().into_owned());
+    let applied = RefCell::new(0);
+    let events = RefCell::new(Vec::new());
+    // 適用がまだ一覧に映っていない（Core の書いた結果を読む側が古い）ときと同じ。
+    run_import(
+        &options(dir.path()),
+        &paths,
+        &HashSet::new,
+        &|_| {
+            *applied.borrow_mut() += 1;
+            Ok(())
+        },
+        &|e| events.borrow_mut().push(e),
+    );
+    assert_eq!(*applied.borrow(), 1);
+    assert!(events.borrow().contains(&ImportEvent::Finished {
+        added: 1,
+        skipped: 1,
+        failed: 0
+    }));
+}
+
+#[test]
+fn 取り込み中は掃除を断る() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_with(dir.path(), vec![]);
+    let busy = state.importing.lock().unwrap();
+    let refused = state.clear_cache(&["preview".into()]);
+    assert_eq!(refused, Err("取り込み中は掃除できない".into()));
+    drop(busy);
+    assert!(state.clear_cache(&["preview".into()]).is_ok());
+}
+
+#[test]
+fn 選択かドロップで渡されていないパスは取り込まない() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_with(dir.path(), vec![]);
+    let picked = dir.path().join("picked.mp4");
+    state.offer([picked.clone()]);
+    let events = RefCell::new(Vec::new());
+    let emit = |e| events.borrow_mut().push(e);
+    let stray = "C:/Windows/win.ini".to_owned();
+    let refused = state.import(&[picked.to_string_lossy().into_owned(), stray], &emit);
+    assert!(refused.unwrap_err().contains("win.ini"));
+    assert!(events.borrow().is_empty(), "1 つも取り込まない");
+    let accepted = state.import(&[picked.to_string_lossy().into_owned()], &emit);
+    assert!(
+        accepted.is_ok(),
+        "選んだパスは受ける（無いファイルは素材ごとの失敗）"
+    );
+}

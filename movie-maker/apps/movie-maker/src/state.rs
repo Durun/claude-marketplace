@@ -13,7 +13,8 @@ use mm_ui_layout::PointerEvent;
 use serde::Serialize;
 
 use crate::clock::PlayClock;
-use crate::edit::PendingEdit;
+use crate::edit::{EditJob, PendingEdit};
+use crate::history::HistoryMirror;
 use crate::playback::Command;
 use crate::sequence_edit::EditState;
 use crate::source::SourceSlot;
@@ -93,11 +94,14 @@ impl FrameSlot {
     }
 }
 
-/// 再生スレッドが持つ、いま開いているプロジェクトのデータとコンポジション。操作を適用するたびに置き直す。
+/// いま開いているプロジェクトのデータとコンポジション。操作を適用するたびに置き直す。
 #[derive(Clone)]
 pub struct OpenDoc {
     pub project: Arc<Project>,
     pub comp: CompositionId,
+    /// `project.mmdb` のバージョン。編集の計画に付けて、間に別の書き手が触った所との衝突を見分ける。
+    /// JSON のプロジェクトでは `None`。
+    pub version: Option<i64>,
 }
 
 /// アプリ全体で 1 つの共有状態。
@@ -129,10 +133,14 @@ pub struct Shared {
     pub cpu_frames: AtomicBool,
     /// 再生スレッドがまだ適用していない操作。
     pub edits: Mutex<Vec<PendingEdit>>,
+    /// キーとドラッグの編集を順に計画して適用する列。最初の編集で作る。
+    pub edit_lane: Mutex<Option<Sender<EditJob>>>,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
+    /// `core` の取り消しの列の写し。取り消しの文言に、戻したトランザクションの書き手を出すのに使う。
+    pub history: HistoryMirror,
     /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
     doc: Mutex<Option<OpenDoc>>,
     /// `doc` を置き直すたびに進む。読む側が作り直すかどうかの判定に使う。
@@ -168,8 +176,10 @@ impl Shared {
             gpu: Mutex::new(None),
             cpu_frames: AtomicBool::new(false),
             edits: Mutex::new(Vec::new()),
+            edit_lane: Mutex::new(None),
             core: OnceLock::new(),
             reload_touched: Mutex::new(Vec::new()),
+            history: HistoryMirror::default(),
             doc: Mutex::new(None),
             doc_serial: AtomicU64::new(0),
             selected_layer: Mutex::new(None),
@@ -205,8 +215,28 @@ impl Shared {
 
     /// 開いているプロジェクトのデータを置き直し、読む側に知らせる。
     pub fn publish_doc(&self, project: Arc<Project>, comp: CompositionId) {
-        *self.doc.lock().expect("doc") = Some(OpenDoc { project, comp });
+        *self.doc.lock().expect("doc") = Some(OpenDoc {
+            project,
+            comp,
+            version: None,
+        });
         self.doc_serial.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// `project.mmdb` のバージョン `version` のデータを置く。置いてあるものより新しいときだけ置き直し、置いたら真。
+    /// 保存した直後の読み直しと変更の通知は別のスレッドから来るので、古いほうで上書きしない。
+    pub fn publish_saved(&self, version: i64, project: Arc<Project>, comp: CompositionId) -> bool {
+        let mut doc = self.doc.lock().expect("doc");
+        if doc.as_ref().and_then(|d| d.version) >= Some(version) {
+            return false;
+        }
+        *doc = Some(OpenDoc {
+            project,
+            comp,
+            version: Some(version),
+        });
+        self.doc_serial.fetch_add(1, Ordering::SeqCst);
+        true
     }
 
     /// いま開いているプロジェクトのデータ。

@@ -10,7 +10,7 @@ use mm_types::{CompositionId, MmError};
 use mm_ui_wgpu::timeline_model;
 use tauri::webview::WebviewBuilder;
 use tauri::window::WindowBuilder;
-use tauri::Emitter;
+use tauri::{DragDropEvent, Emitter, Manager, WebviewEvent};
 use tauri::{
     PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl, Window, WindowEvent,
 };
@@ -22,7 +22,7 @@ use crate::edit;
 use crate::ipc::{self, ProjectInfo, SyncState};
 use crate::media::{self, MediaState};
 use crate::media_ipc;
-use crate::playback::{Command, Playback, PlaybackInfo, PlayerOptions};
+use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
 use crate::source_ipc;
@@ -159,19 +159,11 @@ fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server
 }
 
 /// 保存した変更を再生スレッドと WebView に伝える。HTTP と IPC のどちらから書かれても同じ道を通る。
+/// WebView への通知は `Shared::doc` を置き直した後に送るので、受けたパネルが読み直すと新しいデータが返る。
 fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
-    let Some(core) = shared.core.get() else {
-        return;
-    };
-    let (handle, shared) = (app.clone(), shared.clone());
-    let started = core.on_change(move |change| {
-        shared
-            .reload_touched
-            .lock()
-            .expect("reload")
-            .extend(change.touched.iter().cloned());
-        shared.send(Command::Reload);
-        let _ = handle.emit(DOC_CHANGED_EVENT, &change);
+    let handle = app.clone();
+    let started = edit::watch_changes(shared, move |change| {
+        let _ = handle.emit(DOC_CHANGED_EVENT, change);
     });
     if let Err(e) = started {
         tracing::warn!("変更の通知を受けるスレッドを始められない: {e}");
@@ -276,6 +268,7 @@ fn build_and_run(boot: Boot) {
             story_ipc::story_range,
             story_ipc::story_search,
             story_ipc::story_timeline_time,
+            story_ipc::story_cut_time,
             source_ipc::source_open,
             source_ipc::source_close,
             source_ipc::source_state,
@@ -301,6 +294,7 @@ impl Boot {
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
         forward_changes(app.handle(), &self.shared);
+        offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());
         watch_window(
             &window,
             webview,
@@ -348,6 +342,15 @@ impl Boot {
         self.shared.set_surface_size(s.2 as u32, s.3 as u32);
         Ok((window, webview, surface_hwnd))
     }
+}
+
+/// WebView にドロップされたファイルのパスを、Media の取り込んでよいパスとして覚える。
+fn offer_drops(webview: &Webview, media: Arc<MediaState>) {
+    webview.on_webview_event(move |e| {
+        if let WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = e {
+            media.offer(paths.iter().cloned());
+        }
+    });
 }
 
 /// 大きさの変更に配置を合わせ、閉じるときに HWND より先に描画と再生を止める。

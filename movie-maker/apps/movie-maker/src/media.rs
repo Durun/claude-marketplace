@@ -118,8 +118,10 @@ pub struct MediaState {
     tools: Tools,
     /// 素材の中身の調べ。ffprobe を一覧のたびに呼ばないよう、コンテンツハッシュで覚える。
     probes: Mutex<HashMap<String, Option<MediaProbe>>>,
-    /// 取り込みは 1 度に 1 つだけ回す。
+    /// 取り込みは 1 度に 1 つだけ回す。掃除も取り込みと同時に回さない（作っている途中の出力を消さない）。
     importing: Mutex<()>,
+    /// ファイルの選択とドロップで人が渡したパス。取り込みはこの中のパスだけを受ける（WebView から任意のパスを読ませない）。
+    offered: Mutex<HashSet<PathBuf>>,
 }
 
 /// プロジェクトの `cache/`。`project.mmdb` のフォルダーか、プロジェクトの JSON のあるフォルダーの下。
@@ -137,6 +139,24 @@ impl MediaState {
             tools: Tools::default(),
             probes: Mutex::new(HashMap::new()),
             importing: Mutex::new(()),
+            offered: Mutex::new(HashSet::new()),
+        }
+    }
+
+    /// ファイルの選択かドロップで得たパスを、取り込んでよいパスとして覚える。
+    pub fn offer<P: Into<PathBuf>>(&self, paths: impl IntoIterator<Item = P>) {
+        let mut offered = self.offered.lock().expect("offered");
+        offered.extend(paths.into_iter().map(Into::into));
+    }
+
+    /// `paths` が全部、人が選ぶかドロップしたパスか。違うものがあればその 1 つを返す。
+    fn check_offered(&self, paths: &[String]) -> Result<(), String> {
+        let offered = self.offered.lock().expect("offered");
+        match paths.iter().find(|p| !offered.contains(Path::new(p))) {
+            Some(p) => Err(format!(
+                "選択かドロップで渡されていないパスは取り込まない: {p}"
+            )),
+            None => Ok(()),
         }
     }
 
@@ -257,6 +277,11 @@ impl MediaState {
         if let Some(bad) = kinds.iter().find(|k| !CLEARABLE.contains(&k.as_str())) {
             return Err(format!("掃除できないフォルダー: {bad}"));
         }
+        let _guard = match self.importing.try_lock() {
+            Ok(g) => g,
+            Err(TryLockError::WouldBlock) => return Err("取り込み中は掃除できない".into()),
+            Err(TryLockError::Poisoned(p)) => p.into_inner(),
+        };
         let mut freed = 0;
         for kind in kinds {
             let dir = self.cache.root().join(kind);
@@ -272,6 +297,7 @@ impl MediaState {
 
     /// 素材を取り込み、新しい素材を 1 つずつ `addAsset` で足す。取り込み中にもう一度呼ぶと拒否する。
     pub fn import(&self, paths: &[String], emit: &dyn Fn(ImportEvent)) -> Result<(), String> {
+        self.check_offered(paths)?;
         let _guard = match self.importing.try_lock() {
             Ok(g) => g,
             Err(TryLockError::WouldBlock) => return Err("取り込み中".into()),
@@ -298,13 +324,15 @@ pub fn run_import(
     emit: &dyn Fn(ImportEvent),
 ) {
     let (mut added, mut skipped, mut failed) = (0, 0, 0);
+    // この取り込みで足した中身のハッシュ。`known` が適用をまだ映していなくても、同じ中身を 2 度足さない。
+    let mut fresh = HashSet::new();
     for (index, path) in paths.iter().enumerate() {
         emit(ImportEvent::Started {
             index,
             total: paths.len(),
             path: path.clone(),
         });
-        match import_one(opts, path, known, apply) {
+        match import_one(opts, path, known, &mut fresh, apply) {
             Ok((asset_id, was_added)) => {
                 if was_added {
                     added += 1;
@@ -340,11 +368,13 @@ fn import_one(
     opts: &IngestOptions,
     path: &str,
     known: &dyn Fn() -> HashSet<String>,
+    fresh: &mut HashSet<String>,
     apply: &dyn Fn(Op) -> Result<(), String>,
 ) -> Result<(String, bool), String> {
     let report = mm_ingest::ingest(opts, Path::new(path)).map_err(|e| e.to_string())?;
     let id = report.asset.id.to_string();
-    if known().contains(&report.asset.content_hash) {
+    let hash = report.asset.content_hash.clone();
+    if fresh.contains(&hash) || known().contains(&hash) {
         return Ok((id, false));
     }
     let op = AddAsset {
@@ -352,6 +382,7 @@ fn import_one(
         index: None,
     };
     apply(op.into())?;
+    fresh.insert(hash);
     Ok((id, true))
 }
 

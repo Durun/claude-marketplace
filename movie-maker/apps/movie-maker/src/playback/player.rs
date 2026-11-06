@@ -17,6 +17,7 @@ use super::intake::{collect_batch, fit_chunk};
 use super::{Command, PlaybackInfo};
 use crate::clock::{AudioClock, PlayClock, SwitchClock, WallClock};
 use crate::edit::EditOutcome;
+use crate::history::HistoryMirror;
 use crate::state::{FrameImage, Shared};
 
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
@@ -67,7 +68,7 @@ pub struct FramePlan {
 
 /// 位置 `pos`（秒）に出すフレームを決める。`last` は直前に出した番号。まだ同じなら `None`。
 pub fn plan_frame(pos: f64, last: Option<i64>, fps: f64, total: i64) -> Option<FramePlan> {
-    let index = ((pos * fps).floor() as i64).clamp(0, (total - 1).max(0));
+    let index = crate::timebase::frame_index(pos, fps).clamp(0, (total - 1).max(0));
     match last {
         Some(l) if index <= l => None,
         Some(l) => Some(FramePlan {
@@ -125,7 +126,12 @@ impl Player {
         };
         let clock = Arc::new(SwitchClock::new(inner));
         let _ = shared.clock.set(clock.clone());
-        shared.publish_doc(project.clone(), comp_id.clone());
+        match shared.core.get().and_then(|c| c.version().ok()) {
+            Some(version) => {
+                shared.publish_saved(version, project.clone(), comp_id.clone());
+            }
+            None => shared.publish_doc(project.clone(), comp_id.clone()),
+        }
         let fps_f = fps.to_f64();
         let info = describe(&engine, comp, clock.as_ref(), audio.as_deref());
         let player = Self {
@@ -209,7 +215,7 @@ impl Player {
             Command::Seek(t) => self.seek_to(t),
             Command::Step(n) => {
                 let here = self.pause_position();
-                let idx = (here * self.fps_f).floor() as i64 + n;
+                let idx = crate::timebase::frame_index(here, self.fps_f) + n;
                 self.seek_to(idx as f64 / self.fps_f);
             }
             Command::Edit => self.apply_edits(),
@@ -243,25 +249,23 @@ impl Player {
     fn step_history(&mut self, undo: bool) {
         // 保存している間は、ストアの取り消しとやり直し（`project.mmdb` に記録される）を使う。描き直しは変更の通知で行う。
         if let Some(core) = self.shared.core.get() {
-            let caller = mm_serve::Caller::webview();
-            let done = if undo {
-                core.undo(&caller)
-            } else {
-                core.redo(&caller)
-            };
-            if let Err(e) = done {
-                tracing::warn!(error = %e, undo, "履歴を適用できなかった");
-            }
-            return;
+            return crate::edit::step_saved(&self.shared, core, undo);
         }
         let stack = if undo { &mut self.undo } else { &mut self.redo };
-        let Some(ops) = stack.pop() else { return };
+        let Some(ops) = stack.pop() else {
+            let message = HistoryMirror::message(undo, Ok(None), None);
+            return self.shared.edit.notify(message);
+        };
         match self.commit(&ops) {
             Ok((_, inverse)) => {
                 let other = if undo { &mut self.redo } else { &mut self.undo };
                 other.push(inverse);
+                self.shared.edit.notify(String::new());
             }
-            Err(e) => tracing::warn!(error = %e, undo, "履歴を適用できなかった"),
+            Err(e) => self
+                .shared
+                .edit
+                .set_message(HistoryMirror::message(undo, Err(e), None)),
         }
     }
 
@@ -272,30 +276,26 @@ impl Player {
             .map_err(|e| e.to_string())?;
         let touched = outcome.touches.to_vec();
         let inverse = outcome.inverse_ops().map_err(|e| e.to_string())?;
-        self.adopt_project(project, &touched)?;
+        let project = Arc::new(project);
+        self.adopt_project(project.clone(), &touched)?;
+        self.shared.publish_doc(project, self.comp.clone());
         Ok((EditOutcome { touched }, inverse))
     }
 
-    /// 保存した最新のプロジェクトのデータ（HTTP の入口と IPC が書いたもの）に置き換えて描き直す。
+    /// 保存した変更（HTTP の入口と IPC が書いたもの）を描画に取り込む。データは変更を受けた側が
+    /// `Shared::doc` に置き直してから `Reload` を送るので、ここはそれを再生するデータにする。
     fn reload(&mut self) {
-        let Some(core) = self.shared.core.get() else {
-            return;
-        };
         let touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
-        match core.render_project() {
-            Ok((_, project)) => {
-                if let Err(e) = self.adopt_project(project, &touched) {
-                    tracing::warn!("保存した変更を描画に取り込めない: {e}");
-                }
-            }
-            Err(e) => tracing::warn!("保存したプロジェクトのデータを読めない: {e}"),
+        let Some(doc) = self.shared.doc() else { return };
+        if let Err(e) = self.adopt_project(doc.project, &touched) {
+            tracing::warn!("保存した変更を描画に取り込めない: {e}");
         }
     }
 
     /// `project` を再生するプロジェクトのデータにし、触った ID に頼ったキャッシュだけを捨てて描き直す。
     fn adopt_project(
         &mut self,
-        project: Project,
+        project: Arc<Project>,
         touched: &[String],
     ) -> std::result::Result<(), String> {
         let comp = project
@@ -304,9 +304,7 @@ impl Player {
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
         self.engine.invalidate_touched(touched);
-        let project = Arc::new(project);
-        self.project = project.clone();
-        self.shared.publish_doc(project, self.comp.clone());
+        self.project = project;
         self.adopt_shape(fps, duration, size);
         self.resync();
         Ok(())
@@ -326,7 +324,8 @@ impl Player {
         let Some(r) = &self.reverse else { return };
         let pos = (r.from - r.since.elapsed().as_secs_f64()).max(0.0);
         let at_start = pos <= 0.0;
-        let idx = ((pos * self.fps_f).floor() as i64).clamp(0, (self.frames_total - 1).max(0));
+        let idx =
+            crate::timebase::frame_index(pos, self.fps_f).clamp(0, (self.frames_total - 1).max(0));
         if self.last_frame != Some(idx) {
             self.clock.seek(pos);
             self.render_frame(idx);
@@ -409,7 +408,8 @@ impl Player {
         let t = t.clamp(0.0, self.last_start());
         self.clock.seek(t);
         self.audio_cursor = (t * f64::from(DEFAULT_SAMPLE_RATE)).round() as i64;
-        let idx = ((t * self.fps_f).floor() as i64).clamp(0, (self.frames_total - 1).max(0));
+        let idx =
+            crate::timebase::frame_index(t, self.fps_f).clamp(0, (self.frames_total - 1).max(0));
         self.render_frame(idx);
         self.last_frame = Some(idx);
         if was_playing {

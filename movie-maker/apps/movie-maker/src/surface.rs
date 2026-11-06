@@ -10,13 +10,13 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-    VK_CONTROL, VK_MENU, VK_SHIFT,
+    VK_CONTROL, VK_F4, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
     SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WNDCLASSW, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSKEYDOWN,
+    WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
 use crate::keys;
@@ -206,6 +206,21 @@ fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
     }
 }
 
+/// Alt と一緒に押しても既定の処理に渡すキー。F4（ウィンドウを閉じる）だけ。
+fn passes_to_system(vk: u32) -> bool {
+    vk == u32::from(VK_F4.0)
+}
+
+/// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。
+fn key_pressed(wparam: WPARAM, lparam: LPARAM) {
+    if is_key_repeat(lparam) {
+        return;
+    }
+    if let Some(shared) = SHARED.get() {
+        keys::dispatch(shared, "surface", &key_name(wparam.0 as u32));
+    }
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
@@ -245,14 +260,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_KEYDOWN => {
-            if is_key_repeat(lparam) {
-                return LRESULT(0);
-            }
-            if let Some(shared) = SHARED.get() {
-                keys::dispatch(shared, "surface", &key_name(wparam.0 as u32));
-            }
+            key_pressed(wparam, lparam);
             LRESULT(0)
         }
+        // Alt を押している間のキーは WM_SYSKEYDOWN で届く。Alt+F4 だけは既定の処理（ウィンドウを閉じる）に渡す。
+        WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
+            key_pressed(wparam, lparam);
+            LRESULT(0)
+        }
+        // Alt を離したときの既定の処理はメニューモード（SC_KEYMENU）に入り、次のキーを奪うので渡さない。
+        WM_SYSKEYUP if !passes_to_system(wparam.0 as u32) => LRESULT(0),
         WM_ERASEBKGND => LRESULT(1),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
@@ -266,5 +283,15 @@ mod tests {
     fn 押し続けの繰り返しは最初の押下と見分ける() {
         assert!(!is_key_repeat(LPARAM(1)), "最初の押下は直前のビットが 0");
         assert!(is_key_repeat(LPARAM((1 << 30) | 1)));
+    }
+
+    #[test]
+    fn alt_のキーは_f4_だけを既定の処理に渡す() {
+        assert!(passes_to_system(u32::from(VK_F4.0)));
+        assert!(
+            !passes_to_system(u32::from(VK_MENU.0)),
+            "Alt を離してもメニューモードに入らない"
+        );
+        assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
     }
 }
