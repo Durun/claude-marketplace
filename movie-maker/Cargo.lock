@@ -3186,6 +3186,20 @@ name = "mm-ui-layout"
 version = "0.1.0"
 
 [[package]]
+name = "mm-ui-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "half",
+ "mm-doc",
+ "mm-trace",
+ "mm-types",
+ "mm-ui-layout",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
 name = "movie-maker"
 version = "0.1.0"
 dependencies = [

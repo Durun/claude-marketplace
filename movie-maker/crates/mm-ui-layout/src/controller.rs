@@ -28,6 +28,7 @@ pub enum PointerEvent {
     /// `dy` が正で奥へ（拡大や右への移動）。
     Wheel {
         x: f32,
+        y: f32,
         dy: f32,
         ctrl: bool,
     },
@@ -100,7 +101,7 @@ impl TimelineController {
             PointerEvent::Down { x, y } => self.down(x, y, model),
             PointerEvent::Move { x, y } => self.moved(x, y, model, playhead),
             PointerEvent::Up => self.up(),
-            PointerEvent::Wheel { x, dy, ctrl } => {
+            PointerEvent::Wheel { x, dy, ctrl, .. } => {
                 self.wheel(x, dy, ctrl);
                 Vec::new()
             }
@@ -279,6 +280,7 @@ mod tests {
         c.handle(
             PointerEvent::Wheel {
                 x: 300.0,
+                y: 0.0,
                 dy: 2.0,
                 ctrl: true,
             },
@@ -291,6 +293,7 @@ mod tests {
         c.handle(
             PointerEvent::Wheel {
                 x: 300.0,
+                y: 0.0,
                 dy: 1.0,
                 ctrl: false,
             },

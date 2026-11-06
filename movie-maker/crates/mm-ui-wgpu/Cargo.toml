@@ -1,0 +1,22 @@
+[package]
+name = "mm-ui-wgpu"
+description = "wgpu のサーフェス上の UI。Program のビューアーと Timeline を描き、ポインターの入力を受ける"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-ui-layout = { workspace = true }
+wgpu = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }
+mm-trace = { workspace = true }
+
+[lints]
+workspace = true
