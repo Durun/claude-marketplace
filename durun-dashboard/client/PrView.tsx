@@ -1,12 +1,14 @@
 // GitHub の PR を、本文・変更したファイル・会話とともに読み、会話にコメントを投稿する。
 // セッションの PR はセッション内の「PR」ウィジェットで、ほかの PR はウィンドウに浮かべて開く。
+import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { PrDetail, PrInfo, Session, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, dock } from './Float.tsx';
 import { firstLines } from './format.ts';
-import { pickInWidget, useCached, usePicked } from './hooks.ts';
+import { pickInWidget, useCached, usePicked, useTabOrder } from './hooks.ts';
+import { moveTo } from './order.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
@@ -139,22 +141,63 @@ export const PrTip = ({ url }: { url: string }) => {
 const prSessions = (sessions: Session[], url: string, here?: string): Session[] =>
   sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url));
 
-/** 「PR」と「PR コメント」のウィジェットで出している、セッションの PR。選んだ PR は 2 つのウィジェットで共通にする。 */
+export type PickTab = { key: string; title?: string; label: ComponentChildren };
+
+const TAB_STEP: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
+
+/** セッションのウィジェットで選ぶものを切り替えるタブ。ドラッグか Alt + ←→ で並べ替え、並びはウィジェットの種類とセッションごとに覚える。 */
+export const PickTabs = ({ kind, session, label, tabs, picked }: { kind: string; session: string; label: string; tabs: PickTab[]; picked?: string }) => {
+  const { ordered, save } = useTabOrder(kind, session, tabs.map((t) => t.key));
+  const [dragging, setDragging] = useState<string>();
+  return (
+    <div class="pick-tabs" role="tablist" aria-label={label}>
+      {ordered.map((key) => {
+        const t = tabs.find((x) => x.key === key);
+        return t && (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={key === picked}
+            class={dragging === key ? 'is-dragging' : undefined}
+            title={`${t.title ? `${t.title}\n` : ''}ドラッグか Alt + ←→ で並べ替えます`}
+            draggable
+            onClick={() => pickInWidget(kind, session, key)}
+            onDragStart={() => setDragging(key)}
+            onDragOver={(e) => {
+              if (!dragging) return;
+              e.preventDefault();
+              if (key !== dragging) save(moveTo(ordered, dragging, key));
+            }}
+            onDragEnd={() => setDragging(undefined)}
+            onKeyDown={(e) => {
+              const step = e.altKey ? TAB_STEP[e.key] : undefined;
+              const target = step && ordered[ordered.indexOf(key) + step];
+              if (!target) return;
+              e.preventDefault();
+              save(moveTo(ordered, key, target));
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+/** 「PR」と「PR コメント」のウィジェットで出している、セッションの PR。選んだ PR は 2 つのウィジェットで共通にする。選んでいなければ、並べ替えた順で先頭の PR を出す。 */
 export const usePickedPr = (s: Session): PrInfo | undefined => {
   const pick = usePicked(PR_WIDGET, s.id);
   // 前に開いていたときのデータには、PR の一覧が無いことがある。
   const prs = s.prs ?? [];
-  return prs.find((p) => p.url === pick) ?? prs[0];
+  const { ordered } = useTabOrder(PR_WIDGET, s.id, prs.map((p) => p.url));
+  return prs.find((p) => p.url === pick) ?? prs.find((p) => p.url === ordered[0]);
 };
 
 /** セッションに PR が複数あるときに上に並べる、状態のアイコンを添えた番号のタブ。押すと、ウィジェットで出す PR を切り替える。 */
 export const PrPicker = ({ s, pr }: { s: Session; pr?: PrInfo }) =>
   s.prs && s.prs.length > 1 ? (
-    <div class="pick-tabs" role="tablist" aria-label="PR">
-      {s.prs.map((p) => (
-        <button key={p.url} role="tab" aria-selected={p === pr} title={p.title} onClick={() => pickInWidget(PR_WIDGET, s.id, p.url)}><PrIcon state={prState(p)} />#{p.number}</button>
-      ))}
-    </div>
+    <PickTabs kind={PR_WIDGET} session={s.id} label="PR" picked={pr?.url} tabs={s.prs.map((p) => ({ key: p.url, title: p.title, label: <><PrIcon state={prState(p)} />#{p.number}</> }))} />
   ) : null;
 
 /** PR の状態（CI、レビュー）がスナップショットで変わったら、読み直す。 */
