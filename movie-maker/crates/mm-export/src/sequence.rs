@@ -87,6 +87,7 @@ mod tests {
             codec: "sample".into(),
             output_path: "out.mp4".into(),
             loudness_lufs: None,
+            delivery: Default::default(),
         });
         p
     }

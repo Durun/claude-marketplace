@@ -9,24 +9,38 @@
 //!   sequence のまま（[`ExportOptions::sequence`]）の書き出し。
 //! - 出力は `<名前>.partial.<拡張子>` に書き、完成してから置き換える。失敗と取り消しでは一時ファイルを消す。
 //! - 進み具合と取り消しは [`ExportControl`]。結果の検証は [`verify`]（ffprobe）。
-//! - 1 プロセス・1 区間で、並行の描画（区間の分割と mux）とラウドネスの正規化は段階 4。
+//! - 納品物（`deliver`、`captions`、`chapters`）: 目標のラウドネスへの正規化（2 パス、トゥルーピークの上限つき）、
+//!   字幕（書き出しの隣の SRT と WebVTT、または MP4 の字幕のトラック）、チャプター（MP4 と YouTube の説明欄の文字列）。
+//! - 1 プロセス・1 区間で、並行の描画（区間の分割と mux）は別の担当。
 
+mod captions;
+mod chapters;
 mod control;
+mod cue_text;
+mod deliver;
 mod sequence;
+mod subtitle_format;
 pub mod verify;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
-use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings, Encoder, Nv12Frame};
+use mm_decode_api::{
+    AudioStreamInfo, EncodeReport, EncodeSettings, Encoder, ExtraTracks, Nv12Frame,
+};
 use mm_doc::{Project, SequenceId};
 use mm_node_api::Quality;
 use mm_render_api::RangeRequest;
 use mm_runtime::Engine;
 use mm_types::{MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange};
 
+pub use captions::{sequence_cues, CaptionWord, TranscriptWords};
+pub use chapters::{chapter_marks, youtube_description};
 pub use control::{ExportControl, ExportProgress, ProgressFn};
+pub use deliver::DeliveryReport;
+pub use subtitle_format::{srt, vtt};
 pub use verify::{verify_output, Expected, Verification};
 
 use control::{partial_path, PartialFile};
@@ -49,6 +63,8 @@ pub struct ExportOptions {
     pub sequence: Option<SequenceId>,
     /// 書き出したあと ffprobe で出力を検証する。モックのエンコーダー（JSON を書く）では使えない。
     pub verify: bool,
+    /// 素材ごとの字幕にする単語（消した単語を除き、直した文字を反映したもの）。レンダーターゲットが字幕を出す設定のとき要る。
+    pub transcript: Option<Arc<TranscriptWords>>,
     /// 取り消しと進み具合。
     pub control: ExportControl,
 }
@@ -66,6 +82,8 @@ pub struct ExportSummary {
     pub fps: f64,
     /// `ExportOptions::verify` のときの、ffprobe が読んだ出力の中身。
     pub verification: Option<Verification>,
+    /// ラウドネスの正規化の結果と、書き出しの隣に置いた字幕・チャプターのファイル。
+    pub delivery: Box<DeliveryReport>,
 }
 
 /// 1 つのレンダーターゲットの書き出しの終わり方。
@@ -220,6 +238,8 @@ pub fn export_run(
         .then(|| verify_output(&partial_path(&output_path), &done.expected))
         .transpose()?;
     partial.commit(&output_path)?;
+    let mut delivery = deliver::write_sidecars(&done.prepared, &output_path)?;
+    delivery.normalization = done.normalization;
     let elapsed = started.elapsed();
     let fps = done.report.frames as f64 / elapsed.as_secs_f64().max(f64::EPSILON);
     mm_trace::gauge!("export.fps", fps);
@@ -233,6 +253,7 @@ pub fn export_run(
         elapsed,
         fps,
         verification,
+        delivery: Box::new(delivery),
     }))
 }
 
@@ -250,6 +271,8 @@ fn set_output(project: &mut Project, target: &RenderTargetId, path: &Path) -> Re
 struct Finished {
     report: EncodeReport,
     expected: Expected,
+    prepared: deliver::Prepared,
+    normalization: Option<mm_audio_api::NormalizeReport>,
 }
 
 /// 区間を描き、バッチでエンコーダーに押し、音を付けて閉じる。取り消されたら `None`。
@@ -271,7 +294,11 @@ fn export_target(
     }
     let range = resolve_range(comp.range()?, options.range)?;
     let settings = encode_settings(target);
+    let prepared = deliver::prepare(project, target, comp, range, options.transcript.as_deref())?;
     let mut encoder = encoders.create()?;
+    if !prepared.tracks.is_empty() {
+        encoder.set_extras(prepared.tracks.clone())?;
+    }
     encoder.begin(&settings)?;
     let plan = Plan {
         target: &target.id,
@@ -288,7 +315,8 @@ fn export_target(
     if options.control.is_cancelled() {
         return Ok(None);
     }
-    let audio = engine.render_audio(project, &target.composition, audio_range)?;
+    let mut audio = engine.render_audio(project, &target.composition, audio_range)?;
+    let normalization = deliver::normalize(engine, target, &mut audio)?;
     encoder.push_audio(&audio)?;
     let report = encoder.finish()?;
     let expected = Expected {
@@ -297,7 +325,12 @@ fn export_target(
         fps: settings.fps.to_f64(),
         audio_seconds: Some(audio_range.duration()?.to_f64()),
     };
-    Ok(Some(Finished { report, expected }))
+    Ok(Some(Finished {
+        report,
+        expected,
+        prepared,
+        normalization,
+    }))
 }
 
 fn encode_settings(target: &mm_doc::RenderTarget) -> EncodeSettings {
@@ -407,6 +440,10 @@ impl Metered<'_> {
 }
 
 impl Encoder for Metered<'_> {
+    fn set_extras(&mut self, extras: ExtraTracks) -> Result<()> {
+        self.inner.set_extras(extras)
+    }
+
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
         self.inner.begin(settings)
     }
@@ -440,3 +477,6 @@ impl Encoder for Metered<'_> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_deliver;

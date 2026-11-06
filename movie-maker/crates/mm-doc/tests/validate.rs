@@ -96,6 +96,7 @@ fn 無い入れ子と無いレンダーターゲットの先を拒否する() {
         codec: "sample".into(),
         output_path: "x".into(),
         loudness_lufs: None,
+        delivery: Default::default(),
     });
     assert!(is_invalid(p.validate()));
 }
