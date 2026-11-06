@@ -20,6 +20,9 @@ const SIZE = { w: 560, h: 400 };
 
 export const openNotepad = (): void => floatUp(NOTEPAD_KEY, '', { id: `${NOTEPAD_KEY}:${Date.now()}` }, SIZE);
 
+/** ファイルを開いたメモ帳を浮かべる。中身は、ウィンドウが開いてから読む。 */
+export const openNotepadFile = (path: string): void => floatUp(NOTEPAD_KEY, '', { id: `${NOTEPAD_KEY}:${Date.now()}`, settings: { path } }, SIZE);
+
 export const NotepadIcon = () => <DesktopIcon icon={NOTEPAD_ICON} title={NOTEPAD_TITLE} hint="文字を書き留めます。ダブルクリックで開きます" onLaunch={openNotepad} />;
 
 /** XP のメモ帳の「日付と時刻」と同じく、「時:分 年/月/日」の形にする。 */
@@ -204,6 +207,10 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
     }
   };
   const saveFile = () => s.path && write(s.path, Number(s.modifiedAt));
+  // openNotepadFile で開いたウィンドウは、パスだけを持って開くので、ここで中身を読む。
+  useEffect(() => {
+    if (s.path && !s.modifiedAt) void load(s.path);
+  }, []);
 
   const menuId = (name: string) => `notepad-${f.tab.id}-${name}`;
   const close = {

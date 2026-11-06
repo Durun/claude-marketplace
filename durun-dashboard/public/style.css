@@ -729,6 +729,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .recycle-table td .app-icon { margin-right: 4px; vertical-align: -3px; }
 .recycle-table tr:focus { outline: 1px dotted #000; outline-offset: -1px; }
 .recycle-table tr[aria-selected="true"] td { background: #316ac5; color: #fff; }
+/* 学習アプリの知見の一覧。「いつ効くか」は長い description なので、いちばん広く取る。 */
+.learn-harness th:nth-child(1) { width: 24%; }
+.learn-harness th:nth-child(2) { width: 46%; }
+.learn-harness th:nth-child(3) { width: 20%; }
+.xp-task-link[aria-pressed="true"] { font-weight: 700; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }

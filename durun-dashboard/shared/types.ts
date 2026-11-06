@@ -406,6 +406,9 @@ export type MemoryStatus = MemoryPressure | MemoryUsage;
 export const MODELS = ['fable', 'opus', 'sonnet'] as const;
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
+/** 学習アプリの「知見の一覧」の 1 項目。trigger はいつ効くか（スキルと記憶は description、フックはイベントと matcher）。chars は中身の文字数。 */
+export type HarnessItem = { kind: 'instructions' | 'skill' | 'memory' | 'hook'; name: string; trigger: string; source: string; path: string; chars: number };
+
 /** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
 export type LearnSettings = { scheduled: boolean };
 

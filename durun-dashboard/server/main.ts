@@ -27,6 +27,7 @@ import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
+import { harnessItems } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -1318,6 +1319,8 @@ const memoryNow = latestMemory(() => platform.readMemory());
 
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
+  [/^\/api\/learn\/harness$/, () => harnessItems(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
   [/^\/api\/translate\/status$/, () => translateStatus()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],
