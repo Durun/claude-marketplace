@@ -2,4 +2,5 @@
 
 mod common;
 mod crash;
+mod ingest;
 mod ops;

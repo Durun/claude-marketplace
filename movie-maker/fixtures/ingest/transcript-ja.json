@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "content_hash": "ca152c0602faf08d897d38f301d5883036d18f9155cac34ae0cc582653c33f75",
+  "producer": "faster-whisper 1.2.1 (large-v3)",
+  "kind": "transcript",
+  "language": "ja",
+  "segments": [
+    {
+      "start": {
+        "num": 0,
+        "den": 1
+      },
+      "end": {
+        "num": 249,
+        "den": 50
+      },
+      "text": "こんにちは。これは動画編集ソフトの文字起こしの試験です。",
+      "words": [
+        {
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "end": {
+            "num": 1,
+            "den": 2
+          },
+          "text": "こんにちは。"
+        },
+        {
+          "start": {
+            "num": 77,
+            "den": 50
+          },
+          "end": {
+            "num": 47,
+            "den": 25
+          },
+          "text": "これは"
+        },
+        {
+          "start": {
+            "num": 47,
+            "den": 25
+          },
+          "end": {
+            "num": 111,
+            "den": 50
+          },
+          "text": "動画"
+        },
+        {
+          "start": {
+            "num": 111,
+            "den": 50
+          },
+          "end": {
+            "num": 64,
+            "den": 25
+          },
+          "text": "編"
+        },
+        {
+          "start": {
+            "num": 64,
+            "den": 25
+          },
+          "end": {
+            "num": 137,
+            "den": 50
+          },
+          "text": "集"
+        },
+        {
+          "start": {
+            "num": 137,
+            "den": 50
+          },
+          "end": {
+            "num": 143,
+            "den": 50
+          },
+          "text": "ソ"
+        },
+        {
+          "start": {
+            "num": 143,
+            "den": 50
+          },
+          "end": {
+            "num": 151,
+            "den": 50
+          },
+          "text": "フ"
+        },
+        {
+          "start": {
+            "num": 151,
+            "den": 50
+          },
+          "end": {
+            "num": 157,
+            "den": 50
+          },
+          "text": "ト"
+        },
+        {
+          "start": {
+            "num": 157,
+            "den": 50
+          },
+          "end": {
+            "num": 82,
+            "den": 25
+          },
+          "text": "の"
+        },
+        {
+          "start": {
+            "num": 82,
+            "den": 25
+          },
+          "end": {
+            "num": 193,
+            "den": 50
+          },
+          "text": "文"
+        },
+        {
+          "start": {
+            "num": 193,
+            "den": 50
+          },
+          "end": {
+            "num": 101,
+            "den": 25
+          },
+          "text": "字"
+        },
+        {
+          "start": {
+            "num": 101,
+            "den": 25
+          },
+          "end": {
+            "num": 207,
+            "den": 50
+          },
+          "text": "起"
+        },
+        {
+          "start": {
+            "num": 207,
+            "den": 50
+          },
+          "end": {
+            "num": 107,
+            "den": 25
+          },
+          "text": "こ"
+        },
+        {
+          "start": {
+            "num": 107,
+            "den": 25
+          },
+          "end": {
+            "num": 43,
+            "den": 10
+          },
+          "text": "し"
+        },
+        {
+          "start": {
+            "num": 43,
+            "den": 10
+          },
+          "end": {
+            "num": 111,
+            "den": 25
+          },
+          "text": "の"
+        },
+        {
+          "start": {
+            "num": 111,
+            "den": 25
+          },
+          "end": {
+            "num": 229,
+            "den": 50
+          },
+          "text": "試"
+        },
+        {
+          "start": {
+            "num": 229,
+            "den": 50
+          },
+          "end": {
+            "num": 243,
+            "den": 50
+          },
+          "text": "験"
+        },
+        {
+          "start": {
+            "num": 243,
+            "den": 50
+          },
+          "end": {
+            "num": 249,
+            "den": 50
+          },
+          "text": "です。"
+        }
+      ]
+    }
+  ]
+}

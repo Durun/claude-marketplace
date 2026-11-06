@@ -6,7 +6,10 @@
 //! - 古いバージョンの JSON は `migrate` で今のバージョンに上がる。移行は 1 バージョンずつの純関数。
 //! - 未来のバージョンは `Err(Unsupported)`。
 //! - `schema_version` の無い JSON は `Err(InvalidArgument)`。
+//!
+//! 外のツールが書くときの JSON Schema は [`sidecar_schema_json`]（`schema/sidecar.schema.json` に凍結）。
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use mm_types::{MmError, RationalTime, Result};
@@ -15,7 +18,7 @@ use mm_types::{MmError, RationalTime, Result};
 pub const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
 /// 付属ファイル。素材のコンテンツハッシュで結びつける。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Sidecar {
     pub schema_version: u32,
     pub content_hash: String,
@@ -26,31 +29,45 @@ pub struct Sidecar {
 }
 
 /// 付属ファイルの内容。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SidecarBody {
     Transcript(Transcript),
     Waveform(Waveform),
     PreviewMedia(PreviewMedia),
+    /// シーンの区切り。
+    Scenes(Scenes),
 }
 
 /// 文字起こし。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Transcript {
+    /// ISO 639-1 の言語コード（`ja`、`en`）。
     pub language: String,
     pub segments: Vec<TranscriptSegment>,
 }
 
 /// 文字起こしの 1 区間。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TranscriptSegment {
+    pub start: RationalTime,
+    pub end: RationalTime,
+    pub text: String,
+    /// 単語ごとの時刻。取れないツールは省く。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<TranscriptWord>,
+}
+
+/// 文字起こしの 1 単語。単語の ID は「素材のコンテンツハッシュ + 開始の時刻」から決まる。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TranscriptWord {
     pub start: RationalTime,
     pub end: RationalTime,
     pub text: String,
 }
 
 /// 波形。ピークは -1..=1。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Waveform {
     pub peaks_per_second: u32,
     pub channels: u16,
@@ -59,12 +76,39 @@ pub struct Waveform {
 }
 
 /// プレビュー動画の記録。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PreviewMedia {
     /// `cache/` からの相対パス。
     pub path: String,
     pub width: u32,
     pub height: u32,
+}
+
+/// シーンの区切り。素材の先頭からの時刻の昇順。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Scenes {
+    pub cuts: Vec<SceneCut>,
+}
+
+/// シーンが変わる時刻。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SceneCut {
+    pub time: RationalTime,
+    /// 変わり方の大きさ（0..=1）。ツールが出さないときは省く。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f32>,
+}
+
+/// 凍結したスキーマの置き場所（クレートの根からの相対パス）。テストが最新かを確かめる。
+pub const SCHEMA_PATH: &str = "schema/sidecar.schema.json";
+
+/// 付属ファイルの JSON Schema を決定的な JSON の文字列にする（インデント 2、末尾に改行 1 つ）。
+/// 外のツール（`tools/`）はこの形で書く。
+pub fn sidecar_schema_json() -> String {
+    let mut s = serde_json::to_string_pretty(&schemars::schema_for!(Sidecar))
+        .expect("スキーマは JSON になる");
+    s.push('\n');
+    s
 }
 
 /// 今のバージョンの JSON を読む。バージョンが違えば `migrate` を通す。

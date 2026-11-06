@@ -1,0 +1,8 @@
+faster-whisper>=1.2
+# faster-whisper 1.2 は PyAV 17 以降の open() の引数に対応していない。
+av>=14,<17
+blake3>=1.0
+jsonschema>=4.20
+# GPU（CUDA 12）で動かすときの cuBLAS と cuDNN。CPU だけなら不要。
+nvidia-cublas-cu12; sys_platform == "win32" or sys_platform == "linux"
+nvidia-cudnn-cu12==9.*; sys_platform == "win32" or sys_platform == "linux"
