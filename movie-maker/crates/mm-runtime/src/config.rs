@@ -121,6 +121,9 @@ pub struct RuntimeConfig {
     pub frame_memory_bytes: Option<u64>,
     /// 使う GPU。`None` なら高性能のアダプター。レンダラー・デコーダー・別プロセスのホストが同じものを使う。
     pub gpu: Option<GpuAdapterId>,
+    /// 描いたテクスチャを同じデバイスでウィンドウのサーフェスに出すか（アプリのプレビュー）。
+    /// Windows では D3D12 のアダプターを選ぶ。Vulkan のアダプターは子ウィンドウのサーフェスの形式を返さないことがある。
+    pub present: bool,
 }
 
 impl RuntimeConfig {

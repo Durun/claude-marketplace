@@ -16,6 +16,7 @@ use tracing_subscriber::prelude::*;
 use windows::Win32::Media::timeBeginPeriod;
 
 use crate::cli::{self, Args};
+use crate::edit;
 use crate::ipc::{self, LayerInfo, ProjectInfo, SyncState};
 use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
@@ -189,7 +190,8 @@ fn build_and_run(boot: Boot) {
             ipc::sync_ack,
             ipc::transport,
             ipc::project_info,
-            ipc::key_event
+            ipc::key_event,
+            edit::apply_op
         ])
         .setup(move |app| boot.setup(app))
         .run(tauri::generate_context!())

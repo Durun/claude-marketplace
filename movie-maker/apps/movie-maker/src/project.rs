@@ -1,14 +1,11 @@
-//! プロジェクトを開く。入力は 1 つの JSON のファイルか、`project.mmdb` のあるフォルダー（`project.mmdb` の直指しも可）。
-//! 素材の相対パスは、プロジェクトのあるフォルダーを基準に直す（どこから起動しても同じ素材を指すため）。
+//! プロジェクトを開く。読み方（JSON か `project.mmdb` のフォルダー、相対パスの直し）は `mm` と共有する
+//! `mm_store::load_project`。ここは表示の名前と、再生するコンポジションの選び方を持つ。
 
 use std::path::{Path, PathBuf};
 
 use mm_doc::Project;
-use mm_store::Store;
 use mm_types::{CompositionId, Id, MmError, Result};
 
-/// `project.mmdb` のファイル名。
-const DB_FILE: &str = "project.mmdb";
 /// 再生するコンポジションを指定しなかったときの既定の ID。
 const DEFAULT_COMPOSITION: &str = "main";
 
@@ -19,55 +16,17 @@ pub struct Opened {
     pub name: String,
 }
 
-fn store_dir(path: &Path) -> Option<PathBuf> {
-    if path.is_dir() {
-        return path.join(DB_FILE).exists().then(|| path.to_path_buf());
-    }
-    if path.file_name().is_some_and(|n| n == DB_FILE) && path.exists() {
-        return Some(path.parent().unwrap_or(Path::new(".")).to_path_buf());
-    }
-    None
-}
-
-fn rebase(base: &Path, path: &str) -> String {
-    let p = PathBuf::from(path);
-    if p.is_absolute() {
-        path.to_owned()
-    } else {
-        base.join(p).to_string_lossy().into_owned()
-    }
-}
-
-fn rebase_assets(project: &mut Project, base: &Path) {
-    for asset in &mut project.assets {
-        asset.path = rebase(base, &asset.path);
-    }
-}
-
 /// プロジェクトを開く。ストアは書き手のロックを取らずに読む（再生は編集を止めない）。
 pub fn open(path: &Path) -> Result<Opened> {
-    if let Some(dir) = store_dir(path) {
-        let store = Store::open_read_only(&dir)?;
-        let mut project = store.project().clone();
-        rebase_assets(&mut project, &dir);
-        return Ok(Opened {
-            project,
-            name: folder_name(&dir),
-        });
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| {
-        MmError::Io(std::io::Error::new(
-            e.kind(),
-            format!("{}: {e}", path.display()),
-        ))
-    })?;
-    let mut project = mm_doc::load(&text)?;
-    let base = path.parent().unwrap_or(Path::new("."));
-    rebase_assets(&mut project, base);
+    let project = mm_store::load_project(path)?;
     project.validate()?;
+    let dir: PathBuf = match mm_store::store_dir(path) {
+        Some(dir) => dir,
+        None => path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+    };
     Ok(Opened {
         project,
-        name: folder_name(base),
+        name: folder_name(&dir),
     })
 }
 

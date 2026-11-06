@@ -11,6 +11,7 @@ mod backup;
 mod docio;
 mod edit;
 mod export;
+mod files;
 mod history;
 mod lock;
 mod open;
@@ -22,6 +23,7 @@ mod wal;
 
 pub use backup::{format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile};
 pub use export::{ExportReport, VERSIONS_DIR};
+pub use files::{load_json, load_project, store_dir, DB_FILE};
 pub use history::fold_history;
 pub use lock::LockInfo;
 pub use records::{

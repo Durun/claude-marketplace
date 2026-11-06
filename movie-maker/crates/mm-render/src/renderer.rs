@@ -155,6 +155,7 @@ impl WgpuRenderer {
     pub(crate) fn draw_frame(&mut self, req: &RenderRequest<'_>) -> Result<u64> {
         self.ensure_device()?;
         self.cache.flush(&mut self.gpu);
+        self.sources.begin_frame();
         self.report_gpu_time();
         self.timer.begin_frame();
         let comp = req.project.composition(req.composition)?;

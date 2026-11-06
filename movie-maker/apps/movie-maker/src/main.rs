@@ -12,6 +12,8 @@ mod cli;
 #[cfg(windows)]
 mod clock;
 #[cfg(windows)]
+mod edit;
+#[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
 mod keys;
@@ -25,6 +27,8 @@ mod render;
 mod state;
 #[cfg(windows)]
 mod surface;
+#[cfg(windows)]
+mod theme;
 #[cfg(windows)]
 mod verify;
 

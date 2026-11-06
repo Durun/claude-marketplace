@@ -69,8 +69,8 @@
 | 2 レンダラー | 済（RFC 0010）: PTS の索引を素材の指紋で `cache/` に置き、2 回目からパケットを読まない。`invalidate` は操作の `touches` に頼ったキャッシュと、その素材だけを閉じる。元の問題: 開くたびに全パケットを読み（1 時間の 4K 50 Mbps で約 22 GB）、`invalidate` が全部の素材を閉じる（`mm-decode-ffmpeg` の `timeline.rs`、`mm-render` の `renderer.rs`）。コンテナの索引を持ち、該当する素材だけ閉じる。 |
 | 2 レンダラー | 済: `text` は整形の結果と描いた画布をパラメータをキーに覚え、2 フレーム目からは整形も描画も画布の確保もしない（`mm-nodes-basic` の `text.rs`）。残り: 画布は CPU の画像のまま毎フレーム GPU に上げる。GPU のテクスチャとして覚えるのはフレームのキャッシュ（`layers.rs` の入口）の担当。 |
 | 2 ウィンドウ | Tauri のコマンドは `async` にする（同期だと 60 Hz の通知がメッセージループをブロックする）。サーフェスの大きさと WebView の矩形は物理ピクセルから 1 か所で決める。キーはサーフェスの `WM_KEYDOWN` と WebView の `keydown` を 1 つのエントリーポイントに入れる。サーフェスを取れなかったとき（`Outdated`、`Lost`）の経路は未試験。150% の DPI と倍率の違うモニター間を人が確かめる。連続で大きさを変えると WebView の同期が最大 0.25 秒遅れる。[window](spikes/window.md#実装のとき気をつける所) |
-| 2〜3 アプリ | 描画スレッドを止める前提が守られず、終了時に破棄された HWND に present し続ける（`apps/movie-maker` の `app.rs`、`gpu.rs`）。`WindowEvent::Destroyed` で取り出して drop する。 |
-| 2〜3 アプリ | Fifo の垂直同期に加えて自前で 60 Hz に sleep と spin し、120/144 Hz でうなって CPU も使う（`apps/movie-maker` の `gpu.rs`）。画面の同期か音の時計の一方に合わせる。`gpu.rs` と `app.rs` は行数の目安を超えているので、分けるときに合わせて直す。 |
+| 2〜3 アプリ | 済（PR #39）: 描画スレッドは毎周で HWND の生死を確かめ、閉じる前に止めて待つので、破棄された HWND に present しない（`apps/movie-maker` の `render.rs`、`app.rs`）。元の問題: 終了時に破棄された HWND に present し続けた。 |
+| 2〜3 アプリ | 済（PR #39）: ペースは Fifo の垂直同期に任せ、自前の 60 Hz の sleep と spin を持たない。映像は音の時計に合わせる。50 行を超えた関数は分けた。元の問題: 垂直同期に加えて自前で 60 Hz に回し、120/144 Hz でうなって CPU も使った。 |
 | 4 書き出し | 1080p で 13.2 fps（予算 120 fps）。CPU のリードバックと libx264 を NVENC と GPU 上の NV12 変換に替えて測り直す。段ごとの計測のため、`Engine` から実装の一式を取り出せる関数が要る。 |
 | 4 `mm-host-cef`（段階 6 の準備） | CEF と wgpu を同じ GPU に揃える（既定は内蔵の AMD を選び、`OpenSharedHandle` が `E_INVALIDARG` で失敗する）。`windowless_frame_rate` は 240 以上にする（既定の 60 だと BeginFrame からフレームが来るまで p50 35 ms）。BeginFrame は捨てられることがあるので、フレームが来るまで送り直し、`seq` のシーケンス番号で古いフレームを検出する。別プロセスのアプリへは、`DuplicateHandle` で複製するか、ホストが自前の D3D12 共有テクスチャへコピーして渡す。1280x720 で p95 が 26 ms に跳ねた原因を調べる。[cef](spikes/cef.md#つまずいた所) |
 | 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 フレームの時間を取り直す。CEF をクラッシュさせたときの再起動と複数ブラウザの同時描画を試す。 |

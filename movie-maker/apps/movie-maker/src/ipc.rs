@@ -73,7 +73,7 @@ struct Pending {
 
 /// 同期の状態。Tauri の `manage` に載せる。
 pub struct SyncState {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     info: Mutex<Option<ProjectInfo>>,
     channel: Mutex<Option<Channel<Tick>>>,
     pending: Mutex<HashMap<u64, Pending>>,

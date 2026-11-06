@@ -112,6 +112,7 @@ impl WgpuRenderer {
                 self.gpu.context().as_ref(),
                 req.project,
                 &params,
+                source_range.start,
             )?;
             let mut cx = AudioCx {
                 range: overlap,

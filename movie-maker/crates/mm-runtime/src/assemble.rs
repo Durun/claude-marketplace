@@ -167,10 +167,13 @@ fn gpu_context_with(
 /// コンテキストの頼み方。GPU でデコードする実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
 /// レンダラーもそのアダプターで作る。`auto` は D3D12 が無ければ既定の頼み方に戻し、ffmpeg で動く。
 fn gpu_request(config: &RuntimeConfig) -> Result<GpuRequest> {
-    let default = GpuRequest {
+    let mut default = GpuRequest {
         adapter: config.gpu.clone(),
         ..GpuRequest::default()
     };
+    if config.present && cfg!(windows) {
+        default.backends = wgpu::Backends::DX12;
+    }
     if !config.decode.needs_d3d12() {
         return Ok(default);
     }

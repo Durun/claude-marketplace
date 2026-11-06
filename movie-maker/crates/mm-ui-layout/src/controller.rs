@@ -4,6 +4,7 @@
 //! 操作の適用（`mm-ops`）はここの外で行う。
 
 use crate::paint::PaintState;
+use crate::palette::Palette;
 use crate::snap::{quantize, snap, SNAP_PX};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
@@ -87,6 +88,7 @@ impl TimelineController {
             hover: self.hover,
             selected: self.selected,
             guide: self.guide,
+            palette: Palette::DEFAULT,
         }
     }
 

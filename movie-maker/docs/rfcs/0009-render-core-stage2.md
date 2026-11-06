@@ -90,5 +90,5 @@
 
 ## 未了（次の担当へ）
 
-- `Engine` が持つ他の GPU の実装（glyphon の `TextEngine`、別プロセスのホスト）の持ち替え。復帰はレンダラーの中だけ。
+- `Engine` が持つ別プロセスのホストの持ち替え。glyphon の `GlyphonRasterizer` は RFC 0012 で持ち替える。
 - `time_varying: false` の文字の毎フレームのシェーピング、開くたびの全パケットの走査、`invalidate` が全部の素材を閉じること（段階 0 の注意のまま）。
