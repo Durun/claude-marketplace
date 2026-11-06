@@ -27,7 +27,7 @@ pub struct PaintState {
     pub selected: Option<usize>,
     /// 選ばれたカット（レイヤーの添字、カットの添字）。
     pub selected_cut: Option<(usize, usize)>,
-    /// スナップの案内線（秒）。
+    /// スナップのガイド線（秒）。
     pub guide: Option<f64>,
     /// 色。
     pub palette: Palette,
@@ -126,7 +126,7 @@ fn cuts(
                 base
             };
             q.push(Quad::new(r, color));
-            // 隣のカットとの境目が見えるように、左端に暗い線を引く。
+            // 隣のカットとの編集点が見えるように、左端に暗い線を引く。
             q.push(Quad::new(Rect::new(x, top, 1.0, ROW_H), palette::CUT_SEAM));
         }
         if hovered {

@@ -1,4 +1,4 @@
-//! HTTP の入口を起こす。127.0.0.1 の空いているポートで待ち、ポートと合い言葉を
+//! HTTP サーバーを起動する。127.0.0.1 の空いているポートで待ち、ポートとトークンを
 //! プロジェクトの `.mm/` に書いて、`mm` が見つけられるようにする。
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
@@ -11,10 +11,10 @@ use crate::http::{router, AppState};
 
 /// 待ち受けの非同期の実行環境のスレッド数。重い仕事は `spawn_blocking` に出すので少なくてよい。
 const WORKER_THREADS: usize = 2;
-/// 合い言葉の長さ（バイト）。16 進で 2 倍の文字数になる。
+/// トークンの長さ（バイト）。16 進で 2 倍の文字数になる。
 const TOKEN_BYTES: usize = 32;
 
-/// 動いている入口。落とすと待ち受けを止め、`.mm/` のポートと合い言葉を消す。
+/// 動いている HTTP サーバー。落とすと待ち受けを止め、`.mm/` のポートとトークンを消す。
 pub struct Server {
     port: u16,
     token: String,
@@ -23,7 +23,7 @@ pub struct Server {
 }
 
 impl Server {
-    /// 127.0.0.1 だけで待ち始め、ポートと合い言葉を公開する。
+    /// 127.0.0.1 だけで待ち始め、ポートとトークンを公開する。
     pub fn start(core: Arc<Core>) -> Result<Self, ServeError> {
         let token = new_token()?;
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
@@ -56,7 +56,7 @@ impl Server {
                 tracing::error!("HTTP の待ち受けが止まった: {e}");
             }
         });
-        // 待ち受けが整ってから公開する。見つけた呼び手がすぐ接続できる。
+        // 待ち受けが整ってから公開する。見つけたクライアントがすぐ接続できる。
         core.publish(port, &token)?;
         Ok(Self {
             port,
@@ -71,7 +71,7 @@ impl Server {
         self.port
     }
 
-    /// 起動ごとの合い言葉。
+    /// 起動ごとのトークン。
     pub fn token(&self) -> &str {
         &self.token
     }

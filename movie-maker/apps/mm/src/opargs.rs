@@ -144,7 +144,7 @@ fn normalize(s: &str) -> String {
 }
 
 /// `$ref` を 1 段たどる。参照の名前は `x-ref` に残す（時刻と指し方の判定に使う）。
-/// 省けるフィールド（`Option<RationalTime>` の `anyOf: [$ref, null]`）は参照の側を引き、null も取れる印 `x-null` を付ける。
+/// 省けるフィールド（`Option<RationalTime>` の `anyOf: [$ref, null]`）は参照の側を引き、null も取れることを示す拡張 `x-null` を付ける。
 fn resolve(schema: &Value, field: &Value) -> Value {
     if let Some(r) = field["$ref"].as_str() {
         let name = r.rsplit('/').next().unwrap_or_default();

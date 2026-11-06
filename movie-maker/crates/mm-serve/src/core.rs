@@ -1,4 +1,4 @@
-//! 書き手の `Store` を 1 本の列で持つ中心。HTTP も、アプリの IPC も、ここを通って操作を適用する。
+//! 書き手の `Store` を `Mutex` で直列に扱う中心。HTTP も、アプリの IPC も、ここを通って操作を適用する。
 //!
 //! 適用は `Mutex` で順に並べ、書けたら変わった所を購読者（SSE、アプリの描画、WebView）に送る。
 
@@ -58,7 +58,7 @@ pub struct Change {
     pub of: Option<ChangeOf>,
 }
 
-/// 取り消し・やり直しの対象になった元のトランザクション。誰の操作を戻したかを呼び手に返す。
+/// 取り消し・やり直しの対象になった元のトランザクション。誰の操作を戻したかを呼び出し側に返す。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChangeOf {
     pub txn_id: i64,
@@ -147,12 +147,12 @@ pub struct ProjectView {
     pub project: Project,
 }
 
-/// 書き手の `Store` と、変更の通知、描画の出し口。
+/// 書き手の `Store` と、変更の通知、描画（`GET /frame`）。
 pub struct Core {
     store: Mutex<Option<Store>>,
-    /// 今のバージョン。`Store` の列を待たずに読めるよう、書くたびにここへも写す。
+    /// 今のバージョン。`Store` のロックを待たずに読めるよう、書くたびにここにも書く。
     version: AtomicI64,
-    /// 走っているバックアップ。`Store` の列の外の別のスレッドで作る（DB 全体のコピーは長い）。
+    /// 走っているバックアップ。`Store` のロックの外の別のスレッドで作る（DB 全体のコピーは長い）。
     backup: Mutex<Option<JoinHandle<()>>>,
     events: broadcast::Sender<Change>,
     frames: Option<Arc<dyn FrameSource>>,
@@ -174,7 +174,7 @@ impl Core {
     fn lock(&self) -> Result<MutexGuard<'_, Option<Store>>, ServeError> {
         self.store
             .lock()
-            .map_err(|_| ServeError::Internal("保存の列が壊れた".into()))
+            .map_err(|_| ServeError::Internal("`Store` のロックが壊れた".into()))
     }
 
     fn with_store<T>(
@@ -218,7 +218,7 @@ impl Core {
         Ok(self.version.load(Ordering::Acquire))
     }
 
-    /// トランザクションを 1 本の列で適用して書き、変わった所を送る。
+    /// トランザクションを直列に適用して書き、変わった所を送る。
     /// `txn.base_version` が古ければ、保存した記録の `touches` で衝突を判定する。
     pub fn apply(
         &self,
@@ -332,12 +332,12 @@ impl Core {
         })
     }
 
-    /// 1 フレームを PNG で返す。描画は呼び出し側のスレッドで行う（長いので `Store` の列を止めない）。
+    /// 1 フレームを PNG で返す。描画は呼び出し側のスレッドで行う（長いので `Store` のロックをふさがない）。
     pub fn frame_png(&self, request: &FrameRequest) -> Result<Vec<u8>, ServeError> {
         let frames = self
             .frames
             .as_ref()
-            .ok_or_else(|| ServeError::Unavailable("この入口は描画を持たない".into()))?;
+            .ok_or_else(|| ServeError::Unavailable("この HTTP サーバーは描画を持たない".into()))?;
         let (_, project) = self.render_project()?;
         frames
             .frame_png(&project, request)
@@ -349,14 +349,14 @@ impl Core {
         self.join_backup();
         let mut guard = self.lock()?;
         if let Some(store) = guard.take() {
-            // 公開した入口の情報は、Store を落とすときにロックと一緒に消える。
+            // 公開した HTTP サーバーの情報は、Store を落とすときにロックと一緒に消える。
             let _ = store.unpublish_http();
             store.close(now_ms())?;
         }
         Ok(())
     }
 
-    /// 公開する前後に `Store` を触るための入口（`publish_http_port` など）。
+    /// 公開する前後に `Store` を触るための関数（`publish_http_port` など）。
     pub(crate) fn publish(&self, port: u16, token: &str) -> Result<(), ServeError> {
         self.with_store(|s| {
             s.publish_token(token)?;
@@ -384,7 +384,7 @@ mod tests {
 
     use super::*;
 
-    /// `Store` の列を誰かが長く持っていても、バージョンの読み（SSE の hello など）は待たない。
+    /// `Store` のロックを誰かが長く持っていても、バージョンの読み（SSE の hello など）は待たない。
     #[test]
     fn バージョンは_store_の列が塞がっていても読める() {
         let tmp = tempfile::tempdir().unwrap();

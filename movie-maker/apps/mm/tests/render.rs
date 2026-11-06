@@ -166,7 +166,7 @@ fn 取り込んだ_mmdb_のレイヤーを動かして書き出せる() {
 const SEQUENCE_FRAMES: u64 = 60;
 const CANCEL_AFTER_FRAMES: u64 = 10;
 
-/// 段階 3 の見本のプロジェクトを、素材を絶対パス、出力を `dir` の下にして書き出した JSON のパス。
+/// 段階 3 のフィクスチャのプロジェクトを、素材を絶対パス、出力を `dir` の下にして書き出した JSON のパス。
 fn stage3_project(dir: &Path) -> PathBuf {
     let media = common::fixtures();
     let src =

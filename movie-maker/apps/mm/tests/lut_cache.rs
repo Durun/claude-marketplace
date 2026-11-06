@@ -122,7 +122,7 @@ fn 取り込んだ_lut_を使う入れ子はキャッシュに当たり_中身�
     let p = project_with_lut(lut);
     render(&mut r, &p);
     let first = r.frame_cache_stats();
-    assert_eq!(first.entries, 2, "中の単色と入れ子を覚える");
+    assert_eq!(first.entries, 2, "中の単色と入れ子をキャッシュする");
     render(&mut r, &p);
     let second = r.frame_cache_stats();
     assert_eq!(second.entries, 2, "同じ中身なら増えない");

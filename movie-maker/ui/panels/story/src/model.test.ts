@@ -24,7 +24,7 @@ const topic = (id: string, from: number, to: number): Topic => ({
 describe("buildBlocks", () => {
   const words = [word("a", 0), word("b", 1), word("c", 2, 1), word("d", 3, 1), word("e", 4, 1)];
 
-  it("話題ごとに塊を分け、話題に入らない単語は題の無い塊になる", () => {
+  it("話題ごとに塊を分け、話題に入らない単語は見出しの無い塊になる", () => {
     const blocks = buildBlocks(words, [topic("t1", 1, 3)]);
     expect(blocks.map((b) => [b.topic?.id ?? null, b.paragraphs.flat().map((p) => p.word.id)])).toEqual([
       [null, ["a"]],
@@ -80,7 +80,7 @@ describe("buildBlocks の見出し", () => {
 describe("buildBlocks の順序", () => {
   const words = [word("a", 0), word("b", 1), word("c", 2, 1), word("d", 3, 1), word("e", 4, 1)];
 
-  it("話題は渡す順に関わらず時刻の順に当てる", () => {
+  it("話題は渡す順に関わらず時刻の順に並べる", () => {
     const blocks = buildBlocks(words, [topic("late", 3, 5), topic("early", 0, 2)]);
     expect(blocks.map((b) => b.topic?.id ?? null)).toEqual(["early", null, "late"]);
   });
@@ -101,7 +101,7 @@ describe("時刻と選択", () => {
     expect(spanOf(5, 2)).toEqual({ from: 2, to: 5 });
   });
 
-  it("題の既定は消していない単語の文字を頭から", () => {
+  it("見出しの既定は消していない単語の文字を先頭から", () => {
     const selected = [word("あ", 0), word("い", 1, 0, { deleted: true }), word("う", 2, 0, { fixed: "宇" })];
     expect(defaultTitle(selected, 5)).toBe("あ宇");
     expect(defaultTitle(selected, 1)).toBe("あ");

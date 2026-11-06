@@ -50,7 +50,7 @@ impl PendingEdit {
     }
 }
 
-/// 編集の列に積む仕事。計画から適用までを 1 つの仕事にする。
+/// 編集のキューに積む仕事。計画から適用までを 1 つの仕事にする。
 pub type EditJob = Box<dyn FnOnce() + Send>;
 
 /// 計画と適用を 1 本のスレッドで順に回す。キーを続けて押しても、前の編集を適用した後のデータで次を計画する。
@@ -78,7 +78,7 @@ pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
 }
 
 /// 操作を、計画に使ったバージョン `base` を元にしたトランザクションとして適用する。
-/// その後に別の書き手（CLI など）が同じ所を触っていたら、衝突として断る。JSON のプロジェクトでは `base` を見ない。
+/// その後に別の発行元（CLI など）が同じ所を触っていたら、衝突として断る。JSON のプロジェクトでは `base` を見ない。
 pub fn submit_based(
     shared: &Shared,
     ops: Vec<Op>,
@@ -170,8 +170,8 @@ pub fn refresh_saved(shared: &Shared, core: &mm_serve::Core) -> Result<(), Strin
     Ok(())
 }
 
-/// `project.mmdb` の直前のトランザクションを取り消す（`undo` が偽ならやり直す）。書き手を問わず戻し、
-/// 何を戻したか（人でない書き手ならその名前も）を編集の文言に出す。
+/// `project.mmdb` の直前のトランザクションを取り消す（`undo` が偽ならやり直す）。発行元を問わず戻し、
+/// 何を戻したか（人でない発行元ならその名前も）を編集の文言に出す。
 pub fn step_saved(shared: &Shared, core: &mm_serve::Core, undo: bool) {
     let before = shared.history.next(undo);
     let caller = mm_serve::Caller::webview();

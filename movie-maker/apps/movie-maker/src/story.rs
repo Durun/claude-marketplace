@@ -1,5 +1,5 @@
-//! Story パネルの裏側。素材の文字起こし（単語の列、話題、選別）、単語の範囲の時刻、全文検索、
-//! 素材の時刻から再生位置への変換。命令の入口は `story_ipc.rs`、名前と引数の形は `ui/sdk/README.md` の「Story の命令」。
+//! Story パネルのアプリ側の処理。素材の文字起こし（単語の列、話題、選別）、単語の範囲の時刻、全文検索、
+//! 素材の時刻から再生位置への変換。Tauri のコマンドのハンドラーは `story_ipc.rs`、名前と引数の形は `ui/sdk/README.md` の「Story のコマンド」。
 //!
 //! 単語の本文は `project.mmdb` の `Store::transcript_words` があればそれを、無ければ取り込みの付属ファイル
 //! （`cache/ingest/<hash>.transcript.json`）を読む。消した単語・直した文字は、いまのプロジェクトのデータの
@@ -93,7 +93,7 @@ pub struct StoryHit {
     pub context: String,
 }
 
-/// 取り込んだままの 1 単語（直しを重ねる前）。
+/// 取り込んだままの 1 単語（修正を重ねる前）。
 struct BaseWord {
     id: String,
     segment: u32,
@@ -182,7 +182,7 @@ impl StoryState {
         Store::open_read_only(self.store_dir.as_deref()?).ok()
     }
 
-    /// 素材の文字起こしの単語に、いまの直しを重ねたもの。文字起こしが無ければ空。
+    /// 素材の文字起こしの単語に、いまの修正を重ねたもの。文字起こしが無ければ空。
     pub fn words(&self, asset_id: &str) -> Result<Vec<StoryWord>, String> {
         let (project, _) = self.project()?;
         let asset = Self::asset_of(&project, asset_id)?;
@@ -260,7 +260,7 @@ impl StoryState {
     }
 
     /// 全文検索。`mm search` と同じ規則（単語の境をまたいで探す、消した単語は外す、直した文字で探す）で、
-    /// 保存前の直しも見えるよう、パネルに出す単語と同じ列を探す。
+    /// 保存前の修正も見えるよう、パネルに出す単語と同じ列を探す。
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<StoryHit>, String> {
         let q = query.trim();
         let chars = q.chars().count();

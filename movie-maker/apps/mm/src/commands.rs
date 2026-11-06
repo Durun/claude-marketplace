@@ -67,12 +67,12 @@ fn writer_elsewhere(store: &Store) -> String {
         None => "pid 不明".to_owned(),
     };
     format!(
-        "別のプロセスが書いている（{who}）が、HTTP の入口が無いので書けない。\
+        "別のプロセスが書いている（{who}）が、HTTP サーバーが無いので書けない。\
          読み取りだけできる（mm log、mm diff、mm export）"
     )
 }
 
-/// 書く操作の送り先。自分が書き手になれればローカル、別のプロセス（アプリ）が書き手で HTTP の入口が
+/// 書く操作の送り先。自分が書き手になれればローカル、別のプロセス（アプリ）が書き手で HTTP サーバーが
 /// あれば転送、どちらでもなければ拒否。
 pub(crate) enum Target {
     Local(Box<Store>),

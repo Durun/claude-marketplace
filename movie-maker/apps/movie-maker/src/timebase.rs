@@ -1,5 +1,5 @@
 //! アプリの時間軸の変換。コンポジションの秒（再生位置）、シーケンスの時刻、素材の時刻の間の行き来をここに集め、
-//! Program の表示、印、split、ドラッグ、Story の移動先が同じ規則で数える。写像そのものは `mm-eval`（有理数）を使う。
+//! Program の表示、イン点・アウト点、split、ドラッグ、Story の移動先が同じ規則で数える。写像そのものは `mm-eval`（有理数）を使う。
 
 use mm_doc::{Composition, Layer, Project, Sequence, FOOTAGE_KIND, FOOTAGE_PARAM};
 use mm_doc::{SEQUENCE_KIND, SEQUENCE_PARAM};
@@ -14,7 +14,7 @@ pub fn frame_index(secs: f64, fps: f64) -> i64 {
     (secs * fps).floor() as i64
 }
 
-/// 秒 `secs` に映るフレームの始まりの時刻。印と split と再生位置の判定に使う。
+/// 秒 `secs` に映るフレームの始まりの時刻。イン点・アウト点と split と再生位置の判定に使う。
 pub fn frame_start(secs: f64, fps: Rational) -> Result<RationalTime, String> {
     RationalTime::from_frames(frame_index(secs, fps.to_f64()), fps).map_err(|e| e.to_string())
 }
@@ -92,7 +92,7 @@ pub fn cut_to_comp(project: &Project, comp: &Composition, cut: &str) -> Option<f
             let seq = layer_sequence(project, layer)?;
             let placed = place_cuts(seq).ok()?;
             let p = placed.iter().find(|p| p.id.as_str() == cut)?;
-            // カットの頭がレイヤーの in より前に切られていても、映り始める所に寄せる。
+            // カットの先頭がレイヤーの in より前に切られていても、映り始める所に寄せる。
             let inner = p.range.start.max(layer.in_point);
             (inner < p.range.end)
                 .then(|| shown_at(layer, inner))

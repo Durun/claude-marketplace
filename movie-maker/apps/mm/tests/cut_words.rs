@@ -16,7 +16,7 @@ const MEDIA_SECONDS: &str = "6";
 const TOPIC_WORDS: (usize, usize) = (1, 17);
 /// 消す 2 語の位置（「編」「集」）。
 const CUT_WORDS: (usize, usize) = (3, 4);
-/// トーンを消す範囲の内側に寄せる量（秒）。境目のフレームの丸めで鳴らないようにする。
+/// トーンを消す範囲の内側に寄せる量（秒）。境界のフレームの丸めで鳴らないようにする。
 const TONE_INSET: f64 = 0.05;
 /// 書き出しの長さ（秒）の許容。1 フレームの丸めと AAC の先頭の無音。
 const DURATION_TOLERANCE: f64 = 0.1;

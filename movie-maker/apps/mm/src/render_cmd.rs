@@ -1,4 +1,4 @@
-//! `mm render`: レンダーターゲットを書き出す。Ctrl+C で取り消し（書きかけを残さない）、進み具合を stderr に出し、
+//! `mm render`: レンダーターゲットを書き出す。Ctrl+C で取り消し（一時ファイルを残さない）、進み具合を stderr に出し、
 //! 書き出した MP4 を ffprobe で検証する。
 
 use std::io::{IsTerminal, Write};
@@ -65,7 +65,7 @@ pub fn render(args: &RenderArgs) -> Result<()> {
     let cancel = Arc::new(AtomicBool::new(false));
     let handler_flag = cancel.clone();
     ctrlc::set_handler(move || handler_flag.store(true, Ordering::Relaxed))
-        .map_err(|e| MmError::Internal(format!("Ctrl+C の受け口を作れない: {e}")))?;
+        .map_err(|e| MmError::Internal(format!("Ctrl+C のハンドラーを作れない: {e}")))?;
     let mut control = ExportControl::default().with_cancel(cancel);
     if std::io::stderr().is_terminal() {
         control = control.with_progress(progress_printer());
@@ -83,7 +83,7 @@ pub fn render(args: &RenderArgs) -> Result<()> {
     clear_progress_line();
     report(&batch);
     if batch.cancelled {
-        eprintln!("取り消した。書きかけのファイルは消した");
+        eprintln!("取り消した。一時ファイルは消した");
         std::process::exit(EXIT_CANCELLED);
     }
     Ok(())

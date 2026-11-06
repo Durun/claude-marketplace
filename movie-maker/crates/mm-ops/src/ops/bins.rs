@@ -1,4 +1,4 @@
-//! 素材の整理と文字起こしの直しの操作が共有する、プロジェクトのデータの書き換え。操作ではない。
+//! 素材の整理と文字起こしの修正の操作が共有する、プロジェクトのデータの書き換え。操作ではない。
 
 use mm_doc::{Project, Rating, SourceMarks, WordEdit, WordId};
 use mm_types::{AssetId, MmError, RationalTime, Result};
@@ -21,7 +21,7 @@ pub(crate) fn item_mut<'a>(
         .ok_or_else(|| MmError::NotFound(format!("選別か話題 {id}")))
 }
 
-/// 素材の印の `edge` を `at` にし、前の値を返す。両方とも無くなった印は外す。
+/// 素材のイン点・アウト点の `edge` を `at` にし、前の値を返す。両方とも無くなったら外す。
 pub(crate) fn set_mark(
     project: &mut Project,
     asset: &AssetId,
@@ -57,7 +57,7 @@ pub(crate) fn set_mark(
     Ok(old)
 }
 
-/// 単語の直しを `change` で変え、前の直しを返す（無ければ何も変えない直し）。何も変えない直しは外す。
+/// 単語の修正を `change` で変え、前の修正を返す（無ければ何も変えない修正）。何も変えない修正は外す。
 pub(crate) fn update_edit(
     project: &mut Project,
     asset: &AssetId,

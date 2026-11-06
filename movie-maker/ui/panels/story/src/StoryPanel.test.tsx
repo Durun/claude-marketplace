@@ -81,7 +81,7 @@ const press = async (el: HTMLElement) => {
 const sent = (api: StoryApi): Op[] => vi.mocked(api.apply).mock.calls.map(([op]) => op);
 
 describe("StoryPanel の表示", () => {
-  it("消した単語と直した単語に印を付け、話題ごとに区切る", async () => {
+  it("消した単語と直した単語を区別して出し、話題ごとに区切る", async () => {
     await mount(fake([topic("t1", 1, 3)]));
     expect(wordEl(2).dataset.deleted).toBe("true");
     expect(wordEl(3).dataset.fixed).toBe("true");
@@ -190,7 +190,7 @@ describe("StoryPanel の Delete", () => {
   });
 });
 
-describe("StoryPanel の Delete の切る先、Hide、直し", () => {
+describe("StoryPanel の Delete の切る先、Hide、修正", () => {
   it("開いているコンポジションの sequence があればそこを切り、sequence が無ければ送らない", async () => {
     const sequences = [
       { id: "s1", cuts: 0, duration: 0 },
@@ -221,7 +221,7 @@ describe("StoryPanel の Delete の切る先、Hide、直し", () => {
     expect(sent(api)[1]).toEqual({ op: "deleteWords", asset: "a1", words: ["w2"], restore: true });
   });
 
-  it("1 語を選ぶと直す欄が出て、直しを送る", async () => {
+  it("1 語を選ぶと直す欄が出て、修正を送る", async () => {
     const api = fake();
     await mount(api);
     drag(1, 1);

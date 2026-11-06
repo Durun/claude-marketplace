@@ -16,7 +16,7 @@ export interface TranscriptViewProps {
   words: readonly StoryWord[];
   topics: readonly Topic[];
   select: DragSelect;
-  /** 検索の結果などで目印を付ける単語。 */
+  /** 検索の結果などで強調する単語。 */
   focusWord: string | null;
   actions: TopicActions;
 }
@@ -33,7 +33,7 @@ interface WordViewProps {
   tabStop: boolean;
 }
 
-/** 単語 1 つ。消した単語は打ち消し線、直した単語は下線で印を付ける。 */
+/** 単語 1 つ。消した単語は打ち消し線、直した単語は下線で示す。 */
 const WordView = ({ word, index, selected, focused, tabStop }: WordViewProps) => {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {

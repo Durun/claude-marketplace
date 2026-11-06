@@ -1,4 +1,4 @@
-//! Media パネルの Tauri の命令。名前と引数の形は `ui/sdk/README.md` の「Media の命令」。
+//! Media パネルの Tauri のコマンド。名前と引数の形は `ui/sdk/README.md` の「Media のコマンド」。
 
 use std::sync::Arc;
 

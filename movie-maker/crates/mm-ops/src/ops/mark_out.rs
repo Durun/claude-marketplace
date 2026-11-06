@@ -1,4 +1,4 @@
-//! `markOut`。素材のアウト点の印を付ける・外す。
+//! `markOut`。素材のアウト点を付ける・外す。
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ use crate::ops::bins::set_mark;
 use crate::ops::Edge;
 use crate::touches::Touches;
 
-/// 素材 `asset` のアウト点の印を `at`（素材の時間軸、含まない）にする。`None` で外す。イン点の印より後でなければ拒否する。
+/// 素材 `asset` のアウト点を `at`（素材の時間軸、含まない）にする。`None` で外す。イン点より後でなければ拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MarkOut {

@@ -15,10 +15,10 @@ pub const SCHEMA_VERSION: u32 = 3;
 /// バージョン `i` から `i + 1` に上げる DDL。プロジェクトのデータの JSON の形の移行は `mm_doc::migrate` が持つ。
 pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
-/// バージョン 3: 素材の整理と文字起こしの直しの行（プロジェクトのデータ v6）と、文字起こしの本文と全文検索。
+/// バージョン 3: 素材の整理と文字起こしの修正の行（プロジェクトのデータ v6）と、文字起こしの本文と全文検索。
 ///
 /// `words.run` は単語の文字に後ろの単語の文字を続けたもの（`transcript::RUN_EXTRA_CHARS` 文字まで）で、
-/// 単語の境目をまたぐ語（「編」「集」の「編集」）も単語の行の検索で引けるようにする。
+/// 単語の境界をまたぐ語（「編」「集」の「編集」）も単語の行の検索で引けるようにする。
 /// `words_fts` は `words` を外部コンテンツにした FTS5 で、`run` だけを索引にし、トリガーで同期する。
 const V3: &str = "
 CREATE TABLE marks (id TEXT PRIMARY KEY, json TEXT NOT NULL) WITHOUT ROWID;

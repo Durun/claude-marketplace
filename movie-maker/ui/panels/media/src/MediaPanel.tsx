@@ -13,7 +13,7 @@ export interface MediaPanelProps {
   refreshKey?: number;
 }
 
-/** 取り込みの入口。取り込み中は押せない。 */
+/** 取り込みのボタン。取り込み中は押せない。 */
 const Toolbar = ({ running, onImport }: { running: boolean; onImport: () => void }) => (
   <div class="mm-media-toolbar">
     <button

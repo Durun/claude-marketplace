@@ -1,4 +1,4 @@
-//! 入口の呼び手。`mm` が動いているアプリに操作を送るのと、結合テストが使う。
+//! HTTP サーバーのクライアント。`mm` が動いているアプリに操作を送るのと、結合テストが使う。
 //!
 //! 依存を増やさず、標準の `TcpStream` で HTTP/1.0 を話す（応答は接続を閉じるまでが本体で、
 //! SSE も分割転送にならない）。
@@ -37,7 +37,7 @@ impl Response {
     }
 }
 
-/// 動いている入口への接続情報。
+/// 動いている HTTP サーバーへの接続情報。
 #[derive(Debug, Clone)]
 pub struct Client {
     port: u16,
@@ -45,7 +45,7 @@ pub struct Client {
 }
 
 impl Client {
-    /// ポートと合い言葉から。
+    /// ポートとトークンから。
     pub fn new(port: u16, token: impl Into<String>) -> Self {
         Self {
             port,
@@ -53,8 +53,8 @@ impl Client {
         }
     }
 
-    /// プロジェクトのフォルダーの `.mm/` から、動いている入口を探す。書き手が生きていないか、
-    /// ポートか合い言葉が無ければ `None`。クラッシュで残った古いポートと合い言葉は信じない。
+    /// プロジェクトのフォルダーの `.mm/` から、動いている HTTP サーバーを探す。書き手が生きていないか、
+    /// ポートかトークンが無ければ `None`。クラッシュで残った古いポートとトークンは信じない。
     pub fn for_project(dir: &Path) -> Option<Self> {
         if !Store::writer_alive(dir) {
             return None;
@@ -84,7 +84,7 @@ impl Client {
         )
     }
 
-    /// 合い言葉と `Host` を付けた既定のヘッダー。
+    /// トークンと `Host` を付けた既定のヘッダー。
     pub fn default_headers(&self) -> Vec<(String, String)> {
         vec![
             ("Host".into(), format!("127.0.0.1:{}", self.port)),
@@ -92,7 +92,7 @@ impl Client {
         ]
     }
 
-    /// ヘッダーを自分で決める要求。合い言葉なし・別の `Origin` などの拒否を確かめるのに使う。
+    /// ヘッダーを自分で決める要求。トークンなし・別の `Origin` などの拒否を確かめるのに使う。
     pub fn send(
         &self,
         method: &str,
@@ -190,7 +190,7 @@ pub struct EventStream {
 }
 
 impl EventStream {
-    /// 次の通知。閉じられたら `None`。キープアライブのコメントは読み飛ばす。
+    /// 次の通知。閉じられたら `None`。キープアライブのコメントは無視する。
     pub fn next_event(&mut self) -> Result<Option<SseEvent>> {
         let (mut event, mut data) = (String::new(), String::new());
         loop {

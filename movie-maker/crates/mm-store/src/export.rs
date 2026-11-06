@@ -17,7 +17,7 @@ use mm_types::{MmError, Result};
 pub const VERSIONS_DIR: &str = "versions";
 const INDEX_FILE: &str = "project.json";
 const REVIEW_FILE: &str = "review.json";
-/// 素材の整理と文字起こしの直し。無ければ（v6 より前の書き出し）空として読む。
+/// 素材の整理と文字起こしの修正。無ければ（v6 より前の書き出し）空として読む。
 const BINS_FILE: &str = "bins.json";
 /// ID ごとのファイルを置く下のフォルダー。
 const PER_ID_DIRS: [&str; 3] = ["comps", "assets", "sequences"];

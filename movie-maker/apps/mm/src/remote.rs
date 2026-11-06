@@ -1,4 +1,4 @@
-//! 動いているアプリへ HTTP で転送する経路（`mm-serve`）。別のプロセスが書き手で、HTTP のポートと合い言葉が
+//! 動いているアプリへ HTTP で転送する経路（`mm-serve`）。別のプロセスが書き手で、HTTP のポートとトークンが
 //! `.mm/` にあるときに使う。動いていなければ `commands.rs` が `project.mmdb` を直接開く。
 
 use std::path::Path;
@@ -122,7 +122,7 @@ pub fn frame(args: &FrameArgs) -> Result<()> {
     let remote = dir.as_deref().and_then(Client::for_project);
     let png = match remote.map(|c| fetch_frame(&c, args)) {
         Some(Ok(Some(png))) => png,
-        // 接続できない、または合い言葉が合わない入口は、古い情報として自分で描く。
+        // 接続できない、またはトークンが合わない HTTP サーバーは、古い情報として自分で描く。
         Some(Ok(None) | Err(MmError::Io(_))) | None => render_local(args)?,
         Some(Err(e)) => return Err(e),
     };
@@ -131,7 +131,7 @@ pub fn frame(args: &FrameArgs) -> Result<()> {
     Ok(())
 }
 
-/// 合い言葉が拒否されたら `None`（別のプロセスのポートに古い合い言葉を送った場合）。
+/// トークンが拒否されたら `None`（別のプロセスのポートに古いトークンを送った場合）。
 fn fetch_frame(client: &Client, args: &FrameArgs) -> Result<Option<Vec<u8>>> {
     let mut path = format!("/frame?t={}", encode_query(args.time));
     if let Some(c) = args.composition {

@@ -22,7 +22,7 @@ use mm_types::{
 ///   v3 のマーカーは同じ時刻を持てた。
 /// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
 /// - v5: `color.lut` の LUT は素材（`lut` の `AssetRef`）。v4 の `path` はその場所の素材（`contentHash` は空）に移す。
-/// - v6: 素材の整理（`bins`: 印、選別、話題）と文字起こしの直し（`transcript_edits`）。v5 からは空で上げる。
+/// - v6: 素材の整理（`bins`: イン点・アウト点、選別、話題）と文字起こしの修正（`transcript_edits`）。v5 からは空で上げる。
 pub const SCHEMA_VERSION: u32 = 6;
 
 mod bins;
@@ -72,10 +72,10 @@ pub struct Project {
     #[serde(default)]
     pub sequences: Vec<Sequence>,
     pub render_targets: Vec<RenderTarget>,
-    /// 素材の整理（印、選別、話題）。
+    /// 素材の整理（イン点・アウト点、選別、話題）。
     #[serde(default)]
     pub bins: Bins,
-    /// 文字起こしの直し。素材と単語の ID の順。
+    /// 文字起こしの修正。素材と単語の ID の順。
     #[serde(default)]
     pub transcript_edits: Vec<WordEdit>,
 }

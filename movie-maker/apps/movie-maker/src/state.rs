@@ -99,7 +99,7 @@ impl FrameSlot {
 pub struct OpenDoc {
     pub project: Arc<Project>,
     pub comp: CompositionId,
-    /// `project.mmdb` のバージョン。編集の計画に付けて、間に別の書き手が触った所との衝突を見分ける。
+    /// `project.mmdb` のバージョン。編集の計画に付けて、間に別の発行元が触った所との衝突を見分ける。
     /// JSON のプロジェクトでは `None`。
     pub version: Option<i64>,
 }
@@ -133,13 +133,13 @@ pub struct Shared {
     pub cpu_frames: AtomicBool,
     /// 再生スレッドがまだ適用していない操作。
     pub edits: Mutex<Vec<PendingEdit>>,
-    /// キーとドラッグの編集を順に計画して適用する列。最初の編集で作る。
+    /// キーとドラッグの編集を順に計画して適用するキュー。最初の編集で作る。
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
-    /// `core` の取り消しの列の写し。取り消しの文言に、戻したトランザクションの書き手を出すのに使う。
+    /// `core` の取り消しのスタックのコピー。取り消しの文言に、戻したトランザクションの発行元を出すのに使う。
     pub history: HistoryMirror,
     /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
     doc: Mutex<Option<OpenDoc>>,

@@ -34,7 +34,7 @@ pub struct CutSplice {
 /// 素材 `asset` の単語 `words` を消し（`restore` で戻し）、素材の時刻の範囲 `ranges` を、シーケンス `sequence` のうち
 /// その素材を映すカットから抜いて後ろを詰める。範囲がカットの中ほどなら割って間を抜き、カットの端なら端を詰め、
 /// カットを覆えばカットを抜く。どのカットにも掛からない範囲は単語を消すだけ。後ろの半分のカットの ID は `<元の ID>-<番号>`
-/// の空いているもの。消した印は素材に付くので全部のシーケンスの文字起こしに効くが、カットは `sequence` だけを切る
+/// の空いているもの。削除のフラグは素材に付くので全部のシーケンスの文字起こしに効くが、カットは `sequence` だけを切る
 /// （本編から分けたショートを削らない）。1 つの操作なので、1 回の取り消しで単語とカットが戻る。
 ///
 /// `splices` を渡すと `ranges` の代わりにその置き換えを順に行う（逆操作の形。人は省く）。
@@ -85,7 +85,7 @@ impl CutWords {
         Ok(out)
     }
 
-    /// 単語の消した印を変え、変えた単語を返す。
+    /// 単語の削除のフラグを変え、変えた単語を返す。
     fn set_words(&self, project: &mut Project) -> Result<Vec<WordId>> {
         project.asset(&self.asset)?;
         let want = !self.restore;
@@ -254,7 +254,7 @@ fn apply_splice(project: &mut Project, sequence: &SequenceId, s: &CutSplice) -> 
     })
 }
 
-/// 置き換えが読む・書く所。シーケンスのカットの写し `cuts` に順に当て、抜くカット、足すカット、その前後、
+/// 置き換えが読む・書く所。シーケンスのカットのコピー `cuts` に順に適用し、抜くカット、足すカット、その前後、
 /// 接続したレイヤーを集める。
 fn splice_touches(project: &Project, mut cuts: Vec<Cut>, splices: &[CutSplice], t: &mut Touches) {
     for s in splices {

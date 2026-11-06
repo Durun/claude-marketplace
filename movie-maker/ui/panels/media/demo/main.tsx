@@ -1,5 +1,5 @@
-// Media パネルを偽のアプリの窓口で動かすページ。スクリーンショット用で、アプリには載せない。
-// ?state=idle|importing|failed|empty|cache で場面を選ぶ。
+// Media パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
+// ?state=idle|importing|failed|empty|cache で状態を選ぶ。
 import { render } from "preact";
 import type { CacheInfo, ImportEvent, MediaApi, MediaItem } from "@mm/sdk";
 import { followTheme } from "../../../shell/src/followTheme.ts";
@@ -100,7 +100,7 @@ if (root) {
   render(<MediaPanel api={api} />, host);
 }
 
-/** 場面ごとに、パネルが出来たあとでイベントを流す。 */
+/** 状態ごとに、パネルが出来たあとでイベントを流す。 */
 const STAGE_DELAY_MS = 300;
 window.setTimeout(() => {
   if (scene === "importing") {

@@ -1,5 +1,5 @@
-// Story パネルを偽のアプリの窓口で動かすページ。スクリーンショット用で、アプリには載せない。
-// ?state=plain|topics で最初の場面を選ぶ。編集の操作は手元の配列に反映する。
+// Story パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
+// ?state=plain|topics で最初の状態を選ぶ。編集の操作は手元の配列に反映する。
 import { render } from "preact";
 import type { Op, RationalTime, StoryApi, StoryTranscript, StoryWord, Topic } from "@mm/sdk";
 import { followTheme } from "../../../shell/src/followTheme.ts";

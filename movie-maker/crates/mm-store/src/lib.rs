@@ -3,7 +3,7 @@
 //!
 //! - [`Store`]: 開く、書く、取り消す、バックアップ、検索、`versions/` の書き出しと取り込み。
 //! - 文字起こしの本文は操作の記録に載せずに表へ書き（[`Store::put_transcript`]）、
-//!   語から素材と時刻を引く（[`Store::search_words`]）。直しはプロジェクトのデータの `transcript_edits`。
+//!   語から素材と時刻を引く（[`Store::search_words`]）。修正はプロジェクトのデータの `transcript_edits`。
 //! - 操作の記録は `mm-ops` の [`OpRecord`] と [`TxnRecord`] の形で表に書く。取り消しとやり直しも
 //!   逆操作（元の操作）を適用したトランザクションとして同じ表に残り、バージョンは操作の数だけ進む。
 //!   操作を適用して書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。

@@ -63,7 +63,7 @@ impl EditState {
         self.selected_cut.lock().expect("selected cut").clone()
     }
 
-    /// プロジェクトに無いカットの ID。やり直しで同じ ID に戻るよう、呼び手が操作に入れる。
+    /// プロジェクトに無いカットの ID。やり直しで同じ ID に戻るよう、呼び出し側が操作に入れる。
     pub fn fresh_cut_id(&self, project: &Project) -> CutId {
         loop {
             let n = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
@@ -102,7 +102,7 @@ pub struct Planned {
     pub select: Option<CutId>,
 }
 
-/// 素材 `asset` の印から範囲を決める。印が無い側は素材の端（イン点は 0、アウト点は素材の長さ）。
+/// 素材 `asset` のイン点・アウト点から範囲を決める。付いていない側は素材の端（イン点は 0、アウト点は素材の長さ）。
 pub fn source_range(project: &Project, asset: &AssetId) -> Result<SourceRange, String> {
     let a = project.asset(asset).map_err(|e| e.to_string())?;
     let marks = project.bins.marks.iter().find(|m| &m.asset == asset);
@@ -156,7 +156,7 @@ impl Target<'_> {
             .find(|p| p.range.start <= self.at && self.at < p.range.end)
     }
 
-    /// 再生位置に一番近いカットの境目の、`seq.cuts` の中の位置。カットの前半にいれば前、後半にいれば後ろ。
+    /// 再生位置に一番近いカットの編集点の、`seq.cuts` の中の位置。カットの前半にいれば前、後半にいれば後ろ。
     fn boundary_index(&self) -> usize {
         match self.cut_at_playhead() {
             Some(p) => {
@@ -191,7 +191,7 @@ fn footage_cut(id: CutId, range: &SourceRange) -> Cut {
     )
 }
 
-/// Source の範囲を、再生位置に一番近いカットの境目へ差し込む（`insert`）。後ろのカットはずれる。
+/// Source の範囲を、再生位置に一番近いカットの編集点へ差し込む（`insert`）。後ろのカットはずれる。
 pub fn plan_insert(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
     let t = target(ctx)?;
     Ok(Planned {

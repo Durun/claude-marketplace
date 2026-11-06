@@ -1,4 +1,4 @@
-//! HTTP の入口の拒否の経路と、名乗れる範囲の結合テスト。
+//! HTTP サーバーの拒否の経路と、名乗れる範囲の結合テスト。
 //! 拒否した要求は本体を読まず、プロジェクトのデータを変えない。
 
 use std::path::Path;
@@ -18,7 +18,7 @@ struct Rig {
     client: Client,
 }
 
-/// 段階 0 のフィクスチャ（ロックを付けられるレイヤー `l-text` がある）を書き手で開いた入口。
+/// 段階 0 のフィクスチャ（ロックを付けられるレイヤー `l-text` がある）を書き手で開いた HTTP サーバー。
 fn rig() -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let path =
@@ -230,7 +230,7 @@ fn クラッシュで残った古いポートと合い言葉は信じない() {
         "書き手が生きている間は見つかる"
     );
 
-    // 書き手が落ちて、ロックだけが解けた状態を作る。
+    // 書き手がクラッシュして、ロックだけが解けた状態を作る。
     drop(writer);
     std::fs::write(&info_path, info).unwrap();
     std::fs::write(&token_path, token).unwrap();

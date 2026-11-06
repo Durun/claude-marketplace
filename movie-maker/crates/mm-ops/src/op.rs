@@ -124,7 +124,7 @@ define_ops! {
     Join => "join",
     /// カットのイン点かアウト点を動かし、後ろをずらす。
     Ripple => "ripple",
-    /// 次のカットとの境目を動かす（全体の長さは変わらない）。
+    /// 次のカットとの編集点を動かす（全体の長さは変わらない）。
     Roll => "roll",
     /// カットの内容をずらす（位置と長さは変わらない）。
     Slip => "slip",
@@ -144,9 +144,9 @@ define_ops! {
     FitLayer => "fitLayer",
     /// レイヤーのイン点かアウト点を動かす。
     TrimLayer => "trimLayer",
-    /// 素材のイン点の印を付ける・外す。
+    /// 素材のイン点を付ける・外す。
     MarkIn => "markIn",
-    /// 素材のアウト点の印を付ける・外す。
+    /// 素材のアウト点を付ける・外す。
     MarkOut => "markOut",
     /// 選別を足す。
     AddSelection => "addSelection",

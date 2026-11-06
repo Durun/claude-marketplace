@@ -23,7 +23,7 @@ export const formatClock = (seconds: number): string => {
 
 let counter = 0;
 
-/** 操作に渡す ID。呼び手が決める（`insertTopics` のカットや `addTopic` の話題）。 */
+/** 操作に渡す ID。呼び出し側が決める（`insertTopics` のカットや `addTopic` の話題）。 */
 export const newId = (prefix: string): string => {
   counter += 1;
   return `${prefix}${Date.now().toString(ID_RADIX)}${counter.toString(ID_RADIX)}`;
@@ -89,7 +89,7 @@ export const spanOf = (anchor: number, focus: number): Span => ({
 export const wordsIn = (words: readonly StoryWord[], span: Span | null): StoryWord[] =>
   span ? words.slice(span.from, span.to + 1) : [];
 
-/** 話題の題の既定。選んだ単語の文字を頭から。 */
+/** 話題の見出しの既定。選んだ単語の文字を先頭から。 */
 export const defaultTitle = (selected: readonly StoryWord[], maxChars: number): string =>
   selected
     .filter((w) => !w.deleted)

@@ -1,4 +1,4 @@
-//! 文字起こしに無い単語への直しは書く前に拒否する。
+//! 文字起こしに無い単語への修正は書く前に拒否する。
 
 use mm_doc::{Asset, Project};
 use mm_ops::{AddAsset, DeleteWords, FixTranscript, OpContext, OpError, Transaction};
@@ -92,7 +92,7 @@ fn 取り消しは単語が取り込み直しで変わっても止まらない()
     let mut s = store_with_words(tmp.path(), true);
     let word = word_id(HASH, RationalTime::seconds(1), 1);
     apply(&mut s, delete(word)).unwrap();
-    // 取り込み直しで本文が変わり、直した単語が無くなっても、取り消しの列は進められる。
+    // 取り込み直しで本文が変わり、直した単語が無くなっても、取り消しのスタックは進められる。
     let input = TranscriptInput {
         producer: "t".into(),
         language: "ja".into(),

@@ -1,4 +1,4 @@
-//! `markIn`。素材のイン点の印を付ける・外す。
+//! `markIn`。素材のイン点を付ける・外す。
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ use crate::ops::bins::set_mark;
 use crate::ops::Edge;
 use crate::touches::Touches;
 
-/// 素材 `asset` のイン点の印を `at`（素材の時間軸）にする。`None` で外す。アウト点の印より前でなければ拒否する。
+/// 素材 `asset` のイン点を `at`（素材の時間軸）にする。`None` で外す。アウト点より前でなければ拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MarkIn {

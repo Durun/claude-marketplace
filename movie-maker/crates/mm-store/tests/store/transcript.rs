@@ -1,4 +1,4 @@
-//! 文字起こしの本文と全文検索、プロジェクトのデータの直しとの同期、整理の行の保存。
+//! 文字起こしの本文と全文検索、プロジェクトのデータの修正との同期、整理の行の保存。
 
 use mm_doc::{Asset, Project, Rating, Topic};
 use mm_ops::{AddAsset, AddTopic, DeleteWords, FixTranscript, Op, OpContext, Transaction};
@@ -113,7 +113,11 @@ fn 消した単語は引けず_直した文字で引け_取り消すと戻る() 
         },
     );
     assert!(spans(&s, "動画").is_empty());
-    assert_eq!(spans(&s, "これは編集").len(), 1, "消した単語を飛ばして続く");
+    assert_eq!(
+        spans(&s, "これは編集").len(),
+        1,
+        "消した単語をスキップして続く"
+    );
     apply(
         &mut s,
         FixTranscript {

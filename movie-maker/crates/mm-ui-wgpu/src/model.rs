@@ -61,7 +61,7 @@ pub fn timeline_cut_ids(project: &Project, comp: &Composition) -> Vec<Vec<String
 }
 
 /// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーはスキップする。
-/// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして印を付ける）。
+/// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして区別する）。
 pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {

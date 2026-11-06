@@ -28,7 +28,7 @@ fn secs(n: i64) -> RationalTime {
     RationalTime::seconds(n)
 }
 
-/// 付属ファイルだけの素材 1 つのプロジェクト。`cache/ingest/` に日本語の見本の文字起こしを置く。
+/// 付属ファイルだけの素材 1 つのプロジェクト。`cache/ingest/` に日本語の文字起こしのフィクスチャを置く。
 fn state(dir: &Path, edit: impl FnOnce(&mut Project)) -> StoryState {
     let cache = dir.join("cache");
     let sidecar = cache.join("ingest").join(format!("{HASH}.transcript.json"));
@@ -159,7 +159,7 @@ fn 検索は単語の境をまたぎ_消した単語を外し_直した文字で
     assert_eq!(
         story.search("字こし", 10).unwrap().len(),
         1,
-        "消した単語は飛ばす"
+        "消した単語はスキップする"
     );
     assert!(story.search("", 10).is_err());
 }

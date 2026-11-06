@@ -1,5 +1,5 @@
-//! HTTP の入口の結合テスト。本物の `Store`（一時フォルダーの `project.mmdb`）と本物の待ち受けに、
-//! 標準の `TcpStream` の呼び手でつなぐ。
+//! HTTP サーバーの結合テスト。実際の `Store`（一時フォルダーの `project.mmdb`）と実際の待ち受けに、
+//! 標準の `TcpStream` のクライアントでつなぐ。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -153,7 +153,7 @@ fn 操作は_project_mmdb_に書かれ_プロジェクトに見える() {
     assert_eq!(view["version"], 1);
     assert_eq!(view["project"]["sequences"][0]["id"], "s1");
 
-    // 別のプロセスが読み取りだけで開いても、書かれた版が見える。
+    // 別のプロセスが読み取りだけで開いても、書かれたバージョンが見える。
     let reader = Store::open_read_only(&r.dir).unwrap();
     assert_eq!(reader.mode(), OpenMode::ReadOnly);
     assert_eq!(reader.doc_version(), 1);
@@ -189,12 +189,12 @@ fn 古い版を元にした操作は_触る所が重ならなければ通り_重
     post_op(&r.client, add_sequence("s1", [("c1", 4), ("c2", 2)]), None);
     post_op(&r.client, add_sequence("s2", [("c3", 4), ("c4", 2)]), None);
 
-    // 版 1 を元に s1 を触る。その後の s2 の追加とは重ならない。
+    // バージョン 1 を元に s1 を触る。その後の s2 の追加とは重ならない。
     let ok = post_op(&r.client, ripple("c1"), Some(1));
     assert_eq!(ok.status, 200, "{}", ok.error_message());
     assert_eq!(ok.json().unwrap()["version"], 3);
 
-    // 同じ版 1 を元に、もう一度 c1 を触る。版 3 の ripple と重なる。
+    // 同じバージョン 1 を元に、もう一度 c1 を触る。バージョン 3 の ripple と重なる。
     let conflict = post_op(&r.client, ripple("c1"), Some(1));
     assert_eq!(conflict.status, 409);
     let err = conflict.json().unwrap();
@@ -209,7 +209,7 @@ fn 古い版を元にした操作は_触る所が重ならなければ通り_重
         3
     );
 
-    // 今の版より先は別のプロジェクトのデータを指している。
+    // 今のバージョンより先は別のプロジェクトのデータを指している。
     let future = post_op(&r.client, ripple("c1"), Some(99));
     assert_eq!(future.status, 409);
     assert_eq!(future.json().unwrap()["error"]["code"], "future_base");

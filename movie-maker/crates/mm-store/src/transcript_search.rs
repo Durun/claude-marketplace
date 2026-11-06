@@ -49,7 +49,7 @@ const WHERE: &str = "w.deleted = 0
  ORDER BY w.asset_id, w.ord LIMIT ?3";
 
 impl Store {
-    /// 文字起こしから語 `query` を引く。単語の境目をまたぐ語も引ける。消した単語は外し、直した文字で引く。
+    /// 文字起こしから語 `query` を引く。単語の境界をまたぐ語も引ける。消した単語は外し、直した文字で引く。
     /// 素材の ID と時刻の順に、最大 `limit` 件。語の長さは [`RUN_EXTRA_CHARS`] 文字まで。
     pub fn search_words(&self, query: &str, limit: usize) -> Result<Vec<WordHit>> {
         let q = query.trim();

@@ -41,7 +41,7 @@ pub fn with_modifiers(name: &str, ctrl: bool, shift: bool, alt: bool) -> String 
     out
 }
 
-/// キーに割り当てた編集。Source の印、insert / overwrite、split、lift / extract、取り消しとやり直し。
+/// キーに割り当てた編集。Source のイン点・アウト点、insert / overwrite、split、lift / extract、取り消しとやり直し。
 pub fn edit_for(key: &str) -> Option<EditAction> {
     match key {
         "KeyI" => Some(EditAction::MarkIn),

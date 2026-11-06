@@ -1,7 +1,7 @@
 //! 書き手のロックファイル。`.mm/lock` に OS のファイルロックをかけ、pid と HTTP のポートは `.mm/lock.info` に書く。
 //!
 //! ロックはクラッシュしたプロセスのものも OS が解くので、古いロックファイルが残って締め出すことが無い。
-//! HTTP の合い言葉はプロジェクトの外の持ち主専用のフォルダーに置き（`token.rs`）、
+//! HTTP のトークンはプロジェクトの外の持ち主専用のフォルダーに置き（`token.rs`）、
 //! `lock.info` にはその識別子（`token_id`）だけを書く。
 //! Windows では排他ロックされたファイルが読めないため、読む側が見る内容は別のファイルに置く。
 
@@ -24,7 +24,7 @@ const INFO_FILE: &str = "lock.info";
 pub struct LockInfo {
     pub pid: u32,
     pub http_port: Option<u16>,
-    /// 合い言葉の置き場所の識別子。合い言葉そのものは持たない。
+    /// トークンの置き場所の識別子。トークンそのものは持たない。
     #[serde(default)]
     pub token_id: Option<String>,
 }
@@ -57,7 +57,7 @@ impl WriterLock {
             info_path: dir.join(INFO_FILE),
             token_id: token::token_id(project_dir),
         };
-        // 前の書き手がクラッシュして残した合い言葉は、新しい書き手の物ではない。
+        // 前の書き手がクラッシュして残したトークンは、新しい書き手の物ではない。
         token::remove_token(&lock.token_id);
         lock.write_info(None)?;
         Ok(Some(lock))
@@ -74,13 +74,13 @@ impl WriterLock {
         Ok(())
     }
 
-    /// HTTP の合い言葉を書く。置き場所は持ち主だけが読める。
+    /// HTTP のトークンを書く。置き場所は持ち主だけが読める。
     pub(crate) fn write_token(&self, secret: &str) -> Result<()> {
         token::write_token(&self.token_id, secret)?;
         Ok(())
     }
 
-    /// 合い言葉を消す。
+    /// トークンを消す。
     pub(crate) fn clear_token(&self) {
         token::remove_token(&self.token_id);
     }
@@ -94,13 +94,13 @@ impl Drop for WriterLock {
     }
 }
 
-/// 動作中の書き手の HTTP の合い言葉を読む。無ければ `None`。
+/// 動作中の書き手の HTTP のトークンを読む。無ければ `None`。
 pub(crate) fn read_token(project_dir: &Path) -> Option<String> {
     let id = read_info(project_dir)?.token_id?;
     token::read_token(&id)
 }
 
-/// 合い言葉のファイルのパス（権限の検査用）。
+/// トークンのファイルのパス（権限の検査用）。
 pub(crate) fn token_file(project_dir: &Path) -> Option<PathBuf> {
     token::token_path(&read_info(project_dir)?.token_id?).ok()
 }

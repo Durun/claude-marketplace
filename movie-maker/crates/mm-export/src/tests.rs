@@ -44,7 +44,7 @@ fn 出力先を上書きして書き出し段ごとのスパンが出る() {
         VERTICAL_DURATION_SECONDS as u64 * DEFAULT_SAMPLE_RATE as u64
     );
     assert!(out.exists(), "親ディレクトリごと作られる");
-    assert!(!partial_path(&out).exists(), "書きかけは残らない");
+    assert!(!partial_path(&out).exists(), "一時ファイルは残らない");
     let written: EncodeReport = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
     assert_eq!(written.frames, frames, "エンコーダーの報告が出力と合う");
 
@@ -147,7 +147,7 @@ fn 無いレンダーターゲットは拒否する() {
     assert!(pick_target(&project, None).is_err());
 }
 
-/// 縦の見本に、別の大きさと出力先のレンダーターゲット `small` を足したプロジェクト。
+/// 縦の 1 本のフィクスチャに、別の大きさと出力先のレンダーターゲット `small` を足したプロジェクト。
 fn two_targets(dir: &Path) -> Project {
     let media = SampleMedia::default();
     let (mut project, _, _) = vertical_project(&media, &dir.join("big.json"));
@@ -276,7 +276,7 @@ fn 取り消すと書きかけを残さず_前の出力も壊さない() {
         "途中で止まる: {}",
         seen.load(Ordering::Relaxed)
     );
-    assert!(!partial_path(&out).exists(), "書きかけは消える");
+    assert!(!partial_path(&out).exists(), "一時ファイルは消える");
     assert_eq!(std::fs::read(&out).unwrap(), b"previous");
     let _ = std::fs::remove_dir_all(temp("cancel"));
 }
@@ -322,9 +322,9 @@ fn 検証に落ちた書き出しは前の出力を残し_書きかけを消す(
         export_run(&mut engine, &project, &options)
     });
     // サンプルのエンコーダーは JSON を書くので、ffprobe の検証は通らない。
-    assert!(result.is_err(), "検証が落ちる");
+    assert!(result.is_err(), "検証が失敗する");
     assert_eq!(std::fs::read(&out).unwrap(), b"previous");
-    assert!(!partial_path(&out).exists(), "書きかけは消える");
+    assert!(!partial_path(&out).exists(), "一時ファイルは消える");
     let _ = std::fs::remove_dir_all(temp("verify"));
 }
 

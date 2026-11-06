@@ -51,7 +51,7 @@ fn 無効なカットは配置に数えない() {
     let mut p = sample_project();
     p.sequences[0].cuts[0].enabled = false;
     let comp = p.compositions[0].clone();
-    // k1 を外すと k2（素材の 3-4 秒）が頭に来る。
+    // k1 を外すと k2（素材の 3-4 秒）が先頭に来る。
     assert_eq!(source_to_comp(&p, &comp, "a", 3.5), Some(0.5));
     assert_eq!(
         source_to_comp(&p, &comp, "a", 1.0),

@@ -91,7 +91,7 @@ interface DropPayload {
   paths?: string[];
 }
 
-/** Tauri の IPC で Media の命令を呼ぶ実装。命令の名前と引数は ui/sdk/README.md。 */
+/** Tauri の IPC で Media のコマンドを呼ぶ実装。コマンドの名前と引数は ui/sdk/README.md。 */
 export const createIpcMediaApi = (
   call: MediaInvoke = tauriInvoke,
   listen: MediaListen = tauriListen,

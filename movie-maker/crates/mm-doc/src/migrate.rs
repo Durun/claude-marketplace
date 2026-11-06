@@ -119,7 +119,7 @@ fn v2_to_v3(value: &mut Value) {
     }
 }
 
-/// v5 → v6: 素材の整理と文字起こしの直しを空で置く。
+/// v5 → v6: 素材の整理と文字起こしの修正を空で置く。
 fn v5_to_v6(value: &mut Value) {
     if value.get("bins").is_none() {
         value["bins"] = serde_json::json!({ "marks": [], "selections": [], "topics": [] });

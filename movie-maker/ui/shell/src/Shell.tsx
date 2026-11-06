@@ -25,9 +25,9 @@ export interface LayerSelection {
 export interface ShellProps {
   /** 操作を送る。本番は sdk の client（IPC）をつなぐ。断られたら理由の文字を返し、Shell が画面に出す。 */
   sendOp: (op: Op) => Promise<string | null> | undefined;
-  /** Media パネルがアプリに頼む窓口。無ければ Media は出さない。 */
+  /** Media パネルがアプリを呼ぶ API。無ければ Media は出さない。 */
   media?: MediaApi;
-  /** Story パネルがアプリに頼む窓口。無ければ Story は出さない。 */
+  /** Story パネルがアプリを呼ぶ API。無ければ Story は出さない。 */
   story?: StoryApi;
   /** Tauri のイベントの購読。無ければ本番の listen。テストで差し替える。 */
   listen?: MediaListen;
@@ -103,7 +103,7 @@ const useDocChanges = (listen: MediaListen | undefined): number => {
   return count;
 };
 
-/** 左に Tasks、Media、Story（タブで切り替え）、右に Inspector。窓口を渡したパネルだけタブを出す。 */
+/** 左に Tasks、Media、Story（タブで切り替え）、右に Inspector。API を渡したパネルだけタブを出す。 */
 export const Shell = ({ sendOp, media, story, listen }: ShellProps) => {
   const selection = useLayerSelection();
   const [tab, setTab] = useState<LeftTab>("tasks");

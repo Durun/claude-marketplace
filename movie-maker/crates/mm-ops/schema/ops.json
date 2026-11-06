@@ -732,7 +732,7 @@
       ]
     },
     {
-      "description": "次のカットとの境目を動かす（全体の長さは変わらない）。",
+      "description": "次のカットとの編集点を動かす（全体の長さは変わらない）。",
       "type": "object",
       "properties": {
         "by": {
@@ -1019,7 +1019,7 @@
       ]
     },
     {
-      "description": "素材のイン点の印を付ける・外す。",
+      "description": "素材のイン点を付ける・外す。",
       "type": "object",
       "properties": {
         "asset": {
@@ -1048,7 +1048,7 @@
       ]
     },
     {
-      "description": "素材のアウト点の印を付ける・外す。",
+      "description": "素材のアウト点を付ける・外す。",
       "type": "object",
       "properties": {
         "asset": {
