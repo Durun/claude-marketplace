@@ -66,6 +66,18 @@ impl Ui {
         self.resize(self.size.0 as u32, self.size.1 as u32);
     }
 
+    /// 編集で並びや長さが変わったモデルに置き換える。拡大と位置は保ち、範囲の外の選択だけ外す。
+    pub fn update_model(&mut self, model: TimelineModel) {
+        self.controller.model_changed(model.items.len());
+        self.model = model;
+        self.resize(self.size.0 as u32, self.size.1 as u32);
+    }
+
+    /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
+    pub fn select(&mut self, index: Option<usize>) {
+        self.controller.selected = index.filter(|i| *i < self.model.items.len());
+    }
+
     /// 全体が収まる表示にする。
     pub fn fit(&mut self) {
         if self.layout.timeline.w > 0.0 && self.model.duration > 0.0 {

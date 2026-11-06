@@ -7,9 +7,10 @@ use std::time::{Duration, Instant};
 
 use mm_trace::chrome::ChromeTraceHandle;
 use mm_trace::MetricsHandle;
-use mm_ui_layout::{split_surface, TimeView, TimelineModel, RULER_H, VIEW_MARGIN};
+use mm_types::ParamValue;
+use mm_ui_layout::{row_top, split_surface, TimeView, TimelineModel, ROW_H, RULER_H, VIEW_MARGIN};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Window};
+use tauri::{AppHandle, Manager, Window};
 
 use crate::capture;
 use crate::cli::PlayTest;
@@ -32,6 +33,17 @@ const SCRUB_TARGET: f64 = 3.0;
 const INPUT_WAIT: Duration = Duration::from_millis(400);
 /// スペースキーの仮想キーコード。
 const VK_SPACE: u32 = 0x20;
+/// Inspector で入れる不透明度。
+const INSPECTOR_OPACITY: f64 = 0.5;
+/// 選択や値の変更が反映されるのを待つ上限。
+const FLOW_TIMEOUT: Duration = Duration::from_secs(3);
+/// WebView の Inspector の不透明度の入力欄に値を入れて change を投げる。
+const SET_OPACITY_JS: &str = r#"(() => {
+  const input = document.querySelector('.mm-shell-right [aria-label="opacity"]');
+  if (!input) return;
+  input.value = "0.5";
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+})()"#;
 
 /// 試験の対象。ウィンドウと、サーフェスの子 HWND と、Timeline のモデル。
 pub struct Target {
@@ -77,7 +89,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("play-test".into())
         .spawn(move || {
-            let report = run(&target, &shared, &info, &telemetry, &test);
+            let report = run(&app, &target, &shared, &info, &telemetry, &test);
             let text = serde_json::to_string_pretty(&report).unwrap_or_default();
             if let Err(e) = std::fs::write(&test.report, text) {
                 eprintln!("結果を書けない: {e}");
@@ -109,6 +121,7 @@ fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
 }
 
 fn run(
+    app: &AppHandle,
     target: &Target,
     shared: &Arc<Shared>,
     info: &PlaybackInfo,
@@ -137,6 +150,7 @@ fn run(
     let wall = t0.elapsed().as_secs_f64();
     let mut report = report(shared, info, test, &base, started, wall, shot);
     report["interaction"] = interaction(shared, info, target);
+    report["inspector"] = inspector_flow(app, shared, target, hwnd, test);
     let _ = window.set_always_on_top(false);
     report
 }
@@ -232,5 +246,71 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
         "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= 2.0 / info.fps,
         "space_starts_playback": !before && started,
         "space_stops_playback": stopped,
+    })
+}
+
+fn layer_opacity(shared: &Shared, id: &str) -> Option<f64> {
+    let doc = shared.doc()?;
+    let comp = doc.project.composition(&doc.comp).ok()?;
+    let layer = comp.layers.iter().find(|l| l.id.as_str() == id)?;
+    match layer.opacity.value {
+        ParamValue::Number(n) => Some(n),
+        _ => None,
+    }
+}
+
+fn shoot(hwnd: isize, test: &PlayTest, suffix: &str) -> Option<String> {
+    let path = test
+        .screenshot
+        .as_ref()?
+        .with_extension(format!("{suffix}.png"));
+    capture::capture_window(hwnd, &path)
+        .ok()
+        .map(|()| path.display().to_string())
+}
+
+/// 実際のウィンドウで、Timeline のレイヤーを選ぶ → Inspector に出る → 値を変える → `apply_op` → 描き直し、の道を通す。
+/// 選択と値の反映は共有状態で確かめ、Inspector の表示はスクリーンショットで目視する。
+fn inspector_flow(
+    app: &AppHandle,
+    shared: &Shared,
+    target: &Target,
+    hwnd: isize,
+    test: &PlayTest,
+) -> Value {
+    let (w, h) = shared.surface_size();
+    let tl = split_surface(w as f32, h as f32, target.model.content_height()).timeline;
+    let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
+    let Some(item) = target.model.items.first() else {
+        return json!({ "skipped": "レイヤーが無い" });
+    };
+    let x = tl.x + view.x_of((item.start + item.end) / 2.0);
+    surface::post_click(
+        target.surface_hwnd,
+        x as i32,
+        (tl.y + row_top(0) + ROW_H / 2.0) as i32,
+    );
+    let selected = wait_until(FLOW_TIMEOUT, || shared.selected_layer().is_some());
+    let id = shared.selected_layer();
+    std::thread::sleep(INPUT_WAIT);
+    let shot_selected = shoot(hwnd, test, "inspector-selected");
+    let rendered_before = shared.rendered_frames.load(Ordering::SeqCst);
+    if let Some(webview) = app.get_webview("ui") {
+        let _ = webview.eval(SET_OPACITY_JS);
+    }
+    let applied = id.as_deref().is_some_and(|id| {
+        wait_until(FLOW_TIMEOUT, || {
+            layer_opacity(shared, id) == Some(INSPECTOR_OPACITY)
+        })
+    });
+    std::thread::sleep(INPUT_WAIT);
+    let rerendered = shared.rendered_frames.load(Ordering::SeqCst) > rendered_before;
+    json!({
+        "selected": selected,
+        "selected_layer": id,
+        "opacity_applied": applied,
+        "rerendered_after_apply": rerendered,
+        "screenshot_selected": shot_selected,
+        "screenshot_applied": shoot(hwnd, test, "inspector-applied"),
     })
 }

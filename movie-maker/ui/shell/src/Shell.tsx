@@ -3,7 +3,7 @@ import { InspectorPanel } from "@mm/inspector";
 import { invoke, type Asset, type Layer, type Op } from "@mm/sdk";
 import { TasksPanel } from "@mm/tasks";
 
-/** 選択の変わったことを知らせるイベント。アプリ側の選択の通知が出来るまで、この形で受ける。 */
+/** 選択の変わったことを知らせるイベント。アプリの再生の操作列（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
 export const LAYER_SELECTED_EVENT = "mm:layer-selected";
 
 export interface LayerSelection {

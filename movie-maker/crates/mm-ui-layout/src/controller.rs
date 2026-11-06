@@ -67,6 +67,8 @@ pub struct TimelineController {
     pub hover: Hit,
     pub selected: Option<usize>,
     guide: Option<f64>,
+    /// つまみのドラッグで最後に返した時刻。離したときの確定にそのまま使う。
+    trim_time: Option<f64>,
     drag: Drag,
 }
 
@@ -77,8 +79,18 @@ impl TimelineController {
             hover: Hit::Empty,
             selected: None,
             guide: None,
+            trim_time: None,
             drag: Drag::None,
         }
+    }
+
+    /// 並びが変わったモデルに合わせる。範囲の外の選択を外し、古い添字を指すホバーとドラッグを捨てる。
+    pub fn model_changed(&mut self, item_count: usize) {
+        self.selected = self.selected.filter(|i| *i < item_count);
+        self.hover = Hit::Empty;
+        self.drag = Drag::None;
+        self.guide = None;
+        self.trim_time = None;
     }
 
     /// 描くときの状態。
@@ -157,6 +169,7 @@ impl TimelineController {
                 targets.push(playhead);
                 let s = snap(self.view.t_of(x), &targets, self.view.px_per_sec, SNAP_PX);
                 self.guide = s.target;
+                self.trim_time = Some(s.time);
                 vec![Action::Trim {
                     index,
                     part,
@@ -169,8 +182,9 @@ impl TimelineController {
 
     fn up(&mut self) -> Vec<Action> {
         let drag = std::mem::replace(&mut self.drag, Drag::None);
-        let guide = self.guide.take();
-        match (drag, guide) {
+        self.guide = None;
+        let last = self.trim_time.take();
+        match (drag, last) {
             (Drag::Trim { index, part }, Some(time)) => vec![Action::Trim {
                 index,
                 part,
@@ -256,6 +270,48 @@ mod tests {
         );
         let done = c.handle(PointerEvent::Up, &m, 7.0);
         assert!(matches!(done[0], Action::Trim { done: true, .. }));
+    }
+
+    #[test]
+    fn スナップしないドラッグも離したときに確定する() {
+        let mut c = ctl();
+        let m = model();
+        let y = row_top(1) + 4.0;
+        c.handle(PointerEvent::Down { x: 399.0, y }, &m, 0.0);
+        // どの目標からも遠い所（5.55 秒）で離す。
+        let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
+        let Action::Trim { time, .. } = moved[0] else {
+            panic!("{moved:?}")
+        };
+        let done = c.handle(PointerEvent::Up, &m, 0.0);
+        assert_eq!(
+            done,
+            vec![Action::Trim {
+                index: 1,
+                part: Part::OutHandle,
+                time,
+                done: true
+            }]
+        );
+        assert!(
+            c.handle(PointerEvent::Up, &m, 0.0).is_empty(),
+            "確定は 1 回だけ"
+        );
+    }
+
+    #[test]
+    fn モデルの並びが変わったら範囲の外の選択とドラッグを捨てる() {
+        let mut c = ctl();
+        let m = model();
+        let y = row_top(1) + 4.0;
+        c.handle(PointerEvent::Down { x: 399.0, y }, &m, 0.0);
+        assert_eq!(c.selected, Some(1));
+        c.model_changed(1);
+        assert_eq!(c.selected, None);
+        assert!(
+            c.handle(PointerEvent::Up, &m, 0.0).is_empty(),
+            "古いドラッグは確定しない"
+        );
     }
 
     #[test]

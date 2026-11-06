@@ -90,11 +90,20 @@ describe("describeLayer", () => {
 });
 
 describe("color", () => {
-  it("線形と sRGB を往復する", () => {
-    const hex = rgbaToHex({ r: 1, g: 0, b: 0.2159, a: 1 });
+  it("線形と表示の値を往復する", () => {
+    const hex = rgbaToHex({ r: 1, g: 0, b: 0.1913, a: 1 });
     expect(hex).toBe("#ff0080");
     const back = hexToRgba(hex, 1);
-    expect(back?.b).toBeCloseTo(0.2159, 3);
+    expect(back?.b).toBeCloseTo(0.1913, 3);
+  });
+
+  it("Program と同じ Rec.1886 の式で、選んだ色がそのまま画面に出る", () => {
+    // Program は線形の値を v ** (1 / 2.4) にして出す。選んだ #101010 はその逆で線形にする。
+    const linear = hexToRgba("#101010", 1);
+    expect(linear?.r).toBeCloseTo((16 / 255) ** 2.4, 6);
+    const shown = Math.round(255 * (linear?.r ?? 0) ** (1 / 2.4));
+    expect(shown).toBe(16);
+    expect(rgbaToHex(linear ?? { r: 0, g: 0, b: 0, a: 1 })).toBe("#101010");
   });
 
   it("premultiplied の値は straight にして表示する", () => {
