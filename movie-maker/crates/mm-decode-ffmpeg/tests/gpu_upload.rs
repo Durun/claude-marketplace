@@ -7,7 +7,7 @@ mod common;
 
 use std::sync::Arc;
 
-use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory};
+use mm_decode_api::{DecodedFrame, DecoderFactory};
 use mm_decode_ffmpeg::{FfmpegCpuDecoderFactory, FfmpegDecoderFactory};
 use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::GpuHelper;

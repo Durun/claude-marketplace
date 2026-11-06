@@ -2763,8 +2763,13 @@ dependencies = [
  "mm-audio-api",
  "mm-decode-api",
  "mm-decode-ffmpeg-core",
+ "mm-decode-hw",
+ "mm-gpu",
+ "mm-node-api",
  "mm-testkit",
  "mm-types",
+ "tracing",
+ "wgpu",
 ]
 
 [[package]]
@@ -2831,6 +2836,7 @@ dependencies = [
  "mm-audio-api",
  "mm-decode-api",
  "mm-doc",
+ "mm-gpu",
  "mm-node-api",
  "mm-render-api",
  "mm-runtime",
@@ -2846,6 +2852,7 @@ dependencies = [
 name = "mm-gpu"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "half",
  "mm-decode-api",
  "mm-node-api",
@@ -2954,6 +2961,7 @@ name = "mm-render-api"
 version = "0.1.0"
 dependencies = [
  "mm-audio-api",
+ "mm-decode-api",
  "mm-doc",
  "mm-node-api",
  "mm-types",
