@@ -406,8 +406,17 @@ export type MemoryStatus = MemoryPressure | MemoryUsage;
 export const MODELS = ['fable', 'opus', 'sonnet'] as const;
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-/** 学習アプリの「知見の一覧」の 1 項目。trigger はいつ効くか（スキルと記憶は description、フックはイベントと matcher）。chars は中身の文字数。 */
-export type HarnessItem = { kind: 'instructions' | 'skill' | 'memory' | 'hook'; name: string; trigger: string; source: string; path: string; chars: number };
+/** 有効・無効を切り替える settings.json のキー。key はキーの中の項目（CLAUDE.md の絶対パス、スキル名、プラグインの id）。 */
+export type HarnessToggle = { setting: 'claudeMdExcludes' | 'skillOverrides' | 'enabledPlugins' | 'disableAllHooks' | 'autoMemoryEnabled'; key?: string; enabled: boolean };
+
+/**
+ * 学習アプリの「知見の一覧」の 1 項目。group はツリーの枝の名前。trigger はいつ効くか（スキルと記憶は description、フックはイベントと matcher）。chars は中身の文字数。
+ * toggle はこの項目だけの切り替えで、groupToggle は枝ごとの切り替え（プラグイン）。
+ */
+export type HarnessItem = { kind: 'instructions' | 'skill' | 'memory' | 'hook'; group: string; name: string; trigger: string; source: string; path: string; chars: number; toggle?: HarnessToggle; groupToggle?: HarnessToggle };
+
+/** kindToggles は種類ごとまとめての切り替え（記憶とフック）。 */
+export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<HarnessItem['kind'], HarnessToggle>> };
 
 /** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
 export type LearnSettings = { scheduled: boolean };

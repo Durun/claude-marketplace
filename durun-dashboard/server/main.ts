@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -27,7 +27,7 @@ import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
-import { harnessItems } from './harness.ts';
+import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -1090,6 +1090,16 @@ const oneOf = (body: unknown, key: string, allowed: readonly string[]): string |
   throw new HttpError(400, `${key} must be one of: ${allowed.join(', ')}`);
 };
 
+const KEYED_SETTINGS = ['claudeMdExcludes', 'skillOverrides', 'enabledPlugins'] as const;
+
+/** 学習アプリの切り替え。settings.json の決まったキーだけを受ける。 */
+const harnessToggleOf = (body: unknown): Omit<HarnessToggle, 'enabled'> => {
+  const setting = oneOf(body, 'setting', [...KEYED_SETTINGS, 'disableAllHooks', 'autoMemoryEnabled']) as HarnessToggle['setting'] | undefined;
+  const key = optionalString(body, 'key');
+  if (!setting || ((KEYED_SETTINGS as readonly string[]).includes(setting) && !key)) throw new HttpError(400, 'setting と、その key が要ります');
+  return { setting, key };
+};
+
 const flag = (body: unknown, key: string): boolean | undefined => {
   const v = (body as Record<string, unknown>)[key];
   if (v !== undefined && typeof v !== 'boolean') throw new HttpError(400, `${key} must be boolean`);
@@ -1308,6 +1318,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
+  [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   // ブラウザでのログインは数分かかるので、終わるのを待たずに返す。進み具合と失敗は、スナップショットで知らせる。
@@ -1320,7 +1331,7 @@ const memoryNow = latestMemory(() => platform.readMemory());
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
   // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
-  [/^\/api\/learn\/harness$/, () => harnessItems(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
+  [/^\/api\/learn\/harness$/, () => harness(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
   [/^\/api\/translate\/status$/, () => translateStatus()],
   [/^\/api\/ie\/last-frame$/, () => lastFrame],
   [/^\/api\/search$/, (_, __, url) => searchSessions(url.searchParams.get('q') ?? '')],

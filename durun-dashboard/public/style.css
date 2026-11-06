@@ -734,6 +734,11 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .learn-harness th:nth-child(2) { width: 46%; }
 .learn-harness th:nth-child(3) { width: 20%; }
 .xp-task-link[aria-pressed="true"] { font-weight: 700; }
+.learn-group td { background: #f1efe2; font-weight: 700; cursor: pointer; }
+.learn-twisty { display: inline-flex; align-items: center; justify-content: center; width: 9px; height: 9px; margin-right: 6px; border: 1px solid #919b9c; background: #fff; font-size: 9px; line-height: 1; }
+.learn-harness .learn-leaf { padding-left: 22px; }
+.learn-switch { margin: 0 4px 0 0; vertical-align: -2px; }
+.learn-harness tr.is-off td { color: #8c8c8c; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
