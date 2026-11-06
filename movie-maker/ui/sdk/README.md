@@ -76,3 +76,28 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 Story と Media は素材を選んだとき、DOM のイベント `mm:asset-selected`（`detail.asset`）を投げる（`announceAsset`）。`web/transport.js` が受けて Source で開く。
 
 編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
+
+## Deliver のコマンド
+
+Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `src/deliver.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `export_overview` | なし | `{ targets, compositions: [{ id, duration }], sequences: [{ id, duration }], open_composition, can_verify }`。`targets` はプロジェクトのデータの `render_targets`（`ops.ts` の `RenderTarget`）。`can_verify` はモックのエンコーダー（FFmpeg なしのビルド）で偽 |
+| `export_status` | なし | 列のいまの状態 `ExportStatus`。パネルを開き直したときに読む |
+| `export_start` | `{ request: { targets, sequence?, verify } }` | すぐ `()`。`targets` はレンダーターゲットの ID でこの順に書き出す。`sequence` を指すと各レンダーターゲットのコンポジションの代わりにその sequence を全長で書き出す。書き出し中は `Err("書き出し中")`。同じ出力先を指す組、無い ID、空の列は始める前に `Err` |
+| `export_cancel` | なし | `()`。走っている 1 本は次のフレームで止まり（一時ファイルを消す）、残りは書き出さない |
+| `export_reveal` | `{ path }` | エクスプローラーで選んで開く。この書き出しで作ったファイル以外は `Err` |
+| `export_pick_output` | `{ current? }` | 出力先の保存ダイアログで選んだパス。キャンセルは `null` |
+| `apply_ops` | `{ ops: Op[] }` | `apply_op` の複数形。全部を 1 つのトランザクションで適用する（取り消し 1 回で戻る）。レンダーターゲットを直すときの `removeRenderTarget` と `addRenderTarget` の組に使う |
+
+書き出しは `mm_export::export_run` を、再生とは別のスレッドと別の `Engine` で順に回す。1 本が失敗しても残りは書き出す。進み具合は Tauri のイベント `mm:export-progress`（`EXPORT_PROGRESS_EVENT`）で、**列全体の状態**を送る（最大 10 回/秒と、状態が変わるたび）。受けた側は差分を畳まず、そのまま描く。
+
+| 項目 | 中身 |
+|---|---|
+| `running` | 列がまだ走っているか |
+| `items[]` | 列の 1 本。`target`、`state`（`queued`、`running`、`done`、`failed`、`cancelled`）、`frames_done`、`frames_total`、`fps`、`elapsed`、`eta`（測れるまで `null`）、`output_path`、`bytes_written`、`verification`（`verify` で書き出したときの ffprobe の結果。`video_codec`、`width`、`height`、`video_frames`、`video_seconds`、`audio_seconds`）、`error` |
+
+検証に失敗した書き出しは、出力を置き換えずに `failed` と理由で終わる。
+
+レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。

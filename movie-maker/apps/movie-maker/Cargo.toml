@@ -23,6 +23,7 @@ mm-ops = { workspace = true }
 mm-serve = { workspace = true }
 mm-ingest = { workspace = true }
 mm-ingest-api = { workspace = true }
+mm-export = { workspace = true }
 mm-ui-layout = { workspace = true }
 mm-ui-wgpu = { workspace = true }
 mm-audio-cpal = { workspace = true }

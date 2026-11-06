@@ -3406,6 +3406,7 @@ dependencies = [
  "mm-audio-cpal",
  "mm-doc",
  "mm-eval",
+ "mm-export",
  "mm-ingest",
  "mm-ingest-api",
  "mm-node-api",
