@@ -1,5 +1,5 @@
 import type {
-  CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, ImproveSettings, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -55,8 +55,9 @@ const query = (params: Record<string, string | undefined>): URLSearchParams =>
 export const api = {
   /** Internet Explorer の中継が最後に描いたページ。 */
   lastFrame: () => getJson<{ seq: number; url: string; title: string }>('/api/ie/last-frame'),
-  diff: (id: string, full: boolean, range?: DiffRange, view?: BranchView) =>
-    getJson<DiffResult>(`${session(id)}/diff?${query({ full: full ? '1' : undefined, ...range, branch: view?.branch, base: view?.base })}`),
+  /** pr を渡すと、その PR の origin のブランチの差分を返す。 */
+  diff: (id: string, range?: DiffRange, view?: BranchView, pr?: string) =>
+    getJson<DiffResult>(`${session(id)}/diff?${query({ ...range, branch: view?.branch, base: view?.base, pr })}`),
   file: (id: string, path: string, branch?: string) => getJson<DiffFile>(`${session(id)}/file?${query({ path, branch })}`),
   localFile: (id: string, path: string) => getJson<{ path: string; content: string; modifiedAt: number }>(`${files(id)}/local-file?${query({ path })}`),
   /** メモ帳で編集したファイルを上書きする。modifiedAt は読んだときの更新時刻で、その後にほかで書き換えられていたら、上書きせずに changed を返す。 */
@@ -105,7 +106,7 @@ export const api = {
   prDetail: (url: string, fresh?: boolean) => getJson<PrDetail>(`/api/pr?${query({ url, fresh: flag(fresh) })}`),
   /** pr は PR の URL。無ければ、今のブランチの PR。 */
   prThreads: (id: string, pr?: string, fresh?: boolean) => getJson<PrThread[]>(`${session(id)}/pr-threads?${query({ pr, fresh: flag(fresh) })}`),
-  prViewed: (id: string, fresh?: boolean) => getJson<string[]>(`${session(id)}/pr-viewed?${query({ fresh: flag(fresh) })}`),
+  prViewed: (id: string, pr: string, fresh?: boolean) => getJson<string[]>(`${session(id)}/pr-viewed?${query({ pr, fresh: flag(fresh) })}`),
   doc: (id: string) => getJson<Doc>(`/api/docs/${seg(id)}`),
   search: (q: string) => getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`),
   githubInbox: (fresh?: boolean) => getJson<InboxSection[]>(`/api/github/inbox?${query({ fresh: flag(fresh) })}`),
@@ -178,9 +179,9 @@ export const api = {
   prNotes: (id: string, pr: string) => postJson<PrNotes>(`${session(id)}/pr-notes`, { pr }),
   review: (id: string, comments: ReviewComment[], summary: string, branch?: string) =>
     postJson<{ delivery: Delivery }>(`${session(id)}/review`, { comments, summary, branch }),
-  prReview: (id: string, comments: ReviewComment[], summary: string, commit: string) =>
-    postJson<{ url: string }>(`${session(id)}/pr-review`, { comments, summary, commit }),
-  setPrViewed: (id: string, path: string, viewed: boolean) => postJson(`${session(id)}/pr-viewed`, { path, viewed }),
+  prReview: (id: string, pr: string, comments: ReviewComment[], summary: string, commit: string, event: PrReviewEvent) =>
+    postJson<{ url: string }>(`${session(id)}/pr-review`, { pr, comments, summary, commit, event }),
+  setPrViewed: (id: string, pr: string, path: string, viewed: boolean) => postJson(`${session(id)}/pr-viewed`, { pr, path, viewed }),
   answer: (attentionId: string, answer: string) => postJson(`/api/attention/${seg(attentionId)}/answer`, { answer }),
   dismiss: (attentionId: string) => postJson<{ at: number }>(`/api/attention/${seg(attentionId)}/dismiss`),
   allow: (attentionId: string) => postJson(`/api/attention/${seg(attentionId)}/allow`),

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -312,8 +312,16 @@ const sendRetro = async (res: ServerResponse, page: Promise<string>, frame: URL)
     .end(html);
 };
 
-/** 画面が表示しているブランチ。Claude が並べた選択肢から、人間が選んだもの。 */
-const viewOf = (q: URLSearchParams): BranchView | undefined => {
+/**
+ * 画面が表示しているブランチ。Claude が並べたブランチか、セッションの PR。
+ * PR は、GitHub の行番号と合うよう、手元のブランチではなく push 済みの origin のブランチを出す。
+ */
+const viewOf = (id: string, q: URLSearchParams): BranchView | undefined => {
+  const prUrl = q.get('pr');
+  if (prUrl) {
+    const { branch, pr } = openPr(id, prUrl);
+    return { branch: `origin/${branch}`, base: pr.baseRef && `origin/${pr.baseRef}` };
+  }
   const branch = q.get('branch');
   return branch ? { branch, base: q.get('base') ?? undefined } : undefined;
 };
@@ -324,7 +332,7 @@ const diff = async (id: string, url: URL): Promise<DiffResult> => {
   const log = meta.transcriptPath ? summarizeLog(meta.transcriptPath) : undefined;
   const q = url.searchParams;
   const want = { from: q.get('from') ?? undefined, to: q.get('to') ?? undefined };
-  const view = viewOf(q);
+  const view = viewOf(id, q);
   const edited = view ? new Set<string>() : (log?.editedFiles ?? new Set<string>());
   try {
     return await gitDiff(meta.cwd, cachedPr(meta.cwd, log?.branch)?.baseRef, q.get('full') === '1', edited, want, view);
@@ -555,13 +563,15 @@ const githubRefs = (body: unknown) => {
 const setViewed = (id: string, body: unknown): Promise<object> => {
   const file = field<string>(body, 'path', 'string');
   const viewed = field<boolean>(body, 'viewed', 'boolean');
-  return viaGh('Viewed を切り替えられません', () => setPrViewed(openPr(id).pr, file, viewed)).then(() => ({}));
+  return viaGh('Viewed を切り替えられません', () => setPrViewed(openPr(id, (body as { pr?: unknown }).pr).pr, file, viewed)).then(() => ({}));
 };
 
 /** 人間がダッシュボードで書いたコメントを、PR のレビューとして投稿する。commit は、画面が行番号を数えた PR の先端。 */
 const postReview = (id: string, body: unknown): Promise<{ url: string }> => {
   const commit = field<string>(body, 'commit', 'string');
-  return viaGh('PR に投稿できません', () => postPrReview(openPr(id).pr, commit, toComments(body), field<string>(body, 'summary', 'string')));
+  const { pr, event = 'COMMENT' } = body as { pr?: unknown; event?: unknown };
+  if (!PR_REVIEW_EVENTS.includes(event as PrReviewEvent)) throw new HttpError(400, `event must be one of: ${PR_REVIEW_EVENTS.join(', ')}`);
+  return viaGh('PR に投稿できません', () => postPrReview(openPr(id, pr).pr, commit, toComments(body), field<string>(body, 'summary', 'string'), event as PrReviewEvent));
 };
 
 const prUrlOf = (url: unknown): string => {
@@ -1338,7 +1348,7 @@ const GET_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/skills$/, ([, id = '']) => skillsOf({ sessionId: id })],
   [/^\/api\/skills$/, (_, __, url) => skillsOf({ cwd: url.searchParams.get('cwd') || undefined })],
   [/^\/api\/sessions\/([^/]+)\/pr-threads$/, ([, id = ''], _, url) => threadsOf(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url)), WEB_API_MS],
-  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id).pr, wantsFresh(url))), WEB_API_MS],
+  [/^\/api\/sessions\/([^/]+)\/pr-viewed$/, ([, id = ''], _, url) => viaGh('Viewed を取得できません', () => prViewed(openPr(id, url.searchParams.get('pr')).pr, wantsFresh(url))), WEB_API_MS],
   [/^\/api\/docs\/([^/]+)$/, ([, id = '']) => readDoc(id)],
 ];
 

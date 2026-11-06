@@ -101,19 +101,19 @@ const TOOLS = [
   {
     name: 'show_branches',
     description:
-      'ダッシュボードのコードの表示の選択肢に、ブランチを並べ、先頭のものを表示する。人間は、並べたものと、このセッションの変更を切り替えて見られる。レビューする PR など、作業ツリーに無いブランチを人間に見せたいときに使う。views を空にすると、このセッションの変更だけに戻す。',
+      'ダッシュボードのコードのウィジェットに、ブランチの差分のタブを足し、先頭のものを表示する。人間はタブで差分をレビューし、コメントが届く。セッションの PR のタブは初めからあるので、PR に無いコードの変更をレビューしてほしいときや、作業ツリーに無いブランチを見せたいときに使う。同じ branch と base のタブは置き換え、人間が閉じていたら開き直す。views を空にすると、足したタブをすべて外す。',
     inputSchema: {
       type: 'object',
       properties: {
         views: {
           type: 'array',
-          description: '表示の選択肢。それぞれ、branch の、base との分岐点から先の差分を見せる。',
+          description: '足すタブ。それぞれ、branch の、base との分岐点から先の差分を見せる。',
           items: {
             type: 'object',
             properties: {
               branch: { type: 'string', description: '表示するブランチ（例: origin/feature-x）。リモートのブランチは、先に git fetch しておく。' },
               base: { type: 'string', description: '比べる相手（例: PR のベースの origin/main）。省くと origin の既定のブランチと比べる。' },
-              label: { type: 'string', description: '選択肢に出す名前（例: PR #123）。省くと branch を出す。' },
+              label: { type: 'string', description: 'タブに出す名前（例: 検索の修正）。省くと branch を出す。' },
             },
             required: ['branch'],
           },
@@ -386,11 +386,14 @@ const showBranches = async (req: IncomingMessage, sessionId: string, args: ToolA
   } catch (e) {
     return textResult(`${(e as Error).message}。リモートのブランチは、先に git fetch してください。`, true);
   }
-  meta.branchViews = views.length ? views : undefined;
+  const at = Date.now();
+  const same = (a: BranchView, b: BranchView): boolean => a.branch === b.branch && a.base === b.base;
+  const kept = (meta.branchViews ?? []).filter((old) => !views.some((v) => same(old, v)));
+  meta.branchViews = views.length ? [...kept, ...views.map((v) => ({ ...v, at }))] : undefined;
   touch();
   const url = `http://${req.headers.host}/#/s/${sessionId}/code`;
   const [first] = views;
-  return textResult(first ? `コードの表示を ${first.label ?? first.branch} に切り替えました: ${url}` : `コードの表示を、このセッションの変更だけに戻しました: ${url}`);
+  return textResult(first ? `コードのウィジェットに ${views.map((v) => v.label ?? v.branch).join('、')} のタブを足しました: ${url}` : `足したタブをすべて外しました: ${url}`);
 };
 
 /** 校正する文章。path は作業ディレクトリから読む。読めなければ、Claude に返すエラーの結果。 */

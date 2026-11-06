@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
-import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrThread, REF_NUMBER, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
+import { type BranchView, type CommitInfo, type InboxPr, type InboxSection, type IssueInfo, type DiffFile, type DiffRange, type DiffResult, type GithubItem, type GithubSearch, type JiraDetail, type JiraIssue, JIRA_ISSUE_KEY, type PrDetail, PR_URL, type PrInfo, type PrPost, type PrReviewEvent, type PrThread, REF_NUMBER, type RepoRef, type ReviewComment, WORKTREE } from '../shared/types.ts';
 import { cached, cachedAt, forgetCached, peekCached } from './cache.ts';
 import { readJson } from './claude.ts';
 import { run } from './run.ts';
@@ -449,12 +449,12 @@ export const setPrViewed = async (pr: PrInfo, file: string, viewed: boolean): Pr
   forgetCached(`pr-viewed:${pr.url}`);
 };
 
-/** 行へのコメントと全体コメントを、1 つのレビュー（COMMENT）として PR に投稿する。commit は、行番号を数えた PR の先端。 */
-export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewComment[], body: string): Promise<{ url: string }> => {
+/** 行へのコメントと全体コメントを、1 つのレビューとして PR に投稿する。commit は、行番号を数えた PR の先端。 */
+export const postPrReview = async (pr: PrInfo, commit: string, comments: ReviewComment[], body: string, event: PrReviewEvent = 'COMMENT'): Promise<{ url: string }> => {
   const { host, owner, name, number } = repoOf(pr);
   const review = {
     commit_id: commit,
-    event: 'COMMENT',
+    event,
     body,
     comments: comments.map((c) => ({ path: c.path, line: c.line, side: c.side === 'old' ? 'LEFT' : 'RIGHT', body: c.body })),
   };

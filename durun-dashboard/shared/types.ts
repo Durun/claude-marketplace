@@ -552,7 +552,12 @@ export type FileTarget = { where: FileWhere; heading?: string; path?: string };
 export type DiffRange = { from: string; to: string };
 
 /** コードに表示するブランチ。branch の、base との分岐点から先の差分を出す。label は選択肢に出す名前。 */
-export type BranchView = { branch: string; base?: string; label?: string };
+/** at は Claude が show_branches で並べた時刻。人間が閉じたタブを、Claude が並べ直したら開き直すために使う。 */
+export type BranchView = { branch: string; base?: string; label?: string; at?: number };
+
+/** GitHub の「Review changes」で選ぶレビューの種類。 */
+export const PR_REVIEW_EVENTS = ['COMMENT', 'APPROVE', 'REQUEST_CHANGES'] as const;
+export type PrReviewEvent = (typeof PR_REVIEW_EVENTS)[number];
 
 export type CommitInfo = { sha: string; subject: string };
 

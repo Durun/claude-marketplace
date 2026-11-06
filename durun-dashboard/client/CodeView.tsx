@@ -1,17 +1,62 @@
+// セッションのコードの変更を、GitHub の PR の「Files changed」と同じ形でレビューするウィジェット。
+// セッションの PR と、Claude が show_branches で足したブランチと、request_review で頼んだ変更をタブに並べる。
 import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
-import { type BranchView, type CommitInfo, type DiffFile, type DiffRange, type DiffResult, type PrInfo, type ReviewComment, type Session, WORKTREE } from '../shared/types.ts';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { type BranchView, type DiffFile, type DiffRange, type PrInfo, type ReviewComment, type Session, WORKTREE } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { DiffStat, FileDiff, NO_THREADS, STATUS_LETTER } from './DiffTable.tsx';
 import { type Focus, diffBatchEnd, findFocus } from './fileRef.ts';
-import { useCached, useFetch } from './hooks.ts';
+import { pickInWidget, useCached, useFetch, usePicked, useTabOrder } from './hooks.ts';
+import { PickTabs } from './PrView.tsx';
 import { ReviewBar } from './ReviewBar.tsx';
 import { type ReviewDraft, useReviewDraft } from './review.ts';
-import { Empty, Loading } from './ui.tsx';
+import { Empty, Loading, PrIcon, prState } from './ui.tsx';
+
+/** タブの並びと選んだタブを覚える、ウィジェットの種類の名前。 */
+const CODE_WIDGET = 'code';
+const REVIEW_TAB = 'review';
 
 // レビューバーの高さ。ファイル一覧とスクロール位置の余白をバーの下に合わせる。
 const BAR_HEIGHT = 76;
 const BANNER_HEIGHT = 41;
+
+type CodeTab = { key: string; label: ComponentChildren; title: string; pr?: PrInfo; view?: BranchView; at?: number };
+
+const viewKey = (v: BranchView): string => `branch:${v.branch}\0${v.base ?? ''}`;
+
+const codeTabs = (s: Session): CodeTab[] => [
+  ...(s.awaitingReview ? [{ key: REVIEW_TAB, label: 'レビュー依頼', title: 'Claude がレビューを頼んだ、このセッションの変更' }] : []),
+  ...(s.prs ?? []).map((pr) => ({ key: pr.url, label: <><PrIcon state={prState(pr)} />#{pr.number}</>, title: pr.title, pr })),
+  ...(s.branchViews ?? []).map((v) => ({ key: viewKey(v), label: v.label ?? v.branch, title: `${v.branch}${v.base ? ` ← ${v.base}` : ''}`, view: v, at: v.at })),
+];
+
+/**
+ * 人間が閉じたタブと、閉じた時刻。セッションごとにブラウザに保存する。
+ * Claude がブランチを足し直すと、閉じた後に足したタブとして開き直す。
+ */
+const useClosedTabs = (session: string) => {
+  const key = `code-closed:${session}`;
+  const [closed, setClosed] = useState<Record<string, number>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, number>;
+    } catch {
+      return {};
+    }
+  });
+  const save = (next: Record<string, number>) => {
+    setClosed(next);
+    localStorage.setItem(key, JSON.stringify(next));
+  };
+  const isClosed = (t: CodeTab): boolean => closed[t.key] !== undefined && (t.at ?? 0) <= (closed[t.key] ?? 0);
+  return {
+    isClosed,
+    close: (k: string) => save({ ...closed, [k]: Date.now() }),
+    reopen: (k: string) => {
+      const { [k]: _, ...rest } = closed;
+      save(rest);
+    },
+  };
+};
 
 type Entry = { file: DiffFile; index: number };
 
@@ -29,93 +74,26 @@ const commentCounts = (comments: ReviewComment[]): Map<string, number> => {
   return counts;
 };
 
-const FileList = ({ entries, counts }: { entries: Entry[]; counts: Map<string, number> }) => (
+/** GitHub のファイルツリーと同じく、ディレクトリの見出しの下にファイル名を並べる。 */
+const FileList = ({ entries, counts, viewed }: { entries: Entry[]; counts: Map<string, number>; viewed?: Set<string> }) => (
   <ul class="file-list">
-    {entries.map(({ file, index }) => {
+    {entries.map(({ file, index }, i) => {
       const { dir, name } = splitPath(file.path);
       const n = counts.get(file.path) ?? 0;
+      const prev = entries[i - 1];
       return (
         <li key={index}>
-          <button class="file-item" onClick={() => document.getElementById(anchorId(index))?.scrollIntoView({ block: 'start' })}>
-            <span class="file-line">
-              <span class={`fstatus fstatus-${file.status}`}>{STATUS_LETTER[file.status]}</span>
-              <span class="file-name">{name}</span>
-              <DiffStat file={file} />
-            </span>
-            <span class="file-line file-sub">
-              <span class="file-dir" title={dir}>{dir || '/'}</span>
-              {file.editedBySession && <span class="tag tag-info">編集</span>}
-              {n > 0 && <span class="tag tag-warn">コメント {n}</span>}
-            </span>
+          {(!prev || splitPath(prev.file.path).dir !== dir) && <div class="file-dir" title={dir}>{dir || '/'}</div>}
+          <button class={`file-item${viewed?.has(file.path) ? ' is-viewed' : ''}`} title={file.path} onClick={() => document.getElementById(anchorId(index))?.scrollIntoView({ block: 'start' })}>
+            <span class={`fstatus fstatus-${file.status}`}>{STATUS_LETTER[file.status]}</span>
+            <span class="file-name">{name}</span>
+            {n > 0 && <span class="tag tag-warn">{n}</span>}
+            <DiffStat file={file} />
           </button>
         </li>
       );
     })}
   </ul>
-);
-
-type RangeProps = { commits: CommitInfo[]; range: DiffRange; worktree: boolean; onChange: (range: DiffRange) => void };
-
-/**
- * 範囲の端の候補は新しい順に並べ、未コミットの変更を最新のコミットの 1 つ先に置く。ブランチの表示には、未コミットの変更が無いので置かない。
- * 始まりが終わりより新しくなる選び方をしたら、もう一方の端も合わせる。
- */
-const RangePicker = ({ commits, range, worktree, onChange }: RangeProps) => {
-  const ends = [WORKTREE, ...commits.map((c) => c.sha)];
-  const options = () => [
-    worktree && <option key={WORKTREE} value={WORKTREE}>未コミットの変更</option>,
-    ...commits.map((c) => <option key={c.sha} value={c.sha}>{c.sha.slice(0, 7)} {c.subject}</option>),
-  ];
-  const setFrom = (from: string) => onChange({ from, to: ends.indexOf(from) < ends.indexOf(range.to) ? from : range.to });
-  const setTo = (to: string) => onChange({ from: ends.indexOf(to) > ends.indexOf(range.from) ? to : range.from, to });
-  return (
-    <span class="range-picker">
-      範囲
-      <select class="input input-sm" aria-label="範囲の始まり（含める最も古いコミット）" value={range.from} onChange={(e) => setFrom(e.currentTarget.value)}>
-        {options()}
-      </select>
-      〜
-      <select class="input input-sm" aria-label="範囲の終わり（含める最も新しいコミット）" value={range.to} onChange={(e) => setTo(e.currentTarget.value)}>
-        {options()}
-      </select>
-    </span>
-  );
-};
-
-type ViewProps = { views: BranchView[]; index: number; onPick: (index: number) => void };
-
-/** Claude が並べたブランチと、このセッションの変更を切り替える。 */
-const ViewPicker = ({ views, index, onPick }: ViewProps) => (
-  <label class="inline-field">
-    対象
-    <select class="input input-sm" value={index} onChange={(e) => onPick(Number(e.currentTarget.value))}>
-      <option value={-1}>このセッションの変更</option>
-      {views.map((v, i) => <option key={i} value={i}>{v.label ?? v.branch}</option>)}
-    </select>
-  </label>
-);
-
-type ToolbarProps = {
-  diff?: DiffResult;
-  picker: ComponentChildren;
-  worktree: boolean;
-  full: boolean;
-  loading: boolean;
-  onRange: (range: DiffRange) => void;
-  onFull: (v: boolean) => void;
-  onReload: () => void;
-};
-
-const CodeToolbar = ({ diff, picker, worktree, full, loading, onRange, onFull, onReload }: ToolbarProps) => (
-  <div class="code-toolbar">
-    {picker}
-    {diff ? <RangePicker commits={diff.commits} range={diff.range} worktree={worktree} onChange={onRange} /> : <span class="muted">範囲 …</span>}
-    <label class="check">
-      <input type="checkbox" checked={full} onChange={(e) => onFull(e.currentTarget.checked)} />
-      ファイル全体を表示
-    </label>
-    <button class="btn btn-sm" disabled={loading} onClick={onReload}>再読み込み</button>
-  </div>
 );
 
 // 1 回に描く差分の表の行の数の目安。数万行の差分を一度に描くと画面が数秒固まるので、先頭のファイルからこの行数ずつ描き足す。
@@ -132,16 +110,16 @@ const useDrawnFiles = (files: DiffFile[]): number => {
   return count;
 };
 
-type DiffFilesProps = { files: DiffFile[]; entries: Entry[]; full: boolean; review: ReviewDraft; focus?: Focus; sync?: PrSync };
+type DiffFilesProps = { files: DiffFile[]; entries: Entry[]; review: ReviewDraft; focus?: Focus; sync?: PrSync };
 
-const DiffFiles = ({ files, entries, full, review, focus, sync }: DiffFilesProps) => {
+const DiffFiles = ({ files, entries, review, focus, sync }: DiffFilesProps) => {
   const drawn = useDrawnFiles(files);
   return (
     <div class="diff-files">
       {entries.length === 0 && <Empty>表示できる差分はありません。</Empty>}
       {entries.map(({ file, index }) => (
         <FileDiff
-          key={`${file.path}:${full}`}
+          key={file.path}
           id={anchorId(index)}
           file={file}
           comments={review.comments}
@@ -161,13 +139,13 @@ const DiffFiles = ({ files, entries, full, review, focus, sync }: DiffFilesProps
 type PrSync = ReturnType<typeof usePrSync>;
 
 /**
- * PR を表示しているとき、GitHub の PR のスレッドと「Viewed」を読む。Viewed を切り替えたら、画面を先に変えてから GitHub に書く。
+ * PR のタブでは、GitHub の PR のスレッドと「Viewed」を読む。Viewed を切り替えたら、画面を先に変えてから GitHub に書く。
  * スレッドは、Claude が応答を始めたときと終えたときに読み直す。PR に返信や修正が加わっていることがあるため。
  */
 const usePrSync = (s: Session, pr: PrInfo | undefined) => {
-  const threads = useCached((fresh) => (pr ? api.prThreads(s.id, undefined, fresh) : Promise.resolve([])), [pr?.url, s.status]);
+  const threads = useCached((fresh) => (pr ? api.prThreads(s.id, pr.url, fresh) : Promise.resolve([])), [pr?.url, s.status]);
   // Viewed は、サーバーが裏で読み直しても取り直さない。切り替えた直後に取り直すと、書き込む前の状態で画面を戻してしまうため。
-  const remote = useFetch((fresh) => (pr ? api.prViewed(s.id, fresh) : Promise.resolve([])), [pr?.url]);
+  const remote = useFetch((fresh) => (pr ? api.prViewed(s.id, pr.url, fresh) : Promise.resolve([])), [pr?.url]);
   const [viewed, setLocal] = useState<Set<string>>(new Set());
   useEffect(() => setLocal(new Set(remote.data)), [remote.data]);
   if (!pr) return undefined;
@@ -177,28 +155,22 @@ const usePrSync = (s: Session, pr: PrInfo | undefined) => {
     else next.delete(path);
     setLocal(next);
     // 書けなかったら、GitHub の状態に戻す。
-    if (!(await attempt('Viewed の切り替え', () => api.setPrViewed(s.id, path, v)))) remote.reload();
+    if (!(await attempt('Viewed の切り替え', () => api.setPrViewed(s.id, pr.url, path, v)))) remote.reload();
   };
   return { pr, threads: threads.data ?? NO_THREADS, viewed, setViewed, reloadThreads: threads.reload };
 };
 
-type BodyProps = { s: Session; focus?: string; view?: BranchView; pr?: PrInfo; picker: ComponentChildren };
-
-/** view は、Claude が並べたブランチか PR のうち、表示しているもの。無ければ、このセッションの変更を出す。pr は、PR を表示しているとき。 */
-const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
-  const [full, setFull] = useState(false);
-  const [onlyEdited, setOnlyEdited] = useState(false);
-  // 人間が選んだ範囲。Claude がレビューを頼んだら、その範囲にする。どちらも無ければ、サーバーの既定（分岐点から先端まで）を出す。
-  // レビューを頼まれるのはこのセッションの変更なので、ブランチの表示には範囲を当てない。
-  const [range, setRange] = useState(view ? undefined : s.reviewRange);
-  useEffect(() => {
-    if (s.reviewRange && !view) setRange(s.reviewRange);
-  }, [s.reviewRange?.from, s.reviewRange?.to]);
-  const diff = useFetch(() => api.diff(s.id, full, range, view), [s.id, full, range?.from, range?.to]);
+/** pr は開いている PR のタブ、view は Claude が足したブランチのタブ。どちらも無ければ、レビューを頼まれたこのセッションの変更を出す。 */
+const CodeBody = ({ s, focus: ref, view, pr, awaiting }: { s: Session; focus?: string; view?: BranchView; pr?: PrInfo; awaiting: boolean }) => {
+  const [filter, setFilter] = useState('');
+  const range: DiffRange | undefined = view || pr ? undefined : s.reviewRange;
+  const diff = useFetch(() => api.diff(s.id, range, view, pr?.url), [s.id, range?.from, range?.to]);
+  // ブランチと PR では、差分に無いファイルも差分の先端のコミットから読む。
+  const tip = diff.data && diff.data.range.to !== WORKTREE ? diff.data.range.to : undefined;
   const focus = diff.data && ref ? findFocus(diff.data.files, ref) : undefined;
   // 差分に無いファイルへのリンクで開いたときは、ファイル全体を読んで出す。
   const missing = !!ref && !!diff.data && !focus;
-  const whole = useFetch(() => (missing && ref ? api.file(s.id, ref, view?.branch) : Promise.resolve(undefined)), [s.id, ref, missing]);
+  const whole = useFetch(() => (missing && ref ? api.file(s.id, ref, tip) : Promise.resolve(undefined)), [s.id, ref, missing]);
   const wholeFile = missing && !whole.loading && !whole.error ? whole.data : undefined;
   const wholeLine = wholeFile && ref ? findFocus([wholeFile], ref)?.line : undefined;
   // 開くファイルが届いたら一度だけ、そのファイル（行があればその行）までスクロールする。
@@ -207,45 +179,39 @@ const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
     const section = id ? document.getElementById(id) : null;
     (section?.querySelector('.dl.is-focused') ?? section)?.scrollIntoView({ block: (focus?.line ?? wholeLine) ? 'center' : 'start' });
   }, [ref, focus?.index, focus?.line, wholeFile]);
-  const review = useReviewDraft(s.id, view?.branch);
+  const review = useReviewDraft(s.id, pr?.url ?? view?.branch);
   const sync = usePrSync(s, pr);
-  const entries: Entry[] = (diff.data?.files ?? [])
-    .map((file, index) => ({ file, index }))
-    .filter(({ file }) => !onlyEdited || file.editedBySession);
-  const barHeight = BAR_HEIGHT + (s.awaitingReview ? BANNER_HEIGHT : 0);
+  const files = diff.data?.files ?? [];
+  const q = filter.trim().toLowerCase();
+  const entries: Entry[] = files.map((file, index) => ({ file, index })).filter(({ file }) => !q || file.path.toLowerCase().includes(q));
+  const seen = sync ? files.filter((f) => sync.viewed.has(f.path)).length : 0;
+  // Claude に送る指摘には、どのコミットの行かを添える。
+  const where = pr ? `PR #${pr.number}${tip ? `（${tip.slice(0, 7)}）` : ''}` : view?.branch;
   return (
-    <div class="code-view" style={`--bar-h: ${barHeight}px`}>
-      <ReviewBar s={s} review={review} branch={view?.branch} pr={sync && { info: sync.pr, commit: diff.data?.range.to, onPosted: sync.reloadThreads }} />
-      <CodeToolbar diff={diff.data} picker={picker} worktree={!view} full={full} loading={diff.loading} onRange={setRange} onFull={setFull} onReload={diff.reload} />
+    <div class="code-view" style={`--bar-h: ${BAR_HEIGHT + (awaiting ? BANNER_HEIGHT : 0)}px`}>
+      <ReviewBar s={s} review={review} awaiting={awaiting} branch={where} pr={sync && { info: sync.pr, commit: tip, onPosted: sync.reloadThreads }} />
       {diff.error && <p class="card panel error-note">差分を取得できませんでした（{diff.error}）</p>}
-      {missing && whole.error && <p class="card panel warn-note">「{ref}」は、差分にも{view ? ` ${view.branch} ` : 'リポジトリ'}にもありません。</p>}
+      {missing && whole.error && <p class="card panel warn-note">「{ref}」は、差分にも{tip ? ` ${tip.slice(0, 7)} ` : 'リポジトリ'}にもありません。</p>}
       {wholeFile && (
         <>
           <p class="card panel warn-note">「{ref}」は差分に無いため、ファイル全体を表示しています。</p>
-          <FileDiff
-            key={wholeFile.path}
-            id={WHOLE_ANCHOR}
-            file={wholeFile}
-            comments={review.comments}
-            onSave={review.upsert}
-            onDelete={review.remove}
-            focusLine={wholeLine ?? null}
-          />
+          <FileDiff key={wholeFile.path} id={WHOLE_ANCHOR} file={wholeFile} comments={review.comments} onSave={review.upsert} onDelete={review.remove} focusLine={wholeLine ?? null} />
         </>
       )}
       {diff.data?.truncated && <p class="card panel warn-note">差分が大きいため、一部を省略しています。</p>}
       {diff.data && (
         <div class={`code-layout ${diff.loading ? 'is-loading' : ''}`}>
           <aside class="code-side">
-            {!view && (
-              <label class="check">
-                <input type="checkbox" checked={onlyEdited} onChange={(e) => setOnlyEdited(e.currentTarget.checked)} />
-                このセッションが編集したファイルのみ
-              </label>
-            )}
-            <FileList entries={entries} counts={commentCounts(review.comments)} />
+            <div class="code-side-head">
+              <input class="input input-sm" type="search" placeholder="ファイルを絞り込む" aria-label="ファイルを絞り込む" value={filter} onInput={(e) => setFilter(e.currentTarget.value)} />
+              <button class="btn btn-sm" data-icon="refresh" disabled={diff.loading} title="差分を読み直します" onClick={diff.reload}>更新</button>
+            </div>
+            <span class="muted code-side-sum">
+              {files.length} ファイル{sync && ` · ${seen} / ${files.length} Viewed`}
+            </span>
+            <FileList entries={entries} counts={commentCounts(review.comments)} viewed={sync?.viewed} />
           </aside>
-          <DiffFiles files={diff.data.files} entries={entries} full={full} review={review} focus={focus} sync={sync} />
+          <DiffFiles files={files} entries={entries} review={review} focus={focus} sync={sync} />
         </div>
       )}
       {!diff.data && !diff.error && <Loading />}
@@ -253,24 +219,55 @@ const CodeBody = ({ s, focus: ref, view, pr, picker }: BodyProps) => {
   );
 };
 
-/** 開いている PR の差分。GitHub の行番号と合うよう、手元のブランチではなく、push 済みの origin のブランチを出す。 */
-const prViewOf = (s: Session): BranchView | undefined =>
-  s.pr?.state === 'OPEN' && s.branch ? { branch: `origin/${s.branch}`, base: s.pr.baseRef && `origin/${s.pr.baseRef}`, label: `PR #${s.pr.number}` } : undefined;
+const TabBody = ({ s, tab, focus }: { s: Session; tab: CodeTab; focus?: string }) => {
+  if (tab.pr && tab.pr.state !== 'OPEN') return <Empty>PR #{tab.pr.number} は{tab.pr.state === 'MERGED' ? 'マージ済みです' : '閉じています'}。</Empty>;
+  return <CodeBody s={s} focus={focus} view={tab.view} pr={tab.pr} awaiting={tab.key === REVIEW_TAB} />;
+};
 
 /**
- * Claude が show_branches でブランチを並べたら、先頭のものを開く。並べていなくて、開いている PR があれば、PR を開く。
- * 人間は、並べたものと PR と、このセッションの変更を切り替えられる。
- * Claude が並べ直すか、このセッションの変更のレビューを頼んだら、人間の選択を捨てて、Claude の選んだものに戻す。
+ * タブはドラッグか Alt + ←→ で並べ替え、× で閉じる。閉じたタブは「閉じたタブ」から開き直す。
+ * Claude がレビューを頼むかブランチを足したら、そのタブを開いて選ぶ。
  */
 export const CodeView = ({ s, focus }: { s: Session; focus?: string }) => {
-  const prView = prViewOf(s);
-  const views = [...(s.branchViews ?? []), ...(prView ? [prView] : [])];
-  const preset = s.awaitingReview ? -1 : 0;
-  const choice = `${JSON.stringify(views)}:${preset}`;
-  const [picked, setPicked] = useState<{ choice: string; index: number }>();
-  const index = picked?.choice === choice ? picked.index : preset;
-  const view = views[index];
-  const picker = views.length > 0 && <ViewPicker views={views} index={view ? index : -1} onPick={(i) => setPicked({ choice, index: i })} />;
-  // 範囲と下書きは表示するものごとに違うので、表示を切り替えたら作り直す。
-  return <CodeBody key={view ? `${view.branch}\0${view.base ?? ''}` : WORKTREE} s={s} focus={focus} view={view} pr={prView && view === prView ? s.pr : undefined} picker={picker} />;
+  const all = codeTabs(s);
+  const closed = useClosedTabs(s.id);
+  const tabs = all.filter((t) => !closed.isClosed(t));
+  const hidden = all.filter((t) => closed.isClosed(t));
+  const { ordered } = useTabOrder(CODE_WIDGET, s.id, tabs.map((t) => t.key));
+  const pick = usePicked(CODE_WIDGET, s.id);
+  const active = tabs.find((t) => t.key === pick) ?? tabs.find((t) => t.key === ordered[0]);
+  const show = (key: string) => {
+    closed.reopen(key);
+    pickInWidget(CODE_WIDGET, s.id, key);
+  };
+  useEffect(() => {
+    if (s.awaitingReview) show(REVIEW_TAB);
+  }, [s.awaitingReview]);
+  // 開いた時点で並んでいたブランチは選び直さず、その後に Claude が足したものだけを選ぶ。
+  const latest = all.filter((t) => t.at).toSorted((a, b) => (b.at ?? 0) - (a.at ?? 0))[0];
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (mounted.current && latest) pickInWidget(CODE_WIDGET, s.id, latest.key);
+    mounted.current = true;
+  }, [latest?.at]);
+  return (
+    <>
+      <div class="code-tabs">
+        <PickTabs kind={CODE_WIDGET} session={s.id} label="レビューする変更" picked={active?.key} tabs={tabs} onClose={closed.close} />
+        {hidden.length > 0 && (
+          <select class="input input-sm" aria-label="閉じたタブを開く" value="" onChange={(e) => show(e.currentTarget.value)}>
+            <option value="">閉じたタブ（{hidden.length}）</option>
+            {hidden.map((t) => <option key={t.key} value={t.key}>{t.pr ? `#${t.pr.number} ${t.pr.title}` : t.label}</option>)}
+          </select>
+        )}
+      </div>
+      {active ? (
+        <TabBody key={active.key} s={s} tab={active} focus={focus} />
+      ) : s.prsPending ? (
+        <Loading />
+      ) : (
+        <Empty>レビューする変更はありません。PR を作るか、Claude が request_review か show_branches で頼むと、タブが並びます。</Empty>
+      )}
+    </>
+  );
 };

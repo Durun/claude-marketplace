@@ -145,8 +145,13 @@ export type PickTab = { key: string; title?: string; label: ComponentChildren };
 
 const TAB_STEP: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 
-/** セッションのウィジェットで選ぶものを切り替えるタブ。ドラッグか Alt + ←→ で並べ替え、並びはウィジェットの種類とセッションごとに覚える。 */
-export const PickTabs = ({ kind, session, label, tabs, picked }: { kind: string; session: string; label: string; tabs: PickTab[]; picked?: string }) => {
+type PickTabsProps = { kind: string; session: string; label: string; tabs: PickTab[]; picked?: string; onClose?: (key: string) => void };
+
+/**
+ * セッションのウィジェットで選ぶものを切り替えるタブ。ドラッグか Alt + ←→ で並べ替え、並びはウィジェットの種類とセッションごとに覚える。
+ * onClose を渡すと、タブに × を出し、Delete キーでも閉じられる。
+ */
+export const PickTabs = ({ kind, session, label, tabs, picked, onClose }: PickTabsProps) => {
   const { ordered, save } = useTabOrder(kind, session, tabs.map((t) => t.key));
   const [dragging, setDragging] = useState<string>();
   return (
@@ -159,7 +164,7 @@ export const PickTabs = ({ kind, session, label, tabs, picked }: { kind: string;
             role="tab"
             aria-selected={key === picked}
             class={dragging === key ? 'is-dragging' : undefined}
-            title={`${t.title ? `${t.title}\n` : ''}ドラッグか Alt + ←→ で並べ替えます`}
+            title={`${t.title ? `${t.title}\n` : ''}ドラッグか Alt + ←→ で並べ替えます${onClose ? '。Delete で閉じます' : ''}`}
             draggable
             onClick={() => pickInWidget(kind, session, key)}
             onDragStart={() => setDragging(key)}
@@ -170,6 +175,7 @@ export const PickTabs = ({ kind, session, label, tabs, picked }: { kind: string;
             }}
             onDragEnd={() => setDragging(undefined)}
             onKeyDown={(e) => {
+              if (onClose && e.key === 'Delete') return onClose(key);
               const step = e.altKey ? TAB_STEP[e.key] : undefined;
               const target = step && ordered[ordered.indexOf(key) + step];
               if (!target) return;
@@ -178,6 +184,18 @@ export const PickTabs = ({ kind, session, label, tabs, picked }: { kind: string;
             }}
           >
             {t.label}
+            {onClose && (
+              <span
+                class="tab-close"
+                aria-hidden="true"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose(key);
+                }}
+              >
+                ×
+              </span>
+            )}
           </button>
         );
       })}
