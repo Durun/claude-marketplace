@@ -24,3 +24,21 @@ export {
   type Transport,
 } from "./client.ts";
 export type { JsonSchema, SchemaObject } from "./codegen.ts";
+export {
+  createIpcMediaApi,
+  DRAG_DROP_EVENT,
+  DRAG_ENTER_EVENT,
+  DRAG_LEAVE_EVENT,
+  INGEST_PROGRESS_EVENT,
+  type CacheFolder,
+  type CacheInfo,
+  type DropEvent,
+  type ImportEvent,
+  type MediaApi,
+  type MediaInvoke,
+  type MediaItem,
+  type MediaKind,
+  type MediaListen,
+  type MediaStatus,
+  type WaveformView,
+} from "./media.ts";

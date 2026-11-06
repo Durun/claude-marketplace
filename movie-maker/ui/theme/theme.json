@@ -9,7 +9,18 @@
     "radius": { "sm": 3, "md": 4, "lg": 6 },
     "borderWidth": 1,
     "space": { "xs": 4, "sm": 6, "md": 10, "lg": 16 },
-    "size": { "chevron": 6, "bullet": 8, "left-column": 260, "right-column": 300, "focus-offset": 1 },
+    "size": {
+      "chevron": 6,
+      "bullet": 8,
+      "left-column": 260,
+      "right-column": 300,
+      "focus-offset": 1,
+      "media-thumb-width": 64,
+      "media-thumb-height": 36,
+      "media-list-min": 120,
+      "waveform-height": 40,
+      "progress": 4
+    },
     "stroke": { "chevron": 2, "focus": 2 }
   },
   "modes": {
@@ -23,6 +34,7 @@
         "text-muted": "#5c5c5c",
         "accent": "#316ac5",
         "accent-text": "#ffffff",
+        "danger": "#c4281c",
         "focus": "#316ac5",
         "task-title-text": "#215dc6",
         "task-body-bg": "#d6dff7",
@@ -46,6 +58,7 @@
         "text-muted": "#98a1b5",
         "accent": "#5b8def",
         "accent-text": "#ffffff",
+        "danger": "#ff8a80",
         "focus": "#8ab4ff",
         "task-title-text": "#a9c4ff",
         "task-body-bg": "#2a3248",

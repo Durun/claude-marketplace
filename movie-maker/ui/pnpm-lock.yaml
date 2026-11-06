@@ -42,6 +42,15 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/media:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/tasks:
     dependencies:
       preact:
@@ -59,6 +68,9 @@ importers:
       '@mm/inspector':
         specifier: workspace:*
         version: link:../panels/inspector
+      '@mm/media':
+        specifier: workspace:*
+        version: link:../panels/media
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk

@@ -1,6 +1,6 @@
 // dist/ を開いてパネルのスクリーンショットを撮る。playwright は repo の依存にせず、
 // PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
-// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [tasks|inspector]
+// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [tasks|inspector|media]
 import { createRequire } from "node:module";
 import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -51,7 +51,32 @@ const shootInspector = async (browser) => {
   await page.close();
 };
 
+// Media は偽のアプリの窓口で場面を作る。左の列と同じ幅で撮る。
+const MEDIA_SCENES = ["idle", "importing", "failed", "empty", "cache"];
+
+const shootMedia = async (browser) => {
+  const outDir = here("../panels/media/screenshots/");
+  await mkdir(outDir, { recursive: true });
+  for (const theme of ["light", "dark"]) {
+    for (const scene of MEDIA_SCENES) {
+      const page = await browser.newPage({ viewport: { width: 262, height: 640 }, deviceScaleFactor: 2 });
+      await page.goto(`${dist("media-demo.html")}?theme=${theme}&state=${scene}`);
+      await page.waitForSelector(".mm-media-list");
+      if (scene === "idle") {
+        await page.waitForSelector(".mm-media-row img");
+        await page.locator(".mm-media-row").first().click();
+        await page.waitForSelector(".mm-media-wave-svg");
+        await page.mouse.move(0, 0);
+      }
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: `${outDir}media-${theme}-${scene}.png` });
+      await page.close();
+    }
+  }
+};
+
 const browser = await chromium.launch();
 if (!which || which === "tasks") await shootTasks(browser);
 if (!which || which === "inspector") await shootInspector(browser);
+if (!which || which === "media") await shootMedia(browser);
 await browser.close();

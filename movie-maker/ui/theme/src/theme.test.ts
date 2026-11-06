@@ -21,7 +21,11 @@ describe("theme.json", () => {
 });
 
 describe("パネルとシェルの CSS", () => {
-  const files = ["../../panels/tasks/src/tasks.css", "../../shell/src/shell.css"];
+  const files = [
+    "../../panels/tasks/src/tasks.css",
+    "../../panels/media/src/media.css",
+    "../../shell/src/shell.css",
+  ];
 
   it("寸法を直書きせず、theme の変数から引く", () => {
     for (const f of files) {

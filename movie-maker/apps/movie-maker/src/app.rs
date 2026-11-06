@@ -18,6 +18,8 @@ use windows::Win32::Media::timeBeginPeriod;
 use crate::cli::{self, Args};
 use crate::edit;
 use crate::ipc::{self, ProjectInfo, SyncState};
+use crate::media::{self, MediaState};
+use crate::media_ipc;
 use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
@@ -172,15 +174,27 @@ struct Boot {
 
 fn build_and_run(boot: Boot) {
     let managed = boot.state.clone();
+    let media_state = Arc::new(MediaState::new(
+        boot.shared.clone(),
+        media::project_cache_dir(&boot.args.project),
+    ));
     tauri::Builder::default()
         .manage(managed)
+        .manage(media_state)
         .invoke_handler(tauri::generate_handler![
             ipc::subscribe,
             ipc::sync_ack,
             ipc::transport,
             ipc::project_info,
             ipc::key_event,
-            edit::apply_op
+            edit::apply_op,
+            media_ipc::media_list,
+            media_ipc::media_thumbnail,
+            media_ipc::media_waveform,
+            media_ipc::media_pick_files,
+            media_ipc::media_import,
+            media_ipc::media_cache_info,
+            media_ipc::media_cache_clear
         ])
         .setup(move |app| boot.setup(app))
         .run(tauri::generate_context!())

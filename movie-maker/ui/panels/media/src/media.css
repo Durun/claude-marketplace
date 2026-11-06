@@ -1,0 +1,231 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  height: 100%;
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-media-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-md);
+}
+
+.mm-media-hint,
+.mm-media-note,
+.mm-media-meta,
+.mm-media-status,
+.mm-media-wave-caption {
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-media-note {
+  margin: 0;
+}
+
+.mm-media-error,
+.mm-media-failures {
+  margin: 0;
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-media-failures {
+  display: grid;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-danger);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-media-failures ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-media-button {
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mm-media-button:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
+.mm-media-primary:not(:disabled) {
+  border-color: var(--mm-color-accent);
+  color: var(--mm-color-task-link);
+  font-weight: 700;
+}
+
+/* ドロップできることを枠で示す。 */
+.mm-media[data-dragging="true"] .mm-media-list {
+  border-style: dashed;
+  border-color: var(--mm-color-accent);
+}
+
+.mm-media-list {
+  flex: 1 1 auto;
+  min-height: var(--mm-size-media-list-min);
+  margin: 0;
+  padding: var(--mm-space-xs);
+  overflow-y: auto;
+  list-style: none;
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-media-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-md);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--mm-space-xs);
+  border: var(--mm-border-width) solid transparent;
+  border-radius: var(--mm-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.mm-media-row {
+  cursor: pointer;
+}
+
+button.mm-media-row:hover {
+  border-color: var(--mm-color-border-strong);
+}
+
+.mm-media-row[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+}
+
+.mm-media-row[aria-pressed="true"] .mm-media-meta,
+.mm-media-row[aria-pressed="true"] .mm-media-status {
+  color: inherit;
+}
+
+.mm-media-row[data-status="missing"] .mm-media-status {
+  color: var(--mm-color-danger);
+  font-weight: 700;
+}
+
+.mm-media-row[aria-pressed="true"][data-status="missing"] .mm-media-status {
+  color: inherit;
+}
+
+.mm-media-thumb {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--mm-size-media-thumb-width);
+  height: var(--mm-size-media-thumb-height);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-sm);
+  object-fit: cover;
+  background: var(--mm-color-bg);
+}
+
+.mm-media-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-media-text {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+}
+
+.mm-media-name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-media-bar {
+  height: var(--mm-size-progress);
+  margin-top: var(--mm-space-xs);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-gradient-task-title);
+  border: var(--mm-border-width) solid var(--mm-color-accent);
+}
+
+.mm-media-empty {
+  padding: var(--mm-space-md);
+  color: var(--mm-color-text-muted);
+}
+
+.mm-media-wave {
+  margin: 0;
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-media-wave-svg {
+  display: block;
+  width: 100%;
+  height: var(--mm-size-waveform-height);
+  fill: var(--mm-color-accent);
+}
+
+.mm-media-wave-caption {
+  text-align: right;
+}
+
+.mm-media-cache {
+  display: grid;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-task-body-bg);
+}
+
+.mm-media-cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mm-space-md);
+}
+
+.mm-media-cache-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-media-confirm {
+  display: grid;
+  gap: var(--mm-space-sm);
+}
+
+.mm-media-row:focus-visible,
+.mm-media-button:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
