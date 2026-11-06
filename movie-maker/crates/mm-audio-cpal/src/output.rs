@@ -21,6 +21,8 @@ struct Shared {
     epoch: Instant,
     /// `AudioSink::write` で足したフレーム数。
     written: AtomicU64,
+    /// ストリームがエラーを返した（デバイスの取り外し、既定のデバイスの変更）。音の時計は進まなくなる。
+    failed: AtomicBool,
 }
 
 /// プレビューの音の出力。ミキサーの出力（`input_rate`、`input_channels`）を受け、デバイスの形に変えて鳴らす。
@@ -85,9 +87,22 @@ impl AudioOutput {
         (&self.device_name, self.device_rate, self.device_channels)
     }
 
-    /// 鳴らしている間は真。偽の間は溜めた音を消費せず、時計も進まない。
-    pub fn set_running(&self, running: bool) {
-        self.shared.running.store(running, Ordering::SeqCst);
+    /// 鳴らし始める。位置の固定を外すので、直前に `reset` で置き直しておく。
+    pub fn run(&self) {
+        self.shared.ring.lock().expect("ring").resume();
+        self.shared.running.store(true, Ordering::SeqCst);
+    }
+
+    /// 止めて、止めた位置（秒）を返す。止めている間は溜めた音を消費せず、位置も動かない。
+    pub fn halt(&self) -> f64 {
+        self.shared.running.store(false, Ordering::SeqCst);
+        let now = self.shared.epoch.elapsed().as_secs_f64();
+        self.shared.ring.lock().expect("ring").halt(now)
+    }
+
+    /// ストリームがエラーで止まったか。真なら音の時計は当てにならない。
+    pub fn stream_failed(&self) -> bool {
+        self.shared.failed.load(Ordering::SeqCst)
     }
 
     /// 溜めた音を捨て、再生位置を `start_secs` に置き直す。
@@ -188,6 +203,7 @@ fn start_stream(epoch: Instant) -> Result<(cpal::Stream, Started)> {
         running: AtomicBool::new(false),
         epoch,
         written: AtomicU64::new(0),
+        failed: AtomicBool::new(false),
     });
     let stream = match supported.sample_format() {
         SampleFormat::F32 => build::<f32>(&device, config, &shared),
@@ -225,6 +241,7 @@ where
     T: SizedSample + FromSample<f32> + Send + 'static,
 {
     let s = shared.clone();
+    let on_error = shared.clone();
     let mut scratch: Vec<f32> = Vec::new();
     device
         .build_output_stream(
@@ -243,7 +260,10 @@ where
                     *d = T::from_sample(*v);
                 }
             },
-            |e| tracing::warn!(error = %e, "音の出力のストリームの警告"),
+            move |e| {
+                tracing::warn!(error = %e, "音の出力のストリームがエラーを返した");
+                on_error.failed.store(true, Ordering::SeqCst);
+            },
             None,
         )
         .map_err(|e| unsupported("ストリームを作れない", e))
