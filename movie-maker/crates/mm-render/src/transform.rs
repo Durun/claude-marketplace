@@ -8,7 +8,7 @@
 
 use mm_doc::Transform;
 use mm_eval::evaluate_transform;
-use mm_types::RationalTime;
+use mm_types::{RationalTime, Rect};
 
 /// 2D のアフィン変換 `(x, y) -> (a x + c y + tx, b x + d y + ty)`。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -133,17 +133,21 @@ impl LayerTransform {
 }
 
 /// 画像の UV（0..1）を出力の NDC に変換する、列優先の 4x4 行列。
+/// 画像はコンポジションの画素の矩形 `place` に置き（`x`, `y` が左上、`width`, `height` が大きさ）、
+/// レイヤーの変形はコンポジションの画布 `comp` 全体に掛かる（既定のアンカーは画布の中心）。
 /// `comp_to_out` はコンポジションの画素から出力の画素への倍率、`out` は出力の大きさ。
 pub fn uv_to_ndc(
     transform: &LayerTransform,
-    layer_size: (f32, f32),
+    place: Rect,
+    comp: (f32, f32),
     comp_to_out: f32,
     out: (f32, f32),
 ) -> [f32; 16] {
-    let (w, h) = layer_size;
     let uv_to_comp = Affine {
-        a: w,
-        d: h,
+        a: place.width,
+        d: place.height,
+        tx: place.x,
+        ty: place.y,
         ..Affine::IDENTITY
     };
     let comp_to_ndc = Affine {
@@ -153,7 +157,9 @@ pub fn uv_to_ndc(
         ty: 1.0,
         ..Affine::IDENTITY
     };
-    let m = uv_to_comp.then(&transform.to_comp(w, h)).then(&comp_to_ndc);
+    let m = uv_to_comp
+        .then(&transform.to_comp(comp.0, comp.1))
+        .then(&comp_to_ndc);
     [
         m.a, m.b, 0.0, 0.0, //
         m.c, m.d, 0.0, 0.0, //
@@ -174,10 +180,31 @@ mod tests {
         (m[0] * u + m[4] * v + m[12], m[1] * u + m[5] * v + m[13])
     }
 
+    fn full(w: f32, h: f32) -> Rect {
+        Rect::new(0.0, 0.0, w, h)
+    }
+
+    #[test]
+    fn 置く矩形が画布の一部なら画像はそこに重なる() {
+        let m = uv_to_ndc(
+            &LayerTransform::default(),
+            Rect::new(160.0, 0.0, 160.0, 90.0),
+            (320.0, 180.0),
+            1.0,
+            (320.0, 180.0),
+        );
+        assert!(
+            close(corner(&m, 0.0, 0.0), (0.0, 1.0)),
+            "左上は画布の中央上"
+        );
+        assert!(close(corner(&m, 1.0, 1.0), (1.0, 0.0)), "右下は右端の中央");
+    }
+
     #[test]
     fn 恒等なら画像が画面全体に重なる() {
         let m = uv_to_ndc(
             &LayerTransform::default(),
+            full(320.0, 180.0),
             (320.0, 180.0),
             1.0,
             (320.0, 180.0),
@@ -190,6 +217,7 @@ mod tests {
     fn 出力が半分でも画面全体に重なる() {
         let m = uv_to_ndc(
             &LayerTransform::default(),
+            full(320.0, 180.0),
             (320.0, 180.0),
             0.5,
             (160.0, 90.0),
@@ -203,7 +231,7 @@ mod tests {
             position: [160.0, 0.0],
             ..LayerTransform::default()
         };
-        let m = uv_to_ndc(&t, (320.0, 180.0), 1.0, (320.0, 180.0));
+        let m = uv_to_ndc(&t, full(320.0, 180.0), (320.0, 180.0), 1.0, (320.0, 180.0));
         assert!(close(corner(&m, 0.0, 0.0), (0.0, 1.0)), "半分右へ");
     }
 
@@ -213,7 +241,7 @@ mod tests {
             scale: [2.0, 2.0],
             ..LayerTransform::default()
         };
-        let m = uv_to_ndc(&t, (320.0, 180.0), 1.0, (320.0, 180.0));
+        let m = uv_to_ndc(&t, full(320.0, 180.0), (320.0, 180.0), 1.0, (320.0, 180.0));
         assert!(close(corner(&m, 0.5, 0.5), (0.0, 0.0)));
         assert!(close(corner(&m, 0.0, 0.0), (-2.0, 2.0)));
     }

@@ -218,12 +218,51 @@ pub struct EncodeReport {
     pub bytes_written: u64,
 }
 
+/// NV12 の 1 フレーム（Y のプレーンと、横縦 1/2 の UV のプレーン）。Rec.709 の行列、tv レンジ、
+/// Rec.1886 の符号化値。レンダラーが GPU で YUV にしてリードバックしたフレームを、そのままエンコーダーへ渡す。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nv12Frame {
+    pub size: Size,
+    /// 幅 x 高さ バイト。行の余白は無い。
+    pub y: Vec<u8>,
+    /// 幅 x 高さ / 2 バイト（UV が交互、行は高さ / 2）。行の余白は無い。
+    pub uv: Vec<u8>,
+}
+
+impl Nv12Frame {
+    /// プレーンの長さを確かめて作る。大きさは偶数が要る。
+    pub fn new(size: Size, y: Vec<u8>, uv: Vec<u8>) -> Result<Self> {
+        let (w, h) = (size.width as usize, size.height as usize);
+        if w == 0 || h == 0 || w % 2 == 1 || h % 2 == 1 {
+            return Err(mm_types::MmError::InvalidArgument(format!(
+                "NV12 は偶数の大きさが要る: {w}x{h}"
+            )));
+        }
+        if y.len() != w * h || uv.len() != w * h / 2 {
+            return Err(mm_types::MmError::InvalidArgument(format!(
+                "NV12 のプレーンの長さが合わない: Y {} UV {}（{w}x{h}）",
+                y.len(),
+                uv.len()
+            )));
+        }
+        Ok(Self { size, y, uv })
+    }
+}
+
 /// エンコーダー。フレームはバッチで押す。
 pub trait Encoder: Send {
     /// 出力を開く。
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()>;
     /// フレームの列を押す。順序は再生順。
     fn push_frames(&mut self, frames: &[RgbaImage]) -> Result<()>;
+    /// GPU で YUV にしたフレームの列を押す。順序は再生順。対応しない実装は `Err(Unsupported)` を返し、
+    /// 呼ぶ側は `push_frames` に切り替える。空の列は何もせず、対応の有無だけを返す（切り替えの判断に使う）。
+    fn push_nv12_frames(&mut self, frames: &[Nv12Frame]) -> Result<()> {
+        let _ = frames;
+        Err(mm_types::MmError::Unsupported(
+            "このエンコーダーは NV12 を受けない".into(),
+        ))
+    }
     /// 音を押す。
     fn push_audio(&mut self, block: &AudioBlock) -> Result<()>;
     /// 閉じて報告を返す。

@@ -1,7 +1,7 @@
 use mm_audio_api::AudioBlock;
 use mm_node_api::{audio_frames_in, AudioCx, FrameCx, FrameRef, NodeKind, Traits};
 use mm_types::{
-    Id, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, RationalTime, Result,
+    Id, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, RationalTime, Rect, Result,
 };
 
 use crate::util::{fit_contain, migrate_same_version};
@@ -15,19 +15,44 @@ fn asset_schema() -> ParamSchema {
     )])
 }
 
-/// 素材の `t` のフレームを画面に収めて返す。素材が無ければ透明。
+/// 素材の `t` のフレーム。素材が無ければ透明。
+/// GPU のフレームは素材のままの大きさで借用し（`GpuHelper::import`）、レンダラーが `region_of_definition` の
+/// 矩形へ 1 回だけ縮小する。CPU のフレームは画布に収めて返す（画像の大きさは画布と同じという契約）。
 fn render_source_frame(cx: &mut FrameCx<'_>, t: RationalTime) -> Result<FrameRef> {
     let size = cx.size;
     let Some(footage) = cx.footage.as_deref_mut() else {
         return Ok(FrameRef::Transparent { size });
     };
     let frame = footage.frame_at(t)?;
-    let Some(image) = frame.image else {
-        return Err(MmError::Unsupported(
-            "GPU のフレームはまだ受けない（CPU のフレームだけ）".into(),
-        ));
+    match (frame.image, frame.gpu) {
+        (Some(image), _) => Ok(FrameRef::cpu(fit_contain(image, size))),
+        (None, Some(handle)) => cx.gpu.import(&handle),
+        (None, None) => Err(MmError::Corrupt(
+            "デコーダーが画像も GPU のフレームも返さない".into(),
+        )),
+    }
+}
+
+/// 素材を縦横比を保って画布に収めた矩形（画布の画素）。素材が無ければ画布の全体。
+fn contain_region(cx: &FrameCx<'_>) -> Rect {
+    let canvas = cx.size.to_rect();
+    let Some(media) = cx.footage.as_deref().map(|f| f.info().size) else {
+        return canvas;
     };
-    Ok(FrameRef::cpu(fit_contain(image, size)))
+    if media.width == 0 || media.height == 0 {
+        return canvas;
+    }
+    let ratio = (canvas.width / media.width as f32).min(canvas.height / media.height as f32);
+    let (w, h) = (
+        (media.width as f32 * ratio).round().max(1.0),
+        (media.height as f32 * ratio).round().max(1.0),
+    );
+    Rect::new(
+        ((canvas.width - w) / 2.0).floor(),
+        ((canvas.height - h) / 2.0).floor(),
+        w,
+        h,
+    )
 }
 
 /// 撮影素材。`asset` の素材をレンダラーが開いて `cx.footage` に渡し、`cx.source_time` のフレームを返す。
@@ -56,6 +81,10 @@ impl NodeKind for FootageKind {
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
         migrate_same_version(self, old, from)
+    }
+
+    fn region_of_definition(&self, cx: &FrameCx<'_>) -> Rect {
+        contain_region(cx)
     }
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
@@ -101,6 +130,10 @@ impl NodeKind for ImageKind {
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
         migrate_same_version(self, old, from)
+    }
+
+    fn region_of_definition(&self, cx: &FrameCx<'_>) -> Rect {
+        contain_region(cx)
     }
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {

@@ -1,7 +1,7 @@
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
 use mm_text_api::{TextAlign, TextStyle};
 use mm_types::{
-    ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage,
+    ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage, Size,
 };
 
 use crate::util::migrate_same_version;
@@ -110,8 +110,19 @@ impl NodeKind for TextKind {
             .text_rasterizer
             .rasterize(&shaped, &style, cx.scale)?;
         let (x, y) = Self::origin(cx.params, cx.scale);
-        let mut canvas = RgbaImage::transparent(cx.size);
-        canvas.blit_over(&glyphs, x as i64, y as i64, 1.0);
+        // 画布は頼まれた領域の分だけにし、領域の原点を引いた位置に置く（領域が画布の全体なら元のまま）。
+        let region = cx.region;
+        let canvas_size = Size::new(
+            (region.width.ceil() as u32).max(1),
+            (region.height.ceil() as u32).max(1),
+        );
+        let mut canvas = RgbaImage::transparent(canvas_size);
+        canvas.blit_over(
+            &glyphs,
+            x as i64 - region.x.floor() as i64,
+            y as i64 - region.y.floor() as i64,
+            1.0,
+        );
         Ok(FrameRef::cpu(canvas))
     }
 }
