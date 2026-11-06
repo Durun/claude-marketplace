@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -24,6 +25,7 @@ TIME_DEN = 1000
 HASH_CHUNK = 1 << 20
 # 既定のモデル。日本語は large-v3 が最も安定する。
 DEFAULT_MODEL = "large-v3"
+HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 SCHEMA_RELATIVE = Path("crates/mm-ingest-api/schema/sidecar.schema.json")
 
 
@@ -132,13 +134,20 @@ def transcribe(media: Path, model_name: str, language: str | None, device: str, 
     return info.language, segments, f"faster-whisper {faster_whisper.__version__} ({model_name})"
 
 
+def hash_arg(value: str) -> str:
+    """`--content-hash` の値。書き先のファイル名に使うので、BLAKE3 の 16 進（64 文字）に限る。"""
+    if not HASH_PATTERN.fullmatch(value):
+        raise argparse.ArgumentTypeError("小文字の 16 進 64 文字（BLAKE3）でなければならない")
+    return value
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("media", type=Path, help="素材のパス（動画でも音声でもよい）")
     dest = p.add_mutually_exclusive_group(required=True)
     dest.add_argument("--cache", type=Path, help="<project>/cache。cache/ingest/<ハッシュ>.transcript.json に書く")
     dest.add_argument("--out", type=Path, help="書き先のファイル")
-    p.add_argument("--content-hash", help="素材のコンテンツハッシュ。省くと BLAKE3 を計算する")
+    p.add_argument("--content-hash", type=hash_arg, help="素材のコンテンツハッシュ。省くと BLAKE3 を計算する")
     p.add_argument("--model", default=DEFAULT_MODEL)
     p.add_argument("--language", help="言語コード（ja、en）。省くと自動で判定する")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu", "auto"])

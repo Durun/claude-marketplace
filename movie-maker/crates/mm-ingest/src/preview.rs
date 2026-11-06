@@ -81,7 +81,7 @@ fn preview_command(
     let mut cmd = tools.ffmpeg_command();
     cmd.arg("-i").arg(input);
     cmd.args(["-map", "0:v:0", "-vf"]).arg(format!(
-        "scale=-2:'min({PREVIEW_HEIGHT},ih)',format=yuv420p"
+        "scale=-2:'trunc(min({PREVIEW_HEIGHT},ih)/2)*2',format=yuv420p"
     ));
     cmd.args(["-c:v", encoder, "-g", &GOP_FRAMES.to_string(), "-bf", "0"]);
     if encoder == "h264_nvenc" {

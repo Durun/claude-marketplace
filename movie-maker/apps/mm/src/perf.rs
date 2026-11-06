@@ -132,7 +132,7 @@ pub struct PerfArgs {
     pub repeat: usize,
     pub out_dir: PathBuf,
     pub project: PathBuf,
-    /// `export` の描画の大きさ（予算は 1080p の値のため既定は 1920x1080）。
+    /// `export`、`playback`、`scrub` の描画の大きさ（予算は 1080p の値のため既定は 1920x1080）。
     pub size: (u32, u32),
     /// `playback` で再生する秒数。
     pub seconds: f64,
@@ -140,6 +140,8 @@ pub struct PerfArgs {
     pub seeks: usize,
     /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
     pub baseline: bool,
+    /// 描画の場面で使う GPU の名前の一部。`None` は高性能のアダプター。
+    pub adapter: Option<String>,
 }
 
 /// シナリオを回して分かった、測った環境。

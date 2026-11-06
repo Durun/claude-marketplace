@@ -414,6 +414,7 @@ fn misc_op(spec: &Spec, p: &Project) -> Option<Op> {
                 fps: None,
                 timebase_offset: mm_types::RationalTime::ZERO,
             },
+            index: None,
         }
         .into(),
         Spec::RemoveAsset(i) => RemoveAsset {
