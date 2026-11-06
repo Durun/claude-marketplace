@@ -47,6 +47,8 @@ pub enum Spec {
     RemoveSequence(u8),
     AddRenderTarget(u8, String),
     RemoveRenderTarget(u8),
+    AddAsset(String),
+    RemoveAsset(u8),
     AddMarker(u8, String, i64),
     RemoveMarker(u8),
     Insert(u8, u8, CutSpec),
@@ -99,6 +101,8 @@ fn arb_doc_spec() -> impl Strategy<Value = Spec> {
         s().prop_map(Spec::RemoveComposition),
         (s(), arb_id()).prop_map(|(a, b)| Spec::AddRenderTarget(a, b)),
         s().prop_map(Spec::RemoveRenderTarget),
+        arb_id().prop_map(Spec::AddAsset),
+        s().prop_map(Spec::RemoveAsset),
         (s(), arb_id(), 0i64..10).prop_map(|(a, b, c)| Spec::AddMarker(a, b, c)),
         s().prop_map(Spec::RemoveMarker),
     ]
@@ -398,6 +402,22 @@ fn misc_op(spec: &Spec, p: &Project) -> Option<Op> {
         .into(),
         Spec::RemoveRenderTarget(i) => RemoveRenderTarget {
             target: pick(&p.render_targets, *i)?.id.clone(),
+        }
+        .into(),
+        Spec::AddAsset(id) => AddAsset {
+            asset: mm_doc::Asset {
+                id: Id::new(id),
+                path: format!("{id}.mp4"),
+                content_hash: format!("hash-{id}"),
+                color_space: mm_types::ColorSpace::bt709(),
+                duration: secs(1),
+                fps: None,
+                timebase_offset: mm_types::RationalTime::ZERO,
+            },
+        }
+        .into(),
+        Spec::RemoveAsset(i) => RemoveAsset {
+            asset: pick(&p.assets, *i)?.id.clone(),
         }
         .into(),
         Spec::AddMarker(i, id, t) => AddMarker {

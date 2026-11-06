@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sidecar",
+  "description": "付属ファイル。素材のコンテンツハッシュで結びつける。",
+  "type": "object",
+  "properties": {
+    "content_hash": {
+      "type": "string"
+    },
+    "producer": {
+      "description": "作ったツールの名前とバージョン（`faster-whisper 1.1.0`）。",
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "transcript"
+        }
+      },
+      "$ref": "#/$defs/Transcript",
+      "required": [
+        "kind"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "waveform"
+        }
+      },
+      "$ref": "#/$defs/Waveform",
+      "required": [
+        "kind"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "preview_media"
+        }
+      },
+      "$ref": "#/$defs/PreviewMedia",
+      "required": [
+        "kind"
+      ]
+    },
+    {
+      "description": "シーンの区切り。",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "scenes"
+        }
+      },
+      "$ref": "#/$defs/Scenes",
+      "required": [
+        "kind"
+      ]
+    }
+  ],
+  "required": [
+    "schema_version",
+    "content_hash",
+    "producer"
+  ],
+  "$defs": {
+    "PreviewMedia": {
+      "description": "プレビュー動画の記録。",
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "path": {
+          "description": "`cache/` からの相対パス。",
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "width",
+        "height"
+      ]
+    },
+    "RationalTime": {
+      "description": "有理数の時刻 num/den 秒（負も表せる）",
+      "type": "object",
+      "properties": {
+        "den": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        },
+        "num": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ]
+    },
+    "SceneCut": {
+      "description": "シーンが変わる時刻。",
+      "type": "object",
+      "properties": {
+        "score": {
+          "description": "変わり方の大きさ（0..=1）。ツールが出さないときは省く。",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        },
+        "time": {
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "required": [
+        "time"
+      ]
+    },
+    "Scenes": {
+      "description": "シーンの区切り。素材の先頭からの時刻の昇順。",
+      "type": "object",
+      "properties": {
+        "cuts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SceneCut"
+          }
+        }
+      },
+      "required": [
+        "cuts"
+      ]
+    },
+    "Transcript": {
+      "description": "文字起こし。",
+      "type": "object",
+      "properties": {
+        "language": {
+          "description": "ISO 639-1 の言語コード（`ja`、`en`）。",
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptSegment"
+          }
+        }
+      },
+      "required": [
+        "language",
+        "segments"
+      ]
+    },
+    "TranscriptSegment": {
+      "description": "文字起こしの 1 区間。",
+      "type": "object",
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "start": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "text": {
+          "type": "string"
+        },
+        "words": {
+          "description": "単語ごとの時刻。取れないツールは省く。",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptWord"
+          }
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "text"
+      ]
+    },
+    "TranscriptWord": {
+      "description": "文字起こしの 1 単語。単語の ID は「素材のコンテンツハッシュ + 開始の時刻」から決まる。",
+      "type": "object",
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "start": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "text"
+      ]
+    },
+    "Waveform": {
+      "description": "波形。ピークは -1..=1。",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "peaks": {
+          "description": "チャンネルごとにインターリーブしたピーク。",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "peaks_per_second": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "peaks_per_second",
+        "channels",
+        "peaks"
+      ]
+    }
+  }
+}

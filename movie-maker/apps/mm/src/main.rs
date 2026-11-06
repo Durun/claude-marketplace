@@ -1,11 +1,13 @@
 //! `mm` コマンド。
 //!
 //! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
+//! - `mm ingest <dir> <素材>...`: 素材を取り込み、`cache/` に出力を作って素材を足す（ingest_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`all`）。
 
 mod commands;
 mod describe;
+mod ingest_cmd;
 mod opargs;
 mod perf;
 mod project;
@@ -98,6 +100,16 @@ enum Command {
         #[arg(long)]
         target: Option<String>,
     },
+    /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を当てる。
+    Ingest {
+        dir: PathBuf,
+        /// 取り込む素材のパス（1 つ以上）。
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// プレビュー動画のエンコーダー（auto、nvenc、x264）。
+        #[arg(long, default_value = "auto", value_parser = ingest_cmd::parse_encoder)]
+        encoder: mm_ingest::PreviewEncoder,
+    },
     /// 性能の計測。
     Perf {
         #[command(subcommand)]
@@ -177,6 +189,15 @@ fn run_store_command(command: Command) -> Result<()> {
                 .ok_or_else(|| MmError::InvalidArgument("プロジェクトのフォルダーを渡す".into()))?;
             commands::op(&dir, op_name.as_deref(), &args, txn.as_deref())
         }
+        Command::Ingest {
+            dir,
+            inputs,
+            encoder,
+        } => ingest_cmd::ingest(&ingest_cmd::IngestArgs {
+            dir,
+            inputs,
+            encoder,
+        }),
         Command::Undo { dir } => commands::undo(&dir),
         Command::Redo { dir } => commands::redo(&dir),
         Command::Log { dir } => commands::log(&dir),
