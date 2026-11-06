@@ -81,7 +81,7 @@ target/release/mm perf compare perf/baseline/rtx5090/scrub.json .mm/perf --thres
 target/release/mm perf budget .mm/perf
 ```
 
-`playback` は実時間の速さで回すので、1 回に `--seconds` 秒かかる（既定 10）。
+`playback` は実時間の速さで回し、フレームのキャッシュなしとありで 1 回ずつ再生するので、1 回に `--seconds` の 2 倍の秒数かかる（既定 10）。予算の表の「キャッシュなし」の行は `playback.*`、「キャッシュあり」の行は `playback.cached_*` に出る。`scrub` は繰り返しで同じ位置に戻るので、キャッシュなしで測る。
 
 ### 予算の自動の起票
 

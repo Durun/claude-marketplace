@@ -7,12 +7,12 @@
       "name": "playback.frame_ms",
       "ok": null,
       "samples": [
-        174.1601,
-        169.5803,
-        181.6593
+        7.4496,
+        8.6601,
+        8.7626
       ],
       "unit": "ms",
-      "value": 174.1601
+      "value": 8.6601
     },
     {
       "better": "lower",
@@ -20,12 +20,12 @@
       "name": "playback.frame_p99_ms",
       "ok": null,
       "samples": [
-        219.8379,
-        195.40009999999998,
-        584.2499
+        11.741299999999999,
+        12.043999999999999,
+        12.2373
       ],
       "unit": "ms",
-      "value": 219.8379
+      "value": 12.043999999999999
     },
     {
       "better": "lower",
@@ -35,14 +35,44 @@
         "value": 1.0
       },
       "name": "playback.dropped_pct",
-      "ok": false,
+      "ok": true,
       "samples": [
-        100.0,
-        100.0,
-        100.0
+        0.0,
+        0.0,
+        0.0
       ],
       "unit": "%",
-      "value": 100.0
+      "value": 0.0
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "playback.cached_frame_ms",
+      "ok": null,
+      "samples": [
+        7.928100000000001,
+        7.8887,
+        8.057699999999999
+      ],
+      "unit": "ms",
+      "value": 7.928100000000001
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "再生で落とすフレーム",
+        "value": 0.0
+      },
+      "name": "playback.cached_dropped_pct",
+      "ok": true,
+      "samples": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "unit": "%",
+      "value": 0.0
     },
     {
       "better": "lower",
@@ -52,12 +82,12 @@
         "value": 4.0
       },
       "name": "playback.cpu_ms",
-      "ok": false,
+      "ok": true,
       "samples": [
-        98.61
+        1.068
       ],
       "unit": "ms",
-      "value": 98.61
+      "value": 1.068
     },
     {
       "better": "lower",
@@ -69,44 +99,48 @@
       "name": "playback.gpu_ms",
       "ok": true,
       "samples": [
-        3.872
+        0.218
       ],
       "unit": "ms",
-      "value": 3.872
+      "value": 0.218
     }
   ],
   "metrics": {
     "counters": {
-      "render.layers_drawn": 11739
+      "cache.frame_hits": 11726,
+      "cache.frame_lookups": 11739,
+      "render.layers_drawn": 23478
     },
     "gauges": {
-      "render.gpu_frame_us": 3893
+      "cache.frame_entries": 13,
+      "cache.frame_memory_bytes": 166764960,
+      "render.gpu_frame_us": 324
     },
     "spans": {
       "render.frame": {
-        "count": 903,
-        "max_us": 459025,
-        "p50_us": 98610,
-        "p95_us": 211067,
-        "p99_us": 316800
+        "count": 1806,
+        "max_us": 20288,
+        "p50_us": 730,
+        "p95_us": 1477,
+        "p99_us": 2929
       },
       "render.gpu_frame": {
-        "count": 902,
-        "max_us": 3990,
-        "p50_us": 3872,
-        "p95_us": 3896,
-        "p99_us": 3904
+        "count": 1804,
+        "max_us": 615,
+        "p50_us": 209,
+        "p95_us": 329,
+        "p99_us": 573
       },
       "runtime.render_frame": {
-        "count": 903,
-        "max_us": 696630,
-        "p50_us": 171205,
-        "p95_us": 300101,
-        "p99_us": 491188
+        "count": 1806,
+        "max_us": 25139,
+        "p50_us": 7686,
+        "p95_us": 10216,
+        "p99_us": 11135
       }
     }
   },
   "repeat": 3,
   "scene": "playback",
-  "timestamp": 1793945115
+  "timestamp": 1793949426
 }

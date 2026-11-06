@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture};
-use mm_types::{GpuAdapterId, MmError, Size};
+use mm_types::{GpuAdapterId, MmError, Rgba, RgbaImage, Size};
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -110,4 +110,25 @@ fn リードバックは大きさが合わなければ_unsupported() {
     ));
     let honest = FrameRef::Gpu(tex);
     assert_eq!(helper.download(&honest).unwrap().size(), Size::new(8, 4));
+}
+
+#[test]
+fn fill_は_cpu_の画像を上げたのと同じ画素になる() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    let mut helper = WgpuGpu::new(ctx);
+    let size = Size::new(5, 3);
+    let color = Rgba {
+        r: 0.25,
+        g: 0.5,
+        b: 0.75,
+        a: 0.5,
+    };
+    let filled = helper.fill(size, color).unwrap();
+    let uploaded = helper.upload(&RgbaImage::filled(size, color)).unwrap();
+    let a = helper.download(&filled).unwrap();
+    let b = helper.download(&uploaded).unwrap();
+    assert_eq!(a.data(), b.data());
+    assert_eq!(&a.data()[..4], &[0.25, 0.5, 0.75, 0.5]);
 }
