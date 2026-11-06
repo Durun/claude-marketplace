@@ -1,9 +1,12 @@
 use super::*;
+use mm_audio_api::DEFAULT_SAMPLE_RATE;
 use mm_decode_api::EncodeReport;
+use mm_decode_api::{EncodeSettings, Encoder};
 use mm_runtime::{assemble, RuntimeConfig};
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::fixtures::{vertical_project, VERTICAL_DURATION_SECONDS};
 use mm_trace::MetricsLayer;
+use mm_types::{RationalTime, RgbaImage};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
