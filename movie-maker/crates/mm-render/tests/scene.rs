@@ -308,11 +308,20 @@ fn 区間を描いてもテクスチャが溜まらない() {
         )
         .expect("区間が描ける");
     assert_eq!((n, seen), (30, 30));
-    assert_eq!(r.texture_count(), before, "区間のフレームはドロップする");
+    let kept = r.frame_cache_stats().entries;
+    assert_eq!(
+        r.texture_count(),
+        before + kept,
+        "区間のフレームはドロップし、キャッシュが覚えた画像だけ残る"
+    );
     for _ in 0..20 {
         render_image(&mut r, &p, "main", SMALL);
     }
-    assert!(r.texture_count() <= 8, "単発のフレームは直近の分だけ持つ");
+    let kept = r.frame_cache_stats().entries;
+    assert!(
+        r.texture_count() <= 8 + kept,
+        "単発のフレームは直近の分とキャッシュの分だけ持つ"
+    );
 }
 
 /// 期待画像: 背景、素材、回した単色、入れ子、拡大した文字を重ねる。

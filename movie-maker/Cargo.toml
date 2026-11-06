@@ -23,6 +23,7 @@ mm-audio-api = { path = "crates/mm-audio-api" }
 mm-text-api = { path = "crates/mm-text-api" }
 mm-host-api = { path = "crates/mm-host-api" }
 mm-cache-api = { path = "crates/mm-cache-api" }
+mm-cache-fs = { path = "crates/mm-cache-fs" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-runtime = { path = "crates/mm-runtime" }

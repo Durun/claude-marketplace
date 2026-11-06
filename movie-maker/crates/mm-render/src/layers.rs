@@ -13,7 +13,10 @@ use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry, Quality};
 use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
+use crate::cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::compose::DrawItem;
+use mm_gpu::WgpuGpu;
+
 use crate::renderer::WgpuRenderer;
 use crate::transform::{uv_to_ndc, LayerTransform};
 
@@ -65,6 +68,29 @@ pub(crate) struct LayerImage {
     pub(crate) texture: u64,
     pub(crate) size: Size,
     pub(crate) place: Rect,
+    /// フレームのキャッシュが持つテクスチャ。真なら合成のあとに解放しない。
+    pub(crate) cached: bool,
+}
+
+impl From<CachedImage> for LayerImage {
+    fn from(c: CachedImage) -> Self {
+        Self {
+            texture: c.texture,
+            size: c.size,
+            place: c.place,
+            cached: true,
+        }
+    }
+}
+
+impl LayerImage {
+    fn as_cached(&self) -> CachedImage {
+        CachedImage {
+            texture: self.texture,
+            size: self.size,
+            place: self.place,
+        }
+    }
 }
 
 /// レイヤーの種類と、その時刻のパラメータ（既定値で埋めたもの）。
@@ -148,14 +174,19 @@ impl WgpuRenderer {
         let (kind, params) = evaluate(cx.nodes, layer, cx.t)?;
         let transform = LayerTransform::from_doc(&layer.transform, cx.t);
         let image = match kind.id() {
-            NESTED_KIND => self.nested_image(encoder, cx, layer, &params, &transform)?,
+            NESTED_KIND => {
+                self.nested_image(encoder, cx, (kind.as_ref(), layer, &params), &transform)?
+            }
             SEQUENCE_KIND => self.sequence_image(encoder, cx, layer, &params)?,
             _ => self.kind_image(cx, kind.as_ref(), layer, &params, &transform)?,
         };
         let Some(image) = image else {
             return Ok(None);
         };
-        temps.push(image.texture);
+        // キャッシュが持つテクスチャは解放しない。効果の出力は apply_effects が積む。
+        if !image.cached {
+            temps.push(image.texture);
+        }
         let Some(image) = self.apply_effects(encoder, cx, layer, image, temps)? else {
             return Ok(None);
         };
@@ -189,8 +220,10 @@ impl WgpuRenderer {
             decoders,
             gpu,
             services,
+            cache,
             ..
         } = self;
+        let color_config = format!("{}+{}", services.color.id(), decoders.id());
         let footage = sources.footage_for(
             decoders.as_ref(),
             gpu.context().as_ref(),
@@ -225,27 +258,43 @@ impl WgpuRenderer {
         frame_cx.region = scaled_rect(&rod, boost);
         frame_cx.scale *= boost;
         let canvas = frame_cx.size;
+        let env = KeyEnv {
+            project: cx.project,
+            quality: cx.quality,
+            color_config: &color_config,
+        };
+        let key = cache
+            .enabled()
+            .then(|| cache::kind_key(&env, kind, layer, &frame_cx));
+        let key = key.flatten();
+        if let Some((k, deps)) = &key {
+            if let Some(hit) = cache.lookup(k, deps, &mut *frame_cx.gpu) {
+                return Ok(Some(hit.into()));
+            }
+        }
         let rendered = std::panic::catch_unwind(AssertUnwindSafe(|| kind.render(&mut frame_cx)))
             .map_err(|_| MmError::Internal(format!("{} が panic", kind.id())))??;
         let image_size = rendered.size();
-        let texture = match rendered {
-            FrameRef::Transparent { .. } => return Ok(None),
-            FrameRef::Cpu(image) => match gpu.upload(&image)? {
-                FrameRef::Gpu(tex) => tex.id,
-                _ => return Err(MmError::Internal("upload が Gpu を返さない".into())),
-            },
-            FrameRef::Gpu(tex) => tex.id,
+        let Some((texture, owned)) = upload_rendered(gpu, rendered)? else {
+            return Ok(None);
         };
         let place = if image_size == canvas {
             Rect::new(0.0, 0.0, cx.comp.width as f32, cx.comp.height as f32)
         } else {
             scaled_rect(&rod, 1.0 / cx.comp_to_out())
         };
-        Ok(Some(LayerImage {
+        let image = LayerImage {
             texture,
             size: image_size,
             place,
-        }))
+            cached: false,
+        };
+        Ok(Some(
+            match cache.remember(key, image.as_cached(), owned, gpu) {
+                Some(kept) => kept.into(),
+                None => image,
+            },
+        ))
     }
 
     /// 入れ子のコンポジションを別のテクスチャに描く。中にベクターがあるときは、入れ子のレイヤーを
@@ -254,8 +303,7 @@ impl WgpuRenderer {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         cx: &CompCx<'_>,
-        layer: &Layer,
-        params: &Params,
+        (kind, layer, params): (&dyn NodeKind, &Layer, &Params),
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
         let name = params
@@ -287,13 +335,72 @@ impl WgpuRenderer {
             depth: cx.depth + 1,
             ..*cx
         };
+        let key = self.nested_key(kind, layer, params, &child, nested);
+        if let Some((k, deps)) = &key {
+            if let Some(hit) = self.cache.lookup(k, deps, &mut self.gpu) {
+                return Ok(Some(hit.into()));
+            }
+        }
+        let errors_before = self.errors.len();
         let texture = self.encode_comp(encoder, &child)?;
-        Ok(Some(LayerImage {
+        let image = LayerImage {
             texture,
             size: child.size,
             place: Rect::new(0.0, 0.0, nested.width as f32, nested.height as f32),
-        }))
+            cached: false,
+        };
+        // 描けなかったレイヤーがあった画像は、次も描き直して同じエラーを出すために覚えない。
+        let key = key.filter(|_| self.errors.len() == errors_before);
+        let kept = self
+            .cache
+            .remember(key, image.as_cached(), true, &mut self.gpu);
+        Ok(Some(kept.map_or(image, LayerImage::from)))
     }
+
+    fn nested_key(
+        &self,
+        kind: &dyn NodeKind,
+        layer: &Layer,
+        params: &Params,
+        child: &CompCx<'_>,
+        nested: &Composition,
+    ) -> Option<Keyed> {
+        if !self.cache.enabled() {
+            return None;
+        }
+        let color_config = format!("{}+{}", self.services.color.id(), self.decoders.id());
+        let env = KeyEnv {
+            project: child.project,
+            quality: child.quality,
+            color_config: &color_config,
+        };
+        cache::nested_key(
+            &env,
+            &NestedKeyInput {
+                nodes: child.nodes,
+                kind,
+                layer,
+                params,
+                nested,
+                t: child.t,
+                size: child.size,
+                scale: child.size.width as f32 / nested.width as f32,
+            },
+        )
+    }
+}
+
+/// 種類が返した画像をテクスチャにする。透明なら `None`。2 つ目は、テクスチャの持ち主がレンダラーか
+/// （偽ならデコーダーの借用など他の持ち主）。
+fn upload_rendered(gpu: &mut WgpuGpu, rendered: FrameRef) -> Result<Option<(u64, bool)>> {
+    Ok(match rendered {
+        FrameRef::Transparent { .. } => None,
+        FrameRef::Cpu(image) => match gpu.upload(&image)? {
+            FrameRef::Gpu(tex) => Some((tex.id, true)),
+            _ => return Err(MmError::Internal("upload が Gpu を返さない".into())),
+        },
+        FrameRef::Gpu(tex) => Some((tex.id, false)),
+    })
 }
 
 /// 出力の 1 画素あたりの元の画素の数（軸ごと）。1 を超える軸は合成で面積平均に縮小する。

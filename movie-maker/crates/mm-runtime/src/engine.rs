@@ -69,6 +69,16 @@ impl Engine {
         &self.parts.mixers
     }
 
+    /// キャッシュの保存先（`cache/`）。大きさの表示と「消す」に使う。
+    pub fn cache(&self) -> &Arc<dyn CacheStore> {
+        &self.parts.cache
+    }
+
+    /// 操作が触った ID（`mm_ops::Touches`）に頼ったキャッシュだけを捨てる。
+    pub fn invalidate_touched(&mut self, ids: &[String]) {
+        self.parts.renderer.invalidate_touched(ids);
+    }
+
     /// 種類が使うほかのインターフェースの一式。
     pub fn services(&self) -> &Services {
         &self.parts.services

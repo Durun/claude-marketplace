@@ -8,6 +8,10 @@
 //! - `FrameCacheKey::digest` は同じ入力で同じ値、どのフィールドを変えても別の値。
 //! - `invalidate` の後も同じ画像（キャッシュを破棄しても結果は変わらない）。
 
+mod memo;
+
+pub use memo::{Dropped, Evicted, Memo, MemoStats, Weighted};
+
 use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
@@ -74,6 +78,13 @@ impl FrameCacheKey {
         h.u64(self.size_bucket_milli.into());
         h.0
     }
+}
+
+/// バイト列の FNV-1a（64 bit）。`FrameCacheKey::input_keys` に、入れ子の中身などの指紋を入れるのに使う。
+pub fn digest_bytes(bytes: &[u8]) -> u64 {
+    let mut h = Fnv1a::new();
+    h.bytes(bytes);
+    h.0
 }
 
 /// FNV-1a の 64 bit。`DefaultHasher` と違い、値が実装のバージョンで変わらない。
@@ -202,6 +213,12 @@ pub trait Renderer: Send {
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock>;
     /// プロジェクトのデータのこの範囲が変わった。キャッシュを破棄する。
     fn invalidate(&mut self, composition: &CompositionId, range: TimeRange);
+    /// 操作が触った ID（`mm_ops::Touches`。レイヤー、素材、コンポジション）に頼ったキャッシュだけを捨てる。
+    /// 素材の ID が入っていれば、その素材を閉じて次に開き直す。ほかの素材は閉じない。
+    /// キャッシュを持たない実装は何もしない。
+    fn invalidate_touched(&mut self, ids: &[String]) {
+        let _ = ids;
+    }
     /// GPU のヘルパー。リードバック（`mm frame`、書き出し）に使う。
     fn gpu(&mut self) -> &mut dyn GpuHelper;
 }
@@ -232,7 +249,8 @@ pub fn export_range_rgba<R: Renderer + ?Sized>(
     Ok(count)
 }
 
-/// 先読みの描画の順を決める。rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に倣い、
+/// 先読みの描画の順を決める。計算の結果の覚えは [`Memo`]（キーで引き、頼った ID が変わったら捨て、上限で追い出す）。
+/// rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に倣い、
 /// 提供者（このインターフェースの実装）を差し替えられる。
 pub trait Scheduler: Send {
     /// 再生位置と、変わった範囲から、先に描くべき範囲を優先順に返す。

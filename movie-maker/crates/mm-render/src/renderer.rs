@@ -6,10 +6,11 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixerFactory};
 use mm_decode_api::{DecoderFactory, Encoder};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture, Services};
-use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
+use mm_render_api::{AudioRequest, MemoStats, RangeRequest, RenderRequest, Renderer};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::audio::AudioStream;
+use crate::cache::{FrameCacheConfig, RenderCache};
 use crate::compose::Compositor;
 use crate::export::ExportPipe;
 use crate::layers::CompCx;
@@ -31,6 +32,7 @@ pub struct WgpuRenderer {
     pub(crate) mixers: Arc<dyn MixerFactory>,
     pub(crate) services: Services,
     pub(crate) sources: SourcePool,
+    pub(crate) cache: RenderCache,
     pub(crate) errors: Vec<String>,
     pub(crate) audio: Option<AudioStream>,
     outputs: VecDeque<u64>,
@@ -56,12 +58,26 @@ impl WgpuRenderer {
             mixers,
             services,
             sources: SourcePool::default(),
+            cache: RenderCache::new(FrameCacheConfig::default()),
             errors: Vec::new(),
             audio: None,
             outputs: VecDeque::new(),
             recoveries: 0,
             export: None,
         }
+    }
+
+    /// フレームのキャッシュの設定を差し替える（メモリの上限、退避先）。覚えていたものは捨てる。
+    pub fn with_frame_cache(mut self, config: FrameCacheConfig) -> Self {
+        self.cache.clear();
+        self.cache.flush(&mut self.gpu);
+        self.cache = RenderCache::new(config);
+        self
+    }
+
+    /// フレームのキャッシュの数え上げ（引いた回数、当たった回数、大きさ）。
+    pub fn frame_cache_stats(&self) -> MemoStats {
+        self.cache.stats()
     }
 
     /// 透明にしたレイヤーのエラーを取り出す（フラグの元）。
@@ -103,6 +119,8 @@ impl WgpuRenderer {
         self.timer = GpuTimer::new(&ctx);
         self.gpu = WgpuGpu::new(ctx);
         self.outputs.clear();
+        // 覚えた画像は前のデバイスのテクスチャなので、解放せず忘れる。
+        self.cache.forget_all();
         // 開いた素材は前のデバイスの上でデコードしているので、次に使うとき開き直す。
         self.sources.clear();
         self.export = None;
@@ -136,6 +154,7 @@ impl WgpuRenderer {
 
     pub(crate) fn draw_frame(&mut self, req: &RenderRequest<'_>) -> Result<u64> {
         self.ensure_device()?;
+        self.cache.flush(&mut self.gpu);
         self.report_gpu_time();
         self.timer.begin_frame();
         let comp = req.project.composition(req.composition)?;
@@ -222,9 +241,16 @@ impl Renderer for WgpuRenderer {
         self.mix_audio(req)
     }
 
-    fn invalidate(&mut self, _composition: &CompositionId, _range: TimeRange) {
-        self.sources.clear();
+    fn invalidate(&mut self, composition: &CompositionId, _range: TimeRange) {
+        // 範囲は見ない。入れ子の画像は時刻をキーに持つので、残っても別の時刻の画像は引かれない。
+        self.cache.invalidate(&[composition.as_str().to_owned()]);
         // 編集で音が変わるので、ダッキングなどの持ち越しも破棄する。
+        self.audio = None;
+    }
+
+    fn invalidate_touched(&mut self, ids: &[String]) {
+        self.cache.invalidate(ids);
+        self.sources.forget(ids);
         self.audio = None;
     }
 

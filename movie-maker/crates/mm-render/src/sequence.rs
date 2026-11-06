@@ -135,6 +135,7 @@ impl WgpuRenderer {
             texture,
             size: cx.size,
             place: Rect::new(0.0, 0.0, cx.comp.width as f32, cx.comp.height as f32),
+            cached: false,
         }))
     }
 

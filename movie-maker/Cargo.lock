@@ -2821,6 +2821,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-cache-fs"
+version = "0.1.0"
+dependencies = [
+ "mm-cache-api",
+ "mm-testkit",
+ "mm-trace",
+ "mm-types",
+ "tempfile",
+]
+
+[[package]]
 name = "mm-color-api"
 version = "0.1.0"
 dependencies = [
@@ -2929,9 +2940,13 @@ dependencies = [
 name = "mm-decode-ffmpeg-core"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "ffmpeg-next",
+ "mm-cache-api",
  "mm-decode-api",
+ "mm-trace",
  "mm-types",
+ "tracing",
 ]
 
 [[package]]
@@ -3111,7 +3126,9 @@ name = "mm-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "half",
  "mm-audio-api",
+ "mm-cache-api",
  "mm-color-lut",
  "mm-decode-api",
  "mm-doc",
@@ -3136,6 +3153,7 @@ name = "mm-render-api"
 version = "0.1.0"
 dependencies = [
  "mm-audio-api",
+ "mm-cache-api",
  "mm-decode-api",
  "mm-doc",
  "mm-node-api",
@@ -3151,6 +3169,7 @@ dependencies = [
  "mm-audio-api",
  "mm-audio-dsp",
  "mm-cache-api",
+ "mm-cache-fs",
  "mm-color-api",
  "mm-color-lut",
  "mm-color-ocio",
@@ -3158,6 +3177,7 @@ dependencies = [
  "mm-decode-cuvid",
  "mm-decode-d3d12va",
  "mm-decode-ffmpeg",
+ "mm-decode-ffmpeg-core",
  "mm-doc",
  "mm-encode-ffmpeg",
  "mm-gpu",

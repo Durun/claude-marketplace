@@ -1,5 +1,6 @@
 //! 組み立ての設定。インターフェースごとにどの実装を使うかを名前で選ぶ。
 
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,8 @@ pub enum Backend {
     D3d12va,
     /// `mm-decode-cuvid`（デコードだけ）。feature `cuvid` のときだけ組める。NVIDIA の GPU が要る。
     Cuvid,
+    /// `mm-cache-fs`（ディスクのキャッシュ）。`cache_dir` が要る。
+    Fs,
     /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数フレームで判断する。
     Auto,
 }
@@ -43,6 +46,7 @@ impl Backend {
             Backend::D3d12va => "d3d12va",
             Backend::Cuvid => "cuvid",
             Backend::Auto => "auto",
+            Backend::Fs => "fs",
             Backend::Sample => mm_testkit::SAMPLE_ID,
             Backend::Wgpu => "wgpu",
             Backend::Glyphon => "glyphon",
@@ -92,6 +96,7 @@ impl FromStr for Backend {
             "d3d12va" => Ok(Backend::D3d12va),
             "cuvid" => Ok(Backend::Cuvid),
             "auto" => Ok(Backend::Auto),
+            "fs" => Ok(Backend::Fs),
             other => Err(MmError::Unsupported(format!("実装 {other} は無い"))),
         }
     }
@@ -110,6 +115,10 @@ pub struct RuntimeConfig {
     pub cache: Backend,
     /// キャッシュの大きさの上限（バイト）。`None` は無制限。
     pub cache_limit_bytes: Option<u64>,
+    /// `cache: fs` の置き場所（プロジェクトの `cache/`）。
+    pub cache_dir: Option<PathBuf>,
+    /// レンダラーがメモリ（VRAM）に置くフレームのキャッシュの上限（バイト）。`None` は既定（1 GiB）、0 で使わない。
+    pub frame_memory_bytes: Option<u64>,
     /// 使う GPU。`None` なら高性能のアダプター。レンダラー・デコーダー・別プロセスのホストが同じものを使う。
     pub gpu: Option<GpuAdapterId>,
 }
@@ -133,7 +142,8 @@ impl RuntimeConfig {
 
     /// 実際の実装の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
     /// デコードは auto（素材ごとに d3d12va、cuvid、ffmpeg の順。入っていない実装と GPU の無い環境では ffmpeg）、
-    /// エンコードは ffmpeg。キャッシュは実際の実装がまだ無いのでモックのまま。
+    /// エンコードは ffmpeg。キャッシュはプロジェクトの置き場所（`cache_dir`）が要るのでモックのままで、
+    /// ディスクに置くには `cache: Fs` と `cache_dir` を足す。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
@@ -241,6 +251,7 @@ mod tests {
             Backend::D3d12va,
             Backend::Cuvid,
             Backend::Auto,
+            Backend::Fs,
         ] {
             assert_eq!(b.as_str().parse::<Backend>().unwrap(), b);
         }

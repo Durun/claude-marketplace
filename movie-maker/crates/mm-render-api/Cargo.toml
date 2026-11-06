@@ -12,6 +12,7 @@ mm-doc = { workspace = true }
 mm-node-api = { workspace = true }
 mm-decode-api = { workspace = true }
 mm-audio-api = { workspace = true }
+mm-cache-api = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
