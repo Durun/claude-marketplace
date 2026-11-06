@@ -9,8 +9,8 @@ use ffmpeg_next as ff;
 use mm_types::{MmError, Result};
 
 use crate::cuda::{CuContext, CuStream};
-use crate::shared::reader::HwReader;
-use crate::shared::yuv::stream_bit_depth;
+use mm_decode_ffmpeg_core::reader::StreamReader;
+use mm_decode_hw::yuv::stream_bit_depth;
 
 /// 選ぶ表面形式は CUDA だけ。cuvid は CPU の NV12 も申し出るが、使うのは GPU の上のコマ。
 unsafe extern "C" fn pick_cuda(
@@ -45,7 +45,7 @@ impl Drop for DeviceRef {
 
 /// 開いた素材。
 pub struct Opened {
-    pub reader: HwReader,
+    pub reader: StreamReader,
     /// 1 成分のビット深度（8 か 10）。
     pub bits: u32,
     /// FFmpeg が使う CUDA の文脈。コピーもこの文脈で行う。
@@ -117,7 +117,7 @@ pub fn open(path: &Path, cuda_device: i32) -> Result<Opened> {
         .and_then(|o| o.video())
         .map_err(|e| MmError::Unsupported(format!("{name}: {e}")))?;
     Ok(Opened {
-        reader: HwReader::new(input, stream_index, decoder),
+        reader: StreamReader::new(input, stream_index, decoder),
         bits,
         cuda_ctx,
         cuda_stream,

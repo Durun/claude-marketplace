@@ -29,6 +29,8 @@ mm-runtime = { path = "crates/mm-runtime" }
 mm-gpu = { path = "crates/mm-gpu" }
 mm-render = { path = "crates/mm-render" }
 mm-nodes-basic = { path = "crates/mm-nodes-basic" }
+mm-decode-ffmpeg-core = { path = "crates/mm-decode-ffmpeg-core" }
+mm-decode-hw = { path = "crates/mm-decode-hw" }
 mm-decode-d3d12va = { path = "crates/mm-decode-d3d12va" }
 mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
 mm-text-glyphon = { path = "crates/mm-text-glyphon" }

@@ -1,4 +1,4 @@
-//! GPU のデコーダーの統合テストが共有する補助（cuvid のテストも `#[path]` で取り込む）。
+//! GPU のデコーダー（d3d12va、cuvid）の統合テストが共有する補助。feature `testing` で入る。
 //!
 //! GPU のコマは `ReadbackFactory` で CPU の絵に読み戻して、`mm_testkit` の契約（CPU の絵を前提に
 //! 同じコマの一致を比べる）に通す。読み戻しは描画器と同じ手順（`import`、`before_submit`、`after_submit`）。

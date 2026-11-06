@@ -2,8 +2,7 @@
 //! 素材は `fixtures/media/generate.sh`（無ければ作る）。NVIDIA の GPU とドライバーが要る。
 #![cfg(feature = "cuvid")]
 
-#[path = "../../mm-decode-d3d12va/tests/common/mod.rs"]
-mod common;
+use mm_decode_hw::testing as common;
 
 use std::sync::Arc;
 use std::time::Duration;

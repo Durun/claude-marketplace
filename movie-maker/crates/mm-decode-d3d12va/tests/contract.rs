@@ -2,7 +2,7 @@
 //! 素材は `fixtures/media/generate.sh`（無ければ作る）。GPU と NVIDIA のドライバーが要る。
 #![cfg(feature = "d3d12va")]
 
-mod common;
+use mm_decode_hw::testing as common;
 
 use std::sync::Arc;
 use std::time::Duration;

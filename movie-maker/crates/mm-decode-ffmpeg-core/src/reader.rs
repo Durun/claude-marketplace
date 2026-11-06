@@ -5,25 +5,21 @@ use std::path::{Path, PathBuf};
 use ff::format::context::Input;
 use ff::{frame, Packet};
 use ffmpeg_next as ff;
-use mm_decode_api::MediaInfo;
+use mm_decode_api::{AudioStreamInfo, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, Size};
 
-use super::timeline::Timeline;
-use super::yuv::Matrix;
+use crate::matrix::{check_transfer, Matrix};
+use crate::timeline::{can_read_forward, Timeline};
 
-/// 同じ GOP の中の先へ進むとき、シークせずに読み進める上限のコマ数。
-/// 超えるなら、キーフレームまで戻るほうが速いことが多い。
-const READ_FORWARD_LIMIT: i64 = 30;
-
-/// 開いた入力と、ハードウェアの復号器。パケットを送ってコマを受ける。
-pub struct HwReader {
+/// 開いた入力と、映像の復号器。パケットを送ってコマを受ける。
+pub struct StreamReader {
     input: Input,
     stream_index: usize,
     decoder: ff::decoder::Video,
     draining: bool,
 }
 
-impl HwReader {
+impl StreamReader {
     /// 開いた入力と復号器を組にする。
     pub fn new(input: Input, stream_index: usize, decoder: ff::decoder::Video) -> Self {
         Self {
@@ -109,7 +105,7 @@ pub struct IndexedFrame {
 
 /// コマを番号の順に出す。シークは目的のコマの手前のキーフレームから復号して捨てる。
 pub struct Sequencer {
-    reader: HwReader,
+    reader: StreamReader,
     timeline: Timeline,
     path: PathBuf,
     next_index: i64,
@@ -118,9 +114,10 @@ pub struct Sequencer {
 }
 
 impl Sequencer {
-    /// PTS を走査して時間軸を作る。
-    pub fn new(path: &Path, reader: HwReader) -> Result<Self> {
+    /// PTS を走査して時間軸を作る。PQ と HLG の素材は `Unsupported`。
+    pub fn new(path: &Path, reader: StreamReader) -> Result<Self> {
         let dec = reader.decoder();
+        check_transfer(dec.color_transfer_characteristic())?;
         let size = Size::new(dec.width(), dec.height());
         let matrix = Matrix::from_frame(dec.color_space(), dec.height());
         let timeline = Timeline::build(path, &reader.stream(), size, matrix.color_space())?;
@@ -137,6 +134,17 @@ impl Sequencer {
     /// 素材の情報。
     pub fn info(&self) -> &MediaInfo {
         &self.timeline.info
+    }
+
+    /// 素材の時間軸の 0（最初のコマ）の秒。音の頭のずれを決めるのに使う。
+    pub fn origin(&self) -> RationalTime {
+        self.timeline.origin
+    }
+
+    /// 音のストリームの情報と、映像に対する音の頭のずれを素材の情報に入れる。
+    pub fn set_audio(&mut self, audio: Option<AudioStreamInfo>, timebase_offset: RationalTime) {
+        self.timeline.info.audio = audio;
+        self.timeline.info.timebase_offset = timebase_offset;
     }
 
     fn receive_indexed(&mut self) -> Result<Option<(i64, frame::Video)>> {
@@ -172,15 +180,17 @@ impl Sequencer {
         }
     }
 
-    /// `t` のコマが次に出るようにする。
+    /// `t` のコマが次に出るようにする。同じ GOP の中の先なら読み進め、そうでなければ手前のキーフレームから探し直す。
     pub fn seek(&mut self, t: RationalTime) -> Result<()> {
         let count = self.timeline.count();
         let index = self.timeline.info.frame_index_at(t).clamp(0, count);
         if index == self.next_index {
             return Ok(());
         }
-        let ahead = index - self.next_index;
-        if index < count && !self.ended && (1..=READ_FORWARD_LIMIT).contains(&ahead) {
+        if index < count
+            && !self.ended
+            && can_read_forward(&self.timeline.keyframes, self.next_index, index)
+        {
             return self.skip_to(index);
         }
         self.held = None;
