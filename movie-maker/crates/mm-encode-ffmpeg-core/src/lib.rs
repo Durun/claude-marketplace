@@ -16,6 +16,8 @@ pub use spec::{AudioCodec, CodecSpec, Container, Rate, VideoInput};
 #[cfg(feature = "ffmpeg")]
 mod audio;
 #[cfg(feature = "ffmpeg")]
+mod extras;
+#[cfg(feature = "ffmpeg")]
 mod transfer;
 #[cfg(feature = "ffmpeg")]
 mod video;

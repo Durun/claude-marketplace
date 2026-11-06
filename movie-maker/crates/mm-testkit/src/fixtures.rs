@@ -91,6 +91,7 @@ pub fn vertical_project(
         codec: crate::SAMPLE_ID.into(),
         output_path: output_path.to_string_lossy().into_owned(),
         loudness_lufs: None,
+        delivery: Default::default(),
     });
     (project, comp_id, target_id)
 }

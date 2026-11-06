@@ -6,10 +6,11 @@ use ff::format::context::Output;
 use ff::{codec, encoder, format, Packet, Rational};
 use ffmpeg_next as ff;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, Nv12Frame};
+use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, ExtraTracks, Nv12Frame};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::audio::AudioTrack;
+use crate::extras;
 use crate::spec::{CodecSpec, Container};
 use crate::video::{Pass, VideoTrack};
 
@@ -54,6 +55,8 @@ pub struct FfmpegEncoder {
     state: State,
     /// `begin` で決めた、映像を通す回数。
     passes: u32,
+    /// `set_extras` で渡された字幕とチャプター。`begin` が使う。
+    extras: ExtraTracks,
 }
 
 enum State {
@@ -119,6 +122,7 @@ impl FfmpegEncoder {
             resolve,
             state: State::Idle,
             passes: 1,
+            extras: ExtraTracks::default(),
         }
     }
 
@@ -144,6 +148,7 @@ impl FfmpegEncoder {
         spec: &CodecSpec,
         pass: &Pass,
         stats: Option<StatsFiles>,
+        extras: &ExtraTracks,
     ) -> Result<Session> {
         let mut output = format::output_as(&settings.output_path, spec.container.muxer())
             .map_err(|e| MmError::Io(std::io::Error::other(format!("出力を開けない: {e}"))))?;
@@ -157,6 +162,7 @@ impl FfmpegEncoder {
             .as_ref()
             .map(|a| AudioTrack::open(&mut output, a, spec.audio, global_header))
             .transpose()?;
+        let subtitles = extras::open(&mut output, extras)?;
         let mut options = ff::Dictionary::new();
         if spec.container == Container::Mp4 {
             options.set("movflags", "+faststart");
@@ -167,6 +173,9 @@ impl FfmpegEncoder {
             .map_err(|e| MmError::Internal(format!("ヘッダーの書き込み: {e}")))?;
         let video = video.after_header(&output);
         let audio = audio.map(|a| a.after_header(&output));
+        if let Some(track) = subtitles {
+            track.after_header(&output).write(&mut output)?;
+        }
         Ok(Session {
             output,
             video,
@@ -180,6 +189,14 @@ impl FfmpegEncoder {
 }
 
 impl Encoder for FfmpegEncoder {
+    fn set_extras(&mut self, extras: ExtraTracks) -> Result<()> {
+        if !matches!(self.state, State::Idle) {
+            return Err(MmError::InvalidArgument("begin の後に set_extras".into()));
+        }
+        self.extras = extras;
+        Ok(())
+    }
+
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
         if !matches!(self.state, State::Idle) {
             return Err(MmError::InvalidArgument("begin を 2 回呼んだ".into()));
@@ -214,6 +231,7 @@ impl Encoder for FfmpegEncoder {
                 &spec,
                 &Pass::Single,
                 None,
+                &self.extras,
             )?))
         };
         Ok(())
@@ -245,6 +263,7 @@ impl Encoder for FfmpegEncoder {
                     &spec,
                     &pass,
                     Some(stats),
+                    &self.extras,
                 )?));
                 Ok(())
             }

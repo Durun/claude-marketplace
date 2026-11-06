@@ -187,9 +187,9 @@ fn ワーカーを組めない設定は並行の書き出しのエラーにな�
     let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let settings = settings_of(&media);
-    // メモリの上限を使うのは wgpu のレンダラーだけ。組めない実装（このビルドに無い d3d12va）で確かめる
+    // decode に選べない実装（fs はキャッシュの実装）を選んで、ワーカーのエンジンを組めない設定にする
     let config = RuntimeConfig {
-        decode: mm_runtime::Backend::Cuvid,
+        decode: mm_runtime::Backend::Fs,
         ..RuntimeConfig::sample()
     };
     let mut rec = Recorder {

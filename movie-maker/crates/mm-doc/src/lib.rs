@@ -23,9 +23,11 @@ use mm_types::{
 /// - v4: マーカーの時刻が厳密な昇順（同じ時刻を持てない）。v3 からは同じ時刻の後のマーカーを 1/1000 秒ずつ後ろへずらして上げる。
 /// - v5: `color.lut` の LUT は素材（`lut` の `AssetRef`）。v4 の `path` はその場所の素材（`contentHash` は空）に移す。
 /// - v6: 素材の整理（`bins`: イン点・アウト点、選別、話題）と文字起こしの修正（`transcript_edits`）。v5 からは空で上げる。
-pub const SCHEMA_VERSION: u32 = 6;
+/// - v7: レンダーターゲットの納品の設定（`delivery`: 字幕、チャプター、トゥルーピークの上限）。v6 からは既定（何も添えない）で上げる。
+pub const SCHEMA_VERSION: u32 = 7;
 
 mod bins;
+mod delivery;
 mod layer;
 mod migrate;
 mod migrate_lut;
@@ -38,6 +40,7 @@ pub use bins::{
     Bins, Rating, Selection, SelectionId, SelectionMarker, SourceMarks, Topic, TopicId,
     TopicMarker, WordEdit, WordId, WordMarker,
 };
+pub use delivery::{Delivery, SubtitleOutput, DEFAULT_TRUE_PEAK_DBTP};
 pub use layer::{
     BlendMode, Effect, EffectId, EffectMarker, Layer, LayerAudio, Mask, MaskId, MaskMarker,
     MaskMode, MatteKind, TimeKeyframe, TimeRemap, TrackMatte, Transform,
@@ -290,6 +293,9 @@ pub struct RenderTarget {
     pub output_path: String,
     #[serde(default)]
     pub loudness_lufs: Option<f32>,
+    /// 字幕、チャプター、トゥルーピークの上限。
+    #[serde(default)]
+    pub delivery: Delivery,
 }
 
 #[cfg(test)]

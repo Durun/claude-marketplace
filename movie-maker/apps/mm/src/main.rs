@@ -8,6 +8,7 @@
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
 //! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
 
+mod captions_cmd;
 mod commands;
 mod compare;
 mod describe;
@@ -98,6 +99,8 @@ enum Command {
     },
     /// プロジェクトのレンダーターゲットを MP4 に書き出す。Ctrl+C で取り消せる。
     Render(render_cmd::RenderArgs),
+    /// sequence の字幕（文字起こしから。消した単語を除く）を SRT か WebVTT で出す。
+    Subtitles(captions_cmd::SubtitlesArgs),
     /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を適用する。
     Ingest {
         dir: PathBuf,
@@ -228,6 +231,7 @@ fn run(cli: Cli) -> Result<()> {
             width,
         }),
         Command::Render(args) => render_cmd::render(&args),
+        Command::Subtitles(args) => captions_cmd::subtitles(&args),
         Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),
         other => run_store_command(other),
@@ -288,6 +292,7 @@ fn run_store_command(command: Command) -> Result<()> {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Render(_) => "render",
+        Command::Subtitles(_) => "subtitles",
         Command::Perf { .. } => "perf",
         Command::ProbeStartup { .. } => "probe-startup",
         _ => "store",

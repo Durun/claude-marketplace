@@ -6,7 +6,9 @@
 use std::sync::Arc;
 
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, EncoderFactory, Nv12Frame};
+use mm_decode_api::{
+    EncodeReport, EncodeSettings, Encoder, EncoderFactory, ExtraTracks, Nv12Frame,
+};
 use mm_types::{MmError, Result, RgbaImage};
 
 /// NVENC のコーデックが使えないときの代わり。
@@ -47,6 +49,7 @@ impl EncoderFactory for AutoEncoderFactory {
     fn create(&self) -> Result<Box<dyn Encoder>> {
         Ok(Box::new(AutoEncoder {
             candidates: self.candidates.clone(),
+            extras: None,
             inner: None,
         }))
     }
@@ -55,6 +58,8 @@ impl EncoderFactory for AutoEncoderFactory {
 /// `begin` で選んだ実装に任せるエンコーダー。
 struct AutoEncoder {
     candidates: Vec<Arc<dyn EncoderFactory>>,
+    /// `begin` の前に渡された字幕とチャプター。選んだ実装へ渡す。
+    extras: Option<ExtraTracks>,
     inner: Option<Box<dyn Encoder>>,
 }
 
@@ -68,6 +73,9 @@ impl AutoEncoder {
         let mut last = MmError::Unsupported(format!("コーデック {codec} を扱える実装が無い"));
         for factory in self.candidates.iter().filter(|f| f.supports(codec)) {
             let mut encoder = factory.create()?;
+            if let Some(extras) = &self.extras {
+                encoder.set_extras(extras.clone())?;
+            }
             match encoder.begin(&settings) {
                 Ok(()) => return Ok(encoder),
                 Err(e) => {
@@ -87,6 +95,14 @@ impl AutoEncoder {
 }
 
 impl Encoder for AutoEncoder {
+    fn set_extras(&mut self, extras: ExtraTracks) -> Result<()> {
+        if self.inner.is_some() {
+            return Err(MmError::InvalidArgument("begin の後に set_extras".into()));
+        }
+        self.extras = Some(extras);
+        Ok(())
+    }
+
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
         if self.inner.is_some() {
             return Err(MmError::InvalidArgument("begin を 2 回呼んだ".into()));
