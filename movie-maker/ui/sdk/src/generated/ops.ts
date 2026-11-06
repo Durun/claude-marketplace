@@ -61,6 +61,15 @@ export type CutSplice = {
   "cuts": Cut[];
   "index": number;
 };
+/** 納品の設定。字幕とチャプターの出力と、トゥルーピークの上限。 ラウドネスの目標は `RenderTarget::loudness_lufs`（YouTube は -14、放送は -23）。 */
+export type Delivery = {
+  /** コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。 */
+  "chapters"?: boolean;
+  /** 字幕の置き方。字幕はシーケンスのカットの文字起こしから作る。 */
+  "subtitles"?: SubtitleOutput;
+  /** トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。 */
+  "true_peak_dbtp"?: number | null;
+};
 /** `Linear` の進み具合に掛けるイージングの型。 */
 export type Ease = "none" | "in" | "out" | "in_out";
 /** 動かす端。 */
@@ -219,6 +228,8 @@ export type RenderTarget = {
   "codec": string;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "composition": string;
+  /** 字幕、チャプター、トゥルーピークの上限。 */
+  "delivery"?: Delivery;
   "fps": Rational;
   "height": number;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
@@ -268,6 +279,8 @@ export type SourceRange = {
   "in": RationalTime;
   "out": RationalTime;
 };
+/** 字幕の置き方。 */
+export type SubtitleOutput = "none" | "sidecar" | "embedded";
 /** タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。 */
 export type TimeKeyframe = {
   "interpolation": Interpolation;
@@ -884,6 +897,46 @@ export const RENDER_TARGET_SCHEMA: JsonSchema = {
     "composition": {
       "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
       "type": "string"
+    },
+    "delivery": {
+      "description": "納品の設定。字幕とチャプターの出力と、トゥルーピークの上限。\nラウドネスの目標は `RenderTarget::loudness_lufs`（YouTube は -14、放送は -23）。",
+      "type": "object",
+      "properties": {
+        "chapters": {
+          "description": "コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。",
+          "type": "boolean",
+          "default": false
+        },
+        "subtitles": {
+          "description": "字幕の置き方。",
+          "oneOf": [
+            {
+              "description": "字幕を作らない。",
+              "type": "string",
+              "const": "none"
+            },
+            {
+              "description": "書き出しのファイルの隣に `<名前>.srt` と `<名前>.vtt` を置く。",
+              "type": "string",
+              "const": "sidecar"
+            },
+            {
+              "description": "MP4 に字幕のトラック（mov_text）として入れる。",
+              "type": "string",
+              "const": "embedded"
+            }
+          ]
+        },
+        "true_peak_dbtp": {
+          "description": "トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        }
+      }
     },
     "fps": {
       "description": "正の有理数 num/den（fps、再生の速さ）",
