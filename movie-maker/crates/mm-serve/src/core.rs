@@ -3,13 +3,15 @@
 //! 適用は `Mutex` で順に並べ、書けたら変わった所を購読者（SSE、アプリの描画、WebView）に送る。
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mm_doc::Project;
 use mm_ops::{Entry, OpContext, OpError, Transaction};
-use mm_store::{Actor, Store, StoredTxn, TxnKind};
-use mm_types::MmError;
+use mm_store::{Actor, BackupJob, Store, StoredTxn, TranscriptInput, TxnKind, UndoPlan};
+use mm_types::{AssetId, MmError};
 use serde::Serialize;
 use tokio::sync::broadcast;
 
@@ -51,6 +53,30 @@ pub struct Change {
     pub actor: String,
     /// 触った ID。描き直す範囲を決めるのに使う。
     pub touched: Vec<String>,
+    /// 取り消し・やり直しが戻した（やり直した）元のトランザクション。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub of: Option<ChangeOf>,
+}
+
+/// 取り消し・やり直しの対象になった元のトランザクション。誰の操作を戻したかを呼び手に返す。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChangeOf {
+    pub txn_id: i64,
+    pub name: String,
+    /// 元の操作をした人の種類（`gui`、`cli`、`claude` など）と名前。
+    pub actor: String,
+    pub actor_name: String,
+}
+
+impl From<UndoPlan> for ChangeOf {
+    fn from(plan: UndoPlan) -> Self {
+        Self {
+            txn_id: plan.txn_id,
+            name: plan.name,
+            actor: plan.actor.kind,
+            actor_name: plan.actor.name,
+        }
+    }
 }
 
 impl Change {
@@ -72,6 +98,7 @@ impl Change {
             name: stored.name.clone(),
             actor: stored.actor.kind.clone(),
             touched: touched.into_iter().cloned().collect(),
+            of: None,
         }
     }
 }
@@ -123,6 +150,10 @@ pub struct ProjectView {
 /// 書き手の `Store` と、変更の通知、描画の出し口。
 pub struct Core {
     store: Mutex<Option<Store>>,
+    /// 今のバージョン。`Store` の列を待たずに読めるよう、書くたびにここへも写す。
+    version: AtomicI64,
+    /// 走っているバックアップ。`Store` の列の外の別のスレッドで作る（DB 全体のコピーは長い）。
+    backup: Mutex<Option<JoinHandle<()>>>,
     events: broadcast::Sender<Change>,
     frames: Option<Arc<dyn FrameSource>>,
 }
@@ -132,7 +163,9 @@ impl Core {
     pub fn new(store: Store, frames: Option<Arc<dyn FrameSource>>) -> Arc<Self> {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         Arc::new(Self {
+            version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
+            backup: Mutex::new(None),
             events,
             frames,
         })
@@ -182,7 +215,7 @@ impl Core {
 
     /// 今のバージョン。
     pub fn version(&self) -> Result<i64, ServeError> {
-        self.with_store(|s| Ok(s.doc_version()))
+        Ok(self.version.load(Ordering::Acquire))
     }
 
     /// トランザクションを 1 本の列で適用して書き、変わった所を送る。
@@ -196,7 +229,7 @@ impl Core {
         let change = self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
             let stored = s.apply_txn(txn, &ctx, caller.actor.clone(), now_ms(), responds_to)?;
-            Ok(self.finish(s, &stored))
+            Ok(self.finish(s, &stored, None))
         })?;
         Ok(change)
     }
@@ -205,8 +238,9 @@ impl Core {
     pub fn undo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
+            let target = s.undo_plan()?.map(ChangeOf::from);
             let stored = s.undo_last(&ctx, caller.actor.clone(), now_ms())?;
-            Ok(stored.map(|t| self.finish(s, &t)))
+            Ok(stored.map(|t| self.finish(s, &t, target)))
         })
     }
 
@@ -214,23 +248,68 @@ impl Core {
     pub fn redo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
+            let target = s.redo_plan()?.map(ChangeOf::from);
             let stored = s.redo_last(&ctx, caller.actor.clone(), now_ms())?;
-            Ok(stored.map(|t| self.finish(s, &t)))
+            Ok(stored.map(|t| self.finish(s, &t, target)))
         })
     }
 
     /// 書いた後の仕事。間隔が過ぎたバックアップ、描画側のキャッシュの無効化、購読者への通知。
-    fn finish(&self, store: &mut Store, stored: &StoredTxn) -> Change {
-        if let Err(e) = store.backup_if_due(now_ms()) {
-            tracing::warn!("バックアップを作れない: {e}");
+    fn finish(&self, store: &mut Store, stored: &StoredTxn, of: Option<ChangeOf>) -> Change {
+        self.version.store(store.doc_version(), Ordering::Release);
+        if let Some(job) = store.take_due_backup(now_ms()) {
+            self.spawn_backup(job);
         }
-        let change = Change::of(stored);
+        let mut change = Change::of(stored);
+        change.of = of;
         if let Some(frames) = &self.frames {
             frames.invalidate(&change.touched);
         }
         // 購読者がいなければ送り先が無いだけなので、失敗は無視する。
         let _ = self.events.send(change.clone());
         change
+    }
+
+    /// 素材の文字起こしを DB の表に入れる（前の本文は置き換える）。入れた単語の数を返す。
+    pub fn put_transcript(
+        &self,
+        asset: &AssetId,
+        content_hash: &str,
+        input: &TranscriptInput,
+    ) -> Result<usize, ServeError> {
+        self.with_store(|s| {
+            let known = s.project().assets.iter().any(|a| &a.id == asset);
+            if !known {
+                return Err(ServeError::BadRequest(format!("素材 {asset} が無い")));
+            }
+            Ok(s.put_transcript(asset, content_hash, input)?)
+        })
+    }
+
+    /// 前のバックアップが終わっていなければ、新しいのは始めない（次の書き込みで間隔を見直す）。
+    fn spawn_backup(&self, job: BackupJob) {
+        let Ok(mut slot) = self.backup.lock() else {
+            return;
+        };
+        if slot.as_ref().is_some_and(|h| !h.is_finished()) {
+            return;
+        }
+        *slot = std::thread::Builder::new()
+            .name("serve-backup".into())
+            .spawn(move || {
+                if let Err(e) = job.run() {
+                    tracing::warn!("バックアップを作れない: {e}");
+                }
+            })
+            .ok();
+    }
+
+    /// 走っているバックアップが終わるのを待つ。閉じる前に呼ぶ。
+    fn join_backup(&self) {
+        let handle = self.backup.lock().ok().and_then(|mut s| s.take());
+        if let Some(h) = handle {
+            let _ = h.join();
+        }
     }
 
     /// 保存したままのプロジェクトのデータ（素材のパスはフォルダーからの相対）。
@@ -267,6 +346,7 @@ impl Core {
 
     /// 閉じる。バックアップと WAL の書き戻しをして、以後の要求は 503 にする。
     pub fn close(&self) -> Result<(), ServeError> {
+        self.join_backup();
         let mut guard = self.lock()?;
         if let Some(store) = guard.take() {
             // 公開した入口の情報は、Store を落とすときにロックと一緒に消える。
@@ -295,4 +375,25 @@ pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use super::*;
+
+    /// `Store` の列を誰かが長く持っていても、バージョンの読み（SSE の hello など）は待たない。
+    #[test]
+    fn バージョンは_store_の列が塞がっていても読める() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::create(&tmp.path().join("p"), &Project::new(), 0).unwrap();
+        let core = Core::new(store, None);
+        let _held = core.lock().unwrap();
+        let (tx, rx) = mpsc::channel();
+        let reader = core.clone();
+        std::thread::spawn(move || tx.send(reader.version().unwrap()).unwrap());
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)), Ok(0));
+    }
 }

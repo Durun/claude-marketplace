@@ -84,8 +84,19 @@ pub fn project() -> Project {
         loudness_lufs: None,
     });
     add_bins(&mut p);
+    add_footage_sequence(&mut p);
     p.validate().unwrap();
     p
+}
+
+/// 素材 a1 の撮影素材のカット kf だけを持つ sequence s2。素材の参照が `touches` に入るかを試す。
+fn add_footage_sequence(p: &mut Project) {
+    let source = Node::footage(&Id::new("a1"));
+    p.sequences.push(Sequence {
+        id: Id::new("s2"),
+        cuts: vec![Cut::new("kf", source, secs(0), secs(2))],
+        origin: None,
+    });
 }
 
 /// 素材 a1 と、その上の選別 sel1 と話題 t1。

@@ -105,6 +105,7 @@ mod tests {
             name: name.into(),
             actor: actor.into(),
             touched: Vec::new(),
+            of: None,
         }
     }
 

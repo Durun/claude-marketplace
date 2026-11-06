@@ -126,6 +126,14 @@ pub fn bin_op(spec: &BinSpec, p: &Project) -> Option<Op> {
             topic: pick(&p.bins.topics, *i)?.id.clone(),
         }
         .into(),
+        _ => return transcript_op(spec, p),
+    })
+}
+
+/// 文字起こしの単語を消す・直す操作。
+fn transcript_op(spec: &BinSpec, p: &Project) -> Option<Op> {
+    let asset = |i: u8| pick(&p.assets, i).map(|a| a.id.clone());
+    Some(match spec {
         BinSpec::DeleteWords(a, words, restore) => DeleteWords {
             asset: asset(*a)?,
             words: words

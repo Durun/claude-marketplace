@@ -40,6 +40,7 @@ pub(crate) struct AppState {
 pub(crate) fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/ops", post(post_ops))
+        .route("/transcripts", post(crate::transcripts::post_transcripts))
         .route("/undo", post(post_undo))
         .route("/redo", post(post_redo))
         .route("/project", get(get_project))
@@ -75,7 +76,7 @@ async fn guard(State(st): State<Arc<AppState>>, req: Request, next: Next) -> Res
         return error_response(
             StatusCode::UNAUTHORIZED,
             "unauthorized",
-            "合い言葉が無いか違う（.mm/token を Authorization: Bearer で渡す）",
+            "合い言葉が無いか違う（Authorization: Bearer で渡す）",
         );
     }
     next.run(req).await
@@ -153,7 +154,7 @@ struct OpsBody {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActorBody {
-    kind: String,
+    /// 呼び手の名前だけ。種類（`cli` か `mcp`）は操作経路で決まり、名乗れない。
     name: String,
 }
 
@@ -190,15 +191,13 @@ impl OpsBody {
                 )))
             }
         };
-        let actor = match self.actor.take() {
-            Some(a) => Actor {
-                kind: a.kind,
-                name: a.name,
-            },
-            None => Actor {
-                kind: default_actor.0.into(),
-                name: default_actor.1.into(),
-            },
+        let name = self
+            .actor
+            .take()
+            .map_or_else(|| default_actor.1.to_owned(), |a| a.name);
+        let actor = Actor {
+            kind: default_actor.0.into(),
+            name,
         };
         Ok(Caller { entry, actor })
     }
@@ -317,7 +316,7 @@ async fn get_events(
 }
 
 /// SQLite と描画は同期の処理なので、非同期の実行環境を止めない別のスレッドで行う。
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, ServeError> + Send + 'static,
 ) -> Result<T, ServeError> {
     tokio::task::spawn_blocking(f)

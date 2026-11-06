@@ -53,8 +53,12 @@ impl Client {
         }
     }
 
-    /// プロジェクトのフォルダーの `.mm/` から、動いている入口を探す。ポートか合い言葉が無ければ `None`。
+    /// プロジェクトのフォルダーの `.mm/` から、動いている入口を探す。書き手が生きていないか、
+    /// ポートか合い言葉が無ければ `None`。クラッシュで残った古いポートと合い言葉は信じない。
     pub fn for_project(dir: &Path) -> Option<Self> {
+        if !Store::writer_alive(dir) {
+            return None;
+        }
         let port = Store::read_writer_info(dir)?.http_port?;
         let token = Store::read_writer_token(dir)?;
         Some(Self::new(port, token))

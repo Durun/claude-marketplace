@@ -6,13 +6,15 @@ use std::path::Path;
 use mm_ops::Transaction;
 use mm_runtime::{assemble, RuntimeConfig};
 use mm_serve::{parse_time, render_png, Client, FrameRequest, Response};
-use mm_types::{MmError, Result};
+use mm_store::TranscriptInput;
+use mm_types::{AssetId, MmError, Result};
 use serde_json::{json, Value};
 
 use crate::project::load_project;
 
 /// 操作経路の名前。アプリ側でロックの付いた所に触る操作を拒否する扱いになる。
 const ENTRY: &str = "cli";
+const UNAUTHORIZED: u16 = 401;
 
 /// 失敗の応答を `mm` のエラーにする。
 fn check(res: Response, what: &str) -> Result<Response> {
@@ -32,6 +34,14 @@ fn print_change(change: &Value) {
         change["version"],
         change["name"].as_str().unwrap_or("")
     );
+    if let Some(of) = change.get("of") {
+        println!(
+            "  元の操作: {} / {}（{}）",
+            of["actor"].as_str().unwrap_or(""),
+            of["actor_name"].as_str().unwrap_or(""),
+            of["name"].as_str().unwrap_or("")
+        );
+    }
     let touched: Vec<&str> = change["touched"]
         .as_array()
         .map(|a| a.iter().filter_map(Value::as_str).collect())
@@ -46,6 +56,43 @@ pub fn op(client: &Client, txn: &Transaction) -> Result<()> {
     let res = client.post("/ops", &json!({ "txn": txn, "entry": ENTRY }))?;
     print_change(&check(res, "操作")?.json()?);
     Ok(())
+}
+
+/// アプリのプロジェクトにある素材の（ID、コンテンツハッシュ）。
+pub fn assets(client: &Client) -> Result<Vec<(AssetId, String)>> {
+    let body = check(client.get("/project")?, "プロジェクトの取得")?.json()?;
+    let list = body["project"]["assets"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    Ok(list
+        .iter()
+        .map(|a| {
+            let id = a["id"].as_str().unwrap_or_default();
+            let hash = a["content_hash"].as_str().unwrap_or_default();
+            (AssetId::new(id), hash.to_owned())
+        })
+        .collect())
+}
+
+/// 素材の文字起こしをアプリの DB に入れる。入れた単語の数を返す。
+pub fn put_transcript(
+    client: &Client,
+    asset: &AssetId,
+    content_hash: &str,
+    input: &TranscriptInput,
+) -> Result<usize> {
+    let words: Vec<Value> = input
+        .words
+        .iter()
+        .map(|w| json!({ "segment": w.segment, "start": w.start, "end": w.end, "text": w.text }))
+        .collect();
+    let body = json!({
+        "asset": asset, "content_hash": content_hash,
+        "producer": input.producer, "language": input.language, "words": words,
+    });
+    let res = check(client.post("/transcripts", &body)?, "文字起こしの取り込み")?;
+    Ok(res.json()?["words"].as_u64().unwrap_or(0) as usize)
 }
 
 /// `mm undo` / `mm redo` をアプリに送る。`path` は `/undo` か `/redo`。
@@ -74,9 +121,9 @@ pub fn frame(args: &FrameArgs) -> Result<()> {
     let dir = mm_store::store_dir(args.project);
     let remote = dir.as_deref().and_then(Client::for_project);
     let png = match remote.map(|c| fetch_frame(&c, args)) {
-        Some(Ok(png)) => png,
-        // アプリが落ちて残った `.mm/` の情報は、接続できないので自分で描く。
-        Some(Err(MmError::Io(_))) | None => render_local(args)?,
+        Some(Ok(Some(png))) => png,
+        // 接続できない、または合い言葉が合わない入口は、古い情報として自分で描く。
+        Some(Ok(None) | Err(MmError::Io(_))) | None => render_local(args)?,
         Some(Err(e)) => return Err(e),
     };
     std::fs::write(args.output, &png)?;
@@ -84,7 +131,8 @@ pub fn frame(args: &FrameArgs) -> Result<()> {
     Ok(())
 }
 
-fn fetch_frame(client: &Client, args: &FrameArgs) -> Result<Vec<u8>> {
+/// 合い言葉が拒否されたら `None`（別のプロセスのポートに古い合い言葉を送った場合）。
+fn fetch_frame(client: &Client, args: &FrameArgs) -> Result<Option<Vec<u8>>> {
     let mut path = format!("/frame?t={}", encode_query(args.time));
     if let Some(c) = args.composition {
         path.push_str(&format!("&comp={}", encode_query(c)));
@@ -92,7 +140,11 @@ fn fetch_frame(client: &Client, args: &FrameArgs) -> Result<Vec<u8>> {
     if let Some(w) = args.width {
         path.push_str(&format!("&width={w}"));
     }
-    Ok(check(client.get(&path)?, "フレームの描画")?.body)
+    let res = client.get(&path)?;
+    if res.status == UNAUTHORIZED {
+        return Ok(None);
+    }
+    Ok(Some(check(res, "フレームの描画")?.body))
 }
 
 fn render_local(args: &FrameArgs) -> Result<Vec<u8>> {

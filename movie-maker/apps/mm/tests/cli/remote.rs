@@ -113,7 +113,7 @@ fn mm_undo_と_redo_も転送される() {
 fn 合い言葉が消えていれば転送せず_理由を言う() {
     let tmp = TempDir::new().unwrap();
     let (dir, _server) = app(&tmp);
-    std::fs::remove_file(dir.join(".mm").join("token")).unwrap();
+    std::fs::remove_file(Store::writer_token_file(&dir).unwrap()).unwrap();
     let out = mm(&["op", path(&dir), "addSequence", "--json", &sequence_json()]);
     assert!(!out.status.success());
     assert!(
