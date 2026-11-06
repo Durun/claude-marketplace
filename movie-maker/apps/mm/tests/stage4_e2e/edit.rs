@@ -16,13 +16,52 @@ pub const ORDER: [usize; plan::TOPICS] = [3, 1, 4, 0, 5, 2];
 pub const SHORT_TOPICS: usize = 2;
 /// 言い淀みを抜く話題の番号（ショートが参照しない話題）。
 pub const STUTTER_TOPIC: usize = 0;
-pub const MAIN_SIZE: (u32, u32) = (1920, 1080);
-pub const SHORT_SIZE: (u32, u32) = (1080, 1920);
 pub const FPS: i64 = 30;
-/// ショートの再フレーミングの拡大。縦の画布に収めた素材（高さ 608 画素）が画布の高さを少し超える。
-pub const REFRAME_SCALE: f64 = 3.2;
+/// 設定すると本編を 1080p、ショートを 1080x1920 で書き出す。無ければ縦横を 1/3 にする（CI のソフトウェア描画で時間内に収める）。
+const FULL_HD_ENV: &str = "MM_E2E_FULL_HD";
+/// 実寸に対する既定の縮尺。
+const SMALL_SCALE: f64 = 1.0 / 3.0;
+/// 実寸（1080p）でのショートの再フレーミングの横のずれ（画素）、字幕の置き場所と幅。
+const FULL_SHIFTS: [f64; 2] = [-150.0, 100.0];
+const FULL_CAPTION_AT: [f64; 2] = [540.0, 1700.0];
+const FULL_CAPTION_WIDTH: f64 = 900.0;
+
+fn unit() -> f64 {
+    if std::env::var_os(FULL_HD_ENV).is_some() {
+        1.0
+    } else {
+        SMALL_SCALE
+    }
+}
+
+fn scaled(v: f64) -> f64 {
+    (v * unit()).round()
+}
+
+/// 本編の大きさ（16:9）。
+pub fn main_size() -> (u32, u32) {
+    (scaled(1920.0) as u32, scaled(1080.0) as u32)
+}
+
+/// ショートの大きさ（9:16）。
+pub fn short_size() -> (u32, u32) {
+    (scaled(1080.0) as u32, scaled(1920.0) as u32)
+}
+
 /// ショートの 2 つのカットの、再フレーミングの横のずれ（画素）。
-pub const REFRAME_SHIFTS: [f64; 2] = [-150.0, 100.0];
+pub fn reframe_shifts() -> [f64; 2] {
+    FULL_SHIFTS.map(scaled)
+}
+
+/// 縦の画布に縦横比を保って収めた本編の素材の高さ（画素）。`footage` の収め方の丸めと同じ。
+pub fn place_h() -> u32 {
+    let (mw, mh) = main_size();
+    let (sw, sh) = short_size();
+    let ratio = (f64::from(sw) / f64::from(mw)).min(f64::from(sh) / f64::from(mh));
+    (f64::from(mh) * ratio).round() as u32
+}
+/// ショートの再フレーミングの拡大。縦の画布に収めた素材（実寸で高さ 608 画素）が画布の高さを少し超える。
+pub const REFRAME_SCALE: f64 = 3.2;
 /// 本編の 1 つ目のカットの out をリップルで縮める量（秒）。ショートの対応するカットは従う。
 pub const RIPPLE_FOLLOWED: i64 = 2;
 /// 本編の 2 つ目のカットの out をリップルで縮める量（秒）。ショートの対応するカットは上書きしているので変わらない。
@@ -30,9 +69,6 @@ pub const RIPPLE_OVERRIDDEN: i64 = 1;
 /// 2 つ目のカットを上書きする in の進み（秒）と out の戻り（秒）。リップル後の本編のカットの中に収まる。
 const OVERRIDE_IN: i64 = 1;
 const OVERRIDE_OUT: i64 = 2;
-/// 字幕の置き場所（ショートの画素）。
-const CAPTION_AT: [f64; 2] = [540.0, 1700.0];
-const CAPTION_WIDTH: f64 = 900.0;
 
 /// プロジェクトのフォルダーと、作業のフォルダー。
 pub struct Env {
@@ -116,7 +152,7 @@ pub fn build_main(env: &Env, topics: &[Topic]) -> RationalTime {
     let build = vec![
         json!({"op": "addSequence", "sequence": {"id": "s1", "cuts": []}}),
         plan::insert_topics("s1", &by_order[..1]),
-        composition("main", "l1", "s1", MAIN_SIZE, by_order[0].len()),
+        composition("main", "l1", "s1", main_size(), by_order[0].len()),
     ];
     apply_txn(env, "build", build);
     apply_txn(
@@ -153,15 +189,14 @@ pub fn build_short(env: &Env, topics: &[Topic]) {
     apply_txn(env, "fork", vec![fork, over]);
     // コンポジションの長さは、上書き後の sequence の長さに合わせて置く。
     let len = sequence_duration(project_of(&env.dir).sequence(&Id::new("short")).unwrap()).unwrap();
-    let mut ops = vec![composition("vert", "l2", "short", SHORT_SIZE, len)];
-    for ((_, short_cut), shift) in ids.iter().zip(REFRAME_SHIFTS) {
+    let mut ops = vec![composition("vert", "l2", "short", short_size(), len)];
+    for ((_, short_cut), shift) in ids.iter().zip(reframe_shifts()) {
         let transform = json!({"position": vec2(shift, 0.0), "scale": number(REFRAME_SCALE)});
         ops.push(
             json!({"op": "setReframe", "layer": "l2", "cut": short_cut, "transform": transform}),
         );
     }
-    let caption =
-        json!({"position": vec2(CAPTION_AT[0], CAPTION_AT[1]), "width": number(CAPTION_WIDTH)});
+    let caption = json!({"position": vec2(scaled(FULL_CAPTION_AT[0]), scaled(FULL_CAPTION_AT[1])), "width": number(scaled(FULL_CAPTION_WIDTH))});
     ops.push(json!({"op": "setCaption", "layer": "l2", "caption": caption}));
     apply_txn(env, "short", ops);
 }
@@ -225,8 +260,8 @@ pub fn add_targets(env: &Env, lufs: f64) {
         })
         .collect();
     let yt = json!({"subtitles": "sidecar", "chapters": true});
-    ops.push(target("yt", "main", MAIN_SIZE, lufs, yt));
+    ops.push(target("yt", "main", main_size(), lufs, yt));
     let shorts = json!({"subtitles": "sidecar"});
-    ops.push(target("shorts", "vert", SHORT_SIZE, lufs, shorts));
+    ops.push(target("shorts", "vert", short_size(), lufs, shorts));
     apply_txn(env, "targets", ops);
 }

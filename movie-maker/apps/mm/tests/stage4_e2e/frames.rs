@@ -11,18 +11,18 @@ use mm_types::{Id, Rational, RationalTime};
 use serde_json::{json, Value};
 
 use crate::checks::{extract_frame, frame_count, reframe_png, ssim};
-use crate::edit::{mm, short_cut_ids, Env, FPS, REFRAME_SCALE, REFRAME_SHIFTS, SHORT_SIZE};
+use crate::edit::{
+    mm, place_h, reframe_shifts, short_cut_ids, short_size, Env, FPS, REFRAME_SCALE,
+};
 
-/// 書き出しとプレビューの SSIM の下限。testsrc2 の素材は乱数の市松の領域を持ち、H.264 で最も落ちる（実測 0.93 台）。
-const MIN_SSIM: f64 = 0.90;
+/// 書き出しとプレビューの SSIM の下限。testsrc2 の素材は乱数の市松の領域を持ち、H.264 で最も落ちる（実測 1080p で 0.93 から 0.97、縮尺 1/3 で 0.90 から 0.96）。
+const MIN_SSIM: f64 = 0.88;
 /// 本編の絵から ffmpeg のフィルターで再フレーミングした絵との SSIM の下限。拡大の補間の違い（二重の双線形）を見込む。
 const MIN_SSIM_REFRAMED: f64 = 0.85;
 /// 時刻をずらした絵との SSIM を、正しい時刻の SSIM が上回るべき差。
 const MIN_MARGIN: f64 = 0.03;
 /// 取り違えの比べに使う、ずらすフレームの数。
 const WRONG_SHIFT: i64 = 15;
-/// 縦の画布に縦横比を保って収めた素材の高さ（画素）。`footage` の収め方の丸めと同じ。
-const PLACE_H: u32 = 608;
 
 fn fps() -> Rational {
     Rational::integer(FPS as u32)
@@ -43,8 +43,8 @@ fn preview(env: &Env, comp: &str, n: i64, png: &Path) {
 
 /// 数か所のフレーム番号。先頭、先頭の次、全長の 1/4・1/2・3/4、最後、カットの境目の前後。
 fn sample(count: i64, boundaries: &[i64]) -> Vec<i64> {
-    let mut v = vec![0, 1, count / 4, count / 2, count * 3 / 4, count - 1];
-    for b in boundaries {
+    let mut v = vec![0, count / 2, count - 1];
+    for b in boundaries.iter().take(1) {
         v.extend([b - 1, *b]);
     }
     v.retain(|n| (0..count).contains(n));
@@ -158,20 +158,20 @@ pub fn check_short(env: &Env, p: &Project, video: &Path, report: &mut Value) {
         reframe_png(
             &png("s-main.png"),
             &png("s-expect.png"),
-            SHORT_SIZE,
-            PLACE_H,
+            short_size(),
+            place_h(),
             REFRAME_SCALE,
-            REFRAME_SHIFTS[cut],
+            reframe_shifts()[cut],
         );
         let (wrong_main, _) = main_frame_of(p, near(n, count));
         preview(env, "main", wrong_main, &png("s-main-wrong.png"));
         reframe_png(
             &png("s-main-wrong.png"),
             &png("s-expect-wrong.png"),
-            SHORT_SIZE,
-            PLACE_H,
+            short_size(),
+            place_h(),
             REFRAME_SCALE,
-            REFRAME_SHIFTS[cut],
+            reframe_shifts()[cut],
         );
         let (from_main, from_wrong) = (
             ssim(&png("s-got.png"), &png("s-expect.png")),

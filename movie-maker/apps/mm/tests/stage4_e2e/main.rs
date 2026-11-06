@@ -7,7 +7,7 @@
 //! - 字幕の時刻、チャプター、ラウドネス（-14 LUFS、-1 dBTP）、長さ、フレームの数。
 //!
 //! FFmpeg が要るので feature `ffmpeg` のときだけ走る。環境変数は段階 3 の通し（`stage3_e2e`）と同じ。
-//! `MM_E2E_DIR` を渡すと、プロジェクトと書き出しを残す（アプリの `--play-test` で続きを試す）。
+//! 既定は縦横を 1/3 にした大きさ。`MM_E2E_FULL_HD=1` で本編 1080p、ショート 1080x1920。`MM_E2E_DIR` を渡すと、プロジェクトと書き出しを残す（アプリの `--play-test` で続きを試す）。
 #![cfg(feature = "ffmpeg")]
 
 #[path = "../stage3_e2e/media.rs"]
