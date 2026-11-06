@@ -170,6 +170,41 @@ pub trait MixerFactory: Send + Sync {
         channels: u16,
         config: &MixerConfig,
     ) -> Result<Box<dyn Mixer>>;
+
+    /// 書き出しのラウドネスの正規化。対応しない実装は `None`（既定）で、呼ぶ側が拒否する。
+    fn loudness_normalizer(&self) -> Option<Box<dyn LoudnessNormalizer>> {
+        None
+    }
+}
+
+/// ラウドネスの正規化の指定。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NormalizeSpec {
+    /// 統合ラウドネスの目標（LUFS）。
+    pub target_lufs: f32,
+    /// トゥルーピークの上限（dBTP）。
+    pub ceiling_dbtp: f32,
+}
+
+/// 正規化の結果。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NormalizeReport {
+    /// かける前の統合ラウドネス（LUFS）。無音などで測れなければ `None`（このとき音は変えない）。
+    pub measured_lufs: Option<f32>,
+    /// かけた後の統合ラウドネス（LUFS）。
+    pub final_lufs: Option<f32>,
+    /// 最初にかけた倍率（dB）。リミッターの前の値。
+    pub gain_db: f32,
+    /// かけた後のトゥルーピーク（dBTP）。
+    pub true_peak_dbtp: f32,
+    /// リミッターが音を削ったか。
+    pub limited: bool,
+}
+
+/// 書き出しのラウドネスの正規化。1 パス目で測り、2 パス目で倍率とリミッターをかける。
+pub trait LoudnessNormalizer: Send {
+    /// `block` を、統合ラウドネスが `spec.target_lufs`、トゥルーピークが `spec.ceiling_dbtp` 以下になるよう直す。
+    fn normalize(&self, block: &mut AudioBlock, spec: &NormalizeSpec) -> Result<NormalizeReport>;
 }
 
 /// 音の出力先。プレビュー（cpal）と書き出し（WAV）が実装する。

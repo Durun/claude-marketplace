@@ -13,6 +13,7 @@ use mm_export::{
 use mm_runtime::{assemble, RuntimeConfig};
 use mm_types::{Id, MmError, RationalTime, Result, TimeRange};
 
+use crate::captions_cmd;
 use crate::project::load_project;
 
 /// 取り消したときの終了コード（シェルの慣例で 128 + SIGINT）。
@@ -74,6 +75,10 @@ pub fn render(args: &RenderArgs) -> Result<()> {
         output: args.output.clone(),
         range: args.range,
         sequence: args.sequence.clone().map(Id::new),
+        transcript: needs_transcript(&project, &targets)
+            .then(|| captions_cmd::transcript_words(&args.project, &project))
+            .transpose()?
+            .map(Arc::new),
         verify: !args.no_verify,
         control,
         ..ExportOptions::default()
@@ -87,6 +92,15 @@ pub fn render(args: &RenderArgs) -> Result<()> {
         std::process::exit(EXIT_CANCELLED);
     }
     Ok(())
+}
+
+/// 書き出すレンダーターゲットのどれかが字幕を出す設定か（DB から単語を読む要るか）。
+fn needs_transcript(project: &mm_doc::Project, targets: &[mm_types::RenderTargetId]) -> bool {
+    targets.iter().any(|id| {
+        project
+            .render_target(id)
+            .is_ok_and(|t| t.delivery.subtitles != mm_doc::SubtitleOutput::None)
+    })
 }
 
 fn pick_targets(
@@ -163,6 +177,27 @@ fn print_summary(s: &ExportSummary) {
             v.audio_seconds
                 .map_or_else(|| "なし".to_owned(), |a| format!("{a:.3} 秒"))
         );
+    }
+    print_delivery(&s.delivery);
+}
+
+fn print_delivery(d: &mm_export::DeliveryReport) {
+    if let Some(n) = &d.normalization {
+        match (n.measured_lufs, n.final_lufs) {
+            (Some(before), Some(after)) => println!(
+                "  ラウドネス: {before:.1} LUFS -> {after:.1} LUFS（{:+.1} dB、トゥルーピーク {:.1} dBTP{}）",
+                n.gain_db,
+                n.true_peak_dbtp,
+                if n.limited { "、リミッター" } else { "" }
+            ),
+            _ => println!("  ラウドネス: 無音で測れず、音は変えていない"),
+        }
+    }
+    for f in d.subtitle_files.iter().chain(&d.chapters_file) {
+        println!("  {}", f.display());
+    }
+    for w in &d.warnings {
+        eprintln!("  警告: {w}");
     }
 }
 

@@ -4,10 +4,13 @@
 //! 符号化値に直してから Rec.709・tv レンジの NV12 にして押す。レンダラーが GPU で作った NV12（`push_nv12_frames`）は
 //! 変換せずに押す。フレームの時刻は 1 フレームごとに `1 / fps` 進める（書き出しは CFR）。
 //!
+//! 字幕のトラック（mov_text）とチャプターは `Encoder::set_extras` で受け、ヘッダーの前に足す（`extras`）。
+//!
 //! feature `ffmpeg` を入れたときだけ実装をビルドする（FFmpeg の開発ファイルが要るため）。
 #![cfg(feature = "ffmpeg")]
 
 mod audio;
+mod extras;
 mod transfer;
 mod video;
 
@@ -15,7 +18,9 @@ use ff::format::context::Output;
 use ff::{codec, encoder, format, Packet, Rational};
 use ffmpeg_next as ff;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, EncoderFactory, Nv12Frame};
+use mm_decode_api::{
+    EncodeReport, EncodeSettings, Encoder, EncoderFactory, ExtraTracks, Nv12Frame,
+};
 use mm_types::{MmError, Result, RgbaImage};
 
 use audio::AudioTrack;
@@ -42,7 +47,10 @@ impl EncoderFactory for FfmpegEncoderFactory {
 
     fn create(&self) -> Result<Box<dyn Encoder>> {
         init()?;
-        Ok(Box::new(FfmpegEncoder { session: None }))
+        Ok(Box::new(FfmpegEncoder {
+            session: None,
+            extras: ExtraTracks::default(),
+        }))
     }
 }
 
@@ -55,9 +63,11 @@ fn init() -> Result<()> {
 /// 書き出し 1 本。`begin` から `finish` まで。
 pub struct FfmpegEncoder {
     session: Option<Session>,
+    /// `set_extras` で渡された字幕とチャプター。`begin` が使う。
+    extras: ExtraTracks,
 }
 
-/// 開いた出力と 2 本のトラック。
+/// 開いた出力と、映像・音・字幕のトラック。
 struct Session {
     output: Output,
     video: VideoTrack,
@@ -72,6 +82,14 @@ struct Session {
 unsafe impl Send for Session {}
 
 impl Encoder for FfmpegEncoder {
+    fn set_extras(&mut self, extras: ExtraTracks) -> Result<()> {
+        if self.session.is_some() {
+            return Err(MmError::InvalidArgument("begin の後に set_extras".into()));
+        }
+        self.extras = extras;
+        Ok(())
+    }
+
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
         if self.session.is_some() {
             return Err(MmError::InvalidArgument("begin を 2 回呼んだ".into()));
@@ -95,6 +113,7 @@ impl Encoder for FfmpegEncoder {
             .as_ref()
             .map(|a| AudioTrack::open(&mut output, a, global_header))
             .transpose()?;
+        let subtitles = extras::open(&mut output, &self.extras)?;
         let mut options = ff::Dictionary::new();
         options.set("movflags", "+faststart");
         options.set("avoid_negative_ts", "make_non_negative");
@@ -103,6 +122,9 @@ impl Encoder for FfmpegEncoder {
             .map_err(|e| MmError::Internal(format!("ヘッダーの書き込み: {e}")))?;
         let video = video.after_header(&output);
         let audio = audio.map(|a| a.after_header(&output));
+        if let Some(track) = subtitles {
+            track.after_header(&output).write(&mut output)?;
+        }
         self.session = Some(Session {
             output,
             video,

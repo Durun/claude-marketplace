@@ -13,8 +13,8 @@
 | ProRes、DNxHR、MXF、DPX、OpenEXR | FFmpeg のライブラリでそのまま読む。書き出しも FFmpeg | 読みは 2、書き出しは 4 | `mm-decode-ffmpeg`、`mm-encode-ffmpeg` | 読み込みは必須 |
 | PQ、HLG、Rec.2020 | 作業色空間は線形の浮動小数。入力はトーンマップを明示。出力はサーフェスを `Rgba16Float` に | 後 | `mm-render` | あると良い |
 | BWF、iXML | WAV のチャンクを取り込みで読む | 3 | 取り込み | 読み込みは必須 |
-| ITU-R BS.1770、EBU R128 | `ebur128` クレートのメーターと、書き出しの正規化 | 2 | ミキサー | 必須 |
-| SRT、WebVTT | 字幕のトラックから書き出す | 4 | 書き出し | 必須 |
+| ITU-R BS.1770、EBU R128 | `ebur128` クレートのメーターと、書き出しの正規化（統合ラウドネスの目標、-1 dBTP のトゥルーピークの上限） | 2、書き出しは 4 | ミキサー | 必須 |
+| SRT、WebVTT | sequence のカットの文字起こしから書き出す。MP4 の字幕のトラックは mov_text | 4 | 書き出し | 必須 |
 | TTML、IMSC 1.2 | 同じトラックから XML で | 7 | 書き出し | あると良い |
 | CEA-608、708 | 対応しない | | | 当面は不要 |
 | OpenType、SVG | cosmic-text、resvg | 2 | `mm-text-glyphon`、`mm-nodes-basic` | 必須 |

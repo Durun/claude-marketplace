@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig, MixerFactory};
+use mm_audio_api::{AudioBlock, LoudnessNormalizer, MixInput, Mixer, MixerConfig, MixerFactory};
 use mm_types::{MmError, Result};
 
 /// dB を倍率に。
@@ -41,6 +41,10 @@ impl MixerFactory for DspMixerFactory {
             peak: 0.0,
             hold_left: 0,
         }))
+    }
+
+    fn loudness_normalizer(&self) -> Option<Box<dyn LoudnessNormalizer>> {
+        Some(Box::new(crate::DspLoudnessNormalizer))
     }
 }
 

@@ -43,7 +43,8 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             3 => v3_to_v4(&mut value),
             4 => crate::migrate_lut::v4_to_v5(&mut value),
             5 => v5_to_v6(&mut value),
-            6 => crate::migrate_shorts::v6_to_v7(&mut value),
+            6 => {} // v7 の delivery は serde の既定で埋まる
+            7 => crate::migrate_shorts::v7_to_v8(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -301,6 +302,35 @@ mod tests {
         assert!(p.transcript_edits[0].deleted);
         let back = load(&serde_json::to_string(&p).unwrap()).unwrap();
         assert_eq!(back, p);
+    }
+
+    #[test]
+    fn v6_は何も添えない納品の設定で_v7_に上がる() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let text = std::fs::read_to_string(dir.join("v6/stage3.json")).unwrap();
+        let mut v6: Value = serde_json::from_str(&text).unwrap();
+        v6["render_targets"] = serde_json::json!([{
+            "id": "t", "composition": "c", "width": 16, "height": 9, "fps": {"num": 30, "den": 1},
+            "codec": "h264", "output_path": "x.mp4", "loudness_lufs": -14.0
+        }]);
+        let up = migrate(v6).unwrap();
+        assert_eq!(up["schema_version"], SCHEMA_VERSION);
+        let t: crate::RenderTarget =
+            serde_json::from_value(up["render_targets"][0].clone()).unwrap();
+        assert_eq!(t.delivery, crate::Delivery::default());
+        assert_eq!(t.delivery.ceiling_dbtp(), crate::DEFAULT_TRUE_PEAK_DBTP);
+    }
+
+    #[test]
+    fn 凍結した_v7_の納品の設定が読めて往復する() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let p = load(&std::fs::read_to_string(dir.join("v7/stage4.json")).unwrap()).unwrap();
+        let d = &p.render_targets[0].delivery;
+        assert_eq!(d.subtitles, crate::SubtitleOutput::Sidecar);
+        assert!(d.chapters);
+        assert_eq!(d.ceiling_dbtp(), -1.5);
+        assert_eq!(p.compositions[0].markers[0].name, "冒頭");
+        assert_eq!(load(&serde_json::to_string(&p).unwrap()).unwrap(), p);
     }
 
     #[test]

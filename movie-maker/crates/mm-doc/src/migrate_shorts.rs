@@ -1,8 +1,8 @@
-//! v6 → v7: 本編とショート。
+//! v7 → v8: 本編とショート。
 //!
 //! 増えたフィールド（`Cut.overrides`、`Cut.origin_base`、`Layer.framing`）は serde の既定で埋まる。
 //! 複製のカットだけは比べ先が要るので、今の元のカットの値を元の値（`origin_base`）にする
-//! （v6 までに元が変わっていても分からないので、上げた時点から後の変化を知らせる）。
+//! （v7 までに元が変わっていても分からないので、上げた時点から後の変化を知らせる）。
 
 use std::collections::HashMap;
 
@@ -13,8 +13,8 @@ const FORK: &str = "fork";
 /// 元の値に写す必須のフィールド。速さと有効は無ければ既定（1、有効）。
 const BASE_FIELDS: [&str; 3] = ["source", "in", "out"];
 
-/// v6 → v7。
-pub(crate) fn v6_to_v7(value: &mut Value) {
+/// v7 → v8。
+pub(crate) fn v7_to_v8(value: &mut Value) {
     let Some(seqs) = value.get_mut("sequences").and_then(Value::as_array_mut) else {
         return;
     };
@@ -69,7 +69,7 @@ mod tests {
 
     use crate::{load, CutBase};
 
-    fn v6_with_fork(relation: &str) -> String {
+    fn v7_with_fork(relation: &str) -> String {
         let cut = |id: &str, origin: &str| {
             format!(
                 r#"{{"id": "{id}", "in": {{"num": 1, "den": 1}}, "out": {{"num": 3, "den": 1}},
@@ -78,7 +78,7 @@ mod tests {
             )
         };
         format!(
-            r#"{{"schema_version": 6, "assets": [], "compositions": [], "render_targets": [],
+            r#"{{"schema_version": 7, "assets": [], "compositions": [], "render_targets": [],
               "sequences": [
                 {{"id": "main", "origin": null, "cuts": [{}]}},
                 {{"id": "short", "origin": {{"sequence": "main", "relation": "{relation}"}},
@@ -90,8 +90,8 @@ mod tests {
     }
 
     #[test]
-    fn v6_の複製のカットは今の元の値を元の値にして上がる() {
-        let p = load(&v6_with_fork("fork")).unwrap();
+    fn v7_の複製のカットは今の元の値を元の値にして上がる() {
+        let p = load(&v7_with_fork("fork")).unwrap();
         let (_, s1) = p.cut(&Id::new("s1")).unwrap();
         let (_, m1) = p.cut(&Id::new("m1")).unwrap();
         assert_eq!(s1.origin_base, Some(CutBase::of(m1)));
@@ -103,9 +103,9 @@ mod tests {
     }
 
     #[test]
-    fn 凍結した_v7_の本編とショートが読めて往復する() {
+    fn 凍結した_v8_の本編とショートが読めて往復する() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/doc/v7/shorts.json");
+            .join("../../fixtures/doc/v8/shorts.json");
         let p = load(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert!(p.cut(&Id::new("r1")).unwrap().1.overrides.out_point);
         let layer = &p.compositions[0].layers[0];
@@ -120,8 +120,8 @@ mod tests {
     }
 
     #[test]
-    fn v6_の参照のカットは元の値を持たない() {
-        let p = load(&v6_with_fork("reference")).unwrap();
+    fn v7_の参照のカットは元の値を持たない() {
+        let p = load(&v7_with_fork("reference")).unwrap();
         assert_eq!(p.cut(&Id::new("s1")).unwrap().1.origin_base, None);
     }
 }

@@ -117,6 +117,7 @@ fn target(id: &str, comp: &str, (width, height): (u32, u32), dir: &Path) -> Rend
         codec: "h264".into(),
         output_path: dir.join(format!("{id}.mp4")).to_string_lossy().into_owned(),
         loudness_lufs: None,
+        delivery: Default::default(),
     }
 }
 

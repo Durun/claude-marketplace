@@ -4,6 +4,8 @@
 
 mod meter;
 mod mixer;
+mod normalize;
 
 pub use meter::DspLoudnessMeter;
 pub use mixer::{db_to_gain, DspMixer, DspMixerFactory};
+pub use normalize::{limit, measure, DspLoudnessNormalizer, Measurement};

@@ -1806,6 +1806,31 @@
         "cuts"
       ]
     },
+    "Delivery": {
+      "description": "納品の設定。字幕とチャプターの出力と、トゥルーピークの上限。\nラウドネスの目標は `RenderTarget::loudness_lufs`（YouTube は -14、放送は -23）。",
+      "type": "object",
+      "properties": {
+        "chapters": {
+          "description": "コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。",
+          "type": "boolean",
+          "default": false
+        },
+        "subtitles": {
+          "description": "字幕の置き方。字幕はシーケンスのカットの文字起こしから作る。",
+          "$ref": "#/$defs/SubtitleOutput",
+          "default": "none"
+        },
+        "true_peak_dbtp": {
+          "description": "トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        }
+      }
+    },
     "Ease": {
       "description": "`Linear` の進み具合に掛けるイージングの型。",
       "oneOf": [
@@ -2522,6 +2547,15 @@
           "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
           "type": "string"
         },
+        "delivery": {
+          "description": "字幕、チャプター、トゥルーピークの上限。",
+          "$ref": "#/$defs/Delivery",
+          "default": {
+            "chapters": false,
+            "subtitles": "none",
+            "true_peak_dbtp": null
+          }
+        },
         "fps": {
           "$ref": "#/$defs/Rational"
         },
@@ -2694,6 +2728,26 @@
       "required": [
         "in",
         "out"
+      ]
+    },
+    "SubtitleOutput": {
+      "description": "字幕の置き方。",
+      "oneOf": [
+        {
+          "description": "字幕を作らない。",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "書き出しのファイルの隣に `<名前>.srt` と `<名前>.vtt` を置く。",
+          "type": "string",
+          "const": "sidecar"
+        },
+        {
+          "description": "MP4 に字幕のトラック（mov_text）として入れる。",
+          "type": "string",
+          "const": "embedded"
+        }
       ]
     },
     "TimeKeyframe": {

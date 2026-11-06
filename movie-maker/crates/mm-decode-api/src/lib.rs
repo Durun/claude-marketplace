@@ -255,8 +255,49 @@ impl Nv12Frame {
     }
 }
 
+/// 書き出しの時間軸の字幕 1 つ。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitleCue {
+    pub start: RationalTime,
+    pub end: RationalTime,
+    /// 表示する文字。行の区切りは `\n`。
+    pub text: String,
+}
+
+/// 書き出しの時間軸のチャプター 1 つ。`end` は次のチャプターの始まり（最後は書き出しの終わり）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChapterMark {
+    pub start: RationalTime,
+    pub end: RationalTime,
+    pub title: String,
+}
+
+/// 映像と音のほかに MP4 へ入れるもの。ヘッダーを書く前に決める必要があるので `begin` の前に渡す。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExtraTracks {
+    /// 字幕のトラック。空なら入れない。
+    pub subtitles: Vec<SubtitleCue>,
+    /// チャプター。空なら入れない。
+    pub chapters: Vec<ChapterMark>,
+}
+
+impl ExtraTracks {
+    /// 何も入れないか。
+    pub fn is_empty(&self) -> bool {
+        self.subtitles.is_empty() && self.chapters.is_empty()
+    }
+}
+
 /// エンコーダー。フレームはバッチで押す。
 pub trait Encoder: Send {
+    /// 字幕のトラックとチャプターを入れる。`begin` の前に呼ぶ。対応しない実装は `Err(Unsupported)`（既定）を返し、
+    /// 呼ぶ側は字幕を書き出しの隣のファイルにするか、書き出しを拒否する。
+    fn set_extras(&mut self, extras: ExtraTracks) -> Result<()> {
+        let _ = extras;
+        Err(mm_types::MmError::Unsupported(
+            "このエンコーダーは字幕のトラックとチャプターを入れられない".into(),
+        ))
+    }
     /// 出力を開く。
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()>;
     /// フレームの列を押す。順序は再生順。

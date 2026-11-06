@@ -112,7 +112,7 @@ classDiagram
 
 - `assets`: 撮影素材、音、画像、文字起こし。原本のパス、コンテンツハッシュ、色空間、時間軸、取り込みで作ったものへの参照。
 - `bins`: 素材の整理。下の「素材の整理と文字起こし」。
-- `compositions`、`renderTargets`（形式、ラウドネスの目標、タイムコードの始まり、出力先）、`colorConfig`（OCIO の設定、作業色空間、表示の変換）。
+- `compositions`、`renderTargets`（形式、ラウドネスの目標、タイムコードの始まり、出力先、`delivery`: 字幕とチャプターの出し方とトゥルーピークの上限）、`colorConfig`（OCIO の設定、作業色空間、表示の変換）。
 - プロジェクトをまたぐ素材とテンプレートは、ライブラリとして参照で使う。
 
 ## 素材の整理と文字起こし
@@ -136,7 +136,7 @@ classDiagram
 - 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ画像の中心）。どれもキーフレームを持てる。レンダラーが合成で掛け、ノードの種類には渡さない。3D はカメラのフィールドを足すときに広げる。
 - 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。マスク（頂点の列を `Json` のパラメータで）とトラックマット（同じコンポジションのレイヤーのアルファか輝度）は段階 1 では型だけ。
 - マーカーはコンポジションに持ち（ID、時刻、長さ、名前。時刻の厳密な昇順で、同じ時刻には 2 つ置けない）、YouTube のチャプターの書き出しに使う。
-- スキーマのバージョンは 7。v1 はノードのパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。v4 でマーカーの時刻を厳密な昇順にした（v3 の同じ時刻のマーカーは、後ろのものを 1/1000 秒ずつ後ろへずらして上げる）。v5 で `color.lut` の LUT を素材にし、v6 で `bins` と `transcript_edits` を足した（v5 からは空で上げる）。v7 で本編とショートの `Cut.overrides`、`Cut.origin_base`、`Layer.framing` を足した（v6 の複製のカットは今の元の値を `origin_base` にして上げる）。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各バージョンのフィクスチャを凍結している。
+- スキーマのバージョンは 8。v1 はノードのパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。v4 でマーカーの時刻を厳密な昇順にした（v3 の同じ時刻のマーカーは、後ろのものを 1/1000 秒ずつ後ろへずらして上げる）。v5 で `color.lut` の LUT を素材にし、v6 で `bins` と `transcript_edits` を足した（v5 からは空で上げる）。v7 でレンダーターゲットの `delivery` を足し（v6 からは既定で上げる）、v8 で本編とショートの `Cut.overrides`、`Cut.origin_base`、`Layer.framing` を足した（v7 の複製のカットは今の元の値を `origin_base` にして上げる）。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各バージョンのフィクスチャを凍結している。
 
 ## パラメータ（時間変化）
 
