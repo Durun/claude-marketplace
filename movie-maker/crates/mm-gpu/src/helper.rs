@@ -43,6 +43,8 @@ pub struct WgpuGpu {
 
 /// 提出済みで、まだ CPU に写していないリードバック。`WgpuGpu::finish_readback` で画像にする。
 pub struct Readback {
+    /// 提出したときのコンテキスト。作り直された後の別のデバイスで待つと終わらないので、照合に使う。
+    ctx: Arc<GpuContext>,
     buffer: wgpu::Buffer,
     bytes: u64,
     /// 1 行の使っているバイト数。
@@ -203,6 +205,7 @@ impl WgpuGpu {
         );
         self.ctx.queue.submit([encoder.finish()]);
         Readback {
+            ctx: self.ctx.clone(),
             buffer,
             bytes,
             row,
@@ -227,12 +230,18 @@ impl WgpuGpu {
     ) -> Result<()> {
         let _span = tracing::debug_span!("render.readback").entered();
         let Readback {
+            ctx,
             buffer,
             bytes,
             row,
             padded_row,
             ..
         } = readback;
+        if !Arc::ptr_eq(&ctx, &self.ctx) {
+            return Err(MmError::Internal(
+                "リードバックを頼んだ後にデバイスが作り直された".into(),
+            ));
+        }
         if let Err(e) = map_blocking(&self.ctx.device, &buffer) {
             // 待ちが失敗するのはデバイスが消えたときなので、持ち主に作り直させる。
             self.ctx.mark_lost();
