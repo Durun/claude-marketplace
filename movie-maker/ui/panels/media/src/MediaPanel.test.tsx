@@ -150,4 +150,15 @@ describe("MediaPanel の取り込みとキャッシュ", () => {
     expect(api.clearCache).toHaveBeenCalledWith(["preview"]);
     expect(host.querySelector(".mm-media-confirm")).toBeNull();
   });
+
+  it("取り込み中は掃除を出さない", async () => {
+    const { progress } = await mount([]);
+    const cleanUp = () => host.querySelector<HTMLButtonElement>(".mm-media-cache .mm-media-button");
+    expect(cleanUp()?.disabled).toBe(false);
+    progress({ type: "started", index: 0, total: 1, path: "C:/a.mp4" });
+    expect(cleanUp()?.disabled).toBe(true);
+    progress({ type: "finished", added: 1, skipped: 0, failed: 0 });
+    await settle();
+    expect(cleanUp()?.disabled).toBe(false);
+  });
 });

@@ -27,7 +27,7 @@ fn fingerprint(shared: &Shared) -> Fingerprint {
         playing,
         shared.doc_serial.load(Ordering::SeqCst),
         shared.edit.cut_serial.load(Ordering::SeqCst),
-        shared.edit.message().len() as u64,
+        shared.edit.message_serial.load(Ordering::SeqCst),
     )
 }
 

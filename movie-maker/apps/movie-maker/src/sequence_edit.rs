@@ -14,6 +14,8 @@ use mm_ops::{Edge, Insert, Lift, Op, Overwrite, Ripple, Roll, Slide, Slip, Split
 use mm_types::{AssetId, Id, RationalTime};
 use mm_ui_layout::{EditKind, Side};
 
+use crate::timebase;
+
 /// 編集の対象にするカットの選択と、カットの ID の採番。
 #[derive(Default)]
 pub struct EditState {
@@ -21,22 +23,30 @@ pub struct EditState {
     /// 選択を置き直すたびに進む。
     pub cut_serial: AtomicU64,
     next_id: AtomicU64,
-    /// 直近の編集の失敗の文言。成功すると空になる。
+    /// 直近の編集の結果の文言（失敗の理由、取り消したもの）。何も伝えることが無ければ空。
     message: Mutex<String>,
+    /// 文言を置くたびに進む。同じ文言が続いても、置き直したことを WebView に伝える。
+    pub message_serial: AtomicU64,
 }
 
 impl EditState {
-    /// 直近の編集の結果の文言（失敗の理由。空なら成功）。
+    /// 直近の編集の結果の文言（失敗の理由、取り消したもの）。空なら伝えることが無い。
     pub fn message(&self) -> String {
         self.message.lock().expect("edit message").clone()
     }
 
-    /// 直近の編集の結果を置く。
+    /// 直近の編集の結果を置く。空でなければ失敗の理由としてログにも残す。
     pub fn set_message(&self, text: String) {
         if !text.is_empty() {
             tracing::warn!(message = %text, "編集できなかった");
         }
+        self.notify(text);
+    }
+
+    /// 失敗でない知らせ（取り消したものなど）を文言に置く。
+    pub fn notify(&self, text: String) {
         *self.message.lock().expect("edit message") = text;
+        self.message_serial.fetch_add(1, Ordering::SeqCst);
     }
 
     /// 選んだカットを置く。外すときは `None`。
@@ -133,13 +143,8 @@ fn target<'a>(ctx: &Ctx<'a>) -> Result<Target<'a>, String> {
     let id = Id::new(layer.source.text_param(SEQUENCE_PARAM).unwrap_or(""));
     let seq = ctx.project.sequence(&id).map_err(|e| e.to_string())?;
     let placed = place_cuts(seq).map_err(|e| e.to_string())?;
-    let frame = (ctx.playhead * ctx.comp.fps.to_f64()).round() as i64;
-    let here = RationalTime::from_frames(frame, ctx.comp.fps).map_err(|e| e.to_string())?;
-    let at = here
-        .checked_sub(layer.start)
-        .and_then(|t| t.scale(layer.speed))
-        .and_then(|t| t.checked_add(layer.in_point))
-        .map_err(|e| e.to_string())?;
+    let here = timebase::frame_start(ctx.playhead, ctx.comp.fps)?;
+    let at = timebase::layer_inner_time(layer, here)?;
     Ok(Target { seq, placed, at })
 }
 
@@ -275,7 +280,8 @@ fn edge_of(side: Side) -> Edge {
     }
 }
 
-/// ドラッグの編集を操作にする。`by`（秒）は comp のフレームに丸め、0 フレームなら操作にしない。
+/// ドラッグの編集を操作にする。`by`（コンポジションの秒）は comp のフレームに丸め、0 フレームなら操作にしない。
+/// trimLayer はコンポジションの時間軸のまま、カットの操作はレイヤーの `speed` を掛けたシーケンスの時間軸で渡す。
 pub fn gesture_op(
     kind: EditKind,
     by: f64,
@@ -290,13 +296,29 @@ pub fn gesture_op(
     let cut_id = |item: usize, cut: usize| -> Option<CutId> {
         Some(Id::new(ids.cuts.get(item)?.get(cut)?.as_str()))
     };
+    let item = match kind {
+        EditKind::TrimLayer { item, .. }
+        | EditKind::Ripple { item, .. }
+        | EditKind::Roll { item, .. }
+        | EditKind::Slip { item, .. }
+        | EditKind::Slide { item, .. } => item,
+    };
+    let layer_id = ids.layers.get(item)?;
+    let layer = comp.layers.iter().find(|l| l.id.as_str() == layer_id)?;
+    if let EditKind::TrimLayer { side, .. } = kind {
+        let edge = edge_of(side);
+        return Some(
+            TrimLayer {
+                layer: layer.id.clone(),
+                edge,
+                by,
+            }
+            .into(),
+        );
+    }
+    let by = timebase::layer_inner_delta(layer, by).ok()?;
     Some(match kind {
-        EditKind::TrimLayer { item, side } => TrimLayer {
-            layer: Id::new(ids.layers.get(item)?.as_str()),
-            edge: edge_of(side),
-            by,
-        }
-        .into(),
+        EditKind::TrimLayer { .. } => return None,
         EditKind::Ripple { item, cut, side } => Ripple {
             cut: cut_id(item, cut)?,
             edge: edge_of(side),

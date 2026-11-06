@@ -65,3 +65,9 @@ pub async fn story_timeline_time(
 ) -> Result<Option<f64>, String> {
     blocking(state, move |s| s.timeline_time(&asset, at)).await
 }
+
+/// カットの始まりの再生位置（秒）。開いているコンポジションに映っていなければ `None`。
+#[tauri::command]
+pub async fn story_cut_time(state: Story<'_>, cut: String) -> Result<Option<f64>, String> {
+    blocking(state, move |s| s.cut_time(&cut)).await
+}

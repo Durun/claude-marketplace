@@ -115,6 +115,14 @@ export const useTray = (): Tray => {
   return { picked, toggle, move, clear: () => setPicked([]) };
 };
 
+/** 足したカットの始まりへ再生位置を移す。カットが画面に出ていなければ `false`。 */
+export const seekToCut = async (api: StoryApi, cut: string): Promise<boolean> => {
+  const t = await api.cutTime(cut);
+  if (t === null) return false;
+  await api.seek(t);
+  return true;
+};
+
 /** 素材の時刻へ再生位置を移す。シーケンスにもレイヤーにも入っていなければ `false`。 */
 export const seekToSource = async (
   api: StoryApi,

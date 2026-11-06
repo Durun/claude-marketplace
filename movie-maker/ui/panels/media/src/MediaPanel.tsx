@@ -9,28 +9,35 @@ export interface MediaPanelProps {
   api: MediaApi;
   /** 外から「ファイルを選んで取り込む」を始めたいときに増やす（Tasks の項目から）。 */
   importRequest?: number;
+  /** 増えるたびに素材の一覧を読み直す（外から編集されたとき）。 */
+  refreshKey?: number;
 }
 
+/** 取り込みの入口。取り込み中は押せない。 */
+const Toolbar = ({ running, onImport }: { running: boolean; onImport: () => void }) => (
+  <div class="mm-media-toolbar">
+    <button
+      type="button"
+      class="mm-media-button mm-media-primary"
+      disabled={running}
+      onClick={onImport}
+    >
+      Import…
+    </button>
+    <span class="mm-media-hint">or drop files here</span>
+  </div>
+);
+
 /** XP のムービーメーカーのコレクション風の素材の一覧。取り込み、波形、キャッシュの掃除を持つ。 */
-export const MediaPanel = ({ api, importRequest = 0 }: MediaPanelProps) => {
-  const media = useMedia(api, importRequest);
+export const MediaPanel = ({ api, importRequest = 0, refreshKey = 0 }: MediaPanelProps) => {
+  const media = useMedia(api, importRequest, refreshKey);
   const { items, progress } = media;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
   return (
     <section class="mm-media" aria-label="Media" data-dragging={media.dragging}>
-      <div class="mm-media-toolbar">
-        <button
-          type="button"
-          class="mm-media-button mm-media-primary"
-          disabled={progress.running}
-          onClick={media.pickAndImport}
-        >
-          Import…
-        </button>
-        <span class="mm-media-hint">or drop files here</span>
-      </div>
+      <Toolbar running={progress.running} onImport={media.pickAndImport} />
       {media.error && <p class="mm-media-error">{media.error}</p>}
       {progress.failures.length > 0 && !progress.running && (
         <Failures failures={progress.failures} onDismiss={media.dismissFailures} />
@@ -54,7 +61,12 @@ export const MediaPanel = ({ api, importRequest = 0 }: MediaPanelProps) => {
         )}
       </ul>
       {selected?.has_waveform && <Waveform api={api} id={selected.id} />}
-      <CacheSection api={api} refreshKey={media.cacheKey} onCleared={media.refresh} />
+      <CacheSection
+        api={api}
+        refreshKey={media.cacheKey}
+        busy={progress.running}
+        onCleared={media.refresh}
+      />
     </section>
   );
 };

@@ -46,6 +46,29 @@ fn is_invalid(r: Result<()>) -> bool {
 }
 
 #[test]
+fn キャッシュの外を指すコンテンツハッシュを拒否する() {
+    let asset = |hash: &str| mm_doc::Asset {
+        id: Id::new("a"),
+        path: "a.mp4".into(),
+        content_hash: hash.into(),
+        color_space: mm_types::ColorSpace::bt709(),
+        duration: RationalTime::seconds(1),
+        fps: None,
+        timebase_offset: RationalTime::ZERO,
+    };
+    for bad in ["..\\..\\secret", "../x", "a/b", "a.b"] {
+        let mut p = project(Vec::new());
+        p.assets.push(asset(bad));
+        assert!(is_invalid(p.validate()), "{bad} は拒否する");
+    }
+    for good in ["0123abcdef", "stage0-cfr", ""] {
+        let mut p = project(Vec::new());
+        p.assets.push(asset(good));
+        assert!(p.validate().is_ok(), "{good} は受ける");
+    }
+}
+
+#[test]
 fn 入れ子の循環を拒否する() {
     let p = project(vec![
         comp("a", vec![layer("la", nested("b"))]),

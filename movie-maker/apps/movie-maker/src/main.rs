@@ -16,6 +16,8 @@ mod edit;
 #[cfg(windows)]
 mod edit_actions;
 #[cfg(windows)]
+mod history;
+#[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
 mod keys;
@@ -45,6 +47,8 @@ mod story_ipc;
 mod surface;
 #[cfg(windows)]
 mod theme;
+#[cfg(windows)]
+mod timebase;
 #[cfg(windows)]
 mod verify;
 #[cfg(windows)]

@@ -11,6 +11,7 @@ describe("createIpcStoryApi", () => {
     await api.range("a1", "w1", "w2");
     await api.search("編集", 10);
     await api.timelineTime("a1", 1.5);
+    await api.cutTime("k1");
     await api.seek(3);
     expect(call.mock.calls).toEqual([
       ["story_overview"],
@@ -18,6 +19,7 @@ describe("createIpcStoryApi", () => {
       ["story_range", { asset: "a1", first: "w1", last: "w2" }],
       ["story_search", { query: "編集", limit: 10 }],
       ["story_timeline_time", { asset: "a1", at: 1.5 }],
+      ["story_cut_time", { cut: "k1" }],
       ["transport", { action: "seek", value: 3 }],
     ]);
   });

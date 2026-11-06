@@ -5,7 +5,7 @@ const MAX_FILE_LINES = 500;
 const MAX_FUNCTION_LINES = 50;
 
 export default tseslint.config(
-  { ignores: ["**/generated/**", "**/dist/**", "**/node_modules/**", "tools/screenshot.mjs", "tools/app-media.mjs", "tools/app-story.mjs"] },
+  { ignores: ["**/generated/**", "**/dist/**", "**/node_modules/**", "tools/screenshot.mjs"] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {
@@ -19,6 +19,11 @@ export default tseslint.config(
       "max-lines-per-function": ["error", MAX_FUNCTION_LINES],
       "max-depth": ["error", 3],
     },
+  },
+  {
+    // 実アプリに CDP でつなぐ撮影のスクリプト。page.evaluate の中身はブラウザーで動く。
+    files: ["tools/*.mjs"],
+    languageOptions: { globals: { process: "readonly", window: "readonly", document: "readonly" } },
   },
   {
     files: ["**/src/**/*.{ts,tsx}"],

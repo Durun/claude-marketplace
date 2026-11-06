@@ -1,6 +1,6 @@
 import type { StoryWord, Topic } from "@mm/sdk";
 import { describe, expect, it } from "vitest";
-import { buildBlocks, compareTime, defaultTitle, formatClock, newId, spanOf } from "./model.ts";
+import { buildBlocks, compareTime, defaultTitle, formatClock, newId, orphanTopics, spanOf } from "./model.ts";
 
 const word = (id: string, start: number, segment = 0, over: Partial<StoryWord> = {}): StoryWord => ({
   id,
@@ -53,6 +53,32 @@ describe("buildBlocks", () => {
       ["t2", ["c", "d", "e"]],
     ]);
   });
+
+});
+
+describe("buildBlocks の見出し", () => {
+  const words = [word("a", 0), word("b", 1), word("c", 2, 1), word("d", 3, 1), word("e", 4, 1)];
+
+  it("見出しは話題ごとに 1 回で、重なって塊が分かれた話題の 2 つ目には出ない", () => {
+    const more = [...words, word("f", 5, 1), word("g", 6, 1)];
+    // t1 は a から g、t2 は c から d。t1 は t2 をまたいで 2 つの塊になる。
+    const blocks = buildBlocks(more, [topic("t1", 0, 8), topic("t2", 2, 4)]);
+    expect(blocks.map((b) => [b.topic?.id, b.head])).toEqual([
+      ["t1", true],
+      ["t2", true],
+      ["t1", false],
+    ]);
+  });
+
+  it("単語の始まりを含まない話題は、本文に出ず末尾の一覧に回る", () => {
+    const topics = [topic("t1", 0, 2), topic("far", 100, 120)];
+    expect(orphanTopics(buildBlocks(words, topics), topics).map((t) => t.id)).toEqual(["far"]);
+  });
+
+});
+
+describe("buildBlocks の順序", () => {
+  const words = [word("a", 0), word("b", 1), word("c", 2, 1), word("d", 3, 1), word("e", 4, 1)];
 
   it("話題は渡す順に関わらず時刻の順に当てる", () => {
     const blocks = buildBlocks(words, [topic("late", 3, 5), topic("early", 0, 2)]);

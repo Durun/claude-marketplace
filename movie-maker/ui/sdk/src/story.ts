@@ -68,6 +68,8 @@ export interface StoryApi {
   search: (query: string, limit?: number) => Promise<StoryHit[]>;
   /** 素材の時刻（秒）に当たる再生位置（秒）。sequence に入っていなければ `null`。 */
   timelineTime: (asset: string, at: number) => Promise<number | null>;
+  /** カットの始まりの再生位置（秒）。開いているコンポジションの sequence に出ていなければ `null`。 */
+  cutTime: (cut: string) => Promise<number | null>;
   /** 操作を送る（`apply_op`）。 */
   apply: (op: Op) => Promise<OpResult>;
   /** 再生位置を動かす（`transport` の `seek`）。 */
@@ -88,6 +90,7 @@ export const createIpcStoryApi = (call: StoryInvoke = tauriInvoke): StoryApi => 
     search: async (query, limit) => (await call("story_search", { query, limit })) as StoryHit[],
     timelineTime: async (asset, at) =>
       (await call("story_timeline_time", { asset, at })) as number | null,
+    cutTime: async (cut) => (await call("story_cut_time", { cut })) as number | null,
     apply: (op) => transport.send(op),
     seek: async (seconds) => {
       await call("transport", { action: "seek", value: seconds });
