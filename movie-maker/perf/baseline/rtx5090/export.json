@@ -1,0 +1,114 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5090",
+  "items": [
+    {
+      "better": "higher",
+      "budget": {
+        "kind": "at_least",
+        "row": "書き出し（1080p60、NVENC、1 プロセス）",
+        "value": 120.0
+      },
+      "name": "export.fps",
+      "ok": true,
+      "samples": [
+        117.93523704392969,
+        144.96444263829488,
+        146.04986239668798,
+        150.06347685070784,
+        140.27724394493276
+      ],
+      "unit": "fps",
+      "value": 144.96444263829488
+    },
+    {
+      "better": "higher",
+      "budget": null,
+      "name": "export.fps_cold",
+      "ok": null,
+      "samples": [
+        117.93523704392969
+      ],
+      "unit": "fps",
+      "value": 117.93523704392969
+    },
+    {
+      "better": "lower",
+      "budget": null,
+      "name": "export.elapsed_ms",
+      "ok": null,
+      "samples": [
+        254.3769,
+        206.9473,
+        205.4093,
+        199.9154,
+        213.8622
+      ],
+      "unit": "ms",
+      "value": 206.9473
+    }
+  ],
+  "metrics": {
+    "counters": {
+      "export.frames": 150,
+      "render.layers_drawn": 300
+    },
+    "gauges": {
+      "export.fps": 140.27724394493276,
+      "render.gpu_frame_us": 10
+    },
+    "spans": {
+      "export.encode": {
+        "count": 150,
+        "max_us": 3239,
+        "p50_us": 2021,
+        "p95_us": 2324,
+        "p99_us": 3150
+      },
+      "export.render": {
+        "count": 150,
+        "max_us": 40661,
+        "p50_us": 3110,
+        "p95_us": 4834,
+        "p99_us": 7232
+      },
+      "export.run": {
+        "count": 5,
+        "max_us": 254514,
+        "p50_us": 207032,
+        "p95_us": 254514,
+        "p99_us": 254514
+      },
+      "render.audio": {
+        "count": 5,
+        "max_us": 2586,
+        "p50_us": 803,
+        "p95_us": 2586,
+        "p99_us": 2586
+      },
+      "render.export": {
+        "count": 5,
+        "max_us": 135620,
+        "p50_us": 97421,
+        "p95_us": 135620,
+        "p99_us": 135620
+      },
+      "render.gpu_frame": {
+        "count": 149,
+        "max_us": 11,
+        "p50_us": 10,
+        "p95_us": 10,
+        "p99_us": 11
+      },
+      "runtime.render_audio": {
+        "count": 5,
+        "max_us": 2605,
+        "p50_us": 807,
+        "p95_us": 2605,
+        "p99_us": 2605
+      }
+    }
+  },
+  "repeat": 5,
+  "scene": "export",
+  "timestamp": 1793945294
+}

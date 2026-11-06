@@ -1,0 +1,927 @@
+{
+  "schema_version": 2,
+  "assets": [],
+  "compositions": [
+    {
+      "id": "main",
+      "width": 1920,
+      "height": 1080,
+      "fps": {
+        "num": 60,
+        "den": 1
+      },
+      "duration": {
+        "num": 10,
+        "den": 1
+      },
+      "layers": [
+        {
+          "id": "l-solid-0",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  0,
+                  0
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 0
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-1",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.37,
+                    "g": 0.61,
+                    "b": 0.83,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  40,
+                  20
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 3
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-2",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.74,
+                    "g": 0.22,
+                    "b": 0.66,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  80,
+                  40
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 6
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-3",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.11,
+                    "g": 0.83,
+                    "b": 0.49,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  120,
+                  60
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 9
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-4",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.48,
+                    "g": 0.44,
+                    "b": 0.32,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  160,
+                  80
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 12
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-5",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.85,
+                    "g": 0.05,
+                    "b": 0.15,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  200,
+                  100
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 15
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-6",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.22,
+                    "g": 0.66,
+                    "b": 0.98,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  240,
+                  120
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 18
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-7",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.59,
+                    "g": 0.27,
+                    "b": 0.81,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  280,
+                  140
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 21
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-8",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.96,
+                    "g": 0.88,
+                    "b": 0.64,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  320,
+                  160
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 24
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-solid-9",
+          "source": {
+            "kind": "solid",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 0.33,
+                    "g": 0.49,
+                    "b": 0.47,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null,
+          "transform": {
+            "position": {
+              "value": {
+                "type": "vec2",
+                "value": [
+                  360,
+                  180
+                ]
+              },
+              "keyframes": []
+            },
+            "scale": {
+              "value": {
+                "type": "number",
+                "value": 0.9
+              },
+              "keyframes": []
+            },
+            "rotation": {
+              "value": {
+                "type": "number",
+                "value": 27
+              },
+              "keyframes": []
+            }
+          }
+        },
+        {
+          "id": "l-text-0",
+          "source": {
+            "kind": "text",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              },
+              "position": {
+                "value": {
+                  "type": "vec2",
+                  "value": [
+                    100,
+                    200
+                  ]
+                },
+                "keyframes": []
+              },
+              "size": {
+                "value": {
+                  "type": "number",
+                  "value": 72
+                },
+                "keyframes": []
+              },
+              "text": {
+                "value": {
+                  "type": "text",
+                  "value": "性能の見本 1"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null
+        },
+        {
+          "id": "l-text-1",
+          "source": {
+            "kind": "text",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              },
+              "position": {
+                "value": {
+                  "type": "vec2",
+                  "value": [
+                    400,
+                    450
+                  ]
+                },
+                "keyframes": []
+              },
+              "size": {
+                "value": {
+                  "type": "number",
+                  "value": 72
+                },
+                "keyframes": []
+              },
+              "text": {
+                "value": {
+                  "type": "text",
+                  "value": "性能の見本 2"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null
+        },
+        {
+          "id": "l-text-2",
+          "source": {
+            "kind": "text",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "color": {
+                "value": {
+                  "type": "color",
+                  "value": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                  }
+                },
+                "keyframes": []
+              },
+              "position": {
+                "value": {
+                  "type": "vec2",
+                  "value": [
+                    700,
+                    700
+                  ]
+                },
+                "keyframes": []
+              },
+              "size": {
+                "value": {
+                  "type": "number",
+                  "value": 72
+                },
+                "keyframes": []
+              },
+              "text": {
+                "value": {
+                  "type": "text",
+                  "value": "性能の見本 3"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 0.7
+            },
+            "keyframes": []
+          },
+          "lock": false,
+          "audio": null
+        }
+      ]
+    }
+  ],
+  "render_targets": [
+    {
+      "id": "mp4",
+      "composition": "main",
+      "width": 1920,
+      "height": 1080,
+      "fps": {
+        "num": 60,
+        "den": 1
+      },
+      "codec": "h264",
+      "output_path": ".mm/out/perf-preview.mp4",
+      "loudness_lufs": null
+    }
+  ]
+}
