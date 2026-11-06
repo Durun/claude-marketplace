@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MODE_NAMES, generateCss, hexToLinear, theme } from "./index.ts";
 
@@ -15,6 +16,27 @@ describe("theme.json", () => {
       const { color, gradient } = theme.modes[m];
       const all = [...Object.values(color), ...Object.values(gradient).flatMap((g) => [g.from, g.to])];
       for (const c of all) expect(c).toMatch(HEX);
+    }
+  });
+});
+
+describe("パネルとシェルの CSS", () => {
+  const files = ["../../panels/tasks/src/tasks.css", "../../shell/src/shell.css"];
+
+  it("寸法を直書きせず、theme の変数から引く", () => {
+    for (const f of files) {
+      const css = readFileSync(new URL(f, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(css, f).not.toMatch(/\d+px/);
+    }
+  });
+
+  it("使う色の変数は theme.json にある", () => {
+    const names = new Set(Object.keys(theme.modes.light.color));
+    for (const f of files) {
+      const css = readFileSync(new URL(f, import.meta.url), "utf8");
+      for (const [, name] of css.matchAll(/--mm-color-([a-z-]+)/g)) {
+        expect(names.has(name ?? ""), `${f}: ${name}`).toBe(true);
+      }
     }
   });
 });
@@ -47,6 +69,11 @@ describe("generateCss", () => {
   it("形の値を px で出し、影を含まない", () => {
     expect(css).toContain("--mm-radius-md: 4px;");
     expect(css).not.toMatch(/shadow/i);
+  });
+
+  it("部品の寸法と線の太さを変数にする", () => {
+    expect(css).toContain("--mm-size-left-column: 260px;");
+    expect(css).toContain("--mm-stroke-focus: 2px;");
   });
 
   it("グラデーションを CSS に直す", () => {

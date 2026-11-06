@@ -17,21 +17,19 @@ use mm_types::{GpuAdapterId, MmError, RationalTime, Result, TimeRange};
 use crate::convert::BufferConverter;
 use crate::cuda::CudaApi;
 use crate::dec::{self, DeviceRef};
-use crate::share::SharedRing;
-use crate::shared::adapter::dx12_request;
-use crate::shared::pool::FramePool;
-use crate::shared::reader::{IndexedFrame, Sequencer};
-use crate::shared::release::ReleaseQueue;
-use crate::shared::yuv::{is_full_range, Matrix, YuvParams};
+use crate::share::{BufferLayout, SharedRing};
+use mm_decode_ffmpeg_core::matrix::{is_full_range, Matrix};
+use mm_decode_ffmpeg_core::reader::{IndexedFrame, Sequencer};
+use mm_decode_hw::adapter::dx12_request;
+use mm_decode_hw::pool::FramePool;
+use mm_decode_hw::release::ReleaseQueue;
+use mm_decode_hw::yuv::YuvParams;
 
 /// 無音を返すときの形式。
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
 /// 共有バッファの輪の枠の数。
 const RING_SLOTS: usize = 4;
-
-/// 実装の名前。
-pub const ID: &str = "cuvid";
 
 /// 描画器の GPU の文脈を、cuvid が使える形（D3D12 のアダプター）で頼む。
 /// `wanted` が `None` なら D3D12 での高性能のアダプター。
@@ -74,8 +72,7 @@ impl CuvidDecoder {
                 (gpu.device.clone(), gpu.queue.clone()),
                 cuda,
                 (opened.cuda_ctx, opened.cuda_stream),
-                (size.width, size.height),
-                bytes_per_sample,
+                BufferLayout::new(size.width, size.height, bytes_per_sample),
                 RING_SLOTS,
             )?
         };
@@ -92,6 +89,7 @@ impl CuvidDecoder {
     }
 
     /// 復号した面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    #[cfg(feature = "test-hooks")]
     pub fn set_gpu_wait(&mut self, on: bool) {
         self.release.set_wait_for_gpu(on);
         self.ring.set_wait_for_reader(on);
@@ -117,6 +115,7 @@ impl CuvidDecoder {
             is_full_range(cuda_frame.color_range()),
             self.bits,
             1.0,
+            (cuda_frame.width(), cuda_frame.height()),
         );
         // コピーを積んだ以上、読み終えの値を必ず進める。待つ側（次のコピー）が止まらないように。
         let wait = self.ring.wait_copy_on(slot);
@@ -179,7 +178,7 @@ pub struct CuvidFactory;
 
 impl DecoderFactory for CuvidFactory {
     fn id(&self) -> &'static str {
-        ID
+        crate::ID
     }
 
     /// `gpu` が無い、または `mm-gpu` の文脈でなければ `Err(Unsupported)`。

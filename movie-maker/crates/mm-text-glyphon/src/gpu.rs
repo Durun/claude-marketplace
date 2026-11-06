@@ -4,48 +4,37 @@
 //! 行組みを持たない `ShapedText` からも描けるよう、glyphon の `Buffer` は空のままにする。
 //! 出力は線形・premultiplied の `Rgba16Float` を読み戻した RGBA で、CPU の描画器と同じ意味。
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use cosmic_text::{Buffer, CacheKey, FontSystem, Metrics, SwashCache, SwashContent, SwashImage};
+use cosmic_text::{Buffer, FontSystem, Metrics, SwashCache};
 use glyphon::{
-    Cache, Color, ColorMode, ContentType, CustomGlyph, RasterizedCustomGlyph, Resolution, TextArea,
-    TextAtlas, TextBounds, TextRenderer, Viewport,
+    Cache, Color, ColorMode, CustomGlyph, RasterizedCustomGlyph, Resolution, TextArea, TextAtlas,
+    TextBounds, TextRenderer, Viewport,
 };
 use half::f16;
 use mm_gpu::{map_blocking, GpuContext, FRAME_FORMAT};
 use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
+use crate::glyph_ids::{GlyphIds, IdsExhausted, MAX_GLYPH_IDS};
 use crate::raster;
 use crate::{lock, Inner};
 
-/// 字形の ID は `u16`。使い切る前に atlas ごと作り直す。
-const MAX_GLYPH_IDS: usize = 60_000;
 /// 読み戻しの行は 256 バイトに揃える。
 const ROW_ALIGN: u32 = 256;
 /// `Rgba16Float` の 1 画素のバイト数。
 const BYTES_PER_PIXEL: u32 = 8;
-
-/// 取り出した字形の絵。atlas に載せる元のデータ。
-struct GlyphBitmap {
-    content: ContentType,
-    data: Vec<u8>,
-    width: u16,
-    height: u16,
-}
 
 /// glyphon の部品と、字形の ID の表。
 struct GpuState {
     atlas: TextAtlas,
     renderer: TextRenderer,
     viewport: Viewport,
-    ids: HashMap<CacheKey, u16>,
-    bitmaps: Vec<Option<GlyphBitmap>>,
+    glyphs: GlyphIds,
 }
 
 impl GpuState {
-    fn new(ctx: &GpuContext) -> Self {
+    fn new(ctx: &GpuContext, id_limit: usize) -> Self {
         let cache = Cache::new(&ctx.device);
         // 出力が線形なので、色は sRGB の指定を線形にして混ぜる Accurate。
         let mut atlas = TextAtlas::with_color_mode(
@@ -66,32 +55,8 @@ impl GpuState {
             atlas,
             renderer,
             viewport,
-            ids: HashMap::new(),
-            bitmaps: Vec::new(),
+            glyphs: GlyphIds::with_limit(id_limit),
         }
-    }
-
-    /// 字形の絵に ID を振る。同じ `CacheKey` は同じ ID（atlas の再利用の鍵）。
-    fn intern(&mut self, key: CacheKey, image: &SwashImage) -> Option<(u16, u16, u16)> {
-        let content = match image.content {
-            SwashContent::Mask => ContentType::Mask,
-            SwashContent::Color => ContentType::Color,
-            SwashContent::SubpixelMask => return None,
-        };
-        let (w, h) = (image.placement.width as u16, image.placement.height as u16);
-        if w == 0 || h == 0 {
-            return None;
-        }
-        let id = *self.ids.entry(key).or_insert_with(|| {
-            self.bitmaps.push(Some(GlyphBitmap {
-                content,
-                data: image.data.clone(),
-                width: w,
-                height: h,
-            }));
-            (self.bitmaps.len() - 1) as u16
-        });
-        Some((id, w, h))
     }
 }
 
@@ -100,6 +65,8 @@ pub struct GlyphonRasterizer {
     inner: Arc<Inner>,
     gpu: Arc<GpuContext>,
     state: Mutex<GpuState>,
+    /// 1 つの atlas に振る字形の ID の数の上限。
+    id_limit: usize,
 }
 
 impl GlyphonRasterizer {
@@ -109,8 +76,17 @@ impl GlyphonRasterizer {
     }
 
     pub(crate) fn with_fonts(inner: Arc<Inner>, gpu: Arc<GpuContext>) -> Self {
-        let state = Mutex::new(GpuState::new(&gpu));
-        Self { inner, gpu, state }
+        Self::with_id_limit(inner, gpu, MAX_GLYPH_IDS)
+    }
+
+    pub(crate) fn with_id_limit(inner: Arc<Inner>, gpu: Arc<GpuContext>, id_limit: usize) -> Self {
+        let state = Mutex::new(GpuState::new(&gpu, id_limit));
+        Self {
+            inner,
+            gpu,
+            state,
+            id_limit,
+        }
     }
 }
 
@@ -141,16 +117,18 @@ fn glyphon_color(c: Rgba) -> Color {
 }
 
 /// 字形を集めて `CustomGlyph` にする。位置は絵の中の整数の左上。
+/// ID を使い切ったら `Err`（途中までの ID は呼び出し側が表ごと捨てる）。
 fn collect_glyphs(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
-    state: &mut GpuState,
+    ids: &mut GlyphIds,
     shaped: &ShapedText,
     style: &TextStyle,
     scale: f32,
-) -> Vec<CustomGlyph> {
+) -> std::result::Result<Vec<CustomGlyph>, IdsExhausted> {
     let origin = (shaped.bounds.x, shaped.bounds.y);
     let mut glyphs = Vec::new();
+    let mut exhausted = false;
     raster::for_each_glyph_image(
         fs,
         cache,
@@ -159,8 +137,11 @@ fn collect_glyphs(
         scale,
         origin,
         |key, image, l, t| {
-            if let Some((id, w, h)) = state.intern(key, image) {
-                glyphs.push(CustomGlyph {
+            if exhausted {
+                return;
+            }
+            match ids.intern(key, image) {
+                Ok(Some((id, w, h))) => glyphs.push(CustomGlyph {
                     id,
                     left: l as f32,
                     top: t as f32,
@@ -169,11 +150,17 @@ fn collect_glyphs(
                     color: None,
                     snap_to_physical_pixel: true,
                     metadata: 0,
-                });
+                }),
+                Ok(None) => {}
+                Err(IdsExhausted) => exhausted = true,
             }
         },
     );
-    glyphs
+    if exhausted {
+        Err(IdsExhausted)
+    } else {
+        Ok(glyphs)
+    }
 }
 
 fn read_back(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> Result<RgbaImage> {
@@ -250,17 +237,48 @@ impl GlyphonRasterizer {
         scale: f32,
         size: Size,
     ) -> Result<RgbaImage> {
+        let texture = self.target(size)?;
         let mut state = lock(&self.state)?;
-        if state.ids.len() > MAX_GLYPH_IDS {
-            *state = GpuState::new(&self.gpu);
-        }
-        let glyphs = {
+        let glyphs = self.collect(&mut state, shaped, style, scale)?;
+        self.prepare(&mut state, &glyphs, style, size)?;
+        self.render(&mut state, &texture)?;
+        read_back(&self.gpu, &texture, size)
+    }
+
+    /// 字形に ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
+    /// それでも収まらない（1 回の絵だけで上限を超える）ときは `Unsupported`。
+    fn collect(
+        &self,
+        state: &mut GpuState,
+        shaped: &ShapedText,
+        style: &TextStyle,
+        scale: f32,
+    ) -> Result<Vec<CustomGlyph>> {
+        for attempt in 0..2 {
+            if attempt > 0 {
+                *state = GpuState::new(&self.gpu, self.id_limit);
+            }
             let mut fonts = lock(&self.inner.fonts)?;
             let (fs, cache) = &mut *fonts;
-            collect_glyphs(fs, cache, &mut state, shaped, style, scale)
-        };
+            if let Ok(glyphs) = collect_glyphs(fs, cache, &mut state.glyphs, shaped, style, scale) {
+                return Ok(glyphs);
+            }
+        }
+        Err(MmError::Unsupported(format!(
+            "1 回の文字の絵の字形が多すぎる（上限 {}）",
+            self.id_limit
+        )))
+    }
+
+    /// 字形を glyphon の atlas と頂点に載せる。
+    fn prepare(
+        &self,
+        state: &mut GpuState,
+        glyphs: &[CustomGlyph],
+        style: &TextStyle,
+        size: Size,
+    ) -> Result<()> {
         let ctx = &*self.gpu;
-        let state = &mut *state;
         state.viewport.update(
             &ctx.queue,
             Resolution {
@@ -276,9 +294,9 @@ impl GlyphonRasterizer {
             scale: 1.0,
             bounds: TextBounds::default(),
             default_color: glyphon_color(style.color),
-            custom_glyphs: &glyphs,
+            custom_glyphs: glyphs,
         };
-        let bitmaps = &state.bitmaps;
+        let table = &state.glyphs;
         let mut fonts = lock(&self.inner.fonts)?;
         let (fs, swash) = &mut *fonts;
         state
@@ -292,7 +310,7 @@ impl GlyphonRasterizer {
                 [area],
                 swash,
                 |req| {
-                    let b = bitmaps.get(usize::from(req.id))?.as_ref()?;
+                    let b = table.bitmap(req.id)?;
                     (b.width == req.width && b.height == req.height).then(|| {
                         RasterizedCustomGlyph {
                             data: b.data.clone(),
@@ -301,9 +319,12 @@ impl GlyphonRasterizer {
                     })
                 },
             )
-            .map_err(|e| MmError::Internal(format!("glyphon の prepare: {e}")))?;
-        drop(fonts);
-        let texture = self.target(size)?;
+            .map_err(|e| MmError::Internal(format!("glyphon の prepare: {e}")))
+    }
+
+    /// 載せた字形を `texture` に描く。
+    fn render(&self, state: &mut GpuState, texture: &wgpu::Texture) -> Result<()> {
+        let ctx = &*self.gpu;
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = ctx
             .device
@@ -329,7 +350,7 @@ impl GlyphonRasterizer {
         }
         ctx.queue.submit([encoder.finish()]);
         state.atlas.trim();
-        read_back(ctx, &texture, size)
+        Ok(())
     }
 }
 
@@ -344,5 +365,68 @@ impl TextRasterizer for GlyphonRasterizer {
             return Ok(RgbaImage::transparent(size));
         }
         self.draw(shaped, style, scale, size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TextEngine;
+    use mm_gpu::GpuRequest;
+    use mm_text_api::TextShaper;
+
+    /// 異なる字形を 8 つしか振れない描画器。
+    const SMALL_LIMIT: usize = 8;
+
+    fn gpu() -> Option<Arc<GpuContext>> {
+        match GpuContext::shared(&GpuRequest::default()) {
+            Ok(ctx) => Some(ctx),
+            Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
+                panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn ink(img: &RgbaImage) -> f32 {
+        img.data().iter().sum()
+    }
+
+    /// 上限に近い atlas に 1 回で上限を超える字形を足すと、ID が重ならず作り直して描ける。
+    #[test]
+    fn 上限を超えたら作り直して描き直す() {
+        let Some(gpu) = gpu() else { return };
+        let engine = TextEngine::new();
+        let shaper = engine.shaper();
+        let limited = GlyphonRasterizer::with_id_limit(engine.inner.clone(), gpu, SMALL_LIMIT);
+        let reference = engine.rasterizer();
+        let style = TextStyle::default();
+        for text in ["ABCDE", "FGHIJ", "KLMNOP", "ABCDEFGH"] {
+            let shaped = shaper.shape(text, &style).expect("整形");
+            let got = limited.rasterize(&shaped, &style, 1.0).expect("描ける");
+            let want = reference.rasterize(&shaped, &style, 1.0).expect("CPU");
+            assert!(ink(&got) > 0.0, "{text}: 字が描かれる");
+            let diff = got.max_diff(&want).expect("同じ大きさ");
+            assert!(
+                diff < 0.05,
+                "{text}: ID が重なると別の字になる（差 {diff}）"
+            );
+        }
+    }
+
+    #[test]
+    fn 一回の絵だけで上限を超えるなら_unsupported() {
+        let Some(gpu) = gpu() else { return };
+        let engine = TextEngine::new();
+        let limited = GlyphonRasterizer::with_id_limit(engine.inner.clone(), gpu, SMALL_LIMIT);
+        let style = TextStyle::default();
+        let shaped = engine
+            .shaper()
+            .shape("ABCDEFGHIJKLMNOP", &style)
+            .expect("整形");
+        assert!(matches!(
+            limited.rasterize(&shaped, &style, 1.0),
+            Err(MmError::Unsupported(_))
+        ));
     }
 }

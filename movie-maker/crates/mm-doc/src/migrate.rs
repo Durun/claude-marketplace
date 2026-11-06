@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use mm_types::{MmError, Result};
+use mm_types::{MmError, RationalTime, Result};
 
 use crate::{Project, SCHEMA_VERSION};
 
@@ -40,6 +40,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
         match version {
             1 => v1_to_v2(&mut value),
             2 => v2_to_v3(&mut value),
+            3 => v3_to_v4(&mut value),
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "文書の版 {version} からの移行が無い"
@@ -116,10 +117,53 @@ fn v2_to_v3(value: &mut Value) {
     }
 }
 
+/// v3 → v4 でずらす幅。1 コマ（最も細かい fps でも 1/240 秒程度）より十分小さい。
+const MARKER_NUDGE: (i64, u32) = (1, 1000);
+
+/// v3 → v4: 同じ時刻のマーカーの後ろの方を `MARKER_NUDGE` ずつ後ろへずらし、時刻を厳密な昇順にする。
+/// 昇順でない並び（時刻が戻る）は直さず、`validate` に断らせる。
+fn v3_to_v4(value: &mut Value) {
+    let Some(comps) = value.get_mut("compositions").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for comp in comps {
+        let Some(markers) = comp.get_mut("markers").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        let mut prev: Option<(RationalTime, RationalTime)> = None;
+        for marker in markers {
+            let Some(orig) = marker
+                .get("time")
+                .and_then(|t| serde_json::from_value::<RationalTime>(t.clone()).ok())
+            else {
+                prev = None;
+                continue;
+            };
+            let mut time = orig;
+            if let Some((prev_orig, prev_new)) = prev {
+                if orig >= prev_orig && orig <= prev_new {
+                    time = nudge(prev_new).unwrap_or(orig);
+                }
+            }
+            if time != orig {
+                if let Ok(t) = serde_json::to_value(time) {
+                    marker["time"] = t;
+                }
+            }
+            prev = Some((orig, time));
+        }
+    }
+}
+
+fn nudge(t: RationalTime) -> Option<RationalTime> {
+    let step = RationalTime::new(i128::from(MARKER_NUDGE.0), MARKER_NUDGE.1).ok()?;
+    t.checked_add(step).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_types::{ParamValue, Rational, RationalTime};
+    use mm_types::{ParamValue, Rational};
 
     use crate::{BlendMode, Ease, Interpolation};
 
@@ -195,6 +239,25 @@ mod tests {
             "voice"
         );
         assert_eq!(p.render_targets[0].codec, "h264");
+    }
+
+    #[test]
+    fn 凍結した_v3_の同じ時刻のマーカーは_v4_でずれて_他は動かない() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/doc/v3/stage1.json");
+        let p = load(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        let times: Vec<_> = p.compositions[0].markers.iter().map(|m| m.time).collect();
+        assert_eq!(times[0], RationalTime::seconds(1));
+        assert_eq!(times[1], RationalTime::new(1001, 1000).unwrap());
+        assert_eq!(times[2], RationalTime::seconds(5));
+    }
+
+    #[test]
+    fn 凍結した_v4_の文書は_v3_から上げた文書と同じ() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let read = |v: &str| load(&std::fs::read_to_string(dir.join(v)).unwrap()).unwrap();
+        assert_eq!(read("v3/stage1.json"), read("v4/stage1.json"));
     }
 
     #[test]

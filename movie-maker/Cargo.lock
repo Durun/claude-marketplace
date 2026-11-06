@@ -2720,12 +2720,14 @@ dependencies = [
  "ffmpeg-next",
  "mm-audio-api",
  "mm-decode-api",
+ "mm-decode-cuvid",
+ "mm-decode-ffmpeg-core",
+ "mm-decode-hw",
  "mm-gpu",
  "mm-node-api",
  "mm-testkit",
  "mm-trace",
  "mm-types",
- "pollster",
  "tracing",
  "tracing-subscriber",
  "wgpu",
@@ -2739,12 +2741,14 @@ dependencies = [
  "ffmpeg-next",
  "mm-audio-api",
  "mm-decode-api",
+ "mm-decode-d3d12va",
+ "mm-decode-ffmpeg-core",
+ "mm-decode-hw",
  "mm-gpu",
  "mm-node-api",
  "mm-testkit",
  "mm-trace",
  "mm-types",
- "pollster",
  "tracing",
  "tracing-subscriber",
  "wgpu",
@@ -2758,8 +2762,35 @@ dependencies = [
  "ffmpeg-next",
  "mm-audio-api",
  "mm-decode-api",
+ "mm-decode-ffmpeg-core",
  "mm-testkit",
  "mm-types",
+]
+
+[[package]]
+name = "mm-decode-ffmpeg-core"
+version = "0.1.0"
+dependencies = [
+ "ffmpeg-next",
+ "mm-decode-api",
+ "mm-types",
+]
+
+[[package]]
+name = "mm-decode-hw"
+version = "0.1.0"
+dependencies = [
+ "ffmpeg-next",
+ "mm-audio-api",
+ "mm-decode-api",
+ "mm-decode-ffmpeg-core",
+ "mm-gpu",
+ "mm-node-api",
+ "mm-types",
+ "pollster",
+ "tracing",
+ "wgpu",
+ "windows",
 ]
 
 [[package]]

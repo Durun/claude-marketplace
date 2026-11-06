@@ -8,20 +8,33 @@ publish.workspace = true
 
 [features]
 # 既定で切る。FFmpeg の開発ファイルと libclang が無い環境でもワークスペースをビルドできるようにする。
-d3d12va = ["dep:ffmpeg-next", "dep:wgpu", "dep:windows", "dep:mm-gpu", "dep:pollster"]
+d3d12va = [
+  "dep:ffmpeg-next",
+  "dep:wgpu",
+  "dep:windows",
+  "dep:mm-gpu",
+  "mm-decode-hw/hw",
+  "mm-decode-ffmpeg-core/ffmpeg",
+]
+# 検査のためだけの口（待ちを外した対照）。本番の組み立てでは入れない。
+test-hooks = ["mm-decode-hw/test-hooks"]
 
 [dependencies]
 mm-types = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-decode-api = { workspace = true }
+mm-decode-ffmpeg-core = { workspace = true }
+mm-decode-hw = { workspace = true }
 mm-gpu = { workspace = true, optional = true }
 tracing = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-pollster = { workspace = true, optional = true }
 windows = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common"] }
 
 [dev-dependencies]
+# 統合テストだけが検査の口（test-hooks）を使う。
+mm-decode-d3d12va = { path = ".", features = ["test-hooks"] }
+mm-decode-hw = { workspace = true, features = ["testing"] }
 mm-trace = { workspace = true }
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }

@@ -6,7 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::{RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, Join};
+use crate::ops::{cut_referrers, invalid, Join};
 use crate::touches::Touches;
 
 /// `cut` を、頭から `at`（並びの時間軸での長さ）の所で割る。後ろの半分が `new_cut` になる。
@@ -24,6 +24,7 @@ impl Apply for Split {
         let (seq_id, index) = project.cut_index(&self.cut)?;
         let mut t = Touches::of(&seq_id);
         t.add(&self.cut).add(&self.new_cut);
+        cut_referrers(project, &self.cut, &mut t);
         // 割った後ろの半分の次になるカット。
         if let Some(next) = project.sequence(&seq_id)?.cuts.get(index + 1) {
             t.add(&next.id);

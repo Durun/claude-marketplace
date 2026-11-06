@@ -77,6 +77,11 @@ impl Cut {
         }
     }
 
+    /// カットが持つ動画オブジェクトの根（source とトランジション）。
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        std::iter::once(&self.source).chain(self.transition_in.iter().map(|t| &t.node))
+    }
+
     /// 素材の時間軸での範囲 `[in, out)`。
     pub fn source_range(&self) -> Result<TimeRange> {
         TimeRange::new(self.in_point, self.out_point)

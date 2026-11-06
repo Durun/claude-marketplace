@@ -6,7 +6,7 @@ use mm_types::{Id, LayerId, MmError, Result};
 
 use crate::node::{Node, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND, SEQUENCE_PARAM};
 use crate::param::{Interpolation, Param};
-use crate::{Composition, Layer, Project, Sequence};
+use crate::{Composition, Cut, Layer, Project, Sequence};
 
 fn invalid(msg: String) -> MmError {
     MmError::InvalidArgument(msg)
@@ -43,7 +43,7 @@ impl Project {
     /// - 親・トラックマット・接続・レンダーターゲット・入れ子・sequence の参照先が在る。
     /// - 親の鎖と入れ子に循環が無い。
     /// - キーフレームの時刻が昇順。タイムリマップは `Hold` と `Linear` だけ。ベジェの制御点の x が `[0,1]`。
-    /// - マーカーの時刻が昇順で、長さが負でない。
+    /// - マーカーの時刻が厳密な昇順（同じ時刻を持たない）で、長さが負でない。
     pub fn validate(&self) -> Result<()> {
         self.validate_ids()?;
         for asset in &self.assets {
@@ -117,18 +117,23 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
         if m.duration.is_negative() {
             return Err(invalid(format!("マーカー {} の長さが負", m.id)));
         }
-        if last_marker.is_some_and(|t| m.time < t) {
-            return Err(invalid(format!("マーカー {} の時刻が昇順でない", m.id)));
+        if last_marker.is_some_and(|t| m.time <= t) {
+            return Err(invalid(format!(
+                "マーカー {} の時刻が厳密な昇順でない",
+                m.id
+            )));
         }
         last_marker = Some(m.time);
     }
+    // 親とトラックマットの先を ID の集合で引く（レイヤー数の 2 乗にしない）。
+    let ids: HashSet<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
     for layer in &comp.layers {
-        validate_layer(project, comp, layer)?;
+        validate_layer(project, &ids, layer)?;
     }
     validate_parent_chain(comp)
 }
 
-fn validate_layer(project: &Project, comp: &Composition, layer: &Layer) -> Result<()> {
+fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Result<()> {
     let id = &layer.id;
     if layer.in_point >= layer.out_point {
         return Err(invalid(format!("レイヤー {id} は in < out でない")));
@@ -137,12 +142,12 @@ fn validate_layer(project: &Project, comp: &Composition, layer: &Layer) -> Resul
         .range()
         .map_err(|e| invalid(format!("レイヤー {id} の範囲: {e}")))?;
     if let Some(parent) = &layer.parent {
-        if parent == id || comp.layer(parent).is_err() {
+        if parent == id || !ids.contains(parent.as_str()) {
             return Err(invalid(format!("レイヤー {id} の親 {parent} が無い")));
         }
     }
     if let Some(matte) = &layer.track_matte {
-        if matte.layer == *id || comp.layer(&matte.layer).is_err() {
+        if matte.layer == *id || !ids.contains(matte.layer.as_str()) {
             return Err(invalid(format!(
                 "レイヤー {id} のトラックマット {} が無い",
                 matte.layer
@@ -160,7 +165,7 @@ fn validate_layer(project: &Project, comp: &Composition, layer: &Layer) -> Resul
     for param in layer_params(layer) {
         validate_keyframes(&format!("レイヤー {id}"), param)?;
     }
-    for node in layer_nodes(layer) {
+    for node in layer.nodes() {
         validate_node(project, &format!("レイヤー {id}"), node)?;
     }
     Ok(())
@@ -218,11 +223,6 @@ fn layer_params(layer: &Layer) -> impl Iterator<Item = &Param> {
         .chain(layer.transform.params())
         .chain(masks)
         .chain(audio)
-}
-
-/// レイヤーが持つ動画オブジェクト（source と効果）。
-fn layer_nodes(layer: &Layer) -> impl Iterator<Item = &Node> {
-    std::iter::once(&layer.source).chain(layer.effects.iter().map(|e| &e.node))
 }
 
 fn validate_node(project: &Project, owner: &str, root: &Node) -> Result<()> {
@@ -285,61 +285,89 @@ fn validate_sequence(project: &Project, seq: &Sequence) -> Result<()> {
                 )));
             }
         }
-        validate_node(project, &format!("カット {}", cut.id), &cut.source)?;
-    }
-    Ok(())
-}
-
-/// 入れ子（コンポジション → 中のコンポジション、sequence のカット → コンポジション）の循環。
-fn validate_nesting(project: &Project) -> Result<()> {
-    let mut done = HashSet::new();
-    for comp in &project.compositions {
-        let mut path = Vec::new();
-        visit_comp(project, comp, &mut path, &mut done)?;
-    }
-    Ok(())
-}
-
-fn visit_comp<'a>(
-    project: &'a Project,
-    comp: &'a Composition,
-    path: &mut Vec<&'a str>,
-    done: &mut HashSet<&'a str>,
-) -> Result<()> {
-    let id = comp.id.as_str();
-    if path.contains(&id) {
-        return Err(invalid(format!("コンポジション {id} の入れ子が循環")));
-    }
-    if done.contains(id) {
-        return Ok(());
-    }
-    path.push(id);
-    for node in comp.layers.iter().flat_map(layer_nodes) {
-        visit_node(project, node, path, done)?;
-    }
-    path.pop();
-    done.insert(id);
-    Ok(())
-}
-
-fn visit_node<'a>(
-    project: &'a Project,
-    root: &'a Node,
-    path: &mut Vec<&'a str>,
-    done: &mut HashSet<&'a str>,
-) -> Result<()> {
-    for node in root.descendants() {
-        if node.kind == NESTED_KIND {
-            let child =
-                project.composition(&Id::new(node.text_param(NESTED_PARAM).unwrap_or("")))?;
-            visit_comp(project, child, path, done)?;
+        for node in cut.nodes() {
+            validate_node(project, &format!("カット {}", cut.id), node)?;
         }
-        if node.kind == SEQUENCE_KIND {
-            let seq = project.sequence(&Id::new(node.text_param(SEQUENCE_PARAM).unwrap_or("")))?;
-            for cut in &seq.cuts {
-                visit_node(project, &cut.source, path, done)?;
+    }
+    Ok(())
+}
+
+/// 入れ子の循環を調べる巡りの 1 歩の行き先。コンポジションと sequence は ID の名前空間が別。
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Visit<'a> {
+    Comp(&'a str),
+    Seq(&'a str),
+}
+
+impl Visit<'_> {
+    fn describe(self) -> String {
+        match self {
+            Visit::Comp(id) => format!("コンポジション {id}"),
+            Visit::Seq(id) => format!("sequence {id}"),
+        }
+    }
+}
+
+/// 入れ子（コンポジション・sequence から、動画オブジェクトが指すコンポジション・sequence）の循環。
+/// 根はコンポジションと sequence の全部で、どこからも参照されない sequence の循環も見つける。
+fn validate_nesting(project: &Project) -> Result<()> {
+    let mut walk = Nesting {
+        project,
+        path: Vec::new(),
+        done: HashSet::new(),
+    };
+    for comp in &project.compositions {
+        walk.visit(Visit::Comp(comp.id.as_str()))?;
+    }
+    for seq in &project.sequences {
+        walk.visit(Visit::Seq(seq.id.as_str()))?;
+    }
+    Ok(())
+}
+
+struct Nesting<'a> {
+    project: &'a Project,
+    path: Vec<Visit<'a>>,
+    done: HashSet<Visit<'a>>,
+}
+
+impl<'a> Nesting<'a> {
+    fn visit(&mut self, target: Visit<'a>) -> Result<()> {
+        if self.path.contains(&target) {
+            return Err(invalid(format!("{} の入れ子が循環", target.describe())));
+        }
+        if self.done.contains(&target) {
+            return Ok(());
+        }
+        self.path.push(target);
+        match target {
+            Visit::Comp(id) => {
+                let comp = self.project.composition(&Id::new(id))?;
+                for node in comp.layers.iter().flat_map(Layer::nodes) {
+                    self.visit_node(node)?;
+                }
+            }
+            Visit::Seq(id) => {
+                let seq = self.project.sequence(&Id::new(id))?;
+                for node in seq.cuts.iter().flat_map(Cut::nodes) {
+                    self.visit_node(node)?;
+                }
             }
         }
+        self.path.pop();
+        self.done.insert(target);
+        Ok(())
     }
-    Ok(())
+
+    fn visit_node(&mut self, root: &'a Node) -> Result<()> {
+        for node in root.descendants() {
+            if node.kind == NESTED_KIND {
+                self.visit(Visit::Comp(node.text_param(NESTED_PARAM).unwrap_or("")))?;
+            }
+            if node.kind == SEQUENCE_KIND {
+                self.visit(Visit::Seq(node.text_param(SEQUENCE_PARAM).unwrap_or("")))?;
+            }
+        }
+        Ok(())
+    }
 }

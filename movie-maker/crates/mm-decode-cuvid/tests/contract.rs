@@ -2,8 +2,7 @@
 //! 素材は `fixtures/media/generate.sh`（無ければ作る）。NVIDIA の GPU とドライバーが要る。
 #![cfg(feature = "cuvid")]
 
-#[path = "../../mm-decode-d3d12va/tests/common/mod.rs"]
-mod common;
+use mm_decode_hw::testing as common;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +25,14 @@ const FILES: [&str; 6] = [
     "offset_bf.mp4",
     "p10.mp4",
 ];
+
+/// GPU の文脈を作って基本の素材を開けるか。GPU や CUDA が無い環境（CI）ではテストを飛ばす。
+fn available() -> bool {
+    common::gpu_available(|| {
+        let ctx = GpuContext::shared(&gpu_request(None)?)?;
+        CuvidDecoder::open(&fixtures(&FILES).join("cfr.mp4"), &ctx).map(drop)
+    })
+}
 
 fn ctx() -> Arc<GpuContext> {
     gpu(gpu_request(None).expect("D3D12 のアダプター"))
@@ -53,6 +60,9 @@ fn drain_numbers(dec: &mut dyn Decoder) -> Vec<(i64, i64)> {
 
 #[test]
 fn デコーダーが契約を通る() {
+    if !available() {
+        return;
+    }
     let dir = fixtures(&FILES);
     let fx = DecodeFixture {
         path: dir.join("cfr.mp4"),
@@ -65,12 +75,18 @@ fn デコーダーが契約を通る() {
 
 #[test]
 fn vfr_の契約を通る() {
+    if !available() {
+        return;
+    }
     vfr_contract(|| open("vfr.mp4"));
     vfr_contract(|| open("vfr_bf.mp4"));
 }
 
 #[test]
 fn 焼いた番号がコマの番号と一致する() {
+    if !available() {
+        return;
+    }
     for name in ["cfr.mp4", "ntsc.mp4", "vfr.mp4", "vfr_bf.mp4"] {
         let mut dec = open(name);
         let frames = drain_numbers(dec.as_mut());
@@ -83,6 +99,9 @@ fn 焼いた番号がコマの番号と一致する() {
 
 #[test]
 fn 頭がずれた素材でも番号が先頭から数える() {
+    if !available() {
+        return;
+    }
     let mut dec = open("offset_bf.mp4");
     let frames = drain_numbers(dec.as_mut());
     let first = frames[0].1;
@@ -93,6 +112,9 @@ fn 頭がずれた素材でも番号が先頭から数える() {
 
 #[test]
 fn 飛び飛びのシークで目的のコマが出る() {
+    if !available() {
+        return;
+    }
     let mut dec = open("cfr.mp4");
     let fps = dec.info().fps.expect("CFR");
     for target in [0, 59, 30, 13, 14, 45, 3, 3, 58] {
@@ -106,6 +128,9 @@ fn 飛び飛びのシークで目的のコマが出る() {
 
 #[test]
 fn 十ビットの素材は八ビットに落とさず運ぶ() {
+    if !available() {
+        return;
+    }
     let mut dec = open("p10.mp4");
     let mut checked = 0;
     while let Some(f) = dec.next_frame().expect("復号") {
@@ -122,6 +147,9 @@ fn 十ビットの素材は八ビットに落とさず運ぶ() {
 
 #[test]
 fn gpu_の文脈なしでは断る() {
+    if !available() {
+        return;
+    }
     let path = fixtures(&FILES).join("cfr.mp4");
     assert!(matches!(
         CuvidFactory.open(&path, None),
@@ -131,6 +159,9 @@ fn gpu_の文脈なしでは断る() {
 
 #[test]
 fn コマを捨て続けても輪が詰まらない() {
+    if !available() {
+        return;
+    }
     let mut dec = open("cfr.mp4");
     let mut total = 0;
     for _ in 0..8 {
@@ -144,6 +175,9 @@ fn コマを捨て続けても輪が詰まらない() {
 
 #[test]
 fn コマを持ち続けても復号が止まらない() {
+    if !available() {
+        return;
+    }
     let ctx = ctx();
     let path = fixtures(&FILES).join("cfr.mp4");
     let mut dec = CuvidDecoder::open(&path, &ctx).expect("開ける");
@@ -177,13 +211,65 @@ fn mixed_frames(wait_for_gpu: bool) -> usize {
 
 #[test]
 fn gpu_が遅れても別のコマが混ざらない() {
+    if !available() {
+        return;
+    }
     for _ in 0..3 {
         assert_eq!(mixed_frames(true), 0);
     }
 }
 
 #[test]
+fn pq_と_hlg_の素材は断る() {
+    if !available() {
+        return;
+    }
+    for trc in ["smpte2084", "arib-std-b67"] {
+        let path = common::hdr_transfer_fixture(trc);
+        let opened = factory().open(&path, None);
+        assert!(
+            matches!(opened, Err(MmError::Unsupported(_))),
+            "{trc}: {:?}",
+            opened.err()
+        );
+    }
+}
+
+#[test]
+fn 色差は隣の画素へ線形に補間される() {
+    if !available() {
+        return;
+    }
+    let path = common::chroma_ramp_fixture();
+    let mut dec = factory().open(&path, None).expect("開ける");
+    let frame = dec.next_frame().expect("復号").expect("コマ");
+    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の絵"), 100);
+    assert!(
+        ratio < 0.15,
+        "隣と同じ値の画素が {ratio:.2} の割合で並ぶ（最近傍の読み）"
+    );
+}
+
+/// 別のスレッドが同じキューに提出し続けても、変換がコピーの完了を待たずに走って別のコマが混ざることがない。
+#[test]
+fn 別のスレッドの提出が挟まってもコピーの完了を待つ() {
+    if !available() {
+        return;
+    }
+    let ctx = ctx();
+    let mut dec = open("cfr.mp4");
+    let frames = common::with_background_submits(&ctx, || drain_numbers(dec.as_mut()));
+    assert_eq!(frames.len() as i64, dec.info().frame_count());
+    for (index, number) in frames {
+        assert_eq!(index, number, "コマ {index}");
+    }
+}
+
+#[test]
 fn 待ちを外すと別のコマが混ざる_対照() {
+    if !available() {
+        return;
+    }
     let mixed = mixed_frames(false);
     assert!(
         mixed > 0,
@@ -194,6 +280,9 @@ fn 待ちを外すと別のコマが混ざる_対照() {
 /// NVENC で作った 4K の HEVC（d3d12va が落とす形）を cuvid が復号できる。NVENC が無い PC では素材が無く飛ばす。
 #[test]
 fn nvenc_の_4k_hevc_を復号できる() {
+    if !available() {
+        return;
+    }
     let path = fixtures(&FILES).join("nvenc4k.mp4");
     if !path.exists() {
         eprintln!("nvenc4k.mp4 が無いので飛ばす");

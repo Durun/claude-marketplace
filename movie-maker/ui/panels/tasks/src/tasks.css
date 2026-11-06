@@ -35,15 +35,15 @@
 
 .mm-tasks-chevron {
   flex: none;
-  width: 6px;
-  height: 6px;
-  border-right: 2px solid currentcolor;
-  border-bottom: 2px solid currentcolor;
-  transform: translateY(-2px) rotate(45deg);
+  width: var(--mm-size-chevron);
+  height: var(--mm-size-chevron);
+  border-right: var(--mm-stroke-chevron) solid currentcolor;
+  border-bottom: var(--mm-stroke-chevron) solid currentcolor;
+  transform: translateY(calc(var(--mm-stroke-chevron) * -1)) rotate(45deg);
 }
 
 .mm-tasks-group[data-open="false"] .mm-tasks-chevron {
-  transform: translateX(-2px) rotate(-45deg);
+  transform: translateX(calc(var(--mm-stroke-chevron) * -1)) rotate(-45deg);
 }
 
 .mm-tasks-body {
@@ -71,15 +71,20 @@
   cursor: pointer;
 }
 
-.mm-tasks-link:hover {
+.mm-tasks-link:hover:not(:disabled) {
   color: var(--mm-color-task-link-hover);
   text-decoration: underline;
 }
 
+.mm-tasks-link:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
 .mm-tasks-bullet {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: var(--mm-size-bullet);
+  height: var(--mm-size-bullet);
   border: var(--mm-border-width) solid var(--mm-color-accent);
   border-radius: var(--mm-radius-sm);
   background: var(--mm-gradient-button);
@@ -87,6 +92,6 @@
 
 .mm-tasks-toggle:focus-visible,
 .mm-tasks-link:focus-visible {
-  outline: 2px solid var(--mm-color-focus);
-  outline-offset: 1px;
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
 }

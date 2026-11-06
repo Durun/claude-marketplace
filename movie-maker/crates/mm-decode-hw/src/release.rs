@@ -11,7 +11,8 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Graphics::Direct3D12::ID3D12Fence;
 
 /// 握ったままにする面の上限。超えたら一番古いものの完了を CPU で待つ。
-/// FFmpeg のプールの予備（`extra_hw_frames`）より小さくして、復号が面を取れなくなる前に止める。
+/// FFmpeg のプールの予備（`extra_hw_frames`）より小さくして、復号が面を取れなくなる前に止める
+/// （d3d12va は `EXTRA_HW_FRAMES > MAX_PENDING` をコンパイル時に確かめる）。
 pub const MAX_PENDING: usize = 8;
 
 /// 読み終えるのを待っている面。
@@ -44,6 +45,7 @@ impl ReleaseQueue {
     }
 
     /// GPU の完了を待たずに放す（待ちが効いていることを確かめる対照のため）。
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn set_wait_for_gpu(&mut self, on: bool) {
         self.wait_for_gpu = on;
     }
@@ -94,14 +96,21 @@ impl ReleaseQueue {
         Ok(())
     }
 
-    /// 全部の完了を待って放す。復号器を壊す前に呼ぶ。
+    /// 全部の完了を待って放す。復号器を壊す前に呼ぶ。待てないなら、握ったまま壊すより放して進む。
     pub fn wait_all(&mut self) {
+        let _ = self.try_wait_all();
+    }
+
+    /// 全部の完了を待って放す。待てなかった面があれば、残りも放した上で最初のエラーを返す。
+    pub fn try_wait_all(&mut self) -> Result<()> {
+        let mut first_error = None;
         while !self.pending.is_empty() {
-            if self.wait_oldest().is_err() {
-                // 待てないなら、握ったまま壊すより放して進む。
+            if let Err(e) = self.wait_oldest() {
+                first_error.get_or_insert(e);
                 self.pending.clear();
             }
         }
+        first_error.map_or(Ok(()), Err)
     }
 }
 

@@ -24,9 +24,9 @@ use mm_text_glyphon::TextEngine;
 use mm_types::{GpuAdapterId, MmError, Result};
 
 use crate::config::{Backend, RuntimeConfig};
-use crate::decode_select::AutoDecoderFactory;
 #[cfg(any(feature = "d3d12va", feature = "cuvid"))]
 use crate::decode_select::WithAudio;
+use crate::decode_select::{AutoDecoderFactory, GpuCandidate};
 use crate::engine::{Engine, EngineParts};
 use crate::registry::Registry;
 
@@ -99,13 +99,13 @@ fn with_cpu_audio(video: Arc<dyn DecoderFactory>) -> Arc<dyn DecoderFactory> {
     }
 }
 
-/// 入っている GPU の実装を、試す順（d3d12va、cuvid）に。
-fn gpu_decoders() -> Vec<Arc<dyn DecoderFactory>> {
+/// 入っている GPU の実装を、試す順（d3d12va、cuvid）に。d3d12va は `open` の中で別プロセスで試し済み。
+fn gpu_decoders() -> Vec<GpuCandidate> {
     vec![
         #[cfg(feature = "d3d12va")]
-        with_cpu_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory)),
+        GpuCandidate::probed_on_open(with_cpu_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory))),
         #[cfg(feature = "cuvid")]
-        with_cpu_audio(Arc::new(mm_decode_cuvid::CuvidFactory)),
+        GpuCandidate::new(with_cpu_audio(Arc::new(mm_decode_cuvid::CuvidFactory))),
     ]
 }
 
@@ -143,10 +143,26 @@ fn mixers(backend: Backend) -> Result<Arc<dyn MixerFactory>> {
 /// GPU を使う実装があるときだけ、文脈を 1 回作る。設定のアダプターが無ければ高性能のもの。
 /// 要否は描画器とデコーダーの両方の選択で決まる（GPU で復号する実装は描画器と同じデバイスが要る）。
 fn gpu_context(config: &RuntimeConfig) -> Result<Option<Arc<GpuContext>>> {
+    gpu_context_with(config, GpuContext::shared)
+}
+
+/// `create` で文脈を作る。`decode: auto` だけが GPU を欲しがるときは、作れなくても `None` で続け、
+/// ffmpeg にする（GPU の無い CI でも組める）。
+fn gpu_context_with(
+    config: &RuntimeConfig,
+    create: impl FnOnce(&GpuRequest) -> Result<Arc<GpuContext>>,
+) -> Result<Option<Arc<GpuContext>>> {
     if !config.needs_gpu() {
         return Ok(None);
     }
-    Ok(Some(GpuContext::shared(&gpu_request(config)?)?))
+    match create(&gpu_request(config)?) {
+        Ok(ctx) => Ok(Some(ctx)),
+        Err(e) if !config.requires_gpu() => {
+            tracing::warn!(error = %e, "GPU の文脈を作れないので decode: auto は ffmpeg で動く");
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// 文脈の頼み方。GPU で復号する実装は D3D12 のデバイスが要る（FFmpeg と CUDA に渡す）ので、
@@ -248,4 +264,46 @@ fn registry(render: Backend) -> Result<Registry> {
         r.register(Arc::new(TextKind))?;
     }
     Ok(r)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn no_gpu(_: &GpuRequest) -> Result<Arc<GpuContext>> {
+        Err(MmError::Unsupported("GPU が無い".into()))
+    }
+
+    #[test]
+    fn auto_だけなら_gpu_が無くても_none_で続ける() {
+        let config = RuntimeConfig {
+            decode: Backend::Auto,
+            ..RuntimeConfig::sample()
+        };
+        assert!(gpu_context_with(&config, no_gpu).unwrap().is_none());
+    }
+
+    #[test]
+    fn gpu_が必須の組み合わせは作れなければ失敗する() {
+        for config in [
+            RuntimeConfig {
+                render: Backend::Wgpu,
+                decode: Backend::Auto,
+                ..RuntimeConfig::sample()
+            },
+            RuntimeConfig {
+                text: Backend::Glyphon,
+                ..RuntimeConfig::sample()
+            },
+        ] {
+            assert!(gpu_context_with(&config, no_gpu).is_err(), "{config:?}");
+        }
+    }
+
+    #[test]
+    fn gpu_を使わない組み合わせは作ろうとしない() {
+        let config = RuntimeConfig::sample();
+        let ctx = gpu_context_with(&config, |_| panic!("作らない")).unwrap();
+        assert!(ctx.is_none());
+    }
 }

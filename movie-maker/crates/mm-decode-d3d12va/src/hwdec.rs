@@ -8,12 +8,19 @@ use ffmpeg_next as ff;
 use mm_types::{MmError, Result};
 use windows::core::Interface;
 
+use mm_decode_ffmpeg_core::reader::StreamReader;
+use mm_decode_hw::release::MAX_PENDING;
+use mm_decode_hw::yuv::stream_bit_depth;
+
 use crate::ffi::{AvD3d12vaDeviceContext, RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS};
-use crate::shared::reader::HwReader;
-use crate::shared::yuv::stream_bit_depth;
 
 /// 復号器が DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が握る面の数より大きくする。
 const EXTRA_HW_FRAMES: i32 = 16;
+
+const _: () = assert!(
+    EXTRA_HW_FRAMES as usize > MAX_PENDING,
+    "握る面の上限より予備を多くしないと、復号が面を取れなくなる"
+);
 
 /// FFmpeg を 1 回だけ初期化する。
 pub fn init() -> Result<()> {
@@ -71,7 +78,7 @@ fn create_device_ref(device: &wgpu::Device) -> Result<*mut ffi::AVBufferRef> {
 
 /// 開いた素材。
 pub struct Opened {
-    pub reader: HwReader,
+    pub reader: StreamReader,
     /// 1 成分のビット深度（8 か 10）。
     pub bits: u32,
 }
@@ -115,7 +122,7 @@ pub fn open(path: &Path, device: &wgpu::Device) -> Result<Opened> {
         .video()
         .map_err(|e| MmError::Unsupported(format!("映像のデコーダー: {e}")))?;
     Ok(Opened {
-        reader: HwReader::new(input, stream_index, decoder),
+        reader: StreamReader::new(input, stream_index, decoder),
         bits,
     })
 }

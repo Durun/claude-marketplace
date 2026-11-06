@@ -10,9 +10,8 @@ use ff::software::resampling::Context as Resampler;
 use ff::{frame, ChannelLayout, Packet};
 use ffmpeg_next as ff;
 use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
+use mm_decode_ffmpeg_core::timeline::TimeBase;
 use mm_types::{MmError, Rational, RationalTime, Result, TimeRange};
-
-use crate::timeline::TimeBase;
 
 /// 区間の頭より前から復号を始める長さ（秒）。AAC などの前の窓の分を捨てるため。
 const PREROLL_SECONDS: i64 = 1;

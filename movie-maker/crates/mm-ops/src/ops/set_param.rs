@@ -24,8 +24,8 @@ pub struct SetParam {
 }
 
 impl Apply for SetParam {
-    fn touches(&self, _: &Project) -> Result<Touches> {
-        self.target.touches()
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        self.target.touches_in(project, Some(&self.value))
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {

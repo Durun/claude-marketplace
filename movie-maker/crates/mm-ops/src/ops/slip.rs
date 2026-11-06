@@ -6,7 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::{RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::negate;
+use crate::ops::{cut_referrers, negate};
 use crate::touches::Touches;
 
 /// `cut` の `in` と `out` を、並びの時間軸で `by` だけ同じ量ずらす（素材の時間では `by × speed`）。
@@ -19,8 +19,10 @@ pub struct Slip {
 }
 
 impl Apply for Slip {
-    fn touches(&self, _: &Project) -> Result<Touches> {
-        Ok(Touches::of(&self.cut))
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        let mut t = Touches::of(&self.cut);
+        cut_referrers(project, &self.cut, &mut t);
+        Ok(t)
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {

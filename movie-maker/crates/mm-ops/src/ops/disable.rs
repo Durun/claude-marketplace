@@ -6,6 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
+use crate::ops::cut_referrers;
 use crate::touches::Touches;
 
 /// `cut` の `enabled` を `!disabled` にする。外したカットは消えずに残り、配置から除かれる。
@@ -23,8 +24,10 @@ fn default_disabled() -> bool {
 }
 
 impl Apply for Disable {
-    fn touches(&self, _: &Project) -> Result<Touches> {
-        Ok(Touches::of(&self.cut))
+    fn touches(&self, project: &Project) -> Result<Touches> {
+        let mut t = Touches::of(&self.cut);
+        cut_referrers(project, &self.cut, &mut t);
+        Ok(t)
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
