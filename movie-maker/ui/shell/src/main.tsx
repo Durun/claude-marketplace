@@ -6,10 +6,9 @@ import "./shell.css";
 
 const client = createClient(createIpcTransport());
 
-const sendOp = (op: Parameters<typeof client.sendOp>[0]): void => {
-  void client.sendOp(op).then((result) => {
-    if (!result.ok) console.warn("[mm-shell] op failed", op.op, result.error);
-  });
+const sendOp = async (op: Parameters<typeof client.sendOp>[0]): Promise<string | null> => {
+  const result = await client.sendOp(op);
+  return result.ok ? null : `${op.op}: ${result.error}`;
 };
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));

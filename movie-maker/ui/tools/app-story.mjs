@@ -116,6 +116,7 @@ await invoke("transport", { action: "play", value: null });
 await wait(2500);
 await shot("7-playing");
 const played = (await info()).layers;
-console.log("sequence:", JSON.stringify((await invoke("story_overview")).sequences), "layers:", JSON.stringify(played));
+const sequences = JSON.stringify((await invoke("story_overview")).sequences);
+process.stdout.write(`sequence: ${sequences} layers: ${JSON.stringify(played)}\n`);
 await invoke("transport", { action: "pause", value: null });
 await browser.close();

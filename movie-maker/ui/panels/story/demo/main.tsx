@@ -91,6 +91,7 @@ const api: StoryApi = {
       .filter((w) => w.text.includes(query))
       .map((w) => ({ asset: "a1", word: w.id, start: w.start, end: w.end, context: `${w.text}…` })),
   timelineTime: async (_asset, secondsAt) => secondsAt,
+  cutTime: async () => 0,
   apply: async (op) => {
     applyOp(op);
     return { ok: true, value: {} };
