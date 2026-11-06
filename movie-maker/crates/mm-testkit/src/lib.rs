@@ -12,6 +12,7 @@ pub mod color;
 pub mod decode;
 pub mod decode_vfr;
 pub mod fixtures;
+pub mod golden;
 pub mod gpu;
 pub mod host;
 pub mod ingest;

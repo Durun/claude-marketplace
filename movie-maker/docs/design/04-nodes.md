@@ -82,6 +82,26 @@ pub trait NodeKind: Send + Sync {
 - カットの時刻は前のカットのアウト点から自動で決まる（`mm_eval::place_cuts`。有効なカットの長さ `(out - in) / speed` の和）。カットの間にトランジション（効果音つき）を置ける。トランジションは境目をまたいで掛けるもので、配置は変えない。
 - 端の操作（リップル、ロール、スリップ、スライド）はこの中で働く。`attachTo` したレイヤーも一緒に動く。
 - 喋りの継ぎ目は自動で処理できる（短いクロスフェード、無音の詰め。マクロで）。外したカットは消さずに残す。
+- 展開はレンダラーが行う（`mm-render/src/sequence.rs`）。レイヤーの時刻にあるカットを `Cut.source` のノードとして画布に描き、レイヤーの変形と効果は画布ごと掛かる。カットの時間の写像は、カットを「位置・イン点・速さを持つレイヤー」と見て `source_time` に任せる。
+- トランジション（`Cut.transition_in`）は境を中心に前後へ半分ずつ掛ける（半分の長さは、トランジションの長さの半分と両側のカットの長さの小さい方）。境の前は前のカットを、境の後は次のカットを、カットの外（素材の余白）へ延ばして描く。両方を別々の画布に描き、`Transition.node` の種類（入力 `from`、`to`、パラメータ `progress` を 0..1 でレンダラーが渡す）で混ぜる。段階 2 の種類は `transition.dissolve`（線形の光の上のクロスディゾルブ）だけ。知らない種類はエラーを記録してカットのまま描く。
+
+## 効果
+
+- `Layer.effects` を上から順に、レイヤーの画像（変形の前）を入力 0 にして掛ける。種類は自前のコマンドを作ってすぐ提出するので、レンダラーは呼ぶ前に積んだコマンドを提出する（入れ子とシーケンスの画像が揃ってから読ませるため）。`enabled` が偽の効果と `is_identity` が真の効果は掛けない。
+- 色の種類は線形の premultiplied を straight にしてから処理し、作業色空間（線形の光）の上で掛ける。GPU は `WgpuGpu` の全画面パス、`GpuHelper` が別の実装ならモックの CPU の経路（同じ式。試験で GPU と突き合わせる）。
+
+| 種類 | パラメータ | 内容 |
+|---|---|---|
+| `color.adjust` | `brightness`（露出の段数、既定 0）、`contrast`（18% グレーを支点にしたべき、既定 1）、`saturation`（Rec.709 の輝度係数からの距離の倍率、既定 1） | 明るさ、コントラスト、彩度 |
+| `color.cdl` | `slope`、`offset`、`power`（Vec3）、`saturation` | ASC CDL。`clamp(in * slope + offset) ^ power` の後に彩度。作業色空間の上で掛ける |
+| `color.lut` | `path`（`.cube`）、`intensity`（0..1）、`input_space`（`lin_rec709`、`srgb`、`bt709`） | 3D LUT。LUT の入力の色空間に符号化して引き、線形に戻して `intensity` で混ぜる |
+| `color.convert` | `from`、`to`（色空間の名前） | 入力の値を `from` の符号化値として読み、`to` の符号化値にする。`FrameCx::services.color`（`mm-color-api`）の `program` / `apply` を使う |
+
+## shader.wgsl の書き方
+
+- 利用者のコードは `fn mm_main(uv: vec2<f32>) -> vec4<f32>` を定義し、線形の premultiplied の色を返す。`uv` は左上が (0, 0)。
+- 使える名前: `u.size`（出力の画素数）、`u.time`（秒）、`u.scale`（画面上の倍率）、`u.p0`（`p0`..`p3`）、`u.p1`（`p4`..`p7`）、`mm_input(uv)`（入力 0 を双線形で引く。効果として使うとレイヤーの画像、入力が無ければ透明）。
+- コンパイルに失敗したら `render` は `Err` を返し、そのレイヤーだけが透明になってエラーが記録される。失敗は WGSL の全文ごと覚えるので毎フレーム作り直さない。`wgpu` の `GpuHelper` が要る（モックの GPU では `Unsupported`）。
 
 
 ---
