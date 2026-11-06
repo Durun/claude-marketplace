@@ -6,7 +6,7 @@ import { attempt } from './api.ts';
 import { type Float, useFloats } from './Float.tsx';
 import { useWaitCursor } from './hooks.ts';
 import { AUTO, TRANSLATE_ICON, TRANSLATE_KEY, openTranslate, translateIn } from './Translate.tsx';
-import { XpDropdown } from './XpMenu.tsx';
+import { XpContextMenu } from './XpMenu.tsx';
 
 type Shown = { text?: string; busy?: boolean };
 
@@ -77,15 +77,6 @@ export const TranslateTray = () => {
     resident = f;
     openMenu = f ? setMenu : undefined;
   }, [f]);
-  // 開き直すたびに作り直した popover を、カーソルの位置に開く。閉じたら外す。toggle はバブリングしないので、popover で受ける。
-  useEffect(() => {
-    const el = menu && document.getElementById(MENU_ID);
-    if (!el) return;
-    const onToggle = (e: Event) => (e as ToggleEvent).newState === 'closed' && setMenu(undefined);
-    el.addEventListener('toggle', onToggle);
-    el.showPopover();
-    return () => el.removeEventListener('toggle', onToggle);
-  }, [menu]);
   if (!f) return null;
   const translated = menu && shown.get(menu.source)?.text !== undefined;
   return (
@@ -94,9 +85,13 @@ export const TranslateTray = () => {
         <img src={TRANSLATE_ICON} alt="" width={18} height={18} />
       </button>
       {menu && (
-        <div class="translate-menu" key={`${menu.x},${menu.y}`} style={`--x: ${menu.x}px; --y: ${menu.y}px`}>
-          <XpDropdown id={MENU_ID} items={[{ label: '翻訳', onClick: () => void translate(menu.source) }, ...(translated ? [{ label: '原文に戻す', onClick: () => setShown(menu.source, undefined) }] : [])]} />
-        </div>
+        <XpContextMenu
+          id={MENU_ID}
+          x={menu.x}
+          y={menu.y}
+          items={[{ label: '翻訳', onClick: () => void translate(menu.source) }, ...(translated ? [{ label: '原文に戻す', onClick: () => setShown(menu.source, undefined) }] : [])]}
+          onClose={() => setMenu(undefined)}
+        />
       )}
     </>
   );

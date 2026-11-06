@@ -1,10 +1,10 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
-import type { ComponentChildren } from 'preact';
+import { type ComponentChildren, Fragment } from 'preact';
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, type ObservedTask, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type ObservedTask, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
-import { refSplitter } from './chatLinks.ts';
+import { jiraSplitter, refSplitter } from './chatLinks.ts';
 import type { Badges } from './completion.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
@@ -22,6 +22,7 @@ import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
+import { XpContextMenu } from './XpMenu.tsx';
 
 const TASK_LABEL: Record<ObservedTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -358,18 +359,31 @@ export const Summary = ({ s }: { s: Session }) => {
 };
 
 /**
- * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。ほかの文は mark で描く。
+ * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。JIRA の課題のキーもリンクにする。ほかの文は mark で描く。
  * PR はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
- * PR へのリンクは、押すとダッシュボードの中で開く。
+ * PR と課題へのリンクは、押すとダッシュボードの中で開く。
  */
 const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
   const { data } = useCached((fresh) => api.repoRefs({ sessionId: s.id }, fresh), [s.id]);
+  const { data: issues } = useCached(api.jiraRefs, []);
   const light = useLightMode();
   return useMemo(() => {
     const split = refSplitter(data ?? []);
+    const splitJira = jiraSplitter(issues ?? []);
     const title = (r: RepoRef) => (r.kind === 'pr' && !light ? undefined : r.title);
-    return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={title(p.ref)}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
-  }, [data, mark, light]);
+    const rest = (text: string) => splitJira(text).map((p, i) => (p.url ? <Ext key={i} href={p.url}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
+    return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={title(p.ref)}>{p.text}</Ext> : <Fragment key={i}>{rest(p.text)}</Fragment>));
+  }, [data, issues, mark, light]);
+};
+
+type BadgeMenu = { x: number; y: number; url: string };
+
+const BADGE_MENU_ID = 'chat-badge-menu';
+
+/** 右クリックでバッジに足せるリンク。PR と JIRA の課題に限る。 */
+const badgeLinkOf = (e: MouseEvent): string | undefined => {
+  const a = e.target instanceof Element ? e.target.closest('a') : null;
+  return a && (PR_URL.test(a.href) || JIRA_ISSUE_KEY.test(a.href.split('/browse/')[1] ?? '')) ? a.href : undefined;
 };
 
 /** PR へのリンクにマウスを載せたら、イルカが吹き出しで PR を説明する。コメントなど PR の中の場所へのリンクは説明しない。 */
@@ -545,10 +559,22 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
   const markText = useRefMarks(s, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
+  const [badgeMenu, setBadgeMenu] = useState<BadgeMenu>();
+  // 発言の右クリックの「翻訳」より先に受け取り、PR と課題のリンクでは、PR と JIRA のウィジェットに並べるバッジに足すメニューを出す。
+  const onContextMenu = (e: MouseEvent) => {
+    const url = badgeLinkOf(e);
+    if (!url) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setBadgeMenu({ x: e.clientX, y: e.clientY, url });
+  };
+  // PR は GitHub から読めると確かめてから登録するので、数秒待つことがある。
+  const addBadge = (url: string) => attempt('バッジの登録', async () => (await api.addBadge(s.id, url), true)).then((ok) => ok && toast('バッジに追加しました'));
   return (
     <>
       <h2 class="section-title">チャット</h2>
-      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainPrLink}>
+      {badgeMenu && <XpContextMenu id={BADGE_MENU_ID} x={badgeMenu.x} y={badgeMenu.y} items={[{ label: 'バッジに追加', onClick: () => void addBadge(badgeMenu.url) }]} onClose={() => setBadgeMenu(undefined)} />}
+      <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainPrLink} onContextMenuCapture={onContextMenu}>
         {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>

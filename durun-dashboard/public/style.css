@@ -1928,7 +1928,7 @@ table.data { width: 100%; border-collapse: collapse; }
 .translate-tray { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--radius); background: none; cursor: pointer; }
 .translate-tray:hover { border-color: var(--border); background: var(--surface-2); }
 /* 右クリックのメニューは、ボタンの下でなく、右クリックした位置に開く。 */
-.translate-menu .xp-dropdown { position-area: none; top: var(--y); left: var(--x); }
+.context-menu .xp-dropdown { position-area: none; top: var(--y); left: var(--x); }
 /* CD取り込み。左に取り込みリスト、右に選んだ行の詳細か設定を並べる。 */
 .cdrip { display: flex; flex-direction: column; gap: 8px; min-height: 0; font-size: 13px; }
 .cdrip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
