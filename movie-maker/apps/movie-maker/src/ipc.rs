@@ -59,7 +59,7 @@ pub struct LayerSelection {
 /// WebView へ選択を送る Tauri のイベント名。`web/transport.js` が同じ名前の DOM のイベントにつなぐ。
 const LAYER_SELECTED_EVENT: &str = "mm:layer-selected";
 
-/// レイヤーの一覧（上のレイヤーが先頭。時間軸が壊れたレイヤーは飛ばす）。
+/// レイヤーの一覧（上のレイヤーが先頭。時間軸が壊れたレイヤーはスキップする）。
 pub fn layer_infos(comp: &Composition) -> Vec<LayerInfo> {
     comp.layers
         .iter()

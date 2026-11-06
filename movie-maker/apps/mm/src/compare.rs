@@ -1,7 +1,7 @@
 //! `mm perf compare` と `mm perf budget`。`mm perf run` の結果の JSON を読み、前後の比較と予算の超過を出す。
 //!
-//! 入力は結果の JSON か、結果の JSON を集めたフォルダー。同じ項目のサンプルは全ファイルで束ね、
-//! 束ねた中央値で比べる（runner の揺れを、繰り返しの数で均す）。
+//! 入力は結果の JSON か、結果の JSON を集めたフォルダー。同じ項目のサンプルは全ファイルで集約し、
+//! 集約した中央値で比べる（runner の揺れを、繰り返しの数で均す）。
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::perf::median;
 
-/// 束ねた 1 項目。
+/// 集約した 1 項目。
 #[derive(Debug, Clone)]
 pub struct Pooled {
     pub scene: String,
@@ -24,12 +24,12 @@ pub struct Pooled {
 }
 
 impl Pooled {
-    /// 束ねる鍵。同じ名前の項目が別の場面にあっても混ざらないよう、場面の名前を前に付ける。
+    /// 集約のキー。同じ名前の項目が別のシナリオにあっても混ざらないよう、シナリオの名前を前に付ける。
     fn key(&self) -> String {
         format!("{}/{}", self.scene, self.name)
     }
 
-    /// 束ねたサンプルの中央値。
+    /// 集約したサンプルの中央値。
     pub fn value(&self) -> f64 {
         median(&self.samples)
     }
@@ -66,7 +66,7 @@ pub fn parse_threshold(s: &str) -> std::result::Result<f64, String> {
     Ok(v / scale)
 }
 
-/// 結果の JSON か、そのフォルダーを読んで項目ごとに束ねる。
+/// 結果の JSON か、そのフォルダーを読んで項目ごとに集約する。
 pub fn load_pooled(path: &Path) -> Result<BTreeMap<String, Pooled>> {
     let files = if path.is_dir() {
         let mut v: Vec<_> = std::fs::read_dir(path)?
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn 束ねた中央値で比べて外れ値に引きずられない() {
+    fn 集約した中央値で比べて外れ値に引きずられない() {
         let before = BTreeMap::from([pooled("a", false, &[10.0, 10.0, 10.0, 10.0, 10.0])]);
         let after = BTreeMap::from([pooled("a", false, &[10.0, 10.0, 10.0, 10.0, 80.0])]);
         assert!(!compare(&before, &after, opts(0.3, 0.0))[0].regressed);
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn 場面が違えば同じ名前の項目も別に束ねる() {
+    fn シナリオが違えば同じ名前の項目も別に集約する() {
         let dir = tempfile::tempdir().unwrap();
         write_result(dir.path(), "a.json", "cpu", &[1.0, 1.0]);
         write_result(dir.path(), "b.json", "scrub", &[100.0, 100.0]);

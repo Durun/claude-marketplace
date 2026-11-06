@@ -10,7 +10,7 @@ pub const WAVEFORM_FILE: &str = "waveform.json";
 /// サムネイルのファイル名。
 pub const THUMBNAIL_FILE: &str = "thumb.jpg";
 
-/// `cache/` の根。
+/// `cache/` のルート。
 #[derive(Debug, Clone)]
 pub struct CacheLayout {
     root: PathBuf,
@@ -22,7 +22,7 @@ impl CacheLayout {
         Self { root: root.into() }
     }
 
-    /// `cache/` の根。
+    /// `cache/` のルート。
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -42,7 +42,7 @@ impl CacheLayout {
         self.root.join("thumbs").join(hash).join(THUMBNAIL_FILE)
     }
 
-    /// 付属ファイルの控え。`kind` は付属ファイルの種類（`transcript`、`preview_media`、`scenes`）。
+    /// 付属ファイルのパス。`kind` は付属ファイルの種類（`transcript`、`preview_media`、`scenes`）。
     pub fn sidecar(&self, hash: &str, kind: &str) -> PathBuf {
         self.root.join("ingest").join(format!("{hash}.{kind}.json"))
     }

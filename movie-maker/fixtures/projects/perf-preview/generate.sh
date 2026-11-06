@@ -1,5 +1,5 @@
 #!/bin/sh
-# 性能の見本（1080p60、10 秒、solid 10 枚と text 3 枚）を project.json に書く。素材のファイルは使わない。
+# 性能のフィクスチャ（1080p60、10 秒、solid 10 枚と text 3 枚）を project.json に書く。素材のファイルは使わない。
 # 回転と拡大を付けた半透明の solid を重ねて、合成の負荷が出るようにする。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,7 +21,7 @@ jq -n '
       color: {value: {type: "color", value: {r: 1.0, g: 1.0, b: 1.0, a: 1.0}}, keyframes: []},
       position: {value: {type: "vec2", value: [(100 + $i * 300), (200 + $i * 250)]}, keyframes: []},
       size: num(72),
-      text: {value: {type: "text", value: "性能の見本 \($i + 1)"}, keyframes: []}
+      text: {value: {type: "text", value: "性能のフィクスチャ \($i + 1)"}, keyframes: []}
     }
   };
   def moved($i): . + {transform: {

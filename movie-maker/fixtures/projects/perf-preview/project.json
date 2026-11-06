@@ -744,7 +744,7 @@
               "text": {
                 "value": {
                   "type": "text",
-                  "value": "性能の見本 1"
+                  "value": "性能のフィクスチャ 1"
                 },
                 "keyframes": []
               }
@@ -811,7 +811,7 @@
               "text": {
                 "value": {
                   "type": "text",
-                  "value": "性能の見本 2"
+                  "value": "性能のフィクスチャ 2"
                 },
                 "keyframes": []
               }
@@ -878,7 +878,7 @@
               "text": {
                 "value": {
                   "type": "text",
-                  "value": "性能の見本 3"
+                  "value": "性能のフィクスチャ 3"
                 },
                 "keyframes": []
               }

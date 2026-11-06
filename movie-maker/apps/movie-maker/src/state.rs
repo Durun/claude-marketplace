@@ -66,7 +66,7 @@ pub struct PreviewFrame {
     pub image: FrameImage,
 }
 
-/// 再生スレッドから描画スレッドへ最新の 1 フレームを渡す箱。描画が遅れたときは古いフレームを捨てる。
+/// 再生スレッドから描画スレッドへ最新の 1 フレームを渡すスロット。描画が遅れたときは古いフレームを捨てる。
 #[derive(Default)]
 pub struct FrameSlot {
     slot: Mutex<Option<PreviewFrame>>,
@@ -91,7 +91,7 @@ impl FrameSlot {
     }
 }
 
-/// 再生スレッドが持つ、いま開いているプロジェクトのデータとコンポジション。操作を当てるたびに置き直す。
+/// 再生スレッドが持つ、いま開いているプロジェクトのデータとコンポジション。操作を適用するたびに置き直す。
 #[derive(Clone)]
 pub struct OpenDoc {
     pub project: Arc<Project>,
@@ -108,14 +108,14 @@ pub struct Shared {
     pub surface_errors: AtomicU64,
     /// 再生中か。再生スレッドが書く。
     pub playing: AtomicBool,
-    /// 再生中に音の時計に追いつけず飛ばしたフレームの数。
+    /// 再生中に音の時計に追いつけずドロップしたフレームの数。
     pub dropped_frames: AtomicU64,
     /// 再生スレッドが描いたフレームの数。
     pub rendered_frames: AtomicU64,
     pub frames: FrameSlot,
     /// サーフェスが受けたポインターの入力。描画スレッドが取り出す。
     pub input: Mutex<Vec<PointerEvent>>,
-    /// 再生スレッドへの命令。再生スレッドが立ち上がるまでは `None`。
+    /// 再生スレッドへのコマンド。再生スレッドが立ち上がるまでは `None`。
     pub commands: Mutex<Option<Sender<Command>>>,
     /// 再生の主の時計。再生スレッドが立ち上がったときに置く。
     pub clock: OnceLock<Arc<dyn PlayClock>>,
@@ -125,7 +125,7 @@ pub struct Shared {
     pub gpu: Mutex<Option<Arc<GpuContext>>>,
     /// 描画スレッドがレンダラーの GPU でサーフェスを作れず、CPU の画像を頼んでいるか。
     pub cpu_frames: AtomicBool,
-    /// 再生スレッドがまだ当てていない操作。
+    /// 再生スレッドがまだ適用していない操作。
     pub edits: Mutex<Vec<PendingEdit>>,
     /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
     doc: Mutex<Option<OpenDoc>>,
@@ -177,7 +177,7 @@ impl Shared {
         ((v >> 32) as u32, v as u32)
     }
 
-    /// 再生スレッドへ命令を送る。再生スレッドが無ければ捨てる。
+    /// 再生スレッドへコマンドを送る。再生スレッドが無ければ捨てる。
     pub fn send(&self, command: Command) {
         if let Some(tx) = self.commands.lock().expect("commands").as_ref() {
             let _ = tx.send(command);

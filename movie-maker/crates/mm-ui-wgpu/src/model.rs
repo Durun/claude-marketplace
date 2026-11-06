@@ -14,7 +14,7 @@ fn kind_of(layer: &Layer) -> ItemKind {
     }
 }
 
-/// Timeline に並ぶレイヤーを、上が先頭の順に返す。時間軸が壊れたレイヤーは飛ばす。
+/// Timeline に並ぶレイヤーを、上が先頭の順に返す。時間軸が壊れたレイヤーはスキップする。
 /// 並びの規則はモデルとレイヤーの ID の対応の両方が使う 1 つだけにする。
 fn visible_layers(comp: &Composition) -> impl Iterator<Item = (&Layer, mm_types::TimeRange)> {
     comp.layers
@@ -30,7 +30,7 @@ pub fn timeline_layer_ids(comp: &Composition) -> Vec<String> {
         .collect()
 }
 
-/// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーは飛ばす。
+/// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーはスキップする。
 pub fn timeline_model(comp: &Composition) -> TimelineModel {
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn 選択の添字はモデルと同じ並びでレイヤーの_id_に引ける() {
         let mut c = comp();
-        // 時間軸が壊れた（出が入より前の）レイヤーはモデルから飛ばし、添字がずれない。
+        // 時間軸が壊れた（出が入より前の）レイヤーはモデルからスキップし、添字がずれない。
         c.layers.insert(1, layer("broken", "text", 0, 5, 1));
         let ids = timeline_layer_ids(&c);
         assert_eq!(ids, ["top", "bottom"]);

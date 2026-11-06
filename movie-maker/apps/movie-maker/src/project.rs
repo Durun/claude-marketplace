@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn 入れ子の見本のプロジェクトが開けて素材のパスが直る() {
+    fn 入れ子のフィクスチャのプロジェクトが開けて素材のパスが直る() {
         let opened = open(&stage2()).expect("開ける");
         let id = pick_composition(&opened.project, None).unwrap();
         assert_eq!(id.as_str(), "main");

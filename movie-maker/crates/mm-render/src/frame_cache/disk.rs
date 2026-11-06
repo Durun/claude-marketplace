@@ -1,8 +1,8 @@
-//! 追い出した画像のディスクへの退避と、退避したファイルの読み戻し。
+//! 追い出した画像のディスクへの退避と、退避したファイルの読み込み。
 //!
-//! - 退避: テクスチャをバッファへ写す命令を出すところまでを描画のスレッドで行い、写し終えるのを待つ・行の余白を
+//! - 退避: テクスチャをバッファへコピーするコマンドを出すところまでを描画のスレッドで行い、コピーし終えるのを待つ・行の余白を
 //!   外す・ファイルに書くのは別のスレッドで行う。スクラブで追い出しが続いても描画が止まらない。
-//! - 形: 先頭、キーの JSON の長さと中身、画像の大きさ、置き場所、half float の画素。読み戻すときにキーの JSON を
+//! - 形: 先頭、キーの JSON の長さと中身、画像の大きさ、置き場所、half float の画素。読み込むときにキーの JSON を
 //!   照合するので、64 bit の `digest` が衝突しても別の画像を返さない。
 
 use std::sync::mpsc;
@@ -30,13 +30,13 @@ const BYTES_PER_PIXEL: u32 = 8;
 
 /// 別のスレッドへ渡す仕事。
 enum Job {
-    /// 写す命令を出したバッファを待って、ファイルに書く。
+    /// コピーのコマンドを出したバッファを待って、ファイルに書く。
     Write(Box<Pending>),
     /// ここまでの仕事が終わったら知らせる。
     Barrier(mpsc::SyncSender<()>),
 }
 
-/// 写す命令を出し終えた退避。
+/// コピーのコマンドを出し終えた退避。
 struct Pending {
     ctx: Arc<GpuContext>,
     buffer: wgpu::Buffer,
@@ -67,7 +67,7 @@ impl Spiller {
         decode(&bytes, key, gpu)
     }
 
-    /// テクスチャをバッファへ写す命令を出し、待ちと書き込みを別のスレッドに渡す。
+    /// テクスチャをバッファへコピーするコマンドを出し、待ちと書き込みを別のスレッドに渡す。
     pub fn spill(&mut self, gpu: &WgpuGpu, key: FrameCacheKey, image: CachedImage) {
         let Some(texture) = gpu.texture(image.texture) else {
             return;
@@ -110,7 +110,7 @@ impl Spiller {
 
 impl Drop for Spiller {
     fn drop(&mut self) {
-        // 送り口を閉じると、残りの仕事を終えてスレッドが抜ける。
+        // 送信側をドロップすると、残りの仕事を終えてスレッドが抜ける。
         self.jobs = None;
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -150,7 +150,7 @@ fn write_one(store: &dyn CacheStore, pending: &Pending) {
     }
 }
 
-/// テクスチャ全体を、読み取りのできるバッファへ写す命令を提出する。返すのはバッファと境界に合わせた行のバイト数。
+/// テクスチャ全体を、読み取りのできるバッファへコピーするコマンドを提出する。返すのはバッファと境界に合わせた行のバイト数。
 fn copy_to_buffer(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> (wgpu::Buffer, u32) {
     let row = size.width * BYTES_PER_PIXEL;
     let padded_row =

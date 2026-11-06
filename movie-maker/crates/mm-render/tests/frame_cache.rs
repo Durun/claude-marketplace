@@ -168,7 +168,10 @@ fn render(f: &mut Fixture, p: &Project, frame: i64) -> Arc<RgbaImage> {
             nodes: &f.nodes,
         })
         .expect("描ける");
-    f.renderer.gpu().download(&image).expect("読み戻せる")
+    f.renderer
+        .gpu()
+        .download(&image)
+        .expect("リードバックできる")
 }
 
 fn renders(f: &Fixture) -> usize {
@@ -370,7 +373,7 @@ fn nested_at(layer: &str, comp: &str, start: i64) -> Layer {
 }
 
 /// 同じ入れ子を順に並べると、2 つ目は 1 つ目と同じ中の時刻なので、中の種類を呼ばずに覚えた画像を使う
-/// （素材なら、デコーダーが頭へシークし直さない）。
+/// （素材なら、デコーダーが先頭へシークし直さない）。
 #[test]
 fn 同じ入れ子を順に並べた_2_つ目は覚えた画像を使う() {
     let Some(ctx) = gpu() else { return };

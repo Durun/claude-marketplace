@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-/// プロジェクトを指定しなかったときに開く見本。作業フォルダーは `movie-maker/` を想定する。
+/// プロジェクトを指定しなかったときに開くフィクスチャのプロジェクト。作業フォルダーは `movie-maker/` を想定する。
 const DEFAULT_PROJECT: &str = "fixtures/projects/stage2/project.json";
 
 /// 自動の再生試験。決まった秒数だけ再生して、数字とスクリーンショットを残して終わる。
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn 引数なしは見本のプロジェクトを開く() {
+    fn 引数なしはフィクスチャのプロジェクトを開く() {
         let a = parse(&[]).unwrap();
         assert_eq!(a.project, PathBuf::from(DEFAULT_PROJECT));
         assert!(!a.no_audio && a.play_test.is_none());

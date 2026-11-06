@@ -58,7 +58,7 @@ pub fn runtime_config() -> RuntimeConfig {
     }
 }
 
-/// 時計の位置から出すフレームの番号と、飛ばした数。
+/// 時計の位置から出すフレームの番号と、ドロップした数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FramePlan {
     pub index: i64,
@@ -136,7 +136,7 @@ impl Player {
         Ok((player, info))
     }
 
-    /// 命令を受けながら再生を進める。`Quit` か、送り手が全部いなくなったら返る。
+    /// コマンドを受けながら再生を進める。`Quit` か、送り手が全部いなくなったら返る。
     pub fn run(&mut self, rx: &Receiver<Command>) {
         self.seek_to(0.0);
         'serve: loop {
@@ -192,7 +192,7 @@ impl Player {
         }
     }
 
-    /// 積まれた操作を順に当て、結果を返す。当てたら今のフレームを描き直す。
+    /// 積まれた操作を順に適用し、結果を返す。適用したら今のフレームを描き直す。
     fn apply_edits(&mut self) {
         let edits = std::mem::take(&mut *self.shared.edits.lock().expect("edits"));
         for edit in edits {
@@ -202,14 +202,14 @@ impl Player {
         }
     }
 
-    /// 操作を 1 つのトランザクションとして当て、触った ID に頼ったキャッシュだけを捨てる。
+    /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。
     fn apply(&mut self, ops: &[Op]) -> std::result::Result<EditOutcome, String> {
         let mut project = (*self.project).clone();
         let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
         let comp = project
             .composition(&self.comp)
-            .map_err(|_| "開いているコンポジションを消す操作は当てない".to_owned())?;
+            .map_err(|_| "開いているコンポジションを消す操作は適用しない".to_owned())?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
         let touched = outcome.touches.to_vec();
@@ -365,7 +365,7 @@ impl Player {
         }
     }
 
-    /// 1 フレーム描く。wgpu のレンダラーは読み戻さずにテクスチャで返し、それ以外は CPU の画像にする。
+    /// 1 フレーム描く。wgpu のレンダラーはリードバックせずにテクスチャで返し、それ以外は CPU の画像にする。
     fn draw(&mut self, time: RationalTime) -> Result<FrameImage> {
         let (project, comp, size) = (&self.project, &self.comp, self.size);
         if self.shared.cpu_frames.load(Ordering::SeqCst) || self.engine.gpu_context().is_none() {
@@ -391,7 +391,7 @@ impl Player {
             // 形の違う音は無音に替えて足す。足せずに止めると、音の位置が進まず時計が終わりに届かない。
             let block = fit_chunk(block, n as usize);
             if let Err(e) = out.push(&block) {
-                tracing::warn!(error = %e, "音を足せなかった。時計を進めるため飛ばす");
+                tracing::warn!(error = %e, "音を足せなかった。時計を進めるためスキップする");
             }
             self.audio_cursor += n;
             if self.audio_cursor >= total {
@@ -467,13 +467,13 @@ mod tests {
     }
 
     #[test]
-    fn 追いつけなかった分は飛ばした数に数える() {
+    fn 追いつけなかった分はドロップした数に数える() {
         let p = plan_frame(0.2, Some(2), 30.0, 300).unwrap();
         assert_eq!((p.index, p.dropped), (6, 3));
     }
 
     #[test]
-    fn 最初のフレームは飛ばしに数えない() {
+    fn 最初のフレームはドロップに数えない() {
         let p = plan_frame(1.0, None, 30.0, 300).unwrap();
         assert_eq!((p.index, p.dropped), (30, 0));
     }

@@ -16,7 +16,7 @@ pub trait Weighted {
     fn weight_bytes(&self) -> u64;
 }
 
-/// 覚えから外れた理由。
+/// メモから外れた理由。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dropped {
     /// 上限を超えて、触った順に古いものから外れた。
@@ -27,12 +27,12 @@ pub enum Dropped {
     Replaced,
 }
 
-/// 覚えから外れた項目。
+/// メモから外れた項目。
 #[derive(Debug)]
 pub struct Evicted<V> {
     pub key: FrameCacheKey,
     pub value: V,
-    /// 外れるまでに当たった回数。0 なら 1 度も使われなかった。
+    /// 外れるまでにヒットした回数。0 なら 1 度も使われなかった。
     pub hits: u32,
     pub reason: Dropped,
 }
@@ -98,7 +98,7 @@ impl<V: Weighted> Memo<V> {
         }
     }
 
-    /// 引く。当たれば触った順を新しくする。ダイジェストが同じでもキーが違えば外れ。
+    /// 引く。ヒットすれば触った順を新しくする。ダイジェストが同じでもキーが違えばミス。
     pub fn get(&mut self, key: &FrameCacheKey) -> Option<&V> {
         self.stats.lookups += 1;
         let digest = key.digest();

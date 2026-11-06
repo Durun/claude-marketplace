@@ -1,5 +1,5 @@
-//! 外の道具（`tools/transcribe`）が書いた付属ファイルを、Rust 側が読めるか。
-//! `fixtures/ingest/transcript-ja.json` は日本語の短い見本の音を faster-whisper で文字起こしした出力。
+//! 外部のツール（`tools/transcribe`）が書いた付属ファイルを、Rust 側が読めるか。
+//! `fixtures/ingest/transcript-ja.json` は日本語の短いフィクスチャの音声を faster-whisper で文字起こしした出力。
 
 use std::path::Path;
 

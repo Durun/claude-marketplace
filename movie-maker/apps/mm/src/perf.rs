@@ -31,7 +31,7 @@ impl Scene {
         format!("{self:?}").to_lowercase()
     }
 
-    /// 既定で使うプロジェクト。`startup` と `export` は素材つきの縦の 1 本、描画の場面は素材の要らない見本。
+    /// 既定で使うプロジェクト。`startup` と `export` は素材つきの縦の 1 本、描画のシナリオは素材の要らないフィクスチャ。
     pub fn default_project(self) -> &'static str {
         match self {
             Scene::Playback | Scene::Scrub => "fixtures/projects/perf-preview/project.json",
@@ -140,7 +140,7 @@ pub struct PerfArgs {
     pub seeks: usize,
     /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
     pub baseline: bool,
-    /// 描画の場面で使う GPU の名前の一部。`None` は高性能のアダプター。
+    /// 描画のシナリオで使う GPU の名前の一部。`None` は高性能のアダプター。
     pub adapter: Option<String>,
 }
 

@@ -1,4 +1,4 @@
-//! ノードの契約テスト。種類ごとに 1 行。GPU の要る `shader.wgsl` は `tests/gpu_kinds.rs`（本物の GPU）で確かめる。
+//! ノードの契約テスト。種類ごとに 1 行。GPU の要る `shader.wgsl` は `tests/gpu_kinds.rs`（実機の GPU）で確かめる。
 
 use std::sync::Arc;
 

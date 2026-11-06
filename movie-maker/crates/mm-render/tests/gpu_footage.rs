@@ -24,10 +24,10 @@ use mm_types::{
 /// f16 の丸めと面積平均の誤差の許容。
 const TOLERANCE: f32 = 3e-3;
 
-/// 160x160 の画布に収めた 320x180 の素材の箱の上端と下端（y）。
+/// 160x160 の画布に収めた 320x180 の素材の矩形の上端と下端（y）。
 const BOX_TOP: u32 = 35;
 const BOX_BOTTOM: u32 = 125;
-/// 縮小の補間の違いが出る、箱の縁からの幅（画素）。
+/// 縮小の補間の違いが出る、矩形の縁からの幅（画素）。
 const EDGE_BAND: u32 = 2;
 
 fn gpu() -> Option<Arc<GpuContext>> {
@@ -162,7 +162,7 @@ fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) 
             nodes: &nodes,
         })
         .expect("描ける");
-    let img = r.gpu().download(&frame).expect("読み戻せる");
+    let img = r.gpu().download(&frame).expect("リードバックできる");
     assert!(
         r.take_errors().is_empty(),
         "footage が GPU のフレームを受ける"
@@ -193,7 +193,7 @@ fn 縦横比の違う画布には収めて置き_縮小は面積平均で色を�
     assert_eq!(p(80, 10).a, 0.0, "上の余白は透明");
     assert_eq!(p(80, 150).a, 0.0, "下の余白は透明");
     let cpu = render(&ctx, Arc::new(SampleDecoderFactory::default()), size);
-    // 素材は一色。CPU は双線形、GPU は面積平均なので差が出るのは箱の縁（y が 35 と 125）だけで、
+    // 素材は一色。CPU は双線形、GPU は面積平均なので差が出るのは矩形の縁（y が 35 と 125）だけで、
     // それを除いた内側と余白は色まで CPU の経路と一致する。
     let near_edge =
         |y: u32| y.abs_diff(BOX_TOP) <= EDGE_BAND || y.abs_diff(BOX_BOTTOM) <= EDGE_BAND;

@@ -23,7 +23,7 @@ printf '%s' "$over" | jq -c '.[]' | while read -r row; do
   title="perf: ${name} が予算を超えた"
   body=$(printf '%s' "$row" | jq -r --arg run "$run_url" --arg sha "$sha" '
     "予算の表の行: \(.row)\n\n" +
-    "- 項目: `\(.name)`（場面 `\(.scene)`）\n" +
+    "- 項目: `\(.name)`（シナリオ `\(.scene)`）\n" +
     "- 測った値: \(.value) \(.unit)\n" +
     "- 予算: \(if .kind == "at_most" then "以下" else "以上" end) \(.limit) \(.unit)\n" +
     "- コミット: \($sha)\n" +

@@ -42,7 +42,7 @@ struct Gpu {
     texture: wgpu::Texture,
     bind: wgpu::BindGroup,
     size: (u32, u32),
-    /// ビューアーが作ったテクスチャか。偽なら借りたもので、画像を書き込まない。
+    /// ビューアーが作ったテクスチャか。偽なら借用したもので、画像を書き込まない。
     owned: bool,
 }
 

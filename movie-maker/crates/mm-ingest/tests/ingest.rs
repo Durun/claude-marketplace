@@ -1,5 +1,5 @@
 //! 取り込みの結合テスト。ffmpeg の CLI で小さな素材を作って取り込む。
-//! ffmpeg が無い環境では飛ばす（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
+//! ffmpeg が無い環境ではスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 
 use std::process::Command;
 

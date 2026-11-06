@@ -1,4 +1,4 @@
-//! 種類のテストと期待画像のテストが共有する足回り。GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! 種類のテストと期待画像のテストが共有するハーネス。GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::sync::Arc;
 
@@ -35,7 +35,7 @@ pub fn registry() -> MapRegistry {
     r
 }
 
-/// 本物の色の変換（`LutColor`）と、モックの文字。
+/// 実際の色の変換（`LutColor`）と、モックの文字。
 pub fn services() -> Services {
     Services {
         color: Arc::new(LutColor),
@@ -124,5 +124,5 @@ pub fn render_at(
             nodes: &nodes,
         })
         .expect("描ける");
-    r.gpu().download(&frame).expect("読み戻せる")
+    r.gpu().download(&frame).expect("リードバックできる")
 }

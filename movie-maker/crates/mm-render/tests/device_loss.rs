@@ -43,7 +43,7 @@ fn render(r: &mut WgpuRenderer, nodes: &MapRegistry) -> Arc<RgbaImage> {
             nodes,
         })
         .expect("描ける");
-    r.gpu().download(&frame).expect("読み戻せる")
+    r.gpu().download(&frame).expect("リードバックできる")
 }
 
 #[test]

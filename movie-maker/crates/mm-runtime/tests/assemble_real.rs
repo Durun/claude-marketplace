@@ -1,4 +1,4 @@
-//! 実際の実装を選ぶ腕。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! 実際の実装を選ぶ組み立ての分岐。GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use mm_runtime::{assemble, Backend, RuntimeConfig};
 use mm_types::MmError;

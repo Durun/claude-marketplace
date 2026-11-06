@@ -1,6 +1,6 @@
 //! レイヤーの画像を、フレームのキャッシュで引いてから種類に描かせる所（`kind_image` の後半）。
 //!
-//! 外れたら種類を呼んで描き、返った画像をテクスチャにしてキャッシュに覚える。置き場所の決まりは [`crate::layers`] の冒頭。
+//! キャッシュに無ければノードの種類を呼んで描き、返った画像をテクスチャにしてキャッシュに覚える。置き場所の決まりは [`crate::layers`] の冒頭。
 
 use std::panic::AssertUnwindSafe;
 
@@ -21,7 +21,7 @@ pub(crate) struct Placement {
     pub region: Rect,
 }
 
-/// キーで引き、外れたら種類を呼んで描き、覚える。透明なら `None`。
+/// キーで引き、キャッシュに無ければノードの種類を呼んで描き、覚える。透明なら `None`。
 pub(crate) fn render_cached(
     cache: &mut RenderCache,
     kind: &dyn NodeKind,
@@ -64,7 +64,7 @@ pub(crate) fn render_cached(
 }
 
 /// 種類が返した画像をテクスチャにする。透明なら `None`。2 つ目は、テクスチャの持ち主がレンダラーか
-/// （偽ならデコーダーの借用）。GPU で描く種類のテクスチャはヘルパーのプールのものなので、写さずに覚えられる。
+/// （偽ならデコーダーの借用）。GPU で描く種類のテクスチャはヘルパーのプールのものなので、コピーせずに覚えられる。
 fn upload_rendered(gpu: &mut WgpuGpu, rendered: FrameRef) -> Result<Option<(u64, bool)>> {
     Ok(match rendered {
         FrameRef::Transparent { .. } => None,

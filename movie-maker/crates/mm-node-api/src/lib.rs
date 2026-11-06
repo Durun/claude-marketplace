@@ -193,7 +193,7 @@ pub trait InputFrames {
         self.len() == 0
     }
     /// 素材（`ParamValue::AssetRef`）のファイルのパス。素材を読む種類（`color.lut` の `.cube`）が使う。
-    /// プロジェクトのデータを持つレンダラーが答え、引けない素材と、素材を渡さない呼び手は `None`。
+    /// プロジェクトのデータを持つレンダラーが答え、引けない素材と、素材を渡さない呼び出し側は `None`。
     fn asset_path(&self, _id: &AssetId) -> Option<PathBuf> {
         None
     }

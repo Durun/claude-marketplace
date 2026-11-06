@@ -84,7 +84,7 @@ impl GpuContext {
     }
 
     /// 同じ求めで新しいコンテキストを作る。デバイスが消えた後の復帰に使い、`self` が共有のものなら
-    /// 共有も新しいものに差し替える。古いコンテキストを握っている側は、作り直したものに持ち替える。
+    /// 共有も新しいものに差し替える。古いコンテキストを保持している側は、作り直したものに持ち替える。
     pub fn recreate(self: &Arc<Self>) -> Result<Arc<Self>> {
         let fresh = Self::with(&self.request)?;
         let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());

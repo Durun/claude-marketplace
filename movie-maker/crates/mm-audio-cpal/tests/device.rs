@@ -10,7 +10,7 @@ fn open() -> Option<AudioOutput> {
     match AudioOutput::open(DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS) {
         Ok(out) => Some(out),
         Err(MmError::Unsupported(why)) => {
-            eprintln!("出力デバイスが無いので飛ばす: {why}");
+            eprintln!("出力デバイスが無いのでスキップする: {why}");
             None
         }
         Err(e) => panic!("{e}"),

@@ -91,9 +91,9 @@ class ContentHashOptionTest(unittest.TestCase):
                 self.parse(bad)
 
 
-@unittest.skipUnless(os.environ.get("MM_TRANSCRIBE_E2E") and SAMPLE_WAV.is_file(), "通しの試験は MM_TRANSCRIBE_E2E=1 と見本の音が要る")
+@unittest.skipUnless(os.environ.get("MM_TRANSCRIBE_E2E") and SAMPLE_WAV.is_file(), "通しの試験は MM_TRANSCRIBE_E2E=1 とフィクスチャの音声が要る")
 class EndToEndTest(unittest.TestCase):
-    def test_日本語の見本の音がスキーマどおりに書かれる(self):
+    def test_日本語のフィクスチャの音声がスキーマどおりに書かれる(self):
         with tempfile.TemporaryDirectory() as d:
             cache = Path(d) / "cache"
             subprocess.run(

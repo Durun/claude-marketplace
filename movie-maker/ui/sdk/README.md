@@ -1,6 +1,6 @@
 # @mm/sdk
 
-UI から mm-ops の操作を送る窓口。
+UI から mm-ops の操作を送る SDK。
 
 ## 型の生成
 
@@ -18,15 +18,15 @@ const client = createClient(createIpcTransport());
 await client.send("setParam", { target: { layer: "l1", path: "opacity" }, value: { type: "number", value: 0.5 } });
 ```
 
-`Transport`（`send(op) => Promise<OpResult>`）が裏の差し替え口。今は IPC だけ。HTTP は同じ形の `Transport` を足す。
+`Transport`（`send(op) => Promise<OpResult>`）が差し替えられるトランスポート。今は IPC だけ。HTTP は同じ形の `Transport` を足す。
 
-## アプリ側の IPC の受け口
+## アプリ側の IPC のハンドラー
 
 プレビューのウィンドウの担当が作る。
 
 | 項目 | 値 |
 |---|---|
-| 命令の名前 | `apply_op` |
+| コマンドの名前 | `apply_op` |
 | 引数 | `{ op: Op }`。`Op` は `ops.json` の 1 つの操作を serde で出した JSON そのまま（例 `{ "op": "setParam", "target": { "layer": "l1", "path": "opacity" }, "value": { "type": "number", "value": 0.5 } }`） |
 | 成功 | 操作を適用した後の値。形は問わない（sdk は `unknown` で返す） |
 | 失敗 | `Err(String)`。sdk は `{ ok: false, error }` にする |

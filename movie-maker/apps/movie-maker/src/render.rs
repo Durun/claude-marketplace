@@ -2,7 +2,7 @@
 //!
 //! ペースは Fifo の垂直同期に任せる（自前の sleep や spin は持たない）。再生位置は時計を直接読み、
 //! フレームは再生スレッドが置いた最新の 1 枚を取る。
-//! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャを読み戻さずに描く。
+//! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャをリードバックせずに描く。
 //! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -366,7 +366,7 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
     true
 }
 
-/// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャは読み戻さずに束ねるだけ。
+/// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャはリードバックせずにそのまま渡す。
 fn upload_frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Option<f64> {
     let frame = shared.frames.newer_than(*seen)?;
     if !gpu.can_draw(&frame) {

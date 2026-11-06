@@ -1,4 +1,4 @@
-//! `mm ingest` を実行ファイル越しに確かめる。ffmpeg の CLI が無い環境では飛ばす（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
+//! `mm ingest` を実行ファイル越しに確かめる。ffmpeg の CLI が無い環境ではスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -19,7 +19,7 @@ fn ffmpeg_available() -> bool {
     ok
 }
 
-/// 映像（320x180、2 秒）と音つきの見本の MP4。
+/// 映像（320x180、2 秒）と音つきのフィクスチャの MP4。
 fn make_sample(out: &Path) {
     let status = Command::new("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
@@ -79,7 +79,7 @@ fn 取り込むと素材が足され_cache_に出力ができて_2_回目は飛�
     assert_eq!(json["content_hash"].as_str().unwrap().len(), 64);
 
     let second = stdout(&mm_ok(&["ingest", d, s, "--encoder", "x264"]));
-    assert_eq!(second.matches("飛ばした").count(), 3, "{second}");
+    assert_eq!(second.matches("スキップした").count(), 3, "{second}");
     assert!(second.contains("既にプロジェクトにある"), "{second}");
     assert!(
         !second.contains("素材を"),

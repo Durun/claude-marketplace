@@ -1,4 +1,4 @@
-//! 期待画像のテスト。各種類の見本の絵を `fixtures/golden/<バックエンド>/` の PNG と比べる（`mm_testkit::golden`）。
+//! 期待画像のテスト。各種類のテストパターンを `fixtures/golden/<バックエンド>/` の PNG と比べる（`mm_testkit::golden`）。
 //! 更新は `cargo xtask golden-update`。GPU が無い環境と、期待画像のフォルダーが無いバックエンドではスキップする。
 //! `MM_GOLDEN_BACKEND=warp` のときは WARP のアダプターを選ぶ（CI の WARP と、手元で WARP の期待画像を作るとき）。
 
@@ -18,7 +18,7 @@ use mm_testkit::fixtures::{invert_lut_asset, INVERT_LUT_ID, SAMPLE_ASSET_PATH};
 use mm_testkit::golden::{backend_name, Golden, BACKEND_ENV, GOLDEN_SIZE};
 use mm_types::{ColorSpace, Id, ParamValue, RationalTime, Rgba};
 
-/// 見本の絵: 上段に 6 色のパッチ、中段に線形の灰色のランプ、下段に肌色と暗部のパッチ。`p0` は動く縦線の明るさ、
+/// テストパターン: 上段に 6 色のパッチ、中段に線形の灰色のランプ、下段に肌色と暗部のパッチ。`p0` は動く縦線の明るさ、
 /// 縦線は `u.time` 秒で右へ 1 秒に 1/4 画面進む。
 const TEST_CARD: &str = r"
 fn mm_main(uv: vec2<f32>) -> vec4<f32> {
@@ -45,7 +45,7 @@ fn mm_main(uv: vec2<f32>) -> vec4<f32> {
 }
 ";
 
-/// 切り替えが見やすい別の絵: 斜めの縞。`p0` で色味、`p1` で縞の向き（1 か -1）を変える。
+/// 切り替えが見やすい別のテストパターン: 斜めの縞。`p0` で色味、`p1` で縞の向き（1 か -1）を変える。
 const STRIPES: &str = r"
 fn mm_main(uv: vec2<f32>) -> vec4<f32> {
     let s = step(0.5, fract((uv.x + uv.y * u.p0.y) * 6.0));
@@ -82,7 +82,7 @@ fn clip_project(layers: Vec<mm_doc::Layer>) -> Project {
     p
 }
 
-/// 青い縞の 2 秒、橙の縞の 2 秒（頭に長さ 1 秒のクロスディゾルブ）。
+/// 青い縞の 2 秒、橙の縞の 2 秒（先頭に長さ 1 秒のクロスディゾルブ）。
 fn two_cuts() -> Project {
     let cut = |id: &str, p0: f64, direction: f64| {
         let node = shader(STRIPES)
@@ -101,7 +101,7 @@ fn two_cuts() -> Project {
     project(vec![main_comp(vec![layer("seq", node, 4)])], vec![seq])
 }
 
-/// 見本の絵を描いて、期待画像 `name` と比べる。
+/// テストパターンを描いて、期待画像 `name` と比べる。
 /// WARP のアダプターの名前（D3D12 のソフトウェアの GPU）。
 const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
 
@@ -141,13 +141,13 @@ fn check(name: &str, project: &Project, t: RationalTime) {
 }
 
 #[test]
-fn shader_wgsl_の見本() {
+fn shader_wgsl_の期待画像() {
     let p = project(vec![main_comp(vec![layer("card", card(), 4)])], vec![]);
     check("shader-wgsl", &p, seconds(1));
 }
 
 #[test]
-fn color_adjust_の見本() {
+fn color_adjust_の期待画像() {
     let node = Node::new("color.adjust", 1)
         .with_param("brightness", ParamValue::Number(0.5))
         .with_param("contrast", ParamValue::Number(1.3))
@@ -156,7 +156,7 @@ fn color_adjust_の見本() {
 }
 
 #[test]
-fn color_cdl_の見本() {
+fn color_cdl_の期待画像() {
     let node = Node::new("color.cdl", 1)
         .with_param("slope", ParamValue::Vec3([1.2, 1.0, 0.8]))
         .with_param("offset", ParamValue::Vec3([0.02, 0.0, 0.0]))
@@ -166,7 +166,7 @@ fn color_cdl_の見本() {
 }
 
 #[test]
-fn color_lut_の見本() {
+fn color_lut_の期待画像() {
     let node = Node::new("color.lut", 1)
         .with_param("lut", ParamValue::AssetRef(Id::new(INVERT_LUT_ID)))
         .with_param("input_space", ParamValue::Choice("srgb".into()));
@@ -176,7 +176,7 @@ fn color_lut_の見本() {
 }
 
 #[test]
-fn color_convert_の見本() {
+fn color_convert_の期待画像() {
     let node = Node::new("color.convert", 1)
         .with_param("from", ParamValue::Text("lin_rec709".into()))
         .with_param("to", ParamValue::Text("srgb".into()));
@@ -184,7 +184,7 @@ fn color_convert_の見本() {
 }
 
 #[test]
-fn 入れ子に掛けた効果の見本() {
+fn 入れ子に掛けた効果の期待画像() {
     let inner = comp("inner", GOLDEN_SIZE, 4, vec![layer("card", card(), 4)]);
     let mut nested = layer(
         "nested",
@@ -202,7 +202,7 @@ fn 入れ子に掛けた効果の見本() {
 }
 
 #[test]
-fn sequence_のカットの見本() {
+fn sequence_のカットの期待画像() {
     check(
         "sequence-cut",
         &two_cuts(),
@@ -211,7 +211,7 @@ fn sequence_のカットの見本() {
 }
 
 #[test]
-fn sequence_のクロスディゾルブの見本() {
+fn sequence_のクロスディゾルブの期待画像() {
     check(
         "sequence-dissolve",
         &two_cuts(),
@@ -220,7 +220,7 @@ fn sequence_のクロスディゾルブの見本() {
 }
 
 #[test]
-fn text_の見本() {
+fn text_の期待画像() {
     let text = Node::new("text", 1)
         .with_param("text", ParamValue::Text("Golden".into()))
         .with_param("size", ParamValue::Number(48.0))
@@ -231,7 +231,7 @@ fn text_の見本() {
 }
 
 #[test]
-fn image_の見本() {
+fn image_の期待画像() {
     let node = Node::new("image", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
     let bg = layer("bg", solid(Rgba::new(0.1, 0.1, 0.1, 1.0)), 4);
     let mut img = layer("img", node, 4);

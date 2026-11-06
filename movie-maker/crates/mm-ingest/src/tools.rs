@@ -1,4 +1,4 @@
-//! 外の道具（ffmpeg と ffprobe の CLI）の場所と起動。
+//! 外部のツール（ffmpeg と ffprobe の CLI）の場所と起動。
 //!
 //! ライブラリの FFmpeg（`mm-decode-ffmpeg`）に依存しないので、SDK なしの既定の設定でもビルドでき、
 //! エンコードは NVENC など CLI が持つ全部のエンコーダーを使える。

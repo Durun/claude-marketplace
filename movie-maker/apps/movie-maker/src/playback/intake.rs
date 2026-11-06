@@ -1,4 +1,4 @@
-//! 再生スレッドに入るものを整える。届いた命令の束ね方と、音の出力に足すチャンクの形。
+//! 再生スレッドに入るものを整える。届いたコマンドのまとめ方と、音の出力に足すチャンクの形。
 
 use std::sync::mpsc::Receiver;
 
@@ -6,7 +6,7 @@ use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 
 use super::Command;
 
-/// 受けた命令に、すでに届いている命令を続けて取り出す。連続するシークは最後の 1 つにまとめる。
+/// 受けたコマンドに、すでに届いているコマンドを続けて取り出す。連続するシークは最後の 1 つにまとめる。
 pub(super) fn collect_batch(first: Command, rx: &Receiver<Command>) -> Vec<Command> {
     let mut batch = vec![first];
     batch.extend(rx.try_iter());
@@ -42,7 +42,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 連続するシークは最後の1つにまとまり_間の命令は順序を保つ() {
+    fn 連続するシークは最後の1つにまとまり_間のコマンドは順序を保つ() {
         let seeks: Vec<Command> = (0..1000).map(|i| Command::Seek(f64::from(i))).collect();
         assert_eq!(coalesce_seeks(seeks), vec![Command::Seek(999.0)]);
         let mixed = vec![

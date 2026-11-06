@@ -225,7 +225,7 @@ fn render(r: &mut WgpuRenderer, p: &Project) -> Arc<RgbaImage> {
         })
         .expect("描ける");
     assert!(r.take_errors().is_empty());
-    r.gpu().download(&frame).expect("読み戻せる")
+    r.gpu().download(&frame).expect("リードバックできる")
 }
 
 fn renderer(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>) -> WgpuRenderer {

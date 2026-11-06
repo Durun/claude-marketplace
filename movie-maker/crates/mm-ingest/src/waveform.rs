@@ -1,4 +1,4 @@
-//! 波形。音を低いレートの f32 に落として標準出力で受け、一定の窓ごとの最大振幅（ピーク）にする。
+//! 波形。音を低いレートの f32 に落として標準出力で受け、一定の区間ごとの最大振幅（ピーク）にする。
 //! 全部のサンプルをメモリに載せない（長い素材でも一定のメモリ）。
 
 use std::io::Read;
@@ -14,14 +14,14 @@ use crate::PRODUCER;
 
 /// 1 秒あたりのピークの数。
 pub const PEAKS_PER_SECOND: u32 = 100;
-/// ピークを取る前に落とすサンプルレート。窓が整数のサンプル数になるよう `PEAKS_PER_SECOND` の倍数にする。
+/// ピークを取る前に落とすサンプルレート。区間が整数のサンプル数になるよう `PEAKS_PER_SECOND` の倍数にする。
 const SAMPLE_RATE: u32 = 8000;
 /// 標準出力を読む 1 回の大きさ。
 const READ_CHUNK: usize = 64 * 1024;
 /// ピークの丸め。JSON の大きさを抑える（4 桁）。
 const PEAK_SCALE: f32 = 10_000.0;
 
-/// インターリーブした f32le のサンプルを、チャンネルごとの窓の最大振幅にする。
+/// インターリーブした f32le のサンプルを、チャンネルごとの区間の最大振幅にする。
 #[derive(Debug)]
 pub struct PeakAccumulator {
     channels: usize,
@@ -73,7 +73,7 @@ impl PeakAccumulator {
         self.filled = 0;
     }
 
-    /// 端数の窓も 1 つのピークにして、インターリーブしたピークを返す。
+    /// 端数の区間も 1 つのピークにして、インターリーブしたピークを返す。
     pub fn finish(mut self) -> Vec<f32> {
         if self.filled > 0 {
             self.flush_window();
@@ -141,7 +141,7 @@ fn decode_peaks(tools: &Tools, input: &Path, channels: u16) -> Result<Vec<f32>> 
     let status = child.wait()?;
     let stderr = err_reader
         .join()
-        .map_err(|_| MmError::Internal("標準エラーを読むスレッドが落ちた".into()))?;
+        .map_err(|_| MmError::Internal("標準エラーを読むスレッドがパニックした".into()))?;
     if !status.success() {
         return Err(MmError::Corrupt(failure_message(
             what,
@@ -161,11 +161,11 @@ mod tests {
     }
 
     #[test]
-    fn 窓ごとの最大振幅をチャンネルごとに取る() {
+    fn 区間ごとの最大振幅をチャンネルごとに取る() {
         let mut acc = PeakAccumulator::new(2, 2);
-        // 2 フレームで 1 窓。左は 0.5、-0.25、右は 0.1、-0.8。
+        // 2 フレームで 1 区間。左は 0.5、-0.25、右は 0.1、-0.8。
         acc.push(&bytes(&[0.5, 0.1, -0.25, -0.8]));
-        // 端数の窓（1 フレーム）。
+        // 端数の区間（1 フレーム）。
         acc.push(&bytes(&[0.3, 0.0]));
         assert_eq!(acc.finish(), vec![0.5, 0.8, 0.3, 0.0]);
     }

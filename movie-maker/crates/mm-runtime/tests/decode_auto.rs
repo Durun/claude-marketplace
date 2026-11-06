@@ -1,4 +1,4 @@
-//! GPU でデコードする腕（`d3d12va`、`cuvid`、`auto`）を、実機の GPU とフィクスチャの素材で `Engine` のインターフェースまで通す。
+//! GPU でデコードする分岐（`d3d12va`、`cuvid`、`auto`）を、実機の GPU とフィクスチャの素材で `Engine` のインターフェースまで通す。
 //! 実機の NVIDIA と FFmpeg が要るので、3 つの feature がそろったときだけ走る。
 //!
 //! レンダラーの `footage` の種類はまだ GPU のフレームを受けない（段階 2）ので、ここでは `Engine::decoders` の

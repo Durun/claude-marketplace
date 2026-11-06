@@ -1,5 +1,5 @@
 //! 再生。専用のスレッドが `Engine` を持ち、再生の主の時計に合わせてフレームを描いて描画スレッドに渡し、
-//! 音を `mm-audio-cpal` に足す。命令（再生、停止、シーク）はチャンネルで受ける。
+//! 音を `mm-audio-cpal` に足す。コマンド（再生、停止、シーク）はチャンネルで受ける。
 
 mod intake;
 mod player;
@@ -15,7 +15,7 @@ use crate::state::Shared;
 
 pub use player::PlayerOptions;
 
-/// 再生スレッドへの命令。
+/// 再生スレッドへのコマンド。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     Play,
@@ -25,7 +25,7 @@ pub enum Command {
     Seek(f64),
     /// 現在のフレームから `n` フレーム動かす（再生中なら止める）。
     Step(i64),
-    /// `Shared::edits` に積んだ操作を当てる。
+    /// `Shared::edits` に積んだ操作を適用する。
     Edit,
     Quit,
 }
@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn 頭から最後まで再生すると止まり_全フレームが出たか飛ばしたかに数えられる() {
+    fn 先頭から最後まで再生すると止まり_全フレームが出たかドロップしたかに数えられる() {
         let (shared, _playback, info) = start();
         let total = (info.duration * info.fps).round() as u64;
         shared.send(Command::Play);
@@ -150,12 +150,12 @@ mod tests {
         let dropped = shared.dropped_frames.load(Ordering::SeqCst);
         assert!(
             rendered + dropped >= total,
-            "描いた {rendered} と飛ばした {dropped} で全 {total} フレームを数える"
+            "描いた {rendered} とドロップした {dropped} で全 {total} フレームを数える"
         );
     }
 
     #[test]
-    fn 操作を当てると触ったレイヤーを返し_今のフレームを描き直す() {
+    fn 操作を適用すると触ったレイヤーを返し_今のフレームを描き直す() {
         let (shared, _playback, _info) = start();
         assert!(wait(Duration::from_secs(2), || shared
             .frames
@@ -172,7 +172,7 @@ mod tests {
         assert!(outcome.touched.iter().any(|id| id == "l-footage"));
         assert!(
             shared.frames.newer_than(before).is_some(),
-            "当てた後のフレームが出る"
+            "適用した後のフレームが出る"
         );
         let bad: mm_ops::Op = mm_ops::SetParam {
             target: mm_ops::ParamRef::layer(&mm_types::Id::new("no-such"), "opacity"),

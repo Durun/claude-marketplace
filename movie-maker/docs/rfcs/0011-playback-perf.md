@@ -23,8 +23,8 @@
 共通実装（`mm-gpu`）に足したもの:
 
 - `WgpuGpu::fill`: クリアのパスで塗る。`allocate` は透明の `fill`。
-- `WgpuGpu::is_borrowed(id)`: デコーダーから借用した番号か。レンダラーは借用でない GPU のテクスチャを写さずにフレームのキャッシュに覚える。
-- `WgpuGpu::finish_readback_rows`: 余白を外した行を順に渡す。`finish_frame_readback` は写像した範囲から直接 f32 に変換し、
+- `WgpuGpu::is_borrowed(id)`: デコーダーから借用した番号か。レンダラーは借用でない GPU のテクスチャをコピーせずにフレームのキャッシュに覚える。
+- `WgpuGpu::finish_readback_rows`: 余白を外した行を順に渡す。`finish_frame_readback` はマップした範囲から直接 f32 に変換し、
   中間のバイト列を作らない（1080p のリードバックが約 10 ms から約 5 ms）。
 
 ## 影響する実装
@@ -32,4 +32,4 @@
 - `mm-nodes-basic`: `solid` が `cx.gpu.fill` を返す。
 - `mm-render`: `layers.rs` の `upload_rendered` が持ち主を `is_borrowed` で決める。
 - `apps/mm`: `perf run playback` はフレームのキャッシュなしで測り（予算の表の「キャッシュなし」）、続けてキャッシュありで
-  落としたフレームを測る（`playback.cached_*`）。`perf run scrub` はキャッシュなしで測る。
+  ドロップしたフレームを測る（`playback.cached_*`）。`perf run scrub` はキャッシュなしで測る。

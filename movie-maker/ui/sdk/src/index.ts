@@ -1,12 +1,12 @@
 /** 操作の呼び出しの結果。成功なら value、失敗なら error を持つ。 */
 export type InvokeResult<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
 
-/** UI の命令の呼び出し。command は Tasks パネルなどの項目の名前で、mm-ops の操作ではない。 */
+/** UI のコマンドの呼び出し。command は Tasks パネルなどの項目の名前で、mm-ops の操作ではない。 */
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<InvokeResult>;
 
 /**
- * UI の命令を呼ぶ関数の形。
- * 命令の受け口がアプリに出来るまでの仮の中身で、呼ばれた名前を記録して失敗を返す。
+ * UI のコマンドを呼ぶ関数の形。
+ * コマンドのハンドラーがアプリに出来るまでの仮の中身で、呼ばれた名前を記録して失敗を返す。
  */
 export const invoke: Invoke = async (command, args) => {
   console.debug("[mm-sdk] invoke", command, args ?? {});

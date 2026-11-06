@@ -164,7 +164,7 @@ fn 入れ子を順に並べた素材の頭出しは開き直さずシークで�
         }
     }
     assert_eq!(r.opens(), 1);
-    assert_eq!(r.seeks(), 3, "頭に戻るたびに 1 回");
+    assert_eq!(r.seeks(), 3, "先頭に戻るたびに 1 回");
 }
 
 #[test]
