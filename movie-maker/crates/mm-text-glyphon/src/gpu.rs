@@ -61,10 +61,13 @@ impl GpuState {
 }
 
 /// glyphon による描画。出力は線形・premultiplied の RGBA。
+///
+/// デバイスが消えたら（`GpuContext::is_lost`）、次の描画の前に同じ求めの共有のコンテキストへ持ち替え、
+/// atlas とパイプラインを作り直す。出力は CPU の画像なので、レンダラーと別のデバイスになっても困らない。
 pub struct GlyphonRasterizer {
     inner: Arc<Inner>,
-    gpu: Arc<GpuContext>,
-    state: Mutex<GpuState>,
+    /// 描くデバイスと、その上の glyphon の部品。持ち替えで一緒に替わる。
+    state: Mutex<(Arc<GpuContext>, GpuState)>,
     /// 1 つの atlas に振るグリフの ID の数の上限。
     id_limit: usize,
 }
@@ -80,14 +83,30 @@ impl GlyphonRasterizer {
     }
 
     pub(crate) fn with_id_limit(inner: Arc<Inner>, gpu: Arc<GpuContext>, id_limit: usize) -> Self {
-        let state = Mutex::new(GpuState::new(&gpu, id_limit));
+        let state = Mutex::new((gpu.clone(), GpuState::new(&gpu, id_limit)));
         Self {
             inner,
-            gpu,
             state,
             id_limit,
         }
     }
+
+    /// いま描いているコンテキスト。持ち替えの後は新しいもの。
+    pub fn context(&self) -> Result<Arc<GpuContext>> {
+        Ok(lock(&self.state)?.0.clone())
+    }
+}
+
+/// デバイスが消えていたら、同じ求めの共有のコンテキストに持ち替えて部品を作り直す。
+fn ensure_device(slot: &mut (Arc<GpuContext>, GpuState), id_limit: usize) -> Result<()> {
+    if !slot.0.is_lost() {
+        return Ok(());
+    }
+    let fresh = GpuContext::shared(slot.0.request())?;
+    tracing::warn!("文字の描画の GPU を持ち替えた");
+    slot.1 = GpuState::new(&fresh, id_limit);
+    slot.0 = fresh;
+    Ok(())
 }
 
 /// 線形の 1 成分を sRGB の 8 bit に。glyphon の色指定は sRGB。
@@ -206,15 +225,15 @@ fn read_back(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> Result<Rg
 }
 
 impl GlyphonRasterizer {
-    fn target(&self, size: Size) -> Result<wgpu::Texture> {
-        let limit = self.gpu.device.limits().max_texture_dimension_2d;
+    fn target(ctx: &GpuContext, size: Size) -> Result<wgpu::Texture> {
+        let limit = ctx.device.limits().max_texture_dimension_2d;
         if size.width > limit || size.height > limit {
             return Err(MmError::Unsupported(format!(
                 "文字の画像 {}x{} が GPU のテクスチャの上限 {limit} を超える",
                 size.width, size.height
             )));
         }
-        Ok(self.gpu.device.create_texture(&wgpu::TextureDescriptor {
+        Ok(ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("mm-text target"),
             size: wgpu::Extent3d {
                 width: size.width,
@@ -237,18 +256,22 @@ impl GlyphonRasterizer {
         scale: f32,
         size: Size,
     ) -> Result<RgbaImage> {
-        let texture = self.target(size)?;
-        let mut state = lock(&self.state)?;
-        let glyphs = self.collect(&mut state, shaped, style, scale)?;
-        self.prepare(&mut state, &glyphs, style, size)?;
-        self.render(&mut state, &texture)?;
-        read_back(&self.gpu, &texture, size)
+        let mut slot = lock(&self.state)?;
+        ensure_device(&mut slot, self.id_limit)?;
+        let (ctx, state) = &mut *slot;
+        let ctx = ctx.clone();
+        let texture = Self::target(&ctx, size)?;
+        let glyphs = self.collect(&ctx, state, shaped, style, scale)?;
+        self.prepare(&ctx, state, &glyphs, style, size)?;
+        Self::render(&ctx, state, &texture)?;
+        read_back(&ctx, &texture, size)
     }
 
     /// グリフに ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
     /// それでも収まらない（1 回の描画だけで上限を超える）ときは `Unsupported`。
     fn collect(
         &self,
+        ctx: &GpuContext,
         state: &mut GpuState,
         shaped: &ShapedText,
         style: &TextStyle,
@@ -256,7 +279,7 @@ impl GlyphonRasterizer {
     ) -> Result<Vec<CustomGlyph>> {
         for attempt in 0..2 {
             if attempt > 0 {
-                *state = GpuState::new(&self.gpu, self.id_limit);
+                *state = GpuState::new(ctx, self.id_limit);
             }
             let mut fonts = lock(&self.inner.fonts)?;
             let (fs, cache) = &mut *fonts;
@@ -273,12 +296,12 @@ impl GlyphonRasterizer {
     /// グリフを glyphon の atlas と頂点に載せる。
     fn prepare(
         &self,
+        ctx: &GpuContext,
         state: &mut GpuState,
         glyphs: &[CustomGlyph],
         style: &TextStyle,
         size: Size,
     ) -> Result<()> {
-        let ctx = &*self.gpu;
         state.viewport.update(
             &ctx.queue,
             Resolution {
@@ -323,8 +346,7 @@ impl GlyphonRasterizer {
     }
 
     /// 載せたグリフを `texture` に描く。
-    fn render(&self, state: &mut GpuState, texture: &wgpu::Texture) -> Result<()> {
-        let ctx = &*self.gpu;
+    fn render(ctx: &GpuContext, state: &mut GpuState, texture: &wgpu::Texture) -> Result<()> {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = ctx
             .device
@@ -412,6 +434,26 @@ mod tests {
                 "{text}: ID が重なると別の字になる（差 {diff}）"
             );
         }
+    }
+
+    /// 消えたデバイスの代わりに共有のコンテキストへ持ち替え、同じ字を描く。共有のものを壊さないよう、
+    /// 自前のコンテキストに消失の印だけを付ける。
+    #[test]
+    fn デバイスが消えたら持ち替えて描き続ける() {
+        let Some(shared) = gpu() else { return };
+        let own = GpuContext::with(shared.request()).expect("作れる");
+        let engine = TextEngine::new();
+        let rasterizer = GlyphonRasterizer::with_fonts(engine.inner.clone(), own.clone());
+        let style = TextStyle::default();
+        let shaped = engine.shaper().shape("ABC", &style).expect("シェーピング");
+        let before = rasterizer.rasterize(&shaped, &style, 1.0).expect("描ける");
+        own.mark_lost();
+        let after = rasterizer
+            .rasterize(&shaped, &style, 1.0)
+            .expect("持ち替えて描ける");
+        let now = rasterizer.context().unwrap();
+        assert!(!Arc::ptr_eq(&now, &own), "新しいコンテキストに替わる");
+        assert!(after.max_diff(&before).expect("同じ大きさ") < 1e-3);
     }
 
     #[test]
