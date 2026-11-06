@@ -51,6 +51,8 @@ impl WgpuRenderer {
         let done = std::mem::replace(encoder, fresh);
         self.gpu.before_submit();
         ctx.queue.submit([done.finish()]);
+        // 提出した後なので、それまでに手放した中間のテクスチャを使い回してよい。
+        self.gpu.recycle();
     }
 
     /// 入力のテクスチャを与えて種類を呼び、出力のテクスチャの番号を返す。透明なら `None`。

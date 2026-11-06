@@ -129,7 +129,7 @@ impl WgpuRenderer {
         }
         self.composite(encoder, target, &prepared);
         mm_trace::counter!("render.layers_drawn", prepared.len());
-        // 操作がテクスチャを握っているので、提出の前にプールから外してよい。
+        // 手放したテクスチャは提出待ちに置かれ、このコマンドを提出するまで使い回されない（mm_gpu::WgpuGpu）。
         for id in temps {
             self.gpu.release_id(id);
         }
