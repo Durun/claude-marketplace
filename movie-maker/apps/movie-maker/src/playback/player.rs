@@ -13,8 +13,9 @@ use mm_ops::{apply_transaction, Entry, Op, OpContext};
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
 
+use super::intake::{collect_batch, fit_chunk};
 use super::{Command, PlaybackInfo};
-use crate::clock::{AudioClock, PlayClock, WallClock};
+use crate::clock::{AudioClock, PlayClock, SwitchClock, WallClock};
 use crate::edit::EditOutcome;
 use crate::state::{FrameImage, Shared};
 
@@ -86,7 +87,7 @@ pub struct Player {
     frames_total: i64,
     duration: f64,
     size: Size,
-    clock: Arc<dyn PlayClock>,
+    clock: Arc<SwitchClock>,
     audio: Option<Arc<AudioOutput>>,
     shared: Arc<Shared>,
     playing: bool,
@@ -107,13 +108,15 @@ impl Player {
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
         let audio = (!options.no_audio).then(open_audio).flatten();
-        let clock: Arc<dyn PlayClock> = match &audio {
+        let inner: Arc<dyn PlayClock> = match &audio {
             Some(a) => Arc::new(AudioClock(a.clone())),
             None => Arc::new(WallClock::default()),
         };
+        let clock = Arc::new(SwitchClock::new(inner));
         let _ = shared.clock.set(clock.clone());
+        shared.publish_doc(project.clone(), comp_id.clone());
         let fps_f = fps.to_f64();
-        let info = describe(&engine, comp, &clock, audio.as_deref());
+        let info = describe(&engine, comp, clock.as_ref(), audio.as_deref());
         let player = Self {
             engine,
             project,
@@ -136,7 +139,7 @@ impl Player {
     /// 命令を受けながら再生を進める。`Quit` か、送り手が全部いなくなったら返る。
     pub fn run(&mut self, rx: &Receiver<Command>) {
         self.seek_to(0.0);
-        loop {
+        'serve: loop {
             let wait = if self.playing {
                 Some(self.next_wait())
             } else {
@@ -147,8 +150,15 @@ impl Player {
                 None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
             };
             match received {
-                Ok(Command::Quit) | Err(RecvTimeoutError::Disconnected) => break,
-                Ok(cmd) => self.handle(cmd),
+                Err(RecvTimeoutError::Disconnected) => break,
+                Ok(first) => {
+                    for cmd in collect_batch(first, rx) {
+                        if cmd == Command::Quit {
+                            break 'serve;
+                        }
+                        self.handle(cmd);
+                    }
+                }
                 Err(RecvTimeoutError::Timeout) => {}
             }
             if self.playing {
@@ -186,7 +196,9 @@ impl Player {
     fn apply_edits(&mut self) {
         let edits = std::mem::take(&mut *self.shared.edits.lock().expect("edits"));
         for edit in edits {
-            let _ = edit.reply.send(self.apply(&edit.ops));
+            if edit.claim() {
+                let _ = edit.reply.send(self.apply(&edit.ops));
+            }
         }
     }
 
@@ -195,13 +207,40 @@ impl Player {
         let mut project = (*self.project).clone();
         let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
+        let comp = project
+            .composition(&self.comp)
+            .map_err(|_| "開いているコンポジションを消す操作は当てない".to_owned())?;
+        let (fps, duration) = (comp.fps, comp.duration.to_f64());
+        let size = Size::new(comp.width, comp.height);
         let touched = outcome.touches.to_vec();
         self.engine.invalidate_touched(&touched);
-        self.project = Arc::new(project);
-        if let Some(index) = self.last_frame {
-            self.render_frame(index);
-        }
+        let project = Arc::new(project);
+        self.project = project.clone();
+        self.shared.publish_doc(project, self.comp.clone());
+        self.adopt_shape(fps, duration, size);
+        self.resync();
         Ok(EditOutcome { touched })
+    }
+
+    /// コンポジションの fps、長さ、大きさを引き直す。操作で変わっても、再生の計算が古い値のままにならない。
+    fn adopt_shape(&mut self, fps: Rational, duration: f64, size: Size) {
+        self.fps = fps;
+        self.fps_f = fps.to_f64();
+        self.duration = duration;
+        self.frames_total = (duration * self.fps_f).round() as i64;
+        self.size = size;
+    }
+
+    /// 内容が変わった後に、今の位置を描き直す。再生中は先読みの音も古いので、位置を置き直して音を作り直す。
+    fn resync(&mut self) {
+        if self.playing {
+            let at = self.clock.position();
+            self.seek_to(at);
+        } else if let Some(index) = self.last_frame {
+            let index = index.clamp(0, (self.frames_total - 1).max(0));
+            self.render_frame(index);
+            self.last_frame = Some(index);
+        }
     }
 
     fn pause_position(&mut self) -> f64 {
@@ -215,10 +254,19 @@ impl Player {
         (self.duration - 1.0 / self.fps_f).max(0.0)
     }
 
+    /// 音の出力が壊れていたら、止めた位置から壁時計に替えて音を諦める。
+    fn check_audio(&mut self) {
+        if self.audio.is_some() && self.clock.fall_back_if_failed() {
+            tracing::warn!("音の出力が止まったので、壁時計で進める");
+            self.audio = None;
+        }
+    }
+
     fn play(&mut self) {
         if self.playing {
             return;
         }
+        self.check_audio();
         let here = self.clock.position();
         let from = if here >= self.last_start() { 0.0 } else { here };
         self.seek_to(from);
@@ -256,6 +304,7 @@ impl Player {
     }
 
     fn tick(&mut self) {
+        self.check_audio();
         self.feed_audio();
         let pos = self.clock.position();
         if pos >= self.duration - END_EPSILON {
@@ -339,9 +388,10 @@ impl Player {
         while self.audio_cursor < total && out.buffered_secs() < AUDIO_AHEAD_SECS {
             let n = AUDIO_CHUNK.min(total - self.audio_cursor);
             let block = self.render_audio_chunk(self.audio_cursor, n);
+            // 形の違う音は無音に替えて足す。足せずに止めると、音の位置が進まず時計が終わりに届かない。
+            let block = fit_chunk(block, n as usize);
             if let Err(e) = out.push(&block) {
-                tracing::warn!(error = %e, "音を足せなかった");
-                break;
+                tracing::warn!(error = %e, "音を足せなかった。時計を進めるため飛ばす");
             }
             self.audio_cursor += n;
             if self.audio_cursor >= total {
@@ -375,7 +425,7 @@ impl Player {
 fn describe(
     engine: &Engine,
     comp: &Composition,
-    clock: &Arc<dyn PlayClock>,
+    clock: &SwitchClock,
     audio: Option<&AudioOutput>,
 ) -> PlaybackInfo {
     PlaybackInfo {
