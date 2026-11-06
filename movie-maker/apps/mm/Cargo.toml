@@ -16,6 +16,8 @@ mm-trace = { workspace = true }
 mm-doc = { workspace = true }
 mm-node-api = { workspace = true }
 mm-runtime = { workspace = true }
+# `perf run --adapter` が GPU の一覧を引く。
+mm-gpu = { workspace = true }
 mm-export = { workspace = true }
 mm-ops = { workspace = true }
 mm-store = { workspace = true }

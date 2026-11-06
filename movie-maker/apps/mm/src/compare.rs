@@ -24,6 +24,11 @@ pub struct Pooled {
 }
 
 impl Pooled {
+    /// 束ねる鍵。同じ名前の項目が別の場面にあっても混ざらないよう、場面の名前を前に付ける。
+    fn key(&self) -> String {
+        format!("{}/{}", self.scene, self.name)
+    }
+
     /// 束ねたサンプルの中央値。
     pub fn value(&self) -> f64 {
         median(&self.samples)
@@ -98,14 +103,16 @@ fn pool_doc(doc: &Value, pooled: &mut BTreeMap<String, Pooled>) {
         let Some(name) = item["name"].as_str() else {
             continue;
         };
-        let entry = pooled.entry(name.to_owned()).or_insert_with(|| Pooled {
-            scene: scene.clone(),
-            name: name.to_owned(),
-            unit: item["unit"].as_str().unwrap_or("").to_owned(),
-            higher_is_better: item["better"].as_str() == Some("higher"),
-            samples: Vec::new(),
-            budget: budget_of(&item["budget"]),
-        });
+        let entry = pooled
+            .entry(format!("{scene}/{name}"))
+            .or_insert_with(|| Pooled {
+                scene: scene.clone(),
+                name: name.to_owned(),
+                unit: item["unit"].as_str().unwrap_or("").to_owned(),
+                higher_is_better: item["better"].as_str() == Some("higher"),
+                samples: Vec::new(),
+                budget: budget_of(&item["budget"]),
+            });
         let samples = item["samples"].as_array().into_iter().flatten();
         entry.samples.extend(samples.filter_map(Value::as_f64));
     }
@@ -140,12 +147,12 @@ pub fn compare(
     after
         .values()
         .filter_map(|a| {
-            let b = before.get(&a.name)?;
+            let b = before.get(&a.key())?;
             let (bv, av) = (b.value(), a.value());
             let slower = slower_ratio(bv, av, a.higher_is_better);
             let delta = (av - bv).abs();
             Some(Row {
-                name: a.name.clone(),
+                name: a.key(),
                 unit: a.unit.clone(),
                 before: bv,
                 after: av,
@@ -156,10 +163,15 @@ pub fn compare(
         .collect()
 }
 
-/// 遅くなった割合。前が 0 なら比べられないので 0。
+/// 遅くなった割合。前が 0 で割れないときは、悪くなっていれば無限大（落とすフレームの割合のように 0 が普通の項目が増えたら回帰）。
 fn slower_ratio(before: f64, after: f64, higher_is_better: bool) -> f64 {
     if before <= 0.0 {
-        return 0.0;
+        let worse = if higher_is_better {
+            after < before
+        } else {
+            after > before
+        };
+        return if worse { f64::INFINITY } else { 0.0 };
     }
     if higher_is_better {
         (before - after) / before
@@ -175,12 +187,12 @@ pub fn run_compare(before: &Path, after: &Path, opts: CompareOptions) -> Result<
         return Err(MmError::NotFound("前後で共通の項目が無い".into()));
     }
     println!(
-        "{:<28} {:>12} {:>12} {:>9} 判定",
+        "{:<40} {:>12} {:>12} {:>9} 判定",
         "項目", "前", "後", "遅くなった"
     );
     for r in &rows {
         println!(
-            "{:<28} {:>12.3} {:>12.3} {:>+8.1}% {}",
+            "{:<40} {:>12.3} {:>12.3} {:>+8.1}% {}",
             r.name,
             r.before,
             r.after,
@@ -243,7 +255,7 @@ mod tests {
 
     fn pooled(name: &str, higher: bool, samples: &[f64]) -> (String, Pooled) {
         (
-            name.to_owned(),
+            format!("cpu/{name}"),
             Pooled {
                 scene: "cpu".into(),
                 name: name.into(),
@@ -300,6 +312,42 @@ mod tests {
         assert!(p.over_budget());
         p.budget = Some(("at_least".into(), 20.0, "行".into()));
         assert!(!p.over_budget());
+    }
+
+    fn write_result(dir: &Path, file: &str, scene: &str, samples: &[f64]) {
+        let doc = json!({
+            "scene": scene,
+            "items": [{ "name": "shared_ms", "unit": "ms", "better": "lower", "samples": samples }],
+        });
+        std::fs::write(dir.join(file), doc.to_string()).unwrap();
+    }
+
+    #[test]
+    fn 場面が違えば同じ名前の項目も別に束ねる() {
+        let dir = tempfile::tempdir().unwrap();
+        write_result(dir.path(), "a.json", "cpu", &[1.0, 1.0]);
+        write_result(dir.path(), "b.json", "scrub", &[100.0, 100.0]);
+        let pooled = load_pooled(dir.path()).unwrap();
+        assert_eq!(pooled.len(), 2, "{pooled:?}");
+        let values: Vec<f64> = pooled.values().map(Pooled::value).collect();
+        assert_eq!(values, [1.0, 100.0]);
+    }
+
+    #[test]
+    fn 前が_0_の項目も悪くなれば回帰になる() {
+        let before = BTreeMap::from([pooled("dropped_pct", false, &[0.0])]);
+        let worse = BTreeMap::from([pooled("dropped_pct", false, &[5.0])]);
+        let row = &compare(&before, &worse, opts(0.3, 0.05))[0];
+        assert!(row.regressed, "{row:?}");
+        let same = compare(&before, &before, opts(0.3, 0.05));
+        assert!(!same[0].regressed);
+    }
+
+    #[test]
+    fn 大きいほど良い項目は前が_0_なら回帰にならない() {
+        let before = BTreeMap::from([pooled("fps", true, &[0.0])]);
+        let after = BTreeMap::from([pooled("fps", true, &[0.0])]);
+        assert!(!compare(&before, &after, opts(0.3, 0.0))[0].regressed);
     }
 
     #[test]

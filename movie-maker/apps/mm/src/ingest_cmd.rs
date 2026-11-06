@@ -58,6 +58,7 @@ pub fn ingest(args: &IngestArgs) -> Result<()> {
             ops.push(
                 AddAsset {
                     asset: report.asset,
+                    index: None,
                 }
                 .into(),
             );
