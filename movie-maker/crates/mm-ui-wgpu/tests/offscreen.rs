@@ -130,6 +130,66 @@ fn program_は線形の画像を_rec1886_の表示の値で出す() {
     assert!(close(centre, [191, 191, 191], 2), "{centre:?}");
 }
 
+/// 1 色で塗った Rgba16Float のテクスチャ（レンダラーの出力の形）。
+fn filled_texture(device: &wgpu::Device, queue: &wgpu::Queue, value: f64) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: 16,
+            height: 9,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&Default::default());
+    let mut enc = device.create_command_encoder(&Default::default());
+    enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: None,
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: value,
+                    g: value,
+                    b: value,
+                    a: 1.0,
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        ..Default::default()
+    });
+    queue.submit([enc.finish()]);
+    texture
+}
+
+#[test]
+fn program_は同じデバイスのテクスチャをそのまま出す() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    let texture = filled_texture(&device, &queue, 0.5);
+    ui.set_frame_texture(&device, &texture);
+    let out = render(&device, &queue, &mut ui);
+    let p = ui.layout().program;
+    let centre = px(&out, (p.x + p.w / 2.0) as u32, (p.y + p.h / 2.0) as u32);
+    assert!(close(centre, [191, 191, 191], 2), "{centre:?}");
+    // 借りたテクスチャの後に CPU の画像が来たら、自前のテクスチャに上げ直す（借りたものには書かない）。
+    let img = RgbaImage::filled(Size::new(16, 9), Rgba::new(1.0, 1.0, 1.0, 1.0));
+    ui.set_frame(&device, &queue, &img);
+    let out = render(&device, &queue, &mut ui);
+    let centre = px(&out, (p.x + p.w / 2.0) as u32, (p.y + p.h / 2.0) as u32);
+    assert!(close(centre, [255, 255, 255], 2), "{centre:?}");
+}
+
 #[test]
 fn 画像の縦横比を保ち_余白は背景のまま() {
     let Some((device, queue)) = gpu() else { return };

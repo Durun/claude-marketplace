@@ -33,6 +33,7 @@ mm-decode-cuvid = { workspace = true, optional = true }
 mm-encode-ffmpeg = { workspace = true, optional = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+wgpu = { workspace = true }
 
 [features]
 # OpenColorIO を使う。OCIO_ROOT と libclang が要る（mm-color-ocio/README.md）。切ったときは ocio の腕が Unsupported を返す。

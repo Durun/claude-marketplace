@@ -42,6 +42,8 @@ struct Gpu {
     texture: wgpu::Texture,
     bind: wgpu::BindGroup,
     size: (u32, u32),
+    /// ビューアーが作ったテクスチャか。偽なら借りたもので、画像を書き込まない。
+    owned: bool,
 }
 
 /// Program のビューア。
@@ -92,7 +94,7 @@ impl ProgramViewer {
         if size.0 == 0 || size.1 == 0 {
             return;
         }
-        if self.gpu.as_ref().map(|g| g.size) != Some(size) {
+        if self.gpu.as_ref().filter(|g| g.owned).map(|g| g.size) != Some(size) {
             self.gpu = Some(self.create(device, size));
         }
         let Some(gpu) = &self.gpu else { return };
@@ -122,23 +124,25 @@ impl ProgramViewer {
         );
     }
 
-    fn create(&self, device: &wgpu::Device, size: (u32, u32)) -> Gpu {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("ui program frame"),
-            size: wgpu::Extent3d {
-                width: size.0,
-                height: size.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
+    /// 同じデバイスで描いたテクスチャ（Rgba16Float、線形の premultiplied）をそのまま出す。CPU を通さない。
+    /// テクスチャは次に `set_texture` か `set_image` を呼ぶまで持つ。
+    pub fn set_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
+        let size = (texture.width(), texture.height());
+        if size.0 == 0 || size.1 == 0 {
+            return;
+        }
+        let bind = self.bind(device, texture);
+        self.gpu = Some(Gpu {
+            texture: texture.clone(),
+            bind,
+            size,
+            owned: false,
         });
+    }
+
+    fn bind(&self, device: &wgpu::Device, texture: &wgpu::Texture) -> wgpu::BindGroup {
         let view = texture.create_view(&Default::default());
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("ui program"),
             layout: &self.bgl,
             entries: &[
@@ -155,11 +159,30 @@ impl ProgramViewer {
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
             ],
+        })
+    }
+
+    fn create(&self, device: &wgpu::Device, size: (u32, u32)) -> Gpu {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui program frame"),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
         });
+        let bind = self.bind(device, &texture);
         Gpu {
             texture,
             bind,
             size,
+            owned: true,
         }
     }
 

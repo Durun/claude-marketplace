@@ -77,6 +77,11 @@ impl Ui {
         self.program.set_image(device, queue, image);
     }
 
+    /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
+    pub fn set_frame_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
+        self.program.set_texture(device, texture);
+    }
+
     /// 現在の割り付け。
     pub fn layout(&self) -> SurfaceLayout {
         self.layout

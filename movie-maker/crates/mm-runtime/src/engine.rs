@@ -8,12 +8,24 @@ use mm_audio_api::{AudioBlock, MixerFactory, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RA
 use mm_cache_api::CacheStore;
 use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_doc::Project;
-use mm_node_api::{Quality, Services};
+use mm_gpu::{GpuContext, WgpuGpu};
+use mm_node_api::{FrameRef, Quality, Services};
 use mm_render_api::{AudioRequest, RenderRequest, Renderer};
-use mm_types::{CompositionId, GpuAdapterId, RationalTime, Result, RgbaImage, Size, TimeRange};
+use mm_types::{
+    CompositionId, GpuAdapterId, MmError, RationalTime, Result, RgbaImage, Size, TimeRange,
+};
 
 use crate::config::RuntimeConfig;
 use crate::registry::Registry;
+
+/// GPU のテクスチャのまま返したフレーム（[`Engine::render_frame_texture`]）。
+#[derive(Clone)]
+pub struct GpuFrame {
+    /// 描いたフレーム。
+    pub texture: wgpu::Texture,
+    /// テクスチャを持つコンテキスト。デバイスが作り直されると別のものになるので、受け手はこれで持ち替えを知る。
+    pub context: Arc<GpuContext>,
+}
 
 /// `assemble` が選んだ実装の一式。
 pub struct EngineParts {
@@ -89,6 +101,18 @@ impl Engine {
         self.parts.gpu.as_ref().map(|g| g.adapter())
     }
 
+    /// レンダラーが描いている wgpu のコンテキスト。プレビューのサーフェスを同じデバイスで作るのに使う。
+    /// デバイスが作り直されると新しいものを返す。wgpu のレンダラーでなければ `None`。
+    pub fn gpu_context(&mut self) -> Option<Arc<GpuContext>> {
+        let gpu = self
+            .parts
+            .renderer
+            .gpu()
+            .as_any()
+            .downcast_mut::<WgpuGpu>()?;
+        Some(gpu.context().clone())
+    }
+
     /// 選ばれた実装の名前（Program に出す）。
     pub fn backend_names(&self) -> Vec<(&'static str, &'static str)> {
         let p = &self.parts;
@@ -123,6 +147,52 @@ impl Engine {
             nodes: &self.parts.registry,
         })?;
         self.parts.renderer.gpu().download(&frame)
+    }
+
+    /// 時刻 t のフレームを、CPU に読み戻さずに GPU のテクスチャのまま返す（プレビューのサーフェス）。
+    ///
+    /// テクスチャは中間形式（`FRAME_FORMAT`、線形の premultiplied）。中身はレンダラーの契約どおり直近
+    /// `KEPT_RENDERED_FRAMES` 回の描画のあいだ保たれ、それより古いものは次のフレームに使い回される。
+    /// 描いた命令は提出済みなので、同じ `context` のキューに積めばそのまま標本化できる。
+    /// wgpu のレンダラーでなければ `Unsupported`（呼び手は [`Engine::render_frame`] に戻る）。
+    pub fn render_frame_texture(
+        &mut self,
+        project: &Project,
+        composition: &CompositionId,
+        time: RationalTime,
+        size: Size,
+        quality: Quality,
+    ) -> Result<GpuFrame> {
+        let span = tracing::info_span!("runtime.render_frame_texture", quality = ?quality);
+        let _g = span.enter();
+        let frame = self.parts.renderer.render_frame(&RenderRequest {
+            project,
+            composition,
+            time,
+            size,
+            quality,
+            nodes: &self.parts.registry,
+        })?;
+        let FrameRef::Gpu(tex) = frame else {
+            return Err(MmError::Unsupported(
+                "レンダラーが GPU のフレームを返さない".into(),
+            ));
+        };
+        let gpu = self
+            .parts
+            .renderer
+            .gpu()
+            .as_any()
+            .downcast_mut::<WgpuGpu>()
+            .ok_or_else(|| MmError::Unsupported("wgpu のレンダラーでない".into()))?;
+        let texture = gpu
+            .texture(tex.id)
+            .cloned()
+            .ok_or_else(|| MmError::NotFound(format!("テクスチャ {}", tex.id)))?;
+        Ok(GpuFrame {
+            texture,
+            context: gpu.context().clone(),
+        })
     }
 
     /// 区間の音。

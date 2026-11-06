@@ -2,17 +2,20 @@
 //!
 //! ペースは Fifo の垂直同期に任せる（自前の sleep や spin は持たない）。再生位置は時計を直接読み、
 //! フレームは再生スレッドが置いた最新の 1 枚を取る。
+//! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャを読み戻さずに描く。
+//! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use mm_runtime::GpuContext;
 use mm_ui_layout::{Action, TimelineModel};
 use mm_ui_wgpu::Ui;
 
 use crate::playback::Command;
-use crate::state::Shared;
+use crate::state::{FrameImage, PreviewFrame, Shared};
 use crate::surface;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
@@ -32,7 +35,7 @@ impl Renderer {
         let join = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                if let Err(e) = run(&shared, hwnd, &q, model) {
+                if let Err(e) = run(&shared, hwnd, &q, &model) {
                     tracing::error!(error = %e, "描画スレッドが終わった");
                 }
             })
@@ -63,9 +66,68 @@ struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    /// レンダラーと共有したコンテキスト。`None` は自前のデバイス（wgpu でないレンダラー）。
+    context: Option<Arc<GpuContext>>,
 }
 
-fn init_gpu(shared: &Shared, hwnd: isize) -> Result<Gpu, String> {
+impl Gpu {
+    /// `frame` のテクスチャをこのデバイスで描けるか。CPU の画像はいつでも描ける。
+    fn can_draw(&self, frame: &PreviewFrame) -> bool {
+        match (&frame.image, &self.context) {
+            (FrameImage::Cpu(_), _) => true,
+            (FrameImage::Gpu(f), Some(ctx)) => Arc::ptr_eq(&f.context, ctx),
+            (FrameImage::Gpu(_), None) => false,
+        }
+    }
+}
+
+/// レンダラーのコンテキストがあればそのデバイスで、無ければ自前のデバイスでサーフェスを作る。
+/// レンダラーのアダプターがサーフェスに出せなければ、自前のデバイスに戻して再生スレッドに CPU の画像を頼む。
+fn init_gpu(
+    shared: &Shared,
+    hwnd: isize,
+    mut context: Option<Arc<GpuContext>>,
+) -> Result<Gpu, String> {
+    let shared_device = match &context {
+        Some(ctx) => {
+            let surface = create_surface(ctx.instance(), hwnd)?;
+            let adapter = ctx.wgpu_adapter().clone();
+            adapter
+                .is_surface_supported(&surface)
+                .then(|| (surface, adapter, ctx.device.clone(), ctx.queue.clone()))
+        }
+        None => None,
+    };
+    let (surface, adapter, device, queue) = match shared_device {
+        Some(parts) => parts,
+        None => {
+            if context.take().is_some() {
+                tracing::warn!("レンダラーの GPU がサーフェスに出せないので、CPU の画像で受ける");
+                shared.cpu_frames.store(true, Ordering::SeqCst);
+            }
+            own_device(hwnd)?
+        }
+    };
+    let info = adapter.get_info();
+    *shared.adapter.lock().expect("adapter") = format!("{} ({:?})", info.name, info.backend);
+    let config = surface_config(&surface, &adapter)?;
+    Ok(Gpu {
+        surface,
+        device,
+        queue,
+        config,
+        context,
+    })
+}
+
+type OwnDevice = (
+    wgpu::Surface<'static>,
+    wgpu::Adapter,
+    wgpu::Device,
+    wgpu::Queue,
+);
+
+fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let surface = create_surface(&instance, hwnd)?;
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -75,67 +137,115 @@ fn init_gpu(shared: &Shared, hwnd: isize) -> Result<Gpu, String> {
         apply_limit_buckets: false,
     }))
     .map_err(|e| e.to_string())?;
-    let info = adapter.get_info();
-    *shared.adapter.lock().expect("adapter") = format!("{} ({:?})", info.name, info.backend);
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .map_err(|e| e.to_string())?;
-    let caps = surface.get_capabilities(&adapter);
+    Ok((surface, adapter, device, queue))
+}
+
+fn surface_config(
+    surface: &wgpu::Surface<'_>,
+    adapter: &wgpu::Adapter,
+) -> Result<wgpu::SurfaceConfiguration, String> {
+    let caps = surface.get_capabilities(adapter);
+    let (Some(&first), Some(&alpha_mode)) = (caps.formats.first(), caps.alpha_modes.first()) else {
+        return Err("アダプターがこのサーフェスの形式を返さない".into());
+    };
     // UI の色は表示の値で指定するので、sRGB の変換が掛からないフォーマットを選ぶ。
     let format = caps
         .formats
         .iter()
         .copied()
         .find(|f| !f.is_srgb())
-        .unwrap_or(caps.formats[0]);
-    let config = wgpu::SurfaceConfiguration {
+        .unwrap_or(first);
+    Ok(wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
         width: 1,
         height: 1,
         present_mode: wgpu::PresentMode::Fifo,
         desired_maximum_frame_latency: 2,
-        alpha_mode: caps.alpha_modes[0],
+        alpha_mode,
         view_formats: vec![],
         color_space: wgpu::SurfaceColorSpace::Auto,
-    };
-    Ok(Gpu {
-        surface,
-        device,
-        queue,
-        config,
     })
+}
+
+/// サーフェスと、その上の UI。デバイスを持ち替えるときは丸ごと作り直す。
+struct View {
+    gpu: Gpu,
+    ui: Ui,
+    configured: (u32, u32),
+}
+
+impl View {
+    fn new(
+        shared: &Shared,
+        hwnd: isize,
+        context: Option<Arc<GpuContext>>,
+        model: &TimelineModel,
+    ) -> Result<Self, String> {
+        let gpu = init_gpu(shared, hwnd, context)?;
+        let mut ui = Ui::new(&gpu.device, gpu.config.format);
+        ui.set_model(model.clone());
+        Ok(Self {
+            gpu,
+            ui,
+            configured: (0, 0),
+        })
+    }
+
+    fn configure(&mut self, (w, h): (u32, u32)) {
+        if (w, h) != self.configured {
+            self.gpu.config.width = w;
+            self.gpu.config.height = h;
+            self.gpu
+                .surface
+                .configure(&self.gpu.device, &self.gpu.config);
+            self.ui.resize(w, h);
+            self.configured = (w, h);
+        }
+    }
 }
 
 fn run(
     shared: &Shared,
     hwnd: isize,
     quit: &AtomicBool,
-    model: TimelineModel,
+    model: &TimelineModel,
 ) -> Result<(), String> {
-    let mut gpu = init_gpu(shared, hwnd)?;
-    let mut ui = Ui::new(&gpu.device, gpu.config.format);
-    ui.set_model(model);
-    let mut configured = (0u32, 0u32);
+    let start = shared.gpu.lock().expect("gpu").clone();
+    let mut view = View::new(shared, hwnd, start, model)?;
     let mut seen = 0u64;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
-        let (w, h) = shared.surface_size();
-        if w == 0 || h == 0 {
+        let size = shared.surface_size();
+        if size.0 == 0 || size.1 == 0 {
             std::thread::sleep(RETRY_WAIT);
             continue;
         }
-        if (w, h) != configured {
-            gpu.config.width = w;
-            gpu.config.height = h;
-            gpu.surface.configure(&gpu.device, &gpu.config);
-            ui.resize(w, h);
-            configured = (w, h);
+        if let Some(context) = moved_context(shared, &view.gpu, seen) {
+            tracing::warn!("レンダラーの GPU が変わったので、サーフェスを作り直す");
+            view = View::new(shared, hwnd, Some(context), model)?;
         }
-        handle_input(shared, &mut ui);
-        frame(shared, &gpu, &mut ui, &mut seen);
+        view.configure(size);
+        handle_input(shared, &mut view.ui);
+        frame(shared, &view.gpu, &mut view.ui, &mut seen);
     }
     Ok(())
+}
+
+/// 次のフレームが今のデバイスで描けない（レンダラーがデバイスを作り直した）なら、その新しいコンテキスト。
+fn moved_context(shared: &Shared, gpu: &Gpu, seen: u64) -> Option<Arc<GpuContext>> {
+    let frame = shared.frames.newer_than(seen)?;
+    // 自前のデバイスに戻したとき（`cpu_frames`）は、再生スレッドが CPU の画像に切り替えるまで待つ。
+    if gpu.can_draw(&frame) || gpu.context.is_none() {
+        return None;
+    }
+    match frame.image {
+        FrameImage::Gpu(f) => Some(f.context),
+        FrameImage::Cpu(_) => None,
+    }
 }
 
 /// ポインターの入力を UI に渡し、起きた操作を再生スレッドへ送る。
@@ -184,12 +294,18 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) {
     }
 }
 
-/// 新しいフレームがあれば上げて、そのフレームの時刻を返す。
+/// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャは読み戻さずに束ねるだけ。
 fn upload_frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Option<f64> {
     let frame = shared.frames.newer_than(*seen)?;
+    if !gpu.can_draw(&frame) {
+        return None;
+    }
     *seen = frame.serial;
     let started = Instant::now();
-    ui.set_frame(&gpu.device, &gpu.queue, &frame.image);
+    match &frame.image {
+        FrameImage::Cpu(image) => ui.set_frame(&gpu.device, &gpu.queue, image),
+        FrameImage::Gpu(f) => ui.set_frame_texture(&gpu.device, &f.texture),
+    }
     shared.record("upload_ms", started.elapsed().as_secs_f64() * 1000.0);
     Some(frame.time)
 }

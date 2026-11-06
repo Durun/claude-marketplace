@@ -12,5 +12,6 @@ mod registry;
 pub use assemble::assemble;
 pub use config::{Backend, RuntimeConfig};
 pub use decode_select::{AutoDecoderFactory, GpuCandidate, SplitDecoder, WithAudio};
-pub use engine::{Engine, EngineParts};
+pub use engine::{Engine, EngineParts, GpuFrame};
+pub use mm_gpu::GpuContext;
 pub use registry::Registry;

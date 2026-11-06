@@ -6,6 +6,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use mm_runtime::{GpuContext, GpuFrame};
 use mm_types::RgbaImage;
 use mm_ui_layout::PointerEvent;
 use serde::Serialize;
@@ -44,6 +45,15 @@ pub fn summarize(values: &[f64]) -> Summary {
     }
 }
 
+/// フレームの中身。wgpu のレンダラーは GPU のテクスチャのまま渡し、描画スレッドが同じデバイスで描く。
+#[derive(Clone)]
+pub enum FrameImage {
+    /// CPU の画像（wgpu でないレンダラー）。描画スレッドが上げる。
+    Cpu(Arc<RgbaImage>),
+    /// 再生スレッドのレンダラーが描いたテクスチャ。
+    Gpu(GpuFrame),
+}
+
 /// 再生スレッドが描いた 1 フレーム。
 #[derive(Clone)]
 pub struct PreviewFrame {
@@ -51,7 +61,7 @@ pub struct PreviewFrame {
     pub serial: u64,
     /// コンポジションの時間軸での時刻（秒）。
     pub time: f64,
-    pub image: Arc<RgbaImage>,
+    pub image: FrameImage,
 }
 
 /// 再生スレッドから描画スレッドへ最新の 1 フレームを渡す箱。描画が遅れたときは古いフレームを捨てる。
@@ -63,7 +73,7 @@ pub struct FrameSlot {
 
 impl FrameSlot {
     /// 新しいフレームを置く。
-    pub fn put(&self, time: f64, image: Arc<RgbaImage>) {
+    pub fn put(&self, time: f64, image: FrameImage) {
         let serial = self.serial.fetch_add(1, Ordering::SeqCst) + 1;
         *self.slot.lock().expect("frame slot") = Some(PreviewFrame {
             serial,
@@ -102,6 +112,10 @@ pub struct Shared {
     pub clock: OnceLock<Arc<dyn PlayClock>>,
     /// 描画スレッドが選んだアダプターの名前とバックエンド。
     pub adapter: Mutex<String>,
+    /// 再生スレッドのレンダラーの GPU。描画スレッドはこのデバイスでサーフェスを作る。wgpu でなければ `None`。
+    pub gpu: Mutex<Option<Arc<GpuContext>>>,
+    /// 描画スレッドがレンダラーの GPU でサーフェスを作れず、CPU の画像を頼んでいるか。
+    pub cpu_frames: AtomicBool,
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
 }
 
@@ -120,6 +134,8 @@ impl Shared {
             commands: Mutex::new(None),
             clock: OnceLock::new(),
             adapter: Mutex::new(String::new()),
+            gpu: Mutex::new(None),
+            cpu_frames: AtomicBool::new(false),
             series: Mutex::new(BTreeMap::new()),
         }
     }
@@ -195,7 +211,7 @@ mod tests {
     #[test]
     fn 描画側は見ていない新しいフレームだけ受け取る() {
         let slot = FrameSlot::default();
-        let img = Arc::new(RgbaImage::filled(Size::new(2, 2), Rgba::WHITE));
+        let img = FrameImage::Cpu(Arc::new(RgbaImage::filled(Size::new(2, 2), Rgba::WHITE)));
         assert!(slot.newer_than(0).is_none());
         slot.put(0.5, img.clone());
         let f = slot.newer_than(0).expect("新しい");

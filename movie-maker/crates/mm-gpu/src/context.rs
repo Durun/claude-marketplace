@@ -48,6 +48,9 @@ pub struct GpuContext {
     request: GpuRequest,
     /// デバイスが消えたか。wgpu の通知と D3D12 の消失の理由、`mark_lost` のどれかで立つ。
     lost: Arc<AtomicBool>,
+    /// デバイスを作った Instance とアダプター。サーフェスは同じ Instance から作り、同じアダプターで能力を引く。
+    instance: wgpu::Instance,
+    wgpu_adapter: wgpu::Adapter,
 }
 
 /// プロセスで 1 つ共有するコンテキスト（`shared`）。
@@ -148,6 +151,16 @@ impl GpuContext {
         self.backend
     }
 
+    /// デバイスを作った Instance。プレビューのサーフェスをこのデバイスで描くために、同じ Instance から作る。
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self.instance
+    }
+
+    /// デバイスを作ったアダプター。サーフェスの能力（形式、present の方式）を引く。
+    pub fn wgpu_adapter(&self) -> &wgpu::Adapter {
+        &self.wgpu_adapter
+    }
+
     /// 選んだアダプターの名前。Program に出す。
     pub fn adapter_name(&self) -> &str {
         &self.adapter.name
@@ -185,6 +198,8 @@ impl GpuContext {
             backend: adapter_info.backend,
             request: request.clone(),
             lost,
+            instance,
+            wgpu_adapter: adapter,
         }))
     }
 }

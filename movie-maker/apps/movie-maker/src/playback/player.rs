@@ -14,7 +14,7 @@ use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
 
 use super::{Command, PlaybackInfo};
 use crate::clock::{AudioClock, PlayClock, WallClock};
-use crate::state::Shared;
+use crate::state::{FrameImage, Shared};
 
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
 const AUDIO_AHEAD_SECS: f64 = 0.4;
@@ -40,7 +40,10 @@ pub struct PlayerOptions {
 
 /// 実際の実装の組み合わせ。FFmpeg が切ってあるときは素材をモックのデコーダーで読む。
 pub fn runtime_config() -> RuntimeConfig {
-    let real = RuntimeConfig::real();
+    let real = RuntimeConfig {
+        present: true,
+        ..RuntimeConfig::real()
+    };
     if cfg!(feature = "ffmpeg") {
         real
     } else {
@@ -96,7 +99,8 @@ impl Player {
         comp_id: CompositionId,
         options: PlayerOptions,
     ) -> Result<(Self, PlaybackInfo)> {
-        let engine = assemble(&options.config.clone().unwrap_or_else(runtime_config))?;
+        let mut engine = assemble(&options.config.clone().unwrap_or_else(runtime_config))?;
+        *shared.gpu.lock().expect("gpu") = engine.gpu_context();
         let comp = project.composition(&comp_id)?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
@@ -271,8 +275,7 @@ impl Player {
         let started = std::time::Instant::now();
         let result = {
             let _span = tracing::info_span!("preview.render_frame").entered();
-            self.engine
-                .render_frame(&self.project, &self.comp, time, self.size, Quality::Preview)
+            self.draw(time)
         };
         match result {
             Ok(img) => {
@@ -286,6 +289,20 @@ impl Player {
                 tracing::warn!(error = %e, index, "フレームを描けなかった");
             }
         }
+    }
+
+    /// 1 フレーム描く。wgpu のレンダラーは読み戻さずにテクスチャで返し、それ以外は CPU の画像にする。
+    fn draw(&mut self, time: RationalTime) -> Result<FrameImage> {
+        let (project, comp, size) = (&self.project, &self.comp, self.size);
+        if self.shared.cpu_frames.load(Ordering::SeqCst) || self.engine.gpu_context().is_none() {
+            return self
+                .engine
+                .render_frame(project, comp, time, size, Quality::Preview)
+                .map(FrameImage::Cpu);
+        }
+        self.engine
+            .render_frame_texture(project, comp, time, size, Quality::Preview)
+            .map(FrameImage::Gpu)
     }
 
     /// 音を先読みの長さまで足す。描けなかったチャンクは無音で埋めて時計を止めない。
