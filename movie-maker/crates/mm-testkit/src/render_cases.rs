@@ -1,4 +1,4 @@
-//! レンダラーの契約のうち、文書の見本とは別に自前の文書を組んで確かめる項目。
+//! レンダラーの契約のうち、フィクスチャのプロジェクトとは別に自前のプロジェクトのデータを組んで確かめる項目。
 //! レイヤーの変形、失敗したレイヤー、フレームの寿命。
 
 use std::sync::Arc;
@@ -17,13 +17,19 @@ pub(crate) fn check_frame_lifetime(r: &mut dyn Renderer, req: &RenderRequest<'_>
     let first = r.render_frame(req).expect("描ける");
     for _ in 1..KEPT_RENDERED_FRAMES {
         let later = r.render_frame(req).expect("描ける");
-        r.gpu().download(&later).expect("新しいフレームは読み戻せる");
+        r.gpu()
+            .download(&later)
+            .expect("新しいフレームは読み戻せる");
     }
     let oldest = r
         .gpu()
         .download(&first)
         .expect("直近 KEPT_RENDERED_FRAMES 回のうち最も古いフレームも有効");
-    assert_eq!(oldest.size(), req.size, "寿命の内側のフレームは中身も壊れない");
+    assert_eq!(
+        oldest.size(),
+        req.size,
+        "寿命の内側のフレームは内容も壊れない"
+    );
 }
 
 fn layer(kind: &str, version: u32, transform: Transform) -> Layer {

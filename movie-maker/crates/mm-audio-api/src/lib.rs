@@ -1,11 +1,11 @@
-//! 音の口。ミキサーは Float32、サンプル単位、インターリーブで、プレビューと書き出しで同じ DSP を回す。
+//! 音のインターフェース。ミキサーは Float32、サンプル単位、インターリーブで、プレビューと書き出しで同じ DSP を回す。
 //!
 //! 契約（`mm_testkit::audio::contract`）:
 //! - 決定性: 同じ入力を 2 回混ぜると、サンプル列が bit で一致する。
 //! - 無音の入力は無音を返す。
-//! - 入力 1 本、0 dB、パン中央は素通し（許容差 1e-6）。
+//! - 入力 1 本、0 dB、パン中央はパススルー（許容差 1e-6）。
 //! - 返すブロックの `frames()` は頼んだ `frames` と一致する。
-//! - バスの音量（`buses[role].gain_db`）とマスター（`master_db`）は全実装が効かせる。ダッキングは実装が省いてよい（見本は省く）。
+//! - バスの音量（`buses[role].gain_db`）とマスター（`master_db`）は全実装が効かせる。ダッキングは実装が省いてよい（モックは省く）。
 
 use std::collections::BTreeMap;
 
@@ -94,7 +94,7 @@ pub struct MixInput {
     pub block: AudioBlock,
     /// 役割（`voice`、`bgm`、`sfx`）。バスの振り分けに使う。
     pub role: String,
-    /// dB。0 で素通し。
+    /// dB。0 でパススルー。
     pub gain_db: f32,
     /// -1（左）..=1（右）。0 で中央。
     pub pan: f32,
@@ -159,9 +159,9 @@ pub struct MixerConfig {
     pub master_db: f32,
 }
 
-/// ミキサーを作る口。`mm-runtime` が設定で選ぶ。
+/// ミキサーを作るファクトリー。`mm-runtime` が設定で選ぶ。
 pub trait MixerFactory: Send + Sync {
-    /// 実装の名前（`dsp`、見本は `sample`）。
+    /// 実装の名前（`dsp`、モックは `sample`）。
     fn id(&self) -> &'static str;
     /// 設定を渡してミキサーを作る。
     fn create(
@@ -172,7 +172,7 @@ pub trait MixerFactory: Send + Sync {
     ) -> Result<Box<dyn Mixer>>;
 }
 
-/// 音の出口。プレビュー（cpal）と書き出し（WAV）が実装する。
+/// 音の出力先。プレビュー（cpal）と書き出し（WAV）が実装する。
 pub trait AudioSink: Send {
     /// 受け付ける形。
     fn sample_rate(&self) -> u32;
@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn 割り切れない長さは断る() {
+    fn 割り切れない長さは拒否する() {
         assert!(AudioBlock::from_samples(48_000, 2, vec![0.0; 3]).is_err());
     }
 }

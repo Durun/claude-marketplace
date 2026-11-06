@@ -1,6 +1,6 @@
-//! 変換先の `Rgba16Float` のテクスチャ置き場。借り手が `GpuFrameTexture` を捨てると自動で戻る。
+//! 変換先の `Rgba16Float` のテクスチャプール。借用側が `GpuFrameTexture` をドロップすると自動で戻る。
 //!
-//! 借りはレンダラーの `submit` が終わるまで（RFC 0001）。戻ったテクスチャへの次の書き込みは
+//! 借用はレンダラーの `submit` が終わるまで（RFC 0001）。戻ったテクスチャへの次の書き込みは
 //! 同じキューの後ろに積まれるので、読み取りの後に順序づく。
 
 use std::sync::{Arc, Mutex};
@@ -8,12 +8,12 @@ use std::sync::{Arc, Mutex};
 use mm_gpu::{GpuFrameTexture, FRAME_FORMAT};
 use mm_types::Size;
 
-/// 置き場に残す空きの上限。借りが増えても戻りすぎた分は捨てる。
+/// プールに残す空きの上限。借用が増えても戻りすぎた分は破棄する。
 const MAX_FREE: usize = 6;
 
 type Free = Arc<Mutex<Vec<wgpu::Texture>>>;
 
-/// 返却の印。`GpuFrameTexture::wait` の中に持たせ、捨てられたときにテクスチャを置き場へ戻す。
+/// 返却ガード。`GpuFrameTexture::wait` の中に持たせ、ドロップされたときにテクスチャをプールへ戻す。
 struct Return {
     free: Free,
     texture: wgpu::Texture,
@@ -28,7 +28,7 @@ impl Drop for Return {
     }
 }
 
-/// 同じ大きさのテクスチャの置き場。
+/// 同じ大きさのテクスチャのプール。
 pub struct FramePool {
     device: wgpu::Device,
     size: Size,
@@ -36,7 +36,7 @@ pub struct FramePool {
 }
 
 impl FramePool {
-    /// `size` のテクスチャを作る置き場。
+    /// `size` のテクスチャを作るプール。
     pub fn new(device: wgpu::Device, size: Size) -> Self {
         Self {
             device,
@@ -69,7 +69,7 @@ impl FramePool {
         })
     }
 
-    /// 借りに出す。捨てられたら `texture` が置き場へ戻る。同じキューで書いた絵なので待ちは付けない。
+    /// 借用に出す。ドロップされたら `texture` がプールへ戻る。同じキューで書いた画像なので待ちは付けない。
     pub fn lend(&self, texture: wgpu::Texture) -> GpuFrameTexture {
         let guard = Return {
             free: self.free.clone(),
@@ -83,7 +83,7 @@ impl FramePool {
         }
     }
 
-    /// 置き場にある空きの数。
+    /// プールにある空きの数。
     pub fn free_count(&self) -> usize {
         self.free.lock().unwrap_or_else(|e| e.into_inner()).len()
     }

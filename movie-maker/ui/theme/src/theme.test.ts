@@ -42,7 +42,7 @@ describe("パネルとシェルの CSS", () => {
 });
 
 describe("hexToLinear", () => {
-  it("白と黒を端に写す", () => {
+  it("白と黒を端に対応づける", () => {
     expect(hexToLinear("#ffffff")).toEqual([1, 1, 1]);
     expect(hexToLinear("#000000")).toEqual([0, 0, 0]);
   });

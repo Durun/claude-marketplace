@@ -1,11 +1,11 @@
 //! YUV から `Rgba16Float` への変換の描画パス。全画面の三角形 1 枚を、呼び出し側のフラグメントで塗る。
-//! d3d12va（2 面のテクスチャ）と cuvid（共有バッファ）は、読む資源の束縛とフラグメントだけが違う。
+//! d3d12va（2 プレーンのテクスチャ）と cuvid（共有バッファ）は、読む資源の束縛とフラグメントだけが違う。
 
 use mm_gpu::FRAME_FORMAT;
 
 use crate::yuv::{YuvParams, PARAMS_BYTES, YUV_WGSL};
 
-/// フラグメントシェーダーからの束縛の欄。
+/// フラグメントシェーダーからの束縛のフィールド。
 pub fn fragment_entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -49,7 +49,7 @@ pub struct YuvPass {
 }
 
 impl YuvPass {
-    /// `fragment` は共通部（`YUV_WGSL`）の後ろに足すフラグメント。入口は `fs`。
+    /// `fragment` は共通部（`YUV_WGSL`）の後ろに足すフラグメント。エントリーポイントは `fs`。
     pub fn new(
         device: &wgpu::Device,
         label: &str,

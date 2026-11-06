@@ -1,8 +1,8 @@
-//! 文書の評価（純関数。GPU も FFmpeg も使わない）。
+//! プロジェクトのデータの評価（純関数。GPU も FFmpeg も使わない）。
 //!
 //! - [`eval_param`][]: 時刻 t でのパラメータの値（ホールド、直線、ベジェ、イージング）。
 //! - [`source_time`][] / [`comp_time`][]: コンポジションの時刻と素材の時刻の写像（速さ、タイムリマップ、入れ子）。
-//! - [`place_cuts`][]: 磁気の並びのカットの配置。
+//! - [`place_cuts`][]: マグネティックシーケンスのカットの配置。
 //! - [`evaluate_transform`][] / [`evaluate_audio`][] / [`evaluate_opacity`][]: レイヤーの付属の評価。
 
 mod param;

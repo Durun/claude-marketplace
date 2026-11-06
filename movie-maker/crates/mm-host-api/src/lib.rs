@@ -1,7 +1,7 @@
 //! 別プロセスのホスト（CEF、OFX、VST3/CLAP）のプロトコル。
 //! アプリ側（`mm-nodes-cef` など）が頼み、実行ファイル（`mm-host-cef` など）が描く。
 //!
-//! 制御はパイプで [`HostRequest`]/[`HostResponse`] の JSON を 1 行ずつ。絵は共有テクスチャの
+//! 制御はパイプで [`HostRequest`]/[`HostResponse`] の JSON を 1 行ずつ。画像は共有テクスチャの
 //! ハンドル（[`SharedFrame::SharedTexture`]）で渡し、ハンドルを開く所は実装のクレートに閉じる。
 //!
 //! 共有テクスチャの同期（RFC 0001）: ホストは [`HostSpec::gpu`] のアダプターでテクスチャを作り、
@@ -11,7 +11,7 @@
 //!
 //! 契約（`mm_testkit::host::contract`）:
 //! - `spawn` 直後に `Ping` → `Pong`。
-//! - `RenderFrame` → `Frame` で、頼んだ大きさの絵が返る。
+//! - `RenderFrame` → `Frame` で、頼んだ大きさの画像が返る。
 //! - 期限を過ぎた要求は `Err(Timeout)` で戻り、ホストはそのまま使える。
 //! - `kill` の後は `is_alive() == false`、`restart` の後は再び `Ping` が通る。
 //! - 共有テクスチャのハンドルは応答ごとに閉じ、漏れない（実装が `open_handles` で数える）。
@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use mm_types::{GpuAdapterId, RationalTime, Result, RgbaImage, Size};
 
-/// プロトコルの版。要求と応答の形を変えたら上げる。
+/// プロトコルのバージョン。要求と応答の形を変えたら上げる。
 /// - 2: `SharedFrame` のタグを `type` から `kind` に（`HostResponse::Frame` で重なっていた）。
 pub const PROTOCOL_VERSION: u32 = 2;
 
@@ -38,7 +38,7 @@ pub struct HostSpec {
     /// 使う GPU。`None` なら高性能のアダプター。アプリと同じでないと共有テクスチャを開けない。
     #[serde(default)]
     pub gpu: Option<GpuAdapterId>,
-    /// ハンドルを複製して渡す相手（アプリ）のプロセス ID。`None` なら CPU の絵で返す。
+    /// ハンドルを複製して渡す相手（アプリ）のプロセス ID。`None` なら CPU の画像で返す。
     #[serde(default)]
     pub client_pid: Option<u32>,
 }
@@ -80,12 +80,12 @@ pub enum HostResponse {
     Error { message: String },
 }
 
-/// ホストが描いたフレーム。`HostResponse::Frame` の中身で外側のタグが `type` なので、こちらは
+/// ホストが描いたフレーム。`HostResponse::Frame` の内容で外側のタグが `type` なので、こちらは
 /// `kind` にする（同じ名前だと JSON のキーが重なって読めない）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SharedFrame {
-    /// CPU の絵（パイプで渡す逃げ道。遅い）。
+    /// CPU の画像（パイプで渡すフォールバック。遅い）。
     Cpu {
         size: Size,
         /// RGBA f32、premultiplied、線形。
@@ -102,7 +102,7 @@ pub enum SharedFrame {
 }
 
 impl SharedFrame {
-    /// CPU の絵から。
+    /// CPU の画像から。
     pub fn from_image(image: &RgbaImage) -> Self {
         Self::Cpu {
             size: image.size(),
@@ -126,7 +126,7 @@ pub trait HostProcess: Send {
     fn pid(&self) -> Option<u32>;
     /// 要求を送り、応答を待つ。`timeout` を過ぎたら `Err(Timeout)`。
     fn request(&mut self, req: &HostRequest, timeout: Duration) -> Result<HostResponse>;
-    /// 落とす。
+    /// 強制終了する。
     fn kill(&mut self) -> Result<()>;
     /// 起動し直す。`Prepare` は呼ぶ側がやり直す。
     fn restart(&mut self) -> Result<()>;
@@ -134,9 +134,9 @@ pub trait HostProcess: Send {
     fn open_handles(&self) -> usize;
 }
 
-/// ホストを起動する口。
+/// ホストを起動するランチャー。
 pub trait HostLauncher: Send + Sync {
-    /// 実装の名前（`cef`、`ofx`、`audio`、見本は `sample`）。
+    /// 実装の名前（`cef`、`ofx`、`audio`、モックは `sample`）。
     fn id(&self) -> &'static str;
     /// 起動する。
     fn spawn(&self, spec: &HostSpec) -> Result<Box<dyn HostProcess>>;

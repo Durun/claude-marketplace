@@ -1,12 +1,12 @@
-# RFC 0002: 整形の結果にグリフを持たせ、揃えをスタイルに置く
+# RFC 0002: シェーピングの結果にグリフを持たせ、揃えをスタイルに置く
 
 状態: 採用
 
 ## 変える理由
 
-`ShapedText` がグリフの ID も文字列も持たないため、レンダラーは整形時の文字列を実装のレジストリから引いて行組みをやり直していた。
-整形器とレンダラーを同じ `TextEngine` から取る制約が生まれ、`mm-runtime` の組み立てもそれに縛られていた。
-揃え（align）が口に無く、実装の `TextAlign` / `shape_aligned` で受けていた。
+`ShapedText` がグリフの ID も文字列も持たないため、レンダラーはシェーピング時の文字列を実装のレジストリから引いて行組みをやり直していた。
+シェーパーとレンダラーを同じ `TextEngine` から取る制約が生まれ、`mm-runtime` の組み立てもそれに縛られていた。
+揃え（align）がインターフェースに無く、実装の `TextAlign` / `shape_aligned` で受けていた。
 
 ## 新しいシグネチャ
 
@@ -25,17 +25,17 @@ pub struct GlyphBox {
 pub struct ShapedText { pub lines, pub bounds, pub faces: Vec<FaceRef> }
 ```
 
-- 字体は PostScript 名と太さで指すので、`ShapedText` は JSON を往復しても描ける（キャッシュに置ける）。
+- フェイスは PostScript 名と太さで指すので、`ShapedText` は JSON を往復しても描ける（キャッシュに置ける）。
 - 契約に「グリフの参照が `faces` と文字列の中を指す」「`Center` / `Right` で短い行は右から始まる」「JSON を往復した結果も描ける」を足す。
 
 ## 影響する実装
 
-- `mm-text-glyphon`: レジストリと `shape_aligned` を消す。描画は字体を名前で引き、`CacheKey` から swash の絵を取る。`CosmicShaper::new` / `GlyphonRasterizer::new` で別々に作れる。
-- `mm-testkit`: 見本の整形が揃えを持ち、グリフの欄を埋める。
-- `mm-nodes-basic` と見本の `text`: パラメータ `align`（`left` / `center` / `right` / `justified`）。
+- `mm-text-glyphon`: レジストリと `shape_aligned` を消す。描画はフェイスを名前で引き、`CacheKey` から swash のグリフのビットマップを取る。`CosmicShaper::new` / `GlyphonRasterizer::new` で別々に作れる。
+- `mm-testkit`: モックのシェーピングが揃えを持ち、グリフのフィールドを埋める。
+- `mm-nodes-basic` とモックの `text`: パラメータ `align`（`left` / `center` / `right` / `justified`）。
 
 ## 移行の手順
 
-1. 口に欄と `TextAlign` を足す。
+1. インターフェースにフィールドと `TextAlign` を足す。
 2. 実装と契約テストを直す。
 3. `TextEngine` はフォントの読み込みを共有する便宜として残す（制約ではない）。

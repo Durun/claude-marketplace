@@ -1,22 +1,22 @@
-//! 操作の記録まわりの型。まとまりの形は `mm-ops` の [`TxnRecord`]（操作 1 つは [`OpRecord`]）で、
-//! 保存の層はそれに「誰が、いつ、どのコメントへの対応か」を足して表に写す。
+//! 操作の記録まわりの型。トランザクションの形は `mm-ops` の [`TxnRecord`]（操作 1 つは [`OpRecord`]）で、
+//! 保存の層はそれに「誰が、いつ、どのコメントへの対応か」を足して表に書き込む。
 
 use serde::{Deserialize, Serialize};
 
 pub use mm_ops::{OpRecord, TxnKind, TxnRecord};
 
-/// 誰が。入口の種類（`gui`、`cli`、`claude`、`mcp`）と名前。
+/// 誰が。操作経路の種類（`gui`、`cli`、`claude`、`mcp`）と名前。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Actor {
     pub kind: String,
     pub name: String,
 }
 
-/// 書き込むまとまり（ドラッグ、マクロ、Claude の対応 1 回、取り消し、やり直し）。
-/// ID と版は `Store` が振る。
+/// 書き込むトランザクション（ドラッグ、マクロ、Claude の対応 1 回、取り消し、やり直し）。
+/// ID とバージョンは `Store` が振る。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxnInput {
-    /// 普通の操作か、どのまとまりの取り消し・やり直しか。
+    /// 普通の操作か、どのトランザクションの取り消し・やり直しか。
     pub kind: TxnKind,
     /// 表示用の名前（「ドラッグ」「Claude の対応」）。
     pub name: String,
@@ -25,12 +25,12 @@ pub struct TxnInput {
     pub at_ms: i64,
     /// どのコメントへの対応か。
     pub responds_to: Option<String>,
-    /// 当てた順の操作。空は断る。
+    /// 適用した順の操作。空は拒否する。
     pub ops: Vec<OpRecord>,
 }
 
 impl TxnInput {
-    /// 普通の操作のまとまり。
+    /// 普通の操作のトランザクション。
     pub fn normal(name: impl Into<String>, actor: Actor, at_ms: i64, ops: Vec<OpRecord>) -> Self {
         Self {
             kind: TxnKind::Normal,
@@ -47,25 +47,25 @@ impl TxnInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredOp {
     pub seq: i64,
-    /// 当てた後の版。
+    /// 適用した後のバージョン。
     pub doc_version: i64,
     pub name: String,
     pub record: OpRecord,
 }
 
-/// 表から読んだまとまり（`mm diff`、`mm log`、取り消しの元）。[`TxnRecord`] に誰が・いつ・何への対応かを足した形。
+/// 表から読んだトランザクション（`mm diff`、`mm log`、取り消しの元）。[`TxnRecord`] に誰が・いつ・何への対応かを足した形。
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredTxn {
-    /// まとまりの通し番号（1 から）。
+    /// トランザクションの通し番号（1 から）。
     pub id: i64,
     pub kind: TxnKind,
     pub name: String,
     pub actor: Actor,
     pub at_ms: i64,
     pub responds_to: Option<String>,
-    /// 当てる前の版。
+    /// 適用する前のバージョン。
     pub base_version: i64,
-    /// 当てた後の版。取り消されても変わらない。
+    /// 適用した後のバージョン。取り消されても変わらない。
     pub doc_version: i64,
     pub first_seq: i64,
     pub last_seq: i64,
@@ -86,7 +86,7 @@ impl StoredTxn {
     }
 }
 
-/// 取り消しかやり直しの計画。`ops` は当てた順で、取り消しは逆順に `inverse` を当てる。
+/// 取り消しかやり直しの計画。`ops` は適用した順で、取り消しは逆順に `inverse` を適用する。
 #[derive(Debug, Clone, PartialEq)]
 pub struct UndoPlan {
     pub txn_id: i64,

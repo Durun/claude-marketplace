@@ -1,4 +1,4 @@
-//! 見本のプロジェクトを `mm render` で書き出し、ffprobe と mm-decode-ffmpeg でリードバックて確かめる。
+//! フィクスチャのプロジェクトを `mm render` で書き出し、ffprobe と mm-decode-ffmpeg でリードバックして確かめる。
 //! FFmpeg が要るので feature `ffmpeg` のときだけ走る。
 #![cfg(feature = "ffmpeg")]
 
@@ -95,8 +95,11 @@ fn 切った区間のフレーム番号と音が読み戻せる() {
 
     decoder.seek(RationalTime::ZERO).expect("先頭へ");
     for n in 0..FRAMES {
-        let frame = decoder.next_frame().expect("読める").expect("フレームがある");
-        let image = frame.image.expect("CPU の絵");
+        let frame = decoder
+            .next_frame()
+            .expect("読める")
+            .expect("フレームがある");
+        let image = frame.image.expect("CPU の画像");
         assert_eq!(
             common::read_frame_number(&image),
             FIRST_SOURCE_FRAME + n,

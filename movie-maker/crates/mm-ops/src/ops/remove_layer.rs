@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{invalid, layer_referrers, AddLayer};
 use crate::touches::Touches;
 
-/// レイヤーを外す。ほかのレイヤーの親やトラックマットになっていれば断る（先に外す）。
+/// レイヤーを外す。ほかのレイヤーの親やトラックマットになっていれば拒否する（先に外す）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveLayer {

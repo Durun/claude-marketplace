@@ -1,4 +1,4 @@
-//! 色空間の変換の口。レンダラーは [`ColorTransform::program`] で GPU の形を受け取り、
+//! 色空間の変換のインターフェース。レンダラーは [`ColorTransform::program`] で GPU の形を受け取り、
 //! 契約テストと CPU の経路は [`ColorTransform::apply`] で同じ変換を数で確かめる。
 //!
 //! # 色空間の名前の決まり
@@ -20,8 +20,8 @@
 //! - 往復（from → to → from）が許容差 1e-3 に入る。
 //! - 作業色空間から作業色空間への変換は恒等。
 //! - 符号化値 (1,1,1) が白になる空間（名前の表の全部、[`UNIT_WHITE_SPACES`]）では、(1,1,1) は作業色空間でも白。
-//!   それ以外の空間（`acescg` など）は白の確認を飛ばし、往復と `program` だけ確かめる。
-//! - `program` と `apply` は同じ変換を表す（実装の組で見本の絵が守る）。
+//!   それ以外の空間（`acescg` など）は白の確認をスキップし、往復と `program` だけ確かめる。
+//! - `program` と `apply` は同じ変換を表す（実装の組み合わせごとに期待画像が守る）。
 
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ pub const REC709_TO_REC2020: [[f32; 3]; 3] = [
     [0.016_391, 0.088_013, 0.895_595],
 ];
 
-/// GPU で当てる変換の形。
+/// GPU で適用する変換の形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransformProgram {
@@ -66,11 +66,11 @@ pub enum TransformProgram {
 
 /// 色の変換。入力の色空間 → 作業色空間 → 表示・出力。
 pub trait ColorTransform: Send + Sync {
-    /// 実装の名前（`ocio`、`lut`、見本は `sample`）。
+    /// 実装の名前（`ocio`、`lut`、モックは `sample`）。
     fn id(&self) -> &'static str;
     /// `from` から `to` への GPU の形。知らない色空間は `Err(Unsupported)`。
     fn program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram>;
-    /// 同じ変換を CPU で 1 画素に当てる。線形の RGB（アルファは触らない）。
+    /// 同じ変換を CPU で 1 画素に適用する。線形の RGB（アルファは触らない）。
     fn apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]>;
     /// この実装が知っている色空間の名前。
     fn known_spaces(&self) -> Vec<ColorSpace>;

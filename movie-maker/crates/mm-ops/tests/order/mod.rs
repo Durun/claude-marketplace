@@ -1,12 +1,12 @@
-//! 順の入れ替えの性質: `touches` が重ならない 2 つの操作は、別々に 1 つずつ当てると、順を変えても結果が同じ。
-//! レビューで再現した、順で結果が変わる文書を固定する。
+//! 順の入れ替えの性質: `touches` が重ならない 2 つの操作は、別々に 1 つずつ適用すると、順を変えても結果が同じ。
+//! レビューで再現した、順で結果が変わるプロジェクトのデータを固定する。
 
 use crate::common::{self, canon, comp, layer, project};
 use mm_doc::{Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, RationalTime};
 
-/// 操作を 1 つずつ別に当てる。当たらない操作は飛ばす。各操作の成否と最後の文書を返す。
+/// 操作を 1 つずつ別に適用する。適用できない操作はスキップする。各操作の成否と最後のプロジェクトのデータを返す。
 fn apply_each(p: &Project, ops: &[&Op]) -> (Vec<bool>, serde_json::Value) {
     let mut doc = p.clone();
     let human = OpContext::human();
@@ -17,7 +17,7 @@ fn apply_each(p: &Project, ops: &[&Op]) -> (Vec<bool>, serde_json::Value) {
     (oks, canon(&doc))
 }
 
-/// `a` と `b` を両方の順で別々に当て、`touches` が重ならないのに成否か結果が変わるなら理由を返す。
+/// `a` と `b` を両方の順で別々に適用し、`touches` が重ならないのに成否か結果が変わるなら理由を返す。
 pub fn order_violation(p: &Project, a: &Op, b: &Op) -> Option<String> {
     let (ta, tb) = (a.touches(p).ok()?, b.touches(p).ok()?);
     if ta.overlaps(&tb) {
@@ -65,7 +65,7 @@ fn with_layers(parents: &[(&str, Option<&str>)]) -> Project {
 #[test]
 fn parent_layer_は新しい親の祖先の鎖を_touches_に含める() {
     // Y.parent = U、V.parent = X。X→Y と U→V は、どちらも単独なら通るが、
-    // 片方を当てた後のもう片方は循環で断られる。
+    // 片方を適用した後のもう片方は循環で拒否される。
     let p = with_layers(&[("x", None), ("y", Some("u")), ("u", None), ("v", Some("x"))]);
     let (a, b) = (parent("x", "y"), parent("u", "v"));
     assert!(apply_each(&p, &[&a]).0[0] && apply_each(&p, &[&b]).0[0]);
@@ -107,7 +107,7 @@ fn nesting_chain() -> Project {
 
 #[test]
 fn add_layer_が作る入れ子の循環は参照先の先を_touches_に含める() {
-    // cA に cB を、cC に cD を入れ子にする。単独なら通るが、両方当てると cA→cB→cC→cD→cA の循環。
+    // cA に cB を、cC に cD を入れ子にする。単独なら通るが、両方適用すると cA→cB→cC→cD→cA の循環。
     let p = nesting_chain();
     let a = add_layer("cA", nested_layer("x1", "cB"));
     let b = add_layer("cC", nested_layer("x2", "cD"));
@@ -118,7 +118,7 @@ fn add_layer_が作る入れ子の循環は参照先の先を_touches_に含め�
 #[test]
 fn set_param_が作る入れ子の循環は参照先の先を_touches_に含める() {
     // lax（cA の中）と lcx（cC の中）は葉の cE を入れ子にする。
-    // lax を cB へ、lcx を cD へ向ける。単独なら通るが、両方当てると cA→cB→cC→cD→cA の循環。
+    // lax を cB へ、lcx を cD へ向ける。単独なら通るが、両方適用すると cA→cB→cC→cD→cA の循環。
     let mut p = nesting_chain();
     p.compositions.push(comp("cE", vec![], vec![]));
     p.compositions[0].layers.push(nested_layer("lax", "cE"));
@@ -138,7 +138,7 @@ fn set_param_が作る入れ子の循環は参照先の先を_touches_に含め�
 }
 
 #[test]
-fn ロックしたレイヤーが接続したカットを_claude_の入口から動かせない() {
+fn ロックしたレイヤーが接続したカットを_claude_の操作経路から動かせない() {
     let mut p = project();
     p.compositions[0].layers[0].attach_to = Some(Id::new("k2"));
     p.compositions[0].layers[0].lock = true;
@@ -202,7 +202,7 @@ fn ロックしたレイヤーが接続したカットを_claude_の入口から
 }
 
 #[test]
-fn 同じ時刻のマーカーは_add_marker_が断り_remove_marker_の逆操作で戻る() {
+fn 同じ時刻のマーカーは_add_marker_が拒否し_remove_marker_の逆操作で戻る() {
     let mut p = project();
     let human = OpContext::human();
     let dup: Op = AddMarker {

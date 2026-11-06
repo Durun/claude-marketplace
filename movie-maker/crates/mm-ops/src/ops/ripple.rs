@@ -1,4 +1,4 @@
-//! `ripple`。カットの頭か尻を動かし、後ろをずらす。
+//! `ripple`。カットのイン点かアウト点を動かし、後ろをずらす。
 
 use serde::{Deserialize, Serialize};
 
@@ -13,14 +13,14 @@ use crate::touches::Touches;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Edge {
-    /// 頭（`in`）。
+    /// イン点（`in`）。
     In,
-    /// 尻（`out`）。
+    /// アウト点（`out`）。
     Out,
 }
 
-/// `cut` の `edge` を、並びの時間軸で `by` だけ動かす（素材の時間では `by × speed`）。
-/// 頭を正に動かすと短くなり、尻を正に動かすと長くなる。後ろのカットは配置でずれる。
+/// `cut` の `edge` を、シーケンスの時間軸で `by` だけ動かす（素材の時間では `by × speed`）。
+/// イン点を正に動かすと短くなり、アウト点を正に動かすと長くなる。後ろのカットは配置でずれる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Ripple {

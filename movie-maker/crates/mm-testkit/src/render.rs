@@ -1,4 +1,4 @@
-//! レンダラーの見本と契約テスト。見本は CPU でレイヤーを下から順に source-over で重ねる。
+//! レンダラーのモックと契約テスト。モックは CPU でレイヤーを下から順に source-over で重ねる。
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -23,10 +23,10 @@ use crate::gpu::CpuGpu;
 use crate::render_cases;
 use crate::xform::apply_transform;
 
-/// 見本のレンダラーの版。
+/// モックのレンダラーのバージョン。
 pub const SAMPLE_RENDERER_VERSION: u32 = 1;
 
-/// 見本のレンダラー。
+/// モックのレンダラー。
 pub struct SampleRenderer {
     decoders: Arc<dyn DecoderFactory>,
     mixers: Arc<dyn MixerFactory>,
@@ -37,7 +37,7 @@ pub struct SampleRenderer {
 }
 
 impl SampleRenderer {
-    /// 口を受け取って組む。
+    /// インターフェースを受け取って組む。
     pub fn new(
         decoders: Arc<dyn DecoderFactory>,
         mixers: Arc<dyn MixerFactory>,
@@ -53,7 +53,7 @@ impl SampleRenderer {
         }
     }
 
-    /// 透明にしたレイヤーのエラーを取り出す（印の元）。
+    /// 透明にしたレイヤーのエラーを取り出す（フラグの元）。
     pub fn take_errors(&mut self) -> Vec<String> {
         std::mem::take(&mut self.errors)
     }
@@ -185,7 +185,7 @@ impl SampleRenderer {
     }
 }
 
-/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければ素通し。
+/// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければパススルー。
 fn layer_mix_settings(layer: &Layer, t: RationalTime) -> (String, f32, f32) {
     let a = evaluate_audio(layer, t);
     (a.role.to_owned(), a.gain_db as f32, a.pan as f32)
@@ -256,7 +256,7 @@ impl Renderer for SampleRenderer {
     }
 }
 
-/// 見本のスケジューラ。再生位置に近い範囲から。
+/// モックのスケジューラ。再生位置に近い範囲から。
 #[derive(Debug, Default)]
 pub struct NearestFirstScheduler;
 
@@ -311,7 +311,7 @@ pub fn contract(make: impl Fn() -> Box<dyn Renderer>, fx: &RenderFixture<'_>) {
     r.invalidate(fx.composition, range);
     let c = r.render_frame(&req).expect("描ける");
     let c = r.gpu().download(&c).expect("リードバック");
-    assert_eq!(*a, *c, "invalidate の後も同じ絵");
+    assert_eq!(*a, *c, "invalidate の後も同じ画像");
 
     check_audio(r.as_mut(), fx, range);
     render_cases::check_frame_lifetime(r.as_mut(), &req);

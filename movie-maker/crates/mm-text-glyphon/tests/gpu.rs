@@ -1,5 +1,5 @@
 //! glyphon（GPU）のレンダラーの検査。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
-//! CPU のレンダラーと同じ整形の結果から描いて、絵が許容差の中で一致することを確かめる。
+//! CPU のレンダラーと同じシェーピングの結果から描いて、画像が許容差の中で一致することを確かめる。
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -20,7 +20,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
@@ -42,7 +42,7 @@ fn write_png(path: &std::path::Path, img: &RgbaImage, bg: Rgba) {
     let mut enc = png::Encoder::new(&mut out, img.width(), img.height());
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
-    let mut writer = enc.write_header().expect("PNG の頭");
+    let mut writer = enc.write_header().expect("PNG のヘッダー");
     let mut raw = Vec::with_capacity(img.width() as usize * img.height() as usize * 3);
     for y in 0..img.height() {
         for x in 0..img.width() {
@@ -73,7 +73,7 @@ fn 文字の契約を満たす() {
     contract(|| engine.shaper(), || engine.gpu_rasterizer(ctx.clone()));
 }
 
-/// 見本の名前、文字列、スタイル。
+/// テストケースの名前、文字列、スタイル。
 fn samples() -> Vec<(&'static str, &'static str, TextStyle)> {
     let jp =
         "動画編集ソフトの字幕テスト。日本語の折り返しを確かめるために、わざと長く書いてあります。";
@@ -108,7 +108,7 @@ fn samples() -> Vec<(&'static str, &'static str, TextStyle)> {
 }
 
 #[test]
-fn cpu_と_gpu_の絵が許容差の中で一致し見本を書き出す() {
+fn cpu_と_gpu_の画像が許容差の中で一致しサンプルを書き出す() {
     let Some(ctx) = gpu() else { return };
     let engine = TextEngine::new();
     let (shaper, cpu, glyphon) = (
@@ -121,7 +121,7 @@ fn cpu_と_gpu_の絵が許容差の中で一致し見本を書き出す() {
     let bg = Rgba::new(0.02, 0.02, 0.05, 1.0);
     for (name, text, st) in samples() {
         for scale in [1.0_f32, 2.0] {
-            let shaped = shaper.shape(text, &st).expect("整形");
+            let shaped = shaper.shape(text, &st).expect("シェーピング");
             let a = cpu.rasterize(&shaped, &st, scale).expect("CPU");
             let b = glyphon.rasterize(&shaped, &st, scale).expect("GPU");
             assert_eq!(a.size(), b.size(), "{name} x{scale}: 大きさ");
@@ -132,15 +132,18 @@ fn cpu_と_gpu_の絵が許容差の中で一致し見本を書き出す() {
             write_png(&dir.join(format!("{name}_x{scale}_glyphon.png")), &b, bg);
         }
     }
-    eprintln!("見本の PNG: {}", dir.display());
+    eprintln!("サンプルの PNG: {}", dir.display());
 }
 
 #[test]
-fn json_を往復した整形の結果も_gpu_で描ける() {
+fn json_を往復したシェーピングの結果も_gpu_で描ける() {
     let Some(ctx) = gpu() else { return };
     let engine = TextEngine::new();
     let st = style(TextAlign::Left, None);
-    let shaped = engine.shaper().shape("往復 abc", &st).expect("整形");
+    let shaped = engine
+        .shaper()
+        .shape("往復 abc", &st)
+        .expect("シェーピング");
     let json = serde_json::to_string(&shaped).expect("JSON にする");
     let back: ShapedText = serde_json::from_str(&json).expect("JSON から戻す");
     let img = engine
@@ -178,7 +181,7 @@ fn 時間を測る() {
         .collect::<Vec<_>>()
         .join("\n");
     for (label, text) in [("1 行", one), ("10 行", ten)] {
-        let shaped = shaper.shape(&text, &st).expect("整形");
+        let shaped = shaper.shape(&text, &st).expect("シェーピング");
         let r: [(&str, &dyn TextRasterizer); 2] = [("cpu", &*cpu), ("glyphon", &*glyphon)];
         for (name, raster) in r {
             let t0 = Instant::now();
@@ -192,7 +195,7 @@ fn 時間を測る() {
                 })
                 .collect();
             eprintln!(
-                "{label} {name}: 絵 {}x{}、初回 {cold:.2} ms、2 回目以降の中央値 {:.2} ms",
+                "{label} {name}: 画像 {}x{}、初回 {cold:.2} ms、2 回目以降の中央値 {:.2} ms",
                 first.width(),
                 first.height(),
                 median(warm)

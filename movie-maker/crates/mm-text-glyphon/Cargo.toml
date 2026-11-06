@@ -1,6 +1,6 @@
 [package]
 name = "mm-text-glyphon"
-description = "文字の実装。cosmic-text で整形し、CPU（swash）と glyphon（wgpu）のどちらでも RGBA に描く"
+description = "文字の実装。cosmic-text でシェーピングし、CPU（swash）と glyphon（wgpu）のどちらでも RGBA に描く"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

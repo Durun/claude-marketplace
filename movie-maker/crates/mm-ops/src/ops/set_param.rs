@@ -13,7 +13,7 @@ use crate::touches::Touches;
 /// `target` の固定の値を `value` にする。
 ///
 /// `keyframes` を省けばキーフレームは保つ。渡せばキーフレームの列も置き換える（空で消す）。
-/// 無くてもよい欄（種類のパラメータ、`transform.anchor`）が無ければ作る。
+/// 無くてもよいフィールド（ノードのパラメータ、`transform.anchor`）が無ければ作る。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetParam {

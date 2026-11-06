@@ -1,5 +1,5 @@
-//! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の絵との行き来は f32 と f16 の変換で行う。
-//! デコーダーから借りたフレームは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
+//! wgpu の `GpuHelper`。テクスチャは番号で引き、CPU の画像との行き来は f32 と f16 の変換で行う。
+//! デコーダーから借用したフレームは `import` で番号を付け、`submit` の前後で待ちと返却をまとめて行う。
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -18,17 +18,17 @@ const BYTES_PER_PIXEL: u32 = 8;
 /// wgpu がリードバックの行に課す境界。
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
-/// wgpu の GPU ヘルパー。種類は `as_any` で降りて `context()` と `texture()` を使える。
+/// wgpu の GPU ヘルパー。具象型は `as_any` で降りて `context()` と `texture()` を使える。
 pub struct WgpuGpu {
     ctx: Arc<GpuContext>,
     next_id: u64,
     textures: HashMap<u64, wgpu::Texture>,
-    /// 借りているフレーム。`after_submit` で捨てる。
+    /// 借用しているフレーム。`after_submit` で破棄する。
     borrowed: Vec<(u64, Arc<dyn mm_decode_api::GpuFrame>)>,
 }
 
 impl WgpuGpu {
-    /// 空のテクスチャ置き場。
+    /// 空のテクスチャプール。
     pub fn new(ctx: Arc<GpuContext>) -> Self {
         Self {
             ctx,
@@ -38,7 +38,7 @@ impl WgpuGpu {
         }
     }
 
-    /// GPU の文脈。
+    /// GPU のコンテキスト。
     pub fn context(&self) -> &Arc<GpuContext> {
         &self.ctx
     }
@@ -53,12 +53,12 @@ impl WgpuGpu {
         self.textures.len()
     }
 
-    /// 番号のテクスチャを捨てる。
+    /// 番号のテクスチャを破棄する。
     pub fn release_id(&mut self, id: u64) {
         self.textures.remove(&id);
     }
 
-    /// `submit` の直前。借りたフレームのデコードの完了を待たせる。
+    /// `submit` の直前。借用したフレームのデコードの完了を待たせる。
     pub fn before_submit(&self) {
         for (_, frame) in &self.borrowed {
             if let Some(wait) =
@@ -69,7 +69,7 @@ impl WgpuGpu {
         }
     }
 
-    /// `submit` の直後。借りたフレームを返す（デコーダーのプールが空く）。
+    /// `submit` の直後。借用したフレームを返す（デコーダーのプールが空く）。
     pub fn after_submit(&mut self) {
         for (id, _) in self.borrowed.drain(..) {
             self.textures.remove(&id);
@@ -123,7 +123,7 @@ impl WgpuGpu {
             || texture.height() != size.height
         {
             return Err(MmError::Unsupported(format!(
-                "読み戻せるのは {FRAME_FORMAT:?} の {}x{} だけ（テクスチャ {id} は {:?} の {}x{}）",
+                "リードバックできるのは {FRAME_FORMAT:?} の {}x{} だけ（テクスチャ {id} は {:?} の {}x{}）",
                 size.width,
                 size.height,
                 texture.format(),
@@ -179,7 +179,7 @@ impl WgpuGpu {
 pub fn map_blocking(device: &wgpu::Device, buffer: &wgpu::Buffer) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
-        // 受け手が先に落ちていても困らない。
+        // 受け手が先にドロップされていても困らない。
         let _ = tx.send(r);
     });
     device

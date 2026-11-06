@@ -24,7 +24,7 @@ impl Matrix {
         }
     }
 
-    /// 文書に出す色空間の名前。レンジは RGB への変換で展開済みなので名前に入れない。
+    /// プロジェクトのデータに出す色空間の名前。レンジは RGB への変換で展開済みなので名前に入れない。
     pub fn color_space(self) -> ColorSpace {
         match self {
             Self::Bt601 => ColorSpace::bt601(),
@@ -49,7 +49,7 @@ pub fn is_full_range(range: Range) -> bool {
 }
 
 /// 符号化値に Rec.1886 の式を当てて線形にする経路で扱えない伝達特性（PQ と HLG）なら `Unsupported`。
-/// 当てると明るさが大きく狂うので、黙って通さず、どの実装も同じ判定で断る。
+/// 適用すると明るさが大きく狂うので、黙って通さず、どの実装も同じ判定で拒否する。
 pub fn check_transfer(trc: TransferCharacteristic) -> Result<()> {
     match trc {
         TransferCharacteristic::SMPTE2084 => Err(MmError::Unsupported(

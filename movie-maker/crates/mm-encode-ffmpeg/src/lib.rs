@@ -26,7 +26,7 @@ pub const ID: &str = "ffmpeg";
 /// `EncodeSettings::codec` に書ける H.264 の名前。
 pub const H264_NAMES: [&str; 2] = ["h264", "libx264"];
 
-/// FFmpeg のエンコーダーを作る口。
+/// FFmpeg のエンコーダーを作るインターフェース。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FfmpegEncoderFactory;
 
@@ -66,8 +66,8 @@ struct Session {
     audio_frames: u64,
 }
 
-// FFmpeg の文脈は生ポインタを持つため自動では Send にならない。Session は 1 つの
-// FfmpegEncoder だけが所有し、文脈はスレッドに紐づかないので、別スレッドへ移してよい。
+// FFmpeg のコンテキストは生ポインタを持つため自動では Send にならない。Session は 1 つの
+// FfmpegEncoder だけが所有し、コンテキストはスレッドに紐づかないので、別スレッドへ移してよい。
 unsafe impl Send for Session {}
 
 impl Encoder for FfmpegEncoder {

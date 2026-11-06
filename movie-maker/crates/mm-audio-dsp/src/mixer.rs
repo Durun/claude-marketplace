@@ -13,7 +13,7 @@ pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-/// ミキサーを作る口。設定は `create` で受ける。
+/// ミキサーを作るファクトリー。設定は `create` で受ける。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DspMixerFactory;
 
@@ -61,7 +61,7 @@ pub struct DspMixer {
 /// トリガーの検出値を保持する時間（ms）。50 Hz より低い音の半周期より長く、ゼロ交差をまたぐ。
 const DUCK_HOLD_MS: f32 = 10.0;
 
-/// 中央で両方 1.0 になるパン（バランス型）。中央の素通しを保つため等電力則は使わない。
+/// 中央で両方 1.0 になるパン（バランス型）。中央のパススルーを保つため等電力則は使わない。
 fn pan_gains(pan: f32) -> (f32, f32) {
     let p = pan.clamp(-1.0, 1.0);
     ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
@@ -83,7 +83,7 @@ impl DspMixer {
         Ok(())
     }
 
-    /// 入力を役割ごとのバスに足す。役割の並びは `BTreeMap` で固定し、足す順を決定的にする。
+    /// 入力を役割ごとのバスに足す。役割の順序は `BTreeMap` で固定し、足す順を決定的にする。
     fn sum_buses<'a>(
         &self,
         inputs: &'a [MixInput],

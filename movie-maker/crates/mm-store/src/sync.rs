@@ -1,6 +1,6 @@
 //! クラウド同期のフォルダーとネットワークのファイルシステムの検出。
 //!
-//! 同期の道具は DB の鍵を守らずにファイルを書き換えるので、置かれたら警告する（開くのは断らない）。
+//! 同期ツールは DB のロックを守らずにファイルを書き換えるので、置かれたら警告する（開くのは拒否しない）。
 //! 検出はパスの名前だけで決める。ファイルの属性（`RECALL_ON_DATA_ACCESS`）は見ない。
 
 use std::path::{Component, Path};
@@ -20,7 +20,7 @@ pub enum SyncKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncFolder {
     pub kind: SyncKind,
-    /// 当たったパスの部品。
+    /// 適用されたパスの部品。
     pub matched: String,
 }
 
@@ -108,13 +108,13 @@ mod tests {
     }
 
     #[test]
-    fn 名前が似ているだけのフォルダーは当てない() {
+    fn 名前が似ているだけのフォルダーは適用しない() {
         assert_eq!(kind("E:/dev/dropbox-clone/proj"), None);
     }
 
     #[cfg(windows)]
     #[test]
-    fn unc_はネットワークとして当てる() {
+    fn unc_はネットワークとして適用する() {
         let found = detect_sync_folder(Path::new(r"\\server\share\proj")).unwrap();
         assert_eq!(found.kind, SyncKind::NetworkFs);
     }

@@ -12,7 +12,7 @@ use crate::cuda::{CuContext, CuStream};
 use mm_decode_ffmpeg_core::reader::StreamReader;
 use mm_decode_hw::yuv::stream_bit_depth;
 
-/// 選ぶ表面形式は CUDA だけ。cuvid は CPU の NV12 も申し出るが、使うのは GPU の上のフレーム。
+/// 選ぶサーフェス形式は CUDA だけ。cuvid は CPU の NV12 も申し出るが、使うのは GPU の上のフレーム。
 unsafe extern "C" fn pick_cuda(
     _ctx: *mut ffi::AVCodecContext,
     fmts: *const ffi::AVPixelFormat,
@@ -30,7 +30,7 @@ unsafe extern "C" fn pick_cuda(
     ffi::AVPixelFormat::AV_PIX_FMT_NONE
 }
 
-/// `av_hwdevice_ctx_create` で作った CUDA のデバイスへの参照。捨てるときに手放す。
+/// `av_hwdevice_ctx_create` で作った CUDA のデバイスへの参照。ドロップするときに解放する。
 pub struct DeviceRef(*mut ffi::AVBufferRef);
 
 // SAFETY: 参照は FFmpeg が数えて管理する。持つのは 1 つのデコーダーだけ。
@@ -38,7 +38,7 @@ unsafe impl Send for DeviceRef {}
 
 impl Drop for DeviceRef {
     fn drop(&mut self) {
-        // SAFETY: open で作った参照。コーデック側の参照はデコーダーが手放す。
+        // SAFETY: open で作った参照。コーデック側の参照はデコーダーが解放する。
         unsafe { ffi::av_buffer_unref(&mut self.0) };
     }
 }
@@ -48,7 +48,7 @@ pub struct Opened {
     pub reader: StreamReader,
     /// 1 成分のビット深度（8 か 10）。
     pub bits: u32,
-    /// FFmpeg が使う CUDA の文脈。コピーもこの文脈で行う。
+    /// FFmpeg が使う CUDA のコンテキスト。コピーもこのコンテキストで行う。
     pub cuda_ctx: CuContext,
     pub cuda_stream: CuStream,
     pub device: DeviceRef,

@@ -61,7 +61,7 @@ fn seq_with_cut_source(id: &str, source: Node) -> Sequence {
 }
 
 #[test]
-fn どこからも参照されない_sequence_の循環も断る() {
+fn どこからも参照されない_sequence_の循環も拒否する() {
     let mut p = project(vec![]);
     p.sequences
         .push(seq_with_cut_source("s", sequence_node("s")));
@@ -69,7 +69,7 @@ fn どこからも参照されない_sequence_の循環も断る() {
 }
 
 #[test]
-fn sequence_どうしの循環を断る() {
+fn sequence_どうしの循環を拒否する() {
     let mut p = project(vec![]);
     p.sequences
         .push(seq_with_cut_source("a", sequence_node("b")));
@@ -79,7 +79,7 @@ fn sequence_どうしの循環を断る() {
 }
 
 #[test]
-fn 循環した_sequence_を参照するレイヤーがあっても_validate_は落ちずに断る() {
+fn 循環した_sequence_を参照するレイヤーがあっても_validate_はクラッシュせずに拒否する() {
     let mut p = project(vec![comp("c", vec![layer("l", sequence_node("s"))])]);
     p.sequences
         .push(seq_with_cut_source("s", sequence_node("s")));
@@ -95,7 +95,7 @@ fn トランジションのノードも入れ子と_sequence_の先を確かめ�
         duration: RationalTime::ZERO,
     });
     p.sequences.push(seq);
-    assert!(is_invalid(p.validate()), "無い入れ子を断る");
+    assert!(is_invalid(p.validate()), "無い入れ子を拒否する");
     // c のレイヤーが s を参照し、s のトランジションが c を入れ子にする循環。
     p.compositions[0]
         .layers
@@ -104,7 +104,10 @@ fn トランジションのノードも入れ子と_sequence_の先を確かめ�
         node: nested("c"),
         duration: RationalTime::ZERO,
     });
-    assert!(is_invalid(p.validate()), "トランジション経由の循環を断る");
+    assert!(
+        is_invalid(p.validate()),
+        "トランジション経由の循環を拒否する"
+    );
 }
 
 fn marker_at(id: &str, t: i64) -> Marker {
@@ -117,14 +120,14 @@ fn marker_at(id: &str, t: i64) -> Marker {
 }
 
 #[test]
-fn 同じ時刻のマーカーを断る() {
+fn 同じ時刻のマーカーを拒否する() {
     let mut c = comp("c", vec![]);
     c.markers = vec![marker_at("m1", 1), marker_at("m2", 1)];
     assert!(is_invalid(project(vec![c]).validate()));
 }
 
 #[test]
-fn 同じ時刻のマーカーを持つ古い文書は_load_でずらして読める() {
+fn 同じ時刻のマーカーを持つ古いプロジェクトのデータは_load_でずらして読める() {
     let mut c = comp("c", vec![]);
     c.markers = vec![marker_at("m1", 1), marker_at("m2", 1), marker_at("m3", 1)];
     let mut old = project(vec![c]);

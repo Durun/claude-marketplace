@@ -1,4 +1,4 @@
-//! `mm op` と `mm undo` の書き込みの途中で kill しても、開き直すと最後に確定した版に戻り、続けて書けること。
+//! `mm op` と `mm undo` の書き込みの途中で kill しても、開き直すと最後に確定したバージョンに戻り、続けて書けること。
 //! `mm-store` の kill の試験を、CLI の経路でもう一度行う。
 //!
 //! 親は子の WAL を見張り、確定していないフレームが現れた（SQLite が書き始めた）直後に kill する。
@@ -16,12 +16,12 @@ use mm_types::ParamValue;
 
 use crate::common::{mm_command, mm_ok, stage0_json};
 
-/// 1 回のまとまりの操作の数。
+/// 1 回のトランザクションの操作の数。
 const OPS_PER_TXN: usize = 400;
-/// 1 操作の文字の長さ。操作と逆操作で 1 行 40 KB、まとまりで 16 MB になる。
+/// 1 操作の文字の長さ。操作と逆操作で 1 行 40 KB、トランザクションで 16 MB になる。
 const TEXT_LEN: usize = 20_000;
 const ROUNDS: usize = 16;
-/// 書き込みの最中に止めた回がこれより少なければ、見張りが窓に当たっていない。
+/// 書き込みの最中に止めた回がこれより少なければ、見張りが書き込みの時間幅に当たっていない。
 const MIN_MID_WRITE: usize = 6;
 /// 見張りの間隔。
 const POLL: Duration = Duration::from_millis(1);
@@ -55,7 +55,7 @@ fn write_txn_file(path: &Path) {
         .collect();
     fs::write(
         path,
-        serde_json::json!({"name": "大きなまとまり", "ops": ops}).to_string(),
+        serde_json::json!({"name": "大きなトランザクション", "ops": ops}).to_string(),
     )
     .unwrap();
 }
@@ -113,7 +113,7 @@ fn spawn_mm(args: &[&str]) -> Child {
         .unwrap()
 }
 
-/// 復旧した DB を書き手で開き、版が途中でないことを見る。
+/// 復旧した DB を書き手で開き、バージョンが途中でないことを見る。
 fn recovered(dir: &Path, round: usize, versions: [i64; 2]) -> (i64, String) {
     let store = Store::open(dir, 0).unwrap();
     assert_eq!(
@@ -124,13 +124,13 @@ fn recovered(dir: &Path, round: usize, versions: [i64; 2]) -> (i64, String) {
     let version = store.doc_version();
     assert!(
         versions.contains(&version),
-        "round {round}: まとまりの途中の版 {version}"
+        "round {round}: トランザクションの途中のバージョン {version}"
     );
     (version, text_of(&store))
 }
 
 #[test]
-fn op_と_undo_の書き込みの最中で_kill_しても最後に確定した版に戻り続けて書ける() {
+fn op_と_undo_の書き込みの最中で_kill_しても最後に確定したバージョンに戻り続けて書ける() {
     let tmp = tempfile::tempdir().unwrap();
     let txn_file = tmp.path().join("big.json");
     write_txn_file(&txn_file);

@@ -1,6 +1,6 @@
 [package]
 name = "mm-testkit"
-description = "各口の見本の実装と契約テストの本体。実装のクレートは tests/contract.rs から 1 行で呼ぶ"
+description = "各インターフェースのモックの実装と契約テストの本体。実装のクレートは tests/contract.rs から 1 行で呼ぶ"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

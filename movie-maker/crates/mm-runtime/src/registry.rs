@@ -6,7 +6,7 @@ use std::sync::Arc;
 use mm_node_api::{NodeKind, NodeRegistry};
 use mm_types::{MmError, Result};
 
-/// レジストリ。同じ名前の二重登録は断る。
+/// レジストリ。同じ名前の二重登録は拒否する。
 #[derive(Default, Clone)]
 pub struct Registry {
     kinds: BTreeMap<&'static str, Arc<dyn NodeKind>>,
@@ -55,7 +55,7 @@ mod tests {
     use mm_testkit::node::SolidKind;
 
     #[test]
-    fn 二重登録は断る() {
+    fn 二重登録は拒否する() {
         let mut r = Registry::new();
         r.register(Arc::new(SolidKind)).unwrap();
         assert!(r.register(Arc::new(SolidKind)).is_err());

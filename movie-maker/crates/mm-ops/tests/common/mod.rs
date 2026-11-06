@@ -1,4 +1,4 @@
-//! テストの見本の文書。コンポジション 2 つ、レイヤー 3 つ、マーカー 2 つ、sequence 1 つ（カット 4 つ）、レンダーターゲット 1 つ。
+//! テストのフィクスチャのプロジェクトのデータ。コンポジション 2 つ、レイヤー 3 つ、マーカー 2 つ、sequence 1 つ（カット 4 つ）、レンダーターゲット 1 つ。
 
 use mm_doc::{
     Composition, Cut, Interpolation, Keyframe, Layer, Marker, Node, Project, RenderTarget, Sequence,

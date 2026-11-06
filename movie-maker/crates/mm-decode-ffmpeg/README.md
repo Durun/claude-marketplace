@@ -9,7 +9,7 @@ cargo clippy --workspace --all-targets -- -D warnings \
   --features mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-runtime/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
 ```
 
-ワークスペースのビルドでは `ffmpeg-sys-next` の build script が主スレッドのスタックを使い切って落ちる（`STATUS_STACK_OVERFLOW`）。
+ワークスペースのビルドでは `ffmpeg-sys-next` の build script が主スレッドのスタックを使い切ってクラッシュする（`STATUS_STACK_OVERFLOW`）。
 `.cargo/config.toml` が MSVC のリンカーにスタック 32 MB を要求して防ぐ（`x86_64-pc-windows-msvc` のみ。リンクする全バイナリに効く）。
 
 feature ありのビルドは `ffmpeg-next`（FFmpeg 9.0 の系）でビルドする。必要なのは FFmpeg の shared ビルド（ヘッダー、import ライブラリ、DLL）と libclang。
@@ -42,4 +42,4 @@ cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg
 
 `fixtures/media/generate.sh`（ffmpeg の CLI）が `fixtures/media/out/` に作る。生成物は git に入れない。
 テストは `out/.stamp` が無いときだけ `sh generate.sh` を自分で呼ぶ。手で作り直すなら `out/` を消して同じスクリプトを実行する。
-フレームの番号は左上の 16x16 の箱 16 個の白黒に焼いてあり、デコード後の画素から読み戻す（`tests/common/mod.rs`）。
+フレームの番号は左上の 16x16 の箱 16 個の白黒に焼き込んであり、デコード後の画素からリードバックする（`tests/common/mod.rs`）。

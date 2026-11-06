@@ -1,4 +1,4 @@
-//! 検査のための口。共有バッファの輪の途中で失敗させ（故障の注入）、取り込んだ CUDA の資源の数を数える。
+//! 検査用のフック。共有リングバッファの途中で失敗させ（故障の注入）、取り込んだ CUDA の資源の数を数える。
 //! feature `test-hooks` のときだけ働き、本番の組み立てでは何もしない。
 
 use mm_types::Result;
@@ -10,7 +10,7 @@ pub(crate) enum Stage {
     Memcpy,
     /// コピーの完了のシグナルを積む前。
     Signal,
-    /// 枠の CUDA への取り込み。
+    /// スロットの CUDA への取り込み。
     SlotImport,
 }
 
@@ -32,7 +32,7 @@ mod enabled {
         CopyMemcpy,
         /// 次のコピーを、完了のシグナルを積む前に失敗させる（コピーは積まれた後）。
         CopySignal,
-        /// 輪を作るとき、`at` 番目（0 から）の枠の取り込みを失敗させる。
+        /// リングバッファを作るとき、`at` 番目（0 から）のスロットの取り込みを失敗させる。
         SlotImport { at: i32 },
     }
 
@@ -99,7 +99,7 @@ pub(crate) fn imported() {
     enabled::imported();
 }
 
-/// CUDA の資源を手放した。
+/// CUDA の資源を解放した。
 pub(crate) fn released() {
     #[cfg(feature = "test-hooks")]
     enabled::released();

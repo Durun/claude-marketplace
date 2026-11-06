@@ -1,4 +1,4 @@
-//! 映像のデコーダー本体。時間軸、番号づけ、シークは `mm-decode-ffmpeg-core` の共有部が受け持つ。
+//! 映像のデコーダー本体。時間軸、番号づけ、シークは `mm-decode-ffmpeg-core` の共通実装が受け持つ。
 
 use std::path::{Path, PathBuf};
 

@@ -1,4 +1,4 @@
-// dist/ を開いて tasks パネルの絵を撮る。playwright は repo の依存にせず、
+// dist/ を開いて tasks パネルのスクリーンショットを撮る。playwright は repo の依存にせず、
 // PLAYWRIGHT_DIR（playwright を入れた場所）から読む。使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";

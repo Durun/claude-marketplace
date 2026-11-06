@@ -1,4 +1,4 @@
-//! 色。中間の絵は線形の Rec.709、premultiplied のアルファで持つ。
+//! 色。中間の画像は線形の Rec.709、premultiplied のアルファで持つ。
 
 use serde::{Deserialize, Serialize};
 

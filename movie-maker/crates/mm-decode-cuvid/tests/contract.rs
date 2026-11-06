@@ -26,7 +26,7 @@ const FILES: [&str; 6] = [
     "p10.mp4",
 ];
 
-/// GPU の文脈を作って基本の素材を開けるか。GPU や CUDA が無い環境（CI）ではテストを飛ばす。
+/// GPU のコンテキストを作って基本の素材を開けるか。GPU や CUDA が無い環境（CI）ではテストをスキップする。
 fn available() -> bool {
     common::gpu_available(|| {
         let ctx = GpuContext::shared(&gpu_request(None)?)?;
@@ -52,7 +52,7 @@ fn drain_numbers(dec: &mut dyn Decoder) -> Vec<(i64, i64)> {
     while let Some(f) = dec.next_frame().expect("デコード") {
         out.push((
             f.index,
-            read_frame_number(f.image.as_ref().expect("CPU の絵"), 1),
+            read_frame_number(f.image.as_ref().expect("CPU の画像"), 1),
         ));
     }
     out
@@ -83,7 +83,7 @@ fn vfr_の契約を通る() {
 }
 
 #[test]
-fn 焼いた番号がフレームの番号と一致する() {
+fn 焼き込んだ番号がフレームの番号と一致する() {
     if !available() {
         return;
     }
@@ -98,7 +98,7 @@ fn 焼いた番号がフレームの番号と一致する() {
 }
 
 #[test]
-fn 頭がずれた素材でも番号が先頭から数える() {
+fn 先頭がずれた素材でも番号が先頭から数える() {
     if !available() {
         return;
     }
@@ -127,18 +127,22 @@ fn 飛び飛びのシークで目的のフレームが出る() {
 }
 
 #[test]
-fn 十ビットの素材は八ビットに落とさず運ぶ() {
+fn 十ビットの素材は八ビットに下げずに運ぶ() {
     if !available() {
         return;
     }
     let mut dec = open("p10.mp4");
     let mut checked = 0;
     while let Some(f) = dec.next_frame().expect("デコード") {
-        let image = f.image.as_ref().expect("CPU の絵");
+        let image = f.image.as_ref().expect("CPU の画像");
         assert_eq!(read_frame_number(image, 1), f.index);
         if f.index % 10 == 5 {
             let kinds = distinct_in_row(image, 100);
-            assert!(kinds > 280, "フレーム {}: 値が {kinds} 種類しかない", f.index);
+            assert!(
+                kinds > 280,
+                "フレーム {}: 値が {kinds} 種類しかない",
+                f.index
+            );
             checked += 1;
         }
     }
@@ -146,7 +150,7 @@ fn 十ビットの素材は八ビットに落とさず運ぶ() {
 }
 
 #[test]
-fn gpu_の文脈なしでは断る() {
+fn gpu_のコンテキストなしでは拒否する() {
     if !available() {
         return;
     }
@@ -158,7 +162,7 @@ fn gpu_の文脈なしでは断る() {
 }
 
 #[test]
-fn フレームを捨て続けても輪が詰まらない() {
+fn フレームを破棄し続けてもリングバッファがストールしない() {
     if !available() {
         return;
     }
@@ -191,7 +195,7 @@ fn フレームを持ち続けてもデコードが止まらない() {
     }
 }
 
-/// GPU が読み取りを遅らせても、CUDA が枠を先に上書きして別のフレームが混ざることがない。
+/// GPU が読み取りを遅らせても、CUDA がスロットを先に上書きして別のフレームが混ざることがない。
 fn mixed_frames(wait_for_gpu: bool) -> usize {
     let ctx = ctx();
     let path = fixtures(&FILES).join("cfr.mp4");
@@ -220,7 +224,7 @@ fn gpu_が遅れても別のフレームが混ざらない() {
 }
 
 #[test]
-fn pq_と_hlg_の素材は断る() {
+fn pq_と_hlg_の素材は拒否する() {
     if !available() {
         return;
     }
@@ -243,7 +247,7 @@ fn 色差は隣の画素へ線形に補間される() {
     let path = common::chroma_ramp_fixture();
     let mut dec = factory().open(&path, None).expect("開ける");
     let frame = dec.next_frame().expect("デコード").expect("フレーム");
-    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の絵"), 100);
+    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の画像"), 100);
     assert!(
         ratio < 0.15,
         "隣と同じ値の画素が {ratio:.2} の割合で並ぶ（最近傍の読み）"
@@ -277,7 +281,7 @@ fn 待ちを外すと別のフレームが混ざる_対照() {
     );
 }
 
-/// NVENC で作った 4K の HEVC（d3d12va が落とす形）を cuvid がデコードできる。NVENC が無い PC では素材が無く飛ばす。
+/// NVENC で作った 4K の HEVC（d3d12va がクラッシュさせる形）を cuvid がデコードできる。NVENC が無い PC では素材が無くスキップする。
 #[test]
 fn nvenc_の_4k_hevc_をデコードできる() {
     if !available() {
@@ -285,7 +289,7 @@ fn nvenc_の_4k_hevc_をデコードできる() {
     }
     let path = fixtures(&FILES).join("nvenc4k.mp4");
     if !path.exists() {
-        eprintln!("nvenc4k.mp4 が無いので飛ばす");
+        eprintln!("nvenc4k.mp4 が無いのでスキップする");
         return;
     }
     let mut dec = factory().open(&path, None).expect("開ける");
@@ -302,7 +306,7 @@ fn drain_numbers_scaled(dec: &mut dyn Decoder) -> Vec<(i64, i64)> {
     while let Some(f) = dec.next_frame().expect("デコード") {
         out.push((
             f.index,
-            read_frame_number(f.image.as_ref().expect("CPU の絵"), 12),
+            read_frame_number(f.image.as_ref().expect("CPU の画像"), 12),
         ));
     }
     out

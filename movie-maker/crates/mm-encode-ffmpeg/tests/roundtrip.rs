@@ -1,4 +1,4 @@
-//! 書き出した MP4 を ffprobe で読み、デコーダーでリードバックて、フレーム数・長さ・番号・音を確かめる。
+//! 書き出した MP4 を ffprobe で読み、デコーダーでリードバックして、フレーム数・長さ・番号・音を確かめる。
 #![cfg(feature = "ffmpeg")]
 
 #[path = "../../mm-decode-ffmpeg/tests/common/mod.rs"]
@@ -203,7 +203,7 @@ fn 分数の_fps_でもフレーム数と時刻が合う() {
 }
 
 #[test]
-fn 本物の素材を読んで書き直しても番号が保たれる() {
+fn 実素材を読んで書き直しても番号が保たれる() {
     let source = common::fixtures().join("cfr.mp4");
     let mut dec = FfmpegDecoderFactory.open(&source, None).unwrap();
     let info = dec.info().clone();
@@ -270,7 +270,7 @@ fn 使い方の誤りは_panic_せずエラーになる() {
 const ROUNDTRIP_CODE_TOLERANCE: f32 = 3.0;
 
 #[test]
-fn 線形の色を書き出してリードバックても明るさがずれない() {
+fn 線形の色を書き出してリードバックしても明るさがずれない() {
     let size = Size::new(64, 32);
     let fps = Rational::integer(30);
     let path = out_path("color.mp4");

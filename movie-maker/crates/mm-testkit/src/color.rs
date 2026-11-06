@@ -1,4 +1,4 @@
-//! 色の見本と契約テスト。見本は bt709（Rec.1886）、srgb、bt709_oetf、bt601、bt2020 を作業色空間（線形）へ変換する。
+//! 色のモックと契約テスト。モックは bt709（Rec.1886）、srgb、bt709_oetf、bt601、bt2020 を作業色空間（線形）へ変換する。
 
 use std::sync::Arc;
 
@@ -54,7 +54,7 @@ fn linear_to_bt709_oetf(v: f32) -> f32 {
     }
 }
 
-/// 見本の色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
+/// モックの色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
 #[derive(Debug, Clone, Default)]
 pub struct SampleColor;
 

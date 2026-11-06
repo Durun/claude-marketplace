@@ -1,10 +1,10 @@
 //! プロジェクトの保存。正本は SQLite の 1 ファイル（`project.mmdb`）で、
-//! 文書の行と操作の記録を 1 つのトランザクションで書く。
+//! プロジェクトのデータの行と操作の記録を 1 つのトランザクションで書く。
 //!
 //! - [`Store`]: 開く、書く、取り消す、バックアップ、検索、`versions/` の書き出しと取り込み。
 //! - 操作の記録は `mm-ops` の [`OpRecord`] と [`TxnRecord`] の形で表に書く。取り消しとやり直しも
-//!   逆操作（元の操作）を当てたまとまりとして同じ表に残り、版は操作の数だけ進む。
-//!   操作を当てて書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。
+//!   逆操作（元の操作）を適用したトランザクションとして同じ表に残り、バージョンは操作の数だけ進む。
+//!   操作を適用して書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。
 //! - 書き手は 1 プロセスだけ（OS のファイルロック）。ほかのプロセスは読み取りだけで開く。
 
 mod backup;
@@ -34,7 +34,7 @@ pub use wal::uncommitted_frames;
 
 use mm_types::MmError;
 
-/// rusqlite の失敗を `MmError` に写す。壊れたファイルは `Corrupt`、そのほかは `Internal`。
+/// rusqlite の失敗を `MmError` に変換する。壊れたファイルは `Corrupt`、そのほかは `Internal`。
 pub(crate) fn sql_err(e: rusqlite::Error) -> MmError {
     use rusqlite::ErrorCode::{DatabaseCorrupt, NotADatabase};
     if let rusqlite::Error::SqliteFailure(f, _) = &e {
@@ -45,7 +45,7 @@ pub(crate) fn sql_err(e: rusqlite::Error) -> MmError {
     MmError::Internal(format!("SQLite: {e}"))
 }
 
-/// `rusqlite::Result` を `mm_types::Result` に写す拡張。
+/// `rusqlite::Result` を `mm_types::Result` に変換する拡張。
 pub(crate) trait SqlExt<T> {
     fn sql(self) -> mm_types::Result<T>;
 }

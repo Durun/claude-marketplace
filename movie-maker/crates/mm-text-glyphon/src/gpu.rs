@@ -1,5 +1,5 @@
 //! glyphon（wgpu）による描画。グリフの atlas、頂点、パイプラインは glyphon が持ち、
-//! グリフの絵は `ShapedText` の字体とグリフの番号から swash で取って渡す（glyphon の `CustomGlyph`）。
+//! グリフのビットマップは `ShapedText` のフォントとグリフの番号から swash で取って渡す（glyphon の `CustomGlyph`）。
 //!
 //! 行組みを持たない `ShapedText` からも描けるよう、glyphon の `Buffer` は空のままにする。
 //! 出力は線形・premultiplied の `Rgba16Float` をリードバックた RGBA で、CPU のレンダラーと同じ意味。
@@ -116,8 +116,8 @@ fn glyphon_color(c: Rgba) -> Color {
     )
 }
 
-/// グリフを集めて `CustomGlyph` にする。位置は絵の中の整数の左上。
-/// ID を使い切ったら `Err`（途中までの ID は呼び出し側が表ごと捨てる）。
+/// グリフを集めて `CustomGlyph` にする。位置は画像の中の整数の左上。
+/// ID を使い切ったら `Err`（途中までの ID は呼び出し側が表ごと破棄する）。
 fn collect_glyphs(
     fs: &mut FontSystem,
     cache: &mut SwashCache,
@@ -210,7 +210,7 @@ impl GlyphonRasterizer {
         let limit = self.gpu.device.limits().max_texture_dimension_2d;
         if size.width > limit || size.height > limit {
             return Err(MmError::Unsupported(format!(
-                "文字の絵 {}x{} が GPU のテクスチャの上限 {limit} を超える",
+                "文字の画像 {}x{} が GPU のテクスチャの上限 {limit} を超える",
                 size.width, size.height
             )));
         }
@@ -246,7 +246,7 @@ impl GlyphonRasterizer {
     }
 
     /// グリフに ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
-    /// それでも収まらない（1 回の絵だけで上限を超える）ときは `Unsupported`。
+    /// それでも収まらない（1 回の描画だけで上限を超える）ときは `Unsupported`。
     fn collect(
         &self,
         state: &mut GpuState,
@@ -265,7 +265,7 @@ impl GlyphonRasterizer {
             }
         }
         Err(MmError::Unsupported(format!(
-            "1 回の文字の絵のグリフが多すぎる（上限 {}）",
+            "1 回の文字の描画のグリフが多すぎる（上限 {}）",
             self.id_limit
         )))
     }
@@ -402,7 +402,7 @@ mod tests {
         let reference = engine.rasterizer();
         let style = TextStyle::default();
         for text in ["ABCDE", "FGHIJ", "KLMNOP", "ABCDEFGH"] {
-            let shaped = shaper.shape(text, &style).expect("整形");
+            let shaped = shaper.shape(text, &style).expect("シェーピング");
             let got = limited.rasterize(&shaped, &style, 1.0).expect("描ける");
             let want = reference.rasterize(&shaped, &style, 1.0).expect("CPU");
             assert!(ink(&got) > 0.0, "{text}: 字が描かれる");
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn 一回の絵だけで上限を超えるなら_unsupported() {
+    fn 一回の描画だけで上限を超えるなら_unsupported() {
         let Some(gpu) = gpu() else { return };
         let engine = TextEngine::new();
         let limited = GlyphonRasterizer::with_id_limit(engine.inner.clone(), gpu, SMALL_LIMIT);
@@ -423,7 +423,7 @@ mod tests {
         let shaped = engine
             .shaper()
             .shape("ABCDEFGHIJKLMNOP", &style)
-            .expect("整形");
+            .expect("シェーピング");
         assert!(matches!(
             limited.rasterize(&shaped, &style, 1.0),
             Err(MmError::Unsupported(_))

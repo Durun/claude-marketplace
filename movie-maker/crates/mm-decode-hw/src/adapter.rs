@@ -1,4 +1,4 @@
-//! レンダラーの GPU の文脈を D3D12 のアダプターで作る頼み方。
+//! レンダラーの GPU のコンテキストを D3D12 のアダプターで作る頼み方。
 //!
 //! `GpuContext` は既定で Vulkan と D3D12 の両方から高性能のアダプターを選ぶため、Windows の NVIDIA では
 //! Vulkan が選ばれうる。d3d12va と cuvid は FFmpeg と CUDA に D3D12 のデバイスを渡す（共有資源は

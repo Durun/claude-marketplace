@@ -1,5 +1,5 @@
-//! 操作を当てて書く。`mm-ops` の [`Transaction`] を文書に当て、結果を [`Store::commit`] の
-//! 形（[`TxnInput`]）に写す。入口（CLI、アプリ、MCP）はこの 3 つの口だけを呼ぶ。
+//! 操作を適用して書く。`mm-ops` の [`Transaction`] をプロジェクトのデータに適用し、結果を [`Store::commit`] の
+//! 形（[`TxnInput`]）に変換する。操作経路（CLI、アプリ、MCP）はこの 3 つの関数だけを呼ぶ。
 
 use mm_ops::{apply_transaction, Op, OpContext, OpError, OpRecord, OpResult, Touches, Transaction};
 
@@ -7,11 +7,11 @@ use crate::records::{Actor, StoredTxn, TxnInput, TxnKind, UndoPlan};
 use crate::store::Store;
 
 impl Store {
-    /// まとまりを今の文書に当てて書く。
+    /// トランザクションを今のプロジェクトのデータに適用して書く。
     ///
-    /// `txn.base_version` が古ければ、その後に当たった操作（取り消しとやり直しを含む保存した記録）と
-    /// 触る所が重なるとき [`OpError::Conflict`]。今の版より先なら [`OpError::FutureBase`]。
-    /// `None` は今の版を元にする。失敗したときは文書も記録も変わらない。
+    /// `txn.base_version` が古ければ、その後に適用された操作（取り消しとやり直しを含む保存した記録）と
+    /// 触る所が重なるとき [`OpError::Conflict`]。今のバージョンより先なら [`OpError::FutureBase`]。
+    /// `None` は今のバージョンを元にする。失敗したときはプロジェクトのデータも記録も変わらない。
     pub fn apply_txn(
         &mut self,
         txn: Transaction,
@@ -49,7 +49,7 @@ impl Store {
         Ok(self.commit(&project, &input)?)
     }
 
-    /// 直前のまとまりを取り消して書く。逆操作を逆順に当て、その記録を `TxnKind::Undo` のまとまりとして残す。
+    /// 直前のトランザクションを取り消して書く。逆操作を逆順に適用し、その記録を `TxnKind::Undo` のトランザクションとして残す。
     /// 取り消すものが無ければ `Ok(None)`。
     pub fn undo_last(
         &mut self,
@@ -74,7 +74,7 @@ impl Store {
             .map(Some)
     }
 
-    /// 取り消したまとまりをやり直して書く。元の操作を当て直し、`TxnKind::Redo` のまとまりとして残す。
+    /// 取り消したトランザクションをやり直して書く。元の操作を適用し直し、`TxnKind::Redo` のトランザクションとして残す。
     /// やり直すものが無ければ `Ok(None)`。
     pub fn redo_last(
         &mut self,
@@ -120,7 +120,7 @@ impl Store {
         Ok(self.commit(&project, &input)?)
     }
 
-    /// 版 `base` より後に当たった操作が触った所。
+    /// バージョン `base` より後に適用された操作が触った所。
     fn touches_after(&self, base: i64) -> OpResult<Touches> {
         let mut touches = Touches::new();
         for (_, ids) in self.touches_since(base)? {

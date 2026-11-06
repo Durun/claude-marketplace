@@ -1,9 +1,9 @@
-//! デコードの選択肢の切り替え。GPU でデコードする実装を素材ごとに試し、だめなら次へ落とす。
+//! デコードの選択肢の切り替え。GPU でデコードする実装を素材ごとに試し、だめなら次へフォールバックする。
 //!
 //! - [`AutoDecoderFactory`]: `d3d12va` → `cuvid` → `ffmpeg` の順に、素材ごとに開く。開いた直後の数フレームを
-//!   デコードして通った実装を使う（NVENC で作った 4K の HEVC は d3d12va が 1 フレーム目で落ちる）。
-//!   GPU の文脈が無ければ最初から `ffmpeg`。
-//! - [`WithAudio`]: 映像を GPU の実装、音と素材の情報（音のストリーム、頭のずれ）を別のデコーダーが受け持つ。
+//!   デコードして通った実装を使う（NVENC で作った 4K の HEVC は d3d12va が 1 フレーム目でクラッシュする）。
+//!   GPU のコンテキストが無ければ最初から `ffmpeg`。
+//! - [`WithAudio`]: 映像を GPU の実装、音と素材の情報（音のストリーム、先頭のずれ）を別のデコーダーが受け持つ。
 //!   GPU の実装は音を持たないため。
 
 use std::path::Path;
@@ -13,7 +13,7 @@ use mm_audio_api::AudioBlock;
 use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, TimeRange};
 
-// 開いた直後にデコードして確かめるフレーム数。0 フレーム目で落ちる素材だけでなく、数フレーム後に落ちるものも拾う。
+// 開いた直後にデコードして確かめるフレーム数。0 フレーム目でクラッシュする素材だけでなく、数フレーム後にクラッシュするものも拾う。
 // d3d12va が別プロセスで試すフレーム数と同じにそろえる。
 #[cfg(feature = "d3d12va")]
 use mm_decode_d3d12va::PROBE_FRAMES;
@@ -35,7 +35,7 @@ impl GpuCandidate {
         }
     }
 
-    /// `open` の中で、落ちる素材を別プロセスで試し済みの実装。`auto` は試しデコードを重ねない。
+    /// `open` の中で、クラッシュする素材を別プロセスで試し済みの実装。`auto` は試しデコードを重ねない。
     pub fn probed_on_open(factory: Arc<dyn DecoderFactory>) -> Self {
         Self {
             factory,
@@ -44,11 +44,11 @@ impl GpuCandidate {
     }
 }
 
-/// 素材ごとに GPU の実装を試して、通ったものを使う口。
+/// 素材ごとに GPU の実装を試して、通ったものを使うファクトリー。
 pub struct AutoDecoderFactory {
     /// 試す順に並べた GPU の実装。
     gpu: Vec<GpuCandidate>,
-    /// 最後の逃げ道（CPU）。
+    /// 最後のフォールバック（CPU）。
     fallback: Option<Arc<dyn DecoderFactory>>,
 }
 
@@ -78,7 +78,9 @@ impl AutoDecoderFactory {
         match &self.fallback {
             Some(f) => Ok((f.open(path, gpu)?, f.id())),
             None => Err(last_error.unwrap_or_else(|| {
-                MmError::Unsupported("使えるデコーダーが無い（GPU の文脈か ffmpeg が要る）".into())
+                MmError::Unsupported(
+                    "使えるデコーダーが無い（GPU のコンテキストか ffmpeg が要る）".into(),
+                )
             })),
         }
     }
@@ -148,7 +150,7 @@ impl Decoder for SplitDecoder {
     }
 }
 
-/// 映像の実装に、音を別の実装で付ける口。
+/// 映像の実装に、音を別の実装で付けるファクトリー。
 pub struct WithAudio {
     video: Arc<dyn DecoderFactory>,
     audio: Arc<dyn DecoderFactory>,
@@ -189,7 +191,7 @@ mod tests {
         }
     }
 
-    /// 開けるが、`fail_at` 番目のフレームで落ちる実装。
+    /// 開けるが、`fail_at` 番目のフレームでクラッシュする実装。
     struct FailsAt(usize);
     struct FailingDecoder {
         inner: Box<dyn Decoder>,
@@ -262,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn 開いた直後の数フレームで落ちる実装は飛ばす() {
+    fn 開いた直後の数フレームでクラッシュする実装はスキップする() {
         for at in [0, PROBE_FRAMES - 1] {
             let a = auto(vec![Arc::new(FailsAt(at))]);
             let (_, chosen) = a
@@ -271,7 +273,7 @@ mod tests {
             assert_eq!(
                 chosen,
                 mm_testkit::SAMPLE_ID,
-                "{at} フレーム目で落ちる実装は使わない"
+                "{at} フレーム目でクラッシュする実装は使わない"
             );
         }
     }
@@ -287,14 +289,14 @@ mod tests {
     }
 
     #[test]
-    fn gpu_の文脈が無ければ最初から逃げ道を使う() {
+    fn gpu_のコンテキストが無ければ最初からフォールバックを使う() {
         let a = auto(vec![Arc::new(FailsAt(usize::MAX))]);
         let (_, chosen) = a.open_with_choice(Path::new("x.mp4"), None).unwrap();
         assert_eq!(chosen, mm_testkit::SAMPLE_ID);
     }
 
     #[test]
-    fn 逃げ道が無ければ最後の失敗を返す() {
+    fn フォールバックが無ければ最後の失敗を返す() {
         let a = AutoDecoderFactory::new(vec![GpuCandidate::new(Arc::new(CannotOpen))], None);
         assert!(matches!(
             a.open_with_choice(Path::new("x.mp4"), Some(&ctx())),
@@ -303,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn 壊れた素材は逃げ道の失敗で返る() {
+    fn 壊れた素材はフォールバックの失敗で返る() {
         let a = auto(vec![Arc::new(CannotOpen)]);
         assert!(matches!(
             a.open_with_choice(Path::new("x.broken.mp4"), Some(&ctx())),

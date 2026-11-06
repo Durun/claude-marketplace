@@ -8,12 +8,12 @@ use mm_gpu::{GpuContext, FRAME_FORMAT};
 /// 重ねる 1 枚。
 pub struct DrawItem<'a> {
     pub texture: &'a wgpu::Texture,
-    /// 絵の UV から出力の NDC への列優先の行列。
+    /// 画像の UV から出力の NDC への列優先の行列。
     pub matrix: [f32; 16],
     pub opacity: f32,
 }
 
-/// シェーダーの `Item` と同じ並び（80 バイト）。
+/// シェーダーの `Item` と同じフィールド順（80 バイト）。
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct ItemUniform {
@@ -126,7 +126,7 @@ impl Compositor {
     }
 }
 
-/// 0 が 1 枚分の uniform、1 が絵、2 が標本化。
+/// 0 が 1 枚分の uniform、1 が画像、2 が標本化。
 fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {
         binding,

@@ -1,6 +1,6 @@
 [package]
 name = "mm-doc"
-description = "文書（Project、Composition、Layer、Node、Param）の serde とスキーマの版"
+description = "プロジェクトのデータ（Project、Composition、Layer、Node、Param）の serde とスキーマのバージョン"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

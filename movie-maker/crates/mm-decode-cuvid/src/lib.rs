@@ -1,10 +1,10 @@
 //! FFmpeg の cuvid（NVDEC）でデコードした CUDA のメモリを、D3D12 の共有バッファへ 1 回コピーし、
 //! レンダラーと同じ wgpu のデバイスの上で線形の `Rgba16Float` にして返すデコーダー。
-//! `d3d12va` が開いた直後に失敗する素材（NVENC で作った 4K の HEVC など）の逃げ道。
+//! `d3d12va` が開いた直後に失敗する素材（NVENC で作った 4K の HEVC など）のフォールバック。
 //!
 //! - デバイスは `DecoderFactory::open` で渡されるレンダラーのもの。CUDA のデバイスは、そのアダプターの LUID で選ぶ。
-//! - CUDA のコピーと wgpu の読み取りは、枠ごとの共有フェンスを交互に進めて順序づける。
-//! - 10 bit の素材（P010）は 8 bit に落とさず、16 bit のまま読む。
+//! - CUDA のコピーと wgpu の読み取りは、スロットごとの共有フェンスを交互に進めて順序づける。
+//! - 10 bit の素材（P010）は 8 bit に下げず、16 bit のまま読む。
 //!
 //! FFmpeg、CUDA、D3D12 に触る所は feature `cuvid`（既定で切る）の中にある。切り替え方は README。
 //! 結果は `docs/design/spikes/nvdec.md`。

@@ -4,7 +4,7 @@
 
 ## 変える理由
 
-- `bt709` の意味が実装ごとに違った（OCIO は Rec.1886、LUT と見本は OETF の逆）。
+- `bt709` の意味が実装ごとに違った（OCIO は Rec.1886、LUT とモックは OETF の逆）。
 - デコーダーが `bt709_full` のようにレンジを名前に入れていたが、RGB へ変換した時点でレンジは展開済み。
 - 契約テストの「(1,1,1) は白」が、ACEScg のような空間では成り立たない。
 
@@ -32,7 +32,7 @@
 - `bt601`: 原色は Rec.709 と同じものとして扱い、`bt709` と同じ変換にする。SMPTE 170M と Rec.709 の原色の差は小さく、
   組み込みの OCIO 設定にも Rec.601 の色空間が無い。差を厳密に出す必要が出たら、別の名前を足す。
 - `bt2020`: 原色を作業色空間（Rec.709）に変える。広色域の色は Rec.709 の線形で負や 1 超になるので、切らずに持ち回る。
-  `mm-color-api` の `REC2020_TO_REC709`（BT.2407 の行列）を `mm-color-lut` と見本が使い、`mm-color-ocio` の
+  `mm-color-api` の `REC2020_TO_REC709`（BT.2407 の行列）を `mm-color-lut` とモックが使い、`mm-color-ocio` の
   `Linear Rec.2020` と一致することを試験で確かめる。
 - 負の値は伝達関数が符号を保って折り返す（`sign(v) * f(abs(v))`。CPU と WGSL で同じ）。
 - OCIO の組み込み設定（studio-config）には `Rec.1886 Rec.2020 - Display` の色空間が無いので、`bt2020` は
@@ -42,12 +42,12 @@
 
 - `mm-color-api`: 名前の表と `UNIT_WHITE_SPACES`。
 - `mm-types`: `ColorSpace::{bt709_oetf, bt601, bt2020}`。
-- `mm-testkit`: 見本と契約テスト。
+- `mm-testkit`: モックと契約テスト。
 - `mm-color-lut`: `bt709` を Rec.1886 に、`bt709_oetf` を追加。
 - `mm-color-ocio`: `bt709_oetf` を `Camera Rec.709`（studio-config）に対応づける。
 - `mm-decode-ffmpeg`: `Matrix::color_space` は `_full` を付けない。
 
 ## 移行
 
-1. 保存済みの文書の `bt601_full` / `bt709_full` / `bt2020_full` は `_full` を落として読む。
+1. 保存済みのプロジェクトのデータの `bt601_full` / `bt709_full` / `bt2020_full` は `_full` を落として読む。
 2. 映像の OETF として `bt709` を使っていた素材は、`bt709_oetf` に直す。

@@ -10,13 +10,13 @@ use mm_types::Result;
 use crate::store::DB_FILE;
 use crate::SqlExt;
 
-/// バックアップの置き場（プロジェクトの下）。
+/// バックアップの保存先ディレクトリー（プロジェクトの下）。
 pub(crate) const BACKUPS_DIR: &str = "backups";
 const PREFIX: &str = "project.";
 const SUFFIX: &str = ".mmdb";
 /// 壊れた DB を生のまま移すときの名前。`list` の形に合わないので、世代の整理では消さない。
 const BROKEN_SUFFIX: &str = ".broken.mmdb";
-/// 書きかけの写しの拡張子。
+/// 書きかけのコピーの拡張子。
 const TMP_EXT: &str = "tmp";
 const MS_PER_DAY: i64 = 86_400_000;
 /// 新しい順に無条件で残す個数。
@@ -24,14 +24,14 @@ const KEEP_RECENT: usize = 10;
 /// 日ごとに 1 個を残す日数。
 const KEEP_DAILY_DAYS: i64 = 30;
 
-/// 置き場にあるバックアップ 1 つ。
+/// 保存先ディレクトリーにあるバックアップ 1 つ。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupFile {
     pub path: PathBuf,
     pub at_ms: i64,
 }
 
-/// UNIX のミリ秒を `20261106T120000123Z` の形にする（UTC。名前の並びが時刻の並びになる）。
+/// UNIX のミリ秒を `20261106T120000123Z` の形にする（UTC。名前の順序が時刻の順序になる）。
 pub fn format_timestamp(ms: i64) -> String {
     let days = ms.div_euclid(MS_PER_DAY);
     let rem = ms.rem_euclid(MS_PER_DAY);
@@ -99,7 +99,7 @@ pub fn select_backups_to_delete(files: &[BackupFile], now_ms: i64) -> Vec<Backup
     delete
 }
 
-/// 置き場のバックアップを新しい順に返す。名前が形に合わないファイルは数えない。
+/// 保存先ディレクトリーのバックアップを新しい順に返す。名前が形に合わないファイルは数えない。
 pub(crate) fn list(project_dir: &Path) -> Vec<BackupFile> {
     let Ok(rd) = fs::read_dir(project_dir.join(BACKUPS_DIR)) else {
         return Vec::new();
@@ -119,8 +119,8 @@ pub(crate) fn list(project_dir: &Path) -> Vec<BackupFile> {
     out
 }
 
-/// 一貫した写しを `backups/project.<時刻>.mmdb` に作り、世代を整理する。
-/// 途中で落ちても壊れた写しが最新として残らないよう、`.tmp` に書いてから名前を変える。
+/// 一貫したコピーを `backups/project.<時刻>.mmdb` に作り、世代を整理する。
+/// 途中でクラッシュしても壊れたコピーが最新として残らないよう、`.tmp` に書いてから名前を変える。
 pub(crate) fn run(conn: &Connection, project_dir: &Path, now_ms: i64) -> Result<PathBuf> {
     let dir = project_dir.join(BACKUPS_DIR);
     fs::create_dir_all(&dir)?;
@@ -136,7 +136,7 @@ pub(crate) fn run(conn: &Connection, project_dir: &Path, now_ms: i64) -> Result<
     Ok(path)
 }
 
-/// 写しを作れない壊れた DB を、生のファイルのまま `backups/project.<時刻>.broken.mmdb`（と `-wal`、`-shm`）に移す。
+/// コピーを作れない壊れた DB を、生のファイルのまま `backups/project.<時刻>.broken.mmdb`（と `-wal`、`-shm`）に移す。
 pub(crate) fn move_broken(project_dir: &Path, now_ms: i64) -> Result<()> {
     let dir = project_dir.join(BACKUPS_DIR);
     fs::create_dir_all(&dir)?;
@@ -162,7 +162,7 @@ fn fresh_path(dir: &Path, now_ms: i64, suffix: &str) -> PathBuf {
     }
 }
 
-/// 前に落ちたときの書きかけ（`.tmp` と、`VACUUM INTO` が作る `.tmp-journal`）を消す。
+/// 前にクラッシュしたときの書きかけ（`.tmp` と、`VACUUM INTO` が作る `.tmp-journal`）を消す。
 fn remove_stale_tmp(dir: &Path) {
     let Ok(rd) = fs::read_dir(dir) else {
         return;

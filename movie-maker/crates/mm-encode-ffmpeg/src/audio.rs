@@ -1,4 +1,4 @@
-//! 音のトラック: f32 のインターリーブ → 平面 → AAC。
+//! 音のトラック: f32 のインターリーブ → プレーナー → AAC。
 
 use ff::format::context::Output;
 use ff::format::sample::{Sample, Type};

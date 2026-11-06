@@ -1,4 +1,4 @@
-//! 文書と表の行の対応。文書を行に分け、前の行との差分だけを書く。
+//! プロジェクトのデータと表の行の対応。プロジェクトのデータを行に分け、前の行との差分だけを書く。
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -26,7 +26,7 @@ pub(crate) struct DocRow {
     pub search: Vec<(&'static str, String)>,
 }
 
-/// 行の鍵から行への写像。
+/// 行のキーから行への写像。
 pub(crate) type RowMap = BTreeMap<String, DocRow>;
 
 fn row(table: &'static str, id: &str, json: String) -> DocRow {
@@ -46,25 +46,25 @@ fn to_json<T: Serialize>(v: &T) -> Result<String> {
     Ok(serde_json::to_string(v)?)
 }
 
-/// 直前の文書とその行。変わっていない要素は、直列化し直さずに行を使い回す。
+/// 直前のプロジェクトのデータとその行。変わっていない要素は、直列化し直さずに行を使い回す。
 pub(crate) struct Prev<'a> {
     pub project: &'a Project,
     pub rows: &'a RowMap,
 }
 
 impl Prev<'_> {
-    /// `unchanged` が真なら前の行の写し。
+    /// `unchanged` が真なら前の行のコピー。
     fn reuse(&self, key: &str, unchanged: bool) -> Option<DocRow> {
         unchanged.then(|| self.rows.get(key).cloned()).flatten()
     }
 }
 
-/// 文書を行に分ける。
+/// プロジェクトのデータを行に分ける。
 pub(crate) fn rows_of(p: &Project) -> Result<RowMap> {
     rows_after(None, p)
 }
 
-/// 前の文書との差だけを直列化して、文書を行に分ける。
+/// 前のプロジェクトのデータとの差だけを直列化して、プロジェクトのデータを行に分ける。
 pub(crate) fn rows_after(prev: Option<&Prev>, p: &Project) -> Result<RowMap> {
     let mut rows = RowMap::new();
     let head = json!({ "schema_version": p.schema_version });
@@ -210,7 +210,7 @@ pub(crate) fn apply_diff(tx: &Transaction, old: &RowMap, new: &RowMap) -> Result
     Ok(())
 }
 
-/// 全行を書き直す（文書の版が古い DB を開いたとき）。
+/// 全行を書き直す（プロジェクトのデータのバージョンが古い DB を開いたとき）。
 pub(crate) fn write_all(tx: &Transaction, new: &RowMap) -> Result<()> {
     for t in [
         "layers",
@@ -301,7 +301,7 @@ fn json_rows(conn: &Connection, sql: &str) -> Result<Vec<Value>> {
         .collect()
 }
 
-/// 表から文書を組み立てる。古い版の文書は `mm_doc::migrate` で今の版に上げる。
+/// 表からプロジェクトのデータを組み立てる。古いバージョンのプロジェクトのデータは `mm_doc::migrate` で今のバージョンに上げる。
 pub(crate) fn read_project(conn: &Connection) -> Result<Project> {
     let head = json_rows(conn, "SELECT json FROM project WHERE id = 1")?
         .pop()
@@ -331,7 +331,7 @@ pub(crate) fn read_project(conn: &Connection) -> Result<Project> {
     Ok(project)
 }
 
-/// DB に書かれている文書のスキーマの版。
+/// DB に書かれているプロジェクトのデータのスキーマのバージョン。
 pub(crate) fn stored_doc_version(conn: &Connection) -> Result<u32> {
     let head = json_rows(conn, "SELECT json FROM project WHERE id = 1")?
         .pop()

@@ -31,13 +31,13 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
 }
 
-/// 描かれたときの倍率を記録するだけのベクターの種類。
+/// 描かれたときの倍率を記録するだけのベクターの種類のノード。
 struct Probe(Arc<Mutex<Vec<f32>>>);
 
 impl NodeKind for Probe {
@@ -65,7 +65,7 @@ impl NodeKind for Probe {
     }
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
-        self.0.lock().expect("鍵").push(cx.scale);
+        self.0.lock().expect("ロック").push(cx.scale);
         Ok(FrameRef::Transparent { size: cx.size })
     }
 }
@@ -255,7 +255,7 @@ fn 親が拡大した入れ子の中のベクターはその分細かく描く()
         nodes: &nodes,
     })
     .expect("描ける");
-    let seen = scales.lock().expect("鍵").clone();
+    let seen = scales.lock().expect("ロック").clone();
     assert_eq!(seen.len(), 1);
     assert!(
         (seen[0] - 3.0).abs() < 0.05,
@@ -333,5 +333,5 @@ fn 親が3倍の入れ子の文字を_png_に書く() {
         .expect("ヘッダー")
         .write_image_data(&rgb)
         .expect("画素");
-    eprintln!("入れ子 3 倍の絵: {}", path.display());
+    eprintln!("入れ子 3 倍の画像: {}", path.display());
 }

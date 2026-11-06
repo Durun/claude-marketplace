@@ -103,7 +103,7 @@ pub struct IndexedFrame {
     pub frame: frame::Video,
 }
 
-/// フレームを番号の順に出す。シークは目的のフレームの手前のキーフレームからデコードして捨てる。
+/// フレームを番号の順に出す。シークは目的のフレームの手前のキーフレームからデコードして破棄する。
 pub struct Sequencer {
     reader: StreamReader,
     timeline: Timeline,
@@ -136,12 +136,12 @@ impl Sequencer {
         &self.timeline.info
     }
 
-    /// 素材の時間軸の 0（最初のフレーム）の秒。音の頭のずれを決めるのに使う。
+    /// 素材の時間軸の 0（最初のフレーム）の秒。音の先頭のずれを決めるのに使う。
     pub fn origin(&self) -> RationalTime {
         self.timeline.origin
     }
 
-    /// 音のストリームの情報と、映像に対する音の頭のずれを素材の情報に入れる。
+    /// 音のストリームの情報と、映像に対する音の先頭のずれを素材の情報に入れる。
     pub fn set_audio(&mut self, audio: Option<AudioStreamInfo>, timebase_offset: RationalTime) {
         self.timeline.info.audio = audio;
         self.timeline.info.timebase_offset = timebase_offset;
@@ -149,7 +149,7 @@ impl Sequencer {
 
     fn receive_indexed(&mut self) -> Result<Option<(i64, frame::Video)>> {
         while let Some(decoded) = self.reader.receive()? {
-            // PTS の無いフレームは番号を決められないので読み飛ばす
+            // PTS の無いフレームは番号を決められないのでスキップする
             if let Some(p) = decoded.timestamp().or(decoded.pts()) {
                 return Ok(Some((self.timeline.index_of(p), decoded)));
             }
@@ -202,7 +202,7 @@ impl Sequencer {
         self.reposition_to(index)
     }
 
-    /// デコーダーを進めながら `index` より前のフレームを捨てる。
+    /// デコーダーを進めながら `index` より前のフレームを破棄する。
     fn skip_to(&mut self, index: i64) -> Result<()> {
         self.next_index = index;
         loop {

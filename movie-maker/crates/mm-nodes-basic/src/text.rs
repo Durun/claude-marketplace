@@ -7,7 +7,7 @@ use mm_types::{
 use crate::util::migrate_same_version;
 use crate::KIND_VERSION;
 
-/// 文字。`position`（1 倍の画素）に `size` の字で描く。整形と描画は `Services` の口に任せ、
+/// 文字。`position`（1 倍の画素）に `size` の字で描く。シェーピングと描画は `Services` のインターフェースに任せ、
 /// 倍率 `cx.scale` で描くので拡大してもぼやけない（`vector`）。
 #[derive(Debug, Default)]
 pub struct TextKind;

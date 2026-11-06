@@ -1,5 +1,5 @@
 //! `mm-decode-api` の `Decoder` の実装。フレームはレンダラーの wgpu のデバイスの上の `Rgba16Float`
-//! （`GpuFrameTexture`）で返す。デコードした面は変換の完了までだけ握り、借りが長引いてもプールは尽きない。
+//! （`GpuFrameTexture`）で返す。デコードしたサーフェスは変換の完了までだけ保持し、借用が長引いてもプールは尽きない。
 //!
 //! 音は無音を返す。音は `mm-runtime` が FFmpeg のデコーダーと組み合わせる。
 
@@ -33,12 +33,12 @@ pub fn required_features() -> wgpu::Features {
     wgpu::Features::TEXTURE_FORMAT_NV12 | ten_bit_features()
 }
 
-/// 10 bit の素材（P010 と、その面を読む 16 bit の形式）に要る機能。
+/// 10 bit の素材（P010 と、そのプレーンを読む 16 bit の形式）に要る機能。
 fn ten_bit_features() -> wgpu::Features {
     wgpu::Features::TEXTURE_FORMAT_P010 | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
 }
 
-/// レンダラーの GPU の文脈を、d3d12va が使える形（D3D12 のアダプター、必要な機能つき）で頼む。
+/// レンダラーの GPU のコンテキストを、d3d12va が使える形（D3D12 のアダプター、必要な機能つき）で頼む。
 /// `wanted` が `None` なら D3D12 での高性能のアダプター。
 pub fn gpu_request(wanted: Option<&GpuAdapterId>) -> Result<GpuRequest> {
     dx12_request(wanted, required_features())
@@ -93,7 +93,7 @@ impl D3d12vaDecoder {
         })
     }
 
-    /// デコードした面を GPU の読み終わりを待たずに放す（待ちが効いていることを確かめる対照の検査用）。
+    /// デコードしたサーフェスを GPU の読み終わりを待たずに解放する（待ちが効いていることを確かめる対照の検査用）。
     #[cfg(feature = "test-hooks")]
     pub fn set_gpu_wait(&mut self, on: bool) {
         self.release.set_wait_for_gpu(on);
@@ -106,12 +106,12 @@ impl D3d12vaDecoder {
         check_device(&self.device)
     }
 
-    /// 握っている面の数。
+    /// 保持しているサーフェスの数。
     pub fn pending_surfaces(&self) -> usize {
         self.release.len()
     }
 
-    /// 包んだ資源の数。
+    /// ラップした資源の数。
     pub fn resource_count(&self) -> usize {
         self.wrapper.resource_count()
     }
@@ -158,7 +158,7 @@ impl D3d12vaDecoder {
 
 impl Drop for D3d12vaDecoder {
     fn drop(&mut self) {
-        // GPU が読み終える前に面とデバイスの資源を壊さない。
+        // GPU が読み終える前にサーフェスとデバイスの資源を壊さない。
         self.release.wait_all();
     }
 }
@@ -196,12 +196,12 @@ impl DecoderFactory for D3d12vaFactory {
         crate::ID
     }
 
-    /// `gpu` が無い、または `mm-gpu` の文脈でなければ `Err(Unsupported)`（GPU の外には出せない）。
+    /// `gpu` が無い、または `mm-gpu` のコンテキストでなければ `Err(Unsupported)`（GPU の外には出せない）。
     fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         let ctx = gpu
             .and_then(|g| g.as_any().downcast_ref::<GpuContext>())
-            .ok_or_else(|| MmError::Unsupported("d3d12va は GPU の文脈が要る".into()))?;
-        // 開くだけならデコードしないので安全（壊れた素材はここで Corrupt になる）。落ちる素材は
+            .ok_or_else(|| MmError::Unsupported("d3d12va は GPU のコンテキストが要る".into()))?;
+        // 開くだけならデコードしないので安全（壊れた素材はここで Corrupt になる）。クラッシュする素材は
         // ドライバーが D3D12 のデバイスを全部消すので、最初のデコードの前に別プロセスで試す。
         let decoder = D3d12vaDecoder::open(path, ctx)?;
         let luid = ctx

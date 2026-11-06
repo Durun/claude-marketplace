@@ -1,4 +1,4 @@
-//! 窓の各スレッド（メイン、描画、同期、自己診断）が共有する状態と、壁時計の数字を貯める所。
+//! ウィンドウの各スレッド（メイン、描画、同期、自己診断）が共有する状態と、壁時計の数字を貯める所。
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
@@ -43,7 +43,7 @@ pub fn summarize(values: &[f64]) -> Summary {
     }
 }
 
-/// 窓の外の WebView が最後に報告した大きさ。
+/// ウィンドウの外の WebView が最後に報告した大きさ。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UiSize {
     pub width: f64,
@@ -54,11 +54,11 @@ pub struct UiSize {
 /// アプリ全体で 1 つの共有状態。
 pub struct Shared {
     pub t0: Instant,
-    /// 面の物理ピクセルの大きさ。上位 32 bit が幅、下位 32 bit が高さ。
+    /// サーフェスの物理ピクセルの大きさ。上位 32 bit が幅、下位 32 bit が高さ。
     pub surface_size: AtomicU64,
     /// 最後に配置を変えた時刻（`t0` からのマイクロ秒）。描画側が最初の present で 0 に戻す。
     pub layout_us: AtomicU64,
-    /// 面にキーが届いた時刻（`t0` から）。見た目の確認で面を光らせる。
+    /// サーフェスにキーが届いた時刻（`t0` から）。見た目の確認でサーフェスを光らせる。
     pub flash_us: AtomicU64,
     /// 自己診断が `SendInput` を呼んだ時刻（`t0` から）。0 なら測らない。
     pub input_stamp_us: AtomicU64,
@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn 面の大きさは幅と高さを詰めて持つ() {
+    fn サーフェスの大きさは幅と高さを詰めて持つ() {
         let s = Shared::new();
         s.set_surface_size(1536, 960);
         assert_eq!(s.surface_size(), (1536, 960));

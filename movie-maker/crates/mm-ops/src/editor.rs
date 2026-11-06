@@ -1,8 +1,8 @@
-//! 文書を 1 本の列で編む [`Editor`]。版番号、同時書き込みの判定、取り消しとやり直し。
+//! プロジェクトのデータを 1 本の列で編む [`Editor`]。バージョン番号、同時書き込みの判定、取り消しとやり直し。
 //!
-//! メモリの上の見本の実装。保存の層（`mm_store::Store`）は同じ数え方（操作 1 つで版が 1 進み、
+//! メモリの上のモックの実装。保存の層（`mm_store::Store`）は同じ数え方（操作 1 つでバージョンが 1 進み、
 //! 取り消しとやり直しも [`TxnRecord`] として記録する）を SQLite の上で行い、
-//! 読み込みは [`Editor::with_version`] で版を引き継ぐ。
+//! 読み込みは [`Editor::with_version`] でバージョンを引き継ぐ。
 
 use serde::{Deserialize, Serialize};
 
@@ -14,20 +14,20 @@ use crate::op::Op;
 use crate::touches::Touches;
 use crate::txn::{apply_transaction, OpRecord, Transaction};
 
-/// まとまりの種類。取り消しとやり直しも記録に残し、`mm diff` が畳む。
+/// トランザクションの種類。取り消しとやり直しも記録に残し、`mm diff` が集約する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TxnKind {
-    /// 普通の操作のまとまり。
+    /// 普通の操作のトランザクション。
     Normal,
-    /// `of` のまとまりの取り消し（逆操作を逆の順に）。
+    /// `of` のトランザクションの取り消し（逆操作を逆の順に）。
     Undo { of: u64 },
-    /// `of` のまとまりのやり直し（元の操作を当て直す）。
+    /// `of` のトランザクションのやり直し（元の操作を適用し直す）。
     Redo { of: u64 },
 }
 
 impl TxnKind {
-    /// 記録に残す名前。取り消しとやり直しは、元のまとまりの名前に印を付ける。
+    /// 記録に残す名前。取り消しとやり直しは、元のトランザクションの名前に接頭辞を付ける。
     pub fn record_name(self, original: &str) -> String {
         match self {
             TxnKind::Normal => original.to_string(),
@@ -36,7 +36,7 @@ impl TxnKind {
         }
     }
 
-    /// 取り消しかやり直しの元のまとまりの ID。
+    /// 取り消しかやり直しの元のトランザクションの ID。
     pub fn of(self) -> Option<u64> {
         match self {
             TxnKind::Normal => None,
@@ -45,48 +45,48 @@ impl TxnKind {
     }
 }
 
-/// 当てたまとまりの記録。保存の層が `txns` の 1 行と `ops` の複数行に写す。
+/// 適用したトランザクションの記録。保存の層が `txns` の 1 行と `ops` の複数行に書き込む。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxnRecord {
-    /// まとまりの通し番号（1 から）。
+    /// トランザクションの通し番号（1 から）。
     pub id: u64,
     pub kind: TxnKind,
     pub name: String,
-    /// 当てる前の文書の版。
+    /// 適用する前のプロジェクトのデータのバージョン。
     pub base_version: u64,
-    /// 当てた後の文書の版。`base_version + ops.len()`（操作 1 つで 1 進む）。
+    /// 適用した後のプロジェクトのデータのバージョン。`base_version + ops.len()`（操作 1 つで 1 進む）。
     pub version: u64,
-    /// 操作ごとの記録（当てた順）。
+    /// 操作ごとの記録（適用した順）。
     pub ops: Vec<OpRecord>,
 }
 
 impl TxnRecord {
-    /// `i` 番目の操作を当てた後の版。
+    /// `i` 番目の操作を適用した後のバージョン。
     pub fn op_version(&self, i: usize) -> u64 {
         self.base_version + i as u64 + 1
     }
 }
 
-/// 文書と、その上に当てた操作の記録。
+/// プロジェクトのデータと、その上に適用した操作の記録。
 #[derive(Debug, Clone)]
 pub struct Editor {
     project: Project,
     version: u64,
     log: Vec<TxnRecord>,
-    /// 操作ごとの（当てた後の版、触った所）。古い版を元にした操作の判定に使う。
+    /// 操作ごとの（適用した後のバージョン、触った所）。古いバージョンを元にした操作の判定に使う。
     history: Vec<(u64, Touches)>,
-    /// 取り消せる普通のまとまりの ID の列と、今の位置。
+    /// 取り消せる普通のトランザクションの ID の列と、今の位置。
     undo_stack: Vec<u64>,
     undo_pos: usize,
 }
 
 impl Editor {
-    /// 版 0 の文書から。
+    /// バージョン 0 のプロジェクトのデータから。
     pub fn new(project: Project) -> Self {
         Self::with_version(project, 0)
     }
 
-    /// 保存から読んだ文書と版から。記録は空で始まり、それより前の版への判定はできない。
+    /// 保存から読んだプロジェクトのデータとバージョンから。記録は空で始まり、それより前のバージョンへの判定はできない。
     pub fn with_version(project: Project, version: u64) -> Self {
         Self {
             project,
@@ -98,17 +98,17 @@ impl Editor {
         }
     }
 
-    /// 今の文書。
+    /// 今のプロジェクトのデータ。
     pub fn project(&self) -> &Project {
         &self.project
     }
 
-    /// 今の版。
+    /// 今のバージョン。
     pub fn version(&self) -> u64 {
         self.version
     }
 
-    /// 当てたまとまりの記録（取り消しとやり直しを含む）。
+    /// 適用したトランザクションの記録（取り消しとやり直しを含む）。
     pub fn log(&self) -> &[TxnRecord] {
         &self.log
     }
@@ -123,7 +123,7 @@ impl Editor {
         self.undo_pos < self.undo_stack.len()
     }
 
-    /// まとまりを当てる。古い版を元にしていて、その後の操作と触る所が重なれば `Conflict`。
+    /// トランザクションを適用する。古いバージョンを元にしていて、その後の操作と触る所が重なれば `Conflict`。
     pub fn apply(&mut self, txn: Transaction, ctx: &OpContext) -> OpResult<&TxnRecord> {
         let base = txn.base_version.unwrap_or(self.version);
         if base > self.version {
@@ -149,7 +149,7 @@ impl Editor {
         Ok(self.log.last().expect("record が積んだ"))
     }
 
-    /// 直前のまとまりを取り消す。取り消すものが無ければ `Ok(None)`。
+    /// 直前のトランザクションを取り消す。取り消すものが無ければ `Ok(None)`。
     pub fn undo(&mut self, ctx: &OpContext) -> OpResult<Option<&TxnRecord>> {
         if !self.can_undo() {
             return Ok(None);
@@ -170,7 +170,7 @@ impl Editor {
         Ok(self.log.last())
     }
 
-    /// 取り消したまとまりをやり直す。やり直すものが無ければ `Ok(None)`。
+    /// 取り消したトランザクションをやり直す。やり直すものが無ければ `Ok(None)`。
     pub fn redo(&mut self, ctx: &OpContext) -> OpResult<Option<&TxnRecord>> {
         if !self.can_redo() {
             return Ok(None);
@@ -197,7 +197,7 @@ impl Editor {
             .expect("undo_stack の ID は log に在る")
     }
 
-    /// 版 `base` より後に当てた操作が触った所。
+    /// バージョン `base` より後に適用した操作が触った所。
     fn touches_since(&self, base: u64) -> Touches {
         let mut t = Touches::new();
         for (version, touches) in self.history.iter().rev() {
@@ -209,7 +209,7 @@ impl Editor {
         t
     }
 
-    /// 記録を積み、版を操作の数だけ進める。
+    /// 記録を積み、バージョンを操作の数だけ進める。
     fn record(&mut self, kind: TxnKind, name: String, ops: Vec<OpRecord>) -> u64 {
         let base_version = self.version;
         for record in &ops {

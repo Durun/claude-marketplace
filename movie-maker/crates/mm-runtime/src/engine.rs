@@ -1,4 +1,4 @@
-//! 組み立てた `Engine`。入口はこれだけを受け取り、実装のクレートに依存しない。
+//! 組み立てた `Engine`。操作経路はこれだけを受け取り、実装のクレートに依存しない。
 //! 書き出しの流れ（区間の描画、バッチの押し込み、段ごとの計測）は `mm-export` が
 //! [`Engine::renderer`] と [`Engine::encoders`] を使って組む。
 
@@ -15,7 +15,7 @@ use mm_types::{CompositionId, GpuAdapterId, RationalTime, Result, RgbaImage, Siz
 use crate::config::RuntimeConfig;
 use crate::registry::Registry;
 
-/// `assemble` が選んだ実装の束。
+/// `assemble` が選んだ実装の一式。
 pub struct EngineParts {
     pub config: RuntimeConfig,
     pub registry: Registry,
@@ -25,7 +25,7 @@ pub struct EngineParts {
     pub mixers: Arc<dyn MixerFactory>,
     pub cache: Arc<dyn CacheStore>,
     pub services: Services,
-    /// 組み立てで 1 回決めた GPU の文脈。GPU を使わない組み合わせでは `None`。
+    /// 組み立てで 1 回決めた GPU のコンテキスト。GPU を使わない組み合わせでは `None`。
     pub gpu: Option<Arc<dyn GpuContextRef>>,
 }
 
@@ -49,27 +49,27 @@ impl Engine {
         &self.parts.registry
     }
 
-    /// レンダラー。書き出し（`mm-export`）が段ごとに計測しながら呼ぶための口。
+    /// レンダラー。書き出し（`mm-export`）が段ごとに計測しながら呼ぶためのインターフェース。
     pub fn renderer(&mut self) -> &mut dyn Renderer {
         self.parts.renderer.as_mut()
     }
 
-    /// エンコーダーを作る口。
+    /// エンコーダーを作るファクトリー。
     pub fn encoders(&self) -> &Arc<dyn EncoderFactory> {
         &self.parts.encoders
     }
 
-    /// デコーダーを開く口。
+    /// デコーダーを開くファクトリー。
     pub fn decoders(&self) -> &Arc<dyn DecoderFactory> {
         &self.parts.decoders
     }
 
-    /// ミキサーを作る口。
+    /// ミキサーを作るファクトリー。
     pub fn mixers(&self) -> &Arc<dyn MixerFactory> {
         &self.parts.mixers
     }
 
-    /// 種類が使うほかの口の束。
+    /// 種類が使うほかのインターフェースの一式。
     pub fn services(&self) -> &Services {
         &self.parts.services
     }
@@ -93,7 +93,7 @@ impl Engine {
         ]
     }
 
-    /// 時刻 t のフレームを CPU の絵で返す（`mm frame`、Claude の目）。
+    /// 時刻 t のフレームを CPU の画像で返す（`mm frame`、Claude の目）。
     pub fn render_frame(
         &mut self,
         project: &Project,

@@ -13,7 +13,7 @@ pub struct GpuAdapterId {
     /// ドライバが返す名前（`NVIDIA GeForce RTX 5090`）。
     pub name: String,
     /// D3D12 の LUID。起動のたびに変わるので設定には残さず、その回のホストへの受け渡しにだけ使う。
-    /// 取れない裏では `None`。
+    /// 取れないバックエンドでは `None`。
     #[serde(default)]
     pub luid: Option<u64>,
 }

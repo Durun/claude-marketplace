@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_refs, invalid, RemoveSequence};
 use crate::touches::Touches;
 
-/// sequence を足す（カットを含めてよい）。本編の並びはこれで作る。
+/// sequence を足す（カットを含めてよい）。本編のシーケンスはこれで作る。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddSequence {

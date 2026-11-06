@@ -1,4 +1,4 @@
-//! `mm perf run <場面>`。場面を回して、予算と並べた結果を表と JSON に出す。
+//! `mm perf run <シナリオ>`。シナリオを回して、予算と並べた結果を表と JSON に出す。
 //!
 //! 結果は `mm-trace` の `metrics.jsonl` の形（1 行 1 集計）と、予算つきの結果の JSON の 2 つ。
 
@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 use crate::scenes;
 
-/// 回せる場面。`playback` と `scrub` は段階 2 で足す。
+/// 回せるシナリオ。`playback` と `scrub` は段階 2 で足す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Scene {
     Startup,
@@ -99,14 +99,14 @@ pub struct PerfArgs {
     pub size: (u32, u32),
 }
 
-/// 場面を回して分かった、測った環境。
+/// シナリオを回して分かった、測った環境。
 #[derive(Debug, Default)]
 pub struct Environment {
     /// 使った GPU の名前。`Engine::gpu_adapter` から取る。
     pub adapter: Option<String>,
 }
 
-/// 場面を回して結果を書く。
+/// シナリオを回して結果を書く。
 pub fn run(args: &PerfArgs, metrics: &MetricsHandle) -> Result<()> {
     if args.repeat == 0 {
         return Err(MmError::InvalidArgument("--repeat は 1 以上".into()));

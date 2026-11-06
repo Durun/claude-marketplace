@@ -1,4 +1,4 @@
-//! 癖のある素材（edit list、B フレーム入りの頭のずれと VFR、44.1 kHz・モノラル・5.1 の音）と、
+//! 癖のある素材（edit list、B フレーム入りの先頭のずれと VFR、44.1 kHz・モノラル・5.1 の音）と、
 //! 飛ばしながらのシーク、区間をまたぐ音の読み出し。
 #![cfg(feature = "ffmpeg")]
 
@@ -14,7 +14,7 @@ fn open(name: &str) -> Box<dyn Decoder> {
 }
 
 fn number(frame: &DecodedFrame) -> i64 {
-    common::read_frame_number(frame.image.as_ref().expect("CPU の絵"))
+    common::read_frame_number(frame.image.as_ref().expect("CPU の画像"))
 }
 
 fn drain(dec: &mut dyn Decoder) -> Vec<DecodedFrame> {
@@ -33,7 +33,7 @@ fn tenths(a: i128, b: i128) -> TimeRange {
     .unwrap()
 }
 
-/// 時刻 `t` の 1 フレーム目の焼いた番号が `want` になる。
+/// 時刻 `t` の 1 フレーム目の焼き込んだ番号が `want` になる。
 fn assert_seek(dec: &mut dyn Decoder, t: RationalTime, want: i64) {
     dec.seek(t).unwrap();
     let f = dec.next_frame().unwrap().expect("フレームがある");
@@ -64,7 +64,7 @@ fn edit_list_の外のパケットは索引に入らずフレーム数が出る�
 }
 
 #[test]
-fn b_フレームと頭のずれの組み合わせでも番号が合う() {
+fn b_フレームと先頭のずれの組み合わせでも番号が合う() {
     let mut dec = open("offset_bf.mp4");
     let fps = dec.info().fps.expect("CFR");
     assert_eq!(dec.info().frame_count(), 30);

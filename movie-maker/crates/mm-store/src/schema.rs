@@ -9,10 +9,10 @@ use crate::SqlExt;
 /// `PRAGMA application_id`。ASCII の "MMDB"。`.mmdb` の見分けに使う。
 pub const APPLICATION_ID: i32 = 0x4d4d_4442;
 
-/// DDL を 1 つずつ当てた先の版。`MIGRATIONS` の長さと一致する。
+/// DDL を 1 つずつ適用した先のバージョン。`MIGRATIONS` の長さと一致する。
 pub const SCHEMA_VERSION: u32 = 2;
 
-/// 版 `i` から `i + 1` に上げる DDL。文書の JSON の形の移行は `mm_doc::migrate` が持つ。
+/// バージョン `i` から `i + 1` に上げる DDL。プロジェクトのデータの JSON の形の移行は `mm_doc::migrate` が持つ。
 pub(crate) const MIGRATIONS: &[&str] = &[V1, V2];
 
 const V1: &str = "
@@ -79,8 +79,8 @@ CREATE VIRTUAL TABLE search USING fts5(
 );
 ";
 
-/// 版 2: まとまりの ID を整数にし、種類（`normal` / `undo` / `redo`）と元のまとまり、当てる前の版を持つ。
-/// 当てた後の版は書き換えないので `state` は要らない。`txns` と `ops` と `undo_stack` を作り直す。
+/// バージョン 2: トランザクションの ID を整数にし、種類（`normal` / `undo` / `redo`）と元のトランザクション、適用する前のバージョンを持つ。
+/// 適用した後のバージョンは書き換えないので `state` は要らない。`txns` と `ops` と `undo_stack` を作り直す。
 const V2: &str = "
 CREATE TABLE txn_ids (old TEXT PRIMARY KEY, new INTEGER NOT NULL) WITHOUT ROWID;
 INSERT INTO txn_ids(old, new)
@@ -142,7 +142,7 @@ pub(crate) fn user_version(conn: &Connection) -> Result<u32> {
     Ok(v)
 }
 
-/// 移行が要るか。新しい版は `Unsupported`。0（空の DB）は初期化として扱い、要るとは言わない。
+/// 移行が要るか。新しいバージョンは `Unsupported`。0（空の DB）は初期化として扱い、要るとは言わない。
 pub(crate) fn needs_migration(conn: &Connection, steps: &[&str]) -> Result<bool> {
     let v = user_version(conn)?;
     check_not_newer(v, steps)?;
@@ -152,15 +152,15 @@ pub(crate) fn needs_migration(conn: &Connection, steps: &[&str]) -> Result<bool>
 fn check_not_newer(v: u32, steps: &[&str]) -> Result<()> {
     if v as usize > steps.len() {
         return Err(MmError::Unsupported(format!(
-            "DB のスキーマの版 {v} はこのビルド（{}）より新しい",
+            "DB のスキーマのバージョン {v} はこのビルド（{}）より新しい",
             steps.len()
         )));
     }
     Ok(())
 }
 
-/// 版を 1 つずつ最後まで上げる。全体を 1 つのトランザクションで囲み、失敗したら戻る。
-/// 表の作り直しで親の表を落とすため、外部キーの検査は止めて、終わりに `foreign_key_check` で確かめる。
+/// バージョンを 1 つずつ最後まで上げる。全体を 1 つのトランザクションで囲み、失敗したら戻る。
+/// 表の作り直しで親の表を削除するため、外部キーの検査は止めて、終わりに `foreign_key_check` で確かめる。
 pub(crate) fn migrate(conn: &mut Connection, steps: &[&str]) -> Result<()> {
     let current = user_version(conn)?;
     check_not_newer(current, steps)?;
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn 古い版から_1_つずつ今の版まで上がる() {
+    fn 古いバージョンから_1_つずつ今のバージョンまで上がる() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn, &[V1]).unwrap();
         assert_eq!(user_version(&conn).unwrap(), 1);
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn 版_1_のまとまりと操作は整数の_id_に写り_undo_stack_が追う() {
+    fn バージョン_1_のトランザクションと操作は整数の_id_に写り_undo_stack_が追う() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn, &[V1]).unwrap();
         conn.execute_batch(
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn 新しい版の_db_は断る() {
+    fn 新しいバージョンの_db_は拒否する() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn, &[V1, V2_TEST]).unwrap();
         assert!(matches!(

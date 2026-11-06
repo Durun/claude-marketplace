@@ -1,6 +1,6 @@
-//! OCIO が出す GLSL の関数を naga で WGSL にし、`mm_color_transform` の入口を足す。
-//! OCIO は関数だけを出す（入口の `main` が無い）ので、空の `main` を足して読ませ、
-//! 変換後に入口を捨てて関数だけを書き出す。
+//! OCIO が出す GLSL の関数を naga で WGSL にし、`mm_color_transform` のエントリーポイントを足す。
+//! OCIO は関数だけを出す（エントリーポイントの `main` が無い）ので、空の `main` を足して読ませ、
+//! 変換後にエントリーポイントを破棄して関数だけを書き出す。
 
 use mm_types::{MmError, Result};
 use naga::back::wgsl::WriterFlags;
@@ -8,10 +8,10 @@ use naga::front::glsl::{Frontend, Options};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::ShaderStage;
 
-/// OCIO のシェーダー（`function_name` を入口に持つ GLSL の断片）を WGSL にする。
+/// OCIO のシェーダー（`function_name` をエントリーポイントに持つ GLSL の断片）を WGSL にする。
 /// 戻り値は `fn mm_color_transform(c: vec3<f32>) -> vec3<f32>` を含む。
 pub fn glsl_to_wgsl(ocio_glsl: &str, function_name: &str) -> Result<String> {
-    // main は naga が入口として要求するだけで、中身は使わない。
+    // main は naga がエントリーポイントとして要求するだけで、内容は使わない。
     let source =
         format!("#version 450\n{ocio_glsl}\nvoid main() {{ {function_name}(vec4(0.0)); }}\n");
     let mut module = Frontend::default()
@@ -21,7 +21,7 @@ pub fn glsl_to_wgsl(ocio_glsl: &str, function_name: &str) -> Result<String> {
 
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
-        .map_err(|e| MmError::Unsupported(format!("GLSL の変換結果が検証に落ちた: {e:?}")))?;
+        .map_err(|e| MmError::Unsupported(format!("GLSL の変換結果が検証に失敗した: {e:?}")))?;
     let mut wgsl = naga::back::wgsl::write_string(&module, &info, WriterFlags::empty())
         .map_err(|e| MmError::Unsupported(format!("WGSL に書けない: {e:?}")))?;
 
@@ -38,7 +38,7 @@ pub fn validate_wgsl(source: &str) -> Result<()> {
         .map_err(|e| MmError::Corrupt(format!("WGSL が読めない: {}", e.emit_to_string(source))))?;
     Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
-        .map_err(|e| MmError::Corrupt(format!("WGSL の検証に落ちた: {e:?}")))?;
+        .map_err(|e| MmError::Corrupt(format!("WGSL の検証に失敗した: {e:?}")))?;
     Ok(())
 }
 
@@ -95,8 +95,8 @@ vec4 OCIOConvert(vec4 p) {{ return texture(t, p.xyz); }}"
     }
 
     /// テクスチャとサンプラーに分ければ読める。結合サンプラーをこの形に書き換えれば
-    /// テクスチャ付きも通る見込みだが、`TransformProgram::Wgsl` にテクスチャの置き場が無いので
-    /// 試作では 3D LUT に焼く道を取る。
+    /// テクスチャ付きも通る見込みだが、`TransformProgram::Wgsl` にテクスチャを置く場所が無いので
+    /// 試作では 3D LUT にベイクする道を取る。
     #[test]
     fn 分けたテクスチャとサンプラーは読める() {
         for (kind, coord) in [("1D", "p.x"), ("2D", "p.xy"), ("3D", "p.xyz")] {

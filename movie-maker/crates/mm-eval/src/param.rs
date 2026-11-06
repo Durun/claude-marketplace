@@ -5,7 +5,7 @@ use mm_types::{ParamValue, Params, RationalTime, Rgba};
 
 /// ベジェの x を進み具合に合わせるときの許容差。
 const BEZIER_EPSILON: f64 = 1e-7;
-/// ニュートン法の反復の上限。収まらなければ二分法に落ちる。
+/// ニュートン法の反復の上限。収まらなければ二分法にフォールバックする。
 const NEWTON_ITERATIONS: usize = 8;
 /// 二分法の反復の上限（2^-40 まで詰める）。
 const BISECTION_ITERATIONS: usize = 40;

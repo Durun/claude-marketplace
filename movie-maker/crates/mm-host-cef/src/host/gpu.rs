@@ -1,4 +1,4 @@
-//! wgpu の D3D12 デバイスと、受け取った絵を PNG にするリードバック。
+//! wgpu の D3D12 デバイスと、受け取ったフレームを PNG にするリードバック。
 
 use std::path::Path;
 
@@ -36,7 +36,7 @@ pub fn create_device(adapter_hint: &str) -> Result<(wgpu::Device, wgpu::Queue, S
     })
 }
 
-/// テクスチャ（BGRA8）を RGBA8 の並びで読み戻す。
+/// テクスチャ（BGRA8）を RGBA8 の順でリードバックする。
 pub fn read_rgba(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -95,7 +95,7 @@ pub fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<()
     writer.write_image_data(rgba).map_err(|e| e.to_string())
 }
 
-/// 絵の同一性の確認に使う FNV-1a。
+/// 画像の同一性の確認に使う FNV-1a。
 pub fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
         (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)

@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_referrers, cuts_beside, Insert};
 use crate::touches::Touches;
 
-/// カットを並びから抜く。接続しているレイヤーがあれば `Project::validate` が断る（先に外す）。
+/// カットをシーケンスから抜く。接続しているレイヤーがあれば `Project::validate` が拒否する（先に外す）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Extract {

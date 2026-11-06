@@ -14,12 +14,12 @@ use mm_decode_hw::yuv::stream_bit_depth;
 
 use crate::ffi::{AvD3d12vaDeviceContext, RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS};
 
-/// デコーダーが DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が握る面の数より大きくする。
+/// デコーダーが DPB とは別に持つ予備のフレーム数。`ReleaseQueue` が保持するサーフェスの数より大きくする。
 const EXTRA_HW_FRAMES: i32 = 16;
 
 const _: () = assert!(
     EXTRA_HW_FRAMES as usize > MAX_PENDING,
-    "握る面の上限より予備を多くしないと、デコードが面を取れなくなる"
+    "保持するサーフェスの上限より予備を多くしないと、デコードがサーフェスを取れなくなる"
 );
 
 /// FFmpeg を 1 回だけ初期化する。
@@ -27,7 +27,7 @@ pub fn init() -> Result<()> {
     ff::init().map_err(|e| MmError::Internal(format!("FFmpeg の初期化: {e}")))
 }
 
-/// d3d12va の表面形式を選ぶ。素材が対応しないコーデックなら `AV_PIX_FMT_NONE` を返して失敗させる。
+/// d3d12va のサーフェス形式を選ぶ。素材が対応しないコーデックなら `AV_PIX_FMT_NONE` を返して失敗させる。
 unsafe extern "C" fn pick_d3d12(
     _ctx: *mut ffi::AVCodecContext,
     fmts: *const ffi::AVPixelFormat,
@@ -45,7 +45,7 @@ unsafe extern "C" fn pick_d3d12(
     ffi::AVPixelFormat::AV_PIX_FMT_NONE
 }
 
-/// wgpu の D3D12 デバイスを包む `AVHWDeviceContext`。
+/// wgpu の D3D12 デバイスをラップする `AVHWDeviceContext`。
 fn create_device_ref(device: &wgpu::Device) -> Result<*mut ffi::AVBufferRef> {
     // SAFETY: as_hal で得た参照は、このブロックの間だけ使う。raw のデバイスは AddRef してから FFmpeg に渡す。
     unsafe {
@@ -85,7 +85,7 @@ pub struct Opened {
 
 /// 素材を開く。H.264 と HEVC の 4:2:0 でなければ `Err(Unsupported)`。
 pub fn open(path: &Path, device: &wgpu::Device) -> Result<Opened> {
-    // 同じ ID3D12Device に FFmpeg のデバイスを同時に作ると初期化が EINVAL で落ちるので、開く間は直列にする。
+    // 同じ ID3D12Device に FFmpeg のデバイスを同時に作ると初期化が EINVAL でクラッシュするので、開く間は直列にする。
     static OPEN_LOCK: Mutex<()> = Mutex::new(());
     let _guard = OPEN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !path.exists() {
@@ -109,7 +109,7 @@ pub fn open(path: &Path, device: &wgpu::Device) -> Result<Opened> {
         )));
     }
     let mut device_ref = create_device_ref(device)?;
-    // SAFETY: open の前に、所有する AVCodecContext の欄を埋める。device_ref は av_buffer_ref で別に参照を取る。
+    // SAFETY: open の前に、所有する AVCodecContext のフィールドを埋める。device_ref は av_buffer_ref で別に参照を取る。
     unsafe {
         let p = ctx.as_mut_ptr();
         (*p).hw_device_ctx = ffi::av_buffer_ref(device_ref);

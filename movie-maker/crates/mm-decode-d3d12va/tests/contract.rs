@@ -26,7 +26,7 @@ const FILES: [&str; 6] = [
     "p10.mp4",
 ];
 
-/// GPU の文脈を作って基本の素材を開けるか。GPU が無い環境（CI）ではテストを飛ばす。
+/// GPU のコンテキストを作って基本の素材を開けるか。GPU が無い環境（CI）ではテストをスキップする。
 fn available() -> bool {
     common::gpu_available(|| {
         std::env::set_var(PROBE_ENV, env!("CARGO_BIN_EXE_mm-d3d12va-probe"));
@@ -54,7 +54,7 @@ fn drain_numbers(dec: &mut dyn Decoder) -> Vec<(i64, i64)> {
     while let Some(f) = dec.next_frame().expect("デコード") {
         out.push((
             f.index,
-            read_frame_number(f.image.as_ref().expect("CPU の絵"), 1),
+            read_frame_number(f.image.as_ref().expect("CPU の画像"), 1),
         ));
     }
     out
@@ -85,7 +85,7 @@ fn vfr_の契約を通る() {
 }
 
 #[test]
-fn 焼いた番号がフレームの番号と一致する() {
+fn 焼き込んだ番号がフレームの番号と一致する() {
     if !available() {
         return;
     }
@@ -100,7 +100,7 @@ fn 焼いた番号がフレームの番号と一致する() {
 }
 
 #[test]
-fn 頭がずれた素材でも番号が先頭から数える() {
+fn 先頭がずれた素材でも番号が先頭から数える() {
     if !available() {
         return;
     }
@@ -127,25 +127,29 @@ fn 飛び飛びのシークで目的のフレームが出る() {
         assert_eq!(
             read_frame_number(f.image.as_ref().unwrap(), 1),
             target,
-            "シーク先の絵"
+            "シーク先の画像"
         );
     }
 }
 
 #[test]
-fn 十ビットの素材は八ビットに落とさず運ぶ() {
+fn 十ビットの素材は八ビットに下げずに運ぶ() {
     if !available() {
         return;
     }
     let mut dec = open("p10.mp4");
     let mut checked = 0;
     while let Some(f) = dec.next_frame().expect("デコード") {
-        let image = f.image.as_ref().expect("CPU の絵");
+        let image = f.image.as_ref().expect("CPU の画像");
         assert_eq!(read_frame_number(image, 1), f.index);
         if f.index % 10 == 5 {
             // 傾きは 320 画素で 876 段。8 bit なら 219 段に潰れる。
             let kinds = distinct_in_row(image, 100);
-            assert!(kinds > 280, "フレーム {}: 値が {kinds} 種類しかない", f.index);
+            assert!(
+                kinds > 280,
+                "フレーム {}: 値が {kinds} 種類しかない",
+                f.index
+            );
             checked += 1;
         }
     }
@@ -153,7 +157,7 @@ fn 十ビットの素材は八ビットに落とさず運ぶ() {
 }
 
 #[test]
-fn gpu_の文脈なしでは断る() {
+fn gpu_のコンテキストなしでは拒否する() {
     if !available() {
         return;
     }
@@ -164,9 +168,9 @@ fn gpu_の文脈なしでは断る() {
     ));
 }
 
-/// `take_frame` のような取り出しをしなくても、フレームを捨てるだけでプールが尽きない。
+/// `take_frame` のような取り出しをしなくても、フレームを破棄するだけでプールが尽きない。
 #[test]
-fn フレームを捨て続けてもプールが尽きない() {
+fn フレームを破棄し続けてもプールが尽きない() {
     if !available() {
         return;
     }
@@ -181,7 +185,7 @@ fn フレームを捨て続けてもプールが尽きない() {
     assert_eq!(total, 8 * 60);
 }
 
-/// 借りを長く持っても、面は変換の完了で返るのでデコードが止まらない。
+/// 借用を長く持っても、サーフェスは変換の完了で返るのでデコードが止まらない。
 #[test]
 fn フレームを持ち続けてもデコードが止まらない() {
     if !available() {
@@ -198,10 +202,10 @@ fn フレームを持ち続けてもデコードが止まらない() {
         }
         assert_eq!(held.len(), 60 * (round + 1));
     }
-    assert!(dec.pending_surfaces() <= 8, "握る面は上限まで");
+    assert!(dec.pending_surfaces() <= 8, "保持するサーフェスは上限まで");
 }
 
-/// 変換を GPU が遅れて実行しても、面が先に上書きされて別のフレームが混ざることがない。
+/// 変換を GPU が遅れて実行しても、サーフェスが先に上書きされて別のフレームが混ざることがない。
 fn mixed_frames(wait_for_gpu: bool) -> usize {
     let ctx = ctx();
     let path = fixtures(&FILES).join("cfr.mp4");
@@ -229,10 +233,10 @@ fn gpu_が遅れても別のフレームが混ざらない() {
     }
 }
 
-/// NVIDIA の d3d12va が落とす素材（NVENC の 4K HEVC）は、レンダラーのデバイスでデコードする前に別プロセスで断られ、
+/// NVIDIA の d3d12va がクラッシュさせる素材（NVENC の 4K HEVC）は、レンダラーのデバイスでデコードする前に別プロセスで拒否され、
 /// デバイスが消えない。ドライバーが直ってデコードできるなら開けてもよい。
 #[test]
-fn 落ちる素材は別プロセスで断られデバイスを守る() {
+fn クラッシュする素材は別プロセスで拒否されデバイスを守る() {
     if !available() {
         return;
     }
@@ -240,7 +244,7 @@ fn 落ちる素材は別プロセスで断られデバイスを守る() {
     let dir = fixtures(&FILES);
     let nvenc = dir.join("nvenc4k.mp4");
     if !nvenc.exists() {
-        eprintln!("nvenc4k.mp4 が無いので飛ばす");
+        eprintln!("nvenc4k.mp4 が無いのでスキップする");
         return;
     }
     let opened = factory().open(&nvenc, None);
@@ -272,11 +276,15 @@ fn 試しデコードの最後にデバイスの無事を確かめられる() {
     }
     dec.finish()
         .expect("GPU の完了を待てて、デバイスも消えていない");
-    assert_eq!(dec.pending_surfaces(), 0, "握っていた面を全部放した");
+    assert_eq!(
+        dec.pending_surfaces(),
+        0,
+        "保持していたサーフェスを全部解放した"
+    );
 }
 
 #[test]
-fn pq_と_hlg_の素材は断る() {
+fn pq_と_hlg_の素材は拒否する() {
     if !available() {
         return;
     }
@@ -299,7 +307,7 @@ fn 色差は隣の画素へ線形に補間される() {
     let path = common::chroma_ramp_fixture();
     let mut dec = factory().open(&path, None).expect("開ける");
     let frame = dec.next_frame().expect("デコード").expect("フレーム");
-    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の絵"), 100);
+    let ratio = common::equal_neighbor_ratio(frame.image.as_ref().expect("CPU の画像"), 100);
     assert!(
         ratio < 0.15,
         "隣と同じ値の画素が {ratio:.2} の割合で並ぶ（最近傍の読み）"

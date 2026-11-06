@@ -32,7 +32,7 @@ fn sws_id(matrix: Matrix) -> i32 {
 pub struct RgbaConverter {
     scaler: Option<(SourceKey, Scaler)>,
     out: Option<frame::Video>,
-    /// 符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に当てる。
+    /// 符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に適用する。
     linear: [f32; 256],
 }
 
@@ -46,12 +46,12 @@ impl Default for RgbaConverter {
     }
 }
 
-// swscale の文脈は生ポインタを持つため自動では Send にならない。所有は 1 つのデコーダーだけで、
-// FFmpeg の文脈はスレッドに紐づかないので、デコーダーごと別スレッドへ移してよい。
+// swscale のコンテキストは生ポインタを持つため自動では Send にならない。所有は 1 つのデコーダーだけで、
+// FFmpeg のコンテキストはスレッドに紐づかないので、デコーダーごと別スレッドへ移してよい。
 unsafe impl Send for RgbaConverter {}
 
 impl RgbaConverter {
-    /// 1 フレームを RGBA の絵にする。アルファがあれば premultiplied にする。
+    /// 1 フレームを RGBA の画像にする。アルファがあれば premultiplied にする。
     pub fn convert(&mut self, src: &frame::Video) -> Result<RgbaImage> {
         let key = SourceKey {
             format: src.format(),

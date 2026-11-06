@@ -11,7 +11,7 @@ use mm_types::MmError;
 use crate::common::{actor, locked, project_with, toggle_lock, NOW};
 
 #[test]
-fn 書いた文書と操作は開き直しても残る() {
+fn 書いたプロジェクトのデータと操作は開き直しても残る() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(2);
     {
@@ -32,7 +32,7 @@ fn 書いた文書と操作は開き直しても残る() {
 }
 
 #[test]
-fn 取り消しとやり直しは位置を動かし_版と記録を進める() {
+fn 取り消しとやり直しは位置を動かし_バージョンと記録を進める() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(3);
     let mut s = Store::create(tmp.path(), &p, NOW).unwrap();
@@ -57,7 +57,7 @@ fn 取り消しとやり直しは位置を動かし_版と記録を進める() {
     assert_eq!(redo.doc_version, 4);
     assert_eq!(s.project(), &p);
 
-    // 取り消した後の新しい操作で、やり直しの先が捨てられる。
+    // 取り消した後の新しい操作で、やり直しの先が破棄される。
     s.undo_last(&human, actor(), NOW).unwrap().unwrap();
     s.undo_last(&human, actor(), NOW).unwrap().unwrap();
     assert_eq!(s.project(), &p0);
@@ -76,7 +76,7 @@ fn 取り消しとやり直しは位置を動かし_版と記録を進める() {
 }
 
 #[test]
-fn 列の位置に合わない取り消しの記録は断る() {
+fn 列の位置に合わない取り消しの記録は拒否する() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(2);
     let mut s = Store::create(tmp.path(), &p, NOW).unwrap();
@@ -94,8 +94,8 @@ fn 列の位置に合わない取り消しの記録は断る() {
 }
 
 #[test]
-fn editor_と同じ_id_と版の数え方になる() {
-    /// 同じ操作を両方に当てて、文書、版、記録が一致することを見る。
+fn editor_と同じ_id_とバージョンの数え方になる() {
+    /// 同じ操作を両方に適用して、プロジェクトのデータ、バージョン、記録が一致することを見る。
     enum Step {
         Apply(Vec<usize>),
         Undo,
@@ -184,7 +184,11 @@ fn 読むだけで開くとロックを取らず_書き手を締め出さない(
     writer.commit(&p, &input).unwrap();
 
     let reader = Store::open_read_only(tmp.path()).unwrap();
-    assert_eq!(reader.project(), &p, "書き手がいる間も今の文書を読める");
+    assert_eq!(
+        reader.project(),
+        &p,
+        "書き手がいる間も今のプロジェクトのデータを読める"
+    );
     assert!(matches!(
         reader.warnings(),
         [StoreWarning::WriterElsewhere(Some(_))]
@@ -218,7 +222,7 @@ fn バックアップから開ける() {
             .path()
             .extension()
             .is_some_and(|x| x == "tmp")),
-        "書きかけの写しは残らない"
+        "書きかけのコピーは残らない"
     );
 }
 
@@ -245,7 +249,7 @@ fn 間隔が過ぎたらバックアップを作り_前回の時刻はプロセ�
 }
 
 #[test]
-fn 壊れた_db_は戻し先つきで断る() {
+fn 壊れた_db_は戻し先つきで拒否する() {
     let tmp = tempfile::tempdir().unwrap();
     drop(Store::create(tmp.path(), &project_with(1), NOW).unwrap());
     let db = tmp.path().join("project.mmdb");
@@ -309,7 +313,9 @@ fn 同期のフォルダーでは警告して間隔を縮める() {
 fn コメントは保存される() {
     let tmp = tempfile::tempdir().unwrap();
     let s = Store::create(tmp.path(), &project_with(0), NOW).unwrap();
-    s.put_comment(&json!({ "id": "r1", "state": "open", "comp_id": "c", "text": "尻を詰める" }))
-        .unwrap();
-    assert_eq!(s.comments().unwrap()[0]["text"], "尻を詰める");
+    s.put_comment(
+        &json!({ "id": "r1", "state": "open", "comp_id": "c", "text": "アウト点を詰める" }),
+    )
+    .unwrap();
+    assert_eq!(s.comments().unwrap()[0]["text"], "アウト点を詰める");
 }

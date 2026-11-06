@@ -73,7 +73,7 @@ fn layout_bytes(layout: BufferLayout, bits: u32) -> [u8; LAYOUT_BYTES] {
 }
 
 impl BufferConverter {
-    /// 輪の枠ごとに束縛を作る。`bits` は 1 成分のビット深度。
+    /// リングバッファのスロットごとに束縛を作る。`bits` は 1 成分のビット深度。
     pub fn new(queue: wgpu::Queue, ring: &SharedRing, bits: u32) -> Self {
         let device = ring.device().clone();
         let entries = [
@@ -126,7 +126,7 @@ impl BufferConverter {
         }
     }
 
-    /// 枠の YUV を読んで `target` に描き、キューに出す。
+    /// スロットの YUV を読んで `target` に描き、キューに出す。
     pub fn submit(&mut self, slot: usize, params: YuvParams, target: &wgpu::Texture) {
         self.params.update(&self.queue, params);
         self.pass
@@ -139,7 +139,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 配置の欄が一様バッファの並びに入る() {
+    fn 配置のフィールドが一様バッファの並びに入る() {
         let layout = BufferLayout::new(7, 5, 1);
         let bytes = layout_bytes(layout, 8);
         let word = |i: usize| u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());

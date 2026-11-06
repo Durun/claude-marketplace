@@ -1,5 +1,5 @@
-//! OCIO の CPU の値を正として、(1) 生成した WGSL（GPU で実行）と (2) 焼いた 3D LUT がどこまで合うかを測る。
-//! 数字は `--nocapture` で表に出す。GPU が無ければ GPU の部分を飛ばす。
+//! OCIO の CPU の値を正として、(1) 生成した WGSL（GPU で実行）と (2) ベイクした 3D LUT がどこまで合うかを測る。
+//! 数字は `--nocapture` で表に出す。GPU が無ければ GPU の部分をスキップする。
 #![cfg(feature = "native")]
 
 use mm_color_api::{ColorTransform, TransformProgram};
@@ -7,7 +7,7 @@ use mm_color_lut::LutColor;
 use mm_color_ocio::OcioColor;
 use mm_types::ColorSpace;
 
-/// 見本の色。黒、18% グレー、白、原色、彩度の高い色、暗部、ACES で線形 1 を超えない範囲の中間色。
+/// テスト用の色。黒、18% グレー、白、原色、彩度の高い色、暗部、ACES で線形 1 を超えない範囲の中間色。
 const SAMPLES: [[f32; 3]; 10] = [
     [0.0, 0.0, 0.0],
     [0.18, 0.18, 0.18],
@@ -85,7 +85,7 @@ mod gpu {
     #[test]
     fn wgslをgpuで実行するとocioのcpuと一致する() {
         let Some(gpu) = GpuEval::new() else {
-            eprintln!("アダプターが無いので飛ばす");
+            eprintln!("アダプターが無いのでスキップする");
             return;
         };
         eprintln!("GPU: {}", gpu.adapter_name);
@@ -107,7 +107,7 @@ mod gpu {
     }
 
     #[test]
-    fn aces_の表示変換は3d_lutに焼かれ_gpuの値がcpuに近い() {
+    fn aces_の表示変換は3d_lutにベイクされ_gpuの値がcpuに近い() {
         let Some(gpu) = GpuEval::new() else {
             return;
         };
@@ -117,7 +117,7 @@ mod gpu {
         let TransformProgram::Lut3d { size, data } = program else {
             panic!("ACES の表示変換は 3D LUT になるはず（{program:?}）");
         };
-        // 0..1 に収まる中間色で比べる。LUT の外（1 超）は焼けない。
+        // 0..1 に収まる中間色で比べる。LUT の外（1 超）はベイクできない。
         let inputs: Vec<[f32; 3]> = SAMPLES.to_vec();
         let got = gpu
             .run(LUT3D_APPLY_WGSL, &inputs, Some((size, &data)))
@@ -127,13 +127,15 @@ mod gpu {
             .map(|&c| ocio.display_apply(&from, None, None, c).unwrap())
             .collect();
         let d = max_diff(&got, &want);
-        eprintln!("焼いた LUT({size}^3, GPU) と OCIO(CPU) の ACEScg -> 既定の表示: 最大差 {d:e}");
+        eprintln!(
+            "ベイクした LUT({size}^3, GPU) と OCIO(CPU) の ACEScg -> 既定の表示: 最大差 {d:e}"
+        );
         assert!(d < 5e-2, "{d}");
     }
 }
 
-/// テクスチャを持つシェーダーを naga に通した結果を表に出す。口の `Wgsl` にはテクスチャの
-/// 置き場が無いので、使うかどうかは別の問題として、naga が読めるかだけを確かめる。
+/// テクスチャを持つシェーダーを naga に通した結果を表に出す。インターフェースの `Wgsl` にはテクスチャの
+/// 置く場所が無いので、使うかどうかは別の問題として、naga が読めるかだけを確かめる。
 #[test]
 fn aces_の表示シェーダーをnagaに通す() {
     let cfg = mm_color_ocio::ffi::Config::open("ocio://default").expect("設定");

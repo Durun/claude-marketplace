@@ -25,7 +25,7 @@ fn apply(store: &mut Store, name: &str, ops: Vec<Op>, base: Option<u64>) -> mm_o
 }
 
 #[test]
-fn 取り消しの後も古い版を元にした操作は競合で断られる() {
+fn 取り消しの後も古いバージョンを元にした操作は競合で拒否される() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
     assert_eq!(
@@ -35,9 +35,9 @@ fn 取り消しの後も古い版を元にした操作は競合で断られる()
     s.undo_last(&OpContext::human(), actor(), NOW)
         .unwrap()
         .unwrap();
-    assert_eq!(s.doc_version(), 2, "取り消しも版を進める");
+    assert_eq!(s.doc_version(), 2, "取り消しもバージョンを進める");
 
-    // 版 1 を元にした l0 への操作は、版 2 の取り消しと触る所が重なる。
+    // バージョン 1 を元にした l0 への操作は、バージョン 2 の取り消しと触る所が重なる。
     let err = apply(&mut s, "古い", vec![lock(0, true)], Some(1)).unwrap_err();
     assert!(matches!(err, OpError::Conflict { .. }), "{err:?}");
 
@@ -55,7 +55,7 @@ fn 取り消しの後も古い版を元にした操作は競合で断られる()
 }
 
 #[test]
-fn 当てた版は取り消しても変わらず_diff_は取り消しと対で畳む() {
+fn 適用したバージョンは取り消しても変わらず_diff_は取り消しと対で集約する() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
     apply(&mut s, "A", vec![lock(0, true)], None).unwrap();
@@ -66,11 +66,11 @@ fn 当てた版は取り消しても変わらず_diff_は取り消しと対で�
     assert_eq!(
         s.txns_between(0, 1).unwrap().len(),
         1,
-        "版 1 には A が当たっている"
+        "バージョン 1 には A が適用されている"
     );
     assert!(
         s.txns_between(0, 2).unwrap().is_empty(),
-        "A とその取り消しは畳む"
+        "A とその取り消しは集約する"
     );
     let undo_only = s.txns_between(1, 2).unwrap();
     assert_eq!(undo_only.len(), 1);
@@ -94,7 +94,7 @@ fn 当てた版は取り消しても変わらず_diff_は取り消しと対で�
     assert_eq!(s.doc_version_at(NOW).unwrap(), 3);
     let log = s.txn_log().unwrap();
     assert_eq!(log.len(), 3);
-    assert_eq!(log[0].doc_version, 1, "A の版は書き換えない");
+    assert_eq!(log[0].doc_version, 1, "A のバージョンは書き換えない");
 }
 
 #[test]

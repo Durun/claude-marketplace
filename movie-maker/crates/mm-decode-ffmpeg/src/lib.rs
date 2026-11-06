@@ -26,7 +26,7 @@ pub use video::FfmpegDecoder;
 /// 実装の名前。`mm-runtime` の設定で選ぶ。
 pub const ID: &str = "ffmpeg";
 
-/// FFmpeg を開くデコーダーの口。
+/// FFmpeg を開くデコーダーのインターフェース。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FfmpegDecoderFactory;
 
@@ -35,7 +35,7 @@ impl DecoderFactory for FfmpegDecoderFactory {
         ID
     }
 
-    /// CPU でデコードするので GPU の文脈は使わない。
+    /// CPU でデコードするので GPU のコンテキストは使わない。
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         init()?;
         Ok(Box::new(FfmpegDecoder::open(path)?))

@@ -9,8 +9,8 @@ use crate::op::{Apply, Op};
 use crate::ops::{sequence_referrers, AddSequence};
 use crate::touches::Touches;
 
-/// sequence を外す。レイヤーの接続、`sequence` の種類、ほかの sequence の `origin` から
-/// 参照されていれば `Project::validate` が断る。
+/// sequence を外す。レイヤーの接続、`sequence` のノードの種類、ほかの sequence の `origin` から
+/// 参照されていれば `Project::validate` が拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveSequence {

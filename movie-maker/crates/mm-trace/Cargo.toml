@@ -1,6 +1,6 @@
 [package]
 name = "mm-trace"
-description = "計装。スパンの決まり、counter/gauge、metrics.jsonl の層、Chrome trace の書き出し"
+description = "計装。スパンの決まり、counter/gauge、metrics.jsonl の `Layer`、Chrome trace の書き出し"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

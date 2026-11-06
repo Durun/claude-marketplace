@@ -1,4 +1,4 @@
-//! 性能の場面。`startup` は別プロセスを起動して測り、`export` は同じプロセスで書き出しを繰り返す。
+//! 性能のシナリオ。`startup` は別プロセスを起動して測り、`export` は同じプロセスで書き出しを繰り返す。
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
@@ -157,7 +157,7 @@ fn flush_stdout() {
     let _ = std::io::stdout().flush();
 }
 
-/// `export`: 見本のプロジェクトを `--size` で書き出し、速さを測る。
+/// `export`: フィクスチャのプロジェクトを `--size` で書き出し、速さを測る。
 pub fn export(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
     let mut project = load_project(&args.project)?;
     for comp in &mut project.compositions {

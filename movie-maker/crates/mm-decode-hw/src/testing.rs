@@ -1,6 +1,6 @@
 //! GPU のデコーダー（d3d12va、cuvid）の統合テストが共有する補助。feature `testing` で入る。
 //!
-//! GPU のフレームは `ReadbackFactory` で CPU の絵にリードバックて、`mm_testkit` の契約（CPU の絵を前提に
+//! GPU のフレームは `ReadbackFactory` で CPU の画像にリードバックして、`mm_testkit` の契約（CPU の画像を前提に
 //! 同じフレームの一致を比べる）に通す。リードバックはレンダラーと同じ手順（`import`、`before_submit`、`after_submit`）。
 
 use std::fs::OpenOptions;
@@ -15,8 +15,8 @@ use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::GpuHelper;
 use mm_types::{RationalTime, Result, RgbaImage, TimeRange};
 
-/// この環境でデコーダーが使えるか。`check` は GPU の文脈を作って基本の素材を開く試し（結果はプロセスで 1 回だけ得る）。
-/// 使えなければ eprintln して `false`（テストは飛ばす）。`MM_REQUIRE_GPU` があるときは失敗にする。
+/// この環境でデコーダーが使えるか。`check` は GPU のコンテキストを作って基本の素材を開く試し（結果はプロセスで 1 回だけ得る）。
+/// 使えなければ eprintln して `false`（テストはスキップする）。`MM_REQUIRE_GPU` があるときは失敗にする。
 pub fn gpu_available(check: impl FnOnce() -> Result<()>) -> bool {
     static OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *OK.get_or_init(|| match check() {
@@ -25,7 +25,7 @@ pub fn gpu_available(check: impl FnOnce() -> Result<()>) -> bool {
             panic!("MM_REQUIRE_GPU が有るのにデコーダーを使えない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU のデコーダーを使えないので飛ばす: {e}");
+            eprintln!("GPU のデコーダーを使えないのでスキップする: {e}");
             false
         }
     })
@@ -39,7 +39,7 @@ fn media_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media")
 }
 
-/// 生成済みの見本の素材のディレクトリ。`need` が無ければ `generate.sh` で作る。
+/// 生成済みのフィクスチャの素材のディレクトリ。`need` が無ければ `generate.sh` で作る。
 pub fn fixtures(need: &[&str]) -> PathBuf {
     let root = media_root();
     let out = root.join("out");
@@ -55,11 +55,11 @@ pub fn fixtures(need: &[&str]) -> PathBuf {
         {
             let result = run_generate(&root);
             let _ = std::fs::remove_file(&lock);
-            result.expect("見本の素材を作れた");
+            result.expect("フィクスチャの素材を作れた");
             break;
         } else if Instant::now() > deadline {
             panic!(
-                "見本の素材の生成を待ち切れない（{} が残っていないか）",
+                "フィクスチャの素材の生成を待ち切れない（{} が残っていないか）",
                 lock.display()
             );
         } else {
@@ -88,12 +88,12 @@ fn run_generate(root: &Path) -> std::result::Result<(), String> {
     ))
 }
 
-/// レンダラーと同じ文脈。`request` はデコーダーの `gpu_request`。プロセスで 1 つを共有する。
+/// レンダラーと同じコンテキスト。`request` はデコーダーの `gpu_request`。プロセスで 1 つを共有する。
 pub fn gpu(request: GpuRequest) -> Arc<GpuContext> {
-    GpuContext::shared(&request).expect("GPU の文脈")
+    GpuContext::shared(&request).expect("GPU のコンテキスト")
 }
 
-/// デコードしたフレームから焼いた番号を読む。`scale` は絵を整数倍に拡大した倍率。
+/// デコードしたフレームから焼き込んだ番号を読む。`scale` は画像を整数倍に拡大した倍率。
 pub fn read_frame_number(image: &RgbaImage, scale: u32) -> i64 {
     (0..BIT_COUNT)
         .map(|k| {
@@ -104,7 +104,7 @@ pub fn read_frame_number(image: &RgbaImage, scale: u32) -> i64 {
         .sum()
 }
 
-/// GPU のデコーダーを、CPU の絵を返すデコーダーとして見せる口。
+/// GPU のデコーダーを、CPU の画像を返すデコーダーとして見せるラッパー。
 pub struct ReadbackFactory {
     pub inner: Arc<dyn DecoderFactory>,
     pub ctx: Arc<GpuContext>,
@@ -124,7 +124,7 @@ impl DecoderFactory for ReadbackFactory {
         self.inner.id()
     }
 
-    /// 渡された `gpu` を無視して、いつも組み立て済みの文脈で開く（契約は `None` で開く）。
+    /// 渡された `gpu` を無視して、いつも組み立て済みのコンテキストで開く（契約は `None` で開く）。
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         let inner = self
             .inner
@@ -136,7 +136,7 @@ impl DecoderFactory for ReadbackFactory {
     }
 }
 
-/// GPU のフレームを、レンダラーと同じ手順で CPU の絵に読み戻す。
+/// GPU のフレームを、レンダラーと同じ手順で CPU の画像にリードバックする。
 pub struct FrameReader {
     helper: WgpuGpu,
 }
@@ -148,7 +148,7 @@ impl FrameReader {
         }
     }
 
-    /// GPU のフレームを CPU の絵にする。
+    /// GPU のフレームを CPU の画像にする。
     pub fn read(&mut self, f: &DecodedFrame) -> RgbaImage {
         let handle = f.gpu.as_ref().expect("GPU のフレーム");
         let frame = self.helper.import(handle).expect("import");
@@ -159,7 +159,7 @@ impl FrameReader {
     }
 }
 
-/// GPU のフレームを CPU の絵にして返すデコーダー。
+/// GPU のフレームを CPU の画像にして返すデコーダー。
 pub struct ReadbackDecoder {
     inner: Box<dyn Decoder>,
     reader: FrameReader,
@@ -202,7 +202,7 @@ fn fs(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
 }
 ";
 
-/// GPU のキューを `target` ほど塞ぐ。提出するだけで待たない（後続の提出が遅れる状況を作る）。
+/// GPU のキューを `target` ほどブロックする。提出するだけで待たない（後続の提出が遅れる状況を作る）。
 pub fn busy_gpu(ctx: &GpuContext, target: Duration) {
     let device = &ctx.device;
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -276,7 +276,7 @@ pub fn busy_gpu(ctx: &GpuContext, target: Duration) {
     submit((target.as_secs_f64() / one.as_secs_f64()).ceil() as u32);
 }
 
-/// 8 bit に落ちていないかの目安として、行の中の画素の値の種類の数。
+/// 8 bit に下がっていないかの目安として、行の中の画素の値の種類の数。
 pub fn distinct_in_row(image: &RgbaImage, y: u32) -> usize {
     let mut values: Vec<u32> = (0..image.width())
         .map(|x| image.pixel(x, y).g.to_bits())

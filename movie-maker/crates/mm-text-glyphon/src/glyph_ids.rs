@@ -1,4 +1,4 @@
-//! グリフの絵への ID の表。glyphon の `CustomGlyph::id` は `u16` なので、振れる数に上限がある。
+//! グリフのビットマップへの ID の表。glyphon の `CustomGlyph::id` は `u16` なので、振れる数に上限がある。
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use glyphon::ContentType;
 /// `u16` の ID で振れるグリフの数。
 pub(crate) const MAX_GLYPH_IDS: usize = u16::MAX as usize + 1;
 
-/// 取り出したグリフの絵。atlas に載せる元のデータ。
+/// 取り出したグリフのビットマップ。atlas に載せる元のデータ。
 pub(crate) struct GlyphBitmap {
     pub(crate) content: ContentType,
     pub(crate) data: Vec<u8>,
@@ -20,7 +20,7 @@ pub(crate) struct GlyphBitmap {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct IdsExhausted;
 
-/// グリフの `CacheKey` から ID を引く表と、ID から絵を引く表。
+/// グリフの `CacheKey` から ID を引く表と、ID からビットマップを引く表。
 pub(crate) struct GlyphIds {
     limit: usize,
     ids: HashMap<CacheKey, u16>,
@@ -43,13 +43,13 @@ impl GlyphIds {
         self.bitmaps.len()
     }
 
-    /// ID の絵。
+    /// ID のビットマップ。
     pub(crate) fn bitmap(&self, id: u16) -> Option<&GlyphBitmap> {
         self.bitmaps.get(usize::from(id))
     }
 
-    /// グリフの絵に ID を振る。同じ `CacheKey` は同じ ID（atlas の再利用の鍵）。
-    /// 絵が空や対応外なら `Ok(None)`。上限を超えるなら、何も振らずに `Err`。
+    /// グリフのビットマップに ID を振る。同じ `CacheKey` は同じ ID（atlas の再利用のキー）。
+    /// ビットマップが空や対応外なら `Ok(None)`。上限を超えるなら、何も振らずに `Err`。
     pub(crate) fn intern(
         &mut self,
         key: CacheKey,

@@ -13,7 +13,7 @@ use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_decode_ffmpeg_core::timeline::TimeBase;
 use mm_types::{MmError, Rational, RationalTime, Result, TimeRange};
 
-/// 区間の頭より前からデコードを始める長さ（秒）。AAC などの前の窓の分を捨てるため。
+/// 区間の先頭より前からデコードを始める長さ（秒）。AAC などの前のウィンドウの分を破棄するため。
 const PREROLL_SECONDS: i64 = 1;
 
 /// 変換先のサンプル数に足す余裕。リサンプラーの内部の遅れで 1 回の出力が入力の換算より増えても収まる。
@@ -168,7 +168,7 @@ impl AudioReader {
         Ok(())
     }
 
-    /// デコードしたフレームを変換して `out` に写す。`end` に届いたら true。
+    /// デコードしたフレームを変換して `out` にコピーする。`end` に届いたら true。
     fn accept(
         &mut self,
         decoded: &mut frame::Audio,
@@ -253,7 +253,7 @@ impl AudioReader {
                 .map_err(|e| MmError::Unsupported(format!("音の形式の変換: {e}")))?,
             );
         }
-        // 出力の枠が小さいと変換し切れず、残りが内部に溜まって位置が遅れ続ける
+        // 出力バッファが小さいと変換し切れず、残りが内部に溜まって位置が遅れ続ける
         let capacity = decoded.samples() * DEFAULT_SAMPLE_RATE as usize
             / decoded.rate().max(1) as usize
             + OUTPUT_SLACK;
@@ -275,7 +275,7 @@ fn round_to_samples(t: RationalTime) -> Result<i64> {
     Ok((scaled.num() * 2 + scaled.den() as i128).div_euclid(scaled.den() as i128 * 2) as i64)
 }
 
-/// フレーム（`start` から並ぶ）のうち、`[first, end)` に入る分を `out` に写す。
+/// フレーム（`start` から並ぶ）のうち、`[first, end)` に入る分を `out` にコピーする。
 fn copy_overlap(
     packed: &[f32],
     start: i64,

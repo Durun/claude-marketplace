@@ -9,8 +9,8 @@ use crate::op::{Apply, Op};
 use crate::ops::{cut_referrers, invalid, Join};
 use crate::touches::Touches;
 
-/// `cut` を、頭から `at`（並びの時間軸での長さ）の所で割る。後ろの半分が `new_cut` になる。
-/// トランジションは前の半分に残り、`origin` は両方に写す。
+/// `cut` を、イン点から `at`（シーケンスの時間軸での長さ）の所で割る。後ろの半分が `new_cut` になる。
+/// トランジションは前の半分に残り、`origin` は両方にコピーする。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Split {

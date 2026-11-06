@@ -34,7 +34,7 @@ describe("TasksPanel", () => {
     expect(onInvoke).not.toHaveBeenCalled();
   });
 
-  it("見出しを押すとまとまりを閉じて、もう一度で開く", () => {
+  it("見出しを押すとグループを閉じて、もう一度で開く", () => {
     render(<TasksPanel onInvoke={vi.fn()} />, host);
     const toggle = host.querySelector(".mm-tasks-toggle");
     const total = host.querySelectorAll(".mm-tasks-link").length;
@@ -45,7 +45,7 @@ describe("TasksPanel", () => {
     expect(host.querySelectorAll(".mm-tasks-link").length).toBe(total);
   });
 
-  it("initiallyClosed のまとまりは閉じて始まる", () => {
+  it("initiallyClosed のグループは閉じて始まる", () => {
     render(<TasksPanel onInvoke={vi.fn()} initiallyClosed={["import"]} />, host);
     expect(host.querySelector(".mm-tasks-toggle")?.getAttribute("aria-expanded")).toBe("false");
   });

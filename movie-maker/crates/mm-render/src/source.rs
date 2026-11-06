@@ -8,14 +8,14 @@ use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, FrameSource, GpuConte
 use mm_doc::Project;
 use mm_types::{AssetId, MmError, ParamValue, Params, RationalTime, Result, TimeRange};
 
-/// `Decoder` を `FrameSource` にする。直前のフレームを覚える。
+/// `Decoder` を `FrameSource` にする。直前のフレームを保持する。
 pub struct DecoderSource {
     decoder: Box<dyn Decoder>,
     last: Option<DecodedFrame>,
 }
 
 impl DecoderSource {
-    /// デコーダーを包む。
+    /// デコーダーをラップする。
     pub fn new(decoder: Box<dyn Decoder>) -> Self {
         Self {
             decoder,
@@ -48,14 +48,14 @@ impl FrameSource for DecoderSource {
     }
 }
 
-/// 開いた素材の置き場。素材ごとに 1 度だけ開いて使い回す。
+/// 開いた素材のキャッシュ。素材ごとに 1 度だけ開いて使い回す。
 #[derive(Default)]
 pub struct SourcePool {
     sources: HashMap<AssetId, Box<dyn FrameSource>>,
 }
 
 impl SourcePool {
-    /// 全部閉じる。素材の中身が変わったとき。
+    /// 全部閉じる。素材の内容が変わったとき。
     pub fn clear(&mut self) {
         self.sources.clear();
     }

@@ -1,4 +1,4 @@
-//! 操作の記録の取り出し（`mm diff` と `mm log` の元）、名前付きの版、コメント、検索、`versions/` の書き出しと取り込み。
+//! 操作の記録の取り出し（`mm diff` と `mm log` の元）、名前付きバージョン、コメント、検索、`versions/` の書き出しと取り込み。
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -29,8 +29,8 @@ fn op_from_row(r: &Row) -> rusqlite::Result<(i64, i64, String, String, String, S
     ))
 }
 
-/// 取り消しと元のまとまりを対で消す。やり直しは直前の取り消しと対で消す。
-/// 範囲に元のまとまりが無い取り消し（範囲の前に当てたものの取り消し）は、逆操作のまとまりとして残る。
+/// 取り消しと元のトランザクションを対で消す。やり直しは直前の取り消しと対で消す。
+/// 範囲に元のトランザクションが無い取り消し（範囲の前に適用したものの取り消し）は、逆操作のトランザクションとして残る。
 pub fn fold_history(txns: Vec<StoredTxn>) -> Vec<StoredTxn> {
     let mut out: Vec<StoredTxn> = Vec::with_capacity(txns.len());
     for txn in txns {
@@ -50,7 +50,7 @@ pub fn fold_history(txns: Vec<StoredTxn>) -> Vec<StoredTxn> {
 }
 
 impl Store {
-    /// まとまりの操作を当てた順に返す。
+    /// トランザクションの操作を適用した順に返す。
     pub(crate) fn txn_ops(&self, txn_id: i64) -> Result<Vec<StoredOp>> {
         let mut st = self
             .conn
@@ -80,8 +80,8 @@ impl Store {
             .collect()
     }
 
-    /// 版番号が `(from, to]` の間に当たったまとまりを、操作つきで当てた順に返す。
-    /// 取り消しと元のまとまりは対で畳む（[`fold_history`]）。`mm diff` の元。
+    /// バージョン番号が `(from, to]` の間に適用されたトランザクションを、操作つきで適用した順に返す。
+    /// 取り消しと元のトランザクションは対で集約する（[`fold_history`]）。`mm diff` の元。
     pub fn txns_between(&self, from: i64, to: i64) -> Result<Vec<StoredTxn>> {
         let raw = self.load_txns(
             "WHERE doc_version > ?1 AND doc_version <= ?2",
@@ -90,7 +90,7 @@ impl Store {
         Ok(fold_history(raw))
     }
 
-    /// 取り消しとやり直しも含め、書いた順の全まとまり（`mm log`）。
+    /// 取り消しとやり直しも含め、書いた順の全トランザクション（`mm log`）。
     pub fn txn_log(&self) -> Result<Vec<StoredTxn>> {
         self.load_txns("", params![])
     }
@@ -136,7 +136,7 @@ impl Store {
             .collect()
     }
 
-    /// `base` より後に当たった操作（取り消しとやり直しも）の (seq, touches)。古い版を元にした操作の競合の判定に使う。
+    /// `base` より後に適用された操作（取り消しとやり直しも）の (seq, touches)。古いバージョンを元にした操作の競合の判定に使う。
     pub fn touches_since(&self, base: i64) -> Result<Vec<(i64, Vec<String>)>> {
         let mut st = self
             .conn
@@ -152,7 +152,7 @@ impl Store {
             .collect()
     }
 
-    /// 時刻（UNIX のミリ秒）までに書かれた最後の版番号（取り消しとやり直しも数える）。`@{時刻}` の指定を版番号にする。
+    /// 時刻（UNIX のミリ秒）までに書かれた最後のバージョン番号（取り消しとやり直しも数える）。`@{時刻}` の指定をバージョン番号にする。
     pub fn doc_version_at(&self, at_ms: i64) -> Result<i64> {
         let v: Option<i64> = self
             .conn
@@ -165,7 +165,7 @@ impl Store {
         Ok(v.unwrap_or(0))
     }
 
-    /// 名前付きの版。
+    /// 名前付きバージョン。
     pub fn version_by_name(&self, name: &str) -> Result<Option<VersionRow>> {
         self.conn
             .query_row(
@@ -290,7 +290,7 @@ impl Store {
         export::render_files(&self.project, &self.comments()?)
     }
 
-    /// `versions/` に決まったパスで上書きする。中身の変わったファイルだけ書く。
+    /// `versions/` に決まったパスで上書きする。内容の変わったファイルだけ書く。
     pub fn export_versions(&self) -> Result<ExportReport> {
         let files = self.export_files()?;
         let written = export::write_files(&self.dir.join(VERSIONS_DIR), &files)?;
@@ -301,7 +301,7 @@ impl Store {
         })
     }
 
-    /// 書き出して、名前付きの版として `versions` の表に残す（`mm export --name`）。
+    /// 書き出して、名前付きバージョンとして `versions` の表に残す（`mm export --name`）。
     /// `git tag` は CLI が打ち、コミットが分かれば `git_commit` に渡す。
     pub fn export_named_version(
         &self,
@@ -324,8 +324,8 @@ impl Store {
         Ok(report)
     }
 
-    /// `versions/` から DB を作り直す。文書とコメントが入り、`ops` は空から始まり、
-    /// `versions` に import の行が付く。DB がすでにあれば `overwrite` のときだけ、写しを `backups/` に残して置き換える。
+    /// `versions/` から DB を作り直す。プロジェクトのデータとコメントが入り、`ops` は空から始まり、
+    /// `versions` に import の行が付く。DB がすでにあれば `overwrite` のときだけ、コピーを `backups/` に残して置き換える。
     pub fn import_versions(
         project_dir: &Path,
         versions_dir: &Path,
@@ -363,8 +363,8 @@ impl Store {
     }
 }
 
-/// 既存の DB の写しを `backups/` に残し、DB のファイルを消す。書き手のロックを取って他の書き手を締め出す。
-/// 壊れていて写しを作れないときは、生のファイル（`-wal`、`-shm` も）をそのまま `backups/` に移す。
+/// 既存の DB のコピーを `backups/` に残し、DB のファイルを消す。書き手のロックを取って他の書き手を締め出す。
+/// 壊れていてコピーを作れないときは、生のファイル（`-wal`、`-shm` も）をそのまま `backups/` に移す。
 fn replace_existing(dir: &Path, now_ms: i64) -> Result<()> {
     let lock = WriterLock::try_acquire(dir)?
         .ok_or_else(|| MmError::InvalidArgument("別のプロセスが書き手".into()))?;
@@ -382,7 +382,7 @@ fn replace_existing(dir: &Path, now_ms: i64) -> Result<()> {
 }
 
 impl Store {
-    /// 壊れていても写しだけは取れるように、整合の検査と移行をしないで接続する。
+    /// 壊れていてもコピーだけは取れるように、整合の検査と移行をしないで接続する。
     fn open_for_backup(dir: &Path) -> Result<rusqlite::Connection> {
         rusqlite::Connection::open_with_flags(
             dir.join(DB_FILE),

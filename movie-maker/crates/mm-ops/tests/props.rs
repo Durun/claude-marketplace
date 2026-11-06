@@ -1,8 +1,8 @@
 //! 性質テスト。
-//! - 当ててから逆操作を当てると元の文書に戻る（`normalize` した JSON で比べる）。
-//! - 当てた後は `Project::validate` が通る。
-//! - `touches` が重ならない 2 つの操作は、別々に 1 つずつ当てると順を入れ替えても同じ結果になる。
-//! - トランザクションの途中で失敗すると文書は変わらない。
+//! - 適用してから逆操作を適用すると元のプロジェクトのデータに戻る（`normalize` した JSON で比べる）。
+//! - 適用した後は `Project::validate` が通る。
+//! - `touches` が重ならない 2 つの操作は、別々に 1 つずつ適用すると順を入れ替えても同じ結果になる。
+//! - トランザクションの途中で失敗するとプロジェクトのデータは変わらない。
 //!
 //! ケース数は環境変数 `MM_PROP_CASES`（既定 400）で変える。
 
@@ -25,14 +25,14 @@ fn cases() -> u32 {
         .unwrap_or(400)
 }
 
-/// 見本の文書に、種で作った操作を何個か当てて散らした文書。
+/// フィクスチャのプロジェクトのデータに、種で作った操作を何個か適用して散らしたプロジェクトのデータ。
 fn arb_project() -> impl Strategy<Value = Project> {
     prop::collection::vec(arb_spec(), 0..14).prop_map(|specs| {
         let mut p = project();
         let human = OpContext::human();
         for spec in specs {
             if let Some(op) = materialize(&spec, &p) {
-                // 当たらない操作は飛ばす。文書は常に validate の通る形。
+                // 適用できない操作はスキップする。プロジェクトのデータは常に validate の通る形。
                 let _ = op.apply(&mut p, &human);
             }
         }
@@ -44,27 +44,27 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(cases()))]
 
     #[test]
-    fn 逆操作で元に戻り_当てた後は_validate_が通る(p in arb_project(), spec in arb_spec()) {
+    fn 逆操作で元に戻り_適用した後は_validate_が通る(p in arb_project(), spec in arb_spec()) {
         let Some(op) = materialize(&spec, &p) else { return Ok(()) };
         let before = canon(&p);
         let mut doc = p.clone();
         let human = OpContext::human();
         let Ok(applied) = op.apply(&mut doc, &human) else {
-            prop_assert_eq!(canon(&doc), before, "失敗した操作が文書を変えた: {:?}", op);
+            prop_assert_eq!(canon(&doc), before, "失敗した操作がプロジェクトのデータを変えた: {:?}", op);
             return Ok(());
         };
         prop_assert!(doc.validate().is_ok(), "validate が通らない: {:?}", op);
         applied.inverse.apply(&mut doc, &human)
-            .map_err(|e| TestCaseError::fail(format!("逆操作 {:?} が当たらない: {e}", applied.inverse)))?;
+            .map_err(|e| TestCaseError::fail(format!("逆操作 {:?} が適用できない: {e}", applied.inverse)))?;
         prop_assert_eq!(canon(&doc), before, "op={:?} inverse={:?}", op, applied.inverse);
     }
 
     #[test]
-    fn touches_が重ならない操作は別々に当てて順を入れ替えても同じ(
+    fn touches_が重ならない操作は別々に適用して順を入れ替えても同じ(
         p in arb_project(),
         specs in prop::collection::vec(arb_spec(), 2..10),
     ) {
-        // 同じ文書に当たる操作の全部の組を調べる。1 組ずつだと、順で変わる組に当たりにくい。
+        // 同じプロジェクトのデータに適用できる操作の全部の組を調べる。1 組ずつだと、順で変わる組を見つけにくい。
         let ops: Vec<Op> = specs.iter().filter_map(|s| materialize(s, &p)).collect();
         for (i, a) in ops.iter().enumerate() {
             for b in &ops[i + 1..] {
@@ -76,7 +76,7 @@ proptest! {
     }
 
     #[test]
-    fn 途中で失敗したトランザクションは文書を変えない(
+    fn 途中で失敗したトランザクションはプロジェクトのデータを変えない(
         p in arb_project(),
         specs in prop::collection::vec(arb_spec(), 1..5),
         at in 0usize..5,
@@ -100,7 +100,7 @@ proptest! {
     }
 }
 
-/// 文書が持つ参照と付属の種類。生成器が通した経路の確認に使う。
+/// プロジェクトのデータが持つ参照と付属の種類。生成器が通した経路の確認に使う。
 fn features(p: &Project) -> Vec<&'static str> {
     use mm_doc::{NESTED_KIND, SEQUENCE_KIND};
     let layers: Vec<_> = p
@@ -119,7 +119,7 @@ fn features(p: &Project) -> Vec<&'static str> {
     };
     let checks = [
         ("入れ子", has_kind(NESTED_KIND)),
-        ("sequence の種類", has_kind(SEQUENCE_KIND)),
+        ("sequence のノードの種類", has_kind(SEQUENCE_KIND)),
         ("効果", layers.iter().any(|l| !l.effects.is_empty())),
         ("マスク", layers.iter().any(|l| !l.masks.is_empty())),
         ("音", layers.iter().any(|l| l.audio.is_some())),
@@ -148,7 +148,7 @@ fn features(p: &Project) -> Vec<&'static str> {
 
 #[test]
 fn 生成器は全部の操作と参照の種類を通す() {
-    // 空回りしていないことを守る。どの操作も、各種の参照や付属も、少なくとも 1 回は文書に出る。
+    // 空回りしていないことを守る。どの操作も、各種の参照や付属も、少なくとも 1 回はプロジェクトのデータに出る。
     use proptest::strategy::ValueTree;
     use proptest::test_runner::TestRunner;
     let mut runner = TestRunner::deterministic();
@@ -172,14 +172,14 @@ fn 生成器は全部の操作と参照の種類を通す() {
         }
     }
     let missing: Vec<_> = Op::NAMES.iter().filter(|n| !hit.contains(*n)).collect();
-    assert!(missing.is_empty(), "当たらなかった操作: {missing:?}");
+    assert!(missing.is_empty(), "適用できなかった操作: {missing:?}");
     assert!(
         precompose_elsewhere,
-        "最初でないコンポジションの precompose が当たらない"
+        "最初でないコンポジションの precompose が適用できない"
     );
     for want in [
         "入れ子",
-        "sequence の種類",
+        "sequence のノードの種類",
         "効果",
         "マスク",
         "音",
@@ -192,7 +192,7 @@ fn 生成器は全部の操作と参照の種類を通す() {
     ] {
         assert!(
             seen.contains(want),
-            "文書に出ない: {want}（出た: {seen:?}）"
+            "プロジェクトのデータに出ない: {want}（出た: {seen:?}）"
         );
     }
 }
@@ -209,10 +209,10 @@ fn precompose_は_unprecompose_で戻る() {
         new_layer: Id::new("lx"),
     }
     .into();
-    // l3 の親 l1 が外に残るので断る。
+    // l3 の親 l1 が外に残るので拒否する。
     assert!(pre.apply(&mut p, &human).is_err());
     assert_eq!(canon(&p), before);
-    // 続いていない範囲（l1 と l3）は断る。
+    // 続いていない範囲（l1 と l3）は拒否する。
     let skip: Op = Precompose {
         composition: Id::new("c1"),
         layers: vec![Id::new("l1"), Id::new("l3")],
@@ -246,7 +246,7 @@ fn precompose_は_unprecompose_で戻る() {
 }
 
 #[test]
-fn 見本の文書のカットは_rational_の時刻を持つ() {
+fn フィクスチャのプロジェクトのデータのカットは_rational_の時刻を持つ() {
     let p = project();
     let total: RationalTime = p.sequences[0]
         .cuts

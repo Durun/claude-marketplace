@@ -1,4 +1,4 @@
-//! 文書の不変条件（`Project::validate`）のテスト。
+//! プロジェクトのデータの不変条件（`Project::validate`）のテスト。
 
 use mm_types::{ParamValue, Rational, RationalTime};
 
@@ -46,7 +46,7 @@ fn is_invalid(r: Result<()>) -> bool {
 }
 
 #[test]
-fn 入れ子の循環を断る() {
+fn 入れ子の循環を拒否する() {
     let p = project(vec![
         comp("a", vec![layer("la", nested("b"))]),
         comp("b", vec![layer("lb", nested("a"))]),
@@ -60,7 +60,7 @@ fn 入れ子の循環を断る() {
 }
 
 #[test]
-fn 無い入れ子と無いレンダーターゲットの先を断る() {
+fn 無い入れ子と無いレンダーターゲットの先を拒否する() {
     let p = project(vec![comp("a", vec![layer("la", nested("zzz"))])]);
     assert!(is_invalid(p.validate()));
     let mut p = project(vec![comp("a", vec![])]);
@@ -78,7 +78,7 @@ fn 無い入れ子と無いレンダーターゲットの先を断る() {
 }
 
 #[test]
-fn id_の重複を断る() {
+fn id_の重複を拒否する() {
     let p = project(vec![
         comp("a", vec![layer("l", Node::new("solid", 1))]),
         comp("b", vec![layer("l", Node::new("solid", 1))]),
@@ -87,7 +87,7 @@ fn id_の重複を断る() {
 }
 
 #[test]
-fn in_が_out_以上なら断る() {
+fn in_が_out_以上なら拒否する() {
     let mut l = layer("l", Node::new("solid", 1));
     l.out_point = RationalTime::ZERO;
     assert!(is_invalid(project(vec![comp("a", vec![l])]).validate()));

@@ -1,5 +1,5 @@
 #!/bin/sh
-# 見本の素材を ffmpeg の CLI で out/ に作る。生成物は git に入れない。
+# フィクスチャの素材を ffmpeg の CLI で out/ に作る。生成物は git に入れない。
 # フレームの番号は左上の 16x16 の 16 個の箱（下位ビットが左）に白黒で焼く。
 # 圧縮に強く、デコード後の画素から番号を読み戻せる（読み方は mm-decode-ffmpeg/tests/common.rs）。
 # 人の目用の番号は drawtext で重ねる（フォントが見つからなければ省く）。
@@ -22,7 +22,7 @@ find_font() {
 
 font=$(find_font || true)
 label=""
-# コロンやバックスラッシュの入るパスを filter に渡さないよう、フォントを out/ に写して相対で指す
+# コロンやバックスラッシュの入るパスを filter に渡さないよう、フォントを out/ にコピーして相対で指す
 if [ -n "$font" ]; then
   cp "$font" "$out/font.ttf"
   label=",drawtext=fontfile=font.ttf:text='%{n}':x=24:y=60:fontsize=48:fontcolor=white"
@@ -54,11 +54,11 @@ x264="-c:v libx264 -preset veryfast -crf 12 -pix_fmt yuv420p -color_primaries bt
   -vf "settb=1/90000,setpts='(N/30+0.012*mod(N,3))/TB'" \
   $x264 -g 12 -bf 0 -fps_mode passthrough -enc_time_base 1/90000 -video_track_timescale 90000 "$out/vfr.mp4"
 
-# 最初のフレームが 0 秒でない素材（時間軸の頭が 0.5 秒）
+# 最初のフレームが 0 秒でない素材（時間軸の先頭が 0.5 秒）
 "$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
   $x264 -g 10 -bf 0 -output_ts_offset 0.5 -avoid_negative_ts disabled -video_track_timescale 90000 "$out/offset.mp4"
 
-# B フレームがあり、頭が 0.5 秒ずれた素材
+# B フレームがあり、先頭が 0.5 秒ずれた素材
 "$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 30)" \
   $x264 -g 10 -bf 2 -output_ts_offset 0.5 -avoid_negative_ts disabled -video_track_timescale 90000 "$out/offset_bf.mp4"
 
@@ -95,7 +95,7 @@ head -c $((size / 3)) "$out/cfr.mp4" >"$out/broken.mp4"
   "$out/p10.mp4" || rm -f "$out/p10.mp4"
 
 # NVENC で作った 4K の HEVC（CTB 32）。NVIDIA の d3d12va が 1 フレーム目で落とす形で、cuvid や CPU に切り替える検査に使う。
-# NVENC が無い PC では作らない（テストは飛ばす）。箱は 320x180 の絵を整数倍に拡大して 192 画素の箱にする。
+# NVENC が無い PC では作らない（テストはスキップする）。箱は 320x180 の画像を整数倍に拡大して 192 画素の箱にする。
 if "$FFMPEG" -hide_banner -encoders 2>/dev/null | grep -q hevc_nvenc; then
   "$FFMPEG" -y -v error -f lavfi -i "$(video_source 30 24),scale=3840:2160:flags=neighbor" \
     -c:v hevc_nvenc -preset p4 -b:v 30M -g 12 -bf 2 -pix_fmt yuv420p -tag:v hvc1 \

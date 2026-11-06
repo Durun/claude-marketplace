@@ -1,4 +1,4 @@
-//! 組み立ての設定。口ごとにどの実装を使うかを名前で選ぶ。
+//! 組み立ての設定。インターフェースごとにどの実装を使うかを名前で選ぶ。
 
 use std::str::FromStr;
 
@@ -7,16 +7,16 @@ use serde::{Deserialize, Serialize};
 use mm_types::{GpuAdapterId, MmError};
 
 /// 実装の名前。`FromStr` で設定ファイルと環境変数から読む。
-/// 口ごとに選べる名前は決まっていて、合わない組み合わせは `assemble` が `Unsupported` で断る。
+/// インターフェースごとに選べる名前は決まっていて、合わない組み合わせは `assemble` が `Unsupported` で拒否する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    /// `mm-testkit` の見本。
+    /// `mm-testkit` のモック。
     #[default]
     Sample,
     /// `mm-render`（描画）。
     Wgpu,
-    /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU の文脈を使う。
+    /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU のコンテキストを使う。
     Glyphon,
     /// `mm-text-glyphon` の CPU（swash）の描画。
     Cpu,
@@ -56,7 +56,7 @@ impl Backend {
 }
 
 impl Backend {
-    /// この実装が GPU の文脈を使うか。GPU でデコードする実装（`d3d12va`、`cuvid`、それを試す `auto`）は
+    /// この実装が GPU のコンテキストを使うか。GPU でデコードする実装（`d3d12va`、`cuvid`、それを試す `auto`）は
     /// レンダラーと同じデバイスが要る。
     pub fn uses_gpu(self) -> bool {
         matches!(
@@ -65,7 +65,7 @@ impl Backend {
         )
     }
 
-    /// GPU の文脈が無いと組めない実装か。`auto` は文脈が無ければ ffmpeg で動くので含まない。
+    /// GPU のコンテキストが無いと組めない実装か。`auto` はコンテキストが無ければ ffmpeg で動くので含まない。
     pub fn requires_gpu(self) -> bool {
         self.uses_gpu() && self != Backend::Auto
     }
@@ -97,7 +97,7 @@ impl FromStr for Backend {
     }
 }
 
-/// 口ごとの実装の選択。
+/// インターフェースごとの実装の選択。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
@@ -115,24 +115,24 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// 全部を見本にした設定。
+    /// 全部をモックにした設定。
     pub fn sample() -> Self {
         Self::default()
     }
 
-    /// GPU の文脈を作る要る組み合わせか。レンダラー、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
+    /// GPU のコンテキストを作る要る組み合わせか。レンダラー、デコーダー、文字（glyphon）のどれかが GPU を使うとき。
     pub fn needs_gpu(&self) -> bool {
         self.render.uses_gpu() || self.decode.uses_gpu() || self.text == Backend::Glyphon
     }
 
-    /// GPU の文脈が作れないと組めない組み合わせか。`needs_gpu` のうち、`decode: auto` だけが理由なら偽
+    /// GPU のコンテキストが作れないと組めない組み合わせか。`needs_gpu` のうち、`decode: auto` だけが理由なら偽
     /// （GPU の無い環境では ffmpeg で動く）。
     pub fn requires_gpu(&self) -> bool {
         self.render.requires_gpu() || self.decode.requires_gpu() || self.text == Backend::Glyphon
     }
 
-    /// 本物の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
-    /// デコードとエンコードは ffmpeg。キャッシュは本物がまだ無いので見本のまま。
+    /// 実際の実装の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
+    /// デコードとエンコードは ffmpeg。キャッシュは実際の実装がまだ無いのでモックのまま。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
@@ -188,7 +188,7 @@ mod tests {
         };
         assert!(
             decode_only.needs_gpu(),
-            "デコーダーが GPU を使う選択でも文脈は要る"
+            "デコーダーが GPU を使う選択でもコンテキストは要る"
         );
     }
 

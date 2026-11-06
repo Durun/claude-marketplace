@@ -1,4 +1,4 @@
-//! wgpu の面を張る子 HWND。Tauri の窓の下に自前で作り、フォーカスとキーを自分で受ける。
+//! wgpu のサーフェスを張る子 HWND。Tauri のウィンドウの下に自前で作り、フォーカスとキーを自分で受ける。
 
 use std::sync::{Arc, OnceLock};
 
@@ -60,7 +60,7 @@ pub fn create(
 pub fn set_rect(hwnd: isize, rect: (i32, i32, i32, i32)) {
     let (x, y, w, h) = rect;
     unsafe {
-        // 失敗しても次の Resized で同じ値を入れ直すので、結果は捨てる。
+        // 失敗しても次の Resized で同じ値を入れ直すので、結果は破棄する。
         let _ = SetWindowPos(
             HWND(hwnd as *mut _),
             None,

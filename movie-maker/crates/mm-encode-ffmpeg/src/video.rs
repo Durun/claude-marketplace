@@ -85,7 +85,9 @@ impl VideoTrack {
     /// 1 フレームをエンコードして書く。
     pub fn push(&mut self, output: &mut Output, image: &RgbaImage) -> Result<()> {
         if image.size() != self.size {
-            return Err(MmError::InvalidArgument("フレームの大きさが設定と違う".into()));
+            return Err(MmError::InvalidArgument(
+                "フレームの大きさが設定と違う".into(),
+            ));
         }
         let mut rgba = frame::Video::new(Pixel::RGBA, self.size.width, self.size.height);
         fill_rgba(&mut rgba, image, &self.table);
@@ -184,7 +186,7 @@ fn make_scaler(size: Size) -> Result<Scaler> {
     Ok(scaler)
 }
 
-/// 線形の f32 の画素を Rec.1886 の 8 ビットにエンコードして RGBA のフレームへ写す。
+/// 線形の f32 の画素を Rec.1886 の 8 ビットにエンコードして RGBA のフレームへコピーする。
 /// アルファは使わず不透明として書く（premultiplied なので黒の上に置いた色と同じ）。
 fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
     let width = image.width() as usize;

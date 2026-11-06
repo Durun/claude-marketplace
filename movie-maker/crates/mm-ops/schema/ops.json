@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Op",
-  "description": "命令。JSON では `op` の欄に名前（camelCase）、残りの欄に引数。\n引数の大きさが枝ごとに違うので、全部 `Box` で持つ。",
+  "description": "操作。JSON では `op` のフィールドに名前（camelCase）、残りのフィールドに引数。\n引数の大きさがバリアントごとに違うので、全部 `Box` で持つ。",
   "oneOf": [
     {
       "description": "レイヤーを足す。",
@@ -110,7 +110,7 @@
       ]
     },
     {
-      "description": "パラメータを外す（無くてもよい欄だけ）。",
+      "description": "パラメータを外す（無くてもよいフィールドだけ）。",
       "type": "object",
       "properties": {
         "op": {
@@ -537,7 +537,7 @@
       ]
     },
     {
-      "description": "カットを並びに差し込む（後ろがずれる）。",
+      "description": "カットをシーケンスに差し込む（後ろがずれる）。",
       "type": "object",
       "properties": {
         "cut": {
@@ -660,7 +660,7 @@
       ]
     },
     {
-      "description": "カットの頭か尻を動かし、後ろをずらす。",
+      "description": "カットのイン点かアウト点を動かし、後ろをずらす。",
       "type": "object",
       "properties": {
         "by": {
@@ -710,7 +710,7 @@
       ]
     },
     {
-      "description": "カットの中身をずらす（位置と長さは変わらない）。",
+      "description": "カットの内容をずらす（位置と長さは変わらない）。",
       "type": "object",
       "properties": {
         "by": {
@@ -895,7 +895,7 @@
           "type": "string"
         },
         "in": {
-          "description": "素材の時間軸での入り。",
+          "description": "素材の時間軸でのイン点。",
           "$ref": "#/$defs/RationalTime"
         },
         "origin": {
@@ -969,19 +969,19 @@
       "description": "動かす端。",
       "oneOf": [
         {
-          "description": "頭（`in`）。",
+          "description": "イン点（`in`）。",
           "type": "string",
           "const": "in"
         },
         {
-          "description": "尻（`out`）。",
+          "description": "アウト点（`out`）。",
           "type": "string",
           "const": "out"
         }
       ]
     },
     "Effect": {
-      "description": "効果。動画オブジェクトの種類を 1 つ、レイヤーの絵を入力にして掛ける。",
+      "description": "効果。ノードの種類を 1 つ、レイヤーの画像を入力にして掛ける。",
       "type": "object",
       "properties": {
         "enabled": {
@@ -1059,7 +1059,7 @@
       ]
     },
     "Layer": {
-      "description": "レイヤー。動画オブジェクトを 1 つ持ち、時間と重ね方を足す。\n\nコンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。\n`time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。",
+      "description": "レイヤー。ノードを 1 つ持ち、時間と重ね方を足す。\n\nコンポジションの時間軸での範囲は `[start, start + (out - in) / speed)`。\n`time_remap` があっても範囲は変わらず、範囲の中の写像だけ変わる。",
       "type": "object",
       "properties": {
         "attach_to": {
@@ -1103,11 +1103,11 @@
           "type": "string"
         },
         "in": {
-          "description": "素材の時間軸での入り。",
+          "description": "素材の時間軸でのイン点。",
           "$ref": "#/$defs/RationalTime"
         },
         "lock": {
-          "description": "人が直した所。Claude の入口からの命令は断る。",
+          "description": "人が直した所。Claude の操作経路からの操作は拒否する。",
           "type": "boolean",
           "default": false
         },
@@ -1172,7 +1172,7 @@
           "default": null
         },
         "transform": {
-          "description": "位置・拡大・回転・アンカー。描画器が合成で掛ける（種類には渡さない）。",
+          "description": "位置・拡大・回転・アンカー。レンダラーが合成で掛ける（ノードの種類には渡さない）。",
           "$ref": "#/$defs/Transform",
           "default": {
             "anchor": null,
@@ -1314,7 +1314,7 @@
       ]
     },
     "Node": {
-      "description": "動画オブジェクト。種類の名前と版、パラメータ、入力。",
+      "description": "ノード。ノードの種類の名前とバージョン、パラメータ、入力。",
       "type": "object",
       "properties": {
         "inputs": {
@@ -1377,7 +1377,7 @@
       "type": "object",
       "properties": {
         "cut": {
-          "description": "カットの ID（カットの種類のパラメータを指すとき）。",
+          "description": "カットの ID（カットのノードのパラメータを指すとき）。",
           "type": [
             "string",
             "null"
@@ -1391,7 +1391,7 @@
           ]
         },
         "path": {
-          "description": "持ち主の中の道筋。",
+          "description": "持ち主の中のパス。",
           "type": "string"
         }
       },
@@ -1605,7 +1605,7 @@
       "type": "object",
       "properties": {
         "codec": {
-          "description": "エンコーダーの名前（`h264_nvenc`、`prores_ks`、見本は `sample`）。",
+          "description": "エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。",
           "type": "string"
         },
         "composition": {
@@ -1680,11 +1680,11 @@
       ]
     },
     "Sequence": {
-      "description": "磁気の並び。OTIO の `Track` に写せる形。",
+      "description": "マグネティックシーケンス。OTIO の `Track` に対応づけられる形。",
       "type": "object",
       "properties": {
         "cuts": {
-          "description": "頭から順。",
+          "description": "先頭から順。",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Cut"
@@ -1730,7 +1730,7 @@
       ]
     },
     "TimeKeyframe": {
-      "description": "タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま写す）。",
+      "description": "タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。",
       "type": "object",
       "properties": {
         "interpolation": {
@@ -1752,7 +1752,7 @@
       ]
     },
     "TimeRemap": {
-      "description": "タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に写す折れ線。\n最初より前と最後より後は端の値を保つ。",
+      "description": "タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。\n最初より前と最後より後は端の値を保つ。",
       "type": "object",
       "properties": {
         "keyframes": {
@@ -1792,7 +1792,7 @@
       "type": "object",
       "properties": {
         "anchor": {
-          "description": "回転と拡大の中心（Vec2）。`None` はレイヤーの絵の中心。",
+          "description": "回転と拡大の中心（Vec2）。`None` はレイヤーの画像の中心。",
           "anyOf": [
             {
               "$ref": "#/$defs/Param"

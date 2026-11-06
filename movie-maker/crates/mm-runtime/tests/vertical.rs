@@ -1,5 +1,5 @@
 //! 縦の 1 本: 素材 1 本を切って、文字を載せ、音を付けるまでを `Engine` 経由で通す。
-//! 書き出しまでの一本は `mm-export` のテストが持つ。全部が見本の実装。
+//! 書き出しまでの一本は `mm-export` のテストが持つ。全部がモックの実装。
 
 use mm_node_api::Quality;
 use mm_runtime::{assemble, RuntimeConfig};

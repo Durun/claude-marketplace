@@ -1,4 +1,4 @@
-/** 作業のまとまりの中の 1 項目。command は押したときに呼ぶ操作の名前。 */
+/** 作業のグループの中の 1 項目。command は押したときに呼ぶ操作の名前。 */
 export interface TaskItem {
   id: string;
   label: string;
@@ -7,7 +7,7 @@ export interface TaskItem {
   disabled?: boolean;
 }
 
-/** 作業のまとまり。見出しを押すと開け閉めする。 */
+/** 作業のグループ。見出しを押すと開け閉めする。 */
 export interface TaskGroup {
   id: string;
   title: string;

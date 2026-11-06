@@ -1,4 +1,4 @@
-//! 文書の不変条件。[`Project::validate`] が読み込みと操作の後に通す。
+//! プロジェクトのデータの不変条件。[`Project::validate`] が読み込みと操作の後に通す。
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -36,7 +36,7 @@ impl<'a> IdSet<'a> {
 }
 
 impl Project {
-    /// 文書の不変条件を確かめる。
+    /// プロジェクトのデータの不変条件を確かめる。
     ///
     /// - 素材とコンポジションの長さが負でない。レイヤーとカットは `in < out`。
     /// - ID が種類ごとに重複しない。
@@ -212,7 +212,7 @@ fn validate_time_remap(id: &LayerId, remap: &crate::TimeRemap) -> Result<()> {
     Ok(())
 }
 
-/// レイヤーが直接持つパラメータ（種類のパラメータは [`validate_node`]）。
+/// レイヤーが直接持つパラメータ（ノードの種類のパラメータは [`validate_node`]）。
 fn layer_params(layer: &Layer) -> impl Iterator<Item = &Param> {
     let masks = layer
         .masks

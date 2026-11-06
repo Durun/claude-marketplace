@@ -1,4 +1,4 @@
-//! FFmpeg の `ID3D12Resource`（NV12 か P010）を wgpu のテクスチャに包む。コピーはしない。
+//! FFmpeg の `ID3D12Resource`（NV12 か P010）を wgpu のテクスチャにラップする。コピーはしない。
 
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -12,7 +12,7 @@ use mm_decode_hw::device::queue_wait;
 
 use crate::ffi::{AvD3d12vaFrame, DXGI_FORMAT_NV12, DXGI_FORMAT_P010};
 
-/// 包んだフレーム。`y` と `uv` が 2 つの面の見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
+/// ラップしたフレーム。`y` と `uv` が 2 つのプレーンの見え方。8 bit は `R8Unorm` と `Rg8Unorm`、
 /// 10 bit は `R16Unorm` と `Rg16Unorm`。
 #[derive(Clone)]
 pub struct PlaneViews {
@@ -31,7 +31,7 @@ impl PlaneViews {
     }
 }
 
-/// FFmpeg の `hw_frames_ctx`（面のプール）への参照。プールが作り直されたかを、アドレスの再利用に
+/// FFmpeg の `hw_frames_ctx`（サーフェスのプール）への参照。プールが作り直されたかを、アドレスの再利用に
 /// 惑わされず見分けるために、参照を持って生かしておく。
 struct FramesRef(*mut ffmpeg_next::ffi::AVBufferRef);
 
@@ -53,7 +53,7 @@ impl Drop for FramesRef {
     }
 }
 
-/// 資源ごとの wgpu のテクスチャと見え方。FFmpeg のプールは同じ資源を使い回すので、包むのは資源ごとに 1 回。
+/// 資源ごとの wgpu のテクスチャと見え方。FFmpeg のプールは同じ資源を使い回すので、ラップするのは資源ごとに 1 回。
 struct Entry {
     texture: wgpu::Texture,
     views: HashMap<u32, (wgpu::TextureView, wgpu::TextureView)>,
@@ -61,16 +61,16 @@ struct Entry {
     bits: u32,
 }
 
-/// 包む係。
+/// ラッパー。
 pub struct Wrapper {
     device: wgpu::Device,
     cache: HashMap<usize, Entry>,
-    /// 覚えが対応する面のプール。変わったら覚えを捨てる。
+    /// キャッシュが対応するサーフェスのプール。変わったらキャッシュを破棄する。
     pool: Option<FramesRef>,
 }
 
 impl Wrapper {
-    /// 空の係。
+    /// 空のラッパー。
     pub fn new(device: wgpu::Device) -> Self {
         Self {
             device,
@@ -79,7 +79,7 @@ impl Wrapper {
         }
     }
 
-    /// フレームのプールが前と違えば、古いプールの面の覚えを捨てる（面は覚えが握っていて、捨てないと残り続ける）。
+    /// フレームのプールが前と違えば、古いプールのサーフェスのキャッシュを破棄する（サーフェスはキャッシュが保持していて、破棄しないと残り続ける）。
     fn follow_pool(&mut self, frames_ctx: *mut ffmpeg_next::ffi::AVBufferRef) {
         if frames_ctx.is_null() || self.pool.as_ref().is_some_and(|p| p.same_pool(frames_ctx)) {
             return;
@@ -90,12 +90,12 @@ impl Wrapper {
         self.pool = (!held.is_null()).then_some(FramesRef(held));
     }
 
-    /// 包んだ資源の数。
+    /// ラップした資源の数。
     pub fn resource_count(&self) -> usize {
         self.cache.len()
     }
 
-    /// d3d12va のフレームを包む。
+    /// d3d12va のフレームをラップする。
     pub fn wrap(&mut self, frame: &frame::Video) -> Result<PlaneViews> {
         // SAFETY: d3d12va のフレームは data[0] に AVD3D12VAFrame を持つ。フレームが生きている間だけ読む。
         let (resource_ptr, layer, fence_ptr, fence_value, frames_ctx) = unsafe {
@@ -131,7 +131,7 @@ impl Wrapper {
             entry.views.insert(layer, views);
         }
         let (y, uv) = entry.views[&layer].clone();
-        // SAFETY: fence は FFmpeg が所有する有効な ID3D12Fence。参照を数え直して借りる。
+        // SAFETY: fence は FFmpeg が所有する有効な ID3D12Fence。参照を数え直して借用する。
         let fence = unsafe { ID3D12Fence::from_raw_borrowed(&fence_ptr) }
             .ok_or_else(|| MmError::Corrupt("フェンスが無い".into()))?
             .clone();

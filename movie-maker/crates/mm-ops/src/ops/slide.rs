@@ -10,8 +10,8 @@ use crate::ops::roll::{next_cut, prev_cut};
 use crate::ops::{cut_referrers, negate};
 use crate::touches::Touches;
 
-/// `cut` を並びの時間軸で `by` だけ動かす。前のカットの尻が伸び（縮み）、次のカットの頭が縮む（伸びる）ので、
-/// `cut` の中身と全体の長さは変わらない。前後のカットが要る。
+/// `cut` をシーケンスの時間軸で `by` だけ動かす。前のカットのアウト点が伸び（縮み）、次のカットのイン点が縮む（伸びる）ので、
+/// `cut` の内容と全体の長さは変わらない。前後のカットが要る。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Slide {

@@ -1,6 +1,6 @@
 //! GPU のパスごとの時間。wgpu のタイムスタンプを 1 フレーム分まとめて読み、`mm-trace` に載せる。
 //!
-//! リードバックで描画を止めないよう、1 フレーム前の結果を次のフレームの頭で読む。
+//! リードバックで描画を止めないよう、1 フレーム前の結果を次のフレームの先頭で読む。
 
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ struct Inner {
 }
 
 impl GpuTimer {
-    /// 文脈がタイムスタンプを持つときだけ有効。
+    /// コンテキストがタイムスタンプを持つときだけ有効。
     pub fn new(ctx: &Arc<GpuContext>) -> Self {
         if !ctx.timestamps {
             return Self { inner: None };
@@ -96,7 +96,7 @@ impl GpuTimer {
         }
     }
 
-    /// 次のパスの頭と尻に書くクエリ。埋まっていれば `None`。
+    /// 次のパスの開始と終了に書くクエリ。埋まっていれば `None`。
     pub fn pass_writes(&mut self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         let inner = self.inner.as_mut()?;
         if inner.used >= MAX_PASSES {
@@ -111,7 +111,7 @@ impl GpuTimer {
         })
     }
 
-    /// フレームの最後に、積んだクエリをリードバックの置き場へ写す。
+    /// フレームの最後に、積んだクエリをリードバック用のバッファへコピーする。
     pub fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
         let Some(inner) = self.inner.as_mut() else {
             return;

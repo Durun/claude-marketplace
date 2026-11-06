@@ -1,4 +1,4 @@
-//! 面を 60 fps で描き続ける描画スレッド。UI スレッドの外で回し、WebView の更新と独立に present する。
+//! サーフェスを 60 fps で描き続ける描画スレッド。UI スレッドの外で回し、WebView の更新と独立に present する。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -39,14 +39,14 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// 描画スレッドの取っ手。
+/// 描画スレッドのハンドル。
 pub struct Renderer {
     quit: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
 }
 
 impl Renderer {
-    /// 子 HWND に面を張って描画スレッドを始める。
+    /// 子 HWND にサーフェスを張って描画スレッドを始める。
     pub fn spawn(shared: Arc<Shared>, hwnd: isize, resize_span: Arc<Mutex<Option<Span>>>) -> Self {
         let quit = Arc::new(AtomicBool::new(false));
         let q = quit.clone();
@@ -171,7 +171,7 @@ fn run(
     let mut last_start: Option<Instant> = None;
     while !quit.load(Ordering::SeqCst) {
         deadline += FRAME;
-        // 長く止まった後に取り戻そうと連続で描かないよう、遅れすぎた締め切りは今に寄せる。
+        // 長く止まった後に取り戻そうと連続で描かないよう、遅れすぎた締め切りは今に合わせる。
         if deadline + FRAME < Instant::now() {
             deadline = Instant::now();
         }
@@ -200,7 +200,7 @@ fn run(
             other => {
                 // 大きさの変更の直後に Outdated が返るのは普通なので、数えて張り直す。
                 shared.surface_errors.fetch_add(1, Ordering::SeqCst);
-                tracing::warn!(state = ?other, "面を取れなかった");
+                tracing::warn!(state = ?other, "サーフェスを取れなかった");
                 surface.configure(&device, &config);
                 continue;
             }
@@ -298,6 +298,6 @@ fn create_surface(
         )),
         raw_window_handle: wgpu::rwh::RawWindowHandle::Win32(handle),
     };
-    // HWND は Tauri の窓が閉じるまで生きていて、描画スレッドは先に止めるので、'static に延ばしてよい。
+    // HWND は Tauri のウィンドウが閉じるまで生きていて、描画スレッドは先に止めるので、'static に延ばしてよい。
     unsafe { instance.create_surface_unsafe(target) }.map_err(|e| e.to_string())
 }

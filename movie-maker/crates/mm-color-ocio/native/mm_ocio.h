@@ -1,4 +1,4 @@
-/* OCIO の C++ の API を、bindgen が読める C の口に畳む。例外は戻り値とエラー文字列に変える。 */
+/* OCIO の C++ の API を、bindgen が読める C のバインディング向けにまとめる。例外は戻り値とエラー文字列に変える。 */
 #ifndef MM_OCIO_H
 #define MM_OCIO_H
 
@@ -40,7 +40,7 @@ int mm_ocio_processor_apply_rgb(const MmOcioProcessor *processor, float *rgb);
 /*
  * GPU のシェーダー（Vulkan 向けの GLSL 4.6）を作る。成功で 0。
  * text は processor を解放するまで有効。num_textures は 1D と 3D の LUT の数の合計、
- * num_uniforms は動的な値の数。function_name は text の中の入口の関数名。
+ * num_uniforms は動的な値の数。function_name は text の中のエントリーポイントの関数名。
  */
 int mm_ocio_processor_gpu_shader(MmOcioProcessor *processor, const char *function_name,
                                  const char **text, int *num_textures, int *num_uniforms);

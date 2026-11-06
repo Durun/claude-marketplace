@@ -1,4 +1,4 @@
-//! 文字の見本と契約テスト。見本は 1 文字を 1 つの矩形として組み、矩形を塗る。
+//! 文字のモックと契約テスト。モックは 1 文字を 1 つの矩形として組み、矩形を塗る。
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ pub const GLYPH_ADVANCE: f32 = 0.6;
 /// 空白の文字。
 const SPACE: char = ' ';
 
-/// 見本の整形。
+/// モックのシェーピング。
 #[derive(Debug, Clone, Default)]
 pub struct SampleShaper;
 
@@ -111,11 +111,11 @@ impl TextShaper for SampleShaper {
     }
 }
 
-/// 見本の描画。グリフの矩形をスタイルの色で塗る。
+/// モックの描画。グリフの矩形をスタイルの色で塗る。
 #[derive(Debug, Clone, Default)]
 pub struct SampleRasterizer;
 
-/// `bounds * scale` を切り上げた絵の大きさ。
+/// `bounds * scale` を切り上げた画像の大きさ。
 pub fn raster_size(shaped: &ShapedText, scale: f32) -> Size {
     Size::new(
         (shaped.bounds.width * scale).ceil() as u32,
@@ -155,13 +155,13 @@ pub fn contract(
     let style = TextStyle::default();
 
     let text = "Hello, world";
-    let a = shaper.shape(text, &style).expect("整形");
-    let b = shaper.shape(text, &style).expect("整形");
+    let a = shaper.shape(text, &style).expect("シェーピング");
+    let b = shaper.shape(text, &style).expect("シェーピング");
     assert_eq!(a, b, "同じ文字列と字で同じ行組み");
     assert_eq!(a.lines.len(), 1, "折り返し無しは 1 行");
     check_glyph_refs(&a, text);
 
-    let empty = shaper.shape("", &style).expect("整形");
+    let empty = shaper.shape("", &style).expect("シェーピング");
     assert!(
         empty.lines.is_empty() && empty.bounds.is_empty(),
         "空文字は空"
@@ -171,7 +171,9 @@ pub fn contract(
         max_width: Some(style.size_px * 3.0),
         ..style.clone()
     };
-    let wrapped = shaper.shape("Supercalifragilistic", &narrow).expect("整形");
+    let wrapped = shaper
+        .shape("Supercalifragilistic", &narrow)
+        .expect("シェーピング");
     assert!(wrapped.lines.len() > 1, "長い 1 語は折り返す");
     let limit = narrow.max_width.unwrap() + style.size_px;
     assert!(
@@ -181,7 +183,7 @@ pub fn contract(
 
     let hard = shaper
         .shape("ﬁ 👨‍👩‍👧 日本語\n改行", &style)
-        .expect("合字と絵文字で落ちない");
+        .expect("合字と絵文字でクラッシュしない");
     assert!(hard.lines.len() >= 2, "改行で行が増える");
 
     check_align(shaper.as_ref(), &style);
@@ -193,7 +195,7 @@ pub fn contract(
         assert_eq!(
             img.size(),
             raster_size(&a, scale),
-            "絵の大きさは bounds * scale"
+            "画像の大きさは bounds * scale"
         );
         let again = raster
             .rasterize(&via_json, &style, scale)
@@ -231,7 +233,7 @@ fn check_align(shaper: &dyn TextShaper, style: &TextStyle) {
                     ..style.clone()
                 },
             )
-            .expect("整形");
+            .expect("シェーピング");
         assert_eq!(s.lines.len(), 2);
         assert!(
             s.lines[1].rect.x > s.lines[0].rect.x,

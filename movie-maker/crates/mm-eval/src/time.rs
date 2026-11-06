@@ -1,13 +1,13 @@
 //! 時間の写像。コンポジションの時刻から素材の時刻へ（`start`、`in`、`speed`、タイムリマップ）、
-//! その逆、入れ子をたどる合成。時刻は有理数のまま写し、浮動小数を経ない。
+//! その逆、入れ子をたどる合成。時刻は有理数のまま変換し、浮動小数を経ない。
 
 use mm_doc::{Interpolation, Layer, TimeKeyframe, TimeRemap};
 use mm_types::{MmError, RationalTime, Result};
 
-/// コンポジションの時刻 `t` をレイヤーの素材の時刻に写す。
+/// コンポジションの時刻 `t` をレイヤーの素材の時刻に変換する。
 ///
 /// タイムリマップがあればそれで、無ければ `in + (t - start) * speed`。
-/// レイヤーの範囲の外の `t` も写す（範囲の判定は呼ぶ側）。
+/// レイヤーの範囲の外の `t` も変換する（範囲の判定は呼ぶ側）。
 pub fn source_time(layer: &Layer, t: RationalTime) -> Result<RationalTime> {
     let local = t.checked_sub(layer.start)?;
     match &layer.time_remap {
@@ -16,9 +16,9 @@ pub fn source_time(layer: &Layer, t: RationalTime) -> Result<RationalTime> {
     }
 }
 
-/// 素材の時刻 `s` をコンポジションの時刻に写す（[`source_time`] の逆）。
+/// 素材の時刻 `s` をコンポジションの時刻に変換する（[`source_time`] の逆）。
 ///
-/// タイムリマップは厳密に増える折れ線のときだけ逆に写せる。そうでなければ `Unsupported`。
+/// タイムリマップは厳密に増える折れ線のときだけ逆に変換できる。そうでなければ `Unsupported`。
 pub fn comp_time(layer: &Layer, s: RationalTime) -> Result<RationalTime> {
     let local = match &layer.time_remap {
         Some(remap) => remap_inverse(remap, s)?,
@@ -27,7 +27,7 @@ pub fn comp_time(layer: &Layer, s: RationalTime) -> Result<RationalTime> {
     local.checked_add(layer.start)
 }
 
-/// 入れ子の鎖をたどる。`layers[0]` が外側で、順に中へ写す。
+/// 入れ子の鎖をたどる。`layers[0]` が外側で、順に中へ変換する。
 pub fn source_time_along(layers: &[&Layer], t: RationalTime) -> Result<RationalTime> {
     layers.iter().try_fold(t, |t, layer| source_time(layer, t))
 }
@@ -40,7 +40,7 @@ pub fn comp_time_along(layers: &[&Layer], s: RationalTime) -> Result<RationalTim
         .try_fold(s, |s, layer| comp_time(layer, s))
 }
 
-/// タイムリマップの折れ線で、レイヤーの始まりからの時刻を素材の時刻に写す。
+/// タイムリマップの折れ線で、レイヤーの始まりからの時刻を素材の時刻に変換する。
 pub fn remap_forward(remap: &TimeRemap, local: RationalTime) -> Result<RationalTime> {
     let keys = &remap.keyframes;
     let Some(first) = keys.first() else {
@@ -65,7 +65,7 @@ pub fn remap_inverse(remap: &TimeRemap, s: RationalTime) -> Result<RationalTime>
     let keys = &remap.keyframes;
     if !is_strictly_increasing(keys) {
         return Err(MmError::Unsupported(
-            "厳密に増えないタイムリマップは逆に写せない".into(),
+            "厳密に増えないタイムリマップは逆に変換できない".into(),
         ));
     }
     let Some(first) = keys.first() else {
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn タイムリマップの折れ線で写す() {
+    fn タイムリマップの折れ線で変換する() {
         let mut l = layer(0, 0, 4, (1, 1));
         l.time_remap = Some(remap(&[(0, 0), (2, 1), (4, 5)]));
         assert_eq!(source_time(&l, secs(1)).unwrap(), t(1, 2));
@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn ホールドのタイムリマップは止め絵() {
+    fn ホールドのタイムリマップは静止フレーム() {
         let mut l = layer(0, 0, 4, (1, 1));
         let mut r = remap(&[(0, 2), (4, 3)]);
         r.keyframes[0].interpolation = Interpolation::Hold;
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn 入れ子は外から中へ順に写す() {
+    fn 入れ子は外から中へ順に変換する() {
         let outer = layer(10, 0, 100, (1, 1));
         let inner = layer(1, 5, 100, (1, 2));
         let s = source_time_along(&[&outer, &inner], secs(13)).unwrap();

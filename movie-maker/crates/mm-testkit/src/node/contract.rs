@@ -1,4 +1,4 @@
-//! ノードの契約テストと、1 フレームを描く足場。
+//! ノードの契約テストと、1 フレームを描くハーネス。
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use mm_types::{MmError, Params, RationalTime, Rect, Result, RgbaImage, Size, Tim
 use crate::decode::{DecoderFrameSource, SampleDecoderFactory, SampleMedia};
 use crate::gpu::CpuGpu;
 
-/// 入力ごとに決まった絵を返す `InputFrames`。時刻によらず同じ絵。
+/// 入力ごとに決まった画像を返す `InputFrames`。時刻によらず同じ画像。
 pub struct ConstInputs(pub Vec<Arc<RgbaImage>>);
 
 impl InputFrames for ConstInputs {
@@ -34,7 +34,7 @@ impl InputFrames for ConstInputs {
 pub struct NodeFixture {
     /// 既定値に重ねるパラメータ。
     pub params: Params,
-    /// `footage` が要る種類に渡す見本の素材。
+    /// `footage` が要る種類に渡すフィクスチャの素材。
     pub footage: Option<SampleMedia>,
     pub size: Size,
     /// 端の検査に使う長さ。
@@ -67,7 +67,7 @@ impl NodeFixture {
     }
 }
 
-/// 1 フレームを描く足場。契約テストと見本のレンダラーが使う。
+/// 1 フレームを描くハーネス。契約テストとモックのレンダラーが使う。
 pub struct Harness {
     pub gpu: CpuGpu,
     pub services: Services,
@@ -75,7 +75,7 @@ pub struct Harness {
 }
 
 impl Harness {
-    /// 見本の口で組む。
+    /// モックのインターフェースで組む。
     pub fn new(footage: Option<Box<dyn FrameSource>>) -> Self {
         Self {
             gpu: CpuGpu::new(),
@@ -84,7 +84,7 @@ impl Harness {
         }
     }
 
-    /// `kind` を `t` で描いて CPU の絵にする。`inputs` は入力の映像。
+    /// `kind` を `t` で描いて CPU の画像にする。`inputs` は入力の映像。
     pub fn render(
         &mut self,
         kind: &dyn NodeKind,
@@ -119,7 +119,7 @@ fn open_footage(media: &SampleMedia) -> Box<dyn FrameSource> {
     };
     let dec = factory
         .open(std::path::Path::new("sample.mp4"), None)
-        .expect("見本は開ける");
+        .expect("モックは開ける");
     Box::new(DecoderFrameSource::new(dec))
 }
 
@@ -143,7 +143,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn NodeKind>, fx: &NodeFixture) {
             inputs.as_mut(),
         )
         .expect("既定値で描ける");
-    assert_eq!(base.size(), fx.size, "絵の大きさは cx.size");
+    assert_eq!(base.size(), fx.size, "画像の大きさは cx.size");
     check_edges(&mut h, kind.as_ref(), &params, fx);
     check_outside_rod(&base, rod);
 
@@ -151,8 +151,10 @@ pub fn contract(make: impl Fn() -> Arc<dyn NodeKind>, fx: &NodeFixture) {
     check_identity(&mut h, kind.as_ref(), &params, fx);
 
     let json = serde_json::to_value(&params).expect("JSON");
-    let migrated = kind.migrate(json, kind.version()).expect("今の版は通る");
-    assert_eq!(migrated, params, "今の版の migrate は恒等");
+    let migrated = kind
+        .migrate(json, kind.version())
+        .expect("今のバージョンは通る");
+    assert_eq!(migrated, params, "今のバージョンの migrate は恒等");
 }
 
 /// `deterministic`、`time_varying`、`vector` の自己申告を確かめる。
@@ -192,8 +194,8 @@ fn check_traits(
     }
 }
 
-/// 描かれた範囲（不透明な画素の外接矩形）の縁が、2 倍の絵で 2 倍の位置に来ること。
-/// 大きさだけ合わせて同じ絵を引き伸ばした実装は、縁の位置でなく太さや位置がずれる。
+/// 描かれた範囲（不透明な画素の外接矩形）の縁が、2 倍の画像で 2 倍の位置に来ること。
+/// 大きさだけ合わせて同じ画像を引き伸ばした実装は、縁の位置でなく太さや位置がずれる。
 fn check_vector_content(base: &RgbaImage, big: &RgbaImage) {
     let (Some(small), Some(large)) = (painted_bounds(base), painted_bounds(big)) else {
         return;
@@ -298,7 +300,7 @@ fn check_identity(h: &mut Harness, kind: &dyn NodeKind, params: &Params, fx: &No
     }
 }
 
-/// 区間の音を出す足場。
+/// 区間の音を出すハーネス。
 pub fn render_audio<'a>(
     kind: &dyn NodeKind,
     params: &'a Params,

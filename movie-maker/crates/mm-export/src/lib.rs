@@ -1,6 +1,6 @@
 //! 書き出し。レンダーターゲットを選び、出力先を整え、区間を描いてエンコーダーに押し、速さを測って返す。
 //!
-//! 口の実装を選ぶのは mm-runtime だけという約束のため、このクレートは実装を知らず、`Engine` から
+//! インターフェースの実装を選ぶのは mm-runtime だけという契約のため、このクレートは実装を知らず、`Engine` から
 //! レンダラーとエンコーダーを取り出して使う（[`Engine::renderer`]、[`Engine::encoders`]）。
 //! 段ごとの時間はスパン `export.render`（1 フレームの描画とリードバック）と `export.encode`（1 バッチの押し込み）に
 //! 出す。段階 0 は 1 プロセス・1 区間で、並行の描画とラウドネスの正規化は無い。
@@ -16,15 +16,15 @@ use mm_render_api::RangeRequest;
 use mm_runtime::Engine;
 use mm_types::{MmError, RationalTime, RenderTargetId, Result, RgbaImage, Size, TimeRange};
 
-/// エンコーダーに一度に押すフレームの数。口の呼び出しを毎フレームにしない。
+/// エンコーダーに一度に押すフレームの数。インターフェースの呼び出しを毎フレームにしない。
 pub const EXPORT_BATCH_FRAMES: usize = 8;
 
 /// 書き出しの指定。
 #[derive(Debug, Clone, Default)]
 pub struct ExportOptions {
-    /// 文書のレンダーターゲットの `output_path` を上書きする。
+    /// プロジェクトのデータのレンダーターゲットの `output_path` を上書きする。
     pub output: Option<PathBuf>,
-    /// 書き出すレンダーターゲット。`None` なら文書の最初の 1 つ。
+    /// 書き出すレンダーターゲット。`None` ならプロジェクトのデータの最初の 1 つ。
     pub target: Option<RenderTargetId>,
 }
 
@@ -48,11 +48,13 @@ pub fn pick_target(project: &Project, wanted: Option<&RenderTargetId>) -> Result
             .render_targets
             .first()
             .map(|t| t.id.clone())
-            .ok_or_else(|| MmError::NotFound("文書にレンダーターゲットが無い".into())),
+            .ok_or_else(|| {
+                MmError::NotFound("プロジェクトのデータにレンダーターゲットが無い".into())
+            }),
     }
 }
 
-/// 出力先の親ディレクトリを作る。無ければエンコーダーが開けずに落ちるため先に整える。
+/// 出力先の親ディレクトリを作る。無ければエンコーダーが開けずにクラッシュするため先に整える。
 fn ensure_parent(path: &Path) -> Result<()> {
     match path.parent() {
         Some(dir) if !dir.as_os_str().is_empty() => Ok(std::fs::create_dir_all(dir)?),
@@ -199,7 +201,7 @@ mod tests {
     }
 
     /// 全部のテストをスパンを集める購読者の下で走らせる。購読者なしのテストが並行に走ると、
-    /// tracing が呼び出し点を「誰も見ない」と覚えてしまい、集める側のテストが数え落とす。
+    /// tracing が呼び出し点を「誰も見ない」と記憶してしまい、集める側のテストが数え強制終了する。
     fn with_metrics<T>(f: impl FnOnce() -> T) -> (T, mm_trace::MetricsHandle) {
         let (layer, metrics) = MetricsLayer::new();
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -327,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn 無いレンダーターゲットは断る() {
+    fn 無いレンダーターゲットは拒否する() {
         let project = Project::new();
         assert!(pick_target(&project, None).is_err());
     }

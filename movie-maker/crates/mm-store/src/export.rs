@@ -1,6 +1,6 @@
-//! `versions/` の JSON の書き出しと取り込み。同じ文書からは同じバイト列を作る。
+//! `versions/` の JSON の書き出しと取り込み。同じプロジェクトのデータからは同じバイト列を作る。
 //!
-//! キーは辞書順、配列は文書の順（ID の列は `normalize` 済み）、インデントは 2、改行は LF、末尾に改行 1 つ。
+//! キーは辞書順、配列はプロジェクトのデータの順（ID の列は `normalize` 済み）、インデントは 2、改行は LF、末尾に改行 1 つ。
 //! 時刻は有理数のまま、浮動小数は最短で往復する表記になる。
 
 use std::collections::BTreeMap;
@@ -23,11 +23,11 @@ const PER_ID_DIRS: [&str; 3] = ["comps", "assets", "sequences"];
 /// 書き出しの結果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportReport {
-    /// 全ファイル（相対パスと中身）の SHA-256（16 進）。`versions` の表に残す。
+    /// 全ファイル（相対パスと内容）の SHA-256（16 進）。`versions` の表に残す。
     pub hash: String,
     /// 書き出したファイルの相対パス。
     pub files: Vec<String>,
-    /// 中身が変わって実際に書いたファイルの数。
+    /// 内容が変わって実際に書いたファイルの数。
     pub written: usize,
 }
 
@@ -79,7 +79,7 @@ fn id_of(v: &Value) -> Result<String> {
         .ok_or_else(|| MmError::Corrupt("id の無い要素".into()))
 }
 
-/// 書き出すファイル全部を作る。相対パスから中身へ。
+/// 書き出すファイル全部を作る。相対パスから内容へ。
 pub(crate) fn render_files(
     project: &Project,
     comments: &[Value],
@@ -122,7 +122,7 @@ pub(crate) fn hash_files(files: &BTreeMap<String, Vec<u8>>) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `versions/` に上書きする。変わらないファイルは触らず、文書から消えた ID のファイルは消す。
+/// `versions/` に上書きする。変わらないファイルは触らず、プロジェクトのデータから消えた ID のファイルは消す。
 pub(crate) fn write_files(versions: &Path, files: &BTreeMap<String, Vec<u8>>) -> Result<usize> {
     fs::create_dir_all(versions)?;
     let mut written = 0;
@@ -163,7 +163,7 @@ fn read_json(path: &Path) -> Result<Value> {
     Ok(serde_json::from_str(&text)?)
 }
 
-/// `versions/` から文書とコメントを読む。古いスキーマの版は `mm_doc::load` が今の版に上げる。
+/// `versions/` からプロジェクトのデータとコメントを読む。古いスキーマのバージョンは `mm_doc::load` が今のバージョンに上げる。
 pub(crate) fn read_files(versions: &Path) -> Result<(Project, Vec<Value>)> {
     let index = read_json(&versions.join(INDEX_FILE))?;
     let mut whole = json!({

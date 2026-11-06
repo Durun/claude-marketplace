@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::common::{mm, mm_ok, sequence_json, stage0_json, stderr, stdout};
 use tempfile::TempDir;
 
-/// 並び s1（カット c1 は 4 秒、c2 は 2 秒）を足した空のプロジェクト。版は 1。
+/// シーケンス s1（カット c1 は 4 秒、c2 は 2 秒）を足した空のプロジェクト。バージョンは 1。
 fn project_with_sequence(tmp: &TempDir) -> PathBuf {
     let dir = tmp.path().join("p");
     mm_ok(&["new", dir.to_str().unwrap()]);
@@ -20,7 +20,7 @@ fn project_with_sequence(tmp: &TempDir) -> PathBuf {
     dir
 }
 
-/// `versions/` の全ファイル（相対パスと中身）。
+/// `versions/` の全ファイル（相対パスと内容）。
 fn read_tree(root: &Path) -> Vec<(String, Vec<u8>)> {
     fn walk(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) {
         for entry in fs::read_dir(dir).unwrap() {
@@ -54,14 +54,14 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1/2",
     ]);
-    // 版 3。取り消して版 4（c2 の ripple の逆操作）。
+    // バージョン 3。取り消してバージョン 4（c2 の ripple の逆操作）。
     let undo = stdout(&mm_ok(&["undo", ps]));
     assert!(
-        undo.contains("版 4") && undo.contains("取り消し: ripple"),
+        undo.contains("バージョン 4") && undo.contains("取り消し: ripple"),
         "{undo}"
     );
 
-    // 版 3 を元にした c2 への操作は、版 4 の取り消しと触る所が重なるので断られる。
+    // バージョン 3 を元にした c2 への操作は、バージョン 4 の取り消しと触る所が重なるので拒否される。
     let out = mm(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "3",
     ]);
@@ -70,21 +70,30 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
 
     let redo = stdout(&mm_ok(&["redo", ps]));
     assert!(
-        redo.contains("版 5") && redo.contains("やり直し: ripple"),
+        redo.contains("バージョン 5") && redo.contains("やり直し: ripple"),
         "{redo}"
     );
     let log = stdout(&mm_ok(&["log", ps]));
     assert!(log.contains("取消") && log.contains("再適用"), "{log}");
-    assert!(log.contains("版    3"), "当てた版は書き換えない: {log}");
+    assert!(
+        log.contains("バージョン    3"),
+        "適用したバージョンは書き換えない: {log}"
+    );
 
-    // diff は取り消しとやり直しを畳み、c1 と c2 の ripple だけが出る。
+    // diff は取り消しとやり直しを集約し、c1 と c2 の ripple だけが出る。
     let diff = stdout(&mm_ok(&["diff", ps, "1", "head"]));
     assert!(diff.contains("2 件"), "{diff}");
-    assert!(diff.contains("カット c1 の尻を 0.4 秒詰めた"), "{diff}");
-    assert!(diff.contains("カット c2 の尻を 0.5 秒伸ばした"), "{diff}");
+    assert!(
+        diff.contains("カット c1 のアウト点を 0.4 秒詰めた"),
+        "{diff}"
+    );
+    assert!(
+        diff.contains("カット c2 のアウト点を 0.5 秒伸ばした"),
+        "{diff}"
+    );
     let only_undo = stdout(&mm_ok(&["diff", ps, "3", "4"]));
     assert!(
-        only_undo.contains("カット c2 の尻を 0.5 秒詰めた"),
+        only_undo.contains("カット c2 のアウト点を 0.5 秒詰めた"),
         "{only_undo}"
     );
 
@@ -97,7 +106,7 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
 }
 
 #[test]
-fn 別のプロセスが書き手なら_op_は断り_log_と_export_は読める() {
+fn 別のプロセスが書き手なら_op_は拒否し_log_と_export_は読める() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -127,7 +136,7 @@ fn 別のプロセスが書き手なら_op_は断り_log_と_export_は読める
 }
 
 #[test]
-fn op_のたびに写しを作らない() {
+fn op_のたびにバックアップを作らない() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -138,7 +147,10 @@ fn op_のたびに写しを作らない() {
     }
     mm_ok(&["undo", ps]);
     let backups = fs::read_dir(p.join("backups")).map_or(0, |rd| rd.count());
-    assert!(backups <= 1, "間隔の内に {backups} 個の写しができた");
+    assert!(
+        backups <= 1,
+        "間隔の内に {backups} 個のバックアップができた"
+    );
 }
 
 #[test]
@@ -158,8 +170,11 @@ fn diff_は意味の差分を人が読める文で出す() {
     mm_ok(&["undo", ps]);
 
     let out = stdout(&mm_ok(&["diff", ps, "1", "head"]));
-    assert!(out.contains("カット c1 の尻を 0.4 秒詰めた"), "{out}");
-    assert!(out.contains("カット c2 の尻を 0.5 秒伸ばした"), "{out}");
+    assert!(out.contains("カット c1 のアウト点を 0.4 秒詰めた"), "{out}");
+    assert!(
+        out.contains("カット c2 のアウト点を 0.5 秒伸ばした"),
+        "{out}"
+    );
     // 取り消した 3 つ目は出ない。
     assert_eq!(out.matches("c2").count(), 1, "{out}");
 
@@ -169,7 +184,7 @@ fn diff_は意味の差分を人が読める文で出す() {
 }
 
 #[test]
-fn ロックした所に触る操作は断られ_文書は変わらない() {
+fn ロックした所に触る操作は拒否され_プロジェクトのデータは変わらない() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("p");
     mm_ok(&[
@@ -207,7 +222,7 @@ fn ロックした所に触る操作は断られ_文書は変わらない() {
 }
 
 #[test]
-fn 古い版を元にした操作は触る所が重なれば断られ_重ならなければ通る() {
+fn 古いバージョンを元にした操作は触る所が重なれば拒否され_重ならなければ通る() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -215,17 +230,17 @@ fn 古い版を元にした操作は触る所が重なれば断られ_重なら�
         "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "-0.4", "--base", "1",
     ]);
 
-    // 版 1 を元にして c1 を触ると、版 2 の ripple と重なる。
+    // バージョン 1 を元にして c1 を触ると、バージョン 2 の ripple と重なる。
     let out = mm(&[
         "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "1", "--base", "1",
     ]);
     assert!(!out.status.success());
     assert!(stderr(&out).contains("重なる"), "{}", stderr(&out));
-    // c2 は版 1 の後に誰も触っていない。
+    // c2 はバージョン 1 の後に誰も触っていない。
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "1",
     ]);
-    // 今の版より先は断る。
+    // 今のバージョンより先は拒否する。
     let out = mm(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "99",
     ]);
@@ -234,7 +249,7 @@ fn 古い版を元にした操作は触る所が重なれば断られ_重なら�
 }
 
 #[test]
-fn txn_ファイルの操作は全部当たるか全部当たらない() {
+fn txn_ファイルの操作は全部適用されるか全部適用されない() {
     let tmp = tempfile::tempdir().unwrap();
     let p = project_with_sequence(&tmp);
     let ps = p.to_str().unwrap();
@@ -252,7 +267,7 @@ fn txn_ファイルの操作は全部当たるか全部当たらない() {
         "{log}"
     );
 
-    // 2 つ目が失敗するまとまりは、1 つ目も残らない。
+    // 2 つ目が失敗するトランザクションは、1 つ目も残らない。
     let bad = tmp.path().join("bad.json");
     fs::write(
         &bad,
@@ -270,7 +285,7 @@ fn txn_ファイルの操作は全部当たるか全部当たらない() {
 }
 
 #[test]
-fn schema_は全部の操作を含み_知らない操作は使える名前を添えて断る() {
+fn schema_は全部の操作を含み_知らない操作は使える名前を添えて拒否する() {
     let schema = stdout(&mm_ok(&["op", "--schema"]));
     let value: serde_json::Value = serde_json::from_str(&schema).unwrap();
     assert_eq!(

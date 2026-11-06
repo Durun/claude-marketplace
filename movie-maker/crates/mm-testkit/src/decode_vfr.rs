@@ -1,4 +1,4 @@
-//! 可変フレームレート（VFR）の見本のデコーダーと、`decode_range` の契約。
+//! 可変フレームレート（VFR）のモックのデコーダーと、`decode_range` の契約。
 //!
 //! 実装のクレートは VFR の素材を開く `make` を渡して [`vfr_contract`] を呼ぶ。
 
@@ -8,7 +8,7 @@ use mm_types::{ColorSpace, RationalTime, Result, Rgba, RgbaImage, Size, TimeRang
 
 use crate::decode::frame_color;
 
-/// PTS の列を持つ見本のデコーダー。フレームの番号を G に焼く（`decode::frame_color`）。
+/// PTS の列を持つモックのデコーダー。フレームの番号を G に焼き込む（`decode::frame_color`）。
 #[derive(Debug)]
 pub struct SampleVfrDecoder {
     info: MediaInfo,
@@ -86,7 +86,7 @@ fn indices(dec: &mut dyn Decoder, start: RationalTime, end: RationalTime) -> Vec
 }
 
 /// VFR の `decode_range` の契約。`make` は PTS が 3 つ以上ある VFR の素材を開く。
-/// 区間に PTS が入るフレームを全部、番号の順に返し、最後のフレームを落とさない。
+/// 区間に PTS が入るフレームを全部、番号の順に返し、最後のフレームを取りこぼさない。
 pub fn vfr_contract(make: impl Fn() -> Box<dyn Decoder>) {
     let mut dec = make();
     let info = dec.info().clone();
@@ -101,7 +101,11 @@ pub fn vfr_contract(make: impl Fn() -> Box<dyn Decoder>) {
     );
 
     let all = indices(dec.as_mut(), RationalTime::ZERO, info.duration);
-    assert_eq!(all, (0..n).collect::<Vec<_>>(), "全体なら最後のフレームまで");
+    assert_eq!(
+        all,
+        (0..n).collect::<Vec<_>>(),
+        "全体なら最後のフレームまで"
+    );
 
     let last = pts[pts.len() - 1];
     let head = indices(dec.as_mut(), RationalTime::ZERO, last);
@@ -127,7 +131,7 @@ pub fn vfr_contract(make: impl Fn() -> Box<dyn Decoder>) {
     assert_eq!(
         from_mid,
         (1..n).collect::<Vec<_>>(),
-        "頭が PTS の途中なら次のフレームから"
+        "先頭が PTS の途中なら次のフレームから"
     );
 }
 
@@ -136,7 +140,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 見本の_vfr_デコーダーは契約を満たす() {
+    fn モックの_vfr_デコーダーは契約を満たす() {
         vfr_contract(|| Box::new(SampleVfrDecoder::sample()));
     }
 }

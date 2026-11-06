@@ -1,4 +1,4 @@
-//! `cache/` の口。消しても作り直せるものだけを置き、素材の中身のハッシュで引く。
+//! `cache/` のインターフェース。消しても作り直せるものだけを置き、素材の内容のハッシュで引く。
 //!
 //! 契約（`mm_testkit::cache::contract`）:
 //! - `put` → `get` で同じバイト列。
@@ -6,7 +6,7 @@
 //! - `remove` した後は `None`。
 //! - `limit_bytes` を超えて `put` すると、古いもの（最後に触った順）から消え、`size_bytes` が上限に収まる。
 //! - `clear` の後は `size_bytes() == 0`。
-//! - キーは `content_hash` で引くので、プロジェクトを別の場所に写しても当たる。
+//! - キーは `content_hash` で引くので、プロジェクトを別の場所にコピーしても当たる。
 
 use std::fmt;
 
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use mm_types::Result;
 
-/// キャッシュの種類。`cache/<種類>/...` の置き場に対応する。
+/// キャッシュの種類。`cache/<種類>/...` の保存先に対応する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CacheKind {
@@ -27,7 +27,7 @@ pub enum CacheKind {
     Thumbnail,
 }
 
-/// 素材の中身のハッシュ（16 進）。
+/// 素材の内容のハッシュ（16 進）。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ContentHash(pub String);
@@ -47,7 +47,7 @@ impl ContentHash {
 pub struct CacheKey {
     pub kind: CacheKind,
     pub content_hash: ContentHash,
-    /// 同じ素材の中の区別（`540p`、フレームの番号、文字の絵のハッシュ）。
+    /// 同じ素材の中の区別（`540p`、フレームの番号、グリフ画像のハッシュ）。
     pub variant: String,
 }
 
@@ -61,9 +61,9 @@ impl fmt::Display for CacheKey {
     }
 }
 
-/// キャッシュの置き場。
+/// キャッシュの保存先。
 pub trait CacheStore: Send + Sync {
-    /// 実装の名前（`fs`、見本は `memory`）。
+    /// 実装の名前（`fs`、モックは `memory`）。
     fn id(&self) -> &'static str;
     /// 引く。無ければ `None`。触った順を更新する。
     fn get(&self, key: &CacheKey) -> Result<Option<Vec<u8>>>;

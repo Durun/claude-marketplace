@@ -156,14 +156,14 @@ macro_rules! load {
     }};
 }
 
-/// `CudaApi::scoped` の戻り値。捨てると現在の文脈を外す。
+/// `CudaApi::scoped` の戻り値。ドロップすると現在のコンテキストを外す。
 pub struct ContextGuard<'a> {
     api: &'a CudaApi,
 }
 
 impl Drop for ContextGuard<'_> {
     fn drop(&mut self) {
-        // SAFETY: `scoped` の push と対。外せないときは、後の呼び出しが文脈のエラーで気づく。
+        // SAFETY: `scoped` の push と対。外せないときは、後の呼び出しがコンテキストのエラーで気づく。
         let _ = unsafe { self.api.pop() };
     }
 }
@@ -201,15 +201,15 @@ impl CudaApi {
         })
     }
 
-    /// 文脈をこのスレッドの現在にする。
+    /// コンテキストをこのスレッドの現在にする。
     ///
     /// # Safety
-    /// `ctx` は有効な CUDA の文脈。
+    /// `ctx` は有効な CUDA のコンテキスト。
     pub unsafe fn push(&self, ctx: CuContext) -> Result<()> {
         check("cuCtxPushCurrent", unsafe { (self.push)(ctx) })
     }
 
-    /// 現在の文脈を外す。
+    /// 現在のコンテキストを外す。
     ///
     /// # Safety
     /// 対応する `push` の後に呼ぶ。
@@ -218,10 +218,10 @@ impl CudaApi {
         check("cuCtxPopCurrent", unsafe { (self.pop)(&mut out) })
     }
 
-    /// D3D12 の共有ハンドルの資源を CUDA のメモリとして取り込み、全体を 1 本の線形バッファに写す。
+    /// D3D12 の共有ハンドルの資源を CUDA のメモリとして取り込み、全体を 1 本の線形バッファに対応づける。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
+    /// コンテキストが現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
     pub unsafe fn import_buffer(
         &self,
         handle: *mut c_void,
@@ -260,7 +260,7 @@ impl CudaApi {
     /// D3D12 のフェンスを CUDA の外部セマフォとして取り込む。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は共有フェンスの NT ハンドル。
+    /// コンテキストが現在で、`handle` は共有フェンスの NT ハンドル。
     pub unsafe fn import_fence(&self, handle: *mut c_void) -> Result<CuExternalSemaphore> {
         let desc = ExternalSemaphoreHandleDesc {
             kind: EXTSEM_D3D12_FENCE,
@@ -279,7 +279,7 @@ impl CudaApi {
     /// 装置内の 2D コピーをストリームに積む。
     ///
     /// # Safety
-    /// 文脈が現在で、`copy` の両端が有効なデバイスメモリ。
+    /// コンテキストが現在で、`copy` の両端が有効なデバイスメモリ。
     pub unsafe fn memcpy2d_async(&self, copy: &Memcpy2D, stream: CuStream) -> Result<()> {
         check("cuMemcpy2DAsync", unsafe { (self.memcpy2d)(copy, stream) })
     }
@@ -287,7 +287,7 @@ impl CudaApi {
     /// ストリームのここまでが終わったら、フェンスを `value` にする。
     ///
     /// # Safety
-    /// 文脈が現在で、`sem` は取り込み済み。
+    /// コンテキストが現在で、`sem` は取り込み済み。
     pub unsafe fn signal(
         &self,
         sem: CuExternalSemaphore,
@@ -310,7 +310,7 @@ impl CudaApi {
     /// ストリームのここから先を、フェンスが `value` に届くまで止める（GPU の中で待ち、CPU は待たない）。
     ///
     /// # Safety
-    /// 文脈が現在で、`sem` は取り込み済み。
+    /// コンテキストが現在で、`sem` は取り込み済み。
     pub unsafe fn wait(
         &self,
         sem: CuExternalSemaphore,
@@ -331,10 +331,10 @@ impl CudaApi {
         })
     }
 
-    /// 取り込んだ外部メモリと、そこに写したポインタを手放す。失敗は無視する（後片付け）。
+    /// 取り込んだ外部メモリと、そこに対応づけたポインタを解放する。失敗は無視する（後片付け）。
     ///
     /// # Safety
-    /// 文脈が現在で、引数はその文脈で取り込んだもの。GPU の仕事が終わっている。
+    /// コンテキストが現在で、引数はそのコンテキストで取り込んだもの。GPU の仕事が終わっている。
     pub unsafe fn release_memory(&self, mem: CuExternalMemory, ptr: CuDevicePtr) {
         unsafe {
             (self.free)(ptr);
@@ -342,20 +342,20 @@ impl CudaApi {
         }
     }
 
-    /// 取り込んだセマフォを手放す。失敗は無視する（後片付け）。
+    /// 取り込んだセマフォを解放する。失敗は無視する（後片付け）。
     ///
     /// # Safety
-    /// 文脈が現在で、`sem` はその文脈で取り込んだもの。GPU の仕事が終わっている。
+    /// コンテキストが現在で、`sem` はそのコンテキストで取り込んだもの。GPU の仕事が終わっている。
     pub unsafe fn release_semaphore(&self, sem: CuExternalSemaphore) {
         unsafe {
             (self.destroy_sem)(sem);
         }
     }
 
-    /// 文脈を現在にし、捨てると外す。途中のエラーで抜けても外し忘れない。
+    /// コンテキストを現在にし、ドロップすると外す。途中のエラーで抜けても外し忘れない。
     ///
     /// # Safety
-    /// `ctx` は有効な CUDA の文脈。
+    /// `ctx` は有効な CUDA のコンテキスト。
     pub unsafe fn scoped(&self, ctx: CuContext) -> Result<ContextGuard<'_>> {
         unsafe { self.push(ctx)? };
         Ok(ContextGuard { api: self })
@@ -387,7 +387,7 @@ impl CudaApi {
     /// ストリームの完了を待つ（比較用）。
     ///
     /// # Safety
-    /// 文脈が現在。
+    /// コンテキストが現在。
     pub unsafe fn sync(&self, stream: CuStream) -> Result<()> {
         check("cuStreamSynchronize", unsafe { (self.sync)(stream) })
     }

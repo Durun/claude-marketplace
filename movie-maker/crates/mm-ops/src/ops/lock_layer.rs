@@ -8,7 +8,7 @@ use mm_types::{LayerId, Result};
 use crate::op::{Apply, Op};
 use crate::touches::Touches;
 
-/// ロックを `lock` にする。ロックの付いたレイヤーは Claude の入口から触れない（外すのも）。
+/// ロックを `lock` にする。ロックの付いたレイヤーは Claude の操作経路から触れない（外すのも）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LockLayer {

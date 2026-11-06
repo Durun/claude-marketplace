@@ -1,8 +1,8 @@
-//! CUDA と wgpu が共有する D3D12 のバッファの輪。cuvid のフレームを 1 回コピーして wgpu に渡す。
+//! CUDA と wgpu が共有する D3D12 のリングバッファ。cuvid のフレームを 1 回コピーして wgpu に渡す。
 //!
-//! 各枠のフェンスは CUDA と wgpu が交互に進める。値は 1, 2, 3, ... と増え、
+//! 各スロットのフェンスは CUDA と wgpu が交互に進める。値は 1, 2, 3, ... と増え、
 //! 奇数が「CUDA がコピーを終えた」、偶数が「wgpu が読み終えた」。CUDA は次のコピーの前に
-//! 前の偶数まで待つので、wgpu が読んでいる最中の枠を上書きしない。
+//! 前の偶数まで待つので、wgpu が読んでいる最中のスロットを上書きしない。
 
 use std::sync::Arc;
 
@@ -27,18 +27,18 @@ use crate::hooks::{self, Stage};
 /// `GENERIC_ALL`。共有ハンドルのアクセス権。
 const GENERIC_ALL: u32 = 0x1000_0000;
 
-/// 共有バッファの中の配置。Y 面の後に UV 面が続き、行の間に余白は無い。
-/// 色差の面は 4:2:0 なので、幅と高さが奇数なら切り上げた (w+1)/2 列 x (h+1)/2 行になる。
+/// 共有バッファの中の配置。Y プレーンの後に UV プレーンが続き、行の間に余白は無い。
+/// 色差プレーンは 4:2:0 なので、幅と高さが奇数なら切り上げた (w+1)/2 列 x (h+1)/2 行になる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BufferLayout {
     pub height: u32,
-    /// Y 面の 1 行のバイト数。
+    /// Y プレーンの 1 行のバイト数。
     pub pitch: u32,
-    /// UV 面の 1 行のバイト数（U と V が交互に並ぶ (w+1)/2 組）。
+    /// UV プレーンの 1 行のバイト数（U と V が交互に並ぶ (w+1)/2 組）。
     pub uv_pitch: u32,
-    /// UV 面の行数。
+    /// UV プレーンの行数。
     pub uv_rows: u32,
-    /// UV 面の先頭のバイト位置。
+    /// UV プレーンの先頭のバイト位置。
     pub uv_offset: u32,
     /// バッファ全体のバイト数（4 の倍数）。
     pub size: u64,
@@ -63,8 +63,8 @@ impl BufferLayout {
     }
 }
 
-/// 取り込んだ CUDA の資源（外部メモリとそのポインタ、外部セマフォ）。捨てるときに文脈を現在にして手放すので、
-/// 輪を作る途中で失敗しても、枠を捨てたときも漏れない。GPU の仕事が終わってから捨てる。
+/// 取り込んだ CUDA の資源（外部メモリとそのポインタ、外部セマフォ）。ドロップするときにコンテキストを現在にして解放するので、
+/// リングバッファを作る途中で失敗しても、スロットをドロップしたときも漏れない。GPU の仕事が終わってからドロップする。
 struct Imports {
     cuda: Arc<CudaApi>,
     ctx: CuContext,
@@ -85,7 +85,7 @@ impl Imports {
     /// 共有バッファのハンドルを取り込む。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
+    /// コンテキストが現在で、`handle` は `size` バイトの共有バッファの NT ハンドル。
     unsafe fn import_memory(&mut self, handle: HANDLE, size: u64) -> Result<()> {
         let (mem, ptr) = unsafe { self.cuda.import_buffer(handle.0, size)? };
         self.memory = Some((mem, ptr));
@@ -96,7 +96,7 @@ impl Imports {
     /// 共有フェンスのハンドルを取り込む。
     ///
     /// # Safety
-    /// 文脈が現在で、`handle` は共有フェンスの NT ハンドル。
+    /// コンテキストが現在で、`handle` は共有フェンスの NT ハンドル。
     unsafe fn import_semaphore(&mut self, handle: HANDLE) -> Result<()> {
         self.semaphore = Some(unsafe { self.cuda.import_fence(handle.0)? });
         hooks::imported();
@@ -117,24 +117,24 @@ impl Drop for Imports {
         if self.memory.is_none() && self.semaphore.is_none() {
             return;
         }
-        // SAFETY: 文脈はデコーダーのもの。呼び出し側が GPU の仕事の完了を保証する。
+        // SAFETY: コンテキストはデコーダーのもの。呼び出し側が GPU の仕事の完了を保証する。
         let Ok(_ctx) = (unsafe { self.cuda.scoped(self.ctx) }) else {
             return;
         };
         if let Some(sem) = self.semaphore.take() {
-            // SAFETY: この文脈で取り込んだセマフォ。
+            // SAFETY: このコンテキストで取り込んだセマフォ。
             unsafe { self.cuda.release_semaphore(sem) };
             hooks::released();
         }
         if let Some((mem, ptr)) = self.memory.take() {
-            // SAFETY: この文脈で取り込んだ外部メモリとポインタ。
+            // SAFETY: このコンテキストで取り込んだ外部メモリとポインタ。
             unsafe { self.cuda.release_memory(mem, ptr) };
             hooks::released();
         }
     }
 }
 
-/// 輪の 1 枠。
+/// リングバッファの 1 スロット。
 pub struct Slot {
     pub buffer: wgpu::Buffer,
     fence: ID3D12Fence,
@@ -160,7 +160,7 @@ impl Slot {
     }
 }
 
-/// 1 面のコピー元とコピー先。
+/// 1 プレーンのコピー元とコピー先。
 struct PlaneCopy {
     src: CuDevicePtr,
     src_pitch: usize,
@@ -169,7 +169,7 @@ struct PlaneCopy {
     rows: usize,
 }
 
-/// 共有バッファの輪。
+/// 共有リングバッファ。
 pub struct SharedRing {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -179,15 +179,15 @@ pub struct SharedRing {
     slots: Vec<Slot>,
     next: usize,
     layout: BufferLayout,
-    /// 検査で待ちを外した対照を作るための印。本番では常に `true`。
+    /// 検査で待ちを外した対照を作るためのフラグ。本番では常に `true`。
     wait_for_reader: bool,
 }
 
 impl SharedRing {
-    /// `layout` の配置の共有バッファを `count` 枠つくる。
+    /// `layout` の配置の共有バッファを `count` スロットつくる。
     ///
     /// # Safety
-    /// `ctx` と `stream` は、デコーダーが使う有効な CUDA の文脈とストリーム。
+    /// `ctx` と `stream` は、デコーダーが使う有効な CUDA のコンテキストとストリーム。
     pub unsafe fn new(
         (device, queue): (wgpu::Device, wgpu::Queue),
         cuda: Arc<CudaApi>,
@@ -196,7 +196,7 @@ impl SharedRing {
         count: usize,
     ) -> Result<Self> {
         let slots = {
-            // SAFETY: 文脈を現在にしている間だけ CUDA を呼ぶ。外れるのはこのブロックを抜けるとき。
+            // SAFETY: コンテキストを現在にしている間だけ CUDA を呼ぶ。外れるのはこのブロックを抜けるとき。
             let _ctx = unsafe { cuda.scoped(ctx)? };
             (0..count)
                 .map(|_| make_slot(&device, &cuda, ctx, layout.size))
@@ -226,29 +226,29 @@ impl SharedRing {
         self.wait_for_reader = on;
     }
 
-    /// 枠の数。
+    /// スロットの数。
     pub fn len(&self) -> usize {
         self.slots.len()
     }
 
-    /// 枠の中身。
+    /// スロットの中身。
     pub fn slot(&self, index: usize) -> &Slot {
         &self.slots[index]
     }
 
-    /// cuvid のフレーム（CUDA の NV12 か P010）を次の枠にコピーする。CPU は待たない。
-    /// その枠を wgpu が前に読んだ分の完了を CUDA のストリームの中で待ってからコピーし、
-    /// 終わったらフェンスを進める。戻り値は枠の番号。
+    /// cuvid のフレーム（CUDA の NV12 か P010）を次のスロットにコピーする。CPU は待たない。
+    /// そのスロットを wgpu が前に読んだ分の完了を CUDA のストリームの中で待ってからコピーし、
+    /// 終わったらフェンスを進める。戻り値はスロットの番号。
     ///
-    /// 途中で失敗したら枠の回数を進めない。完了のシグナルを積めなかったコピーを数えると、
-    /// 次にその枠を使うときの待ちが永遠に満たされず、CUDA のストリームが止まるため。
+    /// 途中で失敗したらスロットの回数を進めない。完了のシグナルを積めなかったコピーを数えると、
+    /// 次にそのスロットを使うときの待ちが永遠に満たされず、CUDA のストリームが止まるため。
     pub fn copy_frame(&mut self, f: &ffmpeg_next::frame::Video) -> Result<usize> {
         let index = self.next;
         let planes = self.planes_of(f);
         let slot = &self.slots[index];
         let (previous_read, copy_done) = (2 * slot.copies, 2 * slot.copies + 1);
         {
-            // SAFETY: 文脈を現在にしている間にだけ CUDA を呼ぶ。外れるのはこのブロックを抜けるとき。
+            // SAFETY: コンテキストを現在にしている間にだけ CUDA を呼ぶ。外れるのはこのブロックを抜けるとき。
             let _ctx = unsafe { self.cuda.scoped(self.ctx)? };
             if previous_read > 0 && self.wait_for_reader {
                 // SAFETY: 取り込み済みのセマフォ。
@@ -270,7 +270,7 @@ impl SharedRing {
         Ok(index)
     }
 
-    /// cuvid のフレームの 2 面（Y と UV）のコピー元と、共有バッファの中のコピー先。
+    /// cuvid のフレームの 2 プレーン（Y と UV）のコピー元と、共有バッファの中のコピー先。
     fn planes_of(&self, f: &ffmpeg_next::frame::Video) -> [PlaneCopy; 2] {
         let l = self.layout;
         // SAFETY: cuvid のフレームは CUDA のデバイスポインタを data[0] と data[1] に持つ。
@@ -296,7 +296,7 @@ impl SharedRing {
         ]
     }
 
-    /// 2 面のコピーをストリームに積む。文脈が現在のときに呼ぶ。
+    /// 2 プレーンのコピーをストリームに積む。コンテキストが現在のときに呼ぶ。
     fn enqueue_copies(&self, slot: &Slot, planes: &[PlaneCopy; 2]) -> Result<()> {
         hooks::fault(Stage::Memcpy)?;
         for p in planes {
@@ -318,23 +318,23 @@ impl SharedRing {
                 width_in_bytes: p.dst_pitch,
                 height: p.rows,
             };
-            // SAFETY: 文脈が現在で、両端は有効なデバイスメモリ。
+            // SAFETY: コンテキストが現在で、両端は有効なデバイスメモリ。
             unsafe { self.cuda.memcpy2d_async(&copy, self.stream)? };
         }
         Ok(())
     }
 
-    /// 次の `Queue::submit` の頭で、枠のコピーの完了までキューを待たせる（CPU は待たない）。
+    /// 次の `Queue::submit` の先頭で、スロットのコピーの完了までキューを待たせる（CPU は待たない）。
     pub fn wait_copy_on(&self, index: usize) -> Result<()> {
         let slot = &self.slots[index];
         queue_wait(&self.queue, &slot.fence, slot.copy_done_value())
     }
 
-    /// 枠を読む提出を終えたら、wgpu のキューに「読み終えた」値までフェンスを進めさせる。
+    /// スロットを読む提出を終えたら、wgpu のキューに「読み終えた」値までフェンスを進めさせる。
     /// 提出のあとに呼ぶ。CUDA は次のコピーの前にこれを待つ。
     ///
     /// キューに積めなかったときは CPU からフェンスを進める。進めないと次のコピーの待ちが満たされず
-    /// CUDA のストリームが止まる。この枠の絵は呼び出し側が捨てる（エラーを返す）ので、早く進めてよい。
+    /// CUDA のストリームが止まる。このスロットの画像は呼び出し側が破棄する（エラーを返す）ので、早く進めてよい。
     pub fn signal_read_done(&self, index: usize) -> Result<()> {
         let slot = &self.slots[index];
         let value = slot.read_done_value();
@@ -355,9 +355,9 @@ impl SharedRing {
 impl Drop for SharedRing {
     fn drop(&mut self) {
         // wgpu 側の読み取りが残っていれば終わるまで待ち、CUDA のコピーも終えてから取り込みを外す
-        // （外すのは枠の `Imports` の Drop）。
+        // （外すのはスロットの `Imports` の Drop）。
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
-        // SAFETY: 文脈とストリームはデコーダーのもの。
+        // SAFETY: コンテキストとストリームはデコーダーのもの。
         if let Ok(_ctx) = unsafe { self.cuda.scoped(self.ctx) } {
             let _ = unsafe { self.cuda.sync(self.stream) };
         }
@@ -406,7 +406,7 @@ fn shared_buffer_desc(size: u64) -> D3D12_RESOURCE_DESC {
     }
 }
 
-/// wgpu と同じデバイスに共有バッファとフェンスを作り、CUDA に取り込む。文脈は現在にしておく。
+/// wgpu と同じデバイスに共有バッファとフェンスを作り、CUDA に取り込む。コンテキストは現在にしておく。
 fn make_slot(
     device: &wgpu::Device,
     cuda: &Arc<CudaApi>,

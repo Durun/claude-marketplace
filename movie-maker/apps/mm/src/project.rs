@@ -21,7 +21,7 @@ pub fn store_dir(path: &Path) -> Option<PathBuf> {
     None
 }
 
-/// 文書を読む。素材と出力の相対パスは、文書のあるディレクトリを基準にする
+/// プロジェクトのデータを読む。素材と出力の相対パスは、プロジェクトのデータのあるディレクトリを基準にする
 /// （どこから `mm` を呼んでも同じ素材を指すため）。
 pub fn load_project(path: &Path) -> Result<Project> {
     let Some(dir) = store_dir(path) else {
@@ -34,10 +34,10 @@ pub fn load_project(path: &Path) -> Result<Project> {
     Ok(project)
 }
 
-/// 1 つの JSON から読み、素材と出力を絶対パスに直す。別のフォルダーに作るプロジェクトの文書にする。
+/// 1 つの JSON から読み、素材と出力を絶対パスに直す。別のフォルダーに作るプロジェクトのデータにする。
 pub fn load_json_absolute(path: &Path) -> Result<Project> {
     let mut project = load_json(path)?;
-    // 作業フォルダーを基準に絶対にしてから、`..` を字面で畳む。
+    // 作業フォルダーを基準に絶対にしてから、`..` を字面で正規化する。
     for asset in &mut project.assets {
         asset.path = absolute(&asset.path)?;
     }
@@ -102,7 +102,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 見本のプロジェクトが読めて相対パスが直る() {
+    fn フィクスチャのプロジェクトが読めて相対パスが直る() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/projects/stage0/project.json");
         let project = load_project(&path).unwrap();
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn 読めないファイルは_not_found_に畳まず_io_で返す() {
-        // ディレクトリは存在するが文書としては読めない。
+        // ディレクトリは存在するがプロジェクトのデータとしては読めない。
         let dir = std::env::temp_dir().join(format!("mm_project_dir_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let result = load_project(&dir);

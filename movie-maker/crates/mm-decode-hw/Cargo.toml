@@ -1,6 +1,6 @@
 [package]
 name = "mm-decode-hw"
-description = "GPU でデコードするデコーダー（d3d12va、cuvid）の共有部。D3D12 のアダプターの頼み方、YUV から線形 RGB への変換、面の握り、描画パス、キューの待ちとフェンス"
+description = "GPU でデコードするデコーダー（d3d12va、cuvid）の共通実装。D3D12 のアダプターの頼み方、YUV から線形 RGB への変換、サーフェスの保持、描画パス、キューの待ちとフェンス"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ hw = [
   "dep:pollster",
   "mm-decode-ffmpeg-core/ffmpeg",
 ]
-# 検査のためだけの口（待ちを外した対照など）。本番の組み立てでは入れない。
+# 検査のためだけのフック（待ちを外した対照など）。本番の組み立てでは入れない。
 test-hooks = []
 # 2 つのデコーダーの統合テストが共有する補助（`testing` モジュール）。`hw` は入れない
 # （dev-dependencies から入れても、FFmpeg の無い設定のビルドに FFmpeg を引き込まないため）。

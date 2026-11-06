@@ -8,10 +8,10 @@ use crate::node::Node;
 use crate::param::{Interpolation, Param};
 use crate::sequence::CutId;
 
-/// 効果の印。
+/// 効果のマーカー。
 #[derive(Debug)]
 pub enum EffectMarker {}
-/// マスクの印。
+/// マスクのマーカー。
 #[derive(Debug)]
 pub enum MaskMarker {}
 
@@ -41,7 +41,7 @@ pub struct Layer {
     pub source: Node,
     /// コンポジションの時間軸での始まり。
     pub start: RationalTime,
-    /// 素材の時間軸での入り。
+    /// 素材の時間軸でのイン点。
     #[serde(rename = "in")]
     pub in_point: RationalTime,
     /// 素材の時間軸での出（含まない）。`in < out`。
@@ -62,7 +62,7 @@ pub struct Layer {
     #[serde(default)]
     pub blend: BlendMode,
     pub opacity: Param,
-    /// 位置・拡大・回転・アンカー。レンダラーが合成で掛ける（種類には渡さない）。
+    /// 位置・拡大・回転・アンカー。レンダラーが合成で掛ける（ノードの種類には渡さない）。
     #[serde(default)]
     pub transform: Transform,
     #[serde(default)]
@@ -77,7 +77,7 @@ pub struct Layer {
     /// 無効にしたレイヤーは描かず、鳴らさない。
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 人が直した所。Claude の入口からの操作は断る。
+    /// 人が直した所。Claude の操作経路からの操作は拒否する。
     #[serde(default)]
     pub lock: bool,
 }
@@ -136,7 +136,7 @@ impl Layer {
     }
 }
 
-/// タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に写す折れ線。
+/// タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。
 /// 最初より前と最後より後は端の値を保つ。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -144,7 +144,7 @@ pub struct TimeRemap {
     pub keyframes: Vec<TimeKeyframe>,
 }
 
-/// タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま写す）。
+/// タイムリマップのキーフレーム。補間は `Hold` と `Linear` だけ（時刻は有理数のまま変換する）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TimeKeyframe {
@@ -191,7 +191,7 @@ pub struct Transform {
     pub scale: Param,
     /// 度。正が時計回り。
     pub rotation: Param,
-    /// 回転と拡大の中心（Vec2）。`None` はレイヤーの絵の中心。
+    /// 回転と拡大の中心（Vec2）。`None` はレイヤーの画像の中心。
     pub anchor: Option<Param>,
 }
 
@@ -266,7 +266,7 @@ pub enum MatteKind {
     Luma,
 }
 
-/// 効果。ノードの種類を 1 つ、レイヤーの絵を入力にして掛ける。
+/// 効果。ノードの種類を 1 つ、レイヤーの画像を入力にして掛ける。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Effect {

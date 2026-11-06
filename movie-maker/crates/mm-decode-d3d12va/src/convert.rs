@@ -1,5 +1,5 @@
-//! 2 面（NV12 か P010）を線形の `Rgba16Float` に変えるパス。レンダラーが読める形式で渡すための変換で、
-//! 10 bit は符号語のまま浮動小数にして 8 bit に落とさない。
+//! 2 プレーン（NV12 か P010）を線形の `Rgba16Float` に変えるパス。レンダラーが読める形式で渡すための変換で、
+//! 10 bit は符号語のまま浮動小数にして 8 bit に下げない。
 
 use mm_decode_hw::render::{
     fragment_entry, texture_binding, uniform_binding, ParamsBuffer, YuvPass,
@@ -55,7 +55,7 @@ impl YuvConverter {
         }
     }
 
-    /// 2 面を読んで `target` に描き、キューに出す。
+    /// 2 プレーンを読んで `target` に描き、キューに出す。
     pub fn submit(
         &mut self,
         planes: &PlaneViews,

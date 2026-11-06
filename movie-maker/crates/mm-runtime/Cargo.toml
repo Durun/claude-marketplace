@@ -1,6 +1,6 @@
 [package]
 name = "mm-runtime"
-description = "組み立て。assemble(config) -> Engine、種類のレジストリ"
+description = "組み立て。assemble(config) -> Engine、ノードの種類のレジストリ"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,4 +1,4 @@
-//! 大きな文書での操作 1 つの時間。予算は `docs/design/17-instrumentation.md` の「操作 1 つ 20 ms」。
+//! 大きなプロジェクトのデータでの操作 1 つの時間。予算は `docs/design/17-instrumentation.md` の「操作 1 つ 20 ms」。
 //! 時間は release のときだけ確かめる（debug は桁が違う）。数字は `cargo test --release --test props perf -- --nocapture` で出る。
 
 use std::time::{Duration, Instant};
@@ -71,7 +71,7 @@ fn check(name: &str, took: Duration) {
 }
 
 #[test]
-fn レイヤー_2000_個の文書で操作_1_つが予算に収まる() {
+fn レイヤー_2000_個のプロジェクトのデータで操作_1_つが予算に収まる() {
     let p = big_project();
     let human = OpContext::human();
     check("validate", mean(|| p.validate().unwrap()));

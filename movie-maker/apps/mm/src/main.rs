@@ -2,7 +2,7 @@
 //!
 //! - `mm new` / `import` / `export` / `op` / `undo` / `redo` / `log` / `diff`: `project.mmdb` のフォルダーを扱う（commands.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
-//! - `mm perf run <場面>`: 性能の場面を回して予算と比べる（`startup`、`export`、`all`）。
+//! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`all`）。
 
 mod commands;
 mod describe;
@@ -24,7 +24,7 @@ use tracing_subscriber::prelude::*;
 use crate::perf::{PerfArgs, Scene};
 use crate::project::load_project;
 
-/// 見本のプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
+/// フィクスチャのプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
 /// ビルドした場所の絶対パスを埋め込まないので、別の場所に置いた実行ファイルでも同じ規則で動く。
 fn default_project() -> PathBuf {
     PathBuf::from("fixtures/projects/stage0/project.json")
@@ -46,21 +46,21 @@ enum Command {
         dir: PathBuf,
         /// `versions/` のフォルダー、または 1 つのプロジェクトの JSON。
         source: PathBuf,
-        /// すでにある `project.mmdb` を（写しを `backups/` に残して）置き換える。
+        /// すでにある `project.mmdb` を（バックアップを `backups/` に残して）置き換える。
         #[arg(long)]
         overwrite: bool,
     },
     /// `versions/` に決定的な JSON を書く。
     Export {
         dir: PathBuf,
-        /// 名前付きの版として残す。
+        /// 名前付きバージョンとして残す。
         #[arg(long)]
         name: Option<String>,
     },
-    /// 操作を当てる。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
+    /// 操作を適用する。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
     ///
-    /// 引数は操作ごとの欄の名前（`mm op --schema` が一覧）。複雑な欄は `--json '{...}'`、
-    /// 元にした版は `--base <版>`、記録の名前は `--label <名前>`。
+    /// 引数は操作ごとのフィールドの名前（`mm op --schema` が一覧）。複雑なフィールドは `--json '{...}'`、
+    /// 元にしたバージョンは `--base <バージョン>`、記録の名前は `--label <名前>`。
     Op {
         dir: Option<PathBuf>,
         /// 操作の名前（addLayer、ripple、setParam など）。
@@ -68,20 +68,20 @@ enum Command {
         /// 全部の操作の JSON Schema を出す。
         #[arg(long)]
         schema: bool,
-        /// 複数の操作を 1 つのまとまりとして当てる（`Transaction` の JSON）。
+        /// 複数の操作を 1 つのトランザクションとして適用する（`Transaction` の JSON）。
         #[arg(long)]
         txn: Option<PathBuf>,
-        /// 操作の引数（`--欄 値` の並び）。
+        /// 操作の引数（`--フィールド 値` の並び）。
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// 直前のまとまりを取り消す。
+    /// 直前のトランザクションを取り消す。
     Undo { dir: PathBuf },
-    /// 取り消したまとまりをやり直す。
+    /// 取り消したトランザクションをやり直す。
     Redo { dir: PathBuf },
     /// 操作の記録を出す。
     Log { dir: PathBuf },
-    /// 2 つの版の間の意味の差分を出す。版は番号、`head`、名前付きの版の名前。
+    /// 2 つのバージョンの間の意味の差分を出す。バージョンは番号、`head`、名前付きバージョンの名前。
     Diff {
         dir: PathBuf,
         from: String,
@@ -91,7 +91,7 @@ enum Command {
     Render {
         /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
         project: PathBuf,
-        /// 出力先。省くと文書の output_path。
+        /// 出力先。省くとプロジェクトのデータの output_path。
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// レンダーターゲットの ID。省くと最初の 1 つ。
@@ -110,7 +110,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum PerfCommand {
-    /// 場面を回し、結果を JSON と metrics.jsonl に書く。
+    /// シナリオを回し、結果を JSON と metrics.jsonl に書く。
     Run {
         scene: Scene,
         #[arg(long, default_value_t = 5)]
@@ -118,7 +118,7 @@ enum PerfCommand {
         /// 結果の置き場所。
         #[arg(long, default_value = ".mm/perf")]
         out_dir: PathBuf,
-        /// 場面に使うプロジェクト。
+        /// シナリオに使うプロジェクト。
         #[arg(long)]
         project: Option<PathBuf>,
         /// export の描画の大きさ（WxH）。
@@ -182,7 +182,7 @@ fn run_store_command(command: Command) -> Result<()> {
         Command::Log { dir } => commands::log(&dir),
         Command::Diff { dir, from, to } => commands::diff(&dir, &from, &to),
         other => Err(MmError::Internal(format!(
-            "保存のコマンドでない: {}",
+            "保存のサブコマンドでない: {}",
             command_name(&other)
         ))),
     }
@@ -209,7 +209,7 @@ fn run_perf(command: Command) -> Result<()> {
             },
     } = command
     else {
-        return Err(MmError::Internal("perf のコマンドでない".into()));
+        return Err(MmError::Internal("perf のサブコマンドでない".into()));
     };
     let (layer, metrics) = MetricsLayer::new();
     tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))

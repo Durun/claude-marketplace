@@ -1,4 +1,4 @@
-//! JSON Schema の手書きの実装。serde の `try_from` で読む型は導出が形を写せないので、文書に書く形を直接書く。
+//! JSON Schema の手書きの実装。serde の `try_from` で読む型は導出が形を表せないので、プロジェクトのデータに書く形を直接書く。
 
 use std::borrow::Cow;
 

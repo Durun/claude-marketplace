@@ -1,4 +1,4 @@
-//! GPU の文脈とヘルパーの検査。GPU が無い環境では飛ばし、`MM_REQUIRE_GPU` があれば失敗にする。
+//! GPU のコンテキストとヘルパーの検査。GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::sync::Arc;
 
@@ -13,14 +13,14 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }
 }
 
 #[test]
-fn shared_は合わない求めを黙って捨てない() {
+fn shared_は合わない求めを黙って破棄しない() {
     let Some(ctx) = gpu() else {
         return;
     };
@@ -54,7 +54,7 @@ fn shared_は合わない求めを黙って捨てない() {
 
 /// 全バックエンドで作った後の、バックエンドを絞った求め（`decode: ffmpeg` の後の `decode: auto`）。
 #[test]
-fn shared_は選んだアダプターが求めの範囲にあれば同じ文脈を返す() {
+fn shared_は選んだアダプターが求めの範囲にあれば同じコンテキストを返す() {
     let Some(ctx) = gpu() else {
         return;
     };

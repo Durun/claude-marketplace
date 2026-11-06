@@ -1,4 +1,4 @@
-//! 設定の読み込み、シェーダーの生成、naga の変換、LUT に焼く時間を `mm-trace` のスパンで測る。
+//! 設定の読み込み、シェーダーの生成、naga の変換、LUT にベイクする時間を `mm-trace` のスパンで測る。
 //! 表は `--nocapture` で出る。release で測ること（debug は桁が違う）。
 #![cfg(feature = "native")]
 

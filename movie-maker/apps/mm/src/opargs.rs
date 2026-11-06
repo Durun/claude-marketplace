@@ -1,15 +1,15 @@
 //! `mm op <dir> <操作名> --引数 値 ...` の引数を、操作の JSON に組み立てる。
 //!
-//! 引数の名前と型は `mm_ops::ops_schema()` から引く。スキーマが無い欄は受けない。
-//! 値は欄の型で読む（文字列の欄はそのまま、時刻の欄は `-0.4` や `3/2` から `{num, den}` へ、
-//! それ以外は JSON、JSON でなければ文字列）。複雑な欄は `--json '{...}'` で一度に渡せる。
+//! 引数の名前と型は `mm_ops::ops_schema()` から引く。スキーマが無いフィールドは受けない。
+//! 値はフィールドの型で読む（文字列のフィールドはそのまま、時刻のフィールドは `-0.4` や `3/2` から `{num, den}` へ、
+//! それ以外は JSON、JSON でなければ文字列）。複雑なフィールドは `--json '{...}'` で一度に渡せる。
 
 use serde_json::{json, Map, Value};
 
 use mm_ops::Op;
 use mm_types::{MmError, RationalTime, Result};
 
-/// 操作の欄ではなく、`mm op` 自身が読む引数。
+/// 操作のフィールドではなく、`mm op` 自身が読む引数。
 const RESERVED_JSON: &str = "json";
 const RESERVED_BASE: &str = "base";
 const RESERVED_LABEL: &str = "label";
@@ -20,9 +20,9 @@ const MAX_DECIMALS: usize = 9;
 #[derive(Debug)]
 pub struct ParsedOp {
     pub op: Op,
-    /// 元にした版（`--base`）。
+    /// 元にしたバージョン（`--base`）。
     pub base: Option<u64>,
-    /// 記録に残すまとまりの名前（`--label`）。
+    /// 記録に残すトランザクションの名前（`--label`）。
     pub label: Option<String>,
 }
 
@@ -55,7 +55,7 @@ pub fn parse_op(name: &str, tokens: &[String]) -> Result<ParsedOp> {
     Ok(ParsedOp { op, base, label })
 }
 
-/// 操作の名前と欄の一覧（`mm op` の案内）。
+/// 操作の名前とフィールドの一覧（`mm op` の案内）。
 pub fn usage() -> String {
     format!("操作: {}", Op::NAMES.join(", "))
 }
@@ -101,7 +101,7 @@ fn is_flag(token: &str) -> bool {
         .is_some_and(|r| r.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))
 }
 
-/// 操作 `name` の枝のスキーマ（`$defs` を `defs` の名前で引けるよう、枝に `$defs` を付けて返す）。
+/// 操作 `name` のバリアントのスキーマ（`$defs` を `defs` の名前で引けるよう、バリアントに `$defs` を付けて返す）。
 fn branch_schema(name: &str) -> Result<Value> {
     let root = serde_json::to_value(mm_ops::ops_schema())?;
     let branch = root["oneOf"]
@@ -112,7 +112,7 @@ fn branch_schema(name: &str) -> Result<Value> {
     Ok(json!({ "branch": branch, "defs": root["$defs"] }))
 }
 
-/// 引数の名前に合う欄を引く。`-` と `_` と大文字小文字を区別しない（`--new-cut` で `new_cut`）。
+/// 引数の名前に合うフィールドを引く。`-` と `_` と大文字小文字を区別しない（`--new-cut` で `new_cut`）。
 fn find_field(schema: &Value, op: &str, key: &str) -> Result<(String, Value)> {
     let props = schema["branch"]["properties"]
         .as_object()
@@ -154,7 +154,7 @@ fn resolve(schema: &Value, field: &Value) -> Value {
     out
 }
 
-/// 欄の型で値を読む。
+/// フィールドの型で値を読む。
 fn coerce(field: &Value, raw: &str) -> Result<Value> {
     match field["x-ref"].as_str() {
         Some("RationalTime") => return parse_time(raw),
@@ -178,18 +178,18 @@ fn type_names(field: &Value) -> Vec<&str> {
     }
 }
 
-/// 文字列だけを取る欄か（`"123"` のような ID を数に読まない）。
+/// 文字列だけを取るフィールドか（`"123"` のような ID を数に読まない）。
 fn is_string_field(field: &Value) -> bool {
     let names = type_names(field);
     !names.is_empty() && names.iter().all(|t| *t == "string" || *t == "null")
 }
 
-/// null も取れる欄か（`--cut null` を文字の "null" にしない）。
+/// null も取れるフィールドか（`--cut null` を文字の "null" にしない）。
 fn allows_null(field: &Value) -> bool {
     type_names(field).contains(&"null")
 }
 
-/// `layer:<ID>:<道筋>` か `cut:<ID>:<道筋>` を `{layer|cut, path}` にする。
+/// `layer:<ID>:<パス>` か `cut:<ID>:<パス>` を `{layer|cut, path}` にする。
 fn parse_param_ref(raw: &str) -> Result<Value> {
     let mut parts = raw.splitn(3, ':');
     match (parts.next(), parts.next(), parts.next()) {
@@ -197,7 +197,7 @@ fn parse_param_ref(raw: &str) -> Result<Value> {
             Ok(json!({ kind: id, "path": path }))
         }
         _ => Err(invalid(format!(
-            "パラメータの指し方は `layer:<ID>:<道筋>` か `cut:<ID>:<道筋>`（JSON も可）: {raw}"
+            "パラメータの指し方は `layer:<ID>:<パス>` か `cut:<ID>:<パス>`（JSON も可）: {raw}"
         ))),
     }
 }
@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn null_も取れる欄の_null_は_json_の_null() {
+    fn null_も取れるフィールドの_null_は_json_の_null() {
         let p = parse_op("attachLayer", &tokens("--layer l1 --cut null")).unwrap();
         let v = serde_json::to_value(&p.op).unwrap();
         assert_eq!(v["cut"], Value::Null, "{v}");
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn 知らない操作と知らない引数は使える名前を添えて断る() {
+    fn 知らない操作と知らない引数は使える名前を添えて拒否する() {
         let e = parse_op("nope", &[]).unwrap_err().to_string();
         assert!(e.contains("ripple"), "{e}");
         let e = parse_op("ripple", &tokens("--cut c --zzz 1"))

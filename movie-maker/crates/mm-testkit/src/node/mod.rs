@@ -1,6 +1,6 @@
-//! ノードの見本（`solid`、`footage`、`text`）。契約テストは `contract` にある。
+//! ノードのモック（`solid`、`footage`、`text`）。契約テストは `contract` にある。
 //!
-//! 見本の種類は、返す絵の大きさを `cx.size` にそろえる（レンダラーは (0, 0) に重ねるだけでよい）。
+//! モックの種類は、返す画像の大きさを `cx.size` にそろえる（レンダラーは (0, 0) に重ねるだけでよい）。
 
 mod contract;
 
@@ -16,13 +16,13 @@ use mm_types::{
 
 pub use contract::{contract, render_audio, ConstInputs, Harness, NodeFixture};
 
-/// 見本の種類の版。
+/// モックの種類のバージョン。
 pub const SAMPLE_KIND_VERSION: u32 = 1;
 
 fn migrate_same_version(kind: &dyn NodeKind, old: serde_json::Value, from: u32) -> Result<Params> {
     if from != kind.version() {
         return Err(mm_types::MmError::Unsupported(format!(
-            "{} の版 {from} からの移行が無い",
+            "{} のバージョン {from} からの移行が無い",
             kind.id()
         )));
     }
@@ -112,7 +112,7 @@ impl NodeKind for FootageKind {
         let frame = footage.frame_at(cx.source_time)?;
         let Some(image) = frame.image else {
             return Err(mm_types::MmError::Unsupported(
-                "見本は CPU のフレームだけ".into(),
+                "モックは CPU のフレームだけ".into(),
             ));
         };
         let mut canvas = RgbaImage::transparent(cx.size);
@@ -254,14 +254,14 @@ impl NodeKind for TextKind {
     }
 }
 
-/// 名前で引くだけのレジストリ。テストと見本のレンダラーに使う。
+/// 名前で引くだけのレジストリ。テストとモックのレンダラーに使う。
 #[derive(Default, Clone)]
 pub struct MapRegistry {
     kinds: HashMap<&'static str, Arc<dyn NodeKind>>,
 }
 
 impl MapRegistry {
-    /// 見本の 3 種類を入れたレジストリ。
+    /// モックの 3 種類を入れたレジストリ。
     pub fn with_samples() -> Self {
         let mut r = Self::default();
         r.insert(Arc::new(SolidKind));

@@ -1,4 +1,4 @@
-//! 本物の素材（CFR、NTSC の分数、VFR、頭が 0 でない素材、音）のフレームの番号と時刻。
+//! 実素材（CFR、NTSC の分数、VFR、先頭が 0 でない素材、音）のフレームの番号と時刻。
 #![cfg(feature = "ffmpeg")]
 
 mod common;
@@ -13,7 +13,7 @@ fn open(name: &str) -> Box<dyn Decoder> {
 }
 
 fn number(frame: &DecodedFrame) -> i64 {
-    common::read_frame_number(frame.image.as_ref().expect("CPU の絵"))
+    common::read_frame_number(frame.image.as_ref().expect("CPU の画像"))
 }
 
 fn drain(dec: &mut dyn Decoder) -> Vec<DecodedFrame> {
@@ -25,7 +25,7 @@ fn drain(dec: &mut dyn Decoder) -> Vec<DecodedFrame> {
 }
 
 #[test]
-fn cfr_の全フレームで焼いた番号と番号と時刻が一致する() {
+fn cfr_の全フレームで焼き込んだ番号と番号と時刻が一致する() {
     let mut dec = open("cfr.mp4");
     let fps = Rational::integer(30);
     assert_eq!(dec.info().fps, Some(fps));
@@ -33,7 +33,7 @@ fn cfr_の全フレームで焼いた番号と番号と時刻が一致する() {
     assert!(dec.info().pts_index.is_empty());
     for (i, f) in drain(dec.as_mut()).iter().enumerate() {
         assert_eq!(f.index, i as i64);
-        assert_eq!(number(f), i as i64, "フレーム {i} の焼いた番号");
+        assert_eq!(number(f), i as i64, "フレーム {i} の焼き込んだ番号");
         assert_eq!(f.pts, RationalTime::from_frames(i as i64, fps).unwrap());
     }
 }
@@ -48,7 +48,7 @@ fn シーク後も_in_点から正しい番号が出る() {
             .unwrap();
         let f = dec.next_frame().unwrap().expect("フレームがある");
         assert_eq!(f.index, target);
-        assert_eq!(number(&f), target, "シーク先 {target} の焼いた番号");
+        assert_eq!(number(&f), target, "シーク先 {target} の焼き込んだ番号");
         if target < 59 {
             let g = dec.next_frame().unwrap().expect("続きがある");
             assert_eq!(number(&g), target + 1, "シーク先の次");
@@ -129,7 +129,7 @@ fn vfr_は_pts_の索引を持ち番号がずれない() {
 }
 
 #[test]
-fn 頭が_0_でない素材も最初のフレームが_t_0_になる() {
+fn 先頭が_0_でない素材も最初のフレームが_t_0_になる() {
     let mut dec = open("offset.mp4");
     let fps = dec.info().fps.expect("CFR");
     assert_eq!(fps, Rational::integer(30));
@@ -141,7 +141,7 @@ fn 頭が_0_でない素材も最初のフレームが_t_0_になる() {
 }
 
 #[test]
-fn 壊れた素材と無い素材は落ちずにエラーを返す() {
+fn 壊れた素材と無い素材はクラッシュせずにエラーを返す() {
     let dir = common::fixtures();
     assert!(matches!(
         FfmpegDecoderFactory.open(&dir.join("broken.mp4"), None),

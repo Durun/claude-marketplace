@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-# apps/* はアプリ（Tauri の窓など）。
+# apps/* はアプリ（Tauri のウィンドウなど）。
 members = ["crates/*", "apps/*"]
 
 [workspace.package]
@@ -9,7 +9,7 @@ edition = "2021"
 license = "MIT"
 publish = false
 
-# 外のクレートの版はここに集約し、各クレートは `workspace = true` で参照する。
+# 外のクレートのバージョンはここに集約し、各クレートは `workspace = true` で参照する。
 [workspace.dependencies]
 mm-types = { path = "crates/mm-types" }
 mm-trace = { path = "crates/mm-trace" }
@@ -53,7 +53,7 @@ schemars = "1.2"
 tracing = "0.1"
 wgpu = "30.0.1"
 pollster = "1.0"
-# wgpu-hal の D3D12 が使う版にそろえる（ID3D12Resource などの型を受け渡すため）。
+# wgpu-hal の D3D12 が使うバージョンにそろえる（ID3D12Resource などの型を受け渡すため）。
 windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
 glyphon = { version = "0.12", default-features = false }
@@ -68,16 +68,16 @@ sha2 = "0.10"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
-# 色の試作用。OCIO の橋（bindgen、cc）、GLSL → WGSL（naga）、WGSL を GPU で確かめる試験（wgpu、pollster）。
+# 色の試作用。OCIO のブリッジ（bindgen、cc）、GLSL → WGSL（naga）、WGSL を GPU で確かめる試験（wgpu、pollster）。
 naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgsl-in", "wgsl-out"] }
 bindgen = "0.73"
 cc = "1.2"
 mm-color-lut = { path = "crates/mm-color-lut" }
 mm-color-ocio = { path = "crates/mm-color-ocio" }
-# apps/movie-maker（窓の試作）が使う。
+# apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
-# CEF ホスト（mm-host-cef の `cef` feature）。wgpu の版は cef クレートが要る版に合わせる。
+# CEF ホスト（mm-host-cef の `cef` feature）。wgpu のバージョンは cef クレートが要るバージョンに合わせる。
 cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
 
 [workspace.lints.clippy]

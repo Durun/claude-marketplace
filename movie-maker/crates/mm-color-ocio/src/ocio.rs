@@ -1,5 +1,5 @@
 //! `ColorTransform` の OCIO 実装。GPU の形は、シェーダーがテクスチャも動的な値も持たなければ
-//! naga で WGSL にし、持つ（または naga が読めない）ときは CPU の変換を 3D LUT に焼く。
+//! naga で WGSL にし、持つ（または naga が読めない）ときは CPU の変換を 3D LUT にベイクする。
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -13,7 +13,7 @@ use crate::ffi::{self, Config, Processor};
 use crate::glsl::glsl_to_wgsl;
 
 /// 既定の設定。OCIO の組み込みの studio 設定。`ocio://default`（CG 設定）には
-/// `bt709_oetf` に当てるカメラの Rec.709（`Camera Rec.709`）が無く、studio 設定には ACES 2.0 の
+/// `bt709_oetf` に対応するカメラの Rec.709（`Camera Rec.709`）が無く、studio 設定には ACES 2.0 の
 /// 表示変換もそろっている。
 pub const DEFAULT_CONFIG: &str = "ocio://studio-config-latest";
 /// `to` にこの名前を渡すと、設定の既定の display と view で見る変換になる。
@@ -21,20 +21,20 @@ pub const DEFAULT_CONFIG: &str = "ocio://studio-config-latest";
 pub const DISPLAY_SPACE: &str = "display";
 /// 実装の名前。
 pub const OCIO_ID: &str = "ocio";
-/// OCIO の GLSL の入口の関数名。
+/// OCIO の GLSL のエントリーポイントの関数名。
 const ENTRY: &str = "OCIOConvert";
-/// 焼く 3D LUT の一辺の既定。
+/// ベイクする 3D LUT の一辺の既定。
 const DEFAULT_LUT_SIZE: u32 = 33;
 
 /// mm の色空間名と OCIO の名前の対応。ここに無い名前は OCIO の名前としてそのまま引く。
 const ALIASES: [(&str, &str); 5] = [
     ("lin_rec709", "Linear Rec.709 (sRGB)"),
     ("srgb", "sRGB Encoded Rec.709 (sRGB)"),
-    // 映像の Rec.709 は表示側の Rec.1886（ガンマ 2.4）で見るので、その色空間に当てる。
+    // 映像の Rec.709 は表示側の Rec.1886（ガンマ 2.4）で見るので、その色空間に対応づける。
     ("bt709", "Rec.1886 Rec.709 - Display"),
     // カメラの OETF（シーン参照）。組み込みの studio-config にある名前。
     ("bt709_oetf", "Camera Rec.709"),
-    // studio-config に Rec.601 の色空間は無い。SD は Rec.709 と同じ原色として bt709 と同じ名前に当てる（RFC 0005）。
+    // studio-config に Rec.601 の色空間は無い。SD は Rec.709 と同じ原色として bt709 と同じ名前に割り当てる（RFC 0005）。
     ("bt601", "Rec.1886 Rec.709 - Display"),
 ];
 
@@ -78,7 +78,7 @@ impl OcioColor {
         })
     }
 
-    /// 焼く 3D LUT の一辺を変える。
+    /// ベイクする 3D LUT の一辺を変える。
     pub fn with_lut_size(mut self, size: u32) -> Self {
         self.lut_size = size;
         self
@@ -108,7 +108,7 @@ impl OcioColor {
         program_of(p, size)
     }
 
-    /// `from` を display と view で見る変換を CPU で 1 画素に当てる。
+    /// `from` を display と view で見る変換を CPU で 1 画素に適用する。
     pub fn display_apply(
         &self,
         from: &ColorSpace,
@@ -183,7 +183,7 @@ fn program_of(p: &mut Processor, lut_size: u32) -> Result<TransformProgram> {
             info_span!("color_ocio.naga_convert").in_scope(|| glsl_to_wgsl(&shader.text, ENTRY));
         match wgsl {
             Ok(source) => return Ok(TransformProgram::Wgsl { source }),
-            Err(e) => tracing::warn!("naga が読めないので 3D LUT に焼く: {e}"),
+            Err(e) => tracing::warn!("naga が読めないので 3D LUT にベイクする: {e}"),
         }
     }
     let p: &Processor = p;
@@ -259,7 +259,7 @@ impl OcioColor {
         }
     }
 
-    /// 相手が `mm-color-lut` も知る空間ならその WGSL をそのまま返し、そうでなければ 3D LUT に焼く。
+    /// 相手が `mm-color-lut` も知る空間ならその WGSL をそのまま返し、そうでなければ 3D LUT にベイクする。
     fn bt2020_program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
         if let Ok(p) = LutColor.program(from, to) {
             return Ok(p);

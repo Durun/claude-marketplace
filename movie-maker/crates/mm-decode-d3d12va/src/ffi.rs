@@ -1,6 +1,6 @@
 //! `libavutil/hwcontext_d3d12va.h` の構造体。
 //!
-//! bindgen は D3D12 の SDK ヘッダーを見つけられない環境があるため、使う欄だけ手で宣言する。
+//! bindgen は D3D12 の SDK ヘッダーを見つけられない環境があるため、使うフィールドだけ手で宣言する。
 //! 並びと大きさはヘッダーと同じ（x86_64 の Windows で確認）。
 
 use std::ffi::c_void;

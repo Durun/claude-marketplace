@@ -45,12 +45,12 @@ fn gpu_の時間が_mm_trace_に載る() {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             return;
         }
     };
     if !ctx.timestamps {
-        eprintln!("このアダプターにはタイムスタンプが無いので飛ばす");
+        eprintln!("このアダプターにはタイムスタンプが無いのでスキップする");
         return;
     }
     let mut nodes = MapRegistry::default();

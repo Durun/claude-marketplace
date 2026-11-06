@@ -1,4 +1,4 @@
-//! トランザクション。複数の操作を 1 つのまとまりとして当て、途中で失敗したら全部戻す。
+//! トランザクション。複数の操作を 1 つのトランザクションとして適用し、途中で失敗したら全部戻す。
 
 use serde::{Deserialize, Serialize};
 
@@ -9,20 +9,20 @@ use crate::error::OpResult;
 use crate::op::Op;
 use crate::touches::Touches;
 
-/// 当てる前のまとまり。ドラッグの連続、マクロ、Claude の対応 1 回。
+/// 適用する前のトランザクション。ドラッグの連続、マクロ、Claude の対応 1 回。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Transaction {
     /// 記録に残す名前（「ドラッグ」「Claude の対応」）。
     pub name: String,
-    /// 元にした文書の版。`None` は今の版を元にする（判定しない）。
+    /// 元にしたプロジェクトのデータのバージョン。`None` は今のバージョンを元にする（判定しない）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_version: Option<u64>,
-    /// 順に当てる操作。
+    /// 順に適用する操作。
     pub ops: Vec<Op>,
 }
 
 impl Transaction {
-    /// 今の版を元にするまとまり。
+    /// 今のバージョンを元にするトランザクション。
     pub fn new(name: impl Into<String>, ops: Vec<Op>) -> Self {
         Self {
             name: name.into(),
@@ -31,7 +31,7 @@ impl Transaction {
         }
     }
 
-    /// 元にした版を付ける。
+    /// 元にしたバージョンを付ける。
     pub fn based_on(mut self, version: u64) -> Self {
         self.base_version = Some(version);
         self
@@ -41,7 +41,7 @@ impl Transaction {
 /// 操作 1 つの記録。保存の層が `ops` の表に 1 行で書く形。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpRecord {
-    /// 当てた操作（`op` の欄に名前）。
+    /// 適用した操作（`op` のフィールドに名前）。
     pub op: serde_json::Value,
     /// 打ち消す操作。
     pub inverse: serde_json::Value,
@@ -70,25 +70,25 @@ impl OpRecord {
     }
 }
 
-/// まとまりを当てた結果。
+/// トランザクションを適用した結果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TxnOutcome {
-    /// 操作ごとの記録（当てた順）。
+    /// 操作ごとの記録（適用した順）。
     pub records: Vec<OpRecord>,
-    /// まとまり全体で触った所。
+    /// トランザクション全体で触った所。
     pub touches: Touches,
 }
 
 impl TxnOutcome {
-    /// 取り消しのまとまり。逆操作を逆の順に並べる。
+    /// 取り消しのトランザクション。逆操作を逆の順に並べる。
     pub fn inverse_ops(&self) -> serde_json::Result<Vec<Op>> {
         self.records.iter().rev().map(OpRecord::inverse).collect()
     }
 }
 
-/// 操作の列を 1 つのまとまりとして当てる。途中で失敗したら文書を元に戻して `Err`。
+/// 操作の列を 1 つのトランザクションとして適用する。途中で失敗したらプロジェクトのデータを元に戻して `Err`。
 ///
-/// 版の判定（`base_version`）はしない。それは [`crate::Editor`] の仕事で、ここは文書だけを見る。
+/// バージョンの判定（`base_version`）はしない。それは [`crate::Editor`] の仕事で、ここはプロジェクトのデータだけを見る。
 pub fn apply_transaction(
     project: &mut Project,
     ops: &[Op],

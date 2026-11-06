@@ -20,7 +20,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
         Err(e) => {
-            eprintln!("GPU が無いので飛ばす: {e}");
+            eprintln!("GPU が無いのでスキップする: {e}");
             None
         }
     }

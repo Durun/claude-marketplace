@@ -1,4 +1,4 @@
-//! bindgen が作った C の口と、それを包む安全な型。unsafe はこのファイルに閉じる。
+//! bindgen が作った C のバインディングと、それをラップする安全な型。unsafe はこのファイルに閉じる。
 
 use std::ffi::{c_char, c_int, CStr, CString};
 
@@ -149,7 +149,7 @@ impl Processor {
         unsafe { raw::mm_ocio_processor_is_noop(self.0) != 0 }
     }
 
-    /// CPU で 1 画素に当てる。
+    /// CPU で 1 画素に適用する。
     pub fn apply_rgb(&self, rgb: [f32; 3]) -> Result<[f32; 3]> {
         let mut px = rgb;
         // SAFETY: px は 3 個の f32 を持つ。
@@ -163,7 +163,7 @@ impl Processor {
         Ok(px)
     }
 
-    /// GPU のシェーダー（Vulkan 向けの GLSL 4.6）。入口の関数名は `function_name`。
+    /// GPU のシェーダー（Vulkan 向けの GLSL 4.6）。エントリーポイントの関数名は `function_name`。
     pub fn gpu_shader(&mut self, function_name: &str) -> Result<Shader> {
         let name = cstring(function_name)?;
         let mut text: *const c_char = std::ptr::null();

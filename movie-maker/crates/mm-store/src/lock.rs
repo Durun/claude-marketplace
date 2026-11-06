@@ -1,6 +1,6 @@
-//! 書き手の印。`.mm/lock` に OS のファイルロックをかけ、pid と HTTP のポートは `.mm/lock.info` に書く。
+//! 書き手のロックファイル。`.mm/lock` に OS のファイルロックをかけ、pid と HTTP のポートは `.mm/lock.info` に書く。
 //!
-//! ロックは落ちたプロセスのものも OS が解くので、古い印が残って締め出すことが無い。
+//! ロックはクラッシュしたプロセスのものも OS が解くので、古いロックファイルが残って締め出すことが無い。
 //! Windows では排他ロックされたファイルが読めないため、読む側が見る内容は別のファイルに置く。
 
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use mm_types::{MmError, Result};
 
-/// 書き手の動作中の印の置き場（プロジェクトの下）。
+/// 書き手の動作中を示すファイルの保存先（プロジェクトの下）。
 const MM_DIR: &str = ".mm";
 const LOCK_FILE: &str = "lock";
 const INFO_FILE: &str = "lock.info";
@@ -22,7 +22,7 @@ pub struct LockInfo {
     pub http_port: Option<u16>,
 }
 
-/// 持っている間だけ書き手でいられる。落とすとロックが解ける。
+/// 持っている間だけ書き手でいられる。ドロップするとロックが解ける。
 #[derive(Debug)]
 pub(crate) struct WriterLock {
     file: File,

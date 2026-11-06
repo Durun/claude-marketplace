@@ -1,4 +1,4 @@
-//! 音の見本と契約テスト。見本のミキサーは音量とパンを掛けて足すだけ。無音は無音のまま。
+//! 音のモックと契約テスト。モックのミキサーは音量とパンを掛けて足すだけ。無音は無音のまま。
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use mm_audio_api::{AudioBlock, AudioSink, BusConfig, MixInput, Mixer, MixerConfig, MixerFactory};
 use mm_types::{MmError, Result};
 
-/// 素通しの判定に使う許容差。
+/// パススルーの判定に使う許容差。
 pub const PASSTHROUGH_TOLERANCE: f32 = 1e-6;
 
 /// dB を倍率に。
@@ -15,7 +15,7 @@ pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
 }
 
-/// 見本のミキサーを作る口。
+/// モックのミキサーを作るファクトリー。
 #[derive(Debug, Clone, Default)]
 pub struct SampleMixerFactory;
 
@@ -38,7 +38,7 @@ impl MixerFactory for SampleMixerFactory {
     }
 }
 
-/// 見本のミキサー。バスとマスターの音量だけ効かせ、ダッキングは省く。
+/// モックのミキサー。バスとマスターの音量だけ効かせ、ダッキングは省く。
 #[derive(Debug)]
 pub struct SampleMixer {
     sample_rate: u32,
@@ -82,13 +82,13 @@ impl Mixer for SampleMixer {
     }
 }
 
-/// 中央で両方 1.0 の、素通しを保つパン。
+/// 中央で両方 1.0 の、パススルーを保つパン。
 fn pan_gains(pan: f32) -> (f32, f32) {
     let p = pan.clamp(-1.0, 1.0);
     ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
 }
 
-/// 受け取ったブロックをためる出口。
+/// 受け取ったブロックをためる出力先。
 #[derive(Debug, Default)]
 pub struct VecSink {
     pub sample_rate: u32,
@@ -118,7 +118,7 @@ impl AudioSink for VecSink {
 
     fn write(&mut self, block: &AudioBlock) -> Result<()> {
         if block.sample_rate != self.sample_rate || block.channels != self.channels {
-            return Err(MmError::InvalidArgument("出口の形と違う".into()));
+            return Err(MmError::InvalidArgument("出力の形と違う".into()));
         }
         self.blocks.push(block.clone());
         Ok(())
@@ -175,7 +175,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
     let diff = a.max_diff(&tone.block).expect("同じ形");
     assert!(
         diff <= PASSTHROUGH_TOLERANCE,
-        "0 dB・中央は素通し（差 {diff}）"
+        "0 dB・中央はパススルー（差 {diff}）"
     );
 
     bus_and_master_contract(factory.as_ref(), &tone, rate, ch, frames);
@@ -183,7 +183,7 @@ pub fn contract(make: impl Fn() -> Arc<dyn MixerFactory>) {
     length_contract(mixer.as_mut(), &tone, rate, ch, frames);
 }
 
-/// 入力が頼んだ長さより短ければ後ろを無音で埋め、長ければ頭から切る。中身の位置まで見る。
+/// 入力が頼んだ長さより短ければ後ろを無音で埋め、長ければ先頭から切る。内容の位置まで見る。
 fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, frames: usize) {
     let samples_per_frame = ch as usize;
     let half = frames / 2;
@@ -202,7 +202,7 @@ fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, f
         .fold(0.0f32, f32::max);
     assert!(
         diff <= PASSTHROUGH_TOLERANCE,
-        "短い入力は頭に置かれる（差 {diff}）"
+        "短い入力は先頭に置かれる（差 {diff}）"
     );
     assert!(
         out.samples[cut..].iter().all(|s| *s == 0.0),
@@ -225,11 +225,11 @@ fn length_contract(mixer: &mut dyn Mixer, tone: &MixInput, rate: u32, ch: u16, f
     let diff = out.max_diff(&long_block).expect("同じ形");
     assert!(
         diff <= PASSTHROUGH_TOLERANCE,
-        "長い入力は頭から切る（差 {diff}）"
+        "長い入力は先頭から切る（差 {diff}）"
     );
 }
 
-/// `tone` の頭から `frames` フレーム。
+/// `tone` の先頭から `frames` フレーム。
 fn tone_block_head(tone: &MixInput, frames: usize, rate: u32, ch: u16) -> AudioBlock {
     let n = frames * ch as usize;
     AudioBlock::from_samples(rate, ch, tone.block.samples[..n].to_vec()).expect("形は合う")

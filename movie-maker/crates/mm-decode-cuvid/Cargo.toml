@@ -16,7 +16,7 @@ cuvid = [
   "mm-decode-hw/hw",
   "mm-decode-ffmpeg-core/ffmpeg",
 ]
-# 検査のためだけの口（待ちを外した対照、故障の注入）。本番の組み立てでは入れない。
+# 検査のためだけのフック（待ちを外した対照、故障の注入）。本番の組み立てでは入れない。
 test-hooks = ["mm-decode-hw/test-hooks"]
 
 [dependencies]
@@ -38,7 +38,7 @@ windows = { workspace = true, optional = true, features = [
 ] }
 
 [dev-dependencies]
-# 統合テストだけが検査の口（test-hooks）を使う。
+# 統合テストだけが検査用のフック（test-hooks）を使う。
 mm-decode-cuvid = { path = ".", features = ["test-hooks"] }
 mm-decode-hw = { workspace = true, features = ["testing"] }
 mm-trace = { workspace = true }

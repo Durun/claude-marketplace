@@ -1,11 +1,11 @@
-//! 素の実行ファイル。200ms ごとに操作を適用し、印と時刻（epoch ms）を 1 行出す。
-//! 先端のクレート（ここ）の関数と、別クレート（ops-sample）の関数の両方が差し替わるかを見る。
+//! 単体の実行ファイル。200ms ごとに操作を適用し、マーカーと時刻（epoch ms）を 1 行出す。
+//! バイナリのクレート（ここ）の関数と、別クレート（ops-sample）の関数の両方が差し替わるかを見る。
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use mm_doc::Project;
 
-/// 先端のクレート側の印。
+/// バイナリのクレート側のマーカー。
 const TIP_MARK: &str = "tip-v1";
 
 fn epoch_ms() -> u128 {
@@ -14,7 +14,7 @@ fn epoch_ms() -> u128 {
         .map_or(0, |d| d.as_millis())
 }
 
-/// 先端のクレートに置いた操作。
+/// バイナリのクレートに置いた操作。
 fn tip_op(project: &mut Project) -> String {
     let layer = &mut project.compositions[0].layers[0];
     layer.lock = !layer.lock;
@@ -23,7 +23,7 @@ fn tip_op(project: &mut Project) -> String {
 }
 
 fn main() {
-    // patch を受ける口。dx が起動時に渡す環境変数で接続先が決まる。
+    // patch を受けるエントリーポイント。dx が起動時に渡す環境変数で接続先が決まる。
     dioxus_devtools::connect_subsecond();
     let mut project = ops_sample::demo_project();
     let mut value = 0.0;

@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::add_ancestors;
 use crate::touches::Touches;
 
-/// 親を `parent` にする。`None` で外す。循環と無い親は `Project::validate` が断る。
+/// 親を `parent` にする。`None` で外す。循環と無い親は `Project::validate` が拒否する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ParentLayer {

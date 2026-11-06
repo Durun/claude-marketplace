@@ -1,4 +1,4 @@
-//! デコーダーの GPU のフレームの中身。口の `GpuFrame` の wgpu での形。
+//! デコーダーの GPU のフレームの中身。インターフェースの `GpuFrame` の wgpu での形。
 
 use std::any::Any;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use mm_types::Size;
 /// デコードの完了を待たせる手続き。`Queue::submit` の前に呼ぶ。
 pub type WaitFn = dyn Fn(&wgpu::Queue) + Send + Sync;
 
-/// wgpu のテクスチャに包んだフレーム。`FRAME_FORMAT`（`Rgba16Float`）か、レンダラーが読める形式で渡す。
+/// wgpu のテクスチャにラップしたフレーム。`FRAME_FORMAT`（`Rgba16Float`）か、レンダラーが読める形式で渡す。
 pub struct GpuFrameTexture {
     pub texture: wgpu::Texture,
     /// デコードの完了を待たせる。`None` ならデコーダーが同じキューで書いており、順序が守られる。
@@ -17,7 +17,7 @@ pub struct GpuFrameTexture {
 }
 
 impl GpuFrameTexture {
-    /// 口の取っ手にする。
+    /// インターフェースのハンドルにする。
     pub fn into_handle(self, id: u64) -> GpuFrameHandle {
         let size = Size::new(self.texture.width(), self.texture.height());
         GpuFrameHandle {
@@ -27,7 +27,7 @@ impl GpuFrameTexture {
         }
     }
 
-    /// 口の取っ手から戻す。別の実装の中身なら `None`。
+    /// インターフェースのハンドルから戻す。別の実装の中身なら `None`。
     pub fn of(handle: &GpuFrameHandle) -> Option<&Self> {
         Self::of_frame(handle.frame.as_ref())
     }

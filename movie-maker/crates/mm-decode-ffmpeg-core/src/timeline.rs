@@ -63,7 +63,7 @@ pub struct VideoScan {
 
 /// 映像ストリームの PTS を全部読む。パケットが 1 つも無ければ `Corrupt`。
 ///
-/// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）はデコードしても絵が出ないので、
+/// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）はデコードしても画像が出ないので、
 /// 索引に入れない。入れるとフレームの番号が出るフレームからずれる。
 pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoScan> {
     let mut input = ff::format::input(&path)
@@ -115,7 +115,7 @@ pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoSc
 }
 
 fn is_discarded(packet: &ff::Packet) -> bool {
-    // ffmpeg-next の `Flags` は DISCARD を持たず、`flags()` が未知のビットを落とすので生で読む
+    // ffmpeg-next の `Flags` は DISCARD を持たず、`flags()` が未知のビットを破棄するので生で読む
     let raw = unsafe { (*packet.as_ptr()).flags };
     raw & ff::ffi::AV_PKT_FLAG_DISCARD != 0
 }

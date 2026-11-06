@@ -1,4 +1,4 @@
-//! 窓の組み立て。Tauri の窓の下に、左に wgpu の面（子 HWND）、右に子 WebView を並べる。
+//! ウィンドウの組み立て。Tauri のウィンドウの下に、左に wgpu のサーフェス（子 HWND）、右に子 WebView を並べる。
 
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +18,7 @@ use crate::shared::Shared;
 use crate::sync::SyncState;
 use crate::{selftest, surface, sync};
 
-/// 面の幅の割合。残りが WebView。
+/// サーフェスの幅の割合。残りが WebView。
 const SPLIT: f64 = 0.6;
 
 /// 配置を直すのに要るもの。
@@ -33,14 +33,14 @@ pub struct Ctx {
 /// 矩形（x、y、幅、高さ。物理ピクセル）。
 pub type PixelRect = (i32, i32, i32, i32);
 
-/// 面と WebView の矩形（物理ピクセル）を窓の大きさから決める。
+/// サーフェスと WebView の矩形（物理ピクセル）をウィンドウの大きさから決める。
 pub fn split_rects(width: u32, height: u32) -> (PixelRect, PixelRect) {
     let left = (f64::from(width) * SPLIT).round() as i32;
     let (w, h) = (width as i32, height as i32);
     ((0, 0, left, h), (left, 0, w - left, h))
 }
 
-/// 窓の大きさに合わせて面と WebView を置き直す。
+/// ウィンドウの大きさに合わせてサーフェスと WebView を置き直す。
 pub fn layout(window: &Window, webview: &Webview, ctx: &Ctx) {
     let Ok(size) = window.inner_size() else {
         return;
@@ -126,7 +126,7 @@ pub fn run() {
                     layout(&w, &wv, &c);
                 }
             });
-            // 描画スレッドは窓が閉じるまで止めない。取っ手は終了時に落とす。
+            // 描画スレッドはウィンドウが閉じるまで止めない。ハンドルは終了時にドロップする。
             app.manage(Mutex::new(Some(renderer)));
 
             if let Some(out) = selftest_out.clone() {
@@ -143,10 +143,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 面と_webview_は隙間も重なりもなく窓を埋める() {
+    fn サーフェスと_webview_は隙間も重なりもなくウィンドウを埋める() {
         for (w, h) in [(1600, 1000), (1125, 750), (2400, 1350), (1, 1)] {
             let (s, v) = split_rects(w, h);
-            assert_eq!(s.0 + s.2, v.0, "面の右端と WebView の左端が一致する");
+            assert_eq!(
+                s.0 + s.2,
+                v.0,
+                "サーフェスの右端と WebView の左端が一致する"
+            );
             assert_eq!(v.0 + v.2, w as i32);
             assert_eq!((s.3, v.3), (h as i32, h as i32));
         }
