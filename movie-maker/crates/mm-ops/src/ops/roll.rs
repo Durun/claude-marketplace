@@ -6,7 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::{RationalTime, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, negate};
+use crate::ops::{cut_referrers, invalid, negate};
 use crate::touches::Touches;
 
 /// `cut` とそのすぐ後ろのカットの境目を、並びの時間軸で `by` だけ動かす。
@@ -49,6 +49,8 @@ impl Apply for Roll {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.cut);
         t.add(&next_cut(project, &self.cut)?);
+        cut_referrers(project, &self.cut, &mut t);
+        cut_referrers(project, &next_cut(project, &self.cut)?, &mut t);
         Ok(t)
     }
 

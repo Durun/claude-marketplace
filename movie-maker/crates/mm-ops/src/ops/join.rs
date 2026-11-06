@@ -6,7 +6,7 @@ use mm_doc::{CutId, Project};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, Split};
+use crate::ops::{cut_referrers, invalid, Split};
 use crate::touches::Touches;
 
 /// `cut` とそのすぐ後ろの `next` を 1 つにする。同じ素材・速さ・有効で、`cut.out == next.in`、
@@ -23,6 +23,8 @@ impl Apply for Join {
         let (seq_id, index) = project.cut_index(&self.cut)?;
         let mut t = Touches::of(&seq_id);
         t.add(&self.cut).add(&self.next);
+        cut_referrers(project, &self.cut, &mut t);
+        cut_referrers(project, &self.next, &mut t);
         // 戻した後の次になるカット。
         if let Some(after) = project.sequence(&seq_id)?.cuts.get(index + 2) {
             t.add(&after.id);
