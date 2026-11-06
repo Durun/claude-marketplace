@@ -1015,6 +1015,7 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .skype-channel { flex: none; color: #5d8aa8; font-size: 11px; font-weight: normal; }
 .skype-tab-close { padding: 0 6px 0 0; border: 0; background: none; color: #5d8aa8; font: inherit; cursor: pointer; }
 .skype-tab-close:hover { color: #c0392b; }
+.skype-tab.is-dragging { opacity: 0.4; }
 .skype-tab-add { align-self: center; width: 20px; height: 20px; margin: 0 0 3px 4px; padding: 0; border: 1px solid #9fd3ee; border-radius: 50%; background: #fff; color: #00578a; font: bold 14px/1 Tahoma, sans-serif; cursor: pointer; }
 .skype-tab-add:hover, .skype-tab-add[aria-expanded="true"] { background: #e6f5fc; }
 .skype-add { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #e3f1f8; }

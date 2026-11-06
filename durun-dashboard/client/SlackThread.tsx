@@ -1,13 +1,14 @@
 // 「スレッド」ウィジェット。登録した Slack のスレッドかチャンネルの会話を、昔の Skype の会話ウィンドウの見た目で並べる。
 // 会話はタブで切り替え、チャンネルの返信のあるスレッドは押すとタブに足して開く。
-// ホームでは設定に登録した 1 つと開いたスレッドを、セッションではセッションごとに足したものとチャットに出たリンクを並べる。
+// ホームでは + や返信から開いたものを、セッションではセッションごとに足したものとチャットに出たリンクを並べる。
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Session, SlackChannel, SlackConversation, SlackMessage } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import type { Control } from './Float.tsx';
 import type { HomeWidgetProps } from './Home.tsx';
-import { pickInWidget, useCached, usePicked } from './hooks.ts';
+import { pickInWidget, useCached, usePicked, useTabOrder } from './hooks.ts';
 import { Markdown } from './Markdown.tsx';
+import { moveTo } from './order.ts';
 import { Empty, Loading } from './ui.tsx';
 
 export const SLACK_THREAD_TITLE = 'スレッド';
@@ -19,6 +20,7 @@ const REFRESH_EVENT = 'slack-thread-refresh';
 const SUGGEST_DELAY_MS = 300;
 // 同じ人が続けた発言は、この間に収まれば名前とアバターを省いてまとめる。
 const CONTINUE_SEC = 5 * 60;
+const TAB_STEP: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 
 export const slackThreadControls = (): Control[] => [{ kind: 'refresh', label: 'Slack の会話を読み直す', onClick: () => dispatchEvent(new Event(REFRESH_EVENT)) }];
 
@@ -173,30 +175,54 @@ const AddForm = ({ onAdd, onDone }: { onAdd: (ref: string) => Promise<void>; onD
 
 /**
  * Skype の会話ウィンドウ。上の帯に会話のタブを並べ、帯の右端の + で会話を足す。
- * closable の会話だけに × を出す。onOpenThread があれば、チャンネルの返信のあるスレッドを押して開ける。
+ * タブはドラッグか Alt + ←→ で並べ替え、onReorder に新しい並びを渡す。onOpenThread があれば、チャンネルの返信のあるスレッドを押して開ける。
  */
 type PanelProps = {
   refs: string[];
   current?: string;
   onPick: (ref: string) => void;
-  closable: (ref: string) => boolean;
+  onReorder: (refs: string[]) => void;
   onClose: (ref: string) => void;
   onAdd: (ref: string) => Promise<void>;
   onOpenThread?: (ref: string) => void;
   empty: string;
 };
 
-const SkypePanel = ({ refs, current, onPick, closable, onClose, onAdd, onOpenThread, empty }: PanelProps) => {
+const SkypePanel = ({ refs, current, onPick, onReorder, onClose, onAdd, onOpenThread, empty }: PanelProps) => {
   const [adding, setAdding] = useState(false);
+  const [dragging, setDragging] = useState<string>();
   return (
     <div class="skype">
       <div class="skype-tabs" role="tablist" aria-label="会話">
         {refs.map((r) => (
-          <span key={r} class={`skype-tab${r === current ? ' is-active' : ''}`}>
-            <button role="tab" aria-selected={r === current} title={r} onClick={() => onPick(r)}>
+          <span
+            key={r}
+            class={`skype-tab${r === current ? ' is-active' : ''}${r === dragging ? ' is-dragging' : ''}`}
+            draggable
+            onDragStart={() => setDragging(r)}
+            onDragOver={(e) => {
+              if (!dragging) return;
+              e.preventDefault();
+              if (r !== dragging) onReorder(moveTo(refs, dragging, r));
+            }}
+            onDragEnd={() => setDragging(undefined)}
+          >
+            <button
+              role="tab"
+              aria-selected={r === current}
+              title={`${r}\nドラッグか Alt + ←→ で並べ替えます`}
+              onClick={() => onPick(r)}
+              onKeyDown={(e) => {
+                const step = e.altKey ? TAB_STEP[e.key] : undefined;
+                const target = step && refs[refs.indexOf(r) + step];
+                if (!target) return;
+                e.preventDefault();
+                onReorder(moveTo(refs, r, target));
+              }}
+            >
               <TabLabel slackRef={r} />
             </button>
-            {closable(r) && <button class="skype-tab-close" aria-label="この会話を閉じる" title="閉じる" onClick={() => onClose(r)}>×</button>}
+            <button class="skype-tab-close" aria-label="この会話を閉じる" title="閉じる" onClick={() => onClose(r)}>×</button>
           </span>
         ))}
         <button class="skype-tab-add" aria-label="会話を足す" title="会話を足す" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>+</button>
@@ -207,29 +233,24 @@ const SkypePanel = ({ refs, current, onPick, closable, onClose, onAdd, onOpenThr
   );
 };
 
-const HomeSettings = ({ settings, onSave, onClose }: { settings: HomeWidgetProps['settings']; onSave: HomeWidgetProps['onSettings']; onClose?: () => void }) => {
+const HomeSettings = ({ settings, onSave, onClose }: { settings: HomeWidgetProps['settings']; onSave: HomeWidgetProps['onSettings']; onClose: () => void }) => {
   const [title, setTitle] = useState(settings.title ?? '');
-  const [ref, setRef] = useState(settings.url ?? '');
   return (
     <form
       class="card panel stack jira-settings"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave({ ...settings, title: title.trim(), url: ref.trim() });
-        onClose?.();
+        onSave({ ...settings, title: title.trim() });
+        onClose();
       }}
     >
       <label class="inline-field">
         見出し
         <input class="input input-sm" value={title} placeholder={SLACK_THREAD_TITLE} onInput={(e) => setTitle(e.currentTarget.value)} />
       </label>
-      <label class="jira-jql">
-        Slack のスレッドかチャンネル
-        <RefInput value={ref} onInput={setRef} />
-      </label>
       <div class="actions">
         <span class="spacer" />
-        {onClose && <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>}
+        <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>
         <button class="btn btn-sm btn-primary">保存</button>
       </div>
     </form>
@@ -239,43 +260,41 @@ const HomeSettings = ({ settings, onSave, onClose }: { settings: HomeWidgetProps
 /** 設定に、改行で区切った参照を持つ値を読む。 */
 const linesOf = (value: string | undefined): string[] => (value ?? '').split('\n').filter(Boolean);
 
-/** ホームのウィジェット。設定の url に登録した参照を、opened に + や返信から開いた参照を、改行で区切って持つ。 */
+/**
+ * ホームのウィジェット。+ や返信から開いた参照を、タブの並びのまま、設定の opened に改行で区切って持つ。
+ * 設定の url は、opened より前の版で 1 つ目に固定していた参照で、読むときに opened の先頭へ混ぜる。
+ */
 export const SlackThread = ({ settings, onSettings }: HomeWidgetProps) => {
   const [editing, setEditing] = useState(false);
-  const main = settings.url;
-  const opened = linesOf(settings.opened).filter((r) => r !== main);
-  const refs = [...(main ? [main] : []), ...opened];
+  const refs = [...new Set([...linesOf(settings.url), ...linesOf(settings.opened)])];
   const [pick, setPick] = useState<string>();
+  const save = (next: string[]) => onSettings({ ...settings, url: '', opened: next.join('\n') });
   const open = (ref: string) => {
-    if (!refs.includes(ref)) onSettings({ ...settings, opened: [...opened, ref].join('\n') });
+    if (!refs.includes(ref)) save([...refs, ref]);
     setPick(ref);
   };
   return (
     <>
       <div class="section-head">
         <h2 class="section-title">{settings.title || SLACK_THREAD_TITLE}</h2>
-        {main && (
-          <div class="actions">
-            <button class="btn btn-sm" data-icon="settings" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>設定</button>
-          </div>
-        )}
+        <div class="actions">
+          <button class="btn btn-sm" data-icon="settings" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>設定</button>
+        </div>
       </div>
       {/* 会話の欄の中だけがスクロールするので、設定は会話の上に置く。 */}
-      {(editing || !main) && <HomeSettings settings={settings} onSave={onSettings} onClose={main ? () => setEditing(false) : undefined} />}
-      {refs.length > 0 && (
-        <div class="widget-body skype-body">
-          <SkypePanel
-            refs={refs}
-            current={refs.find((r) => r === pick) ?? refs[0]}
-            onPick={setPick}
-            closable={(r) => r !== main}
-            onClose={(r) => onSettings({ ...settings, opened: opened.filter((o) => o !== r).join('\n') })}
-            onAdd={async (r) => open(r)}
-            onOpenThread={open}
-            empty="会話はありません。"
-          />
-        </div>
-      )}
+      {editing && <HomeSettings settings={settings} onSave={onSettings} onClose={() => setEditing(false)} />}
+      <div class="widget-body skype-body">
+        <SkypePanel
+          refs={refs}
+          current={refs.find((r) => r === pick) ?? refs[0]}
+          onPick={setPick}
+          onReorder={save}
+          onClose={(r) => save(refs.filter((o) => o !== r))}
+          onAdd={async (r) => open(r)}
+          onOpenThread={open}
+          empty="会話はありません。+ で Slack のスレッドかチャンネルを足すと並びます。"
+        />
+      </div>
     </>
   );
 };
@@ -283,7 +302,7 @@ export const SlackThread = ({ settings, onSettings }: HomeWidgetProps) => {
 /** セッションのウィジェット。セッションごとに足したスレッドと、チャットに出た Slack のリンクを、タブで切り替える。 */
 export const SessionSlack = ({ s }: { s: Session }) => {
   const pick = usePicked(SLACK_WIDGET, s.id);
-  const refs = s.slack ?? [];
+  const { ordered: refs, save } = useTabOrder(SLACK_WIDGET, s.id, s.slack ?? []);
   // サーバーは # で始めた名前を ID にして覚えるので、覚えた参照のタブを選ぶ。
   const add = async (ref: string) => {
     const added = await attempt('スレッドの追加', () => api.addSlack(s.id, ref));
@@ -297,7 +316,7 @@ export const SessionSlack = ({ s }: { s: Session }) => {
           refs={refs}
           current={refs.find((r) => r === pick) ?? refs[0]}
           onPick={(r) => pickInWidget(SLACK_WIDGET, s.id, r)}
-          closable={() => true}
+          onReorder={save}
           onClose={(r) => void attempt('スレッドを閉じる', () => api.removeSlack(s.id, r))}
           onAdd={add}
           onOpenThread={(r) => void add(r)}

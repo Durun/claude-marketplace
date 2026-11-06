@@ -82,7 +82,8 @@ test('askResearcher は、sonnet に Web の検索と読み出しのツールだ
   assert.deepEqual(await askResearcher(dir, 'PROMPT', { type: 'object' }), { ok: true });
   const first = JSON.parse(fs.readFileSync(argsFile, 'utf8')) as { args: string[]; stdin: string; cwd: string };
   assert.equal(first.stdin, 'PROMPT');
-  assert.equal(path.resolve(first.cwd), path.resolve(dir));
+  // macOS の一時ディレクトリは /var から /private/var へのリンクなので、リンクを解いて比べる。
+  assert.equal(fs.realpathSync(first.cwd), fs.realpathSync(dir));
   assert.equal(first.args[first.args.indexOf('--tools') + 1], 'Read,Glob,WebSearch,WebFetch');
   assert.equal(first.args[first.args.indexOf('--model') + 1], 'sonnet');
   assert.ok(!first.args.includes('--allowedTools'));
