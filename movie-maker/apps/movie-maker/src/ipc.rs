@@ -8,14 +8,15 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use mm_doc::{Asset, Composition, Layer};
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tracing::Span;
 
 use crate::keys;
 use crate::playback::Command;
-use crate::state::{wall_us, Shared};
+use crate::state::{wall_us, OpenDoc, Shared};
 
 /// 通知の間隔（60 Hz）。
 const TICK: Duration = Duration::from_nanos(16_666_667);
@@ -46,6 +47,45 @@ pub struct LayerInfo {
     pub kind: String,
     pub start: f64,
     pub end: f64,
+}
+
+/// Timeline で選んだレイヤー。WebView の Inspector が受ける（`ui/shell` の `LayerSelection`）。
+#[derive(Clone, Serialize)]
+pub struct LayerSelection {
+    pub layer: Option<Layer>,
+    pub assets: Vec<Asset>,
+}
+
+/// WebView へ選択を送る Tauri のイベント名。`web/transport.js` が同じ名前の DOM のイベントにつなぐ。
+const LAYER_SELECTED_EVENT: &str = "mm:layer-selected";
+
+/// レイヤーの一覧（上のレイヤーが先頭。時間軸が壊れたレイヤーは飛ばす）。
+pub fn layer_infos(comp: &Composition) -> Vec<LayerInfo> {
+    comp.layers
+        .iter()
+        .rev()
+        .filter_map(|l| {
+            let r = l.range().ok()?;
+            Some(LayerInfo {
+                id: l.id.to_string(),
+                kind: l.source.kind.clone(),
+                start: r.start.to_f64(),
+                end: r.end.to_f64(),
+            })
+        })
+        .collect()
+}
+
+/// 選んだレイヤーの ID から、Inspector に送る中身を作る。レイヤーが無くなっていれば空の選択。
+pub fn selection_of(doc: &OpenDoc, selected: Option<&str>) -> LayerSelection {
+    let layer = selected.and_then(|id| {
+        let comp = doc.project.composition(&doc.comp).ok()?;
+        comp.layers.iter().find(|l| l.id.as_str() == id).cloned()
+    });
+    LayerSelection {
+        layer,
+        assets: doc.project.assets.clone(),
+    }
 }
 
 /// 開いたプロジェクトの情報。
@@ -96,6 +136,21 @@ impl SyncState {
         *self.info.lock().expect("info") = Some(info);
     }
 
+    /// 開いたプロジェクトの情報。レイヤーの一覧と fps、長さ、大きさは、いまのプロジェクトのデータから作る。
+    fn current_info(&self) -> Option<ProjectInfo> {
+        let mut info = self.info.lock().expect("info").clone()?;
+        if let Some(doc) = self.shared.doc() {
+            if let Ok(c) = doc.project.composition(&doc.comp) {
+                info.layers = layer_infos(c);
+                info.fps = c.fps.to_f64();
+                info.duration = c.duration.to_f64();
+                (info.width, info.height) = (c.width, c.height);
+            }
+        }
+        info.adapter = self.shared.adapter.lock().expect("adapter").clone();
+        Some(info)
+    }
+
     fn lag_median(&self) -> f64 {
         let lags = self.lags.lock().expect("lags");
         let mut v: Vec<f64> = lags.iter().copied().collect();
@@ -113,13 +168,14 @@ impl SyncState {
 }
 
 /// 60 Hz で再生位置を送るスレッドを始める。
-pub fn spawn(_app: AppHandle, state: Arc<SyncState>) {
+pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
     std::thread::Builder::new()
         .name("sync".into())
         .spawn(move || {
             let mut seq = 0u64;
             let mut deadline = Instant::now();
             let mut last: (f64, bool, Instant) = (f64::NAN, false, Instant::now());
+            let mut sent_selection = (0, 0);
             while !state.shared.quit.load(Ordering::SeqCst) {
                 deadline += TICK;
                 let now = Instant::now();
@@ -128,6 +184,7 @@ pub fn spawn(_app: AppHandle, state: Arc<SyncState>) {
                 } else {
                     deadline = now;
                 }
+                emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
                 let t = state.shared.playhead();
                 let playing = state.shared.playing.load(Ordering::SeqCst);
                 let changed = playing || last.1 || (t - last.0).abs() > 1e-9;
@@ -140,6 +197,21 @@ pub fn spawn(_app: AppHandle, state: Arc<SyncState>) {
             }
         })
         .expect("sync thread");
+}
+
+/// 選択かプロジェクトのデータが変わっていたら、選んだレイヤーの最新の中身を WebView に送る。
+fn emit_selection_if_changed(app: &AppHandle, shared: &Shared, sent: &mut (u64, u64)) {
+    let now = (
+        shared.selection_serial.load(Ordering::SeqCst),
+        shared.doc_serial.load(Ordering::SeqCst),
+    );
+    if now == *sent {
+        return;
+    }
+    *sent = now;
+    let Some(doc) = shared.doc() else { return };
+    let payload = selection_of(&doc, shared.selected_layer().as_deref());
+    let _ = app.emit(LAYER_SELECTED_EVENT, payload);
 }
 
 fn send_tick(state: &SyncState, seq: u64, t: f64, playing: bool) {
@@ -225,14 +297,9 @@ pub async fn transport(
 
 #[tauri::command]
 pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInfo, String> {
-    let mut info = state
-        .info
-        .lock()
-        .expect("info")
-        .clone()
-        .ok_or("プロジェクトを開いていない")?;
-    info.adapter = state.shared.adapter.lock().expect("adapter").clone();
-    Ok(info)
+    state
+        .current_info()
+        .ok_or_else(|| "プロジェクトを開いていない".to_owned())
 }
 
 #[tauri::command]

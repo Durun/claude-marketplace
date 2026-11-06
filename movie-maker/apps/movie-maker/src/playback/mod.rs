@@ -1,6 +1,7 @@
 //! 再生。専用のスレッドが `Engine` を持ち、再生の主の時計に合わせてフレームを描いて描画スレッドに渡し、
 //! 音を `mm-audio-cpal` に足す。命令（再生、停止、シーク）はチャンネルで受ける。
 
+mod intake;
 mod player;
 
 use std::sync::mpsc::{channel, Sender};
@@ -180,6 +181,79 @@ mod tests {
         }
         .into();
         assert!(crate::edit::submit(&shared, vec![bad]).is_err());
+    }
+
+    #[test]
+    fn 構造を変える操作の後は_公開するプロジェクトのデータが追いつき_コンポジションを消す操作は拒否する(
+    ) {
+        let (shared, _playback, _info) = start();
+        assert!(wait(Duration::from_secs(2), || shared.doc().is_some()));
+        let doc = shared.doc().expect("開いている");
+        let layers = |s: &Shared| {
+            s.doc()
+                .expect("開いている")
+                .project
+                .composition(&doc.comp)
+                .expect("comp")
+                .layers
+                .len()
+        };
+        let before = layers(&shared);
+        let serial = shared.doc_serial.load(Ordering::SeqCst);
+
+        let mut extra = doc.project.composition(&doc.comp).expect("comp").layers[0].clone();
+        extra.id = mm_types::Id::new("l-extra");
+        let add: mm_ops::Op = mm_ops::AddLayer {
+            composition: doc.comp.clone(),
+            layer: extra,
+            index: None,
+        }
+        .into();
+        crate::edit::submit(&shared, vec![add]).expect("足せる");
+        assert_eq!(layers(&shared), before + 1, "レイヤーの一覧に出る");
+        assert!(shared.doc_serial.load(Ordering::SeqCst) > serial);
+
+        let remove: mm_ops::Op = mm_ops::RemoveLayer {
+            layer: mm_types::Id::new("l-extra"),
+        }
+        .into();
+        crate::edit::submit(&shared, vec![remove]).expect("外せる");
+        assert_eq!(layers(&shared), before);
+
+        let serial = shared.doc_serial.load(Ordering::SeqCst);
+        let drop_open: mm_ops::Op = mm_ops::RemoveComposition {
+            composition: doc.comp.clone(),
+        }
+        .into();
+        let err = crate::edit::submit(&shared, vec![drop_open])
+            .expect_err("開いているコンポジションは消せない");
+        assert!(err.contains("コンポジション"), "{err}");
+        assert_eq!(
+            shared.doc_serial.load(Ordering::SeqCst),
+            serial,
+            "拒否したら公開しない"
+        );
+        assert_eq!(layers(&shared), before);
+    }
+
+    #[test]
+    fn スクラブの大量のシークは最後の位置に落ち着く() {
+        let (shared, _playback, info) = start();
+        for i in 0..2000 {
+            shared.send(Command::Seek(f64::from(i % 15) / 10.0));
+        }
+        shared.send(Command::Seek(1.0));
+        assert!(
+            wait(Duration::from_secs(5), || {
+                shared
+                    .frames
+                    .newer_than(0)
+                    .is_some_and(|f| (f.time - 1.0).abs() < 1.0 / info.fps)
+            }),
+            "最後のシークの位置のフレームが出る"
+        );
+        let rendered = shared.rendered_frames.load(Ordering::SeqCst);
+        assert!(rendered < 1000, "古いシークを全部は描かない: {rendered}");
     }
 
     #[test]

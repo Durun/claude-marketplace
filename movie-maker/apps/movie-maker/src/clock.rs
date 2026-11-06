@@ -1,6 +1,7 @@
 //! 再生の主の時計。音の出力があればその位置（耳に届いている位置）を使い、無ければ壁時計で進める。
 
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use mm_audio_cpal::AudioOutput;
@@ -21,6 +22,10 @@ pub trait PlayClock: Send + Sync {
     fn underruns(&self) -> u64 {
         0
     }
+    /// 時計の元（音の出力のストリームなど）が壊れて、位置が進まなくなったか。
+    fn failed(&self) -> bool {
+        false
+    }
 }
 
 /// 音の出力の位置を時計にする。音は `Player` が `AudioOutput` に足す。
@@ -32,17 +37,16 @@ impl PlayClock for AudioClock {
     }
 
     fn seek(&self, to: f64) {
-        self.0.set_running(false);
+        self.0.halt();
         self.0.reset(to);
     }
 
     fn run(&self) {
-        self.0.set_running(true);
+        self.0.run();
     }
 
     fn halt(&self) -> f64 {
-        self.0.set_running(false);
-        self.0.position_secs()
+        self.0.halt()
     }
 
     fn position(&self) -> f64 {
@@ -51,6 +55,10 @@ impl PlayClock for AudioClock {
 
     fn underruns(&self) -> u64 {
         self.0.underruns()
+    }
+
+    fn failed(&self) -> bool {
+        self.0.stream_failed()
     }
 }
 
@@ -106,10 +114,136 @@ impl PlayClock for WallClock {
     }
 }
 
+/// 主の時計を後から壁時計に替えられる包み。音の出力が途中で壊れても、同じ位置から映像を進め続ける。
+/// 共有状態には最初からこれを置くので、替えても読む側は気づかない。
+pub struct SwitchClock {
+    inner: RwLock<Arc<dyn PlayClock>>,
+    running: AtomicBool,
+}
+
+impl SwitchClock {
+    pub fn new(inner: Arc<dyn PlayClock>) -> Self {
+        Self {
+            inner: RwLock::new(inner),
+            running: AtomicBool::new(false),
+        }
+    }
+
+    fn current(&self) -> Arc<dyn PlayClock> {
+        self.inner.read().expect("switch clock").clone()
+    }
+
+    /// 元の時計が壊れていたら、止めた位置から壁時計に替える。替えたら真。
+    pub fn fall_back_if_failed(&self) -> bool {
+        let mut inner = self.inner.write().expect("switch clock");
+        if !inner.failed() {
+            return false;
+        }
+        let wall = WallClock::default();
+        wall.seek(inner.halt());
+        if self.running.load(Ordering::SeqCst) {
+            wall.run();
+        }
+        *inner = Arc::new(wall);
+        true
+    }
+}
+
+impl PlayClock for SwitchClock {
+    fn kind(&self) -> &'static str {
+        self.current().kind()
+    }
+
+    fn seek(&self, to: f64) {
+        self.running.store(false, Ordering::SeqCst);
+        self.current().seek(to);
+    }
+
+    fn run(&self) {
+        self.running.store(true, Ordering::SeqCst);
+        self.current().run();
+    }
+
+    fn halt(&self) -> f64 {
+        self.running.store(false, Ordering::SeqCst);
+        self.current().halt()
+    }
+
+    fn position(&self) -> f64 {
+        self.current().position()
+    }
+
+    fn underruns(&self) -> u64 {
+        self.current().underruns()
+    }
+
+    fn failed(&self) -> bool {
+        self.current().failed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    /// 位置を手で決める時計。`failed` を立てると壊れた音の時計になる。
+    #[derive(Default)]
+    struct Stuck {
+        at: Mutex<f64>,
+        broken: AtomicBool,
+    }
+
+    impl PlayClock for Stuck {
+        fn kind(&self) -> &'static str {
+            "audio"
+        }
+        fn seek(&self, to: f64) {
+            *self.at.lock().unwrap() = to;
+        }
+        fn run(&self) {}
+        fn halt(&self) -> f64 {
+            *self.at.lock().unwrap()
+        }
+        fn position(&self) -> f64 {
+            *self.at.lock().unwrap()
+        }
+        fn failed(&self) -> bool {
+            self.broken.load(Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn 音の時計が壊れたら再生中なら同じ位置から壁時計で進む() {
+        let stuck = Arc::new(Stuck::default());
+        let clock = SwitchClock::new(stuck.clone());
+        clock.seek(4.0);
+        clock.run();
+        assert!(!clock.fall_back_if_failed(), "壊れていなければ替えない");
+        stuck.broken.store(true, Ordering::SeqCst);
+        assert!(clock.fall_back_if_failed());
+        assert_eq!(clock.kind(), "wall");
+        assert!(!clock.failed());
+        let a = clock.position();
+        assert!((4.0..4.05).contains(&a), "止まった位置から続く: {a}");
+        std::thread::sleep(Duration::from_millis(40));
+        assert!(clock.position() > a + 0.03, "壁時計が進める");
+        assert!(!clock.fall_back_if_failed(), "替えた後は 2 度替えない");
+    }
+
+    #[test]
+    fn 止めている間に壊れたら替えても止めたまま() {
+        let stuck = Arc::new(Stuck::default());
+        let clock = SwitchClock::new(stuck.clone());
+        clock.seek(2.0);
+        stuck.broken.store(true, Ordering::SeqCst);
+        assert!(clock.fall_back_if_failed());
+        std::thread::sleep(Duration::from_millis(30));
+        assert_eq!(clock.position(), 2.0);
+        clock.run();
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(clock.position() > 2.02, "再生を始めれば進む");
+    }
 
     #[test]
     fn 壁時計は止めている間は進まず_走らせると進む() {

@@ -28,6 +28,8 @@ pub struct Ring {
     /// 再生位置の起点（秒）。
     start_secs: f64,
     anchor: Option<Anchor>,
+    /// 止めた時点の位置（秒）。止めている間はこれを返す。
+    held: Option<f64>,
     underruns: u64,
 }
 
@@ -40,6 +42,7 @@ impl Ring {
             consumed: 0,
             start_secs: 0.0,
             anchor: None,
+            held: None,
             underruns: 0,
         }
     }
@@ -50,6 +53,20 @@ impl Ring {
         self.consumed = 0;
         self.start_secs = start_secs;
         self.anchor = None;
+        self.held = None;
+    }
+
+    /// 時刻 `now`（秒）で止め、止めた位置（秒）を返す。止めている間の `position` はこの値で動かない。
+    /// 止めた後のコールバックが錨を捨てても、位置がデバイスの遅れとバッファの分だけ先へ跳ばない。
+    pub fn halt(&mut self, now: f64) -> f64 {
+        let at = self.position(now);
+        self.held = Some(at);
+        at
+    }
+
+    /// 止めた位置の固定を外す。デバイスに渡した音は戻せないので、再開の前に `reset` で置き直す。
+    pub fn resume(&mut self) {
+        self.held = None;
     }
 
     /// インターリーブのサンプルを後ろに足す。
@@ -101,6 +118,9 @@ impl Ring {
 
     /// 時刻 `now`（秒）に耳に届いている再生位置（秒）。まだ鳴っていなければ起点。
     pub fn position(&self, now: f64) -> f64 {
+        if let Some(held) = self.held {
+            return held;
+        }
         let frames = match self.anchor {
             None => self.consumed as f64,
             Some(a) => {
@@ -181,6 +201,35 @@ mod tests {
         r.fill(&mut out, 0.0, false);
         assert!(out.iter().all(|s| *s == 0.0));
         assert_eq!(r.buffered_frames(), 1000);
+    }
+
+    #[test]
+    fn 止めた位置は後続のコールバックで跳ばない() {
+        let mut r = ring_with(1.0);
+        let mut out = vec![0.0; 100 * 2];
+        // 0.100 秒のバッファが 0.030 秒に鳴り始め、0.050 秒に止める。
+        r.fill(&mut out, 0.030, true);
+        let held = r.halt(0.050);
+        assert!((held - 10.02).abs() < 1e-9, "{held}");
+        // 止めた後の最初のコールバックは錨を捨てるが、位置は止めた所のまま。
+        r.fill(&mut out, 0.130, false);
+        r.fill(&mut out, 0.230, false);
+        assert_eq!(r.position(0.230), held);
+        assert_eq!(r.position(9.0), held);
+    }
+
+    #[test]
+    fn 止めるのは何度でも同じ位置を返し_リセットで固定が外れる() {
+        let mut r = ring_with(1.0);
+        let mut out = vec![0.0; 100 * 2];
+        r.fill(&mut out, 0.0, true);
+        let a = r.halt(0.05);
+        assert_eq!(r.halt(0.09), a);
+        r.reset(3.0);
+        assert_eq!(r.position(0.5), 3.0);
+        r.halt(0.5);
+        r.resume();
+        assert_eq!(r.position(0.5), 3.0);
     }
 
     #[test]

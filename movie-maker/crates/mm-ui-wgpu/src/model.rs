@@ -14,20 +14,30 @@ fn kind_of(layer: &Layer) -> ItemKind {
     }
 }
 
-/// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーは飛ばす。
-pub fn timeline_model(comp: &Composition) -> TimelineModel {
-    let items = comp
-        .layers
+/// Timeline に並ぶレイヤーを、上が先頭の順に返す。時間軸が壊れたレイヤーは飛ばす。
+/// 並びの規則はモデルとレイヤーの ID の対応の両方が使う 1 つだけにする。
+fn visible_layers(comp: &Composition) -> impl Iterator<Item = (&Layer, mm_types::TimeRange)> {
+    comp.layers
         .iter()
         .rev()
-        .filter_map(|layer| {
-            let range = layer.range().ok()?;
-            Some(Item {
-                start: range.start.to_f64(),
-                end: range.end.to_f64(),
-                kind: kind_of(layer),
-                enabled: layer.enabled,
-            })
+        .filter_map(|layer| Some((layer, layer.range().ok()?)))
+}
+
+/// Timeline の `Item` と同じ並びのレイヤーの ID。Timeline の選択（添字）をレイヤーに引き直すのに使う。
+pub fn timeline_layer_ids(comp: &Composition) -> Vec<String> {
+    visible_layers(comp)
+        .map(|(layer, _)| layer.id.to_string())
+        .collect()
+}
+
+/// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーは飛ばす。
+pub fn timeline_model(comp: &Composition) -> TimelineModel {
+    let items = visible_layers(comp)
+        .map(|(layer, range)| Item {
+            start: range.start.to_f64(),
+            end: range.end.to_f64(),
+            kind: kind_of(layer),
+            enabled: layer.enabled,
         })
         .collect();
     TimelineModel {
@@ -76,6 +86,16 @@ mod tests {
         assert_eq!((m.items[0].start, m.items[0].end), (2.0, 7.0));
         assert_eq!(m.items[1].kind, ItemKind::Footage);
         assert_eq!((m.duration, m.fps), (10.0, 30.0));
+    }
+
+    #[test]
+    fn 選択の添字はモデルと同じ並びでレイヤーの_id_に引ける() {
+        let mut c = comp();
+        // 時間軸が壊れた（出が入より前の）レイヤーはモデルから飛ばし、添字がずれない。
+        c.layers.insert(1, layer("broken", "text", 0, 5, 1));
+        let ids = timeline_layer_ids(&c);
+        assert_eq!(ids, ["top", "bottom"]);
+        assert_eq!(timeline_model(&c).items.len(), ids.len());
     }
 
     #[test]
