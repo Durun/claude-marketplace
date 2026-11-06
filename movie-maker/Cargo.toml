@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-# apps/* はアプリ（Tauri のウィンドウなど）。
-members = ["crates/*", "apps/*"]
+# apps/* はアプリ（Tauri のウィンドウなど）。xtask は開発用のコマンド（cargo xtask）。
+members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

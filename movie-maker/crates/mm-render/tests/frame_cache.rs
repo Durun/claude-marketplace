@@ -286,3 +286,95 @@ fn 上限で追い出した画像はディスクから戻る() {
     let diff = back.max_diff(&first).expect("同じ大きさ");
     assert!(diff <= 1e-6, "退避と復元で画素が変わらない: {diff}");
 }
+
+fn adjust(brightness: f64) -> mm_doc::Effect {
+    mm_doc::Effect {
+        id: Id::new("e"),
+        node: Node::new("color.adjust", 1).with_param("brightness", ParamValue::Number(brightness)),
+        enabled: true,
+    }
+}
+
+fn sequence_layer(id: &str, name: &str) -> Layer {
+    let node = Node::new("sequence", 1).with_param("sequence", ParamValue::Text(name.into()));
+    Layer::new(
+        id,
+        node,
+        RationalTime::ZERO,
+        RationalTime::ZERO,
+        RationalTime::seconds(10),
+    )
+}
+
+fn sequence(shade: f64) -> mm_doc::Sequence {
+    let node = Node::new("counting", 1).with_param("shade", ParamValue::Number(shade));
+    mm_doc::Sequence {
+        id: Id::new("s"),
+        cuts: vec![mm_doc::Cut::new(
+            "c",
+            node,
+            RationalTime::ZERO,
+            RationalTime::seconds(5),
+        )],
+        origin: None,
+    }
+}
+
+#[test]
+fn 効果は覚えた画像を書き換えず_効果のパラメータで結果が変わる() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let mut layer = counting("a", 0.25);
+    layer.effects.push(adjust(1.0));
+    let mut p = project(vec![comp("main", vec![layer])]);
+    let first = render(&mut f, &p, 0);
+    let second = render(&mut f, &p, 0);
+    assert_eq!(renders(&f), 1, "効果の前の画像を覚えている");
+    assert_eq!(*first, *second, "効果の出力が覚えた画像を壊さない");
+    p.compositions[0].layers[0].effects[0] = adjust(0.0);
+    let plain = render(&mut f, &p, 0);
+    assert_eq!(
+        renders(&f),
+        1,
+        "効果のパラメータだけの変更では種類を呼ばない"
+    );
+    assert_ne!(*first, *plain, "効果のパラメータが結果に出る");
+}
+
+#[test]
+fn シーケンスのカットの画像を覚え_編集は触ったカットだけ描き直す() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let mut p = project(vec![comp("main", vec![sequence_layer("seq", "s")])]);
+    p.sequences = vec![sequence(0.5)];
+    let first = render(&mut f, &p, 3);
+    let second = render(&mut f, &p, 3);
+    assert_eq!((renders(&f), *first == *second), (1, true));
+    p.sequences = vec![sequence(0.75)];
+    let edited = render(&mut f, &p, 3);
+    assert_eq!(renders(&f), 2, "カットのパラメータが変わった");
+    assert_ne!(*first, *edited);
+    f.renderer.invalidate_touched(&["c".to_string()]);
+    render(&mut f, &p, 3);
+    assert_eq!(renders(&f), 3, "カットの ID に頼った画像を捨てた");
+}
+
+#[test]
+fn 入れ子の中のシーケンスを編集すると入れ子の画像を描き直す() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let mut p = project(vec![
+        comp("main", vec![nested("n", "inner")]),
+        comp("inner", vec![sequence_layer("seq", "s")]),
+    ]);
+    p.sequences = vec![sequence(0.5)];
+    let before = render(&mut f, &p, 3);
+    let again = render(&mut f, &p, 3);
+    assert_eq!((renders(&f), *before == *again), (1, true));
+    p.sequences = vec![sequence(0.75)];
+    let after = render(&mut f, &p, 3);
+    assert_ne!(
+        *before, *after,
+        "コンポジションの外のシーケンスの編集が入れ子の画像に出る"
+    );
+}

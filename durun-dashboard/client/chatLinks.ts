@@ -1,6 +1,6 @@
 // 人間と Claude の発言に出たリンクを、セッションの資料として拾う。発言の #番号は、PR と Issue へのリンクにするために切り出す。
 import { Marked, type MarkedExtension, Tokenizer, type TokensList } from 'marked';
-import { type ChatEntry, REF_NUMBER, type RepoRef, notionPageId } from '../shared/types.ts';
+import { type ChatEntry, type JiraIssue, REF_NUMBER, type RepoRef, notionPageId } from '../shared/types.ts';
 import { safeDecode } from './router.ts';
 
 // 日本語の文では、URL の後ろに空白を置かずに文を続けることが多い。GFM は空白の手前までを URL とみなすので、閉じていない ) と、日本語の句読点や括弧から先を外す。
@@ -148,4 +148,20 @@ export const refSplitter = (refs: RepoRef[]): ((text: string) => RefPiece[]) => 
       const ref = i % 2 ? byNumber.get(part) : undefined;
       return !part ? [] : ref ? [{ text: part, ref }] : [{ text: part }];
     });
+};
+
+/** 文の切れ端。url があれば、JIRA の課題のキー。 */
+export type JiraPiece = { text: string; url?: string };
+
+/**
+ * 文を、issues にある課題と同じスペースの課題のキーと、それ以外に分ける関数を作る。
+ * キーに似た UTF-8 や SHA-256 を課題とみなさないよう、知っているスペースのキーだけを切り出す。課題の URL は issues の URL と同じ JIRA に作る。
+ */
+export const jiraSplitter = (issues: JiraIssue[]): ((text: string) => JiraPiece[]) => {
+  const [first] = issues;
+  const base = first?.url.slice(0, first.url.length - first.key.length);
+  const spaces = new Set(issues.map((j) => j.key.replace(/-\d+$/, '')));
+  if (!base?.endsWith('/browse/') || !spaces.size) return (text) => [{ text }];
+  const key = new RegExp(`((?<![\\w-])(?:${[...spaces].join('|')})-\\d+(?![\\w-]))`);
+  return (text) => text.split(key).flatMap((part, i) => (!part ? [] : i % 2 ? [{ text: part, url: base + part }] : [{ text: part }]));
 };

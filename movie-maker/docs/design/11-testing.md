@@ -66,7 +66,7 @@
 | `fixtures/media/broken/` | 途中で切れた動画、moov のない MP4、PTS の戻る動画 | 正しい動画を `truncate` で壊す。ファズが見つけた入力をコピーする |
 | `fixtures/doc/` | バージョンごとのフィクスチャのプロジェクトのデータ（`v1/`、`v2/` …）。各バージョンの全部のノードの種類と、全部の操作を 1 回ずつ適用したデータ | バージョンを上げるたびに、そのバージョンのフィクスチャを凍結する。消さない |
 | `fixtures/projects/` | フィクスチャのプロジェクト（縦の 1 本、入れ子のコンポジション、ショートの参照、字幕とチャプター、OFX、`web.cef`）。自動の改善の回が向く先。性能の `mm perf run` のシナリオもここ | `mm` で作り、JSON を入れる |
-| `fixtures/golden/<バックエンド>/` | 期待画像（320x180 の PNG）。バックエンドは `warp`、`rtx`（D3D12）、`lavapipe` | `cargo xtask golden-update --backend warp`。差を目で見て承認する。RTX の期待画像は手元で更新する |
+| `fixtures/golden/<バックエンド>/` | 期待画像（320x180 の PNG、sRGB の 8 bit、灰色の市松の上に重ねたもの）。バックエンドは `warp`、`rtx`（NVIDIA。D3D12 でも Vulkan でも同じ名前）、`lavapipe`。アダプターから `mm_testkit::golden::backend_name` が決める | `cargo xtask golden-update --backend rtx`。更新したら PNG を目で見て承認してからコミットする。RTX の期待画像は手元で更新する。フォルダーが無いバックエンドのテストはスキップする（`MM_REQUIRE_GOLDEN` で失敗にできる） |
 | `fixtures/audio/` | EBU の loudness test set（利用条件がある。リポジトリに入れず、取り方を書く）[69]、ミキサーのテスト用の信号 | ダウンロード。テスト用の信号は `mm-testkit` が生成 |
 | `fixtures/ep03/` | ep03 のプロジェクトのデータと、前の書き出しのハッシュ。素材は `D:/dev/DTM_Vlog/ep03/` を指す | 段階 5 で OTIO から変換する |
 
@@ -74,7 +74,7 @@
 
 - バックエンドを固定する。CI は D3D12 の WARP（Windows の CPU のラスタライザ。機能レベル 12_1）[62]、Linux は Vulkan の lavapipe（wgpu の CI と同じ）[62]。実機は RTX の D3D12。
 - 期待画像はバックエンドごとに持つ。バックエンドが違うと浮動小数の丸めとフィルタの実装が違う。
-- 許容差は 2 段。(1) 同じバックエンド: SSIM 0.995 以上かつ最大の差 2/255 以下〔推。段階 2 の最初の期待画像で決め直す〕。(2) バックエンドをまたぐ比較（プレビューと `mm frame` の一致を RTX と WARP で）: SSIM 0.98 以上〔推〕。
+- 許容差は 2 段。(1) 同じバックエンド: 輝度の SSIM 0.995 以上かつチャンネルごとの最大の差 2/255 以下（`mm_testkit::golden`。段階 2 の期待画像 10 枚の値で置いた）。(2) バックエンドをまたぐ比較（プレビューと `mm frame` の一致を RTX と WARP で）: SSIM 0.98 以上〔推〕。
 - NVDEC と NVENC の要るテストは夜間に実機で回す。CI では `ffmpeg` の実装で同じ契約を通す。
 - wgpu の `gpu_test!` の型（全部の GPU で回し、バックエンドごとに「失敗を期待する」を管理する）[62] を `mm-testkit` の `gpu_contract!` に取り入れる。
 - 実機の夜間はこの PC で回す。録画中と書き出し中は回さない（[計装](17-instrumentation.md)の「使用中」のフラグを見る）。

@@ -1,0 +1,51 @@
+{
+  "adapter": null,
+  "items": [
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "起動",
+        "value": 2000.0
+      },
+      "name": "startup.ready_ms",
+      "ok": true,
+      "samples": [
+        577.5727,
+        530.706,
+        601.7033,
+        545.0121,
+        526.2976
+      ],
+      "unit": "ms",
+      "value": 545.0121
+    },
+    {
+      "better": "lower",
+      "budget": {
+        "kind": "at_most",
+        "row": "起動",
+        "value": 1000.0
+      },
+      "name": "startup.first_frame_ms",
+      "ok": true,
+      "samples": [
+        14.4301999999999,
+        15.320799999999963,
+        15.22479999999996,
+        14.847499999999968,
+        14.341800000000035
+      ],
+      "unit": "ms",
+      "value": 14.847499999999968
+    }
+  ],
+  "metrics": {
+    "counters": {},
+    "gauges": {},
+    "spans": {}
+  },
+  "repeat": 5,
+  "scene": "startup",
+  "timestamp": 1793945298
+}

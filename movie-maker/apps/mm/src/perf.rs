@@ -11,14 +11,33 @@ use mm_trace::{MetricsHandle, MetricsSnapshot};
 use mm_types::{MmError, Result};
 use serde_json::{json, Value};
 
-use crate::scenes;
+use crate::{scenes, scenes_cpu, scenes_render};
 
-/// 回せるシナリオ。`playback` と `scrub` は段階 2 で足す。
+/// 回せるシナリオ。`cpu` 以外は GPU が要り（`export` と `startup` は FFmpeg の素材も要る）、CI では回せない。
+/// `all` は GPU のシナリオを全部と `cpu`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Scene {
     Startup,
     Export,
+    Playback,
+    Scrub,
+    Cpu,
     All,
+}
+
+impl Scene {
+    /// シナリオの名前（結果のファイル名と `scene` フィールド）。
+    pub fn name(self) -> String {
+        format!("{self:?}").to_lowercase()
+    }
+
+    /// 既定で使うプロジェクト。`startup` と `export` は素材つきの縦の 1 本、描画の場面は素材の要らない見本。
+    pub fn default_project(self) -> &'static str {
+        match self {
+            Scene::Playback | Scene::Scrub => "fixtures/projects/perf-preview/project.json",
+            _ => "fixtures/projects/stage0/project.json",
+        }
+    }
 }
 
 /// 予算の向き。
@@ -64,6 +83,14 @@ impl Item {
         }
     }
 
+    /// 大きいほど良い項目か（予算が下限か、単位が fps）。比較が遅くなった向きを決める。
+    pub fn higher_is_better(&self) -> bool {
+        match self.budget {
+            Some(b) => matches!(b.limit, Limit::AtLeast(_)),
+            None => self.unit == "fps",
+        }
+    }
+
     /// 予算に収まっているか。予算が無ければ `None`。
     pub fn within_budget(&self) -> Option<bool> {
         self.budget.map(|b| match b.limit {
@@ -88,6 +115,16 @@ pub fn median(samples: &[f64]) -> f64 {
     }
 }
 
+/// 百分位（`q` は 0〜1）。空なら 0。
+pub fn percentile(samples: &[f64], q: f64) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let mut v = samples.to_vec();
+    v.sort_by(f64::total_cmp);
+    v[((v.len() - 1) as f64 * q).round() as usize]
+}
+
 /// `mm perf run` の引数。
 #[derive(Debug, Clone)]
 pub struct PerfArgs {
@@ -97,6 +134,12 @@ pub struct PerfArgs {
     pub project: PathBuf,
     /// `export` の描画の大きさ（予算は 1080p の値のため既定は 1920x1080）。
     pub size: (u32, u32),
+    /// `playback` で再生する秒数。
+    pub seconds: f64,
+    /// `scrub` のシーク回数（1 回の繰り返しあたり）。
+    pub seeks: usize,
+    /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
+    pub baseline: bool,
 }
 
 /// シナリオを回して分かった、測った環境。
@@ -113,11 +156,21 @@ pub fn run(args: &PerfArgs, metrics: &MetricsHandle) -> Result<()> {
     }
     let mut items = Vec::new();
     let mut env = Environment::default();
-    if matches!(args.scene, Scene::Startup | Scene::All) {
+    let all = args.scene == Scene::All;
+    if all || args.scene == Scene::Startup {
         items.extend(scenes::startup(args)?);
     }
-    if matches!(args.scene, Scene::Export | Scene::All) {
+    if all || args.scene == Scene::Export {
         items.extend(scenes::export(args, &mut env)?);
+    }
+    if all || args.scene == Scene::Playback {
+        items.extend(scenes_render::playback(args, &mut env, metrics)?);
+    }
+    if all || args.scene == Scene::Scrub {
+        items.extend(scenes_render::scrub(args, &mut env)?);
+    }
+    if all || args.scene == Scene::Cpu {
+        items.extend(scenes_cpu::cpu(args)?);
     }
     let snapshot = metrics.snapshot();
     print_table(&items);
@@ -143,7 +196,7 @@ fn print_table(items: &[Item]) {
             _ => ("-".into(), "-"),
         };
         println!(
-            "{:<28} {:>12.2} {:<6} {:<16} {}",
+            "{:<28} {:>12.3} {:<6} {:<16} {}",
             item.name, item.value, item.unit, budget, verdict
         );
     }
@@ -160,6 +213,7 @@ fn item_json(item: &Item) -> Value {
     json!({
         "name": item.name,
         "unit": item.unit,
+        "better": if item.higher_is_better() { "higher" } else { "lower" },
         "value": item.value,
         "samples": item.samples,
         "budget": budget,
@@ -179,7 +233,7 @@ fn write_results(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let adapter = env.adapter.clone();
-    let scene = format!("{:?}", args.scene).to_lowercase();
+    let scene = args.scene.name();
     let metrics: Value = serde_json::from_str(&snapshot.to_jsonl_line())?;
     let doc = json!({
         "scene": scene,
@@ -189,12 +243,20 @@ fn write_results(
         "items": items.iter().map(item_json).collect::<Vec<_>>(),
         "metrics": metrics,
     });
-    let path = args.out_dir.join(format!("{scene}-{stamp}.json"));
+    let file = if args.baseline {
+        format!("{scene}.json")
+    } else {
+        format!("{scene}-{stamp}.json")
+    };
+    let path = args.out_dir.join(file);
     std::fs::write(&path, serde_json::to_string_pretty(&doc)?)?;
-    append_line(
-        &args.out_dir.join("metrics.jsonl"),
-        &snapshot.to_jsonl_line(),
-    )?;
+    // ベースラインは git に入れる確定した数だけを置く場所なので、追記する履歴は作らない。
+    if !args.baseline {
+        append_line(
+            &args.out_dir.join("metrics.jsonl"),
+            &snapshot.to_jsonl_line(),
+        )?;
+    }
     Ok(path)
 }
 

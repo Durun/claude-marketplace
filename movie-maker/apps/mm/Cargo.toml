@@ -21,6 +21,8 @@ mm-ops = { workspace = true }
 mm-store = { workspace = true }
 mm-ingest = { workspace = true }
 clap = { workspace = true }
+# `perf run cpu` の保存のコミットの作業フォルダー。
+tempfile = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -33,8 +35,6 @@ ffmpeg = ["mm-runtime/ffmpeg", "mm-decode-ffmpeg/ffmpeg"]
 mm-decode-api = { workspace = true }
 # 書き出した MP4 をリードバックしてフレームの番号を確かめる。feature ffmpeg のときだけテストが使う。
 mm-decode-ffmpeg = { workspace = true }
-# CLI の結合テストの作業フォルダー。
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatLinks, chatMarkdownFiles, lexMarkdown, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
+import { chatLinks, chatMarkdownFiles, jiraSplitter, lexMarkdown, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
 
 test('人間と Claude の発言に出たリンクを、題名を付けて新しい順に 1 件ずつ拾い、ダッシュボード自身とコードの中の URL は除く', () => {
   const links = chatLinks(
@@ -107,4 +107,13 @@ test('refSplitter は、文の #番号のうち、PR と Issue の一覧にあ�
   assert.equal(marked('#12 は #3 の修正で、#13 は無い。o/r#12、page#12、##12、#12a、#123 は番号ではない。'), '[#12 ログインの修正] は [#3 画面が遅い] の修正で、#13 は無い。o/r#12、page#12、##12、#12a、#123 は番号ではない。');
   assert.deepEqual(split('PR #12。'), [{ text: 'PR ' }, { text: '#12', ref: pr }, { text: '。' }]);
   assert.deepEqual(refSplitter([])('#12'), [{ text: '#12' }]);
+});
+
+test('jiraSplitter は、知っているスペースの課題のキーだけを、課題の URL を付けて切り出す', () => {
+  const split = jiraSplitter([{ key: 'LPO-1', url: 'https://example.atlassian.net/browse/LPO-1' }]);
+  assert.deepEqual(split('LPO-214 の下書き。UTF-8、XLPO-2、LPO-3a、LPO-4-5 はキーではない'), [
+    { text: 'LPO-214', url: 'https://example.atlassian.net/browse/LPO-214' },
+    { text: ' の下書き。UTF-8、XLPO-2、LPO-3a、LPO-4-5 はキーではない' },
+  ]);
+  assert.deepEqual(jiraSplitter([])('LPO-1'), [{ text: 'LPO-1' }]);
 });

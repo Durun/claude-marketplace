@@ -26,7 +26,11 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     let names: Vec<_> = engine.backend_names();
     assert!(names.contains(&("render", "wgpu")), "{names:?}");
     assert!(names.contains(&("audio", "dsp")), "{names:?}");
-    assert_eq!(engine.registry().len(), 5, "mm-nodes-basic の種類");
+    assert_eq!(
+        engine.registry().len(),
+        mm_nodes_basic::all_kinds().len(),
+        "mm-nodes-basic の種類"
+    );
 }
 
 #[test]

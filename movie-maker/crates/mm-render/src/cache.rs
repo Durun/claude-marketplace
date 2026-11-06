@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use half::f16;
 use mm_cache_api::CacheStore;
-use mm_doc::{Composition, Layer, Project};
-use mm_eval::source_time;
+use mm_doc::{Composition, Layer, Project, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_eval::{node_params_at, source_time};
 use mm_gpu::{WgpuGpu, FRAME_FORMAT};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, GpuTexture, NodeKind, NodeRegistry, Quality};
 use mm_render_api::{
@@ -425,8 +425,50 @@ impl Walk {
                 self.deps.push(id.as_str().to_owned());
                 self.fingerprint.push_str(&format!("|{id}={hash}"));
             }
-            if kind.id() == NESTED_KIND {
-                self.visit_nested(project, nodes, layer, &params, t, depth)?;
+            match kind.id() {
+                NESTED_KIND => self.visit_nested(project, nodes, layer, &params, t, depth)?,
+                SEQUENCE_KIND => self.visit_sequence(project, nodes, &params, t, depth)?,
+                _ => {}
+            }
+        }
+        Some(())
+    }
+
+    /// シーケンスはコンポジションの JSON の外にあるので、中身（カット、トランジション）と素材も指紋と依存に入れる。
+    fn visit_sequence(
+        &mut self,
+        project: &Project,
+        nodes: &dyn NodeRegistry,
+        params: &Params,
+        t: RationalTime,
+        depth: u32,
+    ) -> Option<()> {
+        let name = params.get(SEQUENCE_PARAM).and_then(|v| v.as_text())?;
+        if name.is_empty() || !self.seen.insert(format!("sequence:{name}")) {
+            return Some(());
+        }
+        let seq = project.sequence(&Id::new(name)).ok()?;
+        self.deps.push(seq.id.as_str().to_owned());
+        self.fingerprint.push_str(&serde_json::to_string(seq).ok()?);
+        for cut in &seq.cuts {
+            self.deps.push(cut.id.as_str().to_owned());
+            let nodes_of_cut =
+                std::iter::once(&cut.source).chain(cut.transition_in.iter().map(|tr| &tr.node));
+            for node in nodes_of_cut {
+                let kind = nodes.get(&node.kind)?;
+                if !kind.traits().deterministic {
+                    return None;
+                }
+                let params = node_params_at(node, t);
+                if let Some(id) = asset_of(&params) {
+                    let hash = &project.asset(id).ok()?.content_hash;
+                    self.deps.push(id.as_str().to_owned());
+                    self.fingerprint.push_str(&format!("|{id}={hash}"));
+                }
+                if kind.id() == NESTED_KIND {
+                    let with_defaults = params.with_defaults(&kind.params());
+                    self.visit_nested_params(project, nodes, &with_defaults, t, depth)?;
+                }
             }
         }
         Some(())
@@ -441,19 +483,26 @@ impl Walk {
         t: RationalTime,
         depth: u32,
     ) -> Option<()> {
+        let inner = source_time(layer, t).ok()?;
+        self.visit_nested_params(project, nodes, params, inner, depth)
+    }
+
+    /// 入れ子の種類のパラメータが指すコンポジションを、入れ子の中の時刻 `t` で辿る。
+    fn visit_nested_params(
+        &mut self,
+        project: &Project,
+        nodes: &dyn NodeRegistry,
+        params: &Params,
+        t: RationalTime,
+        depth: u32,
+    ) -> Option<()> {
         let name = params.get(NESTED_PARAM).and_then(|v| v.as_text())?;
         if name.is_empty() || !self.seen.insert(name.to_owned()) {
             return Some(());
         }
         let id: CompositionId = Id::new(name);
         let nested = project.composition(&id).ok()?;
-        self.visit(
-            project,
-            nodes,
-            nested,
-            source_time(layer, t).ok()?,
-            depth + 1,
-        )
+        self.visit(project, nodes, nested, t, depth + 1)
     }
 }
 

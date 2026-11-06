@@ -8,7 +8,7 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use mm_doc::{Composition, Layer, Project};
+use mm_doc::{Composition, Layer, Project, SEQUENCE_KIND};
 use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry, Quality};
 use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
@@ -56,7 +56,7 @@ impl CompCx<'_> {
 }
 
 /// 合成に渡す 1 枚。
-struct Prepared {
+pub(crate) struct Prepared {
     texture: u64,
     matrix: [f32; 16],
     opacity: f32,
@@ -64,12 +64,12 @@ struct Prepared {
 }
 
 /// レイヤーの画像のテクスチャと、コンポジションの画素での置き場所。
-struct LayerImage {
-    texture: u64,
-    size: Size,
-    place: Rect,
+pub(crate) struct LayerImage {
+    pub(crate) texture: u64,
+    pub(crate) size: Size,
+    pub(crate) place: Rect,
     /// フレームのキャッシュが持つテクスチャ。真なら合成のあとに解放しない。
-    cached: bool,
+    pub(crate) cached: bool,
 }
 
 impl From<CachedImage> for LayerImage {
@@ -136,7 +136,7 @@ impl WgpuRenderer {
         Ok(target)
     }
 
-    fn composite(
+    pub(crate) fn composite(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         target: u64,
@@ -164,7 +164,7 @@ impl WgpuRenderer {
         );
     }
 
-    fn layer_item(
+    pub(crate) fn layer_item(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         cx: &CompCx<'_>,
@@ -173,17 +173,23 @@ impl WgpuRenderer {
     ) -> Result<Option<Prepared>> {
         let (kind, params) = evaluate(cx.nodes, layer, cx.t)?;
         let transform = LayerTransform::from_doc(&layer.transform, cx.t);
-        let image = if kind.id() == NESTED_KIND {
-            self.nested_image(encoder, cx, (kind.as_ref(), layer, &params), &transform)?
-        } else {
-            self.kind_image(cx, kind.as_ref(), layer, &params, &transform)?
+        let image = match kind.id() {
+            NESTED_KIND => {
+                self.nested_image(encoder, cx, (kind.as_ref(), layer, &params), &transform)?
+            }
+            SEQUENCE_KIND => self.sequence_image(encoder, cx, layer, &params)?,
+            _ => self.kind_image(cx, kind.as_ref(), layer, &params, &transform)?,
         };
         let Some(image) = image else {
             return Ok(None);
         };
+        // キャッシュが持つテクスチャは解放しない。効果の出力は apply_effects が積む。
         if !image.cached {
             temps.push(image.texture);
         }
+        let Some(image) = self.apply_effects(encoder, cx, layer, image, temps)? else {
+            return Ok(None);
+        };
         let opacity = evaluate_opacity(layer, cx.t) as f32;
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {

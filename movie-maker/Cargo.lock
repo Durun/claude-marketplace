@@ -3096,11 +3096,16 @@ name = "mm-nodes-basic"
 version = "0.1.0"
 dependencies = [
  "mm-audio-api",
+ "mm-color-api",
+ "mm-color-lut",
+ "mm-gpu",
  "mm-node-api",
  "mm-testkit",
  "mm-text-api",
  "mm-types",
+ "pollster",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]
@@ -3124,6 +3129,7 @@ dependencies = [
  "half",
  "mm-audio-api",
  "mm-cache-api",
+ "mm-color-lut",
  "mm-decode-api",
  "mm-doc",
  "mm-eval",
@@ -3220,6 +3226,7 @@ dependencies = [
  "mm-render-api",
  "mm-text-api",
  "mm-types",
+ "png",
  "serde_json",
 ]
 
@@ -6759,6 +6766,10 @@ name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
 
 [[package]]
 name = "yazi"

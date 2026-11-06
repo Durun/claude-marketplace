@@ -28,6 +28,7 @@ mm-testkit = { workspace = true }
 mm-nodes-basic = { workspace = true }
 png = { workspace = true }
 mm-text-glyphon = { workspace = true }
+mm-color-lut = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [lints]
