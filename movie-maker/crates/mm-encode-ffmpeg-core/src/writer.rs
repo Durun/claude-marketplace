@@ -167,7 +167,8 @@ impl FfmpegEncoder {
         if spec.container == Container::Mp4 {
             options.set("movflags", "+faststart");
         }
-        options.set("avoid_negative_ts", "make_non_negative");
+        // B フレームの遅れと AAC の前置きは muxer の edit list が吸収する。時刻をずらす指定（avoid_negative_ts）を
+        // 付けると、パケットだけがずれてヘッダーのチャプターが映像より早くなる。
         output
             .write_header_with(options)
             .map_err(|e| MmError::Internal(format!("ヘッダーの書き込み: {e}")))?;

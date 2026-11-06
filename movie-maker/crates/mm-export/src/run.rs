@@ -29,6 +29,7 @@ struct Finished {
     expected: Expected,
     prepared: deliver::Prepared,
     normalization: Option<NormalizeReport>,
+    implementation: Option<String>,
 }
 
 /// レンダーターゲットを 1 つ書き出し、取り消しも結果として返す。
@@ -68,6 +69,7 @@ pub fn export_run(
         fps,
         verification,
         delivery: Box::new(delivery),
+        encoder: done.implementation,
     }))
 }
 
@@ -167,6 +169,7 @@ fn export_target(
     };
     let normalization = deliver::normalize(engine, target, &mut audio)?;
     encoder.push_audio(&audio)?;
+    let implementation = encoder.implementation();
     let report = encoder.finish()?;
     let expected = Expected {
         frames: frames as u64,
@@ -179,6 +182,7 @@ fn export_target(
         expected,
         prepared,
         normalization,
+        implementation,
     }))
 }
 

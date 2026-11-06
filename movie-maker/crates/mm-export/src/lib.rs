@@ -96,6 +96,8 @@ pub struct ExportSummary {
     pub verification: Option<Verification>,
     /// ラウドネスの正規化の結果と、書き出しの隣に置いた字幕・チャプターのファイル。
     pub delivery: Box<DeliveryReport>,
+    /// 実際に書いた実装とコーデック（`nvenc/h264_nvenc` など）。代わりのコーデックに落ちたらその名前。分からない実装は `None`。
+    pub encoder: Option<String>,
 }
 
 /// 1 つのレンダーターゲットの書き出しの終わり方。

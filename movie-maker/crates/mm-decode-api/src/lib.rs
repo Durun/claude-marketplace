@@ -324,6 +324,11 @@ pub trait Encoder: Send {
     fn push_audio(&mut self, block: &AudioBlock) -> Result<()>;
     /// 閉じて報告を返す。
     fn finish(&mut self) -> Result<EncodeReport>;
+    /// 実際に書いた実装とコーデック（`nvenc/h264_nvenc`、`ffmpeg/h264` など）。`begin` の後に呼ぶ。
+    /// 候補から選ぶ実装が、代わりのコーデックに落ちたことを呼ぶ側に伝えるため。選ばない実装は `None`（既定）。
+    fn implementation(&self) -> Option<String> {
+        None
+    }
 }
 
 /// エンコーダーを作るインターフェース。

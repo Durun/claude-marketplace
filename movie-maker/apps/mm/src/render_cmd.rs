@@ -175,6 +175,9 @@ fn print_summary(s: &ExportSummary) {
         s.elapsed.as_secs_f64(),
         s.fps
     );
+    if let Some(encoder) = &s.encoder {
+        println!("  エンコーダー: {encoder}");
+    }
     if let Some(v) = &s.verification {
         println!(
             "  検証 OK: {} {}x{}、映像 {} フレーム {:.3} 秒、音 {}",
