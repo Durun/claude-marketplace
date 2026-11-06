@@ -17,7 +17,7 @@ use windows::Win32::Media::timeBeginPeriod;
 
 use crate::cli::{self, Args};
 use crate::edit;
-use crate::ipc::{self, LayerInfo, ProjectInfo, SyncState};
+use crate::ipc::{self, ProjectInfo, SyncState};
 use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
@@ -26,7 +26,7 @@ use crate::surface::{self, PixelRect};
 use crate::verify::{self, Telemetry};
 
 /// サーフェスの幅の割合。残りが WebView。
-const SPLIT: f64 = 0.6;
+const SPLIT: f64 = 0.5;
 /// ウィンドウの初期の大きさ（論理ピクセル）。
 const INITIAL_SIZE: (f64, f64) = (1600.0, 900.0);
 /// OS のタイマーの分解能（ms）。待ちの粒度が既定の 15.6 ms だと、フレームの間隔を守れない。
@@ -94,21 +94,7 @@ fn project_info(
     comp: &CompositionId,
     playback: &PlaybackInfo,
 ) -> Result<ProjectInfo, MmError> {
-    let c = opened.project.composition(comp)?;
-    let layers = c
-        .layers
-        .iter()
-        .rev()
-        .filter_map(|l| {
-            let r = l.range().ok()?;
-            Some(LayerInfo {
-                id: l.id.to_string(),
-                kind: l.source.kind.clone(),
-                start: r.start.to_f64(),
-                end: r.end.to_f64(),
-            })
-        })
-        .collect();
+    let layers = ipc::layer_infos(opened.project.composition(comp)?);
     Ok(ProjectInfo {
         name: opened.name.clone(),
         composition: comp.to_string(),
@@ -141,6 +127,9 @@ pub fn run() {
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
+    if args.play_test.is_some() {
+        shared.collect_series();
+    }
     let project = Arc::new(opened.project.clone());
     let options = PlayerOptions {
         no_audio: args.no_audio,

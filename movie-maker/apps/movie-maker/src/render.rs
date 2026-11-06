@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use mm_runtime::GpuContext;
 use mm_ui_layout::{Action, TimelineModel};
-use mm_ui_wgpu::Ui;
+use mm_ui_wgpu::{timeline_layer_ids, timeline_model, Ui};
 
 use crate::playback::Command;
 use crate::state::{FrameImage, PreviewFrame, Shared};
@@ -21,6 +21,10 @@ use crate::theme;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
+/// 描画スレッドの本体が失敗や panic で終わってから作り直すまでの待ち。
+const RESTART_WAIT: Duration = Duration::from_millis(500);
+/// サーフェスを取れない周が続いたら、デバイスが消えたと見て再生スレッドにフレームを描き直させる周の数（約 2 秒）。
+const SURFACE_LOST_AFTER: u32 = 250;
 
 /// 描画スレッドのハンドル。落とすと止めて待つ。
 pub struct Renderer {
@@ -36,9 +40,7 @@ impl Renderer {
         let join = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                if let Err(e) = run(&shared, hwnd, &q, &model) {
-                    tracing::error!(error = %e, "描画スレッドが終わった");
-                }
+                supervise(&q, RESTART_WAIT, || run(&shared, hwnd, &q, &model));
             })
             .expect("render thread");
         Self {
@@ -59,6 +61,20 @@ impl Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+/// 描画スレッドの本体を、失敗や panic で終わっても `quit` が立つまで作り直して回す。
+/// 一度の失敗でプレビューが黙って固まったままにならないようにする。
+fn supervise(quit: &AtomicBool, wait: Duration, mut body: impl FnMut() -> Result<(), String>) {
+    while !quit.load(Ordering::SeqCst) {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut body));
+        match outcome {
+            Ok(Ok(())) => return,
+            Ok(Err(e)) => tracing::error!(error = %e, "描画が失敗したので作り直す"),
+            Err(_) => tracing::error!("描画スレッドが panic したので作り直す"),
+        }
+        std::thread::sleep(wait);
     }
 }
 
@@ -219,6 +235,8 @@ fn run(
     let start = shared.gpu.lock().expect("gpu").clone();
     let mut view = View::new(shared, hwnd, start, model)?;
     let mut seen = 0u64;
+    let mut doc = DocSync::default();
+    let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
         let size = shared.surface_size();
@@ -229,12 +247,56 @@ fn run(
         if let Some(context) = moved_context(shared, &view.gpu, seen) {
             tracing::warn!("レンダラーの GPU が変わったので、サーフェスを作り直す");
             view = View::new(shared, hwnd, Some(context), model)?;
+            doc = DocSync::default();
         }
         view.configure(size);
-        handle_input(shared, &mut view.ui);
-        frame(shared, &view.gpu, &mut view.ui, &mut seen);
+        doc.refresh(shared, &mut view.ui);
+        handle_input(shared, &mut view.ui, &doc.layer_ids);
+        if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
+            failed_frames = 0;
+        } else {
+            failed_frames += 1;
+            nudge_if_lost(shared, &mut failed_frames);
+        }
     }
     Ok(())
+}
+
+/// サーフェスを取れない周が長く続いたとき、止めている間なら再生スレッドに今のフレームを描き直させる。
+/// デバイスが消えていれば、再生スレッドが作り直した新しいデバイスのフレームが届いて、サーフェスも作り直せる。
+fn nudge_if_lost(shared: &Shared, failed_frames: &mut u32) {
+    if *failed_frames < SURFACE_LOST_AFTER {
+        return;
+    }
+    *failed_frames = 0;
+    if !shared.playing.load(Ordering::SeqCst) {
+        shared.send(Command::Seek(shared.playhead()));
+    }
+}
+
+/// 編集で変わったプロジェクトのデータを Timeline に反映する。Timeline の添字とレイヤーの ID の対応も持つ。
+#[derive(Default)]
+struct DocSync {
+    seen: u64,
+    layer_ids: Vec<String>,
+}
+
+impl DocSync {
+    fn refresh(&mut self, shared: &Shared, ui: &mut Ui) {
+        let serial = shared.doc_serial.load(Ordering::SeqCst);
+        if serial == self.seen {
+            return;
+        }
+        self.seen = serial;
+        let Some(doc) = shared.doc() else { return };
+        let Ok(comp) = doc.project.composition(&doc.comp) else {
+            return;
+        };
+        ui.update_model(timeline_model(comp));
+        self.layer_ids = timeline_layer_ids(comp);
+        let selected = shared.selected_layer();
+        ui.select(selected.and_then(|id| self.layer_ids.iter().position(|i| *i == id)));
+    }
 }
 
 /// 次のフレームが今のデバイスで描けない（レンダラーがデバイスを作り直した）なら、その新しいコンテキスト。
@@ -250,26 +312,33 @@ fn moved_context(shared: &Shared, gpu: &Gpu, seen: u64) -> Option<Arc<GpuContext
     }
 }
 
-/// ポインターの入力を UI に渡し、起きた操作を再生スレッドへ送る。
-fn handle_input(shared: &Shared, ui: &mut Ui) {
+/// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ。
+/// 1 周に溜まったシークは最後の 1 つだけ送る（途中の位置を描いても次に上書きされる）。
+fn handle_input(shared: &Shared, ui: &mut Ui, layer_ids: &[String]) {
     let events = std::mem::take(&mut *shared.input.lock().expect("input"));
+    let mut seek = None;
     for ev in events {
         for action in ui.pointer(ev) {
             match action {
-                Action::Seek(t) => {
-                    // スクラブは再生を止めて位置を追う。
-                    if shared.playing.load(Ordering::SeqCst) {
-                        shared.send(Command::Pause);
-                    }
-                    shared.send(Command::Seek(t));
+                Action::Seek(t) => seek = Some(t),
+                Action::Select(index) => {
+                    shared.select_layer(index.and_then(|i| layer_ids.get(i).cloned()));
                 }
-                Action::Select(_) | Action::Trim { .. } => {}
+                Action::Trim { .. } => {}
             }
         }
     }
+    if let Some(t) = seek {
+        // スクラブは再生を止めて位置を追う。
+        if shared.playing.load(Ordering::SeqCst) {
+            shared.send(Command::Pause);
+        }
+        shared.send(Command::Seek(t));
+    }
 }
 
-fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) {
+/// 1 フレーム描いて present する。サーフェスを取れなければ偽。
+fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
     let _span = tracing::info_span!("window.frame").entered();
     let texture = match gpu.surface.get_current_texture() {
         wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -279,7 +348,7 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) {
             tracing::debug!(state = ?other, "サーフェスを取れなかった");
             gpu.surface.configure(&gpu.device, &gpu.config);
             std::thread::sleep(RETRY_WAIT);
-            return;
+            return false;
         }
     };
     let uploaded = upload_frame(shared, gpu, ui, seen);
@@ -294,6 +363,7 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) {
     if let Some(frame_time) = uploaded {
         record_skew(shared, frame_time);
     }
+    true
 }
 
 /// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャは読み戻さずに束ねるだけ。
@@ -336,4 +406,54 @@ fn create_surface(
     };
     // HWND はウィンドウが閉じる前に描画スレッドを止めて待つので、描画スレッドの間は生きている。
     unsafe { instance.create_surface_unsafe(target) }.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc::channel;
+
+    #[test]
+    fn 描画の本体が失敗や_panic_で終わっても作り直して回し続ける() {
+        let quit = AtomicBool::new(false);
+        let mut calls = 0;
+        supervise(&quit, Duration::from_millis(1), || {
+            calls += 1;
+            match calls {
+                1 => Err("View::new の失敗".into()),
+                2 => panic!("描画スレッドの panic"),
+                _ => Ok(()),
+            }
+        });
+        assert_eq!(calls, 3, "3 回目に正常に終わるまで作り直す");
+    }
+
+    #[test]
+    fn 止める合図が立てば作り直さない() {
+        let quit = AtomicBool::new(true);
+        let mut calls = 0;
+        supervise(&quit, Duration::from_millis(1), || {
+            calls += 1;
+            Err("失敗".into())
+        });
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn サーフェスを取れない周が続いたら止めている間だけフレームを描き直させる() {
+        let shared = Shared::new();
+        let (tx, rx) = channel();
+        *shared.commands.lock().unwrap() = Some(tx);
+        let mut failed = SURFACE_LOST_AFTER - 1;
+        nudge_if_lost(&shared, &mut failed);
+        assert!(rx.try_recv().is_err(), "しきい値の手前では送らない");
+        failed += 1;
+        nudge_if_lost(&shared, &mut failed);
+        assert_eq!(rx.try_recv(), Ok(Command::Seek(0.0)));
+        assert_eq!(failed, 0, "送ったら数え直す");
+        shared.playing.store(true, Ordering::SeqCst);
+        failed = SURFACE_LOST_AFTER;
+        nudge_if_lost(&shared, &mut failed);
+        assert!(rx.try_recv().is_err(), "再生中は音を乱さない");
+    }
 }

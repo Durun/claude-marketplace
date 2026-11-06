@@ -4,7 +4,7 @@
 //!   コピーしても、素材が同じなら当たる。`cache/` を丸ごと消しても、次に開いたときに作り直すだけ。
 //! - 触った順: メモリの索引が持つ。開き直したときはファイルの更新時刻の順で復元し、`get` のたびに更新時刻も進める。
 //! - 書き込み: 一時ファイルに書いてから名前を付け替えるので、途中で落ちても壊れたファイルは残らない。
-//!   開くときに残った一時ファイルは捨てる。
+//!   開くときは 1 時間より古い一時ファイルだけ捨てる（別のプロセスが書いている最中のものは残す）。
 //! - 大きさ: 上限を超えたら、触った順に古いものから消す。上限より大きい 1 つは置いたそばから消える。
 
 mod layout;
@@ -15,12 +15,15 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use mm_cache_api::{CacheKey, CacheKind, CacheStore};
 use mm_types::{MmError, Result};
 
 use crate::layout::{entry_path, parse_entry, TMP_DIR};
+
+/// これより古い一時ファイルは、書いたプロセスが落ちて残ったものとして捨てる。
+const STALE_TMP_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// 索引の 1 項目。
 #[derive(Debug, Clone, Copy)]
@@ -72,7 +75,7 @@ pub struct FsCache {
     root: PathBuf,
     limit: Option<u64>,
     index: Mutex<Index>,
-    /// 一時ファイルの名前の通し番号。
+    /// 一時ファイルの名前の通し番号。名前は pid と組にして、同じ `cache/` を開く別プロセスと被らせない。
     seq: AtomicU64,
 }
 
@@ -104,9 +107,19 @@ impl FsCache {
         self.index.lock().expect("cache index lock")
     }
 
+    /// 別のプロセスが書いている最中の一時ファイルを消さないよう、古いものだけ捨てる。
     fn discard_stale_tmp(&self) {
-        if let Ok(dir) = fs::read_dir(self.root.join(TMP_DIR)) {
-            for e in dir.flatten() {
+        let Ok(dir) = fs::read_dir(self.root.join(TMP_DIR)) else {
+            return;
+        };
+        let now = SystemTime::now();
+        for e in dir.flatten() {
+            let age = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|m| now.duration_since(m).ok());
+            if age.is_some_and(|a| a >= STALE_TMP_AGE) {
                 let _ = fs::remove_file(e.path());
             }
         }
@@ -199,10 +212,11 @@ impl CacheStore for FsCache {
     }
 
     fn put(&self, key: &CacheKey, bytes: &[u8]) -> Result<()> {
-        let tmp = self
-            .root
-            .join(TMP_DIR)
-            .join(format!("{}.tmp", self.seq.fetch_add(1, Ordering::Relaxed)));
+        let tmp = self.root.join(TMP_DIR).join(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            self.seq.fetch_add(1, Ordering::Relaxed)
+        ));
         let path = entry_path(&self.root, key);
         let parent = path
             .parent()
@@ -337,12 +351,42 @@ mod tests {
     }
 
     #[test]
-    fn 残った一時ファイルは開くときに捨てる() {
+    fn 古い一時ファイルだけ開くときに捨てる() {
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join(".tmp")).unwrap();
-        fs::write(dir.path().join(".tmp").join("0.tmp"), b"half").unwrap();
+        let tmp = dir.path().join(".tmp");
+        fs::create_dir_all(&tmp).unwrap();
+        let old = tmp.join("1-0.tmp");
+        let fresh = tmp.join("2-0.tmp");
+        fs::write(&old, b"half").unwrap();
+        fs::write(&fresh, b"writing").unwrap();
+        let long_ago = SystemTime::now() - STALE_TMP_AGE - Duration::from_secs(60);
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
         let c = FsCache::open(dir.path(), None).unwrap();
         assert_eq!(c.size_bytes(), 0);
-        assert!(!dir.path().join(".tmp").join("0.tmp").exists());
+        assert!(!old.exists(), "古い一時ファイルは捨てる");
+        assert!(fresh.exists(), "書いている最中かもしれないものは残す");
+    }
+
+    #[test]
+    fn 同じ置き場を開く二つのキャッシュは一時ファイルを壊し合わない() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = FsCache::open(dir.path(), None).unwrap();
+        // 別プロセスの書き込み中を模す: 自分とは違う pid の名前で置く。
+        let other = dir
+            .path()
+            .join(".tmp")
+            .join(format!("{}-0.tmp", std::process::id() + 1));
+        fs::write(&other, b"writing").unwrap();
+        let b = FsCache::open(dir.path(), None).unwrap();
+        assert!(other.exists(), "後から開いても他の一時ファイルは消えない");
+        a.put(&key("h", "a"), &[1; 4]).unwrap();
+        b.put(&key("h", "b"), &[2; 4]).unwrap();
+        assert_eq!(a.get(&key("h", "a")).unwrap(), Some(vec![1; 4]));
+        assert_eq!(b.get(&key("h", "b")).unwrap(), Some(vec![2; 4]));
     }
 }

@@ -7,12 +7,12 @@
       "name": "playback.frame_ms",
       "ok": null,
       "samples": [
-        7.4496,
-        8.6601,
-        8.7626
+        6.4460999999999995,
+        8.7964,
+        7.4289000000000005
       ],
       "unit": "ms",
-      "value": 8.6601
+      "value": 7.4289000000000005
     },
     {
       "better": "lower",
@@ -20,12 +20,12 @@
       "name": "playback.frame_p99_ms",
       "ok": null,
       "samples": [
-        11.741299999999999,
-        12.043999999999999,
-        12.2373
+        9.6115,
+        12.4176,
+        13.369000000000002
       ],
       "unit": "ms",
-      "value": 12.043999999999999
+      "value": 12.4176
     },
     {
       "better": "lower",
@@ -50,12 +50,12 @@
       "name": "playback.cached_frame_ms",
       "ok": null,
       "samples": [
-        7.928100000000001,
-        7.8887,
-        8.057699999999999
+        6.0744,
+        7.0756,
+        5.790100000000001
       ],
       "unit": "ms",
-      "value": 7.928100000000001
+      "value": 6.0744
     },
     {
       "better": "lower",
@@ -65,14 +65,14 @@
         "value": 0.0
       },
       "name": "playback.cached_dropped_pct",
-      "ok": true,
+      "ok": false,
       "samples": [
-        0.0,
-        0.0,
+        1.0,
+        2.3333333333333335,
         0.0
       ],
       "unit": "%",
-      "value": 0.0
+      "value": 1.0
     },
     {
       "better": "lower",
@@ -84,10 +84,10 @@
       "name": "playback.cpu_ms",
       "ok": true,
       "samples": [
-        1.068
+        1.024
       ],
       "unit": "ms",
-      "value": 1.068
+      "value": 1.024
     },
     {
       "better": "lower",
@@ -99,10 +99,10 @@
       "name": "playback.gpu_ms",
       "ok": true,
       "samples": [
-        0.218
+        0.086
       ],
       "unit": "ms",
-      "value": 0.218
+      "value": 0.086
     }
   ],
   "metrics": {
@@ -114,33 +114,33 @@
     "gauges": {
       "cache.frame_entries": 13,
       "cache.frame_memory_bytes": 166764960,
-      "render.gpu_frame_us": 324
+      "render.gpu_frame_us": 65
     },
     "spans": {
       "render.frame": {
         "count": 1806,
-        "max_us": 20288,
-        "p50_us": 730,
-        "p95_us": 1477,
-        "p99_us": 2929
+        "max_us": 23429,
+        "p50_us": 706,
+        "p95_us": 1447,
+        "p99_us": 2941
       },
       "render.gpu_frame": {
         "count": 1804,
-        "max_us": 615,
-        "p50_us": 209,
-        "p95_us": 329,
-        "p99_us": 573
+        "max_us": 677,
+        "p50_us": 72,
+        "p95_us": 285,
+        "p99_us": 634
       },
       "runtime.render_frame": {
         "count": 1806,
-        "max_us": 25139,
-        "p50_us": 7686,
-        "p95_us": 10216,
-        "p99_us": 11135
+        "max_us": 42566,
+        "p50_us": 5865,
+        "p95_us": 9436,
+        "p99_us": 12896
       }
     }
   },
   "repeat": 3,
   "scene": "playback",
-  "timestamp": 1793949426
+  "timestamp": 1793956502
 }

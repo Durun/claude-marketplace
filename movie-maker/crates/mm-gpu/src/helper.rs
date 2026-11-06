@@ -14,6 +14,7 @@ use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
 use crate::context::{GpuContext, FRAME_FORMAT};
 use crate::frame::GpuFrameTexture;
+use crate::timer::PassTimer;
 
 /// 1 画素のバイト数（RGBA の f16）。
 const BYTES_PER_PIXEL: u32 = 8;
@@ -29,6 +30,8 @@ const MAX_FREE_BUFFERS: usize = 4;
 /// wgpu の GPU ヘルパー。具象型は `as_any` で降りて `context()` と `texture()` を使える。
 pub struct WgpuGpu {
     ctx: Arc<GpuContext>,
+    /// このデバイスの上の全パスが書くタイムスタンプ。
+    timer: Arc<PassTimer>,
     next_id: u64,
     textures: HashMap<u64, wgpu::Texture>,
     /// 借用しているフレーム。`after_submit` で破棄する。
@@ -43,6 +46,8 @@ pub struct WgpuGpu {
 
 /// 提出済みで、まだ CPU に写していないリードバック。`WgpuGpu::finish_readback` で画像にする。
 pub struct Readback {
+    /// 提出したときのコンテキスト。作り直された後の別のデバイスで待つと終わらないので、照合に使う。
+    ctx: Arc<GpuContext>,
     buffer: wgpu::Buffer,
     bytes: u64,
     /// 1 行の使っているバイト数。
@@ -56,6 +61,7 @@ impl WgpuGpu {
     /// 空のテクスチャプール。
     pub fn new(ctx: Arc<GpuContext>) -> Self {
         Self {
+            timer: Arc::new(PassTimer::new(&ctx)),
             ctx,
             next_id: 0,
             textures: HashMap::new(),
@@ -69,6 +75,11 @@ impl WgpuGpu {
     /// GPU のコンテキスト。
     pub fn context(&self) -> &Arc<GpuContext> {
         &self.ctx
+    }
+
+    /// パスの時間を計るタイマー。自前のパスを持つ呼び手は `pass_writes` を `timestamp_writes` に渡す。
+    pub fn timer(&self) -> &Arc<PassTimer> {
+        &self.timer
     }
 
     /// 番号のテクスチャ。
@@ -203,6 +214,7 @@ impl WgpuGpu {
         );
         self.ctx.queue.submit([encoder.finish()]);
         Readback {
+            ctx: self.ctx.clone(),
             buffer,
             bytes,
             row,
@@ -227,12 +239,18 @@ impl WgpuGpu {
     ) -> Result<()> {
         let _span = tracing::debug_span!("render.readback").entered();
         let Readback {
+            ctx,
             buffer,
             bytes,
             row,
             padded_row,
             ..
         } = readback;
+        if !Arc::ptr_eq(&ctx, &self.ctx) {
+            return Err(MmError::Internal(
+                "リードバックを頼んだ後にデバイスが作り直された".into(),
+            ));
+        }
         if let Err(e) = map_blocking(&self.ctx.device, &buffer) {
             // 待ちが失敗するのはデバイスが消えたときなので、持ち主に作り直させる。
             self.ctx.mark_lost();
@@ -383,6 +401,7 @@ impl GpuHelper for WgpuGpu {
                     store: wgpu::StoreOp::Store,
                 },
             })],
+            timestamp_writes: self.timer.pass_writes(),
             ..Default::default()
         });
         self.ctx.queue.submit([encoder.finish()]);

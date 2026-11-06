@@ -182,7 +182,7 @@ const DangerousToggle = ({ s }: { s: Session }) => (
   </button>
 );
 
-/** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。 */
+/** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。概要は下部に置く。 */
 const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
   <>
     <div class="head-row session-title">
@@ -198,8 +198,6 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
           <CopyText text={s.cwd} title={`${s.cwd}（押すと絶対パスをコピー）`}>{s.repo}</CopyText>
           {s.branch && <> · <CopyText text={s.branch} title="押すとブランチ名をコピー">{s.branch}</CopyText></>}
         </span>
-      </div>
-      <div class="head-row">
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
         {s.prs?.map((pr) => <Removable key={pr.url} s={s} url={pr.url}><PrChips pr={pr} session={s.id} /></Removable>)}
         {s.jira.map((j) => <Removable key={j.key} s={s} url={j.url}><JiraChips issues={[j]} session={s.id} /></Removable>)}
@@ -212,6 +210,7 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
           </span>
         )}
       </div>
+      <Summary s={s} />
     </div>
   </>
 );
@@ -269,8 +268,7 @@ type SessionData = {
 const CHAT_WIDGET = 'chat';
 
 const WIDGETS: Record<string, Widget<SessionData>> = {
-  head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 10, h: 6 }, sketch: 'text', controls: archiveControl },
-  summary: { title: '概要', icon: '📝', Body: Summary, size: { w: 8, h: 6 }, sketch: 'text' },
+  head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 16, h: 6 }, sketch: 'text', controls: archiveControl },
   diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => launchDiagram(s) },
   // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリとテーマで始める。
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} theme={s.theme} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd, s.theme) },
@@ -303,8 +301,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
 
 // 初期配置は 1 画面に収め、スクロールしなくても使えるようにする。チャット、コード、PR、PR コメント、JIRA、使用量と、右の一覧は、それぞれ 1 つの枠に重ねてタブで切り替える。
 const DEFAULT_LAYOUT: Layout = [
-  { id: 'head', x: 0, y: 0, w: 10, h: 6, tabs: [{ id: 'head' }] },
-  { id: 'summary', x: 10, y: 0, w: 6, h: 6, tabs: [{ id: 'summary' }] },
+  { id: 'head', x: 0, y: 0, w: 16, h: 6, tabs: [{ id: 'head' }] },
   { id: 'diagram', x: 16, y: 0, w: 2, h: 3, tabs: [{ id: 'diagram' }], free: true },
   { id: 'remote', x: 16, y: 3, w: 2, h: 3, tabs: [{ id: 'remote' }], free: true },
   { id: 'main', x: 0, y: 6, w: 18, h: ROWS - 6, tabs: [{ id: 'chat' }, { id: 'code' }, { id: PR_WIDGET }, { id: 'pr' }, { id: JIRA_WIDGET }, { id: SLACK_WIDGET }, { id: 'usage' }] },

@@ -131,6 +131,15 @@ fn color_cdl_は_gpu_と_cpu_で一致する() {
 }
 
 #[test]
+fn color_cdl_は_power_0_と_x_0_でも_gpu_が_nan_にならない() {
+    // gradient の左端と上の行は R が 0。power 0 の R で pow(0, 0) を踏む。
+    check(
+        &ColorCdlKind::default(),
+        &[("power", ParamValue::Vec3([0.0, 0.5, 1.0]))],
+    );
+}
+
+#[test]
 fn color_lut_は_gpu_と_cpu_で一致する() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),

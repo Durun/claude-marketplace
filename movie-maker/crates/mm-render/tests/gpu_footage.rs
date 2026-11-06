@@ -24,6 +24,12 @@ use mm_types::{
 /// f16 の丸めと面積平均の誤差の許容。
 const TOLERANCE: f32 = 3e-3;
 
+/// 160x160 の画布に収めた 320x180 の素材の箱の上端と下端（y）。
+const BOX_TOP: u32 = 35;
+const BOX_BOTTOM: u32 = 125;
+/// 縮小の補間の違いが出る、箱の縁からの幅（画素）。
+const EDGE_BAND: u32 = 2;
+
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
@@ -180,23 +186,29 @@ fn 同じ大きさなら_cpu_の経路と同じ画像() {
 #[test]
 fn 縦横比の違う画布には収めて置き_縮小は面積平均で色を保つ() {
     let Some(ctx) = gpu() else { return };
-    let media = SampleMedia::default();
     // 320x180 の素材を 160x160 に収める: 幅 160、高さ 90、上下に 35 の余白。
     let size = Size::new(160, 160);
     let got = render(&ctx, Arc::new(GpuSampleFactory), size);
     let p = |x, y| got.pixel(x, y);
     assert_eq!(p(80, 10).a, 0.0, "上の余白は透明");
     assert_eq!(p(80, 150).a, 0.0, "下の余白は透明");
-    let inside = p(80, 80);
-    let want = media.base_color;
-    assert!(
-        inside.max_diff(want) <= TOLERANCE || inside.a > 0.99,
-        "素材の中は塗られている: {inside:?}"
-    );
     let cpu = render(&ctx, Arc::new(SampleDecoderFactory::default()), size);
-    let diff = got.max_diff(&cpu).expect("同じ大きさ");
-    // CPU の経路は双線形、GPU の経路は面積平均なので、模様の縁だけが違う。
-    assert!(diff <= 0.5, "CPU の経路との差 {diff}");
+    // 素材は一色。CPU は双線形、GPU は面積平均なので差が出るのは箱の縁（y が 35 と 125）だけで、
+    // それを除いた内側と余白は色まで CPU の経路と一致する。
+    let near_edge =
+        |y: u32| y.abs_diff(BOX_TOP) <= EDGE_BAND || y.abs_diff(BOX_BOTTOM) <= EDGE_BAND;
+    for y in (0..size.height).filter(|&y| !near_edge(y)) {
+        for x in 0..size.width {
+            let (a, b) = (got.pixel(x, y), cpu.pixel(x, y));
+            assert!(
+                a.max_diff(b) <= TOLERANCE,
+                "({x}, {y}) が CPU の経路と違う: {a:?} と {b:?}"
+            );
+        }
+    }
+    let inside = p(80, 80);
+    assert!(inside.a > 0.99, "素材の中は塗られている: {inside:?}");
+    assert!(cpu.pixel(80, 80).a > 0.99, "比べる側も塗られている");
     assert_eq!(cpu.pixel(80, 10).a, 0.0);
     assert!(
         got.pixel(80, 45).max_diff(Rgba::TRANSPARENT) > 0.0,

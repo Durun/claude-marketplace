@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 /// 彩度に使う輝度係数（Rec.709）。
 const LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
 
+/// power の下限。0 では `pow(0, 0)` が GPU で NaN になりうるため、CPU と GPU で同じ値に切る。
+pub const MIN_POWER: f32 = 1e-3;
+
 /// ASC CDL の 10 個の数。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Cdl {
@@ -33,7 +36,7 @@ impl Cdl {
         let v: [f32; 3] = std::array::from_fn(|i| {
             (rgb[i] * self.slope[i] + self.offset[i])
                 .max(0.0)
-                .powf(self.power[i])
+                .powf(self.power[i].max(MIN_POWER))
         });
         let luma = v[0] * LUMA[0] + v[1] * LUMA[1] + v[2] * LUMA[2];
         v.map(|c| luma + (c - luma) * self.saturation)
@@ -49,7 +52,7 @@ impl Cdl {
              return vec3<f32>(luma) + (v - vec3<f32>(luma)) * {sat:?};\n}}\n",
             slope = v3(self.slope),
             offset = v3(self.offset),
-            power = v3(self.power),
+            power = v3(self.power.map(|p| p.max(MIN_POWER))),
             l0 = LUMA[0],
             l1 = LUMA[1],
             l2 = LUMA[2],
@@ -68,6 +71,19 @@ mod tests {
         for (a, b) in out.iter().zip([0.2, 0.5, 0.8]) {
             assert!((a - b).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn power_0_でも_0_の画素は_0_で有限() {
+        let cdl = Cdl {
+            power: [0.0; 3],
+            ..Cdl::default()
+        };
+        assert_eq!(cdl.apply([0.0; 3]), [0.0; 3]);
+        assert!(cdl
+            .apply([0.5; 3])
+            .iter()
+            .all(|c| c.is_finite() && *c > 0.99));
     }
 
     #[test]

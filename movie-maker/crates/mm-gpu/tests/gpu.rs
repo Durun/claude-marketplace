@@ -132,3 +132,37 @@ fn fill_は_cpu_の画像を上げたのと同じ画素になる() {
     assert_eq!(a.data(), b.data());
     assert_eq!(&a.data()[..4], &[0.25, 0.5, 0.75, 0.5]);
 }
+
+#[test]
+fn タイマーは待たずに_fill_のパスの時間を数フレーム遅れで返す() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    if !ctx.timestamps {
+        eprintln!("このアダプターにはタイムスタンプが無いのでスキップする");
+        return;
+    }
+    let mut gpu = WgpuGpu::new(ctx.clone());
+    let timer = gpu.timer().clone();
+    let size = Size::new(1920, 1080);
+    for _ in 0..4 {
+        let frame = gpu.fill(size, Rgba::WHITE).expect("塗れる");
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        timer.resolve(&mut encoder);
+        ctx.queue.submit([encoder.finish()]);
+        timer.after_submit();
+        gpu.release(&frame);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut times = Vec::new();
+    while times.is_empty() && std::time::Instant::now() < deadline {
+        times = timer.collect();
+    }
+    assert!(!times.is_empty(), "読み取りが終わった分が返る");
+    assert!(
+        times.iter().all(|&ns| ns > 0),
+        "fill のパスが数に入る: {times:?}"
+    );
+}

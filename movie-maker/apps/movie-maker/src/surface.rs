@@ -27,6 +27,8 @@ const WHEEL_DELTA: f32 = 120.0;
 const MK_CONTROL: usize = 0x0008;
 /// マウスがウィンドウから出た通知（`TrackMouseEvent` で頼んだもの）。
 const WM_MOUSELEAVE: u32 = 0x02A3;
+/// WM_KEYDOWN の lParam で、直前もキーが押されていた（押し続けの繰り返し）ことを示すビット。
+const KEY_REPEAT_BIT: isize = 1 << 30;
 /// 描画が止まっているときに入力が溜まり続けない上限。
 const INPUT_LIMIT: usize = 512;
 
@@ -115,6 +117,11 @@ pub fn post_key(hwnd: isize, vk: u32) {
     }
 }
 
+/// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、最初の押下だけをキー操作にする。
+fn is_key_repeat(lparam: LPARAM) -> bool {
+    lparam.0 & KEY_REPEAT_BIT != 0
+}
+
 fn push(ev: PointerEvent) {
     if let Some(shared) = SHARED.get() {
         let mut q = shared.input.lock().expect("input");
@@ -199,6 +206,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_KEYDOWN => {
+            if is_key_repeat(lparam) {
+                return LRESULT(0);
+            }
             if let Some(shared) = SHARED.get() {
                 keys::dispatch(shared, "surface", &keys::vk_name(wparam.0 as u32));
             }
@@ -206,5 +216,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_ERASEBKGND => LRESULT(1),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 押し続けの繰り返しは最初の押下と見分ける() {
+        assert!(!is_key_repeat(LPARAM(1)), "最初の押下は直前のビットが 0");
+        assert!(is_key_repeat(LPARAM((1 << 30) | 1)));
     }
 }
