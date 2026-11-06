@@ -65,9 +65,7 @@
 | 1 デコード | 10 bit の素材も 8 bit の RGBA を経由し、バンディングと HDR の喪失が出る（`mm-decode-ffmpeg` の `convert.rs`）。段階 1 で直す。 |
 | 1 色 | `bt709` は Rec.1886 の表示の式を指す（2026-11-06 の決定）。BT.709 の OETF は別の名前で持ち、`mm-color-lut` のフィクスチャもそれに合わせる。契約の「白は白」はログと PQ の空間に合わないので、空間ごとに期待値を持たせる。OCIO の環境（vcpkg、LLVM、`OCIO_ROOT`、DLL の同梱）は `mm-color-ocio` の README。[ocio](spikes/ocio.md#詰まった所) |
 | 2 レンダラー | NVDEC のフレームは `submit` が終わるまでの借用にし、`Queue::submit` の前に使うフレームすべての待ちを登録する。フレームのキャッシュは NV12 のままにせず RGBA で置く。ACES 2.0 の表示変換を WGSL で出すなら、結合サンプラーの書き換えと `TransformProgram` のテクスチャの置き場所が要る。 |
-| 2 レンダラー | ベクターの倍率をコンポ全体のキャンバスに掛けるため、1080p で scale 4 は毎フレーム 530 MB、4K で 2.13 倍を超えると 8192 の上限で文字が消える（`mm-render` の `layers.rs`、`mm-nodes-basic` の `text.rs`）。`region_of_definition` の大きさだけ描き、位置は行列で決める。 |
-| 2 レンダラー | 素材を CPU で双線形に縮小し、GPU でも mip なしの双線形で標本化し直す（`mm-nodes-basic` の `util.rs`、`footage.rs`、`mm-render` の `compose.rs`）。[04-nodes](04-nodes.md) の「1 回だけ、線形の光で、面積平均か Lanczos」に反する。縮小を 1 回にまとめる。 |
-| 2 レンダラー | 毎フレームの無駄が多い（`DecodedFrame` の clone 33 MB、u8 から f32 と premultiply のスカラーのループ、swscale の精度優先のフラグ、フレームの毎フレーム確保）。YUV のままアップロードしてシェーダーで変換し、書き出しも GPU で YUV にしてからリードバックする。デコード、描画、エンコードをスレッドで並べ、リードバックを 2〜3 枚先行させる。 |
+| 2 レンダラー | 済（RFC 0009）: ベクターの倍率は `region_of_definition` の領域だけに掛かり、素材の縮小は合成のシェーダーで 1 回だけ面積平均、ffmpeg のフレームは YUV のまま GPU に上げ、書き出しは GPU で NV12 にしてリードバックを 3 枚先行させる。残り: GPU の無い CPU の経路（`FfmpegCpuDecoderFactory`、契約テスト）は `DecodedFrame` の clone と双線形の縮小のまま。デコードと描画はまだ同じスレッド。 |
 | 2 レンダラー | 開くたびに全パケットを読み（1 時間の 4K 50 Mbps で約 22 GB）、`invalidate` が全部の素材を閉じる（`mm-decode-ffmpeg` の `timeline.rs`、`mm-render` の `renderer.rs`）。コンテナの索引を持ち、該当する素材だけ閉じる。 |
 | 2 レンダラー | `time_varying: false` の文字を毎フレーム 2 回シェーピングし、コンポの大きさのキャンバスを確保する（`mm-nodes-basic` の `text.rs`）。パラメータをキーにキャッシュする。 |
 | 2 ウィンドウ | Tauri のコマンドは `async` にする（同期だと 60 Hz の通知がメッセージループをブロックする）。サーフェスの大きさと WebView の矩形は物理ピクセルから 1 か所で決める。キーはサーフェスの `WM_KEYDOWN` と WebView の `keydown` を 1 つのエントリーポイントに入れる。サーフェスを取れなかったとき（`Outdated`、`Lost`）の経路は未試験。150% の DPI と倍率の違うモニター間を人が確かめる。連続で大きさを変えると WebView の同期が最大 0.25 秒遅れる。[window](spikes/window.md#実装のとき気をつける所) |

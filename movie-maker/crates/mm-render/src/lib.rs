@@ -9,9 +9,12 @@
 //!   `mm-trace` に載せる。
 //! - 変形はプロジェクトのデータの `Layer.transform` を読む（[`transform`]）。入れ子（種類 `composition`）はレンダラーが
 //!   展開する。ノードのインターフェースからはプロジェクトのデータが見えないため、種類自身は透明を返す（[`NESTED_KIND`]）。
+//! - 書き出しは GPU で NV12 にしてリードバックを先行させ、エンコーダーに押す（[`export`]）。
+//! - デバイスが消えたら（`GpuContext::is_lost`）、次のフレームの前にコンテキストとその上の全部を作り直す。
 
 mod audio;
 mod compose;
+mod export;
 mod layers;
 mod renderer;
 mod source;

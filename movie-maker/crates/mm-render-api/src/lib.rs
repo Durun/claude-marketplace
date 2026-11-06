@@ -11,9 +11,10 @@
 use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
+use mm_decode_api::Encoder;
 use mm_doc::Project;
 use mm_node_api::{FrameRef, GpuHelper, NodeRegistry, Quality};
-use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
+use mm_types::{CompositionId, Rational, RationalTime, Result, RgbaImage, Size, TimeRange};
 
 pub use mm_node_api::Quality as RenderQuality;
 
@@ -182,12 +183,53 @@ pub trait Renderer: Send {
         }
         Ok(count)
     }
+    /// 区間を描いてエンコーダーに押す（書き出し）。返すのは押したフレームの数。
+    ///
+    /// 既定は `render_range` で描いたフレームをリードバックし、`batch` 枚ずつ `Encoder::push_frames` に押す。
+    /// 実装は、GPU で YUV にしてリードバックを先行させ `Encoder::push_nv12_frames` に押すなど、
+    /// 速い経路に置き換えてよい。エンコーダーが NV12 を受けなければ既定の経路に戻る。
+    /// `sink` は 1 フレーム押すごとにその番号で呼ばれる（段ごとの計測のため）。
+    fn export_range(
+        &mut self,
+        req: &RangeRequest<'_>,
+        encoder: &mut dyn Encoder,
+        batch: usize,
+        sink: &mut dyn FnMut(i64),
+    ) -> Result<usize> {
+        export_range_rgba(self, req, encoder, batch, sink)
+    }
     /// 区間の音を混ぜる。
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock>;
     /// プロジェクトのデータのこの範囲が変わった。キャッシュを破棄する。
     fn invalidate(&mut self, composition: &CompositionId, range: TimeRange);
     /// GPU のヘルパー。リードバック（`mm frame`、書き出し）に使う。
     fn gpu(&mut self) -> &mut dyn GpuHelper;
+}
+
+/// `Renderer::export_range` の既定の経路。`render_range` で描いたフレームをリードバックし、`batch` 枚ずつ
+/// `Encoder::push_frames` に押す。実装が速い経路から戻るときにも使う。
+pub fn export_range_rgba<R: Renderer + ?Sized>(
+    renderer: &mut R,
+    req: &RangeRequest<'_>,
+    encoder: &mut dyn Encoder,
+    batch: usize,
+    sink: &mut dyn FnMut(i64),
+) -> Result<usize> {
+    let batch = batch.max(1);
+    let mut pending: Vec<RgbaImage> = Vec::with_capacity(batch);
+    let count = renderer.render_range(req, &mut |index, frame, gpu| {
+        pending.push((*gpu.download(&frame)?).clone());
+        sink(index);
+        if pending.len() == batch {
+            encoder.push_frames(&pending)?;
+            pending.clear();
+        }
+        Ok(())
+    })?;
+    if !pending.is_empty() {
+        encoder.push_frames(&pending)?;
+    }
+    Ok(count)
 }
 
 /// 先読みの描画の順を決める。rustc のクエリの型（時刻とキーで引く計算と、提供者の差し替え）に倣い、

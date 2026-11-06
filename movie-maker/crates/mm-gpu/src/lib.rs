@@ -12,4 +12,4 @@ mod helper;
 
 pub use context::{adapter_id, enumerate_adapters, GpuContext, GpuRequest, FRAME_FORMAT};
 pub use frame::{GpuFrameTexture, WaitFn};
-pub use helper::{map_blocking, WgpuGpu};
+pub use helper::{map_blocking, Readback, WgpuGpu};

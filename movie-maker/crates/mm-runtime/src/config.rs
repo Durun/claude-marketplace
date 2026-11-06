@@ -132,11 +132,12 @@ impl RuntimeConfig {
     }
 
     /// 実際の実装の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
-    /// デコードとエンコードは ffmpeg。キャッシュは実際の実装がまだ無いのでモックのまま。
+    /// デコードは auto（素材ごとに d3d12va、cuvid、ffmpeg の順。入っていない実装と GPU の無い環境では ffmpeg）、
+    /// エンコードは ffmpeg。キャッシュは実際の実装がまだ無いのでモックのまま。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
-            decode: Backend::Ffmpeg,
+            decode: Backend::Auto,
             encode: Backend::Ffmpeg,
             audio: Backend::Dsp,
             text: Backend::Cpu,
@@ -176,6 +177,13 @@ mod tests {
             assert!(!b.uses_gpu(), "{b:?}");
         }
         assert!(Backend::Auto.needs_d3d12() && !Backend::Wgpu.needs_d3d12());
+    }
+
+    #[test]
+    fn 実際の組み合わせはデコードが_auto() {
+        let real = RuntimeConfig::real();
+        assert_eq!(real.decode, Backend::Auto);
+        assert!(real.requires_gpu(), "レンダラーが wgpu なので GPU は必須");
     }
 
     #[test]
