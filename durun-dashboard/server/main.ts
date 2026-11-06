@@ -26,7 +26,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
-import { noteActivity } from './reflect.ts';
+import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -93,6 +93,7 @@ const STATIC: Record<string, string> = {
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
   '/recycle-bin.svg': 'public/recycle-bin.svg',
   '/recycle-bin-full.svg': 'public/recycle-bin-full.svg',
+  '/learn.svg': 'public/learn.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
@@ -1304,6 +1305,8 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
+  [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
+  [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   // ブラウザでのログインは数分かかるので、終わるのを待たずに返す。進み具合と失敗は、スナップショットで知らせる。

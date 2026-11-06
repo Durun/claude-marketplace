@@ -406,6 +406,21 @@ export type MemoryStatus = MemoryPressure | MemoryUsage;
 export const MODELS = ['fable', 'opus', 'sonnet'] as const;
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
+/** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
+export type LearnSettings = { scheduled: boolean };
+
+/** 学習を 1 回動かした記録。sessionId は提案を見せて承認を待つセッション。 */
+export type LearnRun = { at: number; sessionId: string };
+
+export type LearnState = LearnSettings & {
+  /** 学習のセッションが提案を作っている */
+  running: boolean;
+  /** 新しい順 */
+  runs: LearnRun[];
+  /** 前回、学習を始められなかった理由 */
+  error?: string;
+};
+
 export type ImproveSettings = { enabled: boolean; model?: string; effort?: string };
 
 export type ImproveState = ImproveSettings & {
@@ -454,6 +469,8 @@ export type Snapshot = {
   /** 人間がホームで並べ替えたセッションの順。並べ替えた後に現れたセッションは入っていない。 */
   sessionOrder: string[];
   improve: ImproveState;
+  /** 学習アプリの設定と記録。前に受け取ったスナップショットには無いことがある。 */
+  learn?: LearnState;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。前に受け取ったスナップショットには無いことがある。 */
   autoContinue?: boolean;
   /** 人間に確かめている認証。求めた順。前に受け取ったスナップショットには無いことがある。 */

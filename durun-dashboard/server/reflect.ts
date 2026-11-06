@@ -1,30 +1,31 @@
-// 人間が会話で教えたことを振り返り、CLAUDE.md・スキル・記憶・フックへの差分を提案させる。
-// 人間が作業を止めてしばらく経ったら、前回より後の人間の発言を集め、claude -p のセッションに渡す。
-// セッションは提案を present で見せて止まる。人間がチャットで承認した提案だけを、再開したセッションが適用する。
+// 学習アプリ。人間が会話で教えたことを振り返り、CLAUDE.md・スキル・記憶・フックへの差分を提案させる。
+// 定期実行を ON にすると、人間が作業を止めてしばらくたったら動く。アプリの「今すぐ学習する」でも動かせる。
+// 前回より後の人間の発言を集め、claude -p のセッションに渡す。セッションは提案を present で見せて止まる。
+// 人間がチャットで承認した提案だけを、再開したセッションが適用する。知見のファイルとその管理は利用者の側にあり、ダッシュボードは書き込まない。
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ChatEntry } from '../shared/types.ts';
-import { CLAUDE_DIR, readJson, summarizeLog } from './claude.ts';
+import type { ChatEntry, LearnSettings, LearnState } from '../shared/types.ts';
+import { CLAUDE_DIR, isAlive, summarizeLog } from './claude.ts';
 import { claudeCommand } from './platform.ts';
 import { launchDetached } from './run.ts';
 import { DATA_DIR, ensureSession, state, touch } from './store.ts';
 
-const REFLECT_DIR = path.join(DATA_DIR, 'reflect');
-const LAST_FILE = path.join(REFLECT_DIR, 'last.json');
-const LOG_FILE = path.join(REFLECT_DIR, 'reflect.log');
+const LEARN_DIR = path.join(DATA_DIR, 'learn');
+const LOG_FILE = path.join(LEARN_DIR, 'learn.log');
 // 人間が作業を止めたとみなすまでの時間。日中の休憩では動かさず、夜に動かす。
 const IDLE_MS = 90 * 60_000;
-// 昼の長い会議の後などに 1 日 2 回動かさない。
+// 昼の長い会議の後などに、定期実行で 1 日 2 回動かさない。
 const MIN_INTERVAL_MS = 20 * 60 * 60_000;
 // 直前の Claude の発言は、人間が何に答えたかが分かる程度に切る。人間の発言は、教えた内容を落とさないよう長めに残す。
 const REPLY_CHARS = 400;
 const PROMPT_CHARS = 1500;
 // 1 回に読ませる量の上限。超えた分は古い発言から落とす。
 const DIGEST_CHARS = 300_000;
-/** 振り返りのセッションに渡す依頼の書き出し。次の振り返りで、この依頼そのものを人間の発言として拾わないために使う。 */
-const REFLECT_MARK = '[durun-dashboard 振り返り]';
+const RUNS_KEPT = 30;
+/** 学習のセッションに渡す依頼の書き出し。次の学習で、この依頼そのものを人間の発言として拾わないために使う。 */
+const LEARN_MARK = '[durun-dashboard 学習]';
 
 export type DigestSession = { title: string; cwd: string; texts: ChatEntry[] };
 
@@ -44,7 +45,7 @@ export const digestOf = (sessions: DigestSession[], since: number): string => {
     let reply: string | undefined;
     for (const e of s.texts) {
       if (e.kind === 'message') reply = e.text;
-      if (e.kind !== 'prompt' || (e.at ?? 0) <= since || e.text.startsWith(REFLECT_MARK)) continue;
+      if (e.kind !== 'prompt' || (e.at ?? 0) <= since || e.text.startsWith(LEARN_MARK)) continue;
       if (reply) lines.push(`Claude: ${clip(reply, REPLY_CHARS)}`);
       lines.push(`人間: ${clip(e.text, PROMPT_CHARS)}`, '');
       reply = undefined;
@@ -55,7 +56,7 @@ export const digestOf = (sessions: DigestSession[], since: number): string => {
   return all.length > DIGEST_CHARS ? all.slice(all.length - DIGEST_CHARS) : all;
 };
 
-const promptFor = (digestFile: string, cwds: string[]): string => `${REFLECT_MARK} 人間が会話で教えたことを振り返り、Claude の指示を改善する提案を作ってください。
+const promptFor = (digestFile: string, cwds: string[]): string => `${LEARN_MARK} 人間が会話で教えたことを振り返り、Claude の指示を改善する提案を作ってください。
 目的は、人間が「そうではない、こうだ」と教えた知見を蓄え、次からは人間が言わなくても理想の動きをすることです。
 
 ## 読むもの
@@ -82,12 +83,8 @@ const promptFor = (digestFile: string, cwds: string[]): string => `${REFLECT_MAR
 - 提案は Markdown にまとめ、present で人間に見せてから止まる
 - 人間が承認するまで、ファイルを変えない。承認されたら、承認された提案だけを適用する`;
 
-type Last = { at: number; sessionId?: string };
-
-const lastRun = (): Last => ({ at: 0, ...readJson<Last>(LAST_FILE) });
-
-/** 前回より後に人間の発言があり、前回から十分に経っていれば振り返る。 */
-export const shouldReflect = (now: number, last: number, digest: string): boolean => now - last >= MIN_INTERVAL_MS && digest.length > 0;
+/** 定期実行では、前回から十分にたっているときだけ学習する。 */
+export const isDue = (now: number, last: number): boolean => now - last >= MIN_INTERVAL_MS;
 
 const mtimeOf = (file: string): number => {
   try {
@@ -97,20 +94,30 @@ const mtimeOf = (file: string): number => {
   }
 };
 
-const reflect = (): void => {
+const running = (): boolean => !!state.learn.pid && isAlive(state.learn.pid);
+
+const lastAt = (): number => state.learn.runs[0]?.at ?? 0;
+
+/** 前回より後の人間の発言を集めて、学習のセッションを起動する。始められなかったときは、理由を error に残す。 */
+const learn = (): void => {
+  if (running()) return;
   const now = Date.now();
-  const since = lastRun().at || now - MIN_INTERVAL_MS;
+  const since = lastAt() || now - MIN_INTERVAL_MS;
   // 会話ログは全部で 1 GB を超えるので、前回より後に書かれたものだけを読む。
   const metas = Object.values(state.sessions).filter((m) => m.transcriptPath && !m.improver && !m.movedTo && mtimeOf(m.transcriptPath) > since);
   const sessions = metas.map((m) => ({ title: m.title ?? m.name ?? m.id, cwd: m.cwd, texts: summarizeLog(m.transcriptPath as string).texts }));
   const digest = digestOf(sessions, since);
-  if (!shouldReflect(now, lastRun().at, digest)) return;
-  fs.mkdirSync(REFLECT_DIR, { recursive: true });
-  const digestFile = path.join(REFLECT_DIR, `${new Date(now).toISOString().slice(0, 10)}.md`);
+  if (!digest) {
+    state.learn.error = '前回の学習より後に、人間の発言がありません。';
+    return touch();
+  }
+  fs.mkdirSync(LEARN_DIR, { recursive: true });
+  const digestFile = path.join(LEARN_DIR, `${new Date(now).toISOString().replace(/[:.]/g, '').slice(0, 15)}.md`);
   fs.writeFileSync(digestFile, digest);
   const sessionId = randomUUID();
-  fs.writeFileSync(LAST_FILE, JSON.stringify({ at: now, sessionId } satisfies Last));
-  Object.assign(ensureSession(sessionId, REFLECT_DIR), { title: '人間の指示の振り返り' });
+  Object.assign(ensureSession(sessionId, LEARN_DIR), { title: '人間の指示から学習', learner: true });
+  state.learn.runs = [{ at: now, sessionId }, ...state.learn.runs].slice(0, RUNS_KEPT);
+  state.learn.error = undefined;
   touch();
   const cwds = [...new Set(sessions.filter((s) => s.texts.some((e) => (e.at ?? 0) > since)).map((s) => s.cwd))];
   const args = [
@@ -127,15 +134,39 @@ const reflect = (): void => {
     '--', promptFor(digestFile, cwds),
   ];
   const claude = claudeCommand(args);
-  launchDetached(claude.file, claude.args, { cwd: REFLECT_DIR, log: LOG_FILE }, (code, error) => {
-    if (code || error) console.error(`振り返りのセッションが止まりました（${error ?? `終了コード ${code}`}）`);
-  }).catch((e: Error) => console.error(`振り返りのセッションを起動できません: ${e.message}`));
+  const fail = (reason: string): void => {
+    state.learn.error = `学習のセッションが止まりました（${reason}）。`;
+    touch();
+  };
+  launchDetached(claude.file, claude.args, { cwd: LEARN_DIR, log: LOG_FILE }, (code, error) => {
+    state.learn.pid = undefined;
+    if (code || error) fail(error ?? `終了コード ${code}`);
+    else touch();
+  }).then(
+    (pid) => {
+      state.learn.pid = pid;
+      touch();
+    },
+    (e: Error) => fail(e.message),
+  );
 };
 
 let idleTimer: NodeJS.Timeout | undefined;
 
-/** 会話ログが動くたびに呼ぶ。最後に動いてから IDLE_MS 経ったら振り返る。 */
+/** 会話ログが動くたびに呼ぶ。定期実行が ON なら、最後に動いてから IDLE_MS たったところで学習する。 */
 export const noteActivity = (): void => {
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(reflect, IDLE_MS).unref();
+  if (!state.learn.scheduled) return;
+  idleTimer = setTimeout(() => isDue(Date.now(), lastAt()) && learn(), IDLE_MS).unref();
 };
+
+/** アプリの「今すぐ学習する」。前回からの間隔を問わない。 */
+export const learnNow = (): void => learn();
+
+export const updateLearn = (patch: Partial<LearnSettings>): void => {
+  Object.assign(state.learn, patch);
+  touch();
+  noteActivity();
+};
+
+export const learnState = (): LearnState => ({ scheduled: state.learn.scheduled, running: running(), runs: state.learn.runs, error: state.learn.error });

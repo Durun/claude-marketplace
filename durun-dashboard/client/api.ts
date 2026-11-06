@@ -200,6 +200,8 @@ export const api = {
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
+  learn: (scheduled: boolean) => postJson('/api/learn', { scheduled }),
+  learnNow: () => postJson('/api/learn/run', {}),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
   /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。明確化では、readings に答えがある文は読み直さない。 */
