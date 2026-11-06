@@ -1,5 +1,5 @@
 import type { RefObject } from 'preact';
-import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
@@ -12,6 +12,8 @@ import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
 import { href, currentSessionId } from './router.ts';
 import { Choice, ContextPie, Empty, RefIcon, Time, copyText, onSubmitKey } from './ui.tsx';
+import { MicIcon } from './MicTray.tsx';
+import { dictate } from './voice.ts';
 import { XpConfirm } from './XpConfirm.tsx';
 
 const STATUS_HELP: Record<SessionStatus, string> = {
@@ -173,6 +175,27 @@ export const MessageInput = ({ sessionId, cwd, badges, spaces, value, setValue, 
     setValue(next.value);
   };
   const attach = useAttachMode(insert);
+  const dictation = useRef<() => void>();
+  const [listening, setListening] = useState(false);
+  useEffect(() => () => dictation.current?.(), []);
+  // 話した文は区切らずに、カーソル位置か選んだ範囲へそのまま入れる。
+  const toggleVoice = () => {
+    if (dictation.current) return dictation.current();
+    setListening(true);
+    dictation.current = dictate(
+      (text) => {
+        const el = input.current;
+        if (!el) return;
+        el.setRangeText(text, el.selectionStart, el.selectionEnd, 'end');
+        setValue(el.value);
+      },
+      (error) => {
+        dictation.current = undefined;
+        setListening(false);
+        if (error) toast(`音声入力を止めました（${error}）`, 'error');
+      },
+    );
+  };
   // 資料をドラッグして上に来ている間、落とせることを枠で示す。
   const [dropping, setDropping] = useState(false);
   return (
@@ -222,6 +245,16 @@ export const MessageInput = ({ sessionId, cwd, badges, spaces, value, setValue, 
         onClick={attach.toggle}
       >
         +
+      </button>
+      <button
+        type="button"
+        class={`voice-toggle${listening ? ' is-on' : ''}`}
+        aria-pressed={listening}
+        title={listening ? '音声入力を止める' : '音声入力: ON の間、話した文を入力欄に書きます。音声は Chrome が Mac の中で書き起こします'}
+        aria-label="音声入力"
+        onClick={toggleVoice}
+      >
+        <MicIcon on={listening} />
       </button>
       {completion.menu && <CompletionMenu menu={completion.menu} onPick={completion.accept} />}
     </div>

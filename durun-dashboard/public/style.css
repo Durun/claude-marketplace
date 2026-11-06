@@ -1218,6 +1218,12 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .attach-toggle { position: absolute; left: 6px; bottom: 6px; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
 .attach-toggle:hover { color: var(--text); }
 .attach-toggle[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+/* 音声入力のマイクは、+ の右に並べる。 */
+.voice-toggle { position: absolute; left: 36px; bottom: 6px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.voice-toggle svg { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; }
+.voice-toggle:hover svg { stroke: var(--text); }
+.voice-toggle.is-on { border-color: #d97757; }
+.voice-toggle.is-on .mic-head { fill: #d97757; stroke: #d97757; }
 .ctx-pie { display: inline-grid; width: 30px; height: 30px; padding: 0; border: 0; background: none; cursor: default; }
 .ctx-pie svg { width: 100%; height: 100%; fill: none; stroke-width: 3; }
 .ctx-pie-track { fill: var(--surface-2); stroke: var(--border-strong); }
