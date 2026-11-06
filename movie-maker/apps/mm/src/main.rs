@@ -4,6 +4,7 @@
 //! - `mm ingest <dir> <素材>...`: 素材を取り込み、`cache/` に出力を作って素材を足す（ingest_cmd.rs）。
 //! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
+//! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
 //! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
 
@@ -14,6 +15,7 @@ mod ingest_cmd;
 mod opargs;
 mod perf;
 mod project;
+mod remote;
 mod render_cmd;
 mod scenes;
 mod scenes_cpu;
@@ -105,6 +107,21 @@ enum Command {
         #[arg(long, default_value = "auto", value_parser = ingest_cmd::parse_encoder)]
         encoder: mm_ingest::PreviewEncoder,
     },
+    /// 1 フレームを PNG に書く（Claude が目で見る）。アプリが動いていればアプリが描く。
+    Frame {
+        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
+        project: PathBuf,
+        /// コンポジションの時間軸での時刻（秒。`1.5`、`3/2`）。
+        t: String,
+        #[arg(short, long)]
+        output: PathBuf,
+        /// コンポジションの ID。省くと `main`、それも無ければ先頭。
+        #[arg(long)]
+        comp: Option<String>,
+        /// 出力の幅。省くとコンポジションの大きさ。
+        #[arg(long)]
+        width: Option<u32>,
+    },
     /// 文字起こしから語を引く。1 行に 1 件（素材、始まりと終わりの秒、単語の ID、続きの文字）。
     Search {
         dir: PathBuf,
@@ -187,6 +204,19 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::Frame {
+            project,
+            t,
+            output,
+            comp,
+            width,
+        } => remote::frame(&remote::FrameArgs {
+            project: &project,
+            time: &t,
+            output: &output,
+            composition: comp.as_deref(),
+            width,
+        }),
         Command::Render(args) => render_cmd::render(&args),
         Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),

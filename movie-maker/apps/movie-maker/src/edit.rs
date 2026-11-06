@@ -46,9 +46,13 @@ impl PendingEdit {
     }
 }
 
-/// 操作を 1 つのトランザクションとして再生スレッドに適用させ、結果を待つ。
+/// 操作を 1 つのトランザクションとして適用し、結果を待つ。`project.mmdb` を書き手として開いていれば `Core` が保存し、
+/// 描き直しは変更の通知を受けた再生スレッドが行う（Media の取り込みも同じ道）。開いていなければ再生スレッドがメモリの上で適用する。
 pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
-    submit_within(shared, ops, APPLY_TIMEOUT)
+    match shared.core.get() {
+        Some(core) => apply_saved(core, ops),
+        None => submit_within(shared, ops, APPLY_TIMEOUT),
+    }
 }
 
 /// 待ちの上限を引数で決められる `submit`。時間切れで返した `Err` は「適用していない」を意味する。
@@ -98,6 +102,17 @@ pub async fn apply_op(
     tauri::async_runtime::spawn_blocking(move || submit(&shared, vec![op]))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// 書き手の `Store` に適用して `project.mmdb` に書く。描き直しは変更の通知を受けた再生スレッドが行う。
+fn apply_saved(core: &mm_serve::Core, ops: Vec<Op>) -> Result<EditOutcome, String> {
+    let txn = mm_ops::Transaction::new("WebView の操作", ops);
+    let change = core
+        .apply(txn, &mm_serve::Caller::webview(), None)
+        .map_err(|e| e.to_string())?;
+    Ok(EditOutcome {
+        touched: change.touched,
+    })
 }
 
 #[cfg(test)]

@@ -216,6 +216,7 @@ impl Player {
             Command::Reverse => self.start_reverse(),
             Command::Undo => self.step_history(true),
             Command::Redo => self.step_history(false),
+            Command::Reload => self.reload(),
             Command::Quit => {}
         }
     }
@@ -240,6 +241,19 @@ impl Player {
 
     /// 履歴の最後を適用して、逆の履歴に積む。`undo` が真なら取り消し、偽ならやり直し。
     fn step_history(&mut self, undo: bool) {
+        // 保存している間は、ストアの取り消しとやり直し（`project.mmdb` に記録される）を使う。描き直しは変更の通知で行う。
+        if let Some(core) = self.shared.core.get() {
+            let caller = mm_serve::Caller::webview();
+            let done = if undo {
+                core.undo(&caller)
+            } else {
+                core.redo(&caller)
+            };
+            if let Err(e) = done {
+                tracing::warn!(error = %e, undo, "履歴を適用できなかった");
+            }
+            return;
+        }
         let stack = if undo { &mut self.undo } else { &mut self.redo };
         let Some(ops) = stack.pop() else { return };
         match self.commit(&ops) {
@@ -256,20 +270,46 @@ impl Player {
         let mut project = (*self.project).clone();
         let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
+        let touched = outcome.touches.to_vec();
+        let inverse = outcome.inverse_ops().map_err(|e| e.to_string())?;
+        self.adopt_project(project, &touched)?;
+        Ok((EditOutcome { touched }, inverse))
+    }
+
+    /// 保存した最新のプロジェクトのデータ（HTTP の入口と IPC が書いたもの）に置き換えて描き直す。
+    fn reload(&mut self) {
+        let Some(core) = self.shared.core.get() else {
+            return;
+        };
+        let touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
+        match core.render_project() {
+            Ok((_, project)) => {
+                if let Err(e) = self.adopt_project(project, &touched) {
+                    tracing::warn!("保存した変更を描画に取り込めない: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("保存したプロジェクトのデータを読めない: {e}"),
+        }
+    }
+
+    /// `project` を再生するプロジェクトのデータにし、触った ID に頼ったキャッシュだけを捨てて描き直す。
+    fn adopt_project(
+        &mut self,
+        project: Project,
+        touched: &[String],
+    ) -> std::result::Result<(), String> {
         let comp = project
             .composition(&self.comp)
             .map_err(|_| "開いているコンポジションを消す操作は適用しない".to_owned())?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
-        let touched = outcome.touches.to_vec();
-        self.engine.invalidate_touched(&touched);
+        self.engine.invalidate_touched(touched);
         let project = Arc::new(project);
         self.project = project.clone();
         self.shared.publish_doc(project, self.comp.clone());
         self.adopt_shape(fps, duration, size);
         self.resync();
-        let inverse = outcome.inverse_ops().map_err(|e| e.to_string())?;
-        Ok((EditOutcome { touched }, inverse))
+        Ok(())
     }
 
     /// 今の位置から逆向きに戻り始める。音は出さない。

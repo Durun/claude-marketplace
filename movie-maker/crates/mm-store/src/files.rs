@@ -51,7 +51,8 @@ pub fn load_json(path: &Path) -> Result<Project> {
     Ok(project)
 }
 
-fn rebase_project(project: &mut Project, base: &Path) {
+/// 相対の素材と出力のパスを `base` からの位置に直す。保存したプロジェクトのデータはフォルダーからの相対で持つ。
+pub fn rebase_project(project: &mut Project, base: &Path) {
     for asset in &mut project.assets {
         asset.path = rebase(base, &asset.path);
     }

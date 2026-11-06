@@ -319,3 +319,31 @@ fn コメントは保存される() {
     .unwrap();
     assert_eq!(s.comments().unwrap()[0]["text"], "アウト点を詰める");
 }
+
+#[test]
+fn 合い言葉は書き手が書き_閉じるか閉じ直すと消える() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = Store::create(tmp.path(), &project_with(1), NOW).unwrap();
+    assert_eq!(Store::read_writer_token(tmp.path()), None);
+    writer.publish_http_port(4321).unwrap();
+    writer.publish_token("secret").unwrap();
+    assert_eq!(
+        Store::read_writer_token(tmp.path()).as_deref(),
+        Some("secret")
+    );
+
+    let reader = Store::open(tmp.path(), NOW).unwrap();
+    assert!(
+        reader.publish_token("x").is_err(),
+        "読み取りだけでは書けない"
+    );
+
+    writer.unpublish_http().unwrap();
+    assert_eq!(Store::read_writer_token(tmp.path()), None);
+    assert_eq!(Store::read_writer_info(tmp.path()).unwrap().http_port, None);
+
+    writer.publish_token("again").unwrap();
+    drop(reader);
+    drop(writer);
+    assert_eq!(Store::read_writer_token(tmp.path()), None);
+}
