@@ -91,6 +91,8 @@ impl StoredTxn {
 pub struct UndoPlan {
     pub txn_id: i64,
     pub name: String,
+    /// 元のトランザクションをした人。
+    pub actor: Actor,
     pub ops: Vec<OpRecord>,
 }
 

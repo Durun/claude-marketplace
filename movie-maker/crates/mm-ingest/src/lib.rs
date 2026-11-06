@@ -134,8 +134,12 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
 
 /// `.cube` の LUT を取り込む。ハッシュと検査だけで、プレビュー動画・サムネイル・波形は作らない。
 fn ingest_lut(abs: &Path, started: Instant) -> Result<IngestReport> {
-    let (hash, hash_elapsed) = timed(|| hash_file(abs))?;
-    lut::validate_cube(&std::fs::read_to_string(abs)?)?;
+    // ハッシュと検査は 1 回読んだバイト列から行う（読み直すと、間に書き換えられた中身を検査して別の中身を取り込む）。
+    let bytes = std::fs::read(abs)?;
+    let (hash, hash_elapsed) = timed(|| Ok(blake3::hash(&bytes).to_hex().to_string()))?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|e| MmError::Corrupt(format!(".cube が UTF-8 でない: {e}")))?;
+    lut::validate_cube(text)?;
     Ok(IngestReport {
         asset: lut::build_lut_asset(abs, &hash),
         preview: None,

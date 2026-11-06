@@ -136,6 +136,30 @@ pub(crate) fn run(conn: &Connection, project_dir: &Path, now_ms: i64) -> Result<
     Ok(path)
 }
 
+/// 書き手の接続を借りずに作るバックアップ。読み取りの接続で `VACUUM INTO` するので、
+/// 書き手の `Store` を止めずに別のスレッドで走らせられる。
+#[derive(Debug)]
+pub struct BackupJob {
+    dir: PathBuf,
+    now_ms: i64,
+}
+
+impl BackupJob {
+    pub(crate) fn new(dir: PathBuf, now_ms: i64) -> Self {
+        Self { dir, now_ms }
+    }
+
+    /// コピーを作り、世代を整理する。
+    pub fn run(self) -> Result<PathBuf> {
+        let conn = Connection::open_with_flags(
+            self.dir.join(DB_FILE),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .sql()?;
+        run(&conn, &self.dir, self.now_ms)
+    }
+}
+
 /// コピーを作れない壊れた DB を、生のファイルのまま `backups/project.<時刻>.broken.mmdb`（と `-wal`、`-shm`）に移す。
 pub(crate) fn move_broken(project_dir: &Path, now_ms: i64) -> Result<()> {
     let dir = project_dir.join(BACKUPS_DIR);

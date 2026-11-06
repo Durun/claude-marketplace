@@ -305,3 +305,55 @@ fn 進み具合は最後のフレームで全体に届く() {
     );
     let _ = std::fs::remove_dir_all(temp("progress"));
 }
+
+#[test]
+fn 検証に落ちた書き出しは前の出力を残し_書きかけを消す() {
+    let media = SampleMedia::default();
+    let (project, _, _) = vertical_project(&media, &temp("unused.json"));
+    let out = temp("verify").join("out.json");
+    std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+    std::fs::write(&out, b"previous").unwrap();
+    let options = ExportOptions {
+        verify: true,
+        ..out_options(&out)
+    };
+    let (result, _) = with_metrics(|| {
+        let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+        export_run(&mut engine, &project, &options)
+    });
+    // サンプルのエンコーダーは JSON を書くので、ffprobe の検証は通らない。
+    assert!(result.is_err(), "検証が落ちる");
+    assert_eq!(std::fs::read(&out).unwrap(), b"previous");
+    assert!(!partial_path(&out).exists(), "書きかけは消える");
+    let _ = std::fs::remove_dir_all(temp("verify"));
+}
+
+#[test]
+fn 一方の書きかけが他方の出力と同じ名前になる組は始める前に拒否する() {
+    let dir = temp("partial_clash");
+    let mut project = two_targets(&dir);
+    project.render_targets[0].output_path = dir.join("x.mp4").to_string_lossy().into_owned();
+    project.render_targets[1].output_path =
+        dir.join("x.partial.mp4").to_string_lossy().into_owned();
+    let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+    let err = export_targets(
+        &mut engine,
+        &project,
+        &all_ids(&project),
+        &ExportOptions::default(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("同じ出力先"), "{err}");
+    assert!(!dir.exists(), "何も書かない");
+}
+
+#[test]
+fn 取り消しの旗が立っていても_別のエラーは取り消しにしない() {
+    assert!(is_cancel_error(&MmError::Internal(CANCELLED_MARK.into())));
+    assert!(!is_cancel_error(&MmError::Io(std::io::Error::other(
+        "ディスクが満杯"
+    ))));
+    assert!(!is_cancel_error(&MmError::Internal(
+        "別の内部エラー".into()
+    )));
+}

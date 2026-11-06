@@ -22,6 +22,8 @@ pub const FOOTAGE_KIND: &str = "footage";
 pub const FOOTAGE_PARAM: &str = "asset";
 /// 隙間に使う単色のノードの種類の名前。
 pub const GAP_KIND: &str = "solid";
+/// 隙間の印のパラメータの名前（`true` が固定値）。単色は知らないパラメータを無視する。
+pub const GAP_MARK_PARAM: &str = "gap";
 /// 単色の色のパラメータの名前。
 const SOLID_COLOR_PARAM: &str = "color";
 /// 基本のノードの種類のバージョン（`mm-nodes-basic` の `KIND_VERSION`）。
@@ -62,16 +64,22 @@ impl Node {
             .with_param(FOOTAGE_PARAM, ParamValue::AssetRef(asset.clone()))
     }
 
-    /// 隙間のノード。透明の単色で、音を持たない。`lift` が抜いたカットの代わりに置く。
-    /// 新しいノードの種類を足さず、今のレンダラーとミキサーのまま描けて鳴らない形にする。
+    /// 隙間のノード。透明の単色に印のパラメータ [`GAP_MARK_PARAM`] を付けた形で、音を持たない。
+    /// `lift` が抜いたカットの代わりに置く。新しいノードの種類を足さず、今のレンダラーとミキサーのまま
+    /// 描けて鳴らない。印があるので、利用者が置いた透明の単色のカットとは区別できる。
     pub fn gap() -> Self {
         Self::new(GAP_KIND, BASIC_KIND_VERSION)
             .with_param(SOLID_COLOR_PARAM, ParamValue::Color(Rgba::TRANSPARENT))
+            .with_param(GAP_MARK_PARAM, ParamValue::Bool(true))
     }
 
-    /// 隙間のノードか（[`Node::gap`] の形）。Timeline が空きとして描くのに使う。
+    /// 隙間のノードか（印のパラメータがある単色）。Timeline が空きとして描くのと、`lift` の検査に使う。
     pub fn is_gap(&self) -> bool {
-        *self == Self::gap()
+        self.kind == GAP_KIND
+            && self
+                .params
+                .get(GAP_MARK_PARAM)
+                .is_some_and(|p| p.value.as_bool() == Some(true))
     }
 
     /// 文字のパラメータの固定値。入れ子と sequence の参照を読むのに使う。

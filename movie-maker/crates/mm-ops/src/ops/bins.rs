@@ -67,10 +67,7 @@ pub(crate) fn update_edit(
     project.asset(asset)?;
     let edits = &mut project.transcript_edits;
     let key = (asset, word);
-    let found = edits
-        .iter()
-        .position(|e| (&e.asset, &e.word) == key)
-        .ok_or_else(|| edits.partition_point(|e| (&e.asset, &e.word) < key));
+    let found = edits.binary_search_by(|e| (&e.asset, &e.word).cmp(&key));
     let mut edit = match found {
         Ok(i) => edits[i].clone(),
         Err(_) => WordEdit {

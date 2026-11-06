@@ -190,6 +190,13 @@
                   }
                 },
                 "keyframes": []
+              },
+              "gap": {
+                "value": {
+                  "type": "bool",
+                  "value": true
+                },
+                "keyframes": []
               }
             },
             "inputs": []

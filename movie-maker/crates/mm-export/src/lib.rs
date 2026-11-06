@@ -156,18 +156,34 @@ pub fn export_targets(
     })
 }
 
+/// 出力先と書きかけの置き場所のどれかが他のレンダーターゲットと重なる組を拒否する
+/// （A の書きかけ `x.partial.mp4` が B の出力 `x.mp4` を指す場合も、互いに壊し合う）。
 fn reject_shared_outputs(project: &Project, targets: &[RenderTargetId]) -> Result<()> {
-    let mut seen: Vec<(&str, &RenderTargetId)> = Vec::new();
+    let mut seen: Vec<([PathBuf; 2], &RenderTargetId)> = Vec::new();
     for id in targets {
-        let path = project.render_target(id)?.output_path.as_str();
-        if let Some((_, other)) = seen.iter().find(|(p, _)| *p == path) {
+        let path = PathBuf::from(&project.render_target(id)?.output_path);
+        let names = [partial_path(&path), path];
+        if let Some((other_names, other)) = seen
+            .iter()
+            .find(|(others, _)| others.iter().any(|o| names.contains(o)))
+        {
+            let shared = names
+                .iter()
+                .find(|n| other_names.contains(n))
+                .unwrap_or(&names[1]);
             return Err(MmError::InvalidArgument(format!(
-                "レンダーターゲット {other} と {id} が同じ出力先 {path} を指している"
+                "レンダーターゲット {other} と {id} が同じ出力先 {} を指している",
+                shared.display()
             )));
         }
-        seen.push((path, id));
+        seen.push((names, id));
     }
     Ok(())
+}
+
+/// 取り消しで止めたことを表すエラーか。旗が立っていても、別の原因の失敗は取り消しにしない。
+fn is_cancel_error(e: &MmError) -> bool {
+    matches!(e, MmError::Internal(m) if m == CANCELLED_MARK)
 }
 
 /// レンダーターゲットを 1 つ書き出し、取り消しも結果として返す。
@@ -198,15 +214,16 @@ pub fn export_run(
     let Some(done) = export_target(engine, &project, &target, options)? else {
         return Ok(ExportOutcome::Cancelled);
     };
+    // 検証は書きかけのまま行う。落ちたら書きかけだけが消え、前の正常な出力は置き換わらない。
+    let verification = options
+        .verify
+        .then(|| verify_output(&partial_path(&output_path), &done.expected))
+        .transpose()?;
     partial.commit(&output_path)?;
     let elapsed = started.elapsed();
     let fps = done.report.frames as f64 / elapsed.as_secs_f64().max(f64::EPSILON);
     mm_trace::gauge!("export.fps", fps);
     mm_trace::counter!("export.frames", done.report.frames);
-    let verification = options
-        .verify
-        .then(|| verify_output(&output_path, &done.expected))
-        .transpose()?;
     Ok(ExportOutcome::Completed(ExportSummary {
         target,
         output_path,
@@ -253,16 +270,7 @@ fn export_target(
         )));
     }
     let range = resolve_range(comp.range()?, options.range)?;
-    let settings = EncodeSettings {
-        size: Size::new(target.width, target.height),
-        fps: target.fps,
-        codec: target.codec.clone(),
-        output_path: PathBuf::from(&target.output_path),
-        audio: Some(AudioStreamInfo {
-            sample_rate: DEFAULT_SAMPLE_RATE,
-            channels: DEFAULT_CHANNELS,
-        }),
-    };
+    let settings = encode_settings(target);
     let mut encoder = encoders.create()?;
     encoder.begin(&settings)?;
     let plan = Plan {
@@ -273,15 +281,10 @@ fn export_target(
     };
     let frames = match export_frames(engine, project, &plan, &settings, encoder.as_mut()) {
         Ok(frames) => frames,
-        Err(_) if options.control.is_cancelled() => return Ok(None),
+        Err(e) if is_cancel_error(&e) && options.control.is_cancelled() => return Ok(None),
         Err(e) => return Err(e),
     };
-    // 29.97 fps の 1 秒のように映像の長さが半端なフレームで切れるとき、音も同じ長さで切って揃える。
-    let first = range.frame_indices(settings.fps).start;
-    let audio_range = TimeRange::new(
-        RationalTime::from_frames(first, target.fps)?,
-        RationalTime::from_frames(first + frames as i64, target.fps)?,
-    )?;
+    let audio_range = audio_range_of(range, &settings, frames)?;
     if options.control.is_cancelled() {
         return Ok(None);
     }
@@ -291,10 +294,32 @@ fn export_target(
     let expected = Expected {
         frames: frames as u64,
         size: settings.size,
-        fps: target.fps.to_f64(),
+        fps: settings.fps.to_f64(),
         audio_seconds: Some(audio_range.duration()?.to_f64()),
     };
     Ok(Some(Finished { report, expected }))
+}
+
+fn encode_settings(target: &mm_doc::RenderTarget) -> EncodeSettings {
+    EncodeSettings {
+        size: Size::new(target.width, target.height),
+        fps: target.fps,
+        codec: target.codec.clone(),
+        output_path: PathBuf::from(&target.output_path),
+        audio: Some(AudioStreamInfo {
+            sample_rate: DEFAULT_SAMPLE_RATE,
+            channels: DEFAULT_CHANNELS,
+        }),
+    }
+}
+
+/// 音の区間。29.97 fps の 1 秒のように映像の長さが半端なフレームで切れるとき、音も同じ長さで切って揃える。
+fn audio_range_of(range: TimeRange, settings: &EncodeSettings, frames: usize) -> Result<TimeRange> {
+    let first = range.frame_indices(settings.fps).start;
+    TimeRange::new(
+        RationalTime::from_frames(first, settings.fps)?,
+        RationalTime::from_frames(first + frames as i64, settings.fps)?,
+    )
 }
 
 /// 指定の区間をコンポジションの範囲に収める。範囲の外を含む指定は拒否する（黙って縮めない）。

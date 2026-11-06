@@ -4,7 +4,7 @@ use mm_doc::{
     Composition, Cut, CutId, Layer, Node, Project, Sequence, NESTED_KIND, NESTED_PARAM,
     SEQUENCE_KIND, SEQUENCE_PARAM,
 };
-use mm_types::{CompositionId, LayerId, MmError, RationalTime, Result};
+use mm_types::{CompositionId, LayerId, MmError, ParamValue, RationalTime, Result};
 
 use crate::touches::Touches;
 
@@ -128,9 +128,15 @@ pub(crate) fn negate(t: RationalTime) -> Result<RationalTime> {
 // `touches` は書く所だけでなく読む所（参照先、参照元、シーケンスの隣）も含める。
 // 重ならない 2 つの操作は順を入れ替えても同じプロジェクトのデータになる、という性質を保つため。
 
-/// ノードが参照するコンポジションと sequence。
+/// ノードが参照するコンポジション、sequence、素材。素材を消す操作（`removeAsset`）と順が入れ替わらないよう、
+/// 撮影素材や LUT の素材の参照も読む所に入れる。
 pub(crate) fn node_refs(node: &Node, t: &mut Touches) {
     for n in node.descendants() {
+        for param in n.params.values() {
+            if let ParamValue::AssetRef(asset) = &param.value {
+                t.add(asset);
+            }
+        }
         if n.kind == NESTED_KIND {
             t.add_str(n.text_param(NESTED_PARAM).unwrap_or(""));
         }

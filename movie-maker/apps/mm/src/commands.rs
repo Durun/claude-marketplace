@@ -220,11 +220,12 @@ pub fn undo(dir: &Path) -> Result<()> {
         Target::Local(store) => *store,
         Target::Remote(client) => return remote::history(&client, "/undo", "取り消すものが無い"),
     };
+    let target = store.undo_plan()?;
     match store
         .undo_last(&cli_context(), actor(), now_ms())
         .map_err(op_error)?
     {
-        Some(t) => println!("バージョン {}: {}", t.doc_version, t.name),
+        Some(t) => println!("バージョン {}: {}{}", t.doc_version, t.name, by(&target)),
         None => println!("取り消すものが無い"),
     }
     finish(store)
@@ -236,14 +237,22 @@ pub fn redo(dir: &Path) -> Result<()> {
         Target::Local(store) => *store,
         Target::Remote(client) => return remote::history(&client, "/redo", "やり直すものが無い"),
     };
+    let target = store.redo_plan()?;
     match store
         .redo_last(&cli_context(), actor(), now_ms())
         .map_err(op_error)?
     {
-        Some(t) => println!("バージョン {}: {}", t.doc_version, t.name),
+        Some(t) => println!("バージョン {}: {}{}", t.doc_version, t.name, by(&target)),
         None => println!("やり直すものが無い"),
     }
     finish(store)
+}
+
+/// 取り消し・やり直しの対象の、元の操作をした人。アプリで人がした操作を戻したと分かるようにする。
+fn by(target: &Option<mm_store::UndoPlan>) -> String {
+    target.as_ref().map_or(String::new(), |p| {
+        format!("（元の操作: {} / {}）", p.actor.kind, p.actor.name)
+    })
 }
 
 /// `mm log`: トランザクションの記録。取り消しとやり直しも、適用したバージョンと種類を添えて 1 行ずつ出す。

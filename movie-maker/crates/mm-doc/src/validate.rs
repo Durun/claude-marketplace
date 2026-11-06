@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use mm_types::{Id, LayerId, MmError, Result};
+use mm_types::{Id, LayerId, MmError, ParamValue, Result};
 
 use crate::node::{Node, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND, SEQUENCE_PARAM};
 use crate::param::{Interpolation, Param};
@@ -244,6 +244,14 @@ fn validate_node(project: &Project, owner: &str, root: &Node) -> Result<()> {
     for node in root.descendants() {
         for (name, param) in &node.params {
             validate_keyframes(&format!("{owner} の {}.{name}", node.kind), param)?;
+            if let ParamValue::AssetRef(asset) = &param.value {
+                project.asset(asset).map_err(|_| {
+                    invalid(format!(
+                        "{owner} の {}.{name} の素材 {asset} が無い",
+                        node.kind
+                    ))
+                })?;
+            }
         }
         if node.kind == NESTED_KIND {
             let id = node.text_param(NESTED_PARAM).unwrap_or("");

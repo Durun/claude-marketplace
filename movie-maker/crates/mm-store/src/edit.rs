@@ -36,6 +36,7 @@ impl Store {
         // sequence の長さが変わる編集では、sequence を置いたレイヤーの長さも同じトランザクションで合わせる。
         let ops = with_fitted_layers(&project, &txn.ops);
         let outcome = apply_transaction(&mut project, &ops, ctx)?;
+        self.check_edited_words(&project).map_err(OpError::Doc)?;
         let conflict = self.touches_after(base)?.intersection(&outcome.touches);
         if !conflict.is_empty() {
             return Err(OpError::Conflict {

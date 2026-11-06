@@ -12,7 +12,7 @@ use proptest::prelude::*;
 /// ノードの種。
 #[derive(Debug, Clone)]
 pub struct NodeSpec {
-    /// 0 は solid、1 は入れ子のコンポジション、2 は sequence、3 は solid の入力に入れ子を持つ。
+    /// 0 は solid、1 は入れ子のコンポジション、2 は sequence、3 は solid の入力に入れ子を持つ、4 は撮影素材。
     pub kind: u8,
     pub pick: u8,
 }
@@ -52,7 +52,7 @@ pub fn arb_id() -> impl Strategy<Value = String> {
 }
 
 pub fn arb_node() -> impl Strategy<Value = NodeSpec> {
-    (0u8..4, any::<u8>()).prop_map(|(kind, pick)| NodeSpec { kind, pick })
+    (0u8..5, any::<u8>()).prop_map(|(kind, pick)| NodeSpec { kind, pick })
 }
 
 pub fn arb_layer() -> impl Strategy<Value = LayerSpec> {
@@ -137,6 +137,12 @@ fn text_node(kind: &str, param: &str, target: &str) -> Node {
 pub fn build_node(spec: &NodeSpec, p: &Project) -> Node {
     let comp = pick(&p.compositions, spec.pick).map(|c| c.id.as_str());
     let seq = pick(&p.sequences, spec.pick).map(|s| s.id.as_str());
+    if spec.kind == 4 {
+        // 素材の参照は `touches` に入る。素材を外す操作との順の入れ替えを試す。
+        if let Some(asset) = pick(&p.assets, spec.pick) {
+            return Node::footage(&asset.id);
+        }
+    }
     match (spec.kind, comp, seq) {
         (1, Some(c), _) => text_node(NESTED_KIND, NESTED_PARAM, c),
         (2, _, Some(s)) => text_node(SEQUENCE_KIND, SEQUENCE_PARAM, s),
