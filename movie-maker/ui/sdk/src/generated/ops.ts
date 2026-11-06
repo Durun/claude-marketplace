@@ -578,6 +578,14 @@ export type InsertTopicsOp = {
   "sequence": string;
   "topics": string[];
 };
+/** sequence のレイヤーとコンポジションの長さを sequence の長さに合わせる。 */
+export type FitLayerOp = {
+  "duration"?: RationalTime | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "fitLayer";
+  "out_point"?: RationalTime | null;
+};
 /** レイヤーのイン点かアウト点を動かす。 */
 export type TrimLayerOp = {
   "by": RationalTime;
@@ -695,6 +703,7 @@ export type Op =
   | InsertCutsOp
   | ExtractCutsOp
   | InsertTopicsOp
+  | FitLayerOp
   | TrimLayerOp
   | MarkInOp
   | MarkOutOp
@@ -756,6 +765,7 @@ export const OP_NAMES: readonly OpName[] = [
   "insertCuts",
   "extractCuts",
   "insertTopics",
+  "fitLayer",
   "trimLayer",
   "markIn",
   "markOut",

@@ -25,6 +25,7 @@ pub enum BinSpec {
     DeleteWords(u8, Vec<u8>, bool),
     FixTranscript(u8, u8, Option<u8>),
     TrimLayer(u8, bool, i64),
+    FitLayer(u8),
     Lift(u8),
     InsertCuts(u8, u8, Vec<CutSpec>),
     ExtractCuts(u8, u8, u8),
@@ -47,6 +48,7 @@ pub fn arb_bin_spec() -> impl Strategy<Value = BinSpec> {
             .prop_map(|(a, w, r)| BinSpec::DeleteWords(a, w, r)),
         (s(), s(), prop::option::of(s())).prop_map(|(a, w, t)| BinSpec::FixTranscript(a, w, t)),
         (s(), any::<bool>(), -6i64..6).prop_map(|(l, o, b)| BinSpec::TrimLayer(l, o, b)),
+        s().prop_map(BinSpec::FitLayer),
         s().prop_map(BinSpec::Lift),
         (s(), s(), prop::collection::vec(arb_cut(), 0..3))
             .prop_map(|(q, i, c)| BinSpec::InsertCuts(q, i, c)),
@@ -159,6 +161,21 @@ fn edit_op(spec: &BinSpec, p: &Project) -> Option<Op> {
             layer: layer_id(p, *l)?,
             edge: if *out { Edge::Out } else { Edge::In },
             by: quarters(*by),
+        }
+        .into(),
+        BinSpec::FitLayer(l) => FitLayer {
+            layer: {
+                let layers: Vec<_> = p
+                    .compositions
+                    .iter()
+                    .flat_map(|c| c.layers.iter())
+                    .filter(|l| l.source.kind == mm_doc::SEQUENCE_KIND)
+                    .map(|l| l.id.clone())
+                    .collect();
+                pick(&layers, *l)?.clone()
+            },
+            out_point: None,
+            duration: None,
         }
         .into(),
         BinSpec::Lift(i) => Lift {

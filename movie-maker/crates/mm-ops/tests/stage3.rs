@@ -181,3 +181,89 @@ fn 選別の素材は外せず_範囲は素材の中() {
         "話題と同じ ID の選別は拒否する"
     );
 }
+
+/// コンポジション c2 に、sequence s1 を置いた 1 秒のレイヤー ls を足す。
+fn with_sequence_layer(p: &mut Project, comp_duration: mm_types::RationalTime) {
+    let source = Node::new(mm_doc::SEQUENCE_KIND, 1).with_param(
+        mm_doc::SEQUENCE_PARAM,
+        mm_types::ParamValue::Text("s1".into()),
+    );
+    let mut layer = common::layer("ls", 0, 0, 1);
+    layer.source = source;
+    p.compositions[1].layers.push(layer);
+    p.compositions[1].duration = comp_duration;
+}
+
+fn fit(layer: &str) -> FitLayer {
+    FitLayer {
+        layer: Id::new(layer),
+        out_point: None,
+        duration: None,
+    }
+}
+
+#[test]
+fn fit_layer_はレイヤーとコンポジションを_sequence_の長さに合わせ_逆操作で戻る() {
+    let mut p = project();
+    with_sequence_layer(&mut p, secs(1));
+    let before = canon(&p);
+    let length = p.sequences[0]
+        .cuts
+        .iter()
+        .filter(|c| c.enabled)
+        .map(|c| c.duration().unwrap())
+        .fold(mm_types::RationalTime::ZERO, |a, b| {
+            a.checked_add(b).unwrap()
+        });
+    let applied = apply(&mut p, fit("ls")).unwrap();
+    let (comp, layer) = p.layer(&Id::new("ls")).unwrap();
+    assert_eq!(layer.out_point, length);
+    assert_eq!(comp.duration, length);
+    apply(&mut p, applied.inverse).unwrap();
+    assert_eq!(canon(&p), before);
+}
+
+#[test]
+fn fit_layer_は自分で決めた長いコンポジションを縮めない() {
+    let mut p = project();
+    with_sequence_layer(&mut p, secs(100));
+    apply(&mut p, fit("ls")).unwrap();
+    assert_eq!(p.compositions[1].duration, secs(100));
+}
+
+fn extract_op() -> Op {
+    Extract { cut: Id::new("k2") }.into()
+}
+
+#[test]
+fn 長さに合わせているレイヤーは_sequence_の編集と同じトランザクションで追従し_1_回の逆で戻る() {
+    let mut p = project();
+    with_sequence_layer(&mut p, secs(1));
+    apply(&mut p, fit("ls")).unwrap();
+    let before = canon(&p);
+    let ops = with_fitted_layers(&p, &[extract_op()]);
+    assert_eq!(ops.len(), 2);
+    let out = apply_transaction(&mut p, &ops, &OpContext::human()).unwrap();
+    let (comp, layer) = p.layer(&Id::new("ls")).unwrap();
+    assert_eq!(layer.duration().unwrap(), comp.duration);
+    assert_eq!(
+        layer.out_point,
+        secs(11),
+        "k2 の 3 秒が抜けて 14 秒から 11 秒"
+    );
+    apply_transaction(&mut p, &out.inverse_ops().unwrap(), &OpContext::human()).unwrap();
+    assert_eq!(canon(&p), before);
+}
+
+#[test]
+fn 自分で縮めたレイヤーには追従しない() {
+    let mut p = project();
+    with_sequence_layer(&mut p, secs(100));
+    assert_eq!(with_fitted_layers(&p, &[extract_op()]).len(), 1);
+}
+
+#[test]
+fn fit_layer_は_sequence_でないレイヤーを拒否する() {
+    let mut p = project();
+    assert!(apply(&mut p, fit("l1")).is_err());
+}
