@@ -13,6 +13,8 @@
 mod audio;
 mod convert;
 mod transfer;
+#[cfg(feature = "gpu")]
+mod upload;
 mod video;
 
 use std::path::Path;
@@ -35,7 +37,28 @@ impl DecoderFactory for FfmpegDecoderFactory {
         ID
     }
 
-    /// CPU でデコードするので GPU のコンテキストは使わない。
+    /// デコードは CPU。feature `gpu` で `mm-gpu` のコンテキストを渡されたときは、YUV のプレーンを上げて
+    /// GPU のフレームで返す。それ以外は CPU の RGBA。
+    fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
+        init()?;
+        #[cfg(feature = "gpu")]
+        if let Some(ctx) = gpu.and_then(|g| g.as_any().downcast_ref::<mm_gpu::GpuContext>()) {
+            return Ok(Box::new(FfmpegDecoder::open_with_gpu(path, ctx)?));
+        }
+        let _ = gpu;
+        Ok(Box::new(FfmpegDecoder::open(path)?))
+    }
+}
+
+/// GPU のコンテキストを渡されても CPU の RGBA で返すインターフェース。経路の比較の計測と、GPU に上げない確かめに使う。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FfmpegCpuDecoderFactory;
+
+impl DecoderFactory for FfmpegCpuDecoderFactory {
+    fn id(&self) -> &'static str {
+        "ffmpeg_cpu"
+    }
+
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         init()?;
         Ok(Box::new(FfmpegDecoder::open(path)?))

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
-use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings, Encoder};
+use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings, Encoder, Nv12Frame};
 use mm_doc::Project;
 use mm_node_api::Quality;
 use mm_render_api::RangeRequest;
@@ -142,9 +142,9 @@ fn export_target(
     encoder.finish()
 }
 
-/// 区間を描き、`EXPORT_BATCH_FRAMES` ずつエンコーダーに押す。
-/// レンダラーは区間を一息に描くので、1 フレームの描画の時間は sink が呼ばれる間隔で測り `export.render` に載せる。
-/// エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したフレームの数を返す。
+/// 区間を描き、レンダラーの `export_range`（`EXPORT_BATCH_FRAMES` ずつ、または GPU で YUV にした経路）で
+/// エンコーダーに押す。レンダラーは区間を一息に描くので、1 フレームの描画の時間はフレームが出てくる間隔で測り
+/// `export.render` に載せる。エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。押したフレームの数を返す。
 fn export_frames(
     engine: &mut Engine,
     project: &Project,
@@ -154,9 +154,9 @@ fn export_frames(
 ) -> Result<usize> {
     let registry = engine.registry().clone();
     let range = project.composition(composition)?.range()?;
-    let mut batch: Vec<RgbaImage> = Vec::with_capacity(EXPORT_BATCH_FRAMES);
     let mut last = Instant::now();
-    let count = engine.renderer().render_range(
+    let mut metered = Metered { inner: encoder };
+    engine.renderer().export_range(
         &RangeRequest {
             project,
             composition,
@@ -166,25 +166,47 @@ fn export_frames(
             quality: Quality::Full,
             nodes: &registry,
         },
-        &mut |_index, frame, gpu| {
-            batch.push((*gpu.download(&frame)?).clone());
+        &mut metered,
+        EXPORT_BATCH_FRAMES,
+        &mut |_index| {
             mm_trace::record_span("export.render", last.elapsed());
-            if batch.len() == EXPORT_BATCH_FRAMES {
-                let span = tracing::info_span!("export.encode", frames = batch.len());
-                let _g = span.enter();
-                encoder.push_frames(&batch)?;
-                batch.clear();
-            }
             last = Instant::now();
-            Ok(())
         },
-    )?;
-    if !batch.is_empty() {
-        let span = tracing::info_span!("export.encode", frames = batch.len());
-        let _g = span.enter();
-        encoder.push_frames(&batch)?;
+    )
+}
+
+/// 押し込みの時間をスパン `export.encode` に載せるエンコーダー。
+struct Metered<'a> {
+    inner: &'a mut dyn Encoder,
+}
+
+impl Encoder for Metered<'_> {
+    fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
+        self.inner.begin(settings)
     }
-    Ok(count)
+
+    fn push_frames(&mut self, frames: &[RgbaImage]) -> Result<()> {
+        let span = tracing::info_span!("export.encode", frames = frames.len());
+        let _g = span.enter();
+        self.inner.push_frames(frames)
+    }
+
+    fn push_nv12_frames(&mut self, frames: &[Nv12Frame]) -> Result<()> {
+        if frames.is_empty() {
+            return self.inner.push_nv12_frames(frames);
+        }
+        let span = tracing::info_span!("export.encode", frames = frames.len());
+        let _g = span.enter();
+        self.inner.push_nv12_frames(frames)
+    }
+
+    fn push_audio(&mut self, block: &mm_audio_api::AudioBlock) -> Result<()> {
+        self.inner.push_audio(block)
+    }
+
+    fn finish(&mut self) -> Result<EncodeReport> {
+        self.inner.finish()
+    }
 }
 
 #[cfg(test)]

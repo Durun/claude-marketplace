@@ -70,6 +70,11 @@
 | プール | 使い終わったテクスチャを戻して使い回す置き場 | `mm-decode-d3d12va/shared/pool.rs` |
 | リングバッファ / スロット | 固定個数の枠を順に使い回すバッファとその 1 枠 | `mm-decode-cuvid/src/share.rs` |
 | 借用 | GPU のフレームを `submit` が終わるまで借りること | `GpuHelper::import`（RFC 0001） |
+| 画布 | ノードの種類が描く先の大きさ（コンポジションの画素に倍率を掛けたもの） | `FrameCx::size` |
+| 領域（画像の） | ノードの種類の画像が存在する矩形。レンダラーは画布と違う大きさの画像をここに置く | `region_of_definition`、`FrameCx::region`（RFC 0009） |
+| 面積平均 | 縮小で、出力の 1 画素が覆う元の画素を平均すること。合成で 1 回だけ、線形の光で行う | `compose.wgsl` の `taps` |
+| 先行するリードバック | 読み戻しの提出と完了の待ちを分け、数フレーム後に待つこと | `WgpuGpu::begin_readback` / `finish_readback` |
+| デバイスの消失 | GPU のデバイスが使えなくなること。レンダラーは次のフレームの前にコンテキストごと作り直す | `GpuContext::is_lost`、`recreate` |
 | 寿命 | 借用したフレームが有効な期間 | `KEPT_RENDERED_FRAMES` |
 | 提出 | GPU のキューへコマンドを送ること | `Queue::submit` |
 | リードバック | GPU の結果を CPU へ読むこと | `GpuHelper::download` |

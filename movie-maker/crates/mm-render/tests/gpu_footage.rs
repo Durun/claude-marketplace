@@ -1,0 +1,203 @@
+//! GPU のフレームを返すデコーダーを footage が受ける。素材のままの大きさのテクスチャを、
+//! レンダラーが画布に収めて（縦横比を保ち、縮小は面積平均で）置く。
+//! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
+
+use std::path::Path;
+use std::sync::Arc;
+
+use mm_audio_api::AudioBlock;
+use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
+use mm_doc::{Asset, Composition, Layer, Node, Project};
+use mm_gpu::{GpuFrameTexture, WgpuGpu};
+use mm_node_api::{FrameRef, GpuHelper, Quality};
+use mm_nodes_basic::all_kinds;
+use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
+use mm_render_api::{RenderRequest, Renderer};
+use mm_testkit::audio::SampleMixerFactory;
+use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
+use mm_testkit::fixtures::{sample_services, SAMPLE_ASSET_PATH};
+use mm_testkit::node::MapRegistry;
+use mm_types::{
+    ColorSpace, Id, ParamValue, Rational, RationalTime, Result, Rgba, RgbaImage, Size, TimeRange,
+};
+
+/// f16 の丸めと面積平均の誤差の許容。
+const TOLERANCE: f32 = 3e-3;
+
+fn gpu() -> Option<Arc<GpuContext>> {
+    match GpuContext::shared(&GpuRequest::default()) {
+        Ok(ctx) => Some(ctx),
+        Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
+            panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
+        }
+        Err(e) => {
+            eprintln!("GPU が無いのでスキップする: {e}");
+            None
+        }
+    }
+}
+
+/// モックのデコーダーの CPU のフレームを、テクスチャにして GPU のフレームとして返すデコーダー。
+struct GpuSampleDecoder {
+    inner: Box<dyn Decoder>,
+    gpu: WgpuGpu,
+    next_id: u64,
+}
+
+impl Decoder for GpuSampleDecoder {
+    fn info(&self) -> &MediaInfo {
+        self.inner.info()
+    }
+
+    fn seek(&mut self, t: RationalTime) -> Result<()> {
+        self.inner.seek(t)
+    }
+
+    fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
+        let Some(frame) = self.inner.next_frame()? else {
+            return Ok(None);
+        };
+        let image = frame.image.expect("モックは CPU のフレーム");
+        let FrameRef::Gpu(tex) = self.gpu.upload(&image)? else {
+            unreachable!("upload は Gpu を返す");
+        };
+        let texture = self.gpu.texture(tex.id).expect("作った").clone();
+        self.gpu.release_id(tex.id);
+        let id = self.next_id;
+        self.next_id += 1;
+        let handle = GpuFrameTexture {
+            texture,
+            wait: None,
+        }
+        .into_handle(id);
+        Ok(Some(DecodedFrame {
+            index: frame.index,
+            pts: frame.pts,
+            image: None,
+            gpu: Some(handle),
+        }))
+    }
+
+    fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock> {
+        self.inner.decode_audio(range)
+    }
+}
+
+struct GpuSampleFactory;
+
+impl DecoderFactory for GpuSampleFactory {
+    fn id(&self) -> &'static str {
+        "gpu_sample"
+    }
+
+    fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
+        let ctx = gpu
+            .and_then(|g| g.as_any().downcast_ref::<GpuContext>())
+            .expect("レンダラーのコンテキスト");
+        Ok(Box::new(GpuSampleDecoder {
+            inner: SampleDecoderFactory::default().open(path, None)?,
+            gpu: WgpuGpu::new(GpuContext::shared(ctx.request()).expect("共有")),
+            next_id: 0,
+        }))
+    }
+}
+
+fn project(size: Size) -> Project {
+    let media = SampleMedia::default();
+    let mut p = Project::new();
+    p.assets.push(Asset {
+        id: Id::new("clip"),
+        path: SAMPLE_ASSET_PATH.into(),
+        content_hash: "sample0000000000".into(),
+        color_space: ColorSpace::bt709(),
+        duration: media.duration,
+        fps: Some(media.fps),
+        timebase_offset: RationalTime::ZERO,
+    });
+    let footage =
+        Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
+    p.compositions.push(Composition {
+        id: Id::new("main"),
+        width: size.width,
+        height: size.height,
+        fps: Rational::integer(30),
+        duration: RationalTime::seconds(2),
+        layers: vec![Layer::new(
+            "f",
+            footage,
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(2),
+        )],
+        markers: Vec::new(),
+    });
+    p
+}
+
+fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) -> Arc<RgbaImage> {
+    let mut nodes = MapRegistry::default();
+    for kind in all_kinds() {
+        nodes.insert(kind);
+    }
+    let p = project(size);
+    let mut r = WgpuRenderer::new(
+        ctx.clone(),
+        decoders,
+        Arc::new(SampleMixerFactory),
+        sample_services(),
+    );
+    let frame = r
+        .render_frame(&RenderRequest {
+            project: &p,
+            composition: &Id::new("main"),
+            time: RationalTime::from_frames(1, Rational::integer(30)).expect("表せる"),
+            size,
+            quality: Quality::Full,
+            nodes: &nodes,
+        })
+        .expect("描ける");
+    let img = r.gpu().download(&frame).expect("読み戻せる");
+    assert!(
+        r.take_errors().is_empty(),
+        "footage が GPU のフレームを受ける"
+    );
+    assert_eq!(r.texture_count(), 1, "借用したフレームは提出の後に返す");
+    img
+}
+
+#[test]
+fn 同じ大きさなら_cpu_の経路と同じ画像() {
+    let Some(ctx) = gpu() else { return };
+    let size = SampleMedia::default().size;
+    let want = render(&ctx, Arc::new(SampleDecoderFactory::default()), size);
+    let got = render(&ctx, Arc::new(GpuSampleFactory), size);
+    let diff = got.max_diff(&want).expect("同じ大きさ");
+    assert!(diff <= TOLERANCE, "CPU の経路との差 {diff}");
+}
+
+#[test]
+fn 縦横比の違う画布には収めて置き_縮小は面積平均で色を保つ() {
+    let Some(ctx) = gpu() else { return };
+    let media = SampleMedia::default();
+    // 320x180 の素材を 160x160 に収める: 幅 160、高さ 90、上下に 35 の余白。
+    let size = Size::new(160, 160);
+    let got = render(&ctx, Arc::new(GpuSampleFactory), size);
+    let p = |x, y| got.pixel(x, y);
+    assert_eq!(p(80, 10).a, 0.0, "上の余白は透明");
+    assert_eq!(p(80, 150).a, 0.0, "下の余白は透明");
+    let inside = p(80, 80);
+    let want = media.base_color;
+    assert!(
+        inside.max_diff(want) <= TOLERANCE || inside.a > 0.99,
+        "素材の中は塗られている: {inside:?}"
+    );
+    let cpu = render(&ctx, Arc::new(SampleDecoderFactory::default()), size);
+    let diff = got.max_diff(&cpu).expect("同じ大きさ");
+    // CPU の経路は双線形、GPU の経路は面積平均なので、模様の縁だけが違う。
+    assert!(diff <= 0.5, "CPU の経路との差 {diff}");
+    assert_eq!(cpu.pixel(80, 10).a, 0.0);
+    assert!(
+        got.pixel(80, 45).max_diff(Rgba::TRANSPARENT) > 0.0,
+        "収めた素材の上端は塗られている"
+    );
+}

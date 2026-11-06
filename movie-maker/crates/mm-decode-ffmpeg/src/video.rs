@@ -16,11 +16,22 @@ pub struct FfmpegDecoder {
     path: PathBuf,
     seq: Sequencer,
     converter: RgbaConverter,
+    #[cfg(feature = "gpu")]
+    uploader: Option<crate::upload::GpuUploader>,
     audio_probe: Option<AudioProbe>,
     audio: Option<AudioReader>,
 }
 
 impl FfmpegDecoder {
+    /// 素材を開き、フレームをレンダラーのデバイスへ YUV のまま上げて GPU のフレームで返す（feature `gpu`）。
+    /// 上げられない形式の素材は CPU のフレームで返す。
+    #[cfg(feature = "gpu")]
+    pub fn open_with_gpu(path: &Path, gpu: &mm_gpu::GpuContext) -> Result<Self> {
+        let mut dec = Self::open(path)?;
+        dec.uploader = Some(crate::upload::GpuUploader::new(gpu, dec.seq.info().size));
+        Ok(dec)
+    }
+
     /// 素材を開く。ファイルが無ければ `NotFound`、読めなければ `Corrupt`、PQ と HLG は `Unsupported`。
     pub fn open(path: &Path) -> Result<Self> {
         if !path.exists() {
@@ -61,9 +72,28 @@ impl FfmpegDecoder {
             path: path.to_owned(),
             seq,
             converter: RgbaConverter::default(),
+            #[cfg(feature = "gpu")]
+            uploader: None,
             audio_probe,
             audio: None,
         })
+    }
+
+    /// GPU に上げられれば GPU のフレーム、そうでなければ CPU の画像にする。
+    fn present(
+        &mut self,
+        index: i64,
+        pts: RationalTime,
+        frame: &ff::frame::Video,
+    ) -> Result<DecodedFrame> {
+        #[cfg(feature = "gpu")]
+        if let Some(uploader) = self.uploader.as_mut() {
+            if let Some(decoded) = uploader.upload(index, pts, frame)? {
+                return Ok(decoded);
+            }
+        }
+        let image = self.converter.convert(frame)?;
+        Ok(DecodedFrame::cpu(index, pts, image))
     }
 }
 
@@ -80,8 +110,7 @@ impl Decoder for FfmpegDecoder {
         let Some(IndexedFrame { index, pts, frame }) = self.seq.next_frame()? else {
             return Ok(None);
         };
-        let image = self.converter.convert(&frame)?;
-        Ok(Some(DecodedFrame::cpu(index, pts, image)))
+        self.present(index, pts, &frame).map(Some)
     }
 
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock> {

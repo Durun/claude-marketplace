@@ -2,6 +2,7 @@
 
 2 つのクレートの実装と契約テストは feature `ffmpeg` の下にあり、既定では切ってある。FFmpeg も libclang も無い環境（CI、ほかの担当）では、feature なしで `cargo fmt` / `clippy` / `test --workspace` が通る（この 2 クレートは空になる）。
 FFmpeg を使うときは下の用意をして、`--features ffmpeg` を付ける。ワークスペース全体の検査は feature を明示する（`--all-features` は OCIO の SDK と CEF の配布物も要る）。
+`mm-decode-ffmpeg` の feature `gpu`（`ffmpeg` を含む。`mm-runtime` の `ffmpeg` が入れる）は、GPU のコンテキストを渡されたとき YUV のプレーンをそのまま GPU に上げてシェーダーで線形にする。4K で CPU の RGBA への変換が 75 ms/フレームなのに対し 1.7 ms（`examples/bench_upload.rs`）。
 
 ```sh
 cargo test -p mm-decode-ffmpeg -p mm-encode-ffmpeg --features ffmpeg

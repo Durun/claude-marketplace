@@ -3,7 +3,7 @@
   "productName": "movie-maker",
   "version": "0.1.0",
   "identifier": "dev.durun.movie-maker",
-  "build": { "frontendDist": "./web" },
+  "build": { "frontendDist": "../../ui/dist" },
   "app": {
     "withGlobalTauri": true,
     "windows": [],

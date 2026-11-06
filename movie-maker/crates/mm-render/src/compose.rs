@@ -11,6 +11,8 @@ pub struct DrawItem<'a> {
     /// 画像の UV から出力の NDC への列優先の行列。
     pub matrix: [f32; 16],
     pub opacity: f32,
+    /// 出力の 1 画素あたりの元の画素の数（軸ごと）。1 を超えると面積平均で縮小する。
+    pub taps: [f32; 2],
 }
 
 /// シェーダーの `Item` と同じフィールド順（80 バイト）。
@@ -19,7 +21,8 @@ pub struct DrawItem<'a> {
 struct ItemUniform {
     matrix: [f32; 16],
     opacity: f32,
-    _pad: [f32; 3],
+    _pad: f32,
+    taps: [f32; 2],
 }
 
 /// 合成のパイプライン。
@@ -93,7 +96,8 @@ impl Compositor {
         let uniform = ItemUniform {
             matrix: item.matrix,
             opacity: item.opacity,
-            _pad: [0.0; 3],
+            _pad: 0.0,
+            taps: item.taps,
         };
         let buffer = ctx
             .device

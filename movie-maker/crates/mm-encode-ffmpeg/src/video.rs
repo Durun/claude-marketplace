@@ -1,4 +1,4 @@
-//! 映像のトラック: RGBA f32 → YUV420P（Rec.709、tv）→ libx264。
+//! 映像のトラック: RGBA f32 → NV12（Rec.709、tv）→ libx264。レンダラーが GPU で作った NV12 はそのまま押す。
 
 use ff::color::{Range, Space, TransferCharacteristic};
 use ff::format::context::Output;
@@ -6,7 +6,7 @@ use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{codec, encoder, ffi, frame, Rational};
 use ffmpeg_next as ff;
-use mm_decode_api::EncodeSettings;
+use mm_decode_api::{EncodeSettings, Nv12Frame};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::transfer::EncodeTable;
@@ -42,7 +42,7 @@ impl VideoTrack {
             || !size.height.is_multiple_of(2)
         {
             return Err(MmError::InvalidArgument(format!(
-                "YUV420P は偶数の大きさが要る: {}x{}",
+                "NV12 は偶数の大きさが要る: {}x{}",
                 size.width, size.height
             )));
         }
@@ -92,10 +92,27 @@ impl VideoTrack {
         let mut rgba = frame::Video::new(Pixel::RGBA, self.size.width, self.size.height);
         fill_rgba(&mut rgba, image, &self.table);
         // エンコーダーが参照を持ち続けるので、フレームごとに新しい YUV の領域を使う
-        let mut yuv = frame::Video::new(Pixel::YUV420P, self.size.width, self.size.height);
+        let mut yuv = frame::Video::new(Pixel::NV12, self.size.width, self.size.height);
         self.scaler
             .run(&rgba, &mut yuv)
             .map_err(|e| MmError::Internal(format!("YUV への変換: {e}")))?;
+        self.send(output, yuv)
+    }
+
+    /// GPU で作った NV12 の 1 フレームを、変換せずにエンコードして書く。
+    pub fn push_nv12(&mut self, output: &mut Output, nv12: &Nv12Frame) -> Result<()> {
+        if nv12.size != self.size {
+            return Err(MmError::InvalidArgument(
+                "フレームの大きさが設定と違う".into(),
+            ));
+        }
+        let mut yuv = frame::Video::new(Pixel::NV12, self.size.width, self.size.height);
+        copy_plane(&mut yuv, 0, &nv12.y, self.size.width as usize);
+        copy_plane(&mut yuv, 1, &nv12.uv, self.size.width as usize);
+        self.send(output, yuv)
+    }
+
+    fn send(&mut self, output: &mut Output, mut yuv: frame::Video) -> Result<()> {
         yuv.set_pts(Some(self.next_pts));
         self.next_pts += 1;
         self.encoder
@@ -124,7 +141,16 @@ impl VideoTrack {
     }
 }
 
-/// libx264 を Rec.709・tv レンジの YUV420P で開く。スレッド数は自動（0）にする。
+/// 行の余白の無いプレーンを、FFmpeg のフレームのプレーン `plane`（行の余白つき）へ写す。
+fn copy_plane(dst: &mut frame::Video, plane: usize, src: &[u8], row: usize) {
+    let stride = dst.stride(plane);
+    let data = dst.data_mut(plane);
+    for (line, out) in src.chunks_exact(row).zip(data.chunks_exact_mut(stride)) {
+        out[..row].copy_from_slice(line);
+    }
+}
+
+/// libx264 を Rec.709・tv レンジの NV12 で開く。スレッド数は自動（0）にする。
 fn open_encoder(
     codec: ff::Codec,
     size: Size,
@@ -143,7 +169,7 @@ fn open_encoder(
         .map_err(|e| MmError::Internal(format!("映像のエンコーダー: {e}")))?;
     enc.set_width(size.width);
     enc.set_height(size.height);
-    enc.set_format(Pixel::YUV420P);
+    enc.set_format(Pixel::NV12);
     enc.set_time_base(time_base);
     enc.set_frame_rate(Some(Rational::new(
         time_base.denominator(),
@@ -172,7 +198,7 @@ fn make_scaler(size: Size) -> Result<Scaler> {
         Pixel::RGBA,
         size.width,
         size.height,
-        Pixel::YUV420P,
+        Pixel::NV12,
         size.width,
         size.height,
         Flags::BICUBIC | Flags::ACCURATE_RND | Flags::FULL_CHR_H_INT,

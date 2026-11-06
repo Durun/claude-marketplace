@@ -1,6 +1,7 @@
 //! wgpu の Device と Queue を持つコンテキスト。headless（サーフェスなし）で作り、アダプターを 1 回選んで全実装で共有する。
 
 use std::any::Any;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use mm_decode_api::GpuContextRef;
@@ -43,7 +44,14 @@ pub struct GpuContext {
     requested_features: wgpu::Features,
     /// 選んだアダプターのバックエンド。`shared` が後の求めのバックエンドの範囲と照合する。
     backend: wgpu::Backend,
+    /// 作るときの求め。デバイスが消えたときに同じ求めで作り直す。
+    request: GpuRequest,
+    /// デバイスが消えたか。wgpu の通知と D3D12 の消失の理由、`mark_lost` のどれかで立つ。
+    lost: Arc<AtomicBool>,
 }
+
+/// プロセスで 1 つ共有するコンテキスト（`shared`）。
+static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
 
 impl GpuContext {
     /// 高性能のアダプターを選んで作る。GPU が無ければ `Err(Unsupported)`。
@@ -62,15 +70,48 @@ impl GpuContext {
     /// アダプターは指定があるときだけ照合し、バックエンドは選んだアダプターが求めの範囲にあるか、
     /// 機能は作ったときの希望が求めを含むかで照合する。
     pub fn shared(request: &GpuRequest) -> Result<Arc<Self>> {
-        static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
         let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(ctx) = slot.as_ref() {
+        if let Some(ctx) = slot.as_ref().filter(|c| !c.is_lost()) {
             ctx.check_compatible(request)?;
             return Ok(ctx.clone());
         }
         let ctx = Self::with(request)?;
         *slot = Some(ctx.clone());
         Ok(ctx)
+    }
+
+    /// 同じ求めで新しいコンテキストを作る。デバイスが消えた後の復帰に使い、`self` が共有のものなら
+    /// 共有も新しいものに差し替える。古いコンテキストを握っている側は、作り直したものに持ち替える。
+    pub fn recreate(self: &Arc<Self>) -> Result<Arc<Self>> {
+        let fresh = Self::with(&self.request)?;
+        let mut slot = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().is_some_and(|c| Arc::ptr_eq(c, self)) {
+            *slot = Some(fresh.clone());
+        }
+        Ok(fresh)
+    }
+
+    /// 作るときの求め。
+    pub fn request(&self) -> &GpuRequest {
+        &self.request
+    }
+
+    /// デバイスが消えたか。wgpu の通知を取り込むために 1 回だけ軽く poll し、D3D12 では消失の理由も見る。
+    /// 消えていたら以後の提出は届かないので、持ち主は `recreate` で作り直す。
+    pub fn is_lost(&self) -> bool {
+        if self.lost.load(Ordering::Acquire) {
+            return true;
+        }
+        if self.device.poll(wgpu::PollType::Poll).is_err() || device_removed(&self.device) {
+            self.lost.store(true, Ordering::Release);
+        }
+        self.lost.load(Ordering::Acquire)
+    }
+
+    /// デバイスが消えたと記録する。デコーダーなど、消失を先に知った側が持ち主に知らせる。
+    /// 消失を起こせない環境で復帰の経路を試すのにも使う。
+    pub fn mark_lost(&self) {
+        self.lost.store(true, Ordering::Release);
     }
 
     fn check_compatible(&self, request: &GpuRequest) -> Result<()> {
@@ -129,6 +170,12 @@ impl GpuContext {
             })
             .await
             .map_err(|e| MmError::Unsupported(format!("GPU のデバイスを作れない: {e}")))?;
+        let lost = Arc::new(AtomicBool::new(false));
+        let flag = lost.clone();
+        device.set_device_lost_callback(move |reason, message| {
+            tracing::warn!(?reason, message, "GPU のデバイスが消えた");
+            flag.store(true, Ordering::Release);
+        });
         Ok(Arc::new(Self {
             device,
             queue,
@@ -136,6 +183,8 @@ impl GpuContext {
             timestamps,
             requested_features: request.optional_features,
             backend: adapter_info.backend,
+            request: request.clone(),
+            lost,
         }))
     }
 }
@@ -209,6 +258,23 @@ pub fn adapter_id(adapter: &wgpu::Adapter) -> GpuAdapterId {
         name: info.name,
         luid: luid_of(adapter),
     }
+}
+
+/// D3D12 のデバイスが消えているか。NVIDIA のドライバーは d3d12va のデコードの失敗を、エラーでなく
+/// デバイスの消失で表すので、wgpu の通知を待たずにここで見る。D3D12 以外では偽。
+#[cfg(windows)]
+fn device_removed(device: &wgpu::Device) -> bool {
+    // SAFETY: as_hal の参照はこの関数の間だけ使い、引数なしの問い合わせだけを行う。
+    unsafe {
+        device
+            .as_hal::<wgpu::hal::api::Dx12>()
+            .is_some_and(|hal| hal.raw_device().GetDeviceRemovedReason().is_err())
+    }
+}
+
+#[cfg(not(windows))]
+fn device_removed(_device: &wgpu::Device) -> bool {
+    false
 }
 
 #[cfg(windows)]

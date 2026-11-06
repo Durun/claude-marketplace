@@ -1,4 +1,9 @@
 //! レイヤーの評価。ノードの種類を呼んで画像を作り、変形の行列と一緒に合成の入力にする。
+//!
+//! ノードの種類が返す画像の置き方（レンダラーの決まり）:
+//! - 画像の大きさが `FrameCx::size`（画布）と同じなら、画布の全体を覆う。
+//! - そうでなければ `FrameCx::region` の矩形を覆う。レンダラーは `region_of_definition` を `region` に渡すので、
+//!   領域だけを描いた画像（文字）も、素材のままの大きさの GPU のフレーム（撮影素材）も、ここで 1 回だけ拡縮する。
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -6,7 +11,7 @@ use std::sync::Arc;
 use mm_doc::{Composition, Layer, Project};
 use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry, Quality};
-use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Result, Size};
+use mm_types::{CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
 use crate::compose::DrawItem;
 use crate::renderer::WgpuRenderer;
@@ -20,7 +25,7 @@ pub const NESTED_PARAM: &str = "composition";
 pub(crate) const MAX_DEPTH: u32 = 8;
 /// ベクターを描き直す倍率の上限。
 const MAX_VECTOR_SCALE: f32 = 4.0;
-/// 入れ子のテクスチャの一辺の上限（wgpu の既定の 2D の上限）。
+/// テクスチャの一辺の上限（wgpu の既定の 2D の上限）。
 const MAX_TEXTURE_SIDE: u32 = 8192;
 
 /// 1 つのコンポジションを 1 つの時刻で描くための入力。
@@ -41,6 +46,10 @@ impl CompCx<'_> {
     fn comp_to_out(&self) -> f32 {
         self.size.width as f32 / self.comp.width as f32
     }
+
+    fn comp_size(&self) -> (f32, f32) {
+        (self.comp.width as f32, self.comp.height as f32)
+    }
 }
 
 /// 合成に渡す 1 枚。
@@ -48,12 +57,14 @@ struct Prepared {
     texture: u64,
     matrix: [f32; 16],
     opacity: f32,
+    taps: [f32; 2],
 }
 
-/// レイヤーの画像のテクスチャと、コンポジションの画素での大きさ。
+/// レイヤーの画像のテクスチャと、コンポジションの画素での置き場所。
 struct LayerImage {
     texture: u64,
-    logical: (f32, f32),
+    size: Size,
+    place: Rect,
 }
 
 /// レイヤーの種類と、その時刻のパラメータ（既定値で埋めたもの）。
@@ -113,6 +124,7 @@ impl WgpuRenderer {
                     texture: self.gpu.texture(p.texture)?,
                     matrix: p.matrix,
                     opacity: p.opacity,
+                    taps: p.taps,
                 })
             })
             .collect();
@@ -148,8 +160,15 @@ impl WgpuRenderer {
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {
             texture: image.texture,
-            matrix: uv_to_ndc(&transform, image.logical, cx.comp_to_out(), out),
+            matrix: uv_to_ndc(
+                &transform,
+                image.place,
+                cx.comp_size(),
+                cx.comp_to_out(),
+                out,
+            ),
             opacity,
+            taps: minify_taps(&image, &transform, cx.comp_to_out()),
         }))
     }
 
@@ -162,7 +181,6 @@ impl WgpuRenderer {
         params: &Params,
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
-        let boost = vector_boost(kind, transform);
         let Self {
             sources,
             decoders,
@@ -177,13 +195,12 @@ impl WgpuRenderer {
             params,
         )?;
         let mut inputs = NoInputs;
-        let size = scaled(cx.size, boost);
         let mut frame_cx = FrameCx {
             time: cx.t,
             params,
-            size,
-            region: size.to_rect(),
-            scale: cx.comp_to_out() * boost,
+            size: cx.size,
+            region: cx.size.to_rect(),
+            scale: cx.comp_to_out(),
             quality: cx.quality,
             inputs: &mut inputs,
             footage,
@@ -191,11 +208,23 @@ impl WgpuRenderer {
             gpu: &mut *gpu,
             services,
         };
-        if kind.region_of_definition(&frame_cx).is_empty() {
+        let rod = kind.region_of_definition(&frame_cx);
+        if rod.is_empty() {
             return Ok(None);
         }
+        // ベクターは拡大する分だけ細かく描き、後から拡大しない。倍率は領域の大きさだけに掛かる。
+        let boost = if kind.traits().vector {
+            vector_boost(transform, &rod)
+        } else {
+            1.0
+        };
+        frame_cx.size = scaled(cx.size, boost);
+        frame_cx.region = scaled_rect(&rod, boost);
+        frame_cx.scale *= boost;
+        let canvas = frame_cx.size;
         let rendered = std::panic::catch_unwind(AssertUnwindSafe(|| kind.render(&mut frame_cx)))
             .map_err(|_| MmError::Internal(format!("{} が panic", kind.id())))??;
+        let image_size = rendered.size();
         let texture = match rendered {
             FrameRef::Transparent { .. } => return Ok(None),
             FrameRef::Cpu(image) => match gpu.upload(&image)? {
@@ -204,8 +233,16 @@ impl WgpuRenderer {
             },
             FrameRef::Gpu(tex) => tex.id,
         };
-        let logical = (cx.comp.width as f32, cx.comp.height as f32);
-        Ok(Some(LayerImage { texture, logical }))
+        let place = if image_size == canvas {
+            Rect::new(0.0, 0.0, cx.comp.width as f32, cx.comp.height as f32)
+        } else {
+            scaled_rect(&rod, 1.0 / cx.comp_to_out())
+        };
+        Ok(Some(LayerImage {
+            texture,
+            size: image_size,
+            place,
+        }))
     }
 
     /// 入れ子のコンポジションを別のテクスチャに描く。中にベクターがあるときは、入れ子のレイヤーを
@@ -250,18 +287,30 @@ impl WgpuRenderer {
         let texture = self.encode_comp(encoder, &child)?;
         Ok(Some(LayerImage {
             texture,
-            logical: (nested.width as f32, nested.height as f32),
+            size: child.size,
+            place: Rect::new(0.0, 0.0, nested.width as f32, nested.height as f32),
         }))
     }
 }
 
-/// ベクターの種類は、レイヤーを拡大する分だけ細かく描いて、後から拡大しない。
-fn vector_boost(kind: &dyn NodeKind, transform: &LayerTransform) -> f32 {
-    if kind.traits().vector {
-        transform.max_scale().clamp(1.0, MAX_VECTOR_SCALE)
-    } else {
-        1.0
-    }
+/// 出力の 1 画素あたりの元の画素の数（軸ごと）。1 を超える軸は合成で面積平均に縮小する。
+fn minify_taps(image: &LayerImage, transform: &LayerTransform, comp_to_out: f32) -> [f32; 2] {
+    let out_w = image.place.width * comp_to_out * transform.scale[0].abs();
+    let out_h = image.place.height * comp_to_out * transform.scale[1].abs();
+    [
+        image.size.width as f32 / out_w.max(f32::EPSILON),
+        image.size.height as f32 / out_h.max(f32::EPSILON),
+    ]
+}
+
+/// ベクターの種類を描く倍率。拡大は `MAX_VECTOR_SCALE` までで、領域のテクスチャの一辺が上限を超えない。
+fn vector_boost(transform: &LayerTransform, rod: &Rect) -> f32 {
+    let side = rod.width.max(rod.height).max(1.0);
+    let room = MAX_TEXTURE_SIDE as f32 / side;
+    transform
+        .max_scale()
+        .clamp(1.0, MAX_VECTOR_SCALE)
+        .min(room.max(1.0))
 }
 
 /// 入れ子を描く倍率。拡大は `MAX_VECTOR_SCALE` までで、テクスチャの一辺が上限を超えない。
@@ -303,4 +352,8 @@ fn scaled(size: Size, k: f32) -> Size {
         (size.width as f32 * k).round().max(1.0) as u32,
         (size.height as f32 * k).round().max(1.0) as u32,
     )
+}
+
+fn scaled_rect(rect: &Rect, k: f32) -> Rect {
+    Rect::new(rect.x * k, rect.y * k, rect.width * k, rect.height * k)
 }

@@ -1,0 +1,119 @@
+/* 値は全部 theme の変数から取る。影は使わず border と角丸だけで区切る。 */
+.mm-insp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-insp-empty {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-insp-header {
+  margin: 0;
+  font-size: var(--mm-font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.mm-insp-title {
+  margin: 0;
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-md) var(--mm-radius-md) 0 0;
+  background: var(--mm-gradient-task-title);
+  color: var(--mm-color-task-title-text);
+  font-size: var(--mm-font-size-sm);
+  font-weight: 700;
+}
+
+.mm-insp-body {
+  display: grid;
+  gap: var(--mm-space-xs);
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-top: 0;
+  border-radius: 0 0 var(--mm-radius-md) var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-insp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.mm-insp-label {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  min-width: 0;
+  color: var(--mm-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.mm-insp-value {
+  min-width: 0;
+}
+
+.mm-insp-vector {
+  display: flex;
+  gap: var(--mm-space-xs);
+}
+
+.mm-insp-vector > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mm-insp-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: var(--mm-space-xs);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-insp-input:disabled {
+  background: var(--mm-color-bg);
+  color: var(--mm-color-text-muted);
+}
+
+.mm-insp-input:focus-visible,
+.mm-insp-color:focus-visible,
+.mm-insp-check:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-insp-color {
+  box-sizing: border-box;
+  min-height: 2em;
+  padding: 0;
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+}
+
+.mm-insp-json {
+  font-family: var(--mm-font-mono);
+  color: var(--mm-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* キーフレームの印は、回した正方形（ひし形）にする。 */
+.mm-insp-kf {
+  flex: none;
+  width: var(--mm-size-bullet);
+  height: var(--mm-size-bullet);
+  border: var(--mm-border-width) solid var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  transform: rotate(45deg) scale(0.7);
+}

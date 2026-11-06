@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node tools/build.ts",
+    "gen": "node tools/gen-sdk.ts",
+    "build": "node tools/gen-sdk.ts && node tools/build.ts",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",
     "test": "vitest run"
