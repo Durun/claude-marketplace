@@ -268,7 +268,12 @@ mod tests {
     }
 
     fn seq_model() -> TimelineModel {
-        let cut = |start, end, gap| CutBar { start, end, gap };
+        let cut = |start, end, gap| CutBar {
+            start,
+            end,
+            gap,
+            ..CutBar::default()
+        };
         let mut seq = Item::layer(0.0, 5.0, ItemKind::Sequence, true);
         seq.cuts = vec![cut(0.0, 2.0, false), cut(2.0, 3.0, true)];
         TimelineModel {

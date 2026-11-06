@@ -89,6 +89,8 @@ fn cut_bars(project: &Project, layer: &Layer) -> Vec<CutBar> {
             start: comp_secs(layer, p.range.start.to_f64()),
             end: comp_secs(layer, p.range.end.to_f64()),
             gap: seq.cuts[p.index].source.is_gap(),
+            disabled_before: p.index.checked_sub(1).is_some_and(|i| !seq.cuts[i].enabled),
+            disabled_after: seq.cuts.get(p.index + 1).is_some_and(|c| !c.enabled),
         })
         .collect()
 }
@@ -177,6 +179,58 @@ mod tests {
         );
         assert_eq!(timeline_cut_ids(&project, &c)[0], ["k1", "k2"]);
         assert!(timeline_cut_ids(&project, &c)[1].is_empty());
+    }
+
+    /// k1、無効な k2、k3、k4 の順に並べたシーケンスのレイヤーを持つコンポジション。
+    fn disabled_between() -> (Project, Composition) {
+        use mm_doc::Cut;
+        let cut = |id: &str, a: i64, b: i64| {
+            Cut::new(
+                id,
+                Node::footage(&Id::new("a")),
+                RationalTime::seconds(a),
+                RationalTime::seconds(b),
+            )
+        };
+        let mut project = Project::new();
+        project.sequences.push(Sequence {
+            id: Id::new("s"),
+            cuts: vec![
+                cut("k1", 0, 3),
+                cut("k2", 0, 2),
+                cut("k3", 0, 3),
+                cut("k4", 0, 3),
+            ],
+            origin: None,
+        });
+        project.sequences[0].cuts[1].enabled = false;
+        let mut seq = layer("seq", SEQUENCE_KIND, 0, 0, 9);
+        seq.source = Node::new(SEQUENCE_KIND, 1)
+            .with_param(SEQUENCE_PARAM, mm_types::ParamValue::Text("s".into()));
+        let mut c = comp();
+        c.layers.push(seq);
+        (project, c)
+    }
+
+    #[test]
+    fn 隣に無効なカットがあると_roll_と_slide_は出さない() {
+        use mm_ui_layout::{body_edit, edge_edit, Mods, Part};
+        let (project, c) = disabled_between();
+        let m = timeline_model(&project, &c);
+        let alt = Mods {
+            shift: false,
+            alt: true,
+        };
+        let shift = Mods {
+            shift: true,
+            alt: false,
+        };
+        // 見えるカットは k1(0)、k3(1)、k4(2)。mm-ops の roll と slide は seq.cuts の隣（無効な k2）を動かす。
+        assert!(edge_edit(&m, 0, Some(0), Part::OutHandle, alt, 2.5).is_none());
+        assert!(edge_edit(&m, 0, Some(1), Part::InHandle, alt, 3.5).is_none());
+        assert!(body_edit(&m, 0, 1, shift, 0.5).is_none());
+        assert!(edge_edit(&m, 0, Some(1), Part::OutHandle, alt, 5.5).is_some());
+        assert!(body_edit(&m, 0, 1, Mods::default(), 0.5).is_some());
     }
 
     #[test]

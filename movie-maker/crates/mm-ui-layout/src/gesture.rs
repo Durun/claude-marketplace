@@ -72,8 +72,10 @@ pub fn edge_edit(
             shrink_limit(t - edge, side, len, frame),
         ));
     }
-    // 境目の前のカットと後ろのカットの長さの内側に収める。
+    // 境目の前のカットと後ろのカットの長さの内側に収める。間に無効なカットがあれば相手が違うので出さない。
     let (before, after, kind_cut) = match side {
+        Side::Out if bar.disabled_after => return None,
+        Side::In if bar.disabled_before => return None,
         Side::Out => (len, it.cuts.get(cut + 1)?, cut),
         Side::In => {
             let prev = it.cuts.get(cut.checked_sub(1)?)?;
@@ -121,6 +123,9 @@ pub fn body_edit(
     if !mods.shift {
         return (!bar.gap).then_some((EditKind::Slip { item, cut }, -dt));
     }
+    if bar.disabled_before || bar.disabled_after {
+        return None;
+    }
     let frame = frame_secs(model);
     let prev = it.cuts.get(cut.checked_sub(1)?)?;
     let next = it.cuts.get(cut + 1)?;
@@ -141,6 +146,7 @@ mod tests {
             start,
             end,
             gap: false,
+            ..CutBar::default()
         }
     }
 
