@@ -1,7 +1,9 @@
 //! sequence をそのまま書き出す。sequence を 1 つのレイヤーに置いただけの書き出し用のコンポジションを足す。
 //! レンダラーは sequence のノードを展開して描く（カット、トランジション、音）ので、書き出しは普通のコンポジションと同じ経路になる。
 
-use mm_doc::{Composition, Layer, Node, Project, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{
+    Composition, Framing, Layer, Node, Project, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM,
+};
 use mm_types::{CompositionId, Id, MmError, ParamValue, RationalTime, RenderTargetId, Result};
 
 /// 書き出し用のコンポジションの ID の接頭辞。
@@ -31,19 +33,21 @@ pub(crate) fn retarget_to_sequence(
     let rt = project.render_target(target)?.clone();
     let node = Node::new(SEQUENCE_KIND, 1)
         .with_param(SEQUENCE_PARAM, ParamValue::Text(sequence.to_string()));
+    let mut layer = Layer::new(
+        LAYER_ID,
+        node,
+        RationalTime::ZERO,
+        RationalTime::ZERO,
+        duration,
+    );
+    layer.framing = framing_of(&project, &rt.composition, sequence);
     project.compositions.push(Composition {
         id: id.clone(),
         width: rt.width,
         height: rt.height,
         fps: rt.fps,
         duration,
-        layers: vec![Layer::new(
-            LAYER_ID,
-            node,
-            RationalTime::ZERO,
-            RationalTime::ZERO,
-            duration,
-        )],
+        layers: vec![layer],
         markers: Vec::new(),
     });
     let t = project
@@ -55,10 +59,36 @@ pub(crate) fn retarget_to_sequence(
     Ok((project, id))
 }
 
+/// `sequence` を置いたレイヤーの見せ方（再フレーミングと字幕の置き場所）。
+/// レンダーターゲットが描いていたコンポジションに 1 つあればそれを、無ければプロジェクト全体で 1 つだけのものを使う。
+/// ショートの見せ方はショートのコンポジションのレイヤーにあり、どれを写すか決まらないときは変形なしにする。
+fn framing_of(project: &Project, current: &CompositionId, sequence: &SequenceId) -> Framing {
+    let places = |c: &Composition| -> Vec<Framing> {
+        c.layers
+            .iter()
+            .filter(|l| {
+                l.source.kind == SEQUENCE_KIND
+                    && l.source.text_param(SEQUENCE_PARAM) == Some(sequence.as_str())
+            })
+            .map(|l| l.framing.clone())
+            .collect()
+    };
+    let only = |v: Vec<Framing>| (v.len() == 1).then(|| v.into_iter().next()).flatten();
+    let in_current = project
+        .compositions
+        .iter()
+        .find(|c| c.id == *current)
+        .map(places)
+        .and_then(only);
+    in_current
+        .or_else(|| only(project.compositions.iter().flat_map(places).collect()))
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_doc::{Cut, RenderTarget, Sequence};
+    use mm_doc::{Cut, CutReframe, Param, RenderTarget, Sequence, Transform};
     use mm_types::Rational;
 
     fn project() -> Project {
@@ -100,6 +130,62 @@ mod tests {
         assert_eq!((c.width, c.height), (640, 360));
         assert_eq!(p.render_target(&Id::new("t")).unwrap().composition, comp);
         assert_eq!(c.layers[0].source.kind, SEQUENCE_KIND);
+    }
+
+    /// `s` を置き、カット `a` を再フレーミングしたレイヤーを持つコンポジション。
+    fn short_comp(id: &str, x: f64) -> Composition {
+        let node =
+            Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s".into()));
+        let mut layer = Layer::new(
+            "l",
+            node,
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(5),
+        );
+        let transform = Transform {
+            position: Param::constant(ParamValue::Vec2([x, 0.0])),
+            ..Transform::default()
+        };
+        layer.framing.cuts.push(CutReframe {
+            cut: Id::new("a"),
+            transform,
+        });
+        Composition {
+            id: Id::new(id),
+            width: 360,
+            height: 640,
+            fps: Rational::integer(30),
+            duration: RationalTime::seconds(5),
+            layers: vec![layer],
+            markers: Vec::new(),
+        }
+    }
+
+    fn exported_framing(p: Project) -> Framing {
+        let (p, comp) = retarget_to_sequence(p, &Id::new("t"), &Id::new("s")).unwrap();
+        p.composition(&comp).unwrap().layers[0].framing.clone()
+    }
+
+    #[test]
+    fn ショートの再フレーミングを写す() {
+        let mut p = project();
+        p.compositions.push(short_comp("short", 40.0));
+        let framing = exported_framing(p);
+        assert_eq!(framing.cuts.len(), 1);
+        assert_eq!(framing.cuts[0].cut.as_str(), "a");
+    }
+
+    #[test]
+    fn 置き場所が複数ならレンダーターゲットのコンポジションのものを写す() {
+        let mut p = project();
+        p.compositions.push(short_comp("short-a", 10.0));
+        p.compositions.push(short_comp("short-b", 99.0));
+        assert_eq!(exported_framing(p.clone()), Framing::default());
+        p.render_targets[0].composition = Id::new("short-b");
+        let framing = exported_framing(p);
+        let expected = Param::constant(ParamValue::Vec2([99.0, 0.0]));
+        assert_eq!(framing.cuts[0].transform.position, expected);
     }
 
     #[test]

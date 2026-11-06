@@ -1,10 +1,12 @@
 //! 並行の書き出しと 2 パスの書き出しのテスト。
 use super::*;
 use mm_decode_api::EncodeReport;
+use mm_decode_api::{EncodeSettings, Encoder};
 use mm_runtime::{assemble, RuntimeConfig};
 use mm_testkit::decode::{frame_index_of, SampleMedia};
 use mm_testkit::fixtures::{vertical_project, VERTICAL_DURATION_SECONDS};
 use mm_types::Id;
+use mm_types::RgbaImage;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -251,15 +253,68 @@ fn 二パスのエンコーダーには同じ映像を_2_回押し_進み具合�
 }
 
 #[test]
-fn プロレスと_dnxhr_は_mov_以外の出力先を書き出す前に断る() {
+fn コーデックの入れ物と合わない拡張子は書き出す前に断る() {
     for (codec, name, ok) in [
         ("prores_422hq", "a.mp4", false),
         ("dnxhr_hq", "a.mxf", false),
         ("prores_4444", "a.MOV", true),
         ("h264", "a.mp4", true),
-        ("h264_nvenc", "a.mov", true),
+        ("h264_2pass", "a.M4V", true),
+        ("hevc_nvenc", "a.mp4", true),
+        ("h264_nvenc", "a.mov", false),
+        ("libx264", "a.mkv", false),
+        ("hevc_nvenc", "a", false),
+        ("sample", "a.json", true),
     ] {
         let r = check_container(codec, Path::new(name));
         assert_eq!(r.is_ok(), ok, "{codec} {name}");
+    }
+}
+
+#[test]
+fn 音を短い区間ずつ混ぜても_1_回で混ぜたのと同じ() {
+    let (project, comp, _) = vertical_project(&SampleMedia::default(), &temp("unused.json"));
+    let range = project.composition(&comp).unwrap().range().unwrap();
+    let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+    let whole = engine.render_audio(&project, &comp, range).unwrap();
+    let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+    let step = mm_types::RationalTime::new(1, 3).unwrap();
+    let pieces = passes::mix_audio(&mut engine, &project, &comp, range, step, &|| false)
+        .unwrap()
+        .unwrap();
+    assert_eq!(pieces.samples.len(), whole.samples.len());
+    assert_eq!(pieces, whole);
+}
+
+#[test]
+fn 止める旗が立てば音を混ぜずに戻る() {
+    let (project, comp, _) = vertical_project(&SampleMedia::default(), &temp("unused.json"));
+    let range = project.composition(&comp).unwrap().range().unwrap();
+    let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
+    let step = mm_types::RationalTime::new(1, 3).unwrap();
+    let mixed = passes::mix_audio(&mut engine, &project, &comp, range, step, &|| true).unwrap();
+    assert!(mixed.is_none());
+}
+
+#[test]
+fn nvenc_は並行の指定があっても並行にしない() {
+    let media = SampleMedia::default();
+    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let range = project.composition(&comp).unwrap().range().unwrap();
+    let control = ExportControl::default();
+    let plan = Plan {
+        target: &Id::new("mp4"),
+        composition: &comp,
+        range,
+        control: &control,
+        parallel: 4,
+        parallel_min_frames: Some(1),
+        pass: PassPosition { index: 1, of: 1 },
+    };
+    let mut settings = settings_of(&media);
+    assert!(plan.concurrent(&settings), "モックのコーデックは並行にする");
+    for codec in ["h264_nvenc", "hevc_nvenc"] {
+        settings.codec = codec.into();
+        assert!(!plan.concurrent(&settings), "{codec}");
     }
 }

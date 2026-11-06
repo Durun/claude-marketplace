@@ -1,0 +1,703 @@
+{
+  "schema_version": 2,
+  "assets": [
+    {
+      "id": "clip",
+      "path": "out/long-1080p60.mp4",
+      "content_hash": "perf-export-long-1080p60",
+      "color_space": "bt709",
+      "duration": {
+        "num": 60,
+        "den": 1
+      },
+      "fps": {
+        "num": 60,
+        "den": 1
+      },
+      "timebase_offset": {
+        "num": 0,
+        "den": 1
+      }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main",
+      "width": 1920,
+      "height": 1080,
+      "fps": {
+        "num": 60,
+        "den": 1
+      },
+      "duration": {
+        "num": 60,
+        "den": 1
+      },
+      "layers": [
+        {
+          "id": "l-cut-0",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 0,
+            "den": 1
+          },
+          "in": {
+            "num": 0,
+            "den": 1
+          },
+          "out": {
+            "num": 5,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-1",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 5,
+            "den": 1
+          },
+          "in": {
+            "num": 35,
+            "den": 1
+          },
+          "out": {
+            "num": 40,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-2",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 10,
+            "den": 1
+          },
+          "in": {
+            "num": 10,
+            "den": 1
+          },
+          "out": {
+            "num": 15,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-3",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 15,
+            "den": 1
+          },
+          "in": {
+            "num": 45,
+            "den": 1
+          },
+          "out": {
+            "num": 50,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-4",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 20,
+            "den": 1
+          },
+          "in": {
+            "num": 20,
+            "den": 1
+          },
+          "out": {
+            "num": 25,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-5",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 25,
+            "den": 1
+          },
+          "in": {
+            "num": 55,
+            "den": 1
+          },
+          "out": {
+            "num": 60,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-6",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 30,
+            "den": 1
+          },
+          "in": {
+            "num": 30,
+            "den": 1
+          },
+          "out": {
+            "num": 35,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-7",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 35,
+            "den": 1
+          },
+          "in": {
+            "num": 5,
+            "den": 1
+          },
+          "out": {
+            "num": 10,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-8",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 40,
+            "den": 1
+          },
+          "in": {
+            "num": 40,
+            "den": 1
+          },
+          "out": {
+            "num": 45,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-9",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 45,
+            "den": 1
+          },
+          "in": {
+            "num": 15,
+            "den": 1
+          },
+          "out": {
+            "num": 20,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-10",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 50,
+            "den": 1
+          },
+          "in": {
+            "num": 50,
+            "den": 1
+          },
+          "out": {
+            "num": 55,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        },
+        {
+          "id": "l-cut-11",
+          "source": {
+            "kind": "footage",
+            "version": 1,
+            "inputs": [],
+            "params": {
+              "asset": {
+                "value": {
+                  "type": "asset_ref",
+                  "value": "clip"
+                },
+                "keyframes": []
+              }
+            }
+          },
+          "start": {
+            "num": 55,
+            "den": 1
+          },
+          "in": {
+            "num": 25,
+            "den": 1
+          },
+          "out": {
+            "num": 30,
+            "den": 1
+          },
+          "opacity": {
+            "value": {
+              "type": "number",
+              "value": 1.0
+            },
+            "keyframes": []
+          },
+          "audio": {
+            "role": "voice",
+            "gain_db": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            },
+            "pan": {
+              "value": {
+                "type": "number",
+                "value": 0.0
+              },
+              "keyframes": []
+            }
+          },
+          "lock": false
+        }
+      ]
+    }
+  ],
+  "render_targets": [
+    {
+      "id": "mp4",
+      "composition": "main",
+      "width": 1920,
+      "height": 1080,
+      "fps": {
+        "num": 60,
+        "den": 1
+      },
+      "codec": "h264_nvenc",
+      "output_path": ".mm/out/perf-export.mp4",
+      "loudness_lufs": null
+    }
+  ]
+}

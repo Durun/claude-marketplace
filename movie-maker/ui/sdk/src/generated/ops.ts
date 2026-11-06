@@ -55,7 +55,7 @@ export type Cut = {
   "in": RationalTime;
   /** 参照・複製の元のカット。ショートで in/out を上書きしたときの対応に使う。 */
   "origin"?: string | null;
-  /** 複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。 */
+  /** ショートで、分けたときの元のカットの値。元が変わったか（参照なら元を割ったか）の比べ先。 */
   "origin_base"?: CutBase | null;
   /** 素材の時間軸での出（含まない）。`in < out`。 */
   "out": RationalTime;

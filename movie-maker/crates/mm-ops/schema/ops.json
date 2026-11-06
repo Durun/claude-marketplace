@@ -1653,7 +1653,7 @@
           "default": null
         },
         "origin_base": {
-          "description": "複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。",
+          "description": "ショートで、分けたときの元のカットの値。元が変わったか（参照なら元を割ったか）の比べ先。",
           "anyOf": [
             {
               "$ref": "#/$defs/CutBase"

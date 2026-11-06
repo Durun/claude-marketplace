@@ -204,6 +204,46 @@ fn target_bit_rate(size: Size, fps: f64, bits_per_pixel: f64) -> usize {
     (f64::from(size.width) * f64::from(size.height) * fps * bits_per_pixel) as usize
 }
 
+/// 画の大きさ、画素形式、時間の単位、色（Rec.709・tv レンジ）を書く。
+fn describe_picture(
+    enc: &mut codec::encoder::video::Video,
+    size: Size,
+    input: VideoInput,
+    time_base: Rational,
+) {
+    enc.set_width(size.width);
+    enc.set_height(size.height);
+    enc.set_format(pixel_of(input));
+    enc.set_time_base(time_base);
+    enc.set_frame_rate(Some(Rational::new(
+        time_base.denominator(),
+        time_base.numerator(),
+    )));
+    enc.set_colorspace(Space::BT709);
+    enc.set_color_range(Range::MPEG);
+    enc.set_color_primaries(ff::color::Primaries::BT709);
+    enc.set_color_transfer_characteristic(TransferCharacteristic::BT709);
+}
+
+/// パス（1 パス、2 パスの 1 回目と 2 回目）とグローバルヘッダーのフラグ、統計ファイルのオプション。
+fn pass_options(pass: &Pass, global_header: bool) -> (codec::Flags, ff::Dictionary<'static>) {
+    let mut flags = codec::Flags::empty();
+    if global_header {
+        flags |= codec::Flags::GLOBAL_HEADER;
+    }
+    let mut options = ff::Dictionary::new();
+    let stats = match pass {
+        Pass::Single => None,
+        Pass::First(stats) => Some((codec::Flags::PASS1, stats)),
+        Pass::Second(stats) => Some((codec::Flags::PASS2, stats)),
+    };
+    if let Some((flag, stats)) = stats {
+        flags |= flag;
+        options.set("stats", &stats.to_string_lossy());
+    }
+    (flags, options)
+}
+
 /// エンコーダーを Rec.709・tv レンジで開く。スレッド数は自動（0）にする。
 fn open_encoder(
     codec: ff::Codec,
@@ -224,34 +264,8 @@ fn open_encoder(
         .encoder()
         .video()
         .map_err(|e| MmError::Internal(format!("映像のエンコーダー: {e}")))?;
-    enc.set_width(size.width);
-    enc.set_height(size.height);
-    enc.set_format(pixel_of(spec.input));
-    enc.set_time_base(time_base);
-    enc.set_frame_rate(Some(Rational::new(
-        time_base.denominator(),
-        time_base.numerator(),
-    )));
-    enc.set_colorspace(Space::BT709);
-    enc.set_color_range(Range::MPEG);
-    enc.set_color_primaries(ff::color::Primaries::BT709);
-    enc.set_color_transfer_characteristic(TransferCharacteristic::BT709);
-    let mut flags = codec::Flags::empty();
-    if global_header {
-        flags |= codec::Flags::GLOBAL_HEADER;
-    }
-    let mut options = ff::Dictionary::new();
-    match pass {
-        Pass::Single => {}
-        Pass::First(stats) => {
-            flags |= codec::Flags::PASS1;
-            options.set("stats", &stats.to_string_lossy());
-        }
-        Pass::Second(stats) => {
-            flags |= codec::Flags::PASS2;
-            options.set("stats", &stats.to_string_lossy());
-        }
-    }
+    describe_picture(&mut enc, size, spec.input, time_base);
+    let (flags, mut options) = pass_options(pass, global_header);
     enc.set_flags(flags);
     match &spec.rate {
         Rate::Quality(key, value) => options.set(key, value),

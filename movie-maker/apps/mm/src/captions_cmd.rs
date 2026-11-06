@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use mm_doc::Project;
 use mm_export::{CaptionWord, TranscriptWords};
 use mm_store::Store;
-use mm_types::{Id, Result};
+use mm_types::{Id, MmError, Result};
 
 /// `mm subtitles` の引数。
 #[derive(clap::Args)]
@@ -31,11 +31,14 @@ pub enum Format {
 }
 
 /// 素材ごとの字幕にする単語。消した単語は除き、直した文字を使う。
-/// フォルダー（`project.mmdb` を持つもの）でなければ、文字起こしは無いので空。
+/// 文字起こしは `project.mmdb` にしか無いので、フォルダーでなければ拒否する（黙って字幕なしにしない）。
 pub fn transcript_words(path: &Path, project: &Project) -> Result<TranscriptWords> {
     let mut out = TranscriptWords::new();
     if !path.is_dir() {
-        return Ok(out);
+        return Err(MmError::InvalidArgument(format!(
+            "字幕を作るには文字起こしの DB（project.mmdb のあるフォルダー）が要るが、{} はフォルダーでない",
+            path.display()
+        )));
     }
     let store = Store::open_read_only(path)?;
     for asset in &project.assets {
@@ -76,4 +79,16 @@ pub fn subtitles(args: &SubtitlesArgs) -> Result<()> {
         eprintln!("字幕にできる文字起こしが無い（mm ingest で文字起こしを入れる）");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 文字起こしの_db_の無いプロジェクトは字幕の単語を読めず拒否する() {
+        let json = std::env::temp_dir().join("mm_captions_cmd_no_db.json");
+        let err = transcript_words(&json, &Project::new()).unwrap_err();
+        assert!(matches!(err, MmError::InvalidArgument(_)), "{err}");
+    }
 }

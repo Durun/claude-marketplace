@@ -306,6 +306,23 @@ fn ffprobe_json(path: &Path, args: &[&str]) -> Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
+/// ストリーム（`v` か `a`）の始まりの時刻（秒）。
+fn stream_start(path: &Path, kind: &str) -> f64 {
+    ffprobe_json(
+        path,
+        &[
+            "-select_streams",
+            kind,
+            "-show_entries",
+            "stream=start_time",
+        ],
+    )["streams"][0]["start_time"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
 #[test]
 fn 字幕とチャプターとラウドネスが書き出しの時間軸と目標に合う() {
     let tmp = tempfile::tempdir().unwrap();
@@ -342,6 +359,8 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
     let chapters = ffprobe_json(&yt, &["-show_chapters"]);
     let chapters = chapters["chapters"].as_array().unwrap();
     assert_eq!(chapters.len(), 3, "{chapters:?}");
+    // チャプターは映像と同じ時間軸に置く。映像の始まりがずれていれば、同じだけずれていないと話題の頭と合わない。
+    let video_start = stream_start(&yt, "v");
     let starts = [0.0, timeline_start(0), timeline_start(40)];
     for (c, (start, title)) in chapters
         .iter()
@@ -349,8 +368,8 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
     {
         let at: f64 = c["start_time"].as_str().unwrap().parse().unwrap();
         assert!(
-            (at - start).abs() < TIME_TOLERANCE,
-            "チャプター {title} の始まり {at}"
+            (at - video_start - start).abs() < TIME_TOLERANCE,
+            "チャプター {title} の始まり {at}（映像の始まり {video_start}）"
         );
         assert_eq!(c["tags"]["title"], title);
     }
@@ -371,15 +390,8 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
         .arg(&tv)
         .args(["-map", "0:s:0"])
         .arg(&extracted));
-    // mp4 は映像の先頭の遅れ（B フレーム）の分だけ全体をずらすので、映像の始まりを引いて比べる。
-    let shift = ffprobe_json(
-        &tv,
-        &["-select_streams", "v", "-show_entries", "stream=start_time"],
-    )["streams"][0]["start_time"]
-        .as_str()
-        .unwrap()
-        .parse::<f64>()
-        .unwrap();
+    // 映像の始まりがずれていても字幕が同じだけずれていればよいので、映像の始まりを引いて比べる。
+    let shift = stream_start(&tv, "v");
     let embedded = parse_srt(&std::fs::read_to_string(&extracted).unwrap());
     assert_eq!(embedded.len(), srt.len(), "トラックの字幕の数が SRT と違う");
     for (a, b) in embedded.iter().zip(&srt) {

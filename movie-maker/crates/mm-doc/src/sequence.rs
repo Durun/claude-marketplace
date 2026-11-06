@@ -58,7 +58,7 @@ pub struct Cut {
     /// 参照のショートで、元のカットから上書きした所。上書きしていない所は元のカットに従う。
     #[serde(default)]
     pub overrides: CutOverrides,
-    /// 複製のショートで、複製したときの元のカットの値。元が変わったかの比べ先。
+    /// ショートで、分けたときの元のカットの値。元が変わったか（参照なら元を割ったか）の比べ先。
     #[serde(default)]
     pub origin_base: Option<CutBase>,
 }

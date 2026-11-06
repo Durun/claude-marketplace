@@ -35,10 +35,12 @@ impl Scene {
         format!("{self:?}").to_lowercase()
     }
 
-    /// 既定で使うプロジェクト。`startup` と `export` は素材つきの縦の 1 本、描画のシナリオは素材の要らないフィクスチャ。
+    /// 既定で使うプロジェクト。`startup` は素材つきの 1 本、`export` は 1080p60 の素材を 12 カットに切ったもの、
+    /// 描画のシナリオは素材の要らないフィクスチャ。
     pub fn default_project(self) -> &'static str {
         match self {
             Scene::Playback | Scene::Scrub => "fixtures/projects/perf-preview/project.json",
+            Scene::Export => "fixtures/projects/perf-export/project.json",
             _ => "fixtures/projects/stage0/project.json",
         }
     }

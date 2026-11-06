@@ -78,28 +78,51 @@ pub(crate) fn prepare(
     Ok(out)
 }
 
-/// `<出力>.srt`、`<出力>.vtt`、`<出力>.chapters.txt` のうち要るものを書く。
+/// 字幕の形式の文字列を作る関数。
+type FormatCues = fn(&[SubtitleCue]) -> String;
+/// 書き出しの隣に置く字幕の拡張子と、その形式の文字列を作る関数。
+const SUBTITLE_FORMATS: [(&str, FormatCues); 2] = [("srt", srt), ("vtt", vtt)];
+/// 書き出しの隣に置くチャプターの文字列の拡張子。
+const CHAPTERS_EXT: &str = "chapters.txt";
+
+/// `<出力>.srt`、`<出力>.vtt`、`<出力>.chapters.txt` のうち要るものを書き、要らなくなった前回のものを消す。
+/// 前回の字幕が残ると今回の書き出しと食い違うので、自分が作る名前に完全に一致するファイルだけ消して警告に出す。
 pub(crate) fn write_sidecars(prepared: &Prepared, output: &Path) -> Result<DeliveryReport> {
     let mut report = DeliveryReport {
         warnings: prepared.warnings.clone(),
         ..DeliveryReport::default()
     };
-    if !prepared.sidecar_cues.is_empty() {
-        for (ext, text) in [
-            ("srt", srt(&prepared.sidecar_cues)),
-            ("vtt", vtt(&prepared.sidecar_cues)),
-        ] {
-            let path = output.with_extension(ext);
-            std::fs::write(&path, text)?;
-            report.subtitle_files.push(path);
+    let cues = &prepared.sidecar_cues;
+    for (ext, format) in SUBTITLE_FORMATS {
+        let path = output.with_extension(ext);
+        if cues.is_empty() {
+            remove_stale(&path, &mut report.warnings)?;
+            continue;
         }
+        std::fs::write(&path, format(cues))?;
+        report.subtitle_files.push(path);
     }
-    if let Some(text) = &prepared.chapters_text {
-        let path = output.with_extension("chapters.txt");
-        std::fs::write(&path, text)?;
-        report.chapters_file = Some(path);
+    let path = output.with_extension(CHAPTERS_EXT);
+    match &prepared.chapters_text {
+        Some(text) => {
+            std::fs::write(&path, text)?;
+            report.chapters_file = Some(path);
+        }
+        None => remove_stale(&path, &mut report.warnings)?,
     }
     Ok(report)
+}
+
+/// 前回の書き出しが置いたファイルがあれば消し、警告に出す。
+fn remove_stale(path: &Path, warnings: &mut Vec<String>) -> Result<()> {
+    if path.is_file() {
+        std::fs::remove_file(path)?;
+        warnings.push(format!(
+            "今回は出さないので、前回の {} を消した",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 /// 目標のラウドネスがあれば、音を正規化する（実装は `Engine::mixers()` の `loudness_normalizer`）。

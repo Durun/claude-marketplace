@@ -3,7 +3,9 @@
 //! 受け取りが `window` 個より先へ進めないよう、ワーカーは受け取りの番号 + `window` 未満のチャンクだけを取る。
 //! 作った結果が溜まる量を `window` と同時に作る数で抑えるため。どれかが失敗したら残りを止め、最初のエラーを返す。
 
+use std::any::Any;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::{Condvar, Mutex};
 
 use mm_types::{MmError, Result};
@@ -90,6 +92,35 @@ impl<T> Drop for StopOnDrop<'_, T> {
     }
 }
 
+/// 1 本のワーカーの仕事。取れるチャンクが無くなるか、失敗するまで作る。
+fn work<W, T>(
+    shared: &Shared<T>,
+    chunks: usize,
+    window: usize,
+    make_worker: &impl Fn() -> Result<W>,
+    render: &impl Fn(&mut W, usize) -> Result<T>,
+) {
+    let mut worker = match make_worker() {
+        Ok(w) => w,
+        Err(e) => return shared.fail(e),
+    };
+    while let Some(index) = shared.claim(chunks, window) {
+        match render(&mut worker, index) {
+            Ok(value) => shared.publish(index, value),
+            Err(e) => return shared.fail(e),
+        }
+    }
+}
+
+/// panic の値から文言を取り出す。`panic!` は `&str` か `String` を載せる。
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "文言なし".into())
+}
+
 /// `chunks` 個のチャンクを `workers` 本のスレッドで作り、`consume` に番号順に渡す。
 ///
 /// 各ワーカーは `make_worker` で自分の状態（レンダラーなど）を作り、`render` でチャンクを作る。
@@ -117,15 +148,14 @@ pub fn run_ordered<W, T: Send>(
     std::thread::scope(|scope| {
         for _ in 0..workers.max(1) {
             scope.spawn(|| {
-                let mut worker = match make_worker() {
-                    Ok(w) => w,
-                    Err(e) => return shared.fail(e),
-                };
-                while let Some(index) = shared.claim(chunks, window) {
-                    match render(&mut worker, index) {
-                        Ok(value) => shared.publish(index, value),
-                        Err(e) => return shared.fail(e),
-                    }
+                // panic を止めずに抜けると受け取る側が condvar で待ち続けるため、エラーに変えて止める
+                let body =
+                    AssertUnwindSafe(|| work(&shared, chunks, window, &make_worker, &render));
+                if let Err(payload) = std::panic::catch_unwind(body) {
+                    shared.fail(MmError::Internal(format!(
+                        "並行の書き出しのワーカーが panic した: {}",
+                        panic_message(payload.as_ref())
+                    )));
                 }
             });
         }
@@ -232,6 +262,24 @@ mod tests {
             },
         );
         assert!(matches!(r, Err(MmError::Internal(m)) if m == "止める"));
+    }
+
+    #[test]
+    fn ワーカーが_panic_してもエラーで戻る() {
+        let r = run_ordered(
+            20,
+            4,
+            8,
+            || Ok(()),
+            |_, i| {
+                if i == 5 {
+                    panic!("区間 5 で落ちる");
+                }
+                Ok(i)
+            },
+            |_, _| Ok(()),
+        );
+        assert!(matches!(r, Err(MmError::Internal(m)) if m.contains("区間 5 で落ちる")));
     }
 
     #[test]

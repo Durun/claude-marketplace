@@ -51,6 +51,7 @@ impl EncoderFactory for AutoEncoderFactory {
             candidates: self.candidates.clone(),
             extras: None,
             inner: None,
+            chosen: None,
         }))
     }
 }
@@ -61,23 +62,25 @@ struct AutoEncoder {
     /// `begin` の前に渡された字幕とチャプター。選んだ実装へ渡す。
     extras: Option<ExtraTracks>,
     inner: Option<Box<dyn Encoder>>,
+    /// `begin` で開いた実装とコーデック（`実装/コーデック`）。
+    chosen: Option<String>,
 }
 
 impl AutoEncoder {
-    /// `codec` を扱う実装を前から順に開く。全部だめなら最後のエラー。
-    fn open(&self, settings: &EncodeSettings, codec: &str) -> Result<Box<dyn Encoder>> {
+    /// `codec` を扱う実装を前から順に開き、開けた実装の名前と組で返す。全部だめなら最後のエラー。
+    fn open(
+        &self,
+        settings: &EncodeSettings,
+        codec: &str,
+    ) -> Result<(Box<dyn Encoder>, &'static str)> {
         let settings = EncodeSettings {
             codec: codec.to_owned(),
             ..settings.clone()
         };
         let mut last = MmError::Unsupported(format!("コーデック {codec} を扱える実装が無い"));
         for factory in self.candidates.iter().filter(|f| f.supports(codec)) {
-            let mut encoder = factory.create()?;
-            if let Some(extras) = &self.extras {
-                encoder.set_extras(extras.clone())?;
-            }
-            match encoder.begin(&settings) {
-                Ok(()) => return Ok(encoder),
+            match self.try_open(factory.as_ref(), &settings) {
+                Ok(encoder) => return Ok((encoder, factory.id())),
                 Err(e) => {
                     tracing::warn!(encoder = factory.id(), codec, error = %e, "エンコーダーを開けない。次の実装を試す");
                     last = e;
@@ -85,6 +88,20 @@ impl AutoEncoder {
             }
         }
         Err(last)
+    }
+
+    /// 1 つの実装で作り、字幕とチャプターを渡して開く。どこで失敗しても次の候補へ進めるよう、まとめて 1 つの結果にする。
+    fn try_open(
+        &self,
+        factory: &dyn EncoderFactory,
+        settings: &EncodeSettings,
+    ) -> Result<Box<dyn Encoder>> {
+        let mut encoder = factory.create()?;
+        if let Some(extras) = &self.extras {
+            encoder.set_extras(extras.clone())?;
+        }
+        encoder.begin(settings)?;
+        Ok(encoder)
     }
 
     fn inner_mut(&mut self, call: &str) -> Result<&mut Box<dyn Encoder>> {
@@ -108,15 +125,22 @@ impl Encoder for AutoEncoder {
             return Err(MmError::InvalidArgument("begin を 2 回呼んだ".into()));
         }
         let first = self.open(settings, &settings.codec);
-        self.inner = Some(match (first, fallback_of(&settings.codec)) {
-            (Ok(encoder), _) => encoder,
+        let (encoder, id, codec) = match (first, fallback_of(&settings.codec)) {
+            (Ok((encoder, id)), _) => (encoder, id, settings.codec.as_str()),
             (Err(e), Some(fallback)) => {
                 tracing::warn!(codec = %settings.codec, fallback, error = %e, "NVENC を使えないので libx264 で書く");
-                self.open(settings, fallback)?
+                let (encoder, id) = self.open(settings, fallback)?;
+                (encoder, id, fallback)
             }
             (Err(e), None) => return Err(e),
-        });
+        };
+        self.chosen = Some(format!("{id}/{codec}"));
+        self.inner = Some(encoder);
         Ok(())
+    }
+
+    fn implementation(&self) -> Option<String> {
+        self.chosen.clone()
     }
 
     fn passes(&self) -> u32 {
@@ -190,5 +214,109 @@ mod tests {
     fn 前の実装が扱うコーデックは前の実装を使う() {
         let both = auto(&[&["h264_nvenc"], &["h264"]]);
         assert!(both.supports("h264_nvenc") && both.supports("h264"));
+    }
+
+    /// 字幕を受けるかと、開けるかを決められる、書かないエンコーダー。
+    struct Fake {
+        extras_ok: bool,
+        begin_ok: bool,
+    }
+
+    impl Encoder for Fake {
+        fn set_extras(&mut self, _: ExtraTracks) -> Result<()> {
+            self.extras_ok
+                .then_some(())
+                .ok_or_else(|| MmError::Unsupported("字幕を入れられない".into()))
+        }
+        fn begin(&mut self, _: &EncodeSettings) -> Result<()> {
+            self.begin_ok
+                .then_some(())
+                .ok_or_else(|| MmError::Unsupported("開けない".into()))
+        }
+        fn push_frames(&mut self, _: &[RgbaImage]) -> Result<()> {
+            Ok(())
+        }
+        fn push_audio(&mut self, _: &AudioBlock) -> Result<()> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<EncodeReport> {
+            Ok(EncodeReport {
+                frames: 0,
+                audio_frames: 0,
+                bytes_written: 0,
+            })
+        }
+    }
+
+    struct FakeFactory {
+        id: &'static str,
+        codec: &'static str,
+        extras_ok: bool,
+        begin_ok: bool,
+    }
+
+    impl EncoderFactory for FakeFactory {
+        fn id(&self) -> &'static str {
+            self.id
+        }
+        fn supports(&self, codec: &str) -> bool {
+            codec == self.codec
+        }
+        fn create(&self) -> Result<Box<dyn Encoder>> {
+            Ok(Box::new(Fake {
+                extras_ok: self.extras_ok,
+                begin_ok: self.begin_ok,
+            }))
+        }
+    }
+
+    fn fake(
+        id: &'static str,
+        codec: &'static str,
+        extras_ok: bool,
+        begin_ok: bool,
+    ) -> Arc<dyn EncoderFactory> {
+        Arc::new(FakeFactory {
+            id,
+            codec,
+            extras_ok,
+            begin_ok,
+        })
+    }
+
+    fn settings(codec: &str) -> EncodeSettings {
+        EncodeSettings {
+            size: mm_types::Size::new(16, 16),
+            fps: mm_types::Rational::integer(30),
+            codec: codec.into(),
+            output_path: "out.mp4".into(),
+            audio: None,
+        }
+    }
+
+    #[test]
+    fn 字幕を受けない候補は飛ばして次の候補で書き_使った実装を報告する() {
+        let factory = AutoEncoderFactory::new(vec![
+            fake("nvenc", "h264_nvenc", false, true),
+            fake("ffmpeg", "h264", true, true),
+        ]);
+        let mut encoder = factory.create().unwrap();
+        encoder.set_extras(ExtraTracks::default()).unwrap();
+        encoder.begin(&settings("h264_nvenc")).unwrap();
+        assert_eq!(encoder.implementation().as_deref(), Some("ffmpeg/h264"));
+    }
+
+    #[test]
+    fn 頼んだコーデックで開けたらその実装を報告する() {
+        let factory = AutoEncoderFactory::new(vec![
+            fake("nvenc", "h264_nvenc", true, true),
+            fake("ffmpeg", "h264", true, true),
+        ]);
+        let mut encoder = factory.create().unwrap();
+        encoder.begin(&settings("h264_nvenc")).unwrap();
+        assert_eq!(
+            encoder.implementation().as_deref(),
+            Some("nvenc/h264_nvenc")
+        );
     }
 }

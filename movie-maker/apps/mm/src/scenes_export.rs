@@ -73,14 +73,19 @@ pub fn export(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
     Ok(items)
 }
 
-/// コンポジションを `seconds` 秒にする。素材のカット（1 秒）を並べて繰り返し、文字は全長に伸ばす。
+/// コンポジションを `seconds` 秒にする。元が `seconds` 秒以上なら切り詰めるだけにする（カットごとに素材の時刻が違う
+/// フィクスチャをそのまま測る）。短ければ素材のカットを並べて繰り返し、文字は全長に伸ばす。
 /// 1 秒の素材では並行のチャンクが 1 つしかできず、立ち上がりの時間が数字を支配するため。
 fn lengthen(project: &mut mm_doc::Project, seconds: f64) -> Result<()> {
     let whole = seconds.max(1.0).round() as i64;
     let Some(comp) = project.compositions.first_mut() else {
         return Ok(());
     };
+    let covered = comp.duration >= RationalTime::seconds(whole);
     comp.duration = RationalTime::seconds(whole);
+    if covered {
+        return Ok(());
+    }
     let layers = std::mem::take(&mut comp.layers);
     for layer in layers {
         if layer.source.kind == FOOTAGE_KIND {
@@ -118,8 +123,11 @@ fn measure(
     let work = args.out_dir.join("export-work");
     let (mut fps, mut elapsed_ms) = (Vec::new(), Vec::new());
     for i in 0..args.repeat {
-        // ProRes と DNxHR は .mov でないと断られる。muxer は拡張子ではなくコーデックで決まるので、全部 .mov にする。
-        let output = work.join(format!("run{i}.mov"));
+        // 書き出しは入れ物と合わない拡張子を断るので、ProRes と DNxHR は .mov、ほかは .mp4 にする。
+        let mov = variant
+            .codec
+            .is_some_and(|c| c.starts_with("prores") || c.starts_with("dnx"));
+        let output = work.join(format!("run{i}.{}", if mov { "mov" } else { "mp4" }));
         let summary = export_project(
             engine,
             project,
