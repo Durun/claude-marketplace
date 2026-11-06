@@ -122,7 +122,7 @@ const shootDeliver = async (browser) => {
   const outDir = here("../panels/deliver/screenshots/");
   await mkdir(outDir, { recursive: true });
   for (const theme of ["light", "dark"]) {
-    const page = await browser.newPage({ viewport: { width: 322, height: 900 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: { width: 282, height: 900 }, deviceScaleFactor: 2 });
     const shot = async (name) => {
       await page.mouse.move(0, 0);
       await page.screenshot({ path: `${outDir}deliver-${theme}-${name}.png` });

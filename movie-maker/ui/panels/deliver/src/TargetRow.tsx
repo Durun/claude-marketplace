@@ -30,17 +30,7 @@ export const TargetRow = ({ target, specs, overview, sequence, position, onToggl
       {position !== null && <span class="mm-deliver-order">{position}</span>}
     </label>
     <div class="mm-deliver-row-body">
-      <div class="mm-deliver-row-head">
-        <strong class="mm-deliver-name">{target.id}</strong>
-        <span class="mm-deliver-row-actions">
-          <button type="button" class="mm-deliver-button" onClick={onEdit}>
-            Edit
-          </button>
-          <button type="button" class="mm-deliver-button" onClick={onRemove}>
-            Remove
-          </button>
-        </span>
-      </div>
+      <strong class="mm-deliver-name">{target.id}</strong>
       <div class="mm-deliver-meta">
         {target.width}×{target.height} · {formatFps(target.fps)} · {target.codec}
       </div>
@@ -53,6 +43,14 @@ export const TargetRow = ({ target, specs, overview, sequence, position, onToggl
           {f.label}: {f.text}
         </div>
       ))}
+      <div class="mm-deliver-row-actions">
+        <button type="button" class="mm-deliver-button" onClick={onEdit}>
+          Edit
+        </button>
+        <button type="button" class="mm-deliver-button" onClick={onRemove}>
+          Remove
+        </button>
+      </div>
     </div>
   </li>
 );

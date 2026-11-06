@@ -82,7 +82,7 @@ if (root) {
   root.style.boxSizing = "border-box";
   root.style.flexDirection = "column";
   root.style.padding = "10px";
-  root.style.width = "300px";
+  root.style.width = "260px";
   root.style.height = "100vh";
   render(<DeliverPanel api={api} />, root);
 }

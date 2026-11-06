@@ -35,7 +35,7 @@
 }
 
 .mm-deliver-toolbar select {
-  flex: 1 1 auto;
+  flex: 1 1 0;
 }
 
 .mm-deliver-button {
@@ -45,6 +45,7 @@
   background: var(--mm-gradient-button);
   color: var(--mm-color-text);
   font: inherit;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -85,6 +86,7 @@
 .mm-deliver-targets,
 .mm-deliver-items {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--mm-space-sm);
   margin: 0;
   padding: 0;
@@ -130,6 +132,7 @@
 
 .mm-deliver-row-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex: 1 1 auto;
   gap: var(--mm-space-xs);
   min-width: 0;
@@ -168,6 +171,7 @@
 
 .mm-deliver-form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   flex: 1 1 auto;
   gap: var(--mm-space-sm);
 }
@@ -211,6 +215,7 @@
 
 .mm-deliver-options {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--mm-space-sm);
 }
 
@@ -223,11 +228,13 @@
 
 .mm-deliver-queue {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--mm-space-sm);
 }
 
 .mm-deliver-item {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--mm-space-xs);
 }
 

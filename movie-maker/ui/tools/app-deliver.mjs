@@ -9,9 +9,9 @@ const { chromium } = require("playwright");
 
 const [outDir] = process.argv.slice(2);
 await mkdir(outDir, { recursive: true });
-const browser = await chromium.connectOverCDP("http://127.0.0.1:9333");
+const browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT ?? 9333}`);
 const page = browser.contexts()[0].pages()[0];
-await page.setViewportSize({ width: 322, height: 900 });
+await page.setViewportSize({ width: 800, height: 900 });
 const shot = async (name) => {
   await page.mouse.move(0, 0);
   await page.screenshot({ path: `${outDir}/${name}.png` });
