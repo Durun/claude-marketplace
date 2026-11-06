@@ -1,8 +1,9 @@
 //! サーフェス 1 枚分の UI。上に Program、下に Timeline を描き、Timeline のポインター操作を受ける。
 
 use mm_types::RgbaImage;
+use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, palette, split_surface, timeline_quads, Action, PointerEvent, Quad, Rect,
+    fit_rect, split_surface, timeline_quads, Action, PaintState, PointerEvent, Quad, Rect,
     SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
 };
 
@@ -19,6 +20,7 @@ pub struct Ui {
     size: (f32, f32),
     playhead: f64,
     fitted: bool,
+    palette: Palette,
 }
 
 impl Ui {
@@ -39,7 +41,13 @@ impl Ui {
             size: (0.0, 0.0),
             playhead: 0.0,
             fitted: false,
+            palette: Palette::DEFAULT,
         }
+    }
+
+    /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
+    pub fn set_palette(&mut self, palette: Palette) {
+        self.palette = palette;
     }
 
     /// サーフェスの大きさ（物理ピクセル）。割り付けを計算し直す。
@@ -143,7 +151,10 @@ impl Ui {
             &self.model,
             &self.controller.view,
             (t.w, t.h),
-            &self.controller.paint_state(self.playhead),
+            &PaintState {
+                palette: self.palette,
+                ..self.controller.paint_state(self.playhead)
+            },
         );
         for q in &mut quads {
             q.rect = q.rect.translated(t.x, t.y);

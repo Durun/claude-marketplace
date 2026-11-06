@@ -2,7 +2,7 @@
 
 use crate::digits::{text_quads, text_width};
 use crate::geom::{Quad, Rect};
-use crate::palette;
+use crate::palette::{self, Palette};
 use crate::ruler::{label, major_step, ticks};
 use crate::time_view::TimeView;
 use crate::timeline::{bar_span, row_top, Hit, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H};
@@ -25,6 +25,8 @@ pub struct PaintState {
     pub selected: Option<usize>,
     /// スナップの案内線（秒）。
     pub guide: Option<f64>,
+    /// 色。
+    pub palette: Palette,
 }
 
 /// Timeline の矩形の大きさ `(w, h)` の中に描く矩形の並び。
@@ -35,13 +37,14 @@ pub fn timeline_quads(
     state: &PaintState,
 ) -> Vec<Quad> {
     let (w, h) = size;
-    let mut q = vec![Quad::new(Rect::new(0.0, 0.0, w, h), palette::PANEL)];
+    let p = &state.palette;
+    let mut q = vec![Quad::new(Rect::new(0.0, 0.0, w, h), p.panel)];
     rows(model, view, w, state, &mut q);
-    ruler(view, w, &mut q);
+    ruler(view, w, p, &mut q);
     if let Some(g) = state.guide {
-        q.push(vline(view.x_of(g), h, 1.0, palette::GUIDE));
+        q.push(vline(view.x_of(g), h, 1.0, p.guide));
     }
-    playhead(view.x_of(state.playhead), h, &mut q);
+    playhead(view.x_of(state.playhead), h, p, &mut q);
     q
 }
 
@@ -49,32 +52,26 @@ fn vline(x: f32, h: f32, width: f32, color: crate::geom::Color) -> Quad {
     Quad::new(Rect::new(x - width / 2.0, 0.0, width, h), color)
 }
 
-fn ruler(view: &TimeView, w: f32, q: &mut Vec<Quad>) {
-    q.push(Quad::new(Rect::new(0.0, 0.0, w, RULER_H), palette::RULER));
+fn ruler(view: &TimeView, w: f32, p: &Palette, q: &mut Vec<Quad>) {
+    q.push(Quad::new(Rect::new(0.0, 0.0, w, RULER_H), p.ruler));
     let step = major_step(view.px_per_sec);
     for t in ticks(view, w) {
         let len = if t.major { 9.0 } else { 4.0 };
-        q.push(Quad::new(
-            Rect::new(t.x, RULER_H - len, 1.0, len),
-            palette::TICK,
-        ));
+        q.push(Quad::new(Rect::new(t.x, RULER_H - len, 1.0, len), p.tick));
         if t.major {
             let text = label(t.time, step);
             let tw = text_width(&text, LABEL_H);
             let x = (t.x + 4.0).min(w - tw);
-            q.extend(text_quads(&text, x, 4.0, LABEL_H, palette::LABEL));
+            q.extend(text_quads(&text, x, 4.0, LABEL_H, p.label));
         }
     }
 }
 
 fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &mut Vec<Quad>) {
+    let p = &state.palette;
     for (i, item) in model.items.iter().enumerate() {
         let top = row_top(i);
-        let stripe = if i % 2 == 0 {
-            palette::ROW_EVEN
-        } else {
-            palette::ROW_ODD
-        };
+        let stripe = if i % 2 == 0 { p.row_even } else { p.row_odd };
         q.push(Quad::new(Rect::new(0.0, top - 1.0, w, ROW_H + 2.0), stripe));
         let (x, bw) = bar_span(view, item);
         let mut color = palette::item_color(item.kind);
@@ -87,34 +84,34 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
         }
         let bar = Rect::new(x, top, bw, ROW_H);
         q.push(Quad::new(bar, color));
-        handles(&bar, state.hover, i, q);
+        handles(&bar, (state.hover, i), p, q);
         if state.selected == Some(i) {
-            outline(&bar, q);
+            outline(&bar, p, q);
         }
     }
-    outside(model, view, w, q);
+    outside(model, view, w, p, q);
 }
 
-fn handles(bar: &Rect, hover: Hit, index: usize, q: &mut Vec<Quad>) {
+fn handles(bar: &Rect, (hover, index): (Hit, usize), p: &Palette, q: &mut Vec<Quad>) {
     let hw = HANDLE_PX.min(bar.w / 3.0);
     let lit = |part| hover == Hit::Layer { index, part };
     for (part, x) in [(Part::InHandle, bar.x), (Part::OutHandle, bar.right() - hw)] {
         if lit(part) {
             q.push(Quad::new(
                 Rect::new(x, bar.y, hw, bar.h),
-                palette::SELECTION.with_alpha(0.85),
+                p.selection.with_alpha(0.85),
             ));
         } else {
             q.push(Quad::new(
                 Rect::new(x, bar.y, hw, bar.h),
-                palette::SELECTION.with_alpha(0.14),
+                p.selection.with_alpha(0.14),
             ));
         }
     }
 }
 
-fn outline(r: &Rect, q: &mut Vec<Quad>) {
-    let c = palette::SELECTION;
+fn outline(r: &Rect, p: &Palette, q: &mut Vec<Quad>) {
+    let c = p.selection;
     q.push(Quad::new(Rect::new(r.x, r.y, r.w, 1.0), c));
     q.push(Quad::new(Rect::new(r.x, r.bottom() - 1.0, r.w, 1.0), c));
     q.push(Quad::new(Rect::new(r.x, r.y, 1.0, r.h), c));
@@ -122,19 +119,19 @@ fn outline(r: &Rect, q: &mut Vec<Quad>) {
 }
 
 /// コンポジションの終わりより右を暗くする。
-fn outside(model: &TimelineModel, view: &TimeView, w: f32, q: &mut Vec<Quad>) {
+fn outside(model: &TimelineModel, view: &TimeView, w: f32, p: &Palette, q: &mut Vec<Quad>) {
     let end = view.x_of(model.duration);
     if end < w {
         let x = end.max(0.0);
         q.push(Quad::new(
             Rect::new(x, RULER_H, w - x, model.content_height() - RULER_H),
-            palette::OUTSIDE,
+            p.outside,
         ));
     }
 }
 
-fn playhead(x: f32, h: f32, q: &mut Vec<Quad>) {
-    q.push(vline(x, h, PLAYHEAD_W, palette::PLAYHEAD));
+fn playhead(x: f32, h: f32, p: &Palette, q: &mut Vec<Quad>) {
+    q.push(vline(x, h, PLAYHEAD_W, p.playhead));
     q.push(Quad::new(
         Rect::new(
             x - PLAYHEAD_CAP / 2.0,
@@ -142,7 +139,7 @@ fn playhead(x: f32, h: f32, q: &mut Vec<Quad>) {
             PLAYHEAD_CAP,
             PLAYHEAD_CAP * 0.8,
         ),
-        palette::PLAYHEAD,
+        p.playhead,
     ));
 }
 
@@ -170,7 +167,29 @@ mod tests {
             hover: Hit::Empty,
             selected: None,
             guide: None,
+            palette: Palette::DEFAULT,
         }
+    }
+
+    #[test]
+    fn テーマの色で面と帯の段を塗る() {
+        let v = TimeView {
+            origin: 0.0,
+            px_per_sec: 100.0,
+        };
+        let surface = palette::parse_hex("#123456").unwrap();
+        let themed = Palette::themed(|name| (name == "surface").then_some(surface));
+        let st = PaintState {
+            palette: themed,
+            ..state(0.0)
+        };
+        let quads = timeline_quads(&model(), &v, (800.0, 120.0), &st);
+        assert_eq!(quads[0].color, surface, "面");
+        assert_eq!(
+            themed.playhead,
+            palette::PLAYHEAD,
+            "テーマに無い色は既定のまま"
+        );
     }
 
     #[test]

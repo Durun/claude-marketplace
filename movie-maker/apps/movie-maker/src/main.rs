@@ -28,6 +28,8 @@ mod state;
 #[cfg(windows)]
 mod surface;
 #[cfg(windows)]
+mod theme;
+#[cfg(windows)]
 mod verify;
 
 #[cfg(windows)]

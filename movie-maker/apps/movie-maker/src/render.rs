@@ -17,6 +17,7 @@ use mm_ui_wgpu::Ui;
 use crate::playback::Command;
 use crate::state::{FrameImage, PreviewFrame, Shared};
 use crate::surface;
+use crate::theme;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
@@ -188,6 +189,7 @@ impl View {
         let gpu = init_gpu(shared, hwnd, context)?;
         let mut ui = Ui::new(&gpu.device, gpu.config.format);
         ui.set_model(model.clone());
+        ui.set_palette(theme::surface_palette());
         Ok(Self {
             gpu,
             ui,
