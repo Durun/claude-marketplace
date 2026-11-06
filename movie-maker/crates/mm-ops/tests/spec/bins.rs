@@ -36,7 +36,8 @@ pub fn arb_bin_spec() -> impl Strategy<Value = BinSpec> {
     prop_oneof![
         (any::<bool>(), s(), prop::option::weighted(0.8, 0i64..12))
             .prop_map(|(o, a, t)| BinSpec::Mark(o, a, t)),
-        (arb_id(), s(), 0i64..8, 1i64..6).prop_map(|(i, a, t, l)| BinSpec::AddSelection(i, a, t, l)),
+        (arb_id(), s(), 0i64..8, 1i64..6)
+            .prop_map(|(i, a, t, l)| BinSpec::AddSelection(i, a, t, l)),
         s().prop_map(BinSpec::RemoveSelection),
         (s(), s()).prop_map(|(i, r)| BinSpec::Rate(i, r)),
         (s(), s(), any::<bool>()).prop_map(|(i, t, r)| BinSpec::Tag(i, t, r)),

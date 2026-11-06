@@ -137,6 +137,7 @@ impl Store {
         let rows = self.next_rows(project)?;
         let tx = self.conn.transaction().sql()?;
         docio::apply_diff(&tx, &self.rows, &rows)?;
+        crate::transcript::sync_edits(&tx, &self.project, project)?;
         let stored = insert_txn(&tx, input, self.doc_version)?;
         if input.kind == TxnKind::Normal {
             tx.execute("DELETE FROM undo_stack WHERE pos > ?1", [self.undo_pos])

@@ -180,11 +180,25 @@ impl Project {
         }
         let mut ids = HashSet::new();
         for s in &self.bins.selections {
-            check_item(self, &mut ids, s.id.as_str(), &s.asset, s.in_point, s.out_point)?;
+            check_item(
+                self,
+                &mut ids,
+                s.id.as_str(),
+                &s.asset,
+                s.in_point,
+                s.out_point,
+            )?;
             check_tags(s.id.as_str(), &s.tags)?;
         }
         for t in &self.bins.topics {
-            check_item(self, &mut ids, t.id.as_str(), &t.asset, t.in_point, t.out_point)?;
+            check_item(
+                self,
+                &mut ids,
+                t.id.as_str(),
+                &t.asset,
+                t.in_point,
+                t.out_point,
+            )?;
             check_tags(t.id.as_str(), &t.tags)?;
         }
         let mut words = HashSet::new();
@@ -258,7 +272,9 @@ fn check_tags(id: &str, tags: &[String]) -> Result<()> {
         return Err(invalid(format!("{id} に空のタグ")));
     }
     if tags.windows(2).any(|w| w[0] >= w[1]) {
-        return Err(invalid(format!("{id} のタグが辞書順で重複しない並びでない")));
+        return Err(invalid(format!(
+            "{id} のタグが辞書順で重複しない並びでない"
+        )));
     }
     Ok(())
 }

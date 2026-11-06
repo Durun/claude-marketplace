@@ -29,7 +29,7 @@ pub(crate) struct DocRow {
 /// 行のキーから行への写像。
 pub(crate) type RowMap = BTreeMap<String, DocRow>;
 
-fn row(table: &'static str, id: &str, json: String) -> DocRow {
+pub(crate) fn row(table: &'static str, id: &str, json: String) -> DocRow {
     DocRow {
         table,
         id: id.to_string(),
@@ -54,7 +54,7 @@ pub(crate) struct Prev<'a> {
 
 impl Prev<'_> {
     /// `unchanged` が真なら前の行のコピー。
-    fn reuse(&self, key: &str, unchanged: bool) -> Option<DocRow> {
+    pub(crate) fn reuse(&self, key: &str, unchanged: bool) -> Option<DocRow> {
         unchanged.then(|| self.rows.get(key).cloned()).flatten()
     }
 }
@@ -99,6 +99,7 @@ pub(crate) fn rows_after(prev: Option<&Prev>, p: &Project) -> Result<RowMap> {
         };
         rows.insert(key, r);
     }
+    crate::docio_bins::insert_bins(&mut rows, prev, p)?;
     Ok(rows)
 }
 
@@ -186,13 +187,17 @@ fn layer_text(layer: &Layer) -> String {
 }
 
 /// 表の順（親を先に書く）。
-const WRITE_ORDER: [&str; 6] = [
+const WRITE_ORDER: [&str; 10] = [
     "project",
     "assets",
     "compositions",
     "layers",
     "sequences",
     "render_targets",
+    "marks",
+    "selections",
+    "topics",
+    "word_edits",
 ];
 
 /// `old` から `new` への差分を、このトランザクションの中で書く。
@@ -218,7 +223,10 @@ pub(crate) fn write_all(tx: &Transaction, new: &RowMap) -> Result<()> {
         "assets",
         "sequences",
         "render_targets",
-    ] {
+    ]
+    .into_iter()
+    .chain(crate::docio_bins::BIN_TABLES)
+    {
         tx.execute(&format!("DELETE FROM {t}"), []).sql()?;
     }
     tx.execute("DELETE FROM search", []).sql()?;
@@ -288,7 +296,7 @@ fn upsert_row(tx: &Transaction, r: &DocRow) -> Result<()> {
     Ok(())
 }
 
-fn json_rows(conn: &Connection, sql: &str) -> Result<Vec<Value>> {
+pub(crate) fn json_rows(conn: &Connection, sql: &str) -> Result<Vec<Value>> {
     let mut st = conn.prepare(sql).sql()?;
     let texts: Vec<String> = st
         .query_map([], |r| r.get(0))
@@ -319,13 +327,14 @@ pub(crate) fn read_project(conn: &Connection) -> Result<Project> {
             .collect::<Result<_>>()?;
         c["layers"] = Value::Array(layers);
     }
-    let value = json!({
+    let mut value = json!({
         "schema_version": head["schema_version"],
         "assets": json_rows(conn, "SELECT json FROM assets ORDER BY id")?,
         "compositions": comps,
         "sequences": json_rows(conn, "SELECT json FROM sequences ORDER BY id")?,
         "render_targets": json_rows(conn, "SELECT json FROM render_targets ORDER BY id")?,
     });
+    crate::docio_bins::read_bins(conn, &mut value)?;
     let mut project: Project = serde_json::from_value(mm_doc::migrate(value)?)?;
     project.normalize();
     Ok(project)

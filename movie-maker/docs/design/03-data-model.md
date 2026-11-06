@@ -10,6 +10,12 @@ classDiagram
     sequences
     renderTargets
     colorConfig
+    transcriptEdits
+  }
+  class Bins {
+    marks
+    selections
+    topics
   }
   class Asset {
     path, contentHash
@@ -66,6 +72,8 @@ classDiagram
     output path
   }
   Project --> Asset
+  Project --> Bins
+  Bins ..> Asset : asset
   Project --> Composition
   Project --> RenderTarget
   Project --> Sequence
@@ -103,9 +111,21 @@ classDiagram
 ## プロジェクト
 
 - `assets`: 撮影素材、音、画像、文字起こし。原本のパス、コンテンツハッシュ、色空間、時間軸、取り込みで作ったものへの参照。
-- `bins`: 素材の整理。`selection`（素材の中の範囲）、評価、キーワード、話題。
+- `bins`: 素材の整理。下の「素材の整理と文字起こし」。
 - `compositions`、`renderTargets`（形式、ラウドネスの目標、タイムコードの始まり、出力先）、`colorConfig`（OCIO の設定、作業色空間、表示の変換）。
 - プロジェクトをまたぐ素材とテンプレートは、ライブラリとして参照で使う。
+
+## 素材の整理と文字起こし
+
+- 文字起こしの本文（単語の文字と時刻）は `project.mmdb` の `words` の表に持ち、プロジェクトのデータに入れない。本文は取り込みのツールが作り直せる結果で、数が多い（11 時間で約 10 万語）。プロジェクトのデータは素材の ID と素材の時間軸の範囲、単語の ID で本文を指す。人の判断（選別、話題、直し）だけが操作で変わり、取り消せる。
+- 単語の ID は「素材のコンテンツハッシュの先頭 12 文字 + 開始の時刻」（`w_<hash>_<num>_<den>`、同じ開始の時刻の 2 つ目から `_2`）。同じ素材を取り込み直しても変わらないので、直しが付いたまま本文を入れ替えられる。
+- `bins.marks`: 素材ごとのイン点とアウト点の印（Source で付ける。Premiere のソースのイン・アウトと同じく保存する）。どちらも無い印は持たない。
+- `bins.selections`: 選別。素材の範囲 `[in, out)`、評価、タグ。FCP のキーワード付きの範囲と同じ形。
+- `bins.topics`: 話題。素材の範囲に見出しを付けたもの。文字起こしの区間を選んで作り、Story が並べ、`insertTopics` がカットにする。評価とタグも持てる。
+- 評価は FCP の Favorite / Reject と同じ 3 値（`unrated`、`favorite`、`rejected`）。タグは辞書順で重複しない文字の列。選別と話題の ID は互いに重複しない（`rate` と `tag` が ID だけで指す）。
+- `transcript_edits`: 単語ごとの直し（素材、単語の ID、直した文字、消したか）。何も変えない直しは持たない。消した単語は検索と表示から外れる。`mm-store` が操作を書くたびに同じトランザクションで `words` に写す。
+- 範囲と印は素材の長さの中で `in < out`。参照している素材は外せない（`Project::validate`）。
+- 隙間（`lift` が残す）は透明の単色のノード（`Node::gap`）を持つカット。新しいノードの種類を足さず、今のレンダラーとミキサーのまま描けて鳴らない。Timeline は `Node::is_gap` で空きとして描く。
 
 ## コンポジションとレイヤー
 
@@ -115,7 +135,7 @@ classDiagram
 - 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ画像の中心）。どれもキーフレームを持てる。レンダラーが合成で掛け、ノードの種類には渡さない。3D はカメラのフィールドを足すときに広げる。
 - 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。マスク（頂点の列を `Json` のパラメータで）とトラックマット（同じコンポジションのレイヤーのアルファか輝度）は段階 1 では型だけ。
 - マーカーはコンポジションに持ち（ID、時刻、長さ、名前。時刻の厳密な昇順で、同じ時刻には 2 つ置けない）、YouTube のチャプターの書き出しに使う。
-- スキーマのバージョンは 4。v1 はノードのパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。v4 でマーカーの時刻を厳密な昇順にした（v3 の同じ時刻のマーカーは、後ろのものを 1/1000 秒ずつ後ろへずらして上げる）。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各バージョンのフィクスチャを凍結している。
+- スキーマのバージョンは 6。v1 はノードのパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。v4 でマーカーの時刻を厳密な昇順にした（v3 の同じ時刻のマーカーは、後ろのものを 1/1000 秒ずつ後ろへずらして上げる）。v5 で `color.lut` の LUT を素材にし、v6 で `bins` と `transcript_edits` を足した（v5 からは空で上げる）。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各バージョンのフィクスチャを凍結している。
 
 ## パラメータ（時間変化）
 

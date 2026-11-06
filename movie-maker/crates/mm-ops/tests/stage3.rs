@@ -34,7 +34,13 @@ fn 話題の列から末尾にカットを作り_1_回の逆操作で全部抜�
     assert_eq!(cuts[5].source.kind, FOOTAGE_KIND);
     assert_eq!(applied.inverse.name(), "extractCuts");
     apply(&mut p, applied.inverse).unwrap();
-    apply(&mut p, RemoveTopic { topic: Id::new("t2") }).unwrap();
+    apply(
+        &mut p,
+        RemoveTopic {
+            topic: Id::new("t2"),
+        },
+    )
+    .unwrap();
     assert_eq!(canon(&p), before);
 }
 
@@ -157,7 +163,13 @@ fn 消した単語と直した文字は直しの列に残り_戻すと消える(
 #[test]
 fn 選別の素材は外せず_範囲は素材の中() {
     let mut p = project();
-    assert!(apply(&mut p, RemoveAsset { asset: Id::new("a1") }).is_err());
+    assert!(apply(
+        &mut p,
+        RemoveAsset {
+            asset: Id::new("a1")
+        }
+    )
+    .is_err());
     let mut s = p.bins.selections[0].clone();
     s.id = Id::new("sel2");
     s.out_point = secs(21);
