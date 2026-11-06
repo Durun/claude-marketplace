@@ -29,6 +29,10 @@ impl Apply for RemoveRenderTarget {
             .position(|t| t.id == self.target)
             .expect("render_target が引いた");
         let target = project.render_targets.remove(pos);
-        Ok(AddRenderTarget { target }.into())
+        Ok(AddRenderTarget {
+            target,
+            index: Some(pos),
+        }
+        .into())
     }
 }

@@ -3,36 +3,53 @@ import type { DeliverApi, DeliverOverview, ExportStatus, Op, RenderTarget } from
 
 const IDLE: ExportStatus = { running: false, items: [] };
 
-/** 購読を始める。解除は非同期で返るので、先に外れたら返ってきた時点で解除する。 */
-const useSubscription = (start: () => Promise<() => void>, deps: unknown[]): void => {
+/**
+ * 列の状態を、購読を先に始めてから読む。読んだ応答がイベントより後に届いても、
+ * 先に受けたイベントの新しい状態を古い状態で上書きしない。解除は非同期で返るので、先に外れたら返ってきた時点で解除する。
+ */
+const useExportStatus = (api: DeliverApi, setStatus: (s: ExportStatus) => void): void => {
   useEffect(() => {
     let off: (() => void) | null = null;
     let alive = true;
-    start().then(
-      (f) => {
-        if (alive) off = f;
-        else f();
-      },
-      () => undefined,
-    );
+    let sawEvent = false;
+    api
+      .onProgress((s) => {
+        sawEvent = true;
+        setStatus(s);
+      })
+      .then(
+        (f) => {
+          if (!alive) return f();
+          off = f;
+          api.status().then(
+            (s) => {
+              if (alive && !sawEvent) setStatus(s);
+            },
+            () => undefined,
+          );
+        },
+        () => undefined,
+      );
     return () => {
       alive = false;
       off?.();
     };
-  }, deps);
+  }, [api]);
 };
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-/** 外して足す 1 つのトランザクションの操作。`id` が変わる編集も、取り消し 1 回で戻る。 */
-export const replaceTargetOps = (before: string, after: RenderTarget): Op[] => [
+/** 外して同じ位置に足す 1 つのトランザクションの操作。`id` が変わる編集も、取り消し 1 回で戻る。 */
+export const replaceTargetOps = (before: string, after: RenderTarget, index: number): Op[] => [
   { op: "removeRenderTarget", target: before },
-  { op: "addRenderTarget", target: after },
+  { op: "addRenderTarget", target: after, index },
 ];
 
 export interface DeliverState {
   overview: DeliverOverview | null;
   status: ExportStatus;
+  /** 書き出しの依頼を送って、アプリが受けるまで。この間はもう一度押せない。 */
+  starting: boolean;
   /** 列に積んだレンダーターゲットの ID（積んだ順）。 */
   queue: string[];
   sequence: string;
@@ -77,10 +94,8 @@ export const useDeliver = (api: DeliverApi, refreshKey: number): DeliverState =>
     api.overview().then(setOverview, (e) => setError(message(e)));
   }, [api]);
   useEffect(refresh, [refresh, refreshKey]);
-  useEffect(() => {
-    api.status().then(setStatus, () => undefined);
-  }, [api]);
-  useSubscription(() => api.onProgress(setStatus), [api]);
+  const [starting, setStarting] = useState(false);
+  useExportStatus(api, setStatus);
 
   const fail = (e: unknown) => setError(message(e));
   const applyOps = async (ops: Op[]): Promise<boolean> => {
@@ -95,14 +110,20 @@ export const useDeliver = (api: DeliverApi, refreshKey: number): DeliverState =>
     }
   };
   const start = () => {
+    if (starting) return;
     setError(null);
+    setStarting(true);
     const { queue, sequence, verify } = selection;
-    api.start({ targets: queue, sequence: sequence === "" ? undefined : sequence, verify }).catch(fail);
+    api
+      .start({ targets: queue, sequence: sequence === "" ? undefined : sequence, verify })
+      .catch(fail)
+      .finally(() => setStarting(false));
   };
   return {
     ...selection,
     overview,
     status,
+    starting,
     error,
     applyOps,
     start,

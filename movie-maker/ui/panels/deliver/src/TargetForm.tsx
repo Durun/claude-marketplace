@@ -11,44 +11,54 @@ interface FieldProps {
   spec: FieldSpec;
   value: string | boolean;
   error?: string;
+  /** 下書きのコーデック。出力先の保存ダイアログを、合う拡張子に絞る。 */
+  codec: string;
   overview: DeliverOverview;
   api: DeliverApi;
   onChange: (value: string | boolean) => void;
 }
 
-const Input = ({ spec, value, overview, api, onChange }: FieldProps) => {
+interface SelectProps {
+  id: string;
+  value: string;
+  options: { value: string; label: string }[];
+  /** `aria-invalid` と `aria-describedby`。 */
+  extra: Record<string, string | boolean | undefined>;
+  onChange: (value: string) => void;
+}
+
+const Select = ({ id, value, options, extra, onChange }: SelectProps) => (
+  <select id={id} value={value} {...extra} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+    {options.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
+);
+
+const Input = ({ spec, value, error, codec, overview, api, onChange }: FieldProps) => {
   const id = `mm-deliver-field-${spec.key}`;
   const text = String(value);
-  const common = { id, value: text, onInput: (e: Event) => onChange((e.target as HTMLInputElement).value) };
+  const a11y = { "aria-invalid": error !== undefined, "aria-describedby": error === undefined ? undefined : `${id}-error` };
+  const common = { id, value: text, onInput: (e: Event) => onChange((e.target as HTMLInputElement).value), ...a11y };
   switch (spec.control.kind) {
     case "bool":
-      return <input id={id} type="checkbox" checked={value === true} onChange={(e) => onChange((e.target as HTMLInputElement).checked)} />;
-    case "choice":
-      return (
-        <select id={id} value={text} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
-          {spec.control.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      );
-    case "composition":
-      return (
-        <select id={id} value={text} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
-          {!overview.compositions.some((c) => c.id === text) && <option value={text}>{text}</option>}
-          {overview.compositions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.id}
-            </option>
-          ))}
-        </select>
-      );
+      return <input id={id} type="checkbox" checked={value === true} {...a11y} onChange={(e) => onChange((e.target as HTMLInputElement).checked)} />;
+    case "choice": {
+      const options = spec.control.options.map((o) => ({ value: o, label: o }));
+      return <Select id={id} value={text} options={spec.required ? options : [{ value: "", label: "Default" }, ...options]} extra={a11y} onChange={onChange} />;
+    }
+    case "composition": {
+      const options = overview.compositions.map((c) => ({ value: c.id, label: c.id }));
+      const missing = options.some((o) => o.value === text) ? [] : [{ value: text, label: text }];
+      return <Select id={id} value={text} options={[...missing, ...options]} extra={a11y} onChange={onChange} />;
+    }
     case "output":
       return (
         <span class="mm-deliver-output-input">
           <input {...common} type="text" spellcheck={false} />
-          <button type="button" class="mm-deliver-button" onClick={() => void api.pickOutput(text).then((p) => p && onChange(p))}>
+          <button type="button" class="mm-deliver-button" onClick={() => void api.pickOutput(text, codec).then((p) => p && onChange(p))}>
             Browse…
           </button>
         </span>
@@ -69,7 +79,11 @@ const Field = (props: FieldProps) => (
   <div class="mm-deliver-field" data-invalid={props.error !== undefined}>
     <label for={`mm-deliver-field-${props.spec.key}`}>{props.spec.label}</label>
     <Input {...props} />
-    {props.error && <span class="mm-deliver-field-error">{props.error}</span>}
+    {props.error && (
+      <span class="mm-deliver-field-error" id={`mm-deliver-field-${props.spec.key}-error`}>
+        {props.error}
+      </span>
+    )}
   </div>
 );
 
@@ -103,6 +117,7 @@ export const TargetForm = ({ target, specs, overview, api, submitLabel, onSubmit
           spec={spec}
           value={draft[spec.key] ?? ""}
           error={errors[spec.key]}
+          codec={String(draft.codec ?? "")}
           overview={overview}
           api={api}
           onChange={(v) => setDraft((d) => ({ ...d, [spec.key]: v }))}

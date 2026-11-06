@@ -247,7 +247,7 @@ fn build_and_run(boot: Boot) {
         &boot.args.project,
         media::project_cache_dir(&boot.args.project),
     ));
-    let deliver_state = Arc::new(DeliverState::new(boot.shared.clone()));
+    let deliver_state = Arc::new(DeliverState::new(boot.shared.clone(), &boot.args.project));
     tauri::Builder::default()
         .manage(managed)
         .manage(deliver_state)

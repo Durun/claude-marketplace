@@ -554,6 +554,7 @@ export type SetCaptionOp = {
 };
 /** レンダーターゲットを足す。 */
 export type AddRenderTargetOp = {
+  "index"?: number | null;
   "op": "addRenderTarget";
   "target": RenderTarget;
 };
@@ -1013,7 +1014,8 @@ export const RENDER_TARGET_SCHEMA: JsonSchema = {
               "type": "string",
               "const": "embedded"
             }
-          ]
+          ],
+          "default": "none"
         },
         "true_peak_dbtp": {
           "description": "トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。",
@@ -1024,6 +1026,11 @@ export const RENDER_TARGET_SCHEMA: JsonSchema = {
           "format": "float",
           "default": null
         }
+      },
+      "default": {
+        "chapters": false,
+        "subtitles": "none",
+        "true_peak_dbtp": null
       }
     },
     "fps": {

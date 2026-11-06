@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { JsonSchema, RenderTarget } from "@mm/sdk";
-import { draftOf, extraFields, fieldSpecs, parseRational, targetOf, withRequired } from "./form.ts";
-import { PRESETS, targetFromPreset, uniqueId, type Preset } from "./presets.ts";
+import { draftOf, extraFields, fieldSpecs, parseRational, targetOf, withRequired, type FieldSpec } from "./form.ts";
+import { defaultComposition, PRESETS, targetFromPreset, uniqueId, type Preset } from "./presets.ts";
 
 const target: RenderTarget = {
   id: "yt",
@@ -38,7 +38,8 @@ describe("fieldSpecs", () => {
         id: { type: "string" },
         subtitles: { type: "string", enum: ["none", "burn", "sidecar"] },
         chapters: { type: ["boolean", "null"] },
-        range: { type: "object", properties: { start: { type: "number" } } },
+        range: { type: "object", properties: { start: { type: "number" }, mode: { type: "string", enum: ["a", "b"] } }, required: ["start"] },
+        meta: { type: "object", additionalProperties: { type: "string" } },
       },
     };
     const added = fieldSpecs(schema);
@@ -46,7 +47,9 @@ describe("fieldSpecs", () => {
       ["id", "text", true],
       ["subtitles", "choice", true],
       ["chapters", "bool", false],
-      ["range", "json", false],
+      ["range.start", "number", false],
+      ["range.mode", "choice", false],
+      ["meta", "json", false],
     ]);
     expect(added[1]?.control).toEqual({ kind: "choice", options: ["none", "burn", "sidecar"] });
     expect(added[2]?.label).toBe("Chapters");
@@ -92,7 +95,7 @@ describe("withRequired と extraFields", () => {
   const specs = fieldSpecs();
 
   it("増えた必須の欄をスキーマの既定値か型の初期値で埋める", () => {
-    const withNew = [...specs, { key: "audio_bitrate", label: "x", required: true, control: { kind: "integer" as const, min: 64 } }];
+    const withNew = [...specs, { key: "audio_bitrate", path: ["audio_bitrate"], label: "x", required: true, control: { kind: "integer" as const, min: 64 } }];
     const filled = withRequired({ id: "a" }, withNew) as unknown as Record<string, unknown>;
     expect(filled.audio_bitrate).toBe(64);
     expect(filled.id).toBe("a");
@@ -101,6 +104,16 @@ describe("withRequired と extraFields", () => {
   it("一覧の行に出す「その他」は、専用の形で見せる欄を除いた値のある欄", () => {
     expect(extraFields(target, specs)).toEqual([]);
     expect(extraFields({ ...target, loudness_lufs: -14 }, specs)).toEqual([{ label: "Loudness (LUFS)", text: "-14" }]);
+  });
+
+  it("既定値のままの delivery は出さず、変えた欄だけ出す", () => {
+    const plain = { ...target, delivery: { subtitles: "none", chapters: false, true_peak_dbtp: null } } as unknown as RenderTarget;
+    expect(extraFields(plain, specs)).toEqual([]);
+    const changed = { ...target, delivery: { subtitles: "sidecar", chapters: true } } as unknown as RenderTarget;
+    expect(extraFields(changed, specs)).toEqual([
+      { label: "Delivery: Chapters", text: "true" },
+      { label: "Delivery: Subtitles", text: "sidecar" },
+    ]);
   });
 });
 
@@ -123,5 +136,87 @@ describe("プリセット", () => {
     expect(made.id).toBe("youtube-shorts-2");
     expect(made.output_path).toBe("exports/youtube-shorts-2.mp4");
     expect(targetOf(draftOf(made, specs), specs, made).ok).toBe(true);
+  });
+});
+
+describe("実際のスキーマの delivery", () => {
+  const specs = fieldSpecs();
+
+  it("入れ子の delivery は子の欄になり、列挙は選択、真偽はチェックになる", () => {
+    const kind = (key: string) => specs.find((s) => s.key === key)?.control;
+    expect(kind("delivery.subtitles")).toEqual({ kind: "choice", options: ["none", "sidecar", "embedded"] });
+    expect(kind("delivery.chapters")).toEqual({ kind: "bool" });
+    expect(kind("delivery.true_peak_dbtp")?.kind).toBe("number");
+    expect(specs.some((s) => s.key === "delivery")).toBe(false);
+    expect(specs.find((s) => s.key === "delivery.subtitles")?.required).toBe(false);
+  });
+
+  it("子の値を入れ子のまま往復し、開いて保存しただけでは delivery を足さない", () => {
+    expect(targetOf(draftOf(target, specs), specs, target)).toEqual({ ok: true, value: target });
+    const withDelivery = { ...target, delivery: { subtitles: "sidecar", chapters: true, future: 1 } } as unknown as RenderTarget;
+    const draft = draftOf(withDelivery, specs);
+    expect(draft["delivery.subtitles"]).toBe("sidecar");
+    expect(draft["delivery.chapters"]).toBe(true);
+    expect(targetOf(draft, specs, withDelivery)).toEqual({ ok: true, value: withDelivery });
+    const turnedOff = targetOf({ ...draft, "delivery.subtitles": "", "delivery.chapters": false }, specs, withDelivery);
+    expect(turnedOff.ok && (turnedOff.value as unknown as { delivery: unknown }).delivery).toEqual({ chapters: false, future: 1 });
+  });
+
+  it("字幕を選ぶと delivery.subtitles を持つレンダーターゲットになる", () => {
+    const parsed = targetOf({ ...draftOf(target, specs), "delivery.subtitles": "sidecar" }, specs, target);
+    expect(parsed.ok && parsed.value).toEqual({ ...target, delivery: { subtitles: "sidecar" } });
+  });
+});
+
+describe("入力の検査", () => {
+  const specs = fieldSpecs();
+  const errorsOf = (over: Record<string, string>) => {
+    const parsed = targetOf({ ...draftOf(target, specs), ...over }, specs, target);
+    return parsed.ok ? {} : parsed.errors;
+  };
+
+  it("幅と高さは 1 以上の偶数", () => {
+    expect(errorsOf({ width: "0" }).width).toContain("Out of range");
+    expect(errorsOf({ height: "1081" }).height).toContain("even");
+    expect(errorsOf({ width: "1280", height: "720" })).toEqual({});
+  });
+
+  it("分母は分母の範囲で見る（分子の範囲を流用しない）", () => {
+    const rate = (denMax: number): FieldSpec[] => [{ key: "fps", path: ["fps"], label: "Frame rate", required: true, control: { kind: "rational", min: 1, max: 100000, denMin: 1, denMax } }];
+    const ok = targetOf({ fps: "30000/1001" }, rate(2000));
+    expect(ok.ok && ok.value).toEqual({ fps: { num: 30000, den: 1001 } });
+    expect(targetOf({ fps: "30000/1001" }, rate(1000)).ok).toBe(false);
+  });
+
+  it("ProRes と DNxHR は .mov の出力先だけ", () => {
+    expect(errorsOf({ codec: "prores_ks" }).output_path).toContain(".mov");
+    expect(errorsOf({ codec: "dnxhr_hq", output_path: "out/a.mxf" }).output_path).toContain(".mov");
+    expect(errorsOf({ codec: "prores_ks", output_path: "out/a.MOV" })).toEqual({});
+    expect(errorsOf({ codec: "h264_nvenc" })).toEqual({});
+  });
+});
+
+describe("プリセットの中身", () => {
+  const specs = fieldSpecs();
+  const main = { id: "main", duration: 60, width: 1920, height: 1080 };
+  const short = { id: "short", duration: 30, width: 1080, height: 1920 };
+
+  it("YouTube と Shorts は -14 LUFS と NVENC、ProRes はラウドネスなし", () => {
+    const made = (id: string) => targetFromPreset(PRESETS.find((p) => p.id === id) as Preset, { composition: "main", takenIds: [] }, specs);
+    expect(made("youtube-1080p")).toMatchObject({ codec: "h264_nvenc", loudness_lufs: -14 });
+    expect(made("youtube-shorts")).toMatchObject({ codec: "h264_nvenc", loudness_lufs: -14 });
+    expect(made("prores-422-hq").loudness_lufs).toBeUndefined();
+  });
+
+  it("縦長のプリセットは縦長のコンポジションを既定にする", () => {
+    const shorts = PRESETS.find((p) => p.id === "youtube-shorts") as Preset;
+    const youtube = PRESETS[0] as Preset;
+    const both = { compositions: [main, short], open_composition: "main" };
+    expect(defaultComposition(shorts, both)).toBe("short");
+    expect(defaultComposition(youtube, both)).toBe("main");
+    expect(defaultComposition(shorts, { ...both, open_composition: "short" })).toBe("short");
+    expect(defaultComposition(youtube, { ...both, open_composition: "short" })).toBe("short");
+    expect(defaultComposition(shorts, { compositions: [main], open_composition: "main" })).toBe("main");
+    expect(defaultComposition(shorts, { compositions: [], open_composition: null })).toBe("");
   });
 });
