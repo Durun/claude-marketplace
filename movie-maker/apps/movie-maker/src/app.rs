@@ -25,6 +25,7 @@ use crate::media_ipc;
 use crate::playback::{Command, Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
+use crate::source_ipc;
 use crate::state::Shared;
 use crate::story::StoryState;
 use crate::story_ipc;
@@ -203,6 +204,7 @@ pub fn run() {
         no_audio: args.no_audio,
         config: None,
     };
+    shared.source.configure(options.clone());
     let (playback, pinfo) =
         Playback::spawn(shared.clone(), project.clone(), comp_id.clone(), options)
             .unwrap_or_else(|e| fail(&format!("再生を始められない: {e}")));
@@ -273,7 +275,12 @@ fn build_and_run(boot: Boot) {
             story_ipc::story_transcript,
             story_ipc::story_range,
             story_ipc::story_search,
-            story_ipc::story_timeline_time
+            story_ipc::story_timeline_time,
+            source_ipc::source_open,
+            source_ipc::source_close,
+            source_ipc::source_state,
+            source_ipc::source_transport,
+            source_ipc::edit_action
         ])
         .setup(move |app| boot.setup(app))
         .run(tauri::generate_context!())
@@ -286,7 +293,7 @@ impl Boot {
     /// ウィンドウと描画スレッドを作り、同期と自動試験を始める。
     fn setup(self, app: &mut tauri::App) -> SetupResult {
         let (window, webview, surface_hwnd) = self.create_window(app)?;
-        let model = timeline_model(self.project.composition(&self.comp_id)?);
+        let model = timeline_model(&self.project, self.project.composition(&self.comp_id)?);
         *self.workers.renderer.lock().expect("renderer") = Some(Renderer::spawn(
             self.shared.clone(),
             surface_hwnd,

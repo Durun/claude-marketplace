@@ -176,6 +176,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
             let mut deadline = Instant::now();
             let mut last: (f64, bool, Instant) = (f64::NAN, false, Instant::now());
             let mut sent_selection = (0, 0);
+            let mut sent_source = None;
             while !state.shared.quit.load(Ordering::SeqCst) {
                 deadline += TICK;
                 let now = Instant::now();
@@ -185,6 +186,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                     deadline = now;
                 }
                 emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
+                crate::source_ipc::emit_if_changed(&app, &state.shared, &mut sent_source);
                 let t = state.shared.playhead();
                 let playing = state.shared.playing.load(Ordering::SeqCst);
                 let changed = playing || last.1 || (t - last.0).abs() > 1e-9;

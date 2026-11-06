@@ -8,6 +8,7 @@ import type {
   StoryTranscript,
   Topic,
 } from "@mm/sdk";
+import { announceAsset } from "@mm/sdk";
 import { toSeconds } from "./model.ts";
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -49,6 +50,7 @@ export const useLoaded = (api: StoryApi, refreshKey: number): Loaded => {
 
   const selectAsset = (id: string) => {
     setAssetId(id);
+    announceAsset(id);
     api.transcript(id).then(setTranscript, (e: unknown) => setError(errorText(e)));
   };
   const apply = async (ops: Op[]): Promise<boolean> => {

@@ -54,3 +54,4 @@ export {
   type StoryWord,
   type WordRange,
 } from "./story.ts";
+export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";

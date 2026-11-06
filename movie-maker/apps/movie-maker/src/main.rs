@@ -14,6 +14,8 @@ mod clock;
 #[cfg(windows)]
 mod edit;
 #[cfg(windows)]
+mod edit_actions;
+#[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
 mod keys;
@@ -28,6 +30,12 @@ mod project;
 #[cfg(windows)]
 mod render;
 #[cfg(windows)]
+mod sequence_edit;
+#[cfg(windows)]
+mod source;
+#[cfg(windows)]
+mod source_ipc;
+#[cfg(windows)]
 mod state;
 #[cfg(windows)]
 mod story;
@@ -39,6 +47,8 @@ mod surface;
 mod theme;
 #[cfg(windows)]
 mod verify;
+#[cfg(windows)]
+mod verify_edit;
 
 #[cfg(windows)]
 fn main() {

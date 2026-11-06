@@ -2,7 +2,7 @@
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{palette, Item, ItemKind, TimelineModel};
-use mm_ui_wgpu::Ui;
+use mm_ui_wgpu::{Region, Ui};
 
 const W: u32 = 640;
 const H: u32 = 400;
@@ -34,12 +34,7 @@ fn model() -> TimelineModel {
     TimelineModel {
         duration: 10.0,
         fps: 30.0,
-        items: vec![Item {
-            start: 0.0,
-            end: 10.0,
-            kind: ItemKind::Footage,
-            enabled: true,
-        }],
+        items: vec![Item::layer(0.0, 10.0, ItemKind::Footage, true)],
     }
 }
 
@@ -188,6 +183,41 @@ fn program_は同じデバイスのテクスチャをそのまま出す() {
     let out = render(&device, &queue, &mut ui);
     let centre = px(&out, (p.x + p.w / 2.0) as u32, (p.y + p.h / 2.0) as u32);
     assert!(close(centre, [255, 255, 255], 2), "{centre:?}");
+}
+
+#[test]
+fn source_のフレームが来ると_program_の左に_source_の領域が現れ_閉じると消える() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    assert_eq!(ui.layout().source, None);
+    let program = RgbaImage::filled(Size::new(16, 9), Rgba::new(0.5, 0.5, 0.5, 1.0));
+    ui.set_frame(&device, &queue, &program);
+    let full = ui.layout().program;
+
+    let source = RgbaImage::filled(Size::new(16, 9), Rgba::new(0.0, 0.5, 0.0, 1.0));
+    ui.set_source_frame(&device, &queue, &source);
+    let l = ui.layout();
+    let area = l.source.expect("Source の領域");
+    assert!(area.right() <= l.program.x && l.program.w < full.w);
+    assert_eq!(ui.region_at(area.x + 1.0, area.y + 1.0), Region::Source);
+    assert_eq!(ui.region_at(l.program.x + 1.0, 1.0), Region::Program);
+    assert_eq!(ui.region_at(1.0, l.timeline.y + 1.0), Region::Timeline);
+
+    let out = render(&device, &queue, &mut ui);
+    let at = |r: mm_ui_layout::Rect| px(&out, (r.x + r.w / 2.0) as u32, (r.y + r.h / 2.0) as u32);
+    // 緑 0.5 は Rec.1886 で 191。Program の灰色 0.5 は 191 が 3 成分。
+    assert!(close(at(area), [0, 191, 0], 2), "Source {:?}", at(area));
+    assert!(
+        close(at(l.program), [191, 191, 191], 2),
+        "Program {:?}",
+        at(l.program)
+    );
+
+    ui.close_source();
+    assert_eq!(ui.layout().source, None);
+    assert_eq!(ui.layout().program, full, "Program が元の広さに戻る");
 }
 
 #[test]

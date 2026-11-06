@@ -98,6 +98,29 @@ describe("StoryPanel の表示", () => {
   });
 });
 
+describe("StoryPanel の素材の選択", () => {
+  it("素材を選ぶと Source で開くためのイベントを投げる", async () => {
+    const api = fake([], {
+      overview: vi.fn().mockResolvedValue({
+        assets: [
+          { id: "a1", name: "a.wav", duration: 5, has_transcript: true },
+          { id: "a2", name: "b.wav", duration: 5, has_transcript: true },
+        ],
+        sequences: [],
+      }),
+    });
+    await mount(api);
+    const seen = vi.fn();
+    window.addEventListener("mm:asset-selected", (e) => seen((e as CustomEvent).detail));
+    const select = host.querySelector<HTMLSelectElement>("select[aria-label=Clip]");
+    act(() => {
+      if (select) select.value = "a2";
+      select?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(seen).toHaveBeenCalledWith({ asset: "a2" });
+  });
+});
+
 describe("StoryPanel の選択と編集", () => {
   it("ドラッグで選んだ範囲の時刻を聞いて話題にする", async () => {
     const api = fake();
