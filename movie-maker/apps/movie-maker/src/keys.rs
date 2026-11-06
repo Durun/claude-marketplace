@@ -1,8 +1,7 @@
 //! キーの表は Rust が 1 つ持つ。サーフェスと WebView のどちらから来ても同じ関数に入れる。
 
-use std::sync::atomic::Ordering;
-
-use crate::shared::Shared;
+use crate::playback::Command;
+use crate::state::Shared;
 
 /// 仮想キーコードをキー名にする（WebView の `KeyboardEvent.code` に寄せた名前）。
 pub fn vk_name(vk: u32) -> String {
@@ -10,30 +9,33 @@ pub fn vk_name(vk: u32) -> String {
         0x41..=0x5A => format!("Key{}", char::from_u32(vk).unwrap_or('?')),
         0x30..=0x39 => format!("Digit{}", char::from_u32(vk).unwrap_or('?')),
         0x20 => "Space".to_owned(),
+        0x23 => "End".to_owned(),
+        0x24 => "Home".to_owned(),
+        0x25 => "ArrowLeft".to_owned(),
+        0x27 => "ArrowRight".to_owned(),
         _ => format!("Vk{vk:02X}"),
+    }
+}
+
+/// キーに割り当てた再生の命令。
+pub fn command_for(key: &str) -> Option<Command> {
+    match key {
+        "Space" => Some(Command::Toggle),
+        "KeyK" => Some(Command::Pause),
+        "KeyL" => Some(Command::Play),
+        "ArrowLeft" => Some(Command::Step(-1)),
+        "ArrowRight" => Some(Command::Step(1)),
+        "Home" => Some(Command::Seek(0.0)),
+        "End" => Some(Command::Seek(f64::MAX)),
+        _ => None,
     }
 }
 
 /// キーを 1 つ受けるエントリーポイント。`source` は "surface" か "webview"。
 pub fn dispatch(shared: &Shared, source: &str, key: &str) {
     let _span = tracing::info_span!("window.key").entered();
-    let stamp = shared.input_stamp_us.swap(0, Ordering::SeqCst);
-    if stamp != 0 {
-        let ms = shared.now_us().saturating_sub(stamp) as f64 / 1000.0;
-        shared.record(
-            if source == "surface" {
-                "key_to_rust_surface_ms"
-            } else {
-                "key_to_rust_webview_ms"
-            },
-            ms,
-        );
-    }
-    if source == "surface" {
-        shared.keys_surface.fetch_add(1, Ordering::SeqCst);
-        shared.flash_us.store(shared.now_us(), Ordering::SeqCst);
-    } else {
-        shared.keys_webview.fetch_add(1, Ordering::SeqCst);
+    if let Some(command) = command_for(key) {
+        shared.send(command);
     }
     tracing::debug!(source, key, "key");
 }
@@ -41,19 +43,25 @@ pub fn dispatch(shared: &Shared, source: &str, key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::channel;
 
     #[test]
-    fn 英字は_code_の名前にする() {
+    fn 英字と矢印は_code_の名前にする() {
         assert_eq!(vk_name(0x4A), "KeyJ");
         assert_eq!(vk_name(0x20), "Space");
+        assert_eq!(vk_name(0x27), "ArrowRight");
     }
 
     #[test]
-    fn どちらから来ても同じ表に数える() {
-        let s = Shared::new();
-        dispatch(&s, "surface", "KeyJ");
-        dispatch(&s, "webview", "KeyJ");
-        assert_eq!(s.keys_surface.load(Ordering::SeqCst), 1);
-        assert_eq!(s.keys_webview.load(Ordering::SeqCst), 1);
+    fn サーフェスと_webview_のどちらのキーも同じ命令になる() {
+        let shared = Shared::new();
+        let (tx, rx) = channel();
+        *shared.commands.lock().unwrap() = Some(tx);
+        dispatch(&shared, "surface", "Space");
+        dispatch(&shared, "webview", "Space");
+        dispatch(&shared, "webview", "KeyZ");
+        assert_eq!(rx.try_recv(), Ok(Command::Toggle));
+        assert_eq!(rx.try_recv(), Ok(Command::Toggle));
+        assert!(rx.try_recv().is_err(), "割り当ての無いキーは何も送らない");
     }
 }
