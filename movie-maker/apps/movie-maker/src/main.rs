@@ -12,6 +12,10 @@ mod cli;
 #[cfg(windows)]
 mod clock;
 #[cfg(windows)]
+mod deliver;
+#[cfg(windows)]
+mod deliver_ipc;
+#[cfg(windows)]
 mod edit;
 #[cfg(windows)]
 mod edit_actions;

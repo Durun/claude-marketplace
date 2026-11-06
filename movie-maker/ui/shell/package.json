@@ -9,6 +9,7 @@
     "@mm/theme": "workspace:*",
     "preact": "^10.27.0",
     "@mm/inspector": "workspace:*",
-    "@mm/story": "workspace:*"
+    "@mm/story": "workspace:*",
+    "@mm/deliver": "workspace:*"
   }
 }

@@ -7,6 +7,7 @@ const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
 const DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/main.tsx", import.meta.url));
 const MEDIA_DEMO_ENTRY = fileURLToPath(new URL("../panels/media/demo/main.tsx", import.meta.url));
+const DELIVER_DEMO_ENTRY = fileURLToPath(new URL("../panels/deliver/demo/main.tsx", import.meta.url));
 const STORY_DEMO_ENTRY = fileURLToPath(new URL("../panels/story/demo/main.tsx", import.meta.url));
 
 // Tauri は dist/ をそのまま読む。相対パスだけにして、どの場所から開いても動くようにする。
@@ -28,7 +29,7 @@ const page = (title: string, name: string): string => `<!doctype html>
 
 await mkdir(DIST, { recursive: true });
 await build({
-  entryPoints: { shell: ENTRY, "inspector-demo": DEMO_ENTRY, "media-demo": MEDIA_DEMO_ENTRY, "story-demo": STORY_DEMO_ENTRY },
+  entryPoints: { shell: ENTRY, "inspector-demo": DEMO_ENTRY, "media-demo": MEDIA_DEMO_ENTRY, "story-demo": STORY_DEMO_ENTRY, "deliver-demo": DELIVER_DEMO_ENTRY },
   outdir: DIST,
   bundle: true,
   format: "iife",
@@ -46,3 +47,5 @@ await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-
 await writeFile(`${DIST}media-demo.html`, page("Media demo", "media-demo"));
 // Story をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));
+// Deliver をモックの API で動かすページ。アプリには載せない。
+await writeFile(`${DIST}deliver-demo.html`, page("Deliver demo", "deliver-demo"));
