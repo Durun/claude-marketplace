@@ -159,6 +159,12 @@ jobs:
         with:
           workspaces: movie-maker
           key: perf
+      # PR を先に作る。同じ target を基点と共有すると、後から作る側の古い mtime の元のファイルを cargo が
+      # 新しいと見なさず、先に作った側のクレートを使い回す。基点の worktree は後で作るので mtime が新しく、作り直される。
+      - name: PR の mm を作る
+        run: |
+          cargo build --release -p mm
+          cp target/release/mm.exe "$RUNNER_TEMP/mm-head.exe"
       - name: 基点の mm を作る
         env:
           BASE: origin/${{ github.base_ref }}
@@ -166,10 +172,6 @@ jobs:
           git worktree add "$RUNNER_TEMP/base" "$BASE"
           (cd "$RUNNER_TEMP/base/movie-maker" && cargo build --release -p mm --target-dir "$GITHUB_WORKSPACE/movie-maker/target")
           cp target/release/mm.exe "$RUNNER_TEMP/mm-base.exe"
-      - name: PR の mm を作る
-        run: |
-          cargo build --release -p mm
-          cp target/release/mm.exe "$RUNNER_TEMP/mm-head.exe"
       - name: 比べる
         run: sh scripts/perf-gate.sh "$RUNNER_TEMP/mm-base.exe" "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/perf"
       - uses: actions/upload-artifact@v4
