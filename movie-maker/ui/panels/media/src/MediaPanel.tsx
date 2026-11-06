@@ -13,6 +13,21 @@ export interface MediaPanelProps {
   refreshKey?: number;
 }
 
+/** 取り込みの入口。取り込み中は押せない。 */
+const Toolbar = ({ running, onImport }: { running: boolean; onImport: () => void }) => (
+  <div class="mm-media-toolbar">
+    <button
+      type="button"
+      class="mm-media-button mm-media-primary"
+      disabled={running}
+      onClick={onImport}
+    >
+      Import…
+    </button>
+    <span class="mm-media-hint">or drop files here</span>
+  </div>
+);
+
 /** XP のムービーメーカーのコレクション風の素材の一覧。取り込み、波形、キャッシュの掃除を持つ。 */
 export const MediaPanel = ({ api, importRequest = 0, refreshKey = 0 }: MediaPanelProps) => {
   const media = useMedia(api, importRequest, refreshKey);
@@ -22,17 +37,7 @@ export const MediaPanel = ({ api, importRequest = 0, refreshKey = 0 }: MediaPane
 
   return (
     <section class="mm-media" aria-label="Media" data-dragging={media.dragging}>
-      <div class="mm-media-toolbar">
-        <button
-          type="button"
-          class="mm-media-button mm-media-primary"
-          disabled={progress.running}
-          onClick={media.pickAndImport}
-        >
-          Import…
-        </button>
-        <span class="mm-media-hint">or drop files here</span>
-      </div>
+      <Toolbar running={progress.running} onImport={media.pickAndImport} />
       {media.error && <p class="mm-media-error">{media.error}</p>}
       {progress.failures.length > 0 && !progress.running && (
         <Failures failures={progress.failures} onDismiss={media.dismissFailures} />
@@ -56,7 +61,12 @@ export const MediaPanel = ({ api, importRequest = 0, refreshKey = 0 }: MediaPane
         )}
       </ul>
       {selected?.has_waveform && <Waveform api={api} id={selected.id} />}
-      <CacheSection api={api} refreshKey={media.cacheKey} onCleared={media.refresh} />
+      <CacheSection
+        api={api}
+        refreshKey={media.cacheKey}
+        busy={progress.running}
+        onCleared={media.refresh}
+      />
     </section>
   );
 };
