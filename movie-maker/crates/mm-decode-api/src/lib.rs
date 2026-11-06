@@ -300,6 +300,16 @@ pub trait Encoder: Send {
     }
     /// 出力を開く。
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()>;
+    /// 映像を通す回数。`begin` の後に呼ぶ。2 パスのエンコーダーは 2 を返し、呼ぶ側は `begin_pass(1)` で映像の全フレームを押し、
+    /// 続けて `begin_pass(2)` で同じフレームをもう一度押す（音は 2 回目の後）。1 パスは 1 で、`begin_pass` を呼ばなくてよい。
+    fn passes(&self) -> u32 {
+        1
+    }
+    /// `pass`（1 始まり）回目の映像を始める。1 パスの実装は何もしない。
+    fn begin_pass(&mut self, pass: u32) -> Result<()> {
+        let _ = pass;
+        Ok(())
+    }
     /// フレームの列を押す。順序は再生順。
     fn push_frames(&mut self, frames: &[RgbaImage]) -> Result<()>;
     /// GPU で YUV にしたフレームの列を押す。順序は再生順。対応しない実装は `Err(Unsupported)` を返し、

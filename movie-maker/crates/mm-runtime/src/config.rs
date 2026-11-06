@@ -35,7 +35,10 @@ pub enum Backend {
     Cuvid,
     /// `mm-cache-fs`（ディスクのキャッシュ）。`cache_dir` が要る。
     Fs,
-    /// デコードだけ。素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数フレームで判断する。
+    /// `mm-encode-nvenc`（エンコードだけ）。feature `ffmpeg` のときだけ組める。NVIDIA の GPU が要る。
+    Nvenc,
+    /// デコードは、素材ごとに `d3d12va` → `cuvid` → `ffmpeg` の順に、開いた直後の数フレームで判断する。
+    /// エンコードは、コーデックごとに `nvenc` → `ffmpeg` の順に選び、`h264_nvenc` が使えなければ `h264` で書く。
     Auto,
 }
 
@@ -45,6 +48,7 @@ impl Backend {
         match self {
             Backend::D3d12va => "d3d12va",
             Backend::Cuvid => "cuvid",
+            Backend::Nvenc => "nvenc",
             Backend::Auto => "auto",
             Backend::Fs => "fs",
             Backend::Sample => mm_testkit::SAMPLE_ID,
@@ -95,6 +99,7 @@ impl FromStr for Backend {
             "ffmpeg" => Ok(Backend::Ffmpeg),
             "d3d12va" => Ok(Backend::D3d12va),
             "cuvid" => Ok(Backend::Cuvid),
+            "nvenc" => Ok(Backend::Nvenc),
             "auto" => Ok(Backend::Auto),
             "fs" => Ok(Backend::Fs),
             other => Err(MmError::Unsupported(format!("実装 {other} は無い"))),
@@ -145,13 +150,13 @@ impl RuntimeConfig {
 
     /// 実際の実装の組み合わせ。描画は wgpu、文字は cpu（1080p の字幕で glyphon より速い）、色は lut、音は dsp、
     /// デコードは auto（素材ごとに d3d12va、cuvid、ffmpeg の順。入っていない実装と GPU の無い環境では ffmpeg）、
-    /// エンコードは ffmpeg。キャッシュはプロジェクトの置き場所（`cache_dir`）が要るのでモックのままで、
+    /// エンコードは auto（NVENC のコーデックは nvenc、それ以外は ffmpeg。NVIDIA の無い環境では `h264_nvenc` も libx264 で書く）。キャッシュはプロジェクトの置き場所（`cache_dir`）が要るのでモックのままで、
     /// ディスクに置くには `cache: Fs` と `cache_dir` を足す。
     pub fn real() -> Self {
         Self {
             render: Backend::Wgpu,
             decode: Backend::Auto,
-            encode: Backend::Ffmpeg,
+            encode: Backend::Auto,
             audio: Backend::Dsp,
             text: Backend::Cpu,
             color: Backend::Lut,
@@ -168,7 +173,8 @@ mod tests {
     fn 名前から実装を選ぶ() {
         assert_eq!("sample".parse::<Backend>().unwrap(), Backend::Sample);
         assert_eq!("ffmpeg".parse::<Backend>().unwrap(), Backend::Ffmpeg);
-        assert!("nvenc".parse::<Backend>().is_err());
+        assert_eq!("nvenc".parse::<Backend>().unwrap(), Backend::Nvenc);
+        assert!("x265".parse::<Backend>().is_err());
     }
 
     #[test]
@@ -253,6 +259,7 @@ mod tests {
             Backend::Ffmpeg,
             Backend::D3d12va,
             Backend::Cuvid,
+            Backend::Nvenc,
             Backend::Auto,
             Backend::Fs,
         ] {

@@ -3063,10 +3063,30 @@ dependencies = [
 name = "mm-encode-ffmpeg"
 version = "0.1.0"
 dependencies = [
- "ffmpeg-next",
  "mm-audio-api",
  "mm-decode-api",
  "mm-decode-ffmpeg",
+ "mm-encode-ffmpeg-core",
+ "mm-testkit",
+ "mm-types",
+]
+
+[[package]]
+name = "mm-encode-ffmpeg-core"
+version = "0.1.0"
+dependencies = [
+ "ffmpeg-next",
+ "mm-audio-api",
+ "mm-decode-api",
+ "mm-types",
+]
+
+[[package]]
+name = "mm-encode-nvenc"
+version = "0.1.0"
+dependencies = [
+ "mm-decode-api",
+ "mm-encode-ffmpeg-core",
  "mm-testkit",
  "mm-types",
 ]
@@ -3264,6 +3284,7 @@ dependencies = [
  "mm-decode-ffmpeg-core",
  "mm-doc",
  "mm-encode-ffmpeg",
+ "mm-encode-nvenc",
  "mm-gpu",
  "mm-node-api",
  "mm-nodes-basic",

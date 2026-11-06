@@ -28,6 +28,8 @@ use crate::config::{Backend, RuntimeConfig};
 #[cfg(any(feature = "d3d12va", feature = "cuvid"))]
 use crate::decode_select::WithAudio;
 use crate::decode_select::{AutoDecoderFactory, GpuCandidate};
+#[cfg(feature = "ffmpeg")]
+use crate::encode_select::AutoEncoderFactory;
 use crate::engine::{Engine, EngineParts};
 use crate::registry::Registry;
 
@@ -127,6 +129,13 @@ fn encoders(backend: Backend) -> Result<Arc<dyn EncoderFactory>> {
         Backend::Sample => Ok(Arc::new(SampleEncoderFactory)),
         #[cfg(feature = "ffmpeg")]
         Backend::Ffmpeg => Ok(Arc::new(mm_encode_ffmpeg::FfmpegEncoderFactory)),
+        #[cfg(feature = "ffmpeg")]
+        Backend::Nvenc => Ok(Arc::new(mm_encode_nvenc::NvencEncoderFactory)),
+        #[cfg(feature = "ffmpeg")]
+        Backend::Auto => Ok(Arc::new(AutoEncoderFactory::new(vec![
+            Arc::new(mm_encode_nvenc::NvencEncoderFactory),
+            Arc::new(mm_encode_ffmpeg::FfmpegEncoderFactory),
+        ]))),
         other => Err(unsupported("encode", other)),
     }
 }

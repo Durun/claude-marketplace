@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 60
     env:
       FFMPEG_ZIP: ffmpeg-n9.0-latest-win64-gpl-shared-9.0
-      FEATURES: mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-runtime/ffmpeg,mm/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
+      FEATURES: mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-encode-nvenc/ffmpeg,mm-runtime/ffmpeg,mm/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2.7.8

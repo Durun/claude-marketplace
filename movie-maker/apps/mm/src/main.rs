@@ -20,6 +20,7 @@ mod remote;
 mod render_cmd;
 mod scenes;
 mod scenes_cpu;
+mod scenes_export;
 mod scenes_render;
 mod shorts_cmd;
 mod transcript_cmd;
@@ -183,6 +184,15 @@ enum PerfCommand {
         /// CI は `Microsoft Basic Render Driver`（WARP、D3D12 のソフトウェアの GPU）を指す。
         #[arg(long)]
         adapter: Option<String>,
+        /// export のコーデックを上書きする（`h264`、`h264_nvenc`、`prores_422hq` など）。
+        #[arg(long)]
+        codec: Option<String>,
+        /// export で並行に描くレンダラーの数。
+        #[arg(long, default_value_t = 1)]
+        parallel: usize,
+        /// export で、コーデックと並行の数の組を全部測る（libx264、2 パス、NVENC、ProRes を並行なしと 4 本で）。
+        #[arg(long)]
+        matrix: bool,
     },
     /// 2 つの結果（JSON かそのフォルダー）を比べ、閾値を超えて遅くなった項目があれば失敗する。
     Compare {
@@ -311,6 +321,9 @@ fn run_perf(command: PerfCommand) -> Result<()> {
         seeks,
         baseline,
         adapter,
+        codec,
+        parallel,
+        matrix,
     } = command
     else {
         return run_perf_report(command);
@@ -328,6 +341,9 @@ fn run_perf(command: PerfCommand) -> Result<()> {
         seeks,
         baseline,
         adapter,
+        codec,
+        parallel,
+        matrix,
     };
     perf::run(&args, &metrics)
 }

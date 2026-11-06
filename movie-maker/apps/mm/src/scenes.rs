@@ -1,16 +1,15 @@
-//! 性能のシナリオ。`startup` は別プロセスを起動して測り、`export` は同じプロセスで書き出しを繰り返す。
+//! 性能のシナリオ。`startup` は別プロセスを起動して測る（`export` は scenes_export.rs）。
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use mm_export::{export_project, ExportOptions};
 use mm_node_api::Quality;
 use mm_runtime::{assemble, RuntimeConfig};
 use mm_types::{CompositionId, MmError, RationalTime, Result, Size};
 
-use crate::perf::{Budget, Environment, Item, Limit, PerfArgs};
+use crate::perf::{Budget, Item, Limit, PerfArgs};
 use crate::project::load_project;
 
 /// 子プロセスが「入力を受け付けられる」ときに標準出力へ出す行。
@@ -19,7 +18,6 @@ pub const READY_LINE: &str = "ready";
 pub const FIRST_FRAME_LINE: &str = "first_frame";
 
 const STARTUP_ROW: &str = "起動";
-const EXPORT_ROW: &str = "書き出し（1080p60、NVENC、1 プロセス）";
 const MS_PER_SECOND: f64 = 1000.0;
 /// 起動の測定の子プロセス 1 回に待つ上限。予算（2 秒）の桁を大きく超えたら固まったとみなす。
 const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -155,46 +153,6 @@ fn flush_stdout() {
     use std::io::Write;
     // 親が行を待っているので即座に出す。失敗しても親が打ち切りとして扱う。
     let _ = std::io::stdout().flush();
-}
-
-/// `export`: フィクスチャのプロジェクトを `--size` で書き出し、速さを測る。
-pub fn export(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
-    let mut project = load_project(&args.project)?;
-    for comp in &mut project.compositions {
-        (comp.width, comp.height) = args.size;
-    }
-    for target in &mut project.render_targets {
-        (target.width, target.height) = args.size;
-    }
-    let mut engine = assemble(&RuntimeConfig::real())?;
-    env.adapter = engine.gpu_adapter().map(|a| a.name.clone());
-    let work = args.out_dir.join("export-work");
-    let (mut fps, mut elapsed_ms) = (Vec::new(), Vec::new());
-    for i in 0..args.repeat {
-        let output = work.join(format!("run{i}.mp4"));
-        let summary = export_project(
-            &mut engine,
-            &project,
-            &ExportOptions {
-                output: Some(output.clone()),
-                target: None,
-                ..ExportOptions::default()
-            },
-        )?;
-        fps.push(summary.fps);
-        elapsed_ms.push(summary.elapsed.as_secs_f64() * MS_PER_SECOND);
-        std::fs::remove_file(&output)?;
-    }
-    let cold = fps.first().copied().unwrap_or(0.0);
-    let budget = Some(Budget {
-        limit: Limit::AtLeast(120.0),
-        row: EXPORT_ROW,
-    });
-    Ok(vec![
-        Item::from_samples("export.fps", "fps", fps, budget),
-        Item::from_samples("export.fps_cold", "fps", vec![cold], None),
-        Item::from_samples("export.elapsed_ms", "ms", elapsed_ms, None),
-    ])
 }
 
 /// `1920x1080` のような大きさを読む。

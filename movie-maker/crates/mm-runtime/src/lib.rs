@@ -6,12 +6,14 @@
 mod assemble;
 mod config;
 mod decode_select;
+mod encode_select;
 mod engine;
 mod registry;
 
 pub use assemble::assemble;
 pub use config::{Backend, RuntimeConfig};
 pub use decode_select::{AutoDecoderFactory, GpuCandidate, SplitDecoder, WithAudio};
+pub use encode_select::AutoEncoderFactory;
 pub use engine::{Engine, EngineParts, GpuFrame};
 pub use mm_gpu::GpuContext;
 pub use registry::Registry;
