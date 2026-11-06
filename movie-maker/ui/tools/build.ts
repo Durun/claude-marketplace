@@ -5,27 +5,28 @@ import { generateCss } from "../theme/src/index.ts";
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
+const DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/main.tsx", import.meta.url));
 
 // Tauri は dist/ をそのまま読む。相対パスだけにして、どの場所から開いても動くようにする。
-const INDEX_HTML = `<!doctype html>
+const page = (title: string, name: string): string => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Movie Maker</title>
+<title>${title}</title>
 <link rel="stylesheet" href="./theme.css">
-<link rel="stylesheet" href="./shell.css">
+<link rel="stylesheet" href="./${name}.css">
 </head>
 <body>
 <div id="root"></div>
-<script defer src="./shell.js"></script>
+<script defer src="./${name}.js"></script>
 </body>
 </html>
 `;
 
 await mkdir(DIST, { recursive: true });
 await build({
-  entryPoints: { shell: ENTRY },
+  entryPoints: { shell: ENTRY, "inspector-demo": DEMO_ENTRY },
   outdir: DIST,
   bundle: true,
   format: "iife",
@@ -36,4 +37,6 @@ await build({
   logLevel: "info",
 });
 await writeFile(`${DIST}theme.css`, generateCss());
-await writeFile(`${DIST}index.html`, INDEX_HTML);
+await writeFile(`${DIST}index.html`, page("Movie Maker", "shell"));
+// Inspector を fixtures のデータで確かめるページ。アプリには載せない。
+await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-demo"));

@@ -1,16 +1,17 @@
 import { render } from "preact";
-import { invoke } from "@mm/sdk";
-import { TasksPanel } from "@mm/tasks";
+import { createClient, createIpcTransport } from "@mm/sdk";
 import { followTheme } from "./followTheme.ts";
+import { Shell } from "./Shell.tsx";
 import "./shell.css";
 
-/** 左の列。右の列のパネルが出来たらここと並べる。 */
-const Shell = () => (
-  <aside class="mm-shell-left">
-    <TasksPanel onInvoke={(command) => void invoke(command)} />
-  </aside>
-);
+const client = createClient(createIpcTransport());
+
+const sendOp = (op: Parameters<typeof client.sendOp>[0]): void => {
+  void client.sendOp(op).then((result) => {
+    if (!result.ok) console.warn("[mm-shell] op failed", op.op, result.error);
+  });
+};
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));
 const root = document.getElementById("root");
-if (root) render(<Shell />, root);
+if (root) render(<Shell sendOp={sendOp} />, root);

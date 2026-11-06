@@ -8,11 +8,30 @@ body {
   font-size: var(--mm-font-size-base);
 }
 
-.mm-shell-left {
+#root {
+  display: flex;
+  height: 100%;
+}
+
+.mm-shell-left,
+.mm-shell-right {
   box-sizing: border-box;
-  width: var(--mm-size-left-column);
+  flex: none;
   height: 100%;
   padding: var(--mm-space-md);
   overflow-y: auto;
+}
+
+.mm-shell-left {
+  width: var(--mm-size-left-column);
   border-right: var(--mm-border-width) solid var(--mm-color-border);
+}
+
+.mm-shell-center {
+  flex: 1 1 auto;
+}
+
+.mm-shell-right {
+  width: var(--mm-size-right-column);
+  border-left: var(--mm-border-width) solid var(--mm-color-border);
 }
