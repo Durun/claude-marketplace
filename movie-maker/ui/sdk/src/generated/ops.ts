@@ -871,3 +871,73 @@ export const PARAM_VALUE_SCHEMAS: Record<ParamValue["type"], JsonSchema> = {
   },
   "json": true
 };
+
+/** レンダーターゲットの JSON Schema。欄が増えても Deliver は入力欄をここから作る。 */
+export const RENDER_TARGET_SCHEMA: JsonSchema = {
+  "description": "レンダーターゲット。成果物の形式。",
+  "type": "object",
+  "properties": {
+    "codec": {
+      "description": "エンコーダーの名前（`h264_nvenc`、`prores_ks`、モックは `sample`）。",
+      "type": "string"
+    },
+    "composition": {
+      "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+      "type": "string"
+    },
+    "fps": {
+      "description": "正の有理数 num/den（fps、再生の速さ）",
+      "type": "object",
+      "properties": {
+        "den": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        },
+        "num": {
+          "type": "integer",
+          "maximum": 4294967295,
+          "minimum": 1
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ]
+    },
+    "height": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "id": {
+      "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+      "type": "string"
+    },
+    "loudness_lufs": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float",
+      "default": null
+    },
+    "output_path": {
+      "type": "string"
+    },
+    "width": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "id",
+    "composition",
+    "width",
+    "height",
+    "fps",
+    "codec",
+    "output_path"
+  ]
+};

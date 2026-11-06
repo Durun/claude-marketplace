@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { Layer, MediaApi, StoryApi } from "@mm/sdk";
+import type { DeliverApi, Layer, MediaApi, StoryApi } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
 
@@ -43,6 +43,17 @@ const fakeStory = (): StoryApi => ({
   seek: vi.fn(),
 });
 
+const fakeDeliver = (): DeliverApi => ({
+  overview: vi.fn().mockResolvedValue({ targets: [], compositions: [], sequences: [], open_composition: null, can_verify: false }),
+  status: vi.fn().mockResolvedValue({ running: false, items: [] }),
+  applyOps: vi.fn().mockResolvedValue(undefined),
+  start: vi.fn().mockResolvedValue(undefined),
+  cancel: vi.fn().mockResolvedValue(undefined),
+  reveal: vi.fn().mockResolvedValue(undefined),
+  pickOutput: vi.fn().mockResolvedValue(null),
+  onProgress: vi.fn().mockResolvedValue(() => {}),
+});
+
 const click = (el: Element | null | undefined) =>
   act(() => {
     (el as HTMLElement).click();
@@ -78,6 +89,18 @@ describe("Shell の左の列", () => {
     expect(story.overview).toHaveBeenCalledTimes(2);
   });
 
+  it("Deliver を渡すとタブが出て、Tasks の書き出しの項目から開ける", async () => {
+    act(() => render(<Shell sendOp={vi.fn()} deliver={fakeDeliver()} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Deliver"]);
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
+    expect(panels[1]?.hidden).toBe(true);
+    const link = [...host.querySelectorAll(".mm-tasks button")].find((b) => b.textContent === "Export to a file");
+    click(link);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(panels[1]?.hidden).toBe(false);
+    expect(host.querySelector(".mm-deliver")).not.toBeNull();
+  });
 });
 
 describe("Shell の外からの変更", () => {

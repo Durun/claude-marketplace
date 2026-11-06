@@ -133,6 +133,13 @@ export const paramValueSchemas = (schema: OpsSchema): Record<string, JsonSchema>
   return Object.fromEntries(entries);
 };
 
+/** レンダーターゲットの JSON Schema（`$ref` を解いたもの）。Deliver が入力欄を作る。 */
+export const renderTargetSchema = (schema: OpsSchema): JsonSchema => {
+  const target = schema.$defs.RenderTarget;
+  if (target === undefined) throw new Error("ops.json に RenderTarget が無い");
+  return inlineRefs(target, schema.$defs);
+};
+
 const opType = (v: JsonSchema): string => {
   const doc = docOf(v) ? `/** ${docOf(v)} */\n` : "";
   return `${doc}export type ${capitalize(opName(v))}Op = ${tsType(v)};`;
@@ -171,6 +178,9 @@ export const generateOpsTs = (schema: OpsSchema): string => {
     "",
     "/** パラメータの値の種類（`ParamValue.type`）ごとの、`value` の JSON Schema。 */",
     `export const PARAM_VALUE_SCHEMAS: Record<ParamValue["type"], JsonSchema> = ${JSON.stringify(paramValueSchemas(schema), null, JSON_INDENT)};`,
+    "",
+    "/** レンダーターゲットの JSON Schema。欄が増えても Deliver は入力欄をここから作る。 */",
+    `export const RENDER_TARGET_SCHEMA: JsonSchema = ${JSON.stringify(renderTargetSchema(schema), null, JSON_INDENT)};`,
     "",
   ].join("\n");
 };

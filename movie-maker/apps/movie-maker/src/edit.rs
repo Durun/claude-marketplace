@@ -139,6 +139,23 @@ pub async fn apply_op(
         .map_err(|e| e.to_string())?
 }
 
+/// WebView の操作をまとめて 1 つのトランザクションとして適用する（取り消し 1 回で戻る）。
+/// レンダーターゲットを直すときの「外して足す」組のように、途中の状態を残したくない操作に使う。
+#[tauri::command]
+pub async fn apply_ops(
+    state: tauri::State<'_, Arc<crate::ipc::SyncState>>,
+    ops: Vec<serde_json::Value>,
+) -> Result<EditOutcome, String> {
+    let ops = ops
+        .into_iter()
+        .map(|op| serde_json::from_value::<Op>(op).map_err(|e| format!("操作の形が違う: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let shared = state.shared.clone();
+    tauri::async_runtime::spawn_blocking(move || submit(&shared, ops))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// 書き手の `Store` に適用して `project.mmdb` に書き、書いた後のデータを置き直す。
 fn apply_saved(
     shared: &Shared,
