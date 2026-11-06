@@ -23,6 +23,8 @@ const CPU_BUDGET_MS: f64 = 4.0;
 const GPU_BUDGET_MS: f64 = 6.0;
 /// キャッシュが無い再生で落としてよいフレームの割合（%）。
 const DROP_BUDGET_PCT: f64 = 1.0;
+/// キャッシュがある再生で落としてよいフレームの割合（%）。
+const DROP_CACHED_BUDGET_PCT: f64 = 0.0;
 /// 縮小したフレームの予算（ミリ秒）。
 const PREVIEW_BUDGET_MS: f64 = 50.0;
 /// 正確なフレームの予算（ミリ秒）。
@@ -45,7 +47,14 @@ struct Rig {
     comp: Composition,
 }
 
-fn rig(args: &PerfArgs, env: &mut Environment) -> Result<Rig> {
+/// フレームのキャッシュを使うか。予算の表は「キャッシュなし」と「キャッシュあり」を分けて持つ。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FrameCache {
+    Off,
+    On,
+}
+
+fn rig(args: &PerfArgs, env: &mut Environment, frame_cache: FrameCache) -> Result<Rig> {
     let project = load_project(&args.project)?;
     let comp = project
         .compositions
@@ -57,6 +66,9 @@ fn rig(args: &PerfArgs, env: &mut Environment) -> Result<Rig> {
     if project.assets.is_empty() {
         config.decode = Backend::Sample;
         config.encode = Backend::Sample;
+    }
+    if frame_cache == FrameCache::Off {
+        config.frame_memory_bytes = Some(0);
     }
     let engine = assemble(&config)?;
     env.adapter = engine.gpu_adapter().map(|a| a.name.clone());
@@ -110,17 +122,20 @@ impl Rig {
     }
 }
 
-/// `playback`: 実時間の速さ（コンポジションの fps）で `--seconds` 秒ぶん再生し、各フレームの時間と落とした数を測る。
-pub fn playback(
-    args: &PerfArgs,
-    env: &mut Environment,
-    metrics: &MetricsHandle,
-) -> Result<Vec<Item>> {
-    let mut rig = rig(args, env)?;
+/// 実時間の再生を `--repeat` 回した結果（回ごとの p50、p99、落とした割合）。
+#[derive(Default)]
+struct Played {
+    p50: Vec<f64>,
+    p99: Vec<f64>,
+    dropped: Vec<f64>,
+}
+
+/// 実時間の速さ（コンポジションの fps）で `--seconds` 秒ぶんを `--repeat` 回再生する。
+fn play(args: &PerfArgs, rig: &mut Rig) -> Result<Played> {
     rig.warm_up()?;
     let interval = Duration::from_secs_f64(1.0 / rig.fps_f64());
     let frames = (args.seconds * rig.fps_f64()).ceil() as u64;
-    let (mut p50, mut p99, mut dropped) = (Vec::new(), Vec::new(), Vec::new());
+    let mut out = Played::default();
     for _ in 0..args.repeat {
         let size = rig.full_size();
         let mut times = Vec::with_capacity(frames as usize);
@@ -134,11 +149,23 @@ pub fn playback(
             .iter()
             .filter(|t| **t > interval.as_secs_f64() * MS_PER_SECOND)
             .count();
-        dropped.push(late as f64 * 100.0 / frames as f64);
-        p50.push(percentile(&times, 0.5));
-        p99.push(percentile(&times, 0.99));
+        out.dropped.push(late as f64 * 100.0 / frames as f64);
+        out.p50.push(percentile(&times, 0.5));
+        out.p99.push(percentile(&times, 0.99));
     }
+    Ok(out)
+}
+
+/// `playback`: フレームのキャッシュなしで再生し、各フレームの時間と落とした数を測る。続けてキャッシュありで
+/// 落とした数を測る。スパンの集計はキャッシュなしの再生の直後に取り、キャッシュに当たったフレームを混ぜない。
+pub fn playback(
+    args: &PerfArgs,
+    env: &mut Environment,
+    metrics: &MetricsHandle,
+) -> Result<Vec<Item>> {
+    let Played { p50, p99, dropped } = play(args, &mut rig(args, env, FrameCache::Off)?)?;
     let snapshot = metrics.snapshot();
+    let cached = play(args, &mut rig(args, env, FrameCache::On)?)?;
     let span_ms = |name: &str| {
         snapshot
             .spans
@@ -159,6 +186,13 @@ pub fn playback(
             "%",
             dropped,
             at_most(DROP_BUDGET_PCT, DROP_ROW),
+        ),
+        Item::from_samples("playback.cached_frame_ms", "ms", cached.p50, None),
+        Item::from_samples(
+            "playback.cached_dropped_pct",
+            "%",
+            cached.dropped,
+            at_most(DROP_CACHED_BUDGET_PCT, DROP_ROW),
         ),
     ];
     if let Some(cpu) = span_ms("render.frame") {
@@ -208,7 +242,8 @@ fn seek_frames(count: usize, loop_frames: u64) -> Vec<u64> {
 
 /// `scrub`: ランダムな位置へ `--seeks` 回シークし、縮小したフレームと正確なフレームが出るまでの時間を測る。
 pub fn scrub(args: &PerfArgs, env: &mut Environment) -> Result<Vec<Item>> {
-    let mut rig = rig(args, env)?;
+    // 繰り返しで同じ位置に戻るので、キャッシュに当たらない初めてのシークの時間を測るためにキャッシュを切る。
+    let mut rig = rig(args, env, FrameCache::Off)?;
     rig.warm_up()?;
     let full = rig.full_size();
     let preview = Size::new(full.width / PREVIEW_DIVISOR, full.height / PREVIEW_DIVISOR);

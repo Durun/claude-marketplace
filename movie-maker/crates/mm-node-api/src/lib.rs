@@ -26,7 +26,7 @@ use mm_audio_api::AudioBlock;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{FrameSource, GpuFrameHandle};
 use mm_text_api::{TextRasterizer, TextShaper};
-use mm_types::{ParamSchema, Params, RationalTime, Rect, Result, RgbaImage, Size, TimeRange};
+use mm_types::{ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange};
 
 /// インターフェースのバージョン。`NodeKind` の形を変えたら上げる（RFC）。
 pub const NODE_API_VERSION: u32 = 1;
@@ -152,6 +152,10 @@ pub trait GpuHelper {
     fn download(&mut self, frame: &FrameRef) -> Result<Arc<RgbaImage>>;
     /// 透明のテクスチャを確保する。
     fn allocate(&mut self, size: Size) -> Result<FrameRef>;
+    /// 1 色（線形の premultiplied）で塗ったテクスチャを確保する。GPU で塗れる実装は CPU の画像を作らない。
+    fn fill(&mut self, size: Size, color: Rgba) -> Result<FrameRef> {
+        self.upload(&RgbaImage::filled(size, color))
+    }
     /// テクスチャを解放する。`Cpu` と `Transparent` は何もしない。
     fn release(&mut self, frame: &FrameRef);
     /// デコーダーの GPU のフレームを、このヘルパーのテクスチャとして使えるようにする。

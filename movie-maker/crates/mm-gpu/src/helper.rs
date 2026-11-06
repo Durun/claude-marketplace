@@ -10,13 +10,15 @@ use half::f16;
 use half::slice::{HalfBitsSliceExt, HalfFloatSliceExt};
 use mm_decode_api::GpuFrameHandle;
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture};
-use mm_types::{MmError, Result, RgbaImage, Size};
+use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
 use crate::context::{GpuContext, FRAME_FORMAT};
 use crate::frame::GpuFrameTexture;
 
 /// 1 画素のバイト数（RGBA の f16）。
 const BYTES_PER_PIXEL: u32 = 8;
+/// 1 画素の値の数（RGBA）。
+const CHANNELS: usize = 4;
 /// wgpu がリードバックの行に課す境界。
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 /// 大きさごとに取り置く空きのテクスチャの上限。入れ子の深い合成でも足りる数。
@@ -72,6 +74,11 @@ impl WgpuGpu {
     /// 番号のテクスチャ。
     pub fn texture(&self, id: u64) -> Option<&wgpu::Texture> {
         self.textures.get(&id)
+    }
+
+    /// 番号がデコーダーから借用したフレームか。借用は次の `submit` までなので、持ち続けるなら写しが要る。
+    pub fn is_borrowed(&self, id: u64) -> bool {
+        self.imported.contains(&id)
     }
 
     /// 持っているテクスチャの数（取り置きは含まない）。漏れの検査に使う。
@@ -206,27 +213,38 @@ impl WgpuGpu {
 
     /// 提出したリードバックの完了を待ち、行の余白を外したバイト列にする。バッファは取り置く。
     pub fn finish_readback(&mut self, readback: Readback) -> Result<Vec<u8>> {
+        let mut out = Vec::with_capacity(readback.row as usize * readback.rows as usize);
+        self.finish_readback_rows(readback, |line| out.extend_from_slice(line))?;
+        Ok(out)
+    }
+
+    /// 提出したリードバックの完了を待ち、余白を外した行を上から順に `visit` に渡す。
+    /// 写した先で変換する呼び手が、中間のバイト列を作らずに済む。バッファは取り置く。
+    pub fn finish_readback_rows(
+        &mut self,
+        readback: Readback,
+        mut visit: impl FnMut(&[u8]),
+    ) -> Result<()> {
         let _span = tracing::debug_span!("render.readback").entered();
         let Readback {
             buffer,
             bytes,
             row,
             padded_row,
-            rows,
+            ..
         } = readback;
         if let Err(e) = map_blocking(&self.ctx.device, &buffer) {
             // 待ちが失敗するのはデバイスが消えたときなので、持ち主に作り直させる。
             self.ctx.mark_lost();
             return Err(e);
         }
-        let mut out = Vec::with_capacity(row as usize * rows as usize);
         {
             let data = buffer
                 .slice(..)
                 .get_mapped_range()
                 .map_err(|e| MmError::Internal(format!("リードバックの範囲: {e}")))?;
             for line in data.chunks_exact(padded_row as usize) {
-                out.extend_from_slice(&line[..row as usize]);
+                visit(&line[..row as usize]);
             }
         }
         buffer.unmap();
@@ -234,7 +252,7 @@ impl WgpuGpu {
         if free.len() < MAX_FREE_BUFFERS {
             free.push(buffer);
         }
-        Ok(out)
+        Ok(())
     }
 
     /// 中間形式のテクスチャのリードバックを提出する。形式が合わなければ `Unsupported`。
@@ -263,12 +281,29 @@ impl WgpuGpu {
 
     /// 中間形式のリードバックを f32 の画像にする。
     pub fn finish_frame_readback(&mut self, readback: Readback, size: Size) -> Result<RgbaImage> {
-        let bytes = self.finish_readback(readback)?;
-        // バイト列は 2 バイト境界に無いことがあるので、u16 の列に写してから f16 として読む。
-        let words: Vec<u16> = bytemuck::pod_collect_to_vec(&bytes);
-        let halves: &[f16] = words.as_slice().reinterpret_cast();
-        let mut pixels = vec![0f32; halves.len()];
-        halves.convert_to_f32_slice(&mut pixels);
+        let row_values = size.width as usize * CHANNELS;
+        let mut pixels = vec![0f32; row_values * size.height as usize];
+        let mut rows = pixels.chunks_exact_mut(row_values);
+        let mut spare = Vec::new();
+        self.finish_readback_rows(readback, |line| {
+            let Some(dst) = rows.next() else {
+                return;
+            };
+            // 写像した範囲の行は通常 2 バイト境界にあるのでそのまま f16 として読み、無いときだけ写してから読む。
+            let words: &[u16] = match bytemuck::try_cast_slice(line) {
+                Ok(words) => words,
+                Err(_) => {
+                    spare.clear();
+                    spare.extend(
+                        line.chunks_exact(2)
+                            .map(|b| u16::from_ne_bytes([b[0], b[1]])),
+                    );
+                    &spare
+                }
+            };
+            let halves: &[f16] = words.reinterpret_cast();
+            halves.convert_to_f32_slice(dst);
+        })?;
         RgbaImage::from_raw(size, pixels)
     }
 
@@ -322,6 +357,10 @@ impl GpuHelper for WgpuGpu {
     }
 
     fn allocate(&mut self, size: Size) -> Result<FrameRef> {
+        self.fill(size, Rgba::TRANSPARENT)
+    }
+
+    fn fill(&mut self, size: Size, color: Rgba) -> Result<FrameRef> {
         let id = self.create(size)?;
         let mut encoder = self
             .ctx
@@ -335,7 +374,12 @@ impl GpuHelper for WgpuGpu {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: f64::from(color.r),
+                        g: f64::from(color.g),
+                        b: f64::from(color.b),
+                        a: f64::from(color.a),
+                    }),
                     store: wgpu::StoreOp::Store,
                 },
             })],

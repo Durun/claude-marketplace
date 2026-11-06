@@ -391,7 +391,7 @@ impl WgpuRenderer {
 }
 
 /// 種類が返した画像をテクスチャにする。透明なら `None`。2 つ目は、テクスチャの持ち主がレンダラーか
-/// （偽ならデコーダーの借用など他の持ち主）。
+/// （偽ならデコーダーの借用）。GPU で描く種類のテクスチャはヘルパーのプールのものなので、写さずに覚えられる。
 fn upload_rendered(gpu: &mut WgpuGpu, rendered: FrameRef) -> Result<Option<(u64, bool)>> {
     Ok(match rendered {
         FrameRef::Transparent { .. } => None,
@@ -399,7 +399,7 @@ fn upload_rendered(gpu: &mut WgpuGpu, rendered: FrameRef) -> Result<Option<(u64,
             FrameRef::Gpu(tex) => Some((tex.id, true)),
             _ => return Err(MmError::Internal("upload が Gpu を返さない".into())),
         },
-        FrameRef::Gpu(tex) => Some((tex.id, false)),
+        FrameRef::Gpu(tex) => Some((tex.id, !gpu.is_borrowed(tex.id))),
     })
 }
 

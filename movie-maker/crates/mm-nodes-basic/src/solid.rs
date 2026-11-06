@@ -1,5 +1,5 @@
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
-use mm_types::{ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, Rgba, RgbaImage};
+use mm_types::{ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, Rgba};
 
 use crate::util::migrate_same_version;
 use crate::KIND_VERSION;
@@ -42,6 +42,7 @@ impl NodeKind for SolidKind {
             .get("color")
             .and_then(ParamValue::as_color)
             .unwrap_or(Rgba::WHITE);
-        Ok(FrameRef::cpu(RgbaImage::filled(cx.size, color)))
+        // 画布の大きさの CPU の画像を作って上げると 1080p で 1 枚 8 ms かかるので、ヘルパーに塗らせる。
+        cx.gpu.fill(cx.size, color)
     }
 }
