@@ -84,7 +84,10 @@ impl GpuContext {
         }
         // 選んだアダプターのバックエンドが求めの範囲にあれば足りる（全バックエンドで作った後の
         // D3D12 だけの求めが、アダプターが D3D12 なら満たされる）。
-        if !request.backends.contains(wgpu::Backends::from(self.backend)) {
+        if !request
+            .backends
+            .contains(wgpu::Backends::from(self.backend))
+        {
             return Err(MmError::InvalidArgument(format!(
                 "共有の GPU はバックエンド {:?} のアダプターで、{:?} を求められた",
                 self.backend, request.backends

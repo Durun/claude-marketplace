@@ -260,8 +260,7 @@ impl GlyphonRasterizer {
             }
             let mut fonts = lock(&self.inner.fonts)?;
             let (fs, cache) = &mut *fonts;
-            if let Ok(glyphs) = collect_glyphs(fs, cache, &mut state.glyphs, shaped, style, scale)
-            {
+            if let Ok(glyphs) = collect_glyphs(fs, cache, &mut state.glyphs, shaped, style, scale) {
                 return Ok(glyphs);
             }
         }
@@ -408,7 +407,10 @@ mod tests {
             let want = reference.rasterize(&shaped, &style, 1.0).expect("CPU");
             assert!(ink(&got) > 0.0, "{text}: 字が描かれる");
             let diff = got.max_diff(&want).expect("同じ大きさ");
-            assert!(diff < 0.05, "{text}: ID が重なると別の字になる（差 {diff}）");
+            assert!(
+                diff < 0.05,
+                "{text}: ID が重なると別の字になる（差 {diff}）"
+            );
         }
     }
 

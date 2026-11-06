@@ -11,7 +11,7 @@ use std::sync::Arc;
 use mm_decode_api::{DecodedFrame, DecoderFactory, GpuContextRef};
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_node_api::GpuHelper;
-use mm_runtime::{assemble, AutoDecoderFactory, Backend, RuntimeConfig, WithAudio};
+use mm_runtime::{assemble, AutoDecoderFactory, Backend, GpuCandidate, RuntimeConfig, WithAudio};
 use mm_types::{RationalTime, RgbaImage, TimeRange};
 
 const BIT_COUNT: u32 = 16;
@@ -122,8 +122,8 @@ fn 素材ごとに実装を選び_音も付く() {
     };
     let auto = AutoDecoderFactory::new(
         vec![
-            with_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory)),
-            with_audio(Arc::new(mm_decode_cuvid::CuvidFactory)),
+            GpuCandidate::probed_on_open(with_audio(Arc::new(mm_decode_d3d12va::D3d12vaFactory))),
+            GpuCandidate::new(with_audio(Arc::new(mm_decode_cuvid::CuvidFactory))),
         ],
         Some(ffmpeg.clone()),
     );
@@ -158,8 +158,8 @@ fn nvenc_の_4k_hevc_は_gpu_の実装で開ける() {
     let ffmpeg: Arc<dyn DecoderFactory> = Arc::new(mm_decode_ffmpeg::FfmpegDecoderFactory);
     let auto = AutoDecoderFactory::new(
         vec![
-            Arc::new(mm_decode_d3d12va::D3d12vaFactory),
-            Arc::new(mm_decode_cuvid::CuvidFactory),
+            GpuCandidate::probed_on_open(Arc::new(mm_decode_d3d12va::D3d12vaFactory)),
+            GpuCandidate::new(Arc::new(mm_decode_cuvid::CuvidFactory)),
         ],
         Some(ffmpeg),
     );

@@ -24,9 +24,9 @@ use mm_text_glyphon::TextEngine;
 use mm_types::{GpuAdapterId, MmError, Result};
 
 use crate::config::{Backend, RuntimeConfig};
-use crate::decode_select::{AutoDecoderFactory, GpuCandidate};
 #[cfg(any(feature = "d3d12va", feature = "cuvid"))]
 use crate::decode_select::WithAudio;
+use crate::decode_select::{AutoDecoderFactory, GpuCandidate};
 use crate::engine::{Engine, EngineParts};
 use crate::registry::Registry;
 
