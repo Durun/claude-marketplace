@@ -83,6 +83,11 @@ impl ProgramViewer {
         self.gpu.is_some()
     }
 
+    /// 画像を捨てる（次の `set_image` までは何も描かない）。
+    pub fn clear(&mut self) {
+        self.gpu = None;
+    }
+
     /// 画像の大きさ。
     pub fn image_size(&self) -> Option<(u32, u32)> {
         self.gpu.as_ref().map(|g| g.size)

@@ -3,13 +3,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use mm_ui_layout::PointerEvent;
+use mm_ui_layout::{Mods, PointerEvent};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    VK_CONTROL, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
@@ -117,6 +118,40 @@ pub fn post_key(hwnd: isize, vk: u32) {
     }
 }
 
+/// 押している間のキーか（`GetKeyState` の上位ビット）。
+fn key_down(vk: u16) -> bool {
+    unsafe { GetKeyState(i32::from(vk)) < 0 }
+}
+
+/// いま押している修飾キー。ドラッグの種類（ripple か roll、slip か slide）を選ぶ。
+fn pointer_mods() -> Mods {
+    Mods {
+        shift: key_down(VK_SHIFT.0),
+        alt: key_down(VK_MENU.0),
+    }
+}
+
+/// 修飾キーを前に付けたキー名。
+fn key_name(vk: u32) -> String {
+    keys::with_modifiers(
+        &keys::vk_name(vk),
+        key_down(VK_CONTROL.0),
+        key_down(VK_SHIFT.0),
+        key_down(VK_MENU.0),
+    )
+}
+
+/// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
+pub fn post_drag(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
+    let lparam = |(x, y): (i32, i32)| LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
+    let h = HWND(hwnd as *mut _);
+    unsafe {
+        let _ = PostMessageW(Some(h), WM_LBUTTONDOWN, WPARAM(0), lparam(from));
+        let _ = PostMessageW(Some(h), WM_MOUSEMOVE, WPARAM(0), lparam(to));
+        let _ = PostMessageW(Some(h), WM_LBUTTONUP, WPARAM(0), lparam(to));
+    }
+}
+
 /// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、最初の押下だけをキー操作にする。
 fn is_key_repeat(lparam: LPARAM) -> bool {
     lparam.0 & KEY_REPEAT_BIT != 0
@@ -180,7 +215,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 SetCapture(hwnd);
             }
             let (x, y) = client_xy(lparam);
-            push(PointerEvent::Down { x, y });
+            push(PointerEvent::Down {
+                x,
+                y,
+                mods: pointer_mods(),
+            });
             LRESULT(0)
         }
         WM_LBUTTONUP => {
@@ -210,7 +249,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 return LRESULT(0);
             }
             if let Some(shared) = SHARED.get() {
-                keys::dispatch(shared, "surface", &keys::vk_name(wparam.0 as u32));
+                keys::dispatch(shared, "surface", &key_name(wparam.0 as u32));
             }
             LRESULT(0)
         }

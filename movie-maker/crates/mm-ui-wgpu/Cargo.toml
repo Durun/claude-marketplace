@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
+mm-eval = { workspace = true }
 mm-ui-layout = { workspace = true }
 wgpu = { workspace = true }
 half = { workspace = true }

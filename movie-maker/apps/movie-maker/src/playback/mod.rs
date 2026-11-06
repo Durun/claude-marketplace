@@ -27,6 +27,11 @@ pub enum Command {
     Step(i64),
     /// `Shared::edits` に積んだ操作を適用する。
     Edit,
+    /// 逆向きに再生する（映像だけ。J キー）。他のコマンドで止まる。
+    Reverse,
+    /// 直前に適用した編集を取り消す・やり直す。
+    Undo,
+    Redo,
     Quit,
 }
 

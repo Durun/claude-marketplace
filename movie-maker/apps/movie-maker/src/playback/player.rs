@@ -3,7 +3,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_audio_cpal::AudioOutput;
@@ -78,6 +78,12 @@ pub fn plan_frame(pos: f64, last: Option<i64>, fps: f64, total: i64) -> Option<F
     }
 }
 
+/// 逆向き再生。始めた位置と時刻から、壁時計で戻る。
+struct Reverse {
+    from: f64,
+    since: Instant,
+}
+
 pub struct Player {
     engine: Engine,
     project: Arc<Project>,
@@ -93,6 +99,11 @@ pub struct Player {
     playing: bool,
     last_frame: Option<i64>,
     audio_cursor: i64,
+    reverse: Option<Reverse>,
+    /// 適用した編集の逆操作。`Undo` で後ろから適用する。
+    undo: Vec<Vec<Op>>,
+    /// 取り消した編集の元の操作。`Redo` で後ろから適用する。
+    redo: Vec<Vec<Op>>,
 }
 
 impl Player {
@@ -132,6 +143,9 @@ impl Player {
             playing: false,
             last_frame: None,
             audio_cursor: 0,
+            reverse: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
         };
         Ok((player, info))
     }
@@ -140,7 +154,9 @@ impl Player {
     pub fn run(&mut self, rx: &Receiver<Command>) {
         self.seek_to(0.0);
         'serve: loop {
-            let wait = if self.playing {
+            let wait = if self.reverse.is_some() {
+                Some(Duration::from_secs_f64(1.0 / self.fps_f))
+            } else if self.playing {
                 Some(self.next_wait())
             } else {
                 None
@@ -161,7 +177,9 @@ impl Player {
                 }
                 Err(RecvTimeoutError::Timeout) => {}
             }
-            if self.playing {
+            if self.reverse.is_some() {
+                self.reverse_tick();
+            } else if self.playing {
                 self.tick();
             }
         }
@@ -176,6 +194,13 @@ impl Player {
     }
 
     fn handle(&mut self, cmd: Command) {
+        let keeps_reverse = matches!(
+            cmd,
+            Command::Reverse | Command::Edit | Command::Undo | Command::Redo | Command::Quit
+        );
+        if !keeps_reverse {
+            self.reverse = None;
+        }
         match cmd {
             Command::Play => self.play(),
             Command::Pause => self.pause(),
@@ -188,6 +213,9 @@ impl Player {
                 self.seek_to(idx as f64 / self.fps_f);
             }
             Command::Edit => self.apply_edits(),
+            Command::Reverse => self.start_reverse(),
+            Command::Undo => self.step_history(true),
+            Command::Redo => self.step_history(false),
             Command::Quit => {}
         }
     }
@@ -202,8 +230,29 @@ impl Player {
         }
     }
 
-    /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。
+    /// 操作を適用して、取り消しの履歴に積む。新しい編集はやり直しの履歴を捨てる。
     fn apply(&mut self, ops: &[Op]) -> std::result::Result<EditOutcome, String> {
+        let (outcome, inverse) = self.commit(ops)?;
+        self.undo.push(inverse);
+        self.redo.clear();
+        Ok(outcome)
+    }
+
+    /// 履歴の最後を適用して、逆の履歴に積む。`undo` が真なら取り消し、偽ならやり直し。
+    fn step_history(&mut self, undo: bool) {
+        let stack = if undo { &mut self.undo } else { &mut self.redo };
+        let Some(ops) = stack.pop() else { return };
+        match self.commit(&ops) {
+            Ok((_, inverse)) => {
+                let other = if undo { &mut self.redo } else { &mut self.undo };
+                other.push(inverse);
+            }
+            Err(e) => tracing::warn!(error = %e, undo, "履歴を適用できなかった"),
+        }
+    }
+
+    /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。逆操作も返す。
+    fn commit(&mut self, ops: &[Op]) -> std::result::Result<(EditOutcome, Vec<Op>), String> {
         let mut project = (*self.project).clone();
         let outcome = apply_transaction(&mut project, ops, &OpContext::new(Entry::WebView))
             .map_err(|e| e.to_string())?;
@@ -219,7 +268,33 @@ impl Player {
         self.shared.publish_doc(project, self.comp.clone());
         self.adopt_shape(fps, duration, size);
         self.resync();
-        Ok(EditOutcome { touched })
+        let inverse = outcome.inverse_ops().map_err(|e| e.to_string())?;
+        Ok((EditOutcome { touched }, inverse))
+    }
+
+    /// 今の位置から逆向きに戻り始める。音は出さない。
+    fn start_reverse(&mut self) {
+        let here = self.pause_position();
+        self.reverse = Some(Reverse {
+            from: here,
+            since: Instant::now(),
+        });
+    }
+
+    /// 壁時計で戻った位置のフレームを出す。先頭に着いたら止まる。
+    fn reverse_tick(&mut self) {
+        let Some(r) = &self.reverse else { return };
+        let pos = (r.from - r.since.elapsed().as_secs_f64()).max(0.0);
+        let at_start = pos <= 0.0;
+        let idx = ((pos * self.fps_f).floor() as i64).clamp(0, (self.frames_total - 1).max(0));
+        if self.last_frame != Some(idx) {
+            self.clock.seek(pos);
+            self.render_frame(idx);
+            self.last_frame = Some(idx);
+        }
+        if at_start {
+            self.reverse = None;
+        }
     }
 
     /// コンポジションの fps、長さ、大きさを引き直す。操作で変わっても、再生の計算が古い値のままにならない。

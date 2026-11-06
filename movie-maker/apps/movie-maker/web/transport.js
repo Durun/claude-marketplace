@@ -1,10 +1,13 @@
-// 再生の操作列と時計の表示。ui/dist の shell の中央の列に入れる（アプリが initialization_script で読み込む）。
+// 再生の操作列と時計の表示、Source のビューアーと編集のボタン。ui/dist の shell の中央の列に入れる（アプリが initialization_script で読み込む）。
 // Timeline の選択（Rust の Tauri イベント）は、shell の Inspector が受ける DOM のイベントにつなぐ。
 // 再生位置は Rust の時計が持つ。ここでは受けた位置を、送られてから経った時間だけ進めて表示する。
 (() => {
   const { invoke, Channel } = window.__TAURI__.core;
   const ADAPTER_WAIT_MS = 1500;
   const LAYER_SELECTED_EVENT = "mm:layer-selected";
+  const SOURCE_EVENT = "mm:source";
+  // Media パネルが素材を選んだときに投げる DOM のイベント（detail.asset が素材の ID）。Source で開く。
+  const ASSET_SELECTED_EVENT = "mm:asset-selected";
   // キー操作を再生に渡さない入力部品。値を打つ・選ぶ操作が Space や矢印を使う。
   const TEXT_ENTRY = "input, select, textarea, [contenteditable]";
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
@@ -30,6 +33,8 @@
     #mm-transport dd { margin: 0; word-break: break-all; }
     #mm-transport ul { margin: 0; padding: 0; list-style: none; font-family: var(--mm-font-mono, monospace); }
     #mm-transport li { padding: 1px 0; overflow-wrap: anywhere; }
+    #mm-transport select { width: 100%; margin-bottom: var(--mm-space-sm, 6px); font: inherit; }
+    #mm-transport .msg { color: var(--mm-color-danger, #b00020); min-height: 1.2em; }
   `;
 
   const el = (tag, attrs = {}, children = []) => {
@@ -48,6 +53,7 @@
   const ui = {};
   let info = null;
   let last = null;
+  let source = null;
 
   const shown = () => {
     if (!last) return 0;
@@ -66,6 +72,11 @@
   };
 
   const act = (action, value) => invoke("transport", { action, value: value ?? null });
+  const srcAct = (action, value) => invoke("source_transport", { action, value: value ?? null });
+  const edit = (action) => invoke("edit_action", { action });
+  const openSource = (asset) => invoke("source_open", { asset });
+  const keyName = (e) =>
+    (e.ctrlKey ? `Ctrl+${e.shiftKey ? "Shift+" : ""}` : "") + (e.altKey ? "Alt+" : "") + e.code;
 
   const build = () => {
     const style = el("style", { textContent: CSS });
@@ -90,6 +101,7 @@
       act("seek", ((e.clientX - r.left) / r.width) * (info ? info.duration : 0));
     };
     ui.lag = el("dd", { textContent: "-" });
+    const sourceSection = buildSource(btn);
     ui.info = el("dl");
     ui.layers = el("ul");
     const root = el("section", { id: "mm-transport" }, [
@@ -99,11 +111,59 @@
       ui.bar,
       buttons,
       ui.info,
+      sourceSection,
       el("h2", { textContent: "レイヤー" }),
       ui.layers,
     ]);
     document.head.append(style);
     (document.querySelector(".mm-shell-center") ?? document.body).append(root);
+  };
+
+  // Source: 素材を選んで開き、再生・シーク・イン点とアウト点・Timeline への insert / overwrite をする。
+  const buildSource = (btn) => {
+    ui.srcSelect = el("select", { ariaLabel: "source asset" });
+    ui.srcSelect.onchange = () => ui.srcSelect.value && openSource(ui.srcSelect.value);
+    ui.srcTc = el("span", { textContent: fmt(0) });
+    ui.srcMarks = el("div", { className: "dim", textContent: "In - / Out -" });
+    ui.srcMsg = el("div", { className: "msg" });
+    return el("div", {}, [
+      el("h2", { textContent: "Source" }),
+      ui.srcSelect,
+      el("div", { className: "tc" }, [ui.srcTc]),
+      ui.srcMarks,
+      el("div", { className: "buttons" }, [
+        btn("J", () => srcAct("reverse")),
+        btn("K", () => srcAct("pause")),
+        btn("L", () => srcAct("play")),
+        btn("-1", () => srcAct("step", -1)),
+        btn("+1", () => srcAct("step", 1)),
+      ]),
+      el("div", { className: "buttons" }, [
+        btn("In (I)", () => edit("mark_in")),
+        btn("Out (O)", () => edit("mark_out")),
+        btn("Insert (,)", () => edit("insert")),
+        btn("Overwrite (.)", () => edit("overwrite")),
+      ]),
+      el("div", { className: "buttons" }, [
+        btn("Split (B)", () => edit("split")),
+        btn("Lift (Del)", () => edit("lift")),
+        btn("Extract (BS)", () => edit("extract")),
+        btn("Undo", () => edit("undo")),
+        btn("Redo", () => edit("redo")),
+      ]),
+      ui.srcMsg,
+    ]);
+  };
+
+  const showSource = (s) => {
+    source = s;
+    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.id} (${fmt(a.duration)})` }));
+    ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "素材を選ぶ" }), ...options);
+    ui.srcSelect.value = s.asset ?? "";
+    ui.srcTc.textContent = fmt(s.t);
+    const mark = (v) => (v == null ? "-" : fmt(v));
+    ui.srcMarks.textContent = `In ${mark(s.mark_in)} / Out ${mark(s.mark_out)}`;
+    ui.srcMsg.textContent = s.message;
   };
 
   const row = (k, v) => [el("dt", { textContent: k }), el("dd", { textContent: v })];
@@ -149,7 +209,7 @@
     window.addEventListener("keydown", (e) => {
       if (e.repeat || (e.target instanceof Element && e.target.closest(TEXT_ENTRY))) return;
       if (e.code === "Space") e.preventDefault();
-      invoke("key_event", { source: "webview", key: e.code });
+      invoke("key_event", { source: "webview", key: keyName(e) });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {
@@ -157,6 +217,9 @@
       info = await invoke("project_info");
       showInfo();
     });
+    window.__TAURI__.event.listen(SOURCE_EVENT, (e) => showSource(e.payload));
+    window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
+    showSource(await invoke("source_state"));
     // 描画スレッドが GPU を選び終えた後に情報を取り直す。
     setTimeout(async () => {
       info = await invoke("project_info");

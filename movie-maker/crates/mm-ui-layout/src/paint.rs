@@ -5,7 +5,9 @@ use crate::geom::{Quad, Rect};
 use crate::palette::{self, Palette};
 use crate::ruler::{label, major_step, ticks};
 use crate::time_view::TimeView;
-use crate::timeline::{bar_span, row_top, Hit, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H};
+use crate::timeline::{
+    bar_span, cut_span, row_top, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
+};
 
 /// 目盛りのラベルの文字の高さ。
 const LABEL_H: f32 = 10.0;
@@ -23,6 +25,8 @@ pub struct PaintState {
     pub hover: Hit,
     /// 選ばれたレイヤー。
     pub selected: Option<usize>,
+    /// 選ばれたカット（レイヤーの添字、カットの添字）。
+    pub selected_cut: Option<(usize, usize)>,
     /// スナップの案内線（秒）。
     pub guide: Option<f64>,
     /// 色。
@@ -83,8 +87,13 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
             color = palette::lighten(color, 0.18);
         }
         let bar = Rect::new(x, top, bw, ROW_H);
-        q.push(Quad::new(bar, color));
-        handles(&bar, (state.hover, i), p, q);
+        if item.cuts.is_empty() {
+            q.push(Quad::new(bar, color));
+            handles(&bar, (state.hover, i), p, q);
+        } else {
+            q.push(Quad::new(bar, color.with_alpha(0.25)));
+            cuts(item, (i, top), view, state, q);
+        }
         if state.selected == Some(i) {
             outline(&bar, p, q);
         }
@@ -92,9 +101,50 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
     outside(model, view, w, p, q);
 }
 
+/// シーケンスのカットを並べて描く。隙間は枠だけの空き、選んだカットは外枠、ホバーしたカットの端はつまみを出す。
+fn cuts(
+    item: &Item,
+    (index, top): (usize, f32),
+    view: &TimeView,
+    state: &PaintState,
+    q: &mut Vec<Quad>,
+) {
+    let p = &state.palette;
+    let base = palette::item_color(item.kind);
+    for (c, bar) in item.cuts.iter().enumerate() {
+        let (x, w) = cut_span(view, bar);
+        let r = Rect::new(x, top, w, ROW_H);
+        let hovered =
+            matches!(state.hover, Hit::Cut { item: i, cut, .. } if i == index && cut == c);
+        if bar.gap {
+            q.push(Quad::new(r, palette::GAP.with_alpha(0.5)));
+            outline(&r, p, q);
+        } else {
+            let color = if hovered {
+                palette::lighten(base, 0.18)
+            } else {
+                base
+            };
+            q.push(Quad::new(r, color));
+            // 隣のカットとの境目が見えるように、左端に暗い線を引く。
+            q.push(Quad::new(Rect::new(x, top, 1.0, ROW_H), palette::CUT_SEAM));
+        }
+        if hovered {
+            handles(&r, (state.hover, c), p, q);
+        }
+        if state.selected_cut == Some((index, c)) {
+            outline(&r, p, q);
+        }
+    }
+}
+
 fn handles(bar: &Rect, (hover, index): (Hit, usize), p: &Palette, q: &mut Vec<Quad>) {
     let hw = HANDLE_PX.min(bar.w / 3.0);
-    let lit = |part| hover == Hit::Layer { index, part };
+    let lit = |part| match hover {
+        Hit::Layer { index: i, part: pt } => i == index && pt == part,
+        Hit::Cut { cut, part: pt, .. } => cut == index && pt == part,
+        _ => false,
+    };
     for (part, x) in [(Part::InHandle, bar.x), (Part::OutHandle, bar.right() - hw)] {
         if lit(part) {
             q.push(Quad::new(
@@ -146,18 +196,13 @@ fn playhead(x: f32, h: f32, p: &Palette, q: &mut Vec<Quad>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline::{Item, ItemKind};
+    use crate::timeline::{CutBar, Item, ItemKind};
 
     fn model() -> TimelineModel {
         TimelineModel {
             duration: 5.0,
             fps: 30.0,
-            items: vec![Item {
-                start: 1.0,
-                end: 3.0,
-                kind: ItemKind::Footage,
-                enabled: true,
-            }],
+            items: vec![Item::layer(1.0, 3.0, ItemKind::Footage, true)],
         }
     }
 
@@ -166,6 +211,7 @@ mod tests {
             playhead,
             hover: Hit::Empty,
             selected: None,
+            selected_cut: None,
             guide: None,
             palette: Palette::DEFAULT,
         }
@@ -219,6 +265,48 @@ mod tests {
             .find(|q| q.color == color)
             .expect("レイヤーの帯");
         assert_eq!((bar.rect.x, bar.rect.w), (100.0, 200.0));
+    }
+
+    fn seq_model() -> TimelineModel {
+        let cut = |start, end, gap| CutBar { start, end, gap };
+        let mut seq = Item::layer(0.0, 5.0, ItemKind::Sequence, true);
+        seq.cuts = vec![cut(0.0, 2.0, false), cut(2.0, 3.0, true)];
+        TimelineModel {
+            duration: 5.0,
+            fps: 30.0,
+            items: vec![seq],
+        }
+    }
+
+    #[test]
+    fn シーケンスはカットを並べ_隙間は空きの色で_選んだカットは外枠を付ける() {
+        let v = TimeView {
+            origin: 0.0,
+            px_per_sec: 100.0,
+        };
+        let st = PaintState {
+            selected_cut: Some((0, 0)),
+            ..state(0.0)
+        };
+        let quads = timeline_quads(&seq_model(), &v, (800.0, 120.0), &st);
+        let base = palette::item_color(ItemKind::Sequence);
+        let cut = quads
+            .iter()
+            .find(|q| q.color == base && q.rect.w == 200.0)
+            .expect("カット 0 の帯");
+        assert_eq!((cut.rect.x, cut.rect.h), (0.0, ROW_H));
+        let gap = quads
+            .iter()
+            .find(|q| q.color == palette::GAP.with_alpha(0.5))
+            .expect("隙間");
+        assert_eq!((gap.rect.x, gap.rect.w), (200.0, 100.0));
+        let outline = quads
+            .iter()
+            .filter(|q| {
+                q.color == st.palette.selection && q.rect.x >= 0.0 && q.rect.right() <= 200.5
+            })
+            .count();
+        assert_eq!(outline, 4, "選んだカットの外枠は 4 辺");
     }
 
     #[test]

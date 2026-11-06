@@ -15,6 +15,8 @@ use serde::Serialize;
 use crate::clock::PlayClock;
 use crate::edit::PendingEdit;
 use crate::playback::Command;
+use crate::sequence_edit::EditState;
+use crate::source::SourceSlot;
 
 /// 百分位つきの要約（単位は呼び出し側の決め。ここではミリ秒）。
 #[derive(Debug, Clone, Default, Serialize)]
@@ -135,6 +137,10 @@ pub struct Shared {
     selected_layer: Mutex<Option<String>>,
     /// 選択を置き直すたびに進む。
     pub selection_serial: AtomicU64,
+    /// Timeline のカットの選択と、編集の結果の文言。
+    pub edit: EditState,
+    /// Source のビューアー。
+    pub source: SourceSlot,
     /// 計測の系列を貯めるか。自動試験のときだけ貯め、普段の起動で増え続けないようにする。
     collect_series: AtomicBool,
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
@@ -162,6 +168,8 @@ impl Shared {
             doc_serial: AtomicU64::new(0),
             selected_layer: Mutex::new(None),
             selection_serial: AtomicU64::new(0),
+            edit: EditState::default(),
+            source: SourceSlot::default(),
             collect_series: AtomicBool::new(false),
             series: Mutex::new(BTreeMap::new()),
         }
