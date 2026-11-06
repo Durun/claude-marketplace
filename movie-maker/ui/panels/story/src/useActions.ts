@@ -1,10 +1,13 @@
-import type { Rating, StoryApi, StoryHit, StoryWord, Topic } from "@mm/sdk";
-import { addTopicOp, deleteOp, fixOp, insertTopicsOp, rateOp, tagOp } from "./ops.ts";
+import type { Op, Rating, StoryApi, StoryHit, StoryWord, Topic, WordRange } from "@mm/sdk";
+import { addTopicOp, cutOp, fixOp, hideOp, insertTopicsOp, rateOp, tagOp } from "./ops.ts";
 import { seekToCut, seekToSource, type Loaded, type Tray } from "./useStory.ts";
 
 export interface Actions {
   makeTopic: (title: string) => Promise<void>;
-  deleteSelected: () => Promise<void>;
+  /** 選んだ単語を消し、その音を再生から外す。 */
+  cutSelected: () => Promise<void>;
+  /** 選んだ単語を表示だけ消す（全部消してあれば戻す）。 */
+  hideSelected: () => Promise<void>;
   fixSelected: (text: string) => Promise<void>;
   rate: (topic: Topic, rating: Rating) => Promise<void>;
   tag: (topic: Topic, tag: string, remove: boolean) => Promise<void>;
@@ -26,6 +29,16 @@ export interface ActionContext {
   setNotice: (message: string | null) => void;
 }
 
+/** 選んだ単語の範囲の時刻で組んだ操作を送り、送れたら選択を外す。選んでいなければ何もしない。 */
+const sendForRange = async (cx: ActionContext, build: (asset: string, range: WordRange) => Op | null) => {
+  const asset = cx.loaded.assetId;
+  const first = cx.selected[0];
+  const last = cx.selected.at(-1);
+  if (!asset || !first || !last) return;
+  const op = build(asset, await cx.api.range(asset, first.id, last.id));
+  if (op && (await cx.loaded.apply([op]))) cx.clearSelection();
+};
+
 /** パネルの操作を、操作の組み立てと送信と再生位置の移動につなぐ。 */
 export const createActions = (cx: ActionContext): Actions => {
   const { api, loaded, tray, selected } = cx;
@@ -37,15 +50,10 @@ export const createActions = (cx: ActionContext): Actions => {
     cx.setNotice(moved ? null : "This part is not on the timeline yet.");
   };
   return {
-    makeTopic: async (title) => {
-      const first = selected[0];
-      const last = selected.at(-1);
-      if (!asset || !first || !last) return;
-      const range = await api.range(asset, first.id, last.id);
-      if (await send(addTopicOp(asset, title, range))) cx.clearSelection();
-    },
-    deleteSelected: async () => {
-      if (asset && (await send(deleteOp(asset, selected)))) cx.clearSelection();
+    makeTopic: (title) => sendForRange(cx, (a, range) => addTopicOp(a, title, range)),
+    cutSelected: () => sendForRange(cx, (a, range) => cutOp(a, selected, range)),
+    hideSelected: async () => {
+      if (asset && (await send(hideOp(asset, selected)))) cx.clearSelection();
     },
     fixSelected: async (text) => {
       const word = selected[0];

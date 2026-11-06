@@ -85,7 +85,8 @@ export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
       <SelectionBar
         selected={selected}
         onTopic={actions.makeTopic}
-        onDelete={actions.deleteSelected}
+        onCut={actions.cutSelected}
+        onHide={actions.hideSelected}
         onFix={actions.fixSelected}
         onClear={select.clear}
       />

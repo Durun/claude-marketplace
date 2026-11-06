@@ -1232,6 +1232,51 @@
       ]
     },
     {
+      "description": "文字起こしの単語を消し、その音をシーケンスのカットから抜いて詰める。",
+      "type": "object",
+      "properties": {
+        "asset": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "cutWords"
+        },
+        "ranges": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRange"
+          }
+        },
+        "restore": {
+          "type": "boolean",
+          "default": false
+        },
+        "splices": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CutSplice"
+          }
+        },
+        "words": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "asset"
+      ]
+    },
+    {
       "description": "文字起こしの単語の文字を直す。",
       "type": "object",
       "properties": {
@@ -1472,6 +1517,39 @@
         "source",
         "in",
         "out"
+      ]
+    },
+    "CutSplice": {
+      "description": "`sequence` の `index` から `count` 個のカットを `cuts` で置き換える。`cutWords` の逆操作が持つ形。",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "cuts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Cut"
+          }
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "sequence": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "index",
+        "count",
+        "cuts"
       ]
     },
     "Ease": {
@@ -2310,6 +2388,23 @@
       "required": [
         "sequence",
         "relation"
+      ]
+    },
+    "SourceRange": {
+      "description": "素材の時刻の範囲 `[in, out)`。",
+      "type": "object",
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "out": {
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "in",
+        "out"
       ]
     },
     "TimeKeyframe": {

@@ -171,12 +171,28 @@ describe("StoryPanel の選択と編集", () => {
     expect(op).toMatchObject({ op: "addTopic", topic: { asset: "a1", in: t(1), out: t(4), title: "w1直" } });
     expect(api.transcript).toHaveBeenCalledTimes(2);
   });
+});
 
-  it("消していない単語を削除し、全部消してあれば戻す", async () => {
+describe("StoryPanel の単語の削除と直し", () => {
+  it("Delete は選んだ単語の範囲を再生から外す cutWords を送る", async () => {
     const api = fake();
     await mount(api);
     drag(0, 2);
     await press(button("Delete"));
+    expect(api.range).toHaveBeenCalledWith("a1", "w0", "w2");
+    expect(sent(api)[0]).toEqual({
+      op: "cutWords",
+      asset: "a1",
+      words: ["w0", "w1", "w2"],
+      ranges: [{ in: t(1), out: t(4) }],
+    });
+  });
+
+  it("Hide は消していない単語を表示だけ消し、全部消してあれば戻す", async () => {
+    const api = fake();
+    await mount(api);
+    drag(0, 2);
+    await press(button("Hide"));
     expect(sent(api)[0]).toEqual({ op: "deleteWords", asset: "a1", words: ["w0", "w1"], restore: false });
     drag(2, 2);
     expect(button("Restore")).toBeDefined();

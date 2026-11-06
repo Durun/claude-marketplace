@@ -28,7 +28,7 @@ struct Plan {
 }
 
 /// カットを、シーケンスの時間軸の上にある 1 枚のレイヤーとして見たもの。
-fn cut_layer(cut: &Cut, placed: &PlacedCut) -> Layer {
+pub(crate) fn cut_layer(cut: &Cut, placed: &PlacedCut) -> Layer {
     Layer {
         speed: cut.speed,
         ..Layer::new(

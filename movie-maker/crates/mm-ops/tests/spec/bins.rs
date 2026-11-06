@@ -23,6 +23,7 @@ pub enum BinSpec {
     AddTopic(String, u8, i64, i64),
     RemoveTopic(u8),
     DeleteWords(u8, Vec<u8>, bool),
+    CutWords(u8, Vec<u8>, Vec<(i64, i64)>, bool),
     FixTranscript(u8, u8, Option<u8>),
     TrimLayer(u8, bool, i64),
     FitLayer(u8),
@@ -46,6 +47,13 @@ pub fn arb_bin_spec() -> impl Strategy<Value = BinSpec> {
         s().prop_map(BinSpec::RemoveTopic),
         (s(), prop::collection::vec(s(), 1..3), any::<bool>())
             .prop_map(|(a, w, r)| BinSpec::DeleteWords(a, w, r)),
+        (
+            s(),
+            prop::collection::vec(s(), 0..3),
+            prop::collection::vec((0i64..24, 1i64..8), 0..3),
+            prop::bool::weighted(0.2),
+        )
+            .prop_map(|(a, w, r, b)| BinSpec::CutWords(a, w, r, b)),
         (s(), s(), prop::option::of(s())).prop_map(|(a, w, t)| BinSpec::FixTranscript(a, w, t)),
         (s(), any::<bool>(), -6i64..6).prop_map(|(l, o, b)| BinSpec::TrimLayer(l, o, b)),
         s().prop_map(BinSpec::FitLayer),
@@ -61,6 +69,14 @@ pub fn arb_bin_spec() -> impl Strategy<Value = BinSpec> {
         )
             .prop_map(|(q, i, t, p)| BinSpec::InsertTopics(q, i, t, p)),
     ]
+}
+
+fn word_ids(picks: &[u8]) -> Vec<mm_doc::WordId> {
+    picks
+        .iter()
+        .filter_map(|w| pick(&WORDS, *w))
+        .map(|w| Id::new(*w))
+        .collect()
 }
 
 /// 選別と話題の ID（`rate` と `tag` が指す）。
@@ -128,12 +144,23 @@ pub fn bin_op(spec: &BinSpec, p: &Project) -> Option<Op> {
         .into(),
         BinSpec::DeleteWords(a, words, restore) => DeleteWords {
             asset: asset(*a)?,
-            words: words
+            words: word_ids(words),
+            restore: *restore,
+        }
+        .into(),
+        BinSpec::CutWords(a, words, ranges, restore) => CutWords {
+            asset: asset(*a)?,
+            words: word_ids(words),
+            // 話題のカット（1 秒から 4 秒）に掛かるよう、4 分の 1 秒の刻みで 0 秒から 8 秒に置く。
+            ranges: ranges
                 .iter()
-                .filter_map(|w| pick(&WORDS, *w))
-                .map(|w| Id::new(*w))
+                .map(|(from, len)| SourceRange {
+                    in_point: quarters(*from),
+                    out_point: quarters(from + len),
+                })
                 .collect(),
             restore: *restore,
+            splices: Vec::new(),
         }
         .into(),
         BinSpec::FixTranscript(a, w, t) => FixTranscript {

@@ -7,7 +7,10 @@ const TITLE_MAX_CHARS = 16;
 export interface SelectionBarProps {
   selected: readonly StoryWord[];
   onTopic: (title: string) => void;
-  onDelete: () => void;
+  /** 消して詰める（再生から外す）。 */
+  onCut: () => void;
+  /** 表示だけ消す・戻す。 */
+  onHide: () => void;
   onFix: (text: string) => void;
   onClear: () => void;
 }
@@ -36,8 +39,8 @@ const FixForm = ({ word, onFix }: { word: StoryWord; onFix: (text: string) => vo
   );
 };
 
-/** 選んだ単語への操作。話題にする、削除（戻す）、直す。 */
-export const SelectionBar = ({ selected, onTopic, onDelete, onFix, onClear }: SelectionBarProps) => {
+/** 選んだ単語への操作。話題にする、消して詰める、表示だけ消す（戻す）、直す。 */
+export const SelectionBar = ({ selected, onTopic, onCut, onHide, onFix, onClear }: SelectionBarProps) => {
   const [title, setTitle] = useState("");
   const first = selected[0];
   const last = selected.at(-1);
@@ -69,8 +72,13 @@ export const SelectionBar = ({ selected, onTopic, onDelete, onFix, onClear }: Se
         <button type="button" class="mm-story-button mm-story-primary" onClick={topic}>
           Make topic
         </button>
-        <button type="button" class="mm-story-button" onClick={onDelete}>
-          {restore ? "Restore" : "Delete"}
+      </div>
+      <div class="mm-story-row">
+        <button type="button" class="mm-story-button" title="Remove from playback" onClick={onCut}>
+          Delete
+        </button>
+        <button type="button" class="mm-story-button" title="Hide from the transcript only" onClick={onHide}>
+          {restore ? "Restore" : "Hide"}
         </button>
       </div>
       {selected.length === 1 && <FixForm key={first.id} word={first} onFix={onFix} />}

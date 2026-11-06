@@ -75,4 +75,4 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 
 Story と Media は素材を選んだとき、DOM のイベント `mm:asset-selected`（`detail.asset`）を投げる（`announceAsset`）。`web/transport.js` が受けて Source で開く。
 
-編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`deleteWords`、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
+編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
