@@ -1,0 +1,175 @@
+//! 再生。専用のスレッドが `Engine` を持ち、再生の主の時計に合わせてフレームを描いて描画スレッドに渡し、
+//! 音を `mm-audio-cpal` に足す。命令（再生、停止、シーク）はチャンネルで受ける。
+
+mod player;
+
+use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+
+use mm_doc::Project;
+use mm_types::{CompositionId, MmError, Result};
+
+use crate::state::Shared;
+
+pub use player::PlayerOptions;
+
+/// 再生スレッドへの命令。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Command {
+    Play,
+    Pause,
+    Toggle,
+    /// 秒で指す。範囲の外は端に収める。
+    Seek(f64),
+    /// 現在のフレームから `n` フレーム動かす（再生中なら止める）。
+    Step(i64),
+    Quit,
+}
+
+/// 開いたコンポジションの情報。
+#[derive(Debug, Clone)]
+pub struct PlaybackInfo {
+    pub duration: f64,
+    pub fps: f64,
+    pub width: u32,
+    pub height: u32,
+    /// 時計の種類（`audio`、`wall`）。
+    pub clock: &'static str,
+    /// 音の出力デバイスの名前とレート。無ければ `None`。
+    pub audio_device: Option<String>,
+    pub backends: Vec<(String, String)>,
+}
+
+/// 再生スレッドのハンドル。落とすと止めて待つ。
+pub struct Playback {
+    tx: Sender<Command>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl Playback {
+    /// 再生スレッドを始める。`Engine` の組み立てが失敗したらここで `Err`。
+    pub fn spawn(
+        shared: Arc<Shared>,
+        project: Arc<Project>,
+        composition: CompositionId,
+        options: PlayerOptions,
+    ) -> Result<(Self, PlaybackInfo)> {
+        let (tx, rx) = channel();
+        let (ready_tx, ready_rx) = channel();
+        *shared.commands.lock().expect("commands") = Some(tx.clone());
+        let join = std::thread::Builder::new()
+            .name("playback".into())
+            .spawn(
+                move || match player::Player::new(shared, project, composition, options) {
+                    Ok((mut player, info)) => {
+                        let _ = ready_tx.send(Ok(info));
+                        player.run(&rx);
+                    }
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(e));
+                    }
+                },
+            )
+            .map_err(MmError::Io)?;
+        let info = ready_rx
+            .recv()
+            .map_err(|_| MmError::Internal("再生スレッドが立ち上がる前に終わった".into()))??;
+        Ok((
+            Self {
+                tx,
+                join: Some(join),
+            },
+            info,
+        ))
+    }
+}
+
+impl Drop for Playback {
+    fn drop(&mut self) {
+        let _ = self.tx.send(Command::Quit);
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    use mm_runtime::RuntimeConfig;
+    use mm_testkit::decode::SampleMedia;
+    use mm_testkit::fixtures::vertical_project;
+
+    use super::*;
+
+    fn start() -> (Arc<Shared>, Playback, PlaybackInfo) {
+        let media = SampleMedia::default();
+        let (project, comp, _) = vertical_project(&media, std::path::Path::new("out.json"));
+        let shared = Arc::new(Shared::new());
+        let options = PlayerOptions {
+            no_audio: true,
+            config: Some(RuntimeConfig::sample()),
+        };
+        let (playback, info) = Playback::spawn(shared.clone(), Arc::new(project), comp, options)
+            .expect("再生を始める");
+        (shared, playback, info)
+    }
+
+    fn wait(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
+        let t = Instant::now();
+        while t.elapsed() < limit {
+            if done() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn 頭から最後まで再生すると止まり_全フレームが出たか飛ばしたかに数えられる() {
+        let (shared, _playback, info) = start();
+        let total = (info.duration * info.fps).round() as u64;
+        shared.send(Command::Play);
+        assert!(wait(Duration::from_secs(2), || shared
+            .playing
+            .load(Ordering::SeqCst)));
+        assert!(
+            wait(Duration::from_secs(10), || !shared
+                .playing
+                .load(Ordering::SeqCst)),
+            "時間内に終わる"
+        );
+        let rendered = shared.rendered_frames.load(Ordering::SeqCst);
+        let dropped = shared.dropped_frames.load(Ordering::SeqCst);
+        assert!(
+            rendered + dropped >= total,
+            "描いた {rendered} と飛ばした {dropped} で全 {total} フレームを数える"
+        );
+    }
+
+    #[test]
+    fn 停止中のシークとコマ送りはその位置のフレームを出す() {
+        let (shared, _playback, info) = start();
+        shared.send(Command::Seek(1.0));
+        let at = |t: f64| {
+            wait(Duration::from_secs(2), || {
+                shared
+                    .frames
+                    .newer_than(0)
+                    .is_some_and(|f| (f.time - t).abs() < 1e-9)
+            })
+        };
+        assert!(at(1.0), "1 秒のフレーム");
+        shared.send(Command::Step(1));
+        assert!(at(1.0 + 1.0 / info.fps), "1 フレーム進む");
+        shared.send(Command::Seek(f64::MAX));
+        assert!(
+            at(info.duration - 1.0 / info.fps),
+            "終わりは最後のフレームに収まる"
+        );
+    }
+}
