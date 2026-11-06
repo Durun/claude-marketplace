@@ -46,9 +46,9 @@ impl ForkSequence {
             return Ok(cuts);
         };
         let at = |id: &CutId| {
-            cuts.iter().position(|c| &c.id == id).ok_or_else(|| {
-                invalid(format!("カット {id} は sequence {} に無い", self.sequence))
-            })
+            cuts.iter()
+                .position(|c| &c.id == id)
+                .ok_or_else(|| invalid(format!("カット {id} は sequence {} に無い", self.sequence)))
         };
         let (first, last) = (at(&range.first)?, at(&range.last)?);
         if first > last {

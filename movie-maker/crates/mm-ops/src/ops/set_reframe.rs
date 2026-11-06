@@ -54,7 +54,10 @@ impl Apply for SetReframe {
             self.check(project)?;
         }
         let cuts = &mut project.layer_mut(&self.layer)?.framing.cuts;
-        let old = cuts.iter().position(|r| r.cut == self.cut).map(|i| cuts.remove(i));
+        let old = cuts
+            .iter()
+            .position(|r| r.cut == self.cut)
+            .map(|i| cuts.remove(i));
         if let Some(transform) = &self.transform {
             cuts.push(CutReframe {
                 cut: self.cut.clone(),

@@ -20,6 +20,7 @@ mod render_cmd;
 mod scenes;
 mod scenes_cpu;
 mod scenes_render;
+mod shorts_cmd;
 mod transcript_cmd;
 
 use std::path::PathBuf;
@@ -132,6 +133,14 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// 本編のカットごとに使っているショート（上書きの印つき）と、複製のショートの元が変わったカットを出す。
+    Shorts {
+        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
+        project: PathBuf,
+        /// 1 行に 1 件の JSON で出す。
+        #[arg(long)]
+        json: bool,
+    },
     /// 性能の計測。
     Perf {
         #[command(subcommand)]
@@ -218,6 +227,7 @@ fn run(cli: Cli) -> Result<()> {
             width,
         }),
         Command::Render(args) => render_cmd::render(&args),
+        Command::Shorts { project, json } => shorts_cmd::shorts(&project, json),
         Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),
         other => run_store_command(other),
@@ -278,6 +288,7 @@ fn run_store_command(command: Command) -> Result<()> {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Render(_) => "render",
+        Command::Shorts { .. } => "shorts",
         Command::Perf { .. } => "perf",
         Command::ProbeStartup { .. } => "probe-startup",
         _ => "store",

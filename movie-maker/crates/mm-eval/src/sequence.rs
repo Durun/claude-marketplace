@@ -1,7 +1,9 @@
 //! マグネティックシーケンスのカットの配置。有効なカットを先頭から詰め、位置は長さの和で決まる。
 
-use mm_doc::{Cut, CutId, Sequence};
-use mm_types::{RationalTime, Result, TimeRange};
+use mm_doc::{Cut, CutId, Framing, Param, Sequence, Transform};
+use mm_types::{ParamValue, RationalTime, Result, TimeRange};
+
+use crate::transform::evaluate_transform;
 
 /// 配置したカット。`range` は sequence の時間軸。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +53,26 @@ pub fn cut_source_time(cut: &Cut, placed: &PlacedCut, t: RationalTime) -> Result
     t.checked_sub(placed.range.start)?
         .scale(cut.speed)?
         .checked_add(cut.in_point)
+}
+
+/// カットの再フレーミング（`Framing.cuts`）を sequence の時刻 `t` で評価し、定数の変形にする。無ければ `None`。
+/// キーフレームは素材の時刻で引く（被写体の位置は素材の時刻で決まる）。
+pub fn reframe_at(
+    framing: &Framing,
+    cut: &Cut,
+    placed: &PlacedCut,
+    t: RationalTime,
+) -> Result<Option<Transform>> {
+    let Some(reframe) = framing.reframe(&cut.id) else {
+        return Ok(None);
+    };
+    let e = evaluate_transform(&reframe.transform, cut_source_time(cut, placed, t)?);
+    Ok(Some(Transform {
+        position: Param::constant(ParamValue::Vec2(e.position)),
+        scale: Param::constant(ParamValue::Vec2(e.scale)),
+        rotation: Param::constant(ParamValue::Number(e.rotation_deg)),
+        anchor: e.anchor.map(|a| Param::constant(ParamValue::Vec2(a))),
+    }))
 }
 
 #[cfg(test)]
@@ -115,6 +137,44 @@ mod tests {
         assert_eq!(
             cut_source_time(&c, &placed[1], RationalTime::seconds(2)).unwrap(),
             RationalTime::seconds(12)
+        );
+    }
+
+    #[test]
+    fn 再フレーミングのキーフレームは素材の時刻で引く() {
+        use mm_doc::{CutReframe, Interpolation, Keyframe};
+        let c = cut("a", 4, true);
+        let s = seq(vec![cut("z", 2, true), c.clone()]);
+        let placed = place_cuts(&s).unwrap();
+        let mut transform = Transform::default();
+        transform.position.keyframes = vec![
+            Keyframe::new(
+                RationalTime::seconds(10),
+                ParamValue::Vec2([0.0, 0.0]),
+                Interpolation::Linear,
+            ),
+            Keyframe::new(
+                RationalTime::seconds(14),
+                ParamValue::Vec2([40.0, 0.0]),
+                Interpolation::Linear,
+            ),
+        ];
+        let framing = Framing {
+            cuts: vec![CutReframe {
+                cut: c.id.clone(),
+                transform,
+            }],
+            caption: None,
+        };
+        // sequence の 3 秒はカット a の 1 秒目、素材の 11 秒。
+        let at = reframe_at(&framing, &c, &placed[1], RationalTime::seconds(3))
+            .unwrap()
+            .unwrap();
+        assert_eq!(at.position.value, ParamValue::Vec2([10.0, 0.0]));
+        assert!(
+            reframe_at(&framing, &s.cuts[0], &placed[0], RationalTime::ZERO)
+                .unwrap()
+                .is_none()
         );
     }
 

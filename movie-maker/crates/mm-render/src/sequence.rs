@@ -7,8 +7,8 @@
 
 use std::sync::Arc;
 
-use mm_doc::{Cut, Layer, Sequence, SEQUENCE_PARAM};
-use mm_eval::{node_params_at, place_cuts, source_time, PlacedCut};
+use mm_doc::{Cut, Framing, Layer, Sequence, SEQUENCE_PARAM};
+use mm_eval::{node_params_at, place_cuts, reframe_at, source_time, PlacedCut};
 use mm_node_api::{GpuTexture, NodeKind};
 use mm_types::{Id, MmError, ParamValue, Params, Rect, Result};
 
@@ -26,6 +26,9 @@ struct Plan {
     kind: Arc<dyn NodeKind>,
     params: Params,
 }
+
+/// 描く sequence と、それを置いたレイヤーのコンポジションごとの見せ方（再フレーミング）。
+type Shown<'a> = (&'a Sequence, &'a Framing);
 
 /// カットを、シーケンスの時間軸の上にある 1 枚のレイヤーとして見たもの。
 pub(crate) fn cut_layer(cut: &Cut, placed: &PlacedCut) -> Layer {
@@ -75,8 +78,10 @@ impl WgpuRenderer {
             ..*cx
         };
         let texture = match self.crossfade_plan(seq, &child, &placed, pos)? {
-            Some(plan) => self.encode_crossfade(encoder, &child, seq, &placed, &plan)?,
-            None => self.cut_canvas(encoder, &child, seq, &placed[pos])?,
+            Some(plan) => {
+                self.encode_crossfade(encoder, &child, (seq, &layer.framing), &placed, &plan)?
+            }
+            None => self.cut_canvas(encoder, &child, (seq, &layer.framing), &placed[pos])?,
         };
         Ok(Some(LayerImage {
             texture,
@@ -114,26 +119,30 @@ impl WgpuRenderer {
         Ok(Some(Plan { fade, kind, params }))
     }
 
-    /// カット 1 つを画布の大きさのテクスチャに描く。描けなかったら透明の画布にして、エラーを記録する。
+    /// カット 1 つを画布の大きさのテクスチャに描く。再フレーミングがあればカットの画像に掛ける。
+    /// 描けなかったら透明の画布にして、エラーを記録する。
     fn cut_canvas(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         cx: &CompCx<'_>,
-        seq: &Sequence,
+        (seq, framing): Shown<'_>,
         placed: &PlacedCut,
     ) -> Result<u64> {
         let cut = &seq.cuts[placed.index];
+        let mut layer = cut_layer(cut, placed);
+        if let Some(transform) = reframe_at(framing, cut, placed, cx.t)? {
+            layer.transform = transform;
+        }
         let target = self.gpu.create(cx.size)?;
         let mut temps = Vec::new();
-        let items: Vec<Prepared> =
-            match self.layer_item(encoder, cx, &cut_layer(cut, placed), &mut temps) {
-                Ok(item) => item.into_iter().collect(),
-                Err(e) => {
-                    self.errors
-                        .push(format!("sequence {}: cut {}: {e}", seq.id, cut.id));
-                    Vec::new()
-                }
-            };
+        let items: Vec<Prepared> = match self.layer_item(encoder, cx, &layer, &mut temps) {
+            Ok(item) => item.into_iter().collect(),
+            Err(e) => {
+                self.errors
+                    .push(format!("sequence {}: cut {}: {e}", seq.id, cut.id));
+                Vec::new()
+            }
+        };
         self.composite(encoder, target, &items);
         for id in temps {
             self.gpu.release_id(id);
@@ -146,12 +155,12 @@ impl WgpuRenderer {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         cx: &CompCx<'_>,
-        seq: &Sequence,
+        shown: Shown<'_>,
         placed: &[PlacedCut],
         plan: &Plan,
     ) -> Result<u64> {
-        let from = self.cut_canvas(encoder, cx, seq, &placed[plan.fade.from])?;
-        let to = self.cut_canvas(encoder, cx, seq, &placed[plan.fade.to])?;
+        let from = self.cut_canvas(encoder, cx, shown, &placed[plan.fade.from])?;
+        let to = self.cut_canvas(encoder, cx, shown, &placed[plan.fade.to])?;
         let run = NodeRun {
             kind: plan.kind.as_ref(),
             params: &plan.params,

@@ -73,9 +73,10 @@ pub fn short_op(spec: &ShortSpec, p: &Project) -> Option<Op> {
                 .filter(|l| l.source.text_param(SEQUENCE_PARAM).is_some())
                 .collect::<Vec<_>>();
             let layer = pick(&layer, *l)?;
-            let seq = p.sequences.iter().find(|s| {
-                Some(s.id.as_str()) == layer.source.text_param(SEQUENCE_PARAM)
-            });
+            let seq = p
+                .sequences
+                .iter()
+                .find(|s| Some(s.id.as_str()) == layer.source.text_param(SEQUENCE_PARAM));
             let cut = seq
                 .and_then(|s| pick(&s.cuts, *c))
                 .map(|c| c.id.clone())

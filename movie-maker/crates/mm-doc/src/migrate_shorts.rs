@@ -95,7 +95,10 @@ mod tests {
         let (_, s1) = p.cut(&Id::new("s1")).unwrap();
         let (_, m1) = p.cut(&Id::new("m1")).unwrap();
         assert_eq!(s1.origin_base, Some(CutBase::of(m1)));
-        assert_eq!(s1.origin_base.as_ref().unwrap().out_point, RationalTime::seconds(3));
+        assert_eq!(
+            s1.origin_base.as_ref().unwrap().out_point,
+            RationalTime::seconds(3)
+        );
         assert!(!s1.overrides.any());
     }
 

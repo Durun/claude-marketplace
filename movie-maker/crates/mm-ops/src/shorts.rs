@@ -16,7 +16,11 @@ fn is_reference(seq: &Sequence) -> bool {
 /// `t` に入ったカットと結ばれた参照のカット・元のカットを、増えなくなるまで足す（ショートのショートもたどる）。
 /// 参照のカットは元に合わせて長さが変わりうるので、リップルと同じく後ろのカットに接続したレイヤーも足す。
 pub(crate) fn add_short_links(project: &Project, t: &mut Touches) {
-    let refs: Vec<&Sequence> = project.sequences.iter().filter(|s| is_reference(s)).collect();
+    let refs: Vec<&Sequence> = project
+        .sequences
+        .iter()
+        .filter(|s| is_reference(s))
+        .collect();
     let links: Vec<(&str, &str)> = refs
         .iter()
         .flat_map(|s| s.cuts.iter())
@@ -48,7 +52,11 @@ pub(crate) fn add_short_links(project: &Project, t: &mut Touches) {
 /// 参照のショートのカット `id` と、その元のカット。参照のショートのカットでなければ `InvalidArgument`。
 pub(crate) fn reference_pair<'a>(project: &'a Project, id: &CutId) -> Result<(&'a Cut, &'a Cut)> {
     let (seq, cut) = project.cut(id)?;
-    let not_reference = || invalid(format!("カット {id} は参照のショートの、元のあるカットでない"));
+    let not_reference = || {
+        invalid(format!(
+            "カット {id} は参照のショートの、元のあるカットでない"
+        ))
+    };
     if !is_reference(seq) {
         return Err(not_reference());
     }

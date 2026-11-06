@@ -126,7 +126,13 @@ fn arb_seq_spec() -> impl Strategy<Value = Spec> {
             prop::option::weighted(0.3, s())
         )
             .prop_map(|(id, cuts, origin)| Spec::AddSequence(id, cuts, origin)),
-        (s(), any::<bool>(), arb_id(), arb_id(), prop::option::of((s(), s())))
+        (
+            s(),
+            any::<bool>(),
+            arb_id(),
+            arb_id(),
+            prop::option::of((s(), s()))
+        )
             .prop_map(|(a, b, c, d, e)| Spec::ForkSequence(a, b, c, d, e)),
         s().prop_map(Spec::RemoveSequence),
         (s(), s(), arb_cut()).prop_map(|(a, b, c)| Spec::Insert(a, b, c)),
@@ -345,7 +351,9 @@ fn fork_sequence(
             sequence: s.id.clone(),
             new_sequence: Id::new(new_seq),
             relation,
-            cuts: (0..count).map(|k| Id::new(format!("{prefix}{k}"))).collect(),
+            cuts: (0..count)
+                .map(|k| Id::new(format!("{prefix}{k}")))
+                .collect(),
             range,
         }
         .into(),
