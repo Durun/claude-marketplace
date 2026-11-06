@@ -295,3 +295,26 @@ fn 止める旗が立てば音を混ぜずに戻る() {
     let mixed = passes::mix_audio(&mut engine, &project, &comp, range, step, &|| true).unwrap();
     assert!(mixed.is_none());
 }
+
+#[test]
+fn nvenc_は並行の指定があっても並行にしない() {
+    let media = SampleMedia::default();
+    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let range = project.composition(&comp).unwrap().range().unwrap();
+    let control = ExportControl::default();
+    let plan = Plan {
+        target: &Id::new("mp4"),
+        composition: &comp,
+        range,
+        control: &control,
+        parallel: 4,
+        parallel_min_frames: Some(1),
+        pass: PassPosition { index: 1, of: 1 },
+    };
+    let mut settings = settings_of(&media);
+    assert!(plan.concurrent(&settings), "モックのコーデックは並行にする");
+    for codec in ["h264_nvenc", "hevc_nvenc"] {
+        settings.codec = codec.into();
+        assert!(!plan.concurrent(&settings), "{codec}");
+    }
+}

@@ -46,12 +46,12 @@ fn begin_pass(&mut self, pass: u32) -> Result<()> { Ok(()) }
 
 - 区間を短いチャンク（最大 30 フレーム。大きなフレームでは溜める量が 2 GiB に収まるよう短くする）に分け、`parallel` 本のワーカーがそれぞれ別の `Engine`（同じ設定で組む。GPU のコンテキストは共有、フレームのキャッシュは 256 MiB まで）で描く。
 - 受け取りの側（呼び出したスレッド）がチャンクの番号順に 1 つずつ受け取り、バッチでエンコーダーに押す。ワーカーは受け取り済みの数 + `parallel + 1` 未満のチャンクだけを取る（溜まる量の上限）。
-- 音は区間の全体を 1 回で混ぜる。チャンクの境で音は切れない。
+- 音は区間を 10 秒ずつ続けて混ぜる。レンダラーはつながった区間でミキサーの状態を持ち越すので、1 回で混ぜたのと同じ音になり、境で切れない。区間の間で取り消しと映像の失敗を確かめ、映像が止まれば音も止める。
 - 失敗と取り消しは、最初のエラーで全ワーカーを止める。一時ファイルの扱いは 1 本の書き出しと同じ。
 
 ## 影響
 
-- API クレートの変更は `Encoder` の 2 つのメソッド（既定の実装つき）だけ。
+- API クレートの変更は `Encoder` の 3 つのメソッド（既定の実装つき）だけ。段階 4 のレビューで `implementation(&self) -> Option<String>`（実際に書いた実装とコーデック。既定は `None`）を足した。候補から選ぶ `AutoEncoderFactory` が、NVENC から libx264 に落ちたことを `ExportSummary::encoder` に伝える。
 - 破壊的な変更は無い。`EncodeSettings` と `EncoderFactory` は変わらない。
 - `mm-encode-ffmpeg` の公開から `H264_NAMES` が消え、`SUPPORTED_NAMES` と `spec_of` が増える。`FfmpegEncoder` は `mm-encode-ffmpeg-core` に移る。
 - `mm render` に `--codec` と `--parallel`、`mm perf run export` に `--codec`、`--parallel`、`--matrix` が増える。

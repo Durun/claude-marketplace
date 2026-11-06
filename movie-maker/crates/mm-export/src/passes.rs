@@ -20,6 +20,8 @@ use crate::{
 
 /// 音を一度に混ぜる長さ（秒）。取り消しを確かめる間隔で、ミキサーは続きの区間で状態を持ち越すのでつなぎ目は出ない。
 const AUDIO_CHUNK: RationalTime = RationalTime::seconds(10);
+/// NVENC のコーデックの名前の末尾（`h264_nvenc`、`hevc_nvenc`）。
+const NVENC_SUFFIX: &str = "_nvenc";
 
 /// 映像を通す何回目か（2 パスのエンコーダーは 2 回通す）。
 #[derive(Clone, Copy)]
@@ -42,9 +44,14 @@ pub(crate) struct Plan<'a> {
 
 impl Plan<'_> {
     /// 区間を並行に描くか。判定はここだけで行い、描く手段（[`Drawer`]）を選ぶ。
-    fn concurrent(&self, settings: &EncodeSettings) -> bool {
+    /// NVENC は 1 つのセッションが律速で、並行にすると描画のワーカーと取り合って遅くなるので並行にしない。
+    pub(crate) fn concurrent(&self, settings: &EncodeSettings) -> bool {
         let frames = frames_in(self.range, settings) as u64;
-        parallel::worth_it(self.parallel, frames, self.parallel_min_frames)
+        let nvenc = settings.codec.ends_with(NVENC_SUFFIX);
+        if nvenc && self.parallel > 1 {
+            tracing::info!(codec = %settings.codec, "NVENC は並行にしない");
+        }
+        !nvenc && parallel::worth_it(self.parallel, frames, self.parallel_min_frames)
     }
 }
 
