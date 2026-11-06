@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "gen": "node tools/gen-sdk.ts",
+    "gen:check": "node tools/gen-sdk.ts --check",
     "build": "node tools/gen-sdk.ts && node tools/build.ts",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",

@@ -78,6 +78,19 @@ class ContentHashTest(unittest.TestCase):
             )
 
 
+class ContentHashOptionTest(unittest.TestCase):
+    def parse(self, value):
+        return transcribe.parse_args(["m.wav", "--out", "o.json", "--content-hash", value])
+
+    def test_64_桁の小文字の16進は受け取る(self):
+        self.assertEqual(self.parse("ab" * 32).content_hash, "ab" * 32)
+
+    def test_パスに使えない値は拒否する(self):
+        for bad in ["../x", "..\\x", "ab" * 31, "AB" * 32, "ab" * 32 + "/", ""]:
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                self.parse(bad)
+
+
 @unittest.skipUnless(os.environ.get("MM_TRANSCRIBE_E2E") and SAMPLE_WAV.is_file(), "通しの試験は MM_TRANSCRIBE_E2E=1 と見本の音が要る")
 class EndToEndTest(unittest.TestCase):
     def test_日本語の見本の音がスキーマどおりに書かれる(self):

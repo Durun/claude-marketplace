@@ -10,6 +10,14 @@
         "asset": {
           "$ref": "#/$defs/Asset"
         },
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
         "op": {
           "type": "string",
           "const": "addAsset"

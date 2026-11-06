@@ -280,6 +280,7 @@ export type Transition = {
 /** 素材を足す。 */
 export type AddAssetOp = {
   "asset": Asset;
+  "index"?: number | null;
   "op": "addAsset";
 };
 /** 素材を外す。 */

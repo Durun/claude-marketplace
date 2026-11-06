@@ -137,7 +137,7 @@ enum PerfCommand {
         /// シナリオに使うプロジェクト。
         #[arg(long)]
         project: Option<PathBuf>,
-        /// export の描画の大きさ（WxH）。
+        /// export、playback、scrub の描画の大きさ（WxH）。
         #[arg(long, default_value = "1920x1080", value_parser = scenes::parse_size)]
         size: (u32, u32),
         /// playback で再生する秒数。
@@ -149,6 +149,10 @@ enum PerfCommand {
         /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
         #[arg(long)]
         baseline: bool,
+        /// 描画の場面（playback、scrub）で使う GPU を、名前の一部（大小文字を区別しない）で選ぶ。
+        /// CI は `Microsoft Basic Render Driver`（WARP、D3D12 のソフトウェアの GPU）を指す。
+        #[arg(long)]
+        adapter: Option<String>,
     },
     /// 2 つの結果（JSON かそのフォルダー）を比べ、閾値を超えて遅くなった項目があれば失敗する。
     Compare {
@@ -257,6 +261,7 @@ fn run_perf(command: PerfCommand) -> Result<()> {
         seconds,
         seeks,
         baseline,
+        adapter,
     } = command
     else {
         return run_perf_report(command);
@@ -273,6 +278,7 @@ fn run_perf(command: PerfCommand) -> Result<()> {
         seconds,
         seeks,
         baseline,
+        adapter,
     };
     perf::run(&args, &metrics)
 }

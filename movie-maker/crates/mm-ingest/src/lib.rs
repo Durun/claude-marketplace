@@ -107,7 +107,8 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
     if !abs.is_file() {
         return Err(MmError::NotFound(format!("素材: {}", abs.display())));
     }
-    let span = info_span!("ingest.file", path = %abs.display(), hash = tracing::field::Empty);
+    // 素材の絶対パスには個人のフォルダー名が入るので、スパンにはハッシュの先頭だけを載せる。
+    let span = info_span!("ingest.file", hash = tracing::field::Empty);
     let _guard = span.enter();
     let ((hash, hash_elapsed), (media, probe_elapsed)) = hash_and_probe(opts, &abs)?;
     let short: String = hash.chars().take(8).collect();
@@ -119,12 +120,22 @@ pub fn ingest(opts: &IngestOptions, input: &Path) -> Result<IngestReport> {
         preview: made.preview,
         thumbnail: made.thumbnail,
         waveform: made.waveform,
-        transcript_segments: sidecar::load_transcript(&opts.cache, &hash)?
-            .map(|t| t.segments.len()),
+        transcript_segments: transcript_segments(&opts.cache, &hash),
         hash_elapsed,
         probe_elapsed,
         total_elapsed: started.elapsed(),
     })
+}
+
+/// 文字起こしの区間の数。付属ファイルは外の道具が書くので、壊れていても取り込み全体は止めず、警告にして無いものとする。
+fn transcript_segments(cache: &CacheLayout, hash: &str) -> Option<usize> {
+    match sidecar::load_transcript(cache, hash) {
+        Ok(t) => t.map(|t| t.segments.len()),
+        Err(e) => {
+            tracing::warn!(error = %e, "文字起こしの付属ファイルを読めないので飛ばす");
+            None
+        }
+    }
 }
 
 type Timed<T> = (T, Duration);
@@ -266,7 +277,8 @@ fn preview_job(
         Ok(Some(r.encoder.to_owned()))
     })?;
     let record = opts.cache.sidecar(hash, "preview_media");
-    if !record.is_file() {
+    // 作り直したプレビュー動画は大きさが変わりうるので、記録も書き直す。
+    if report.state == ArtifactState::Created || !record.is_file() {
         let made = probe(&opts.tools, &report.path)?;
         let video = made
             .video
