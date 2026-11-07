@@ -37,6 +37,7 @@ mod migrate;
 mod migrate_lut;
 mod migrate_shorts;
 mod node;
+pub mod otio;
 mod param;
 mod sequence;
 mod shorts;
