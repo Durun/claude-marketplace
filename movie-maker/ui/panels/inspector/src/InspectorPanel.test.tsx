@@ -76,8 +76,8 @@ describe("fieldSpecFor", () => {
 describe("describeLayer", () => {
   it("区画の順に、パスつきの行を作る", () => {
     const sections = describeLayer(layer);
-    expect(sections.map((s) => s.id)).toEqual(["layer", "transform", "source"]);
-    expect(sections[2]?.rows.map((r) => r.path)).toContain("source.tint");
+    expect(sections.map((s) => s.id)).toEqual(["layer", "transform", "crop", "source"]);
+    expect(sections[3]?.rows.map((r) => r.path)).toContain("source.tint");
   });
 
   it("setParam の操作を作る", () => {

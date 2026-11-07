@@ -1,4 +1,4 @@
-import type { Effect, Layer, Op, Param, ParamValue } from "@mm/sdk";
+import type { Effect, Layer, Mask, Op, Param, ParamValue } from "@mm/sdk";
 
 /** 1 つのパラメータの入力欄に付ける補足。JSON Schema に無い範囲や選択肢を渡す。 */
 export interface ParamHint {
@@ -19,7 +19,18 @@ const OPACITY_STEP = 0.01;
 export const DEFAULT_HINTS: ParamHints = {
   opacity: { min: 0, max: 1, step: OPACITY_STEP },
   "audio.pan": { min: -1, max: 1, step: OPACITY_STEP },
+  "crop.left": { min: 0, step: 1 },
+  "crop.top": { min: 0, step: 1 },
+  "crop.right": { min: 0, step: 1 },
+  "crop.bottom": { min: 0, step: 1 },
 };
+
+/** マスクの矩形のパラメータの補足。大きさと半径は負にならない。 */
+const maskHints = (id: string): ParamHints => ({
+  [`masks.${id}.rect.position`]: { step: 1 },
+  [`masks.${id}.rect.size`]: { min: 0, step: 1 },
+  [`masks.${id}.rect.radius`]: { min: 0, step: 1 },
+});
 
 export interface FieldRow {
   /** `setParam` の target.path。 */
@@ -33,6 +44,8 @@ export interface Section {
   id: string;
   title: string;
   rows: FieldRow[];
+  /** マスクの区画なら、そのマスクの ID。削除の操作に使う。 */
+  maskId?: string;
 }
 
 /** キーフレームがあるか。ある間は `value` を使わない（mm-eval）。 */
@@ -63,6 +76,34 @@ const transformSection = (layer: Layer, hints: ParamHints): Section => {
   return { id: "transform", title: "Transform", rows };
 };
 
+const CROP_SIDES = ["left", "top", "right", "bottom"] as const;
+
+const ZERO: Param = { value: { type: "number", value: 0 } };
+
+const cropSection = (layer: Layer, hints: ParamHints): Section => ({
+  id: "crop",
+  title: "Crop",
+  rows: CROP_SIDES.map((side) => row(`crop.${side}`, side, layer.crop?.[side] ?? ZERO, hints)),
+});
+
+const maskSection = (m: Mask, hints: ParamHints): Section => {
+  const merged = { ...maskHints(m.id), ...hints };
+  const prefix = `masks.${m.id}.rect`;
+  const rect = m.rect;
+  return {
+    id: `mask-${m.id}`,
+    title: `Mask: ${m.id}`,
+    maskId: m.id,
+    rows: rect
+      ? [
+          row(`${prefix}.position`, "position", rect.position, merged),
+          row(`${prefix}.size`, "size", rect.size, merged),
+          row(`${prefix}.radius`, "radius", rect.radius ?? ZERO, merged),
+        ]
+      : [],
+  };
+};
+
 const paramRows = (prefix: string, params: Record<string, Param> | undefined, hints: ParamHints): FieldRow[] =>
   Object.entries(params ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -79,6 +120,7 @@ export const describeLayer = (layer: Layer, hints: ParamHints = DEFAULT_HINTS): 
   const sections: Section[] = [
     { id: "layer", title: "Layer", rows: [row("opacity", "opacity", layer.opacity, hints)] },
     transformSection(layer, hints),
+    cropSection(layer, hints),
     { id: "source", title: `Source: ${layer.source.kind}`, rows: paramRows("source", layer.source.params, hints) },
   ];
   if (layer.audio) {
@@ -91,9 +133,11 @@ export const describeLayer = (layer: Layer, hints: ParamHints = DEFAULT_HINTS): 
       ],
     });
   }
-  return [...sections, ...(layer.effects ?? []).map((e) => effectSection(e, hints))].filter(
-    (s) => s.rows.length > 0,
-  );
+  return [
+    ...sections,
+    ...(layer.masks ?? []).map((m) => maskSection(m, hints)),
+    ...(layer.effects ?? []).map((e) => effectSection(e, hints)),
+  ].filter((s) => s.rows.length > 0 || s.maskId !== undefined);
 };
 
 /** 値を変えたときに送る操作。固定の値だけを置き、キーフレームには触れない。 */

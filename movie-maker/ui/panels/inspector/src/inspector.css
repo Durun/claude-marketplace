@@ -19,6 +19,10 @@
 }
 
 .mm-insp-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mm-space-sm);
   margin: 0;
   padding: var(--mm-space-xs) var(--mm-space-md);
   border: var(--mm-border-width) solid var(--mm-color-task-body-border);
@@ -27,6 +31,12 @@
   color: var(--mm-color-task-title-text);
   font-size: var(--mm-font-size-sm);
   font-weight: 700;
+}
+
+/* マスクの追加と削除のボタン。 */
+.mm-insp-maskbtn {
+  padding: 0 var(--mm-space-sm);
+  color: var(--mm-color-text);
 }
 
 .mm-insp-body {
