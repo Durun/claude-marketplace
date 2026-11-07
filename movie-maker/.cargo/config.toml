@@ -1,6 +1,8 @@
 # ffmpeg-sys-next の build script（bindgen が FFmpeg のヘッダーを全部読む）が MSVC 既定の 1 MB の主スレッドスタックを使い切る。
 # --target を付けないとき rustflags は build script にも効くので、リンカーに 32 MB を要求する。
+# テストのバイナリが 70 個を超えて link.exe が重いので、toolchain に同梱の rust-lld（lld-link）でリンクする。
 [target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
 rustflags = ["-C", "link-arg=/STACK:33554432"]
 
 [alias]

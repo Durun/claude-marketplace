@@ -1,10 +1,10 @@
 name: movie-maker
 
+# PR と merge queue は paths で絞らない。必須のチェックは報告が無いと待ち続けるので、changes ジョブで判定して
+# 関係の無い変更ではジョブを飛ばす（飛ばしたジョブは成功と見なされる）。
 on:
   pull_request:
-    paths:
-      - "movie-maker/**"
-      - ".github/workflows/movie-maker.yml"
+  merge_group:
   push:
     branches: [main]
     paths:
@@ -25,8 +25,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # PR で外した通しの試験（#[ignore]）を main の push と手動で走らせる引数。測定用の 2 本は release で手動に回すので除く。
-  MAIN_ONLY_ARGS: --include-ignored --skip 操作_10_万件の大きさ --skip 一万語の素材
+  NEXTEST_VERSION: 0.9.149
+  # PR は軽い検査だけ。main の push、merge queue、手動では #[ignore] の通しの試験まで回す（scripts/nextest-ci.sh）。
+  MM_HEAVY: ${{ github.event_name != 'pull_request' && '1' || '0' }}
+  # 再試行で通ったテストの起票は、main に入るコード（push と merge queue）でだけする。
+  MM_FILE_FLAKY: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && '1' || '0' }}
 
 defaults:
   run:
@@ -34,41 +37,87 @@ defaults:
     working-directory: movie-maker
 
 jobs:
-  # 外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストは飛ぶ。
-  check:
-    if: github.event_name != 'schedule'
-    runs-on: windows-latest
-    timeout-minutes: 45
+  # movie-maker と ui/ に変更があるか。push、手動、夜間は常に true。
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+      ui: ${{ steps.diff.outputs.ui }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2.7.8
+        with:
+          fetch-depth: 0
+      - id: diff
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: origin/${{ github.base_ref }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...HEAD" ;;
+            merge_group) range="$MG_BASE...$MG_HEAD" ;;
+            *) echo "rust=true" >> "$GITHUB_OUTPUT"; echo "ui=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          changed() { if git diff --quiet "$range" -- "$@"; then echo false; else echo true; fi; }
+          echo "rust=$(changed movie-maker .github/workflows/movie-maker.yml)" >> "$GITHUB_OUTPUT"
+          echo "ui=$(changed movie-maker/ui movie-maker/crates/mm-ops/schema)" >> "$GITHUB_OUTPUT"
+
+  # 外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストは飛ぶ。
+  check:
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.rust == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      # キャッシュを書くのは main の push だけ。PR と merge queue は main のキャッシュを読む（書き込みの 2 分を払わない）。
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: movie-maker
+          save-if: true
+      - uses: taiki-e/install-action@v2.90.1
+        with:
+          tool: cargo-nextest@${{ env.NEXTEST_VERSION }}
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: テスト
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          args=""
-          if [ "$EVENT" != "pull_request" ]; then args="$MAIN_ONLY_ARGS"; fi
-          cargo test --workspace -- $args
+        run: sh scripts/nextest-ci.sh --workspace
       # runner の GPU は WARP（D3D12 のソフトウェアの GPU）だけ。期待画像の warp 版があるときは、WARP で描いて
-      # 必ず比べる（上の cargo test は版が無いとスキップするため）。無ければこの手順を飛ばす。
+      # 必ず比べる（上のテストは版が無いとスキップするため）。無ければこの手順を飛ばす。
       - name: 期待画像（WARP）
         run: |
           if [ -d fixtures/golden/warp ]; then
-            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo test -p mm-render --test golden
+            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run -p mm-render --test golden
           else
             echo "fixtures/golden/warp が無いので飛ばす"
           fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-check
+          path: movie-maker/target/nextest/*/junit*.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
   # FFmpeg 9.0 の shared ビルドと feature `ffmpeg` を入れた検査。手順は crates/mm-decode-ffmpeg/README.md。
   ffmpeg:
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.rust == 'true'
     runs-on: windows-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write
     env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FFMPEG_ZIP: ffmpeg-n9.0-latest-win64-gpl-shared-9.0
       FEATURES: mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-encode-nvenc/ffmpeg,mm-runtime/ffmpeg,mm/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
       # feature で中身が変わるクレートと、PATH の ffmpeg を使う mm-ingest だけ。残りは check と同じ結果なので回さない。
@@ -77,10 +126,14 @@ jobs:
         -p mm-encode-ffmpeg -p mm-encode-ffmpeg-core -p mm-encode-nvenc -p mm-runtime -p mm -p mm-ingest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2.7.8
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: movie-maker
           key: ffmpeg
+          save-if: true
+      - uses: taiki-e/install-action@v2.90.1
+        with:
+          tool: cargo-nextest@${{ env.NEXTEST_VERSION }}
       - name: FFmpeg を取って展開する
         run: |
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.zip" "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_ZIP}.zip"
@@ -96,24 +149,27 @@ jobs:
           echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
       - run: cargo clippy $PACKAGES --all-targets --features "$FEATURES" -- -D warnings
       - name: テスト
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          args=""
-          if [ "$EVENT" != "pull_request" ]; then args="$MAIN_ONLY_ARGS"; fi
-          cargo test $PACKAGES --features "$FEATURES" -- $args
+        run: sh scripts/nextest-ci.sh $PACKAGES --features "$FEATURES"
       - run: cargo run -p mm --features ffmpeg -- render fixtures/projects/stage0/project.json -o target/stage0-check.mp4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-ffmpeg
+          path: movie-maker/target/nextest/*/junit*.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
   # 口（crates/mm-*-api）の破壊的変更を、PR の基点と比べて見つける。破壊的変更には版の繰り上げが要る。
   semver:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: Swatinem/rust-cache@v2.7.8
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: movie-maker
           key: semver
@@ -128,60 +184,40 @@ jobs:
           for d in crates/mm-*-api; do args+=(-p "$(basename "$d")"); done
           cargo semver-checks "${args[@]}" --baseline-rev "$BASE"
 
-  # ui/（WebView の画面）の検査。PR は movie-maker/ui/** か操作のスキーマ（crates/mm-ops/schema/**）を変えたときだけ回し、
-  # main への push と手動では常に回す。
+  # ui/（WebView の画面）の検査。PR と merge queue は movie-maker/ui/** か操作のスキーマ（crates/mm-ops/schema/**）を
+  # 変えたときだけ回し、main への push と手動では常に回す。
   ui:
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name != 'schedule'
     defaults:
       run:
         shell: bash
         working-directory: movie-maker/ui
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: ui/ に変更があるか
-        id: changed
-        working-directory: .
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: origin/${{ github.base_ref }}
-        run: |
-          if [ "$EVENT" != "pull_request" ] || ! git diff --quiet "$BASE...HEAD" -- movie-maker/ui movie-maker/crates/mm-ops/schema; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.changed.outputs.run == 'true'
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 12
-      - if: steps.changed.outputs.run == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: movie-maker/ui/pnpm-lock.yaml
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       # build は generated/ops.ts を書き直すので、その前にコミット済みの内容が ops.json と合うかを見る。
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm gen:check
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm build
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm typecheck
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm lint
-      - if: steps.changed.outputs.run == 'true'
-        run: pnpm test
+      - run: pnpm gen:check
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
 
   # 性能の回帰のゲート（PR）。同じ runner で基点と PR の mm を交互に回して比べる。cpu の場面と、WARP で回す描画の場面
   # （playback、scrub）の 2 組。閾値の理由は docs/ci.md。
   perf-gate:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -205,11 +241,13 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "性能に関わる変更が無いので測らない"
           fi
+      # perf のキャッシュは main の perf-record が書く。
       - if: steps.changed.outputs.run == 'true'
-        uses: Swatinem/rust-cache@v2.7.8
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: movie-maker
           key: perf
+          save-if: ${{ github.event_name == 'push' }}
       # PR を先に作る。同じ target を基点と共有すると、後から作る側の古い mtime の元のファイルを cargo が
       # 新しいと見なさず、先に作った側のクレートを使い回す。基点の worktree は後で作るので mtime が新しく、作り直される。
       - name: PR の mm を作る
@@ -247,7 +285,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2.7.8
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: movie-maker
           key: perf
