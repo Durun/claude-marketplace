@@ -7,7 +7,7 @@ OpenColorIO で `mm-color-api::ColorTransform` を実装する。結果と数字
 
 何も要らない。`cargo build` / `cargo test --workspace` は OCIO を探さない。
 このクレートは GLSL → WGSL の変換（`glsl` モジュール、naga）だけを持ち、
-`tests/contract.rs` などの OCIO の試験は feature `native` が無いので空になる。
+`tests/it/` の OCIO の試験は feature `native` が無いので空になる。
 
 ## OCIO を使う（feature `native`）
 
@@ -41,7 +41,7 @@ export OCIO_ROOT=/d/dev/mm-ocio-vcpkg/x64-windows
 export LIBCLANG_PATH="/c/Program Files/LLVM/bin"
 cargo test -p mm-color-ocio --features native               # 契約、精度（CPU とベイクした LUT）
 cargo test -p mm-color-ocio --features native,gpu-eval -- --nocapture   # WGSL を GPU で実行して OCIO の CPU と比べる
-cargo test --release -p mm-color-ocio --features native --test timing -- --nocapture  # スパンで時間を測る
+cargo test --release -p mm-color-ocio --features native --test it timing -- --nocapture  # スパンで時間を測る
 ```
 
 - `build.rs` が `OpenColorIO*.dll` などを `target/<profile>/` と `deps/` にコピーするので、PATH は触らなくてよい。
