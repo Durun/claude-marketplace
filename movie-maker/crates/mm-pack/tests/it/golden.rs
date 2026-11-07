@@ -155,3 +155,26 @@ fn pack_vlog_の文字のスタイルの期待画像() {
         panic!("{message}");
     }
 }
+
+/// 期待画像に残すトランジションと進み具合。動きとぼかし（whip）、ハッシュで作る表（stepseq）、巻き戻し（rewind）。
+const TRANSITION_GOLDENS: [(&str, f64); 3] = [("whip", 0.4), ("stepseq", 0.35), ("rewind", 0.18)];
+
+#[test]
+fn pack_vlog_のトランジションの期待画像() {
+    let Some(ctx) = gpu() else { return };
+    let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
+    let actual = Path::new(env!("CARGO_TARGET_TMPDIR")).join("golden-actual");
+    let Some(golden) = Golden::open(&root, &backend, &actual) else {
+        return;
+    };
+    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
+    let mut stage = crate::transitions::Stage::new(ctx);
+    for (name, progress) in TRANSITION_GOLDENS {
+        let project = crate::transitions::project_with(&pack, name);
+        let img = stage.render(&project, progress, GOLDEN_SIZE);
+        if let Err(message) = golden.check(&format!("transition-{name}"), &img) {
+            panic!("{message}");
+        }
+    }
+}

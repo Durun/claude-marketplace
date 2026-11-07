@@ -41,9 +41,9 @@ fn 置く_差し替える_外すがそれぞれ取り消しで戻る() {
         None,
     ];
     let mut history = vec![canon(ed.project())];
-    for step in steps.iter().cloned() {
+    for step in &steps {
         ed.apply(set("k2", step.clone()), &ctx).unwrap();
-        assert_eq!(transition_of(&ed, "k2"), step);
+        assert_eq!(&transition_of(&ed, "k2"), step);
         history.push(canon(ed.project()));
     }
     for expected in history.iter().rev().skip(1) {

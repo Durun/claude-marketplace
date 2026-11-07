@@ -36,6 +36,7 @@ pub trait NodeKind: Send + Sync {
 | `composition`、`sequence` | 入れ子とマグネティックシーケンス。`composition` の展開はレンダラーが行う（下の「入れ子」） | 最初 |
 | `text` | 字幕と短い文字。ネイティブの文字の描画（下の「文字の描き方」）。多くの字幕はこれで足りる | 最初 |
 | `shader.wgsl` | WGSL のフラグメントか compute。uniform がパラメータになる。効果とトランジションもこれで書ける | 最初 |
+| `transition.wgsl` | 2 つの入力（出ていくカットと入ってくるカット）と進み具合を受ける WGSL のトランジション（下の「transition.wgsl の書き方」） | 段階 6 |
 | `color.cdl`、`color.lut`、`color.ocio` | ASC CDL、`.cube`、OCIO の変換 | 最初 |
 | `web.cef` | HTML と CSS のテンプレート、Three.js のシーンを、埋め込みの Chromium で描いて共有テクスチャで受ける。`out_of_process`、`cost: heavy` | 次 |
 | `shader.glsl` | naga で WGSL に変換（GLSL 440+、Vulkan の流儀 [4]）。DTM_Vlog のトランジション（WebGL2 の GLSL ES 3.0）は書き換えが要る | 次 |
@@ -83,7 +84,9 @@ pub trait NodeKind: Send + Sync {
 - 端の操作（リップル、ロール、スリップ、スライド）はこの中で働く。`attachTo` したレイヤーも一緒に動く。
 - 喋りの継ぎ目は自動で処理できる（短いクロスフェード、無音の詰め。マクロで）。外したカットは消さずに残す。
 - 展開はレンダラーが行う（`mm-render/src/sequence.rs`）。レイヤーの時刻にあるカットを `Cut.source` のノードとして画布に描き、レイヤーの変形と効果は画布ごと掛かる。カットの時間の写像は、カットを「位置・イン点・速さを持つレイヤー」と見て `source_time` に任せる。
-- トランジション（`Cut.transition_in`）は境を中心に前後へ半分ずつ掛ける（半分の長さは、トランジションの長さの半分と両側のカットの長さの小さい方）。境の前は前のカットを、境の後は次のカットを、カットの外（素材の余白）へ延ばして描く。両方を別々の画布に描き、`Transition.node` の種類（入力 `from`、`to`、パラメータ `progress` を 0..1 でレンダラーが渡す）で混ぜる。段階 2 の種類は `transition.dissolve`（線形の光の上のクロスディゾルブ）だけ。知らない種類はエラーを記録してカットのまま描く。
+- トランジション（`Cut.transition_in`）は境を中心に前後へ半分ずつ掛ける（半分の長さは、トランジションの長さの半分と両側のカットの長さの小さい方）。境の前は前のカットを、境の後は次のカットを、カットの外（素材の余白）へ延ばして描く。両方を別々の画布に描き、`Transition.node` の種類（入力 `from`、`to`、パラメータ `progress` を 0..1 でレンダラーが渡す）で混ぜる。種類は `transition.dissolve`（線形の光の上のクロスディゾルブ）と `transition.wgsl`（利用者の WGSL。下の「transition.wgsl の書き方」）。知らない種類はエラーを記録してカットのまま描く。
+- 種類のパラメータに `duration` があれば、レンダラーは掛かる長さ（秒、両側のカットと余白で縮めた後）を書く。`rewind`（倍率）が正なら、出ていくカットを掛かり始めの時刻から逆向きにその倍率で描き（カットの頭で止まる）、出の後ろの余白を使わない。巻き戻しのトランジションはこれと WGSL の絵で作る。
+- トランジションを置く・種類と長さを変える・外すのは `setTransition`（[操作](05-ops.md)）。
 
 ## 効果
 
@@ -102,6 +105,15 @@ pub trait NodeKind: Send + Sync {
 - 利用者のコードは `fn mm_main(uv: vec2<f32>) -> vec4<f32>` を定義し、線形の premultiplied の色を返す。`uv` は左上が (0, 0)。
 - 使える名前: `u.size`（出力の画素数）、`u.time`（秒）、`u.scale`（画面上の倍率）、`u.p0`（`p0`..`p3`）、`u.p1`（`p4`..`p7`）、`mm_input(uv)`（入力 0 を双線形で引く。効果として使うとレイヤーの画像、入力が無ければ透明）。
 - コンパイルに失敗したら `render` は `Err` を返し、そのレイヤーだけが透明になってエラーが記録される。失敗は WGSL の全文ごと覚えるので毎フレーム作り直さない。`wgpu` の `GpuHelper` が要る（モックの GPU では `Unsupported`）。
+
+## transition.wgsl の書き方
+
+先行事例は gl-transitions（`getFromColor(uv)`、`getToColor(uv)`、`progress`、`ratio` の約束で 2 つの画像を混ぜる GLSL の関数を集めたもの）。同じ約束を WGSL の名前に置き換え、ほかは `shader.wgsl` に揃える。
+
+- 利用者のコードは `fn mm_transition(uv: vec2<f32>) -> vec4<f32>` を定義し、線形の premultiplied の色を返す。`uv` は左上が (0, 0)（gl-transitions は左下。移植では `1.0 - uv.y` に読み替える）。
+- 使える名前: `mm_from(uv)`、`mm_to(uv)`（出ていくカットと入ってくるカットを双線形で引く。範囲の外は端の色）、`u.progress`（0..1）、`u.ratio`（幅 / 高さ）、`u.time`（トランジションの中の秒 = `progress * duration`）、`u.duration`（掛かる長さの秒）、`u.size`、`u.scale`、`u.p0`（`p0`..`p3`）、`u.p1`（`p4`..`p7`）。
+- パラメータ: `code`、`progress` と `duration`（レンダラーが書く）、`rewind`（レンダラーが読む）、`p0`..`p7`。コードはパラメータにコピーするので、パックのフォルダーが無くても同じに描ける。
+- コンパイルの失敗は `shader.wgsl` と同じ扱い（エラーを記録し、その境は透明）。パックは共通のコードをトランジションのコードの前に連結して渡す（vlog の `transitions/_prelude.wgsl`）。
 
 
 ---
