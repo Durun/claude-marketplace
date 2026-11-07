@@ -4,7 +4,7 @@
 //! - `pack.json`: 名前、バージョン、形式の番号（[`FORMAT`]）。
 //! - `theme.json`: 色の名前、書体、動きの長さの上限、画面の大きさ（[`Theme`]）。
 //! - `styles.json`: 文字のスタイル（字幕、ラベル、注釈、テロップ）。`text` と、地のプレートを描く `shader.wgsl` の組（[`TextStyleSpec`]）。
-//! - `mixer.json`: ミキサーの設定（バスとダッキング）。`mm_audio_api::MixerConfig` の形。
+//! - `mixer.json`: ミキサーの設定（バスとダッキング）。`mm_doc::CompMixer` の形。テンプレートの `mixer` 手順が `setMixer` で当てる。
 //! - `corrections.json`: 字幕の表記の置き換え（誤認識の語 → 正しい表記）。
 //! - `macros/*.json` と `templates/*.json`: 引数を受けて操作の列を作る手順（[`MacroDef`]）。テンプレートは
 //!   空のプロジェクトに適用するテンプレート（コンポジション、レンダーターゲット）で、形はマクロと同じ。

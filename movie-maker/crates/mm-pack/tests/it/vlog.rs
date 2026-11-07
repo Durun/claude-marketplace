@@ -264,3 +264,61 @@ fn 名前とファイル名の違いと形式の番号を捕まえる() {
     let errors = check_broken("pack.json", |v| v["format"] = 99.into());
     assert!(mentions(&errors, "format"), "{errors:?}");
 }
+
+#[test]
+fn テンプレートは本編とショートにミキサーの設定を入れ_取り消し_1_回で戻る() {
+    let pack = vlog();
+    let ctx = OpContext::human();
+    let mut editor = Editor::new(Project::new());
+    let episode = expand_est(&pack, "episode", &args(&[("n", "4")])).unwrap();
+    editor.apply(episode, &ctx).unwrap();
+    let mixer = pack.mixer.clone().expect("vlog は mixer.json を持つ");
+    assert!(!editor.project().compositions.is_empty());
+    for comp in &editor.project().compositions {
+        assert_eq!(comp.mixer.as_ref(), Some(&mixer), "{}", comp.id);
+    }
+    let ducking = mixer.ducking.as_ref().unwrap();
+    assert_eq!(ducking.reduction_db, -11.0);
+    assert_eq!(ducking.threshold_db, -40.0);
+
+    editor.undo(&ctx).unwrap();
+    assert_eq!(editor.project(), &Project::new(), "コンポジションごと戻る");
+}
+
+#[test]
+fn 検査は壊したミキサーの設定を捕まえる() {
+    let errors = check_broken("mixer.json", |v| {
+        v["ducking"]["reduction_db"] = 3.into();
+        v["ducking"]["targets"] = serde_json::json!(["voice"]);
+        v["ducking"]["threshold_db"] = 6.into();
+    });
+    assert!(mentions(&errors, "reduction_db"), "{errors:?}");
+    assert!(mentions(&errors, "trigger"), "{errors:?}");
+    assert!(mentions(&errors, "threshold_db"), "{errors:?}");
+}
+
+#[test]
+fn 振幅の形のミキサーの設定は_compmixer_として読めず拒まれる() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&vlog_dir(), dir.path());
+    let path = dir.path().join("mixer.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replace("threshold_db", "threshold")).unwrap();
+    let Err(MmError::InvalidArgument(message)) = Pack::load(dir.path()) else {
+        panic!("CompMixer として読めないパックは拒む");
+    };
+    assert!(message.contains("mixer.json"), "{message}");
+}
+
+#[test]
+fn mixer_json_が無いパックでは_mixer_手順を検査が捕まえる() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&vlog_dir(), dir.path());
+    std::fs::remove_file(dir.path().join("mixer.json")).unwrap();
+    let report = check(&Pack::load(dir.path()).unwrap());
+    assert!(
+        mentions(&report.errors, "mixer.json が無い"),
+        "{:?}",
+        report.errors
+    );
+}

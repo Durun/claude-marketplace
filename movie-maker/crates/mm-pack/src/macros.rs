@@ -102,6 +102,16 @@ pub enum Step {
     Op(serde_json::Value),
     /// 文字のスタイルで文字を置く。プレートと文字のレイヤー、出る・消える動き、カットへの接続を作る。
     Text(TextStep),
+    /// パックの `mixer.json` を、コンポジションのミキサーの設定として `setMixer` で当てる。
+    Mixer(MixerStep),
+}
+
+/// パックのミキサーの設定を当てる手順。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MixerStep {
+    /// 当てるコンポジション。`{{…}}` を埋めてから読む。
+    pub comp: String,
 }
 
 /// 文字のスタイルで文字を置く手順。値は全部 `{{…}}` を埋めてから読む。
@@ -138,6 +148,7 @@ impl Step {
                 out.extend(t.attach.as_deref());
                 out
             }
+            Step::Mixer(m) => vec![m.comp.as_str()],
         }
     }
 }

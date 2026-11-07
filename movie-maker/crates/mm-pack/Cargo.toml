@@ -12,8 +12,6 @@ mm-doc = { workspace = true }
 mm-ops = { workspace = true }
 # プレートの大きさを決めるために文字を組む（型だけ。シェーパーは呼ぶ側が渡す）。
 mm-text-api = { workspace = true }
-# mixer.json をミキサーの設定の型で読む（型だけ。実装には依存しない）。
-mm-audio-api = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

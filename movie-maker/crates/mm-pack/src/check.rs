@@ -133,6 +133,12 @@ fn check_mixer(pack: &Pack, report: &mut Report) {
         if d.targets.contains(&d.trigger) {
             report.push("mixer.json: ducking の trigger を targets に入れない".into());
         }
+        if d.threshold_db > 0.0 {
+            report.push("mixer.json: ducking.threshold_db は dBFS（0 以下）".into());
+        }
+        if d.attack_ms < 0.0 || d.release_ms < 0.0 {
+            report.push("mixer.json: ducking の attack_ms と release_ms は 0 以上".into());
+        }
     }
 }
 
@@ -154,13 +160,17 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     let known: BTreeSet<String> = Env::names(def, &pack.theme).into_iter().collect();
     let mut used = BTreeSet::new();
     for step in &def.steps {
-        if let Step::Text(t) = step {
-            if !pack.styles.contains_key(&t.style) {
+        match step {
+            Step::Text(t) if !pack.styles.contains_key(&t.style) => {
                 report.push(at(format!(
                     "styles.json に文字のスタイル {} が無い",
                     t.style
                 )));
             }
+            Step::Mixer(_) if pack.mixer.is_none() => {
+                report.push(at("mixer 手順があるのに mixer.json が無い".into()));
+            }
+            _ => {}
         }
         for s in step.strings() {
             match referenced_names(s) {
