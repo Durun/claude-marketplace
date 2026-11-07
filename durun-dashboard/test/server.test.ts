@@ -8,7 +8,7 @@ import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
-import { arrangeThemes, renameTheme, stoppedStatus } from '../server/snapshot.ts';
+import { arrangeThemes, renameTheme, stoppedStatus, toBgTask } from '../server/snapshot.ts';
 import { tempDir } from './tmp.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
@@ -37,6 +37,43 @@ test('summarizeLog は、居たブランチを最後に居た順に並べ、戻�
   const log = summarizeLog(file);
   assert.deepEqual([...log.branches], ['a', 'c', 'b']);
   assert.equal(log.branch, 'b');
+});
+
+test('backgroundOf は、通知が届かなくても、期限を過ぎた Monitor と、出力の末尾に [killed] と書かれたタスクを実行中から外す', () => {
+  const dir = tempDir('durun-dashboard-bg-settle-');
+  const file = path.join(dir, 'log.jsonl');
+  const killed = path.join(dir, 'k.output');
+  const alive = path.join(dir, 'a.output');
+  fs.writeFileSync(killed, 'line\n\n[killed]\n');
+  fs.writeFileSync(alive, 'line\n');
+  const at = '2026-11-07T00:00:00.000Z';
+  const call = (id: string, name: string, input: object) => ({ type: 'assistant', timestamp: at, message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const result = (id: string, text: string, toolUseResult: object) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] }, toolUseResult });
+  fs.writeFileSync(file, `${[
+    call('u1', 'Monitor', { command: 'sleep 60', description: 'expire' }),
+    result('u1', 'Monitor started', { taskId: 'm1', timeoutMs: 60_000, persistent: false }),
+    call('u2', 'Monitor', { command: 'tail -f a', description: 'persistent' }),
+    result('u2', 'Monitor started', { taskId: 'm2', timeoutMs: 60_000, persistent: true }),
+    call('u3', 'Bash', { command: 'sleep 600', run_in_background: true }),
+    result('u3', `Output is being written to: ${killed}`, { backgroundTaskId: 's1' }),
+    call('u4', 'Bash', { command: 'sleep 600', run_in_background: true }),
+    result('u4', `Output is being written to: ${alive}`, { backgroundTaskId: 's2' }),
+  ].map((e) => JSON.stringify(e)).join('\n')}\n`);
+  const now = Date.parse(at) + 120_000;
+  assert.deepEqual(backgroundOf([summarizeLog(file)], now).map(({ id, status }) => ({ id, status })), [
+    { id: 'm1', status: 'stopped' },
+    { id: 'm2', status: 'running' },
+    { id: 's1', status: 'killed' },
+    { id: 's2', status: 'running' },
+  ]);
+});
+
+test('toBgTask は、セッションのプロセスが終わったか、タスクを動かした後に起動し直していたら、実行中のタスクを止まったとみなす', () => {
+  const task = { id: 't', kind: 'shell' as const, description: '', command: '', startedAt: 100, status: 'running' as const };
+  assert.equal(toBgTask(task, { startedAt: 50 }).status, 'running');
+  assert.equal(toBgTask(task, { startedAt: 200 }).status, 'stopped');
+  assert.equal(toBgTask(task, undefined).status, 'stopped');
+  assert.equal(toBgTask({ ...task, status: 'completed' }, undefined).status, 'completed');
 });
 
 test('summarizeLog は、バックグラウンドの shell と Monitor を、ツールの結果でタスクの id と結びつけ、終わった通知で状態を更新する', () => {
