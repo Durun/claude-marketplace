@@ -1,0 +1,130 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-tr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-tr-strip {
+  display: flex;
+  gap: var(--mm-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-tr-cell {
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.mm-tr-cut {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-task-body-bg);
+  color: var(--mm-color-text);
+  font: inherit;
+  font-size: var(--mm-font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-tr-cut[data-selected="true"] {
+  border-color: var(--mm-color-accent);
+}
+
+.mm-tr-cut:focus-visible,
+.mm-tr-input:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-tr-cut-id,
+.mm-tr-cut-kind {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-tr-cut-kind {
+  color: var(--mm-color-task-link);
+}
+
+/* 境の印。前のカットとの境（カットの左の縁）に掛かる。 */
+.mm-tr-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--mm-space-xs) / -2 - var(--mm-border-width));
+  width: var(--mm-space-xs);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-accent);
+}
+
+.mm-tr-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-task-body-bg);
+}
+
+.mm-tr-title {
+  margin: 0;
+  color: var(--mm-color-task-title-text);
+  font-size: var(--mm-font-size-base);
+}
+
+.mm-tr-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-tr-row > span {
+  flex: none;
+  min-width: 5em;
+  color: var(--mm-color-text-muted);
+}
+
+.mm-tr-input {
+  flex: 1 1 0;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-tr-input:disabled {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-tr-meta {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-tr-error {
+  margin: 0;
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+}

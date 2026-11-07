@@ -1,0 +1,34 @@
+{
+  "name": "figure",
+  "title": "図解",
+  "description": "仕組みや違いの図解。まっすぐの紙に見出しと行を並べ、行は喋りに合わせて順に出る（最後の行はねらいで ★ と黄色のマーカー）。cues で差し込んだ試聴の間に行が光り、スピーカーの札が出て、再生位置の線が行の絵の上を走る。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "head": {"type": "text", "description": "見出し"},
+    "labels": {"type": "text", "description": "行の名前を | で区切る"},
+    "comments": {"type": "text", "optional": true, "description": "行のひとことを | で区切る（空の行は飛ばしてよい）"},
+    "kinds": {"type": "text", "optional": true, "description": "行の絵を空白で区切る。dry（声の箱だけ）、reverb（ぼけた面）、delay（間をあけて小さくなる箱）、both（両方）、none（絵なし）。省くと絵なし"},
+    "row_at": {"type": "text", "default": "0", "description": "行が出る秒（レイヤーの始まりから）を空白で区切る"},
+    "cues": {"type": "text", "optional": true, "description": "試聴の間。「行の番号（1 から）@始まり+長さ」を空白で区切る"},
+    "x": {"type": "number", "default": "1856", "description": "紙の外側の端の x（side が right なら右の端、left なら左の端）"},
+    "y": {"type": "number", "default": "40", "description": "紙の上の端の y"},
+    "side": {"type": "text", "default": "right", "description": "紙を寄せる側。見せたい窓と顔を避ける"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "8", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {
+    "id": "fg1", "head": "ディレイで形を保ってぼかす",
+    "labels": "原音|リバーブだけ|ディレイ|ディレイ＋リバーブ",
+    "comments": "|ボケすぎる（お風呂っぽい）|形を保つ|形を保ったままぼかせる",
+    "kinds": "dry reverb delay both", "row_at": "0.2 1.2 2.2 3.2", "cues": "4@4.5+2", "at": "1"
+  },
+  "steps": [
+    {"web": {
+      "page": "figure", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.22, "animated": true,
+      "data": {"head": "{{head}}", "labels": "{{labels}}", "comments": "{{comments}}", "kinds": "{{kinds}}", "row_at": "{{row_at}}", "cues": "{{cues}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}"}
+    }}
+  ]
+}

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  画面の注記と線（marks）の 1 つ。DAW やプラグインの画面そのものに、札、枠、矢印、音名、塗り、配線の色の線を重ねる。
+  data: kind（tag、frame、arrow、note、fill、badge、msg、wire）、text（札の文字）、pts（「x,y x,y」の点の並び。
+  tag・badge・msg は真ん中、arrow・wire は通る点、note は点線の始めと終わり）、box（「x,y,w,h」。tag が囲む箱、frame と fill の矩形）、
+  color（white、blue、yellow、new）、dash（frame を点線に）、tail（tag のしっぽ。auto、up、dn、lf、rt、none）、
+  icon（msg の印。ok は ★、ng は !）、theme。座標はコンポジションの画素。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  svg { position: absolute; left: 0; top: 0; overflow: visible; }
+  .dry { --rc: var(--white); --bg: var(--white); --fg: var(--ink); }
+  .rev { --rc: var(--blue2); --bg: var(--sapphire); --fg: var(--white); }
+  .duck { --rc: var(--yellow); --bg: var(--yellow); --fg: var(--ink); }
+  .tag { position: absolute; translate: -50% -50%; height: 64px; padding: 0 22px; box-sizing: border-box; display: flex; align-items: center; gap: 10px;
+    border: 5px solid var(--ink); border-radius: 15px; filter: drop-shadow(0 6px 0 var(--ink)); font: 900 40px/1 var(--body); white-space: nowrap;
+    background: var(--bg); color: var(--fg); }
+  .tag .tx { position: relative; }
+  .tag.new { padding-left: 10px; }
+  .tag .ic svg { position: static; width: 46px; height: 46px; display: block; }
+  .tl { position: absolute; left: 50%; width: 22px; height: 22px; margin-left: -13.5px; background: inherit; border: 5px solid var(--ink); rotate: 45deg; }
+  .tl.up { top: -19px; border-right: 0; border-bottom: 0; }
+  .tl.dn { bottom: -19px; border-left: 0; border-top: 0; }
+  .tl.lf { left: -19px; top: 50%; margin: -13.5px 0 0 0; border-top: 0; border-right: 0; }
+  .tl.rt { left: auto; right: -19px; top: 50%; margin: -13.5px 0 0 0; border-bottom: 0; border-left: 0; }
+  .nn { padding: 0 16px; }
+  .nn.r { translate: 8px -50%; }
+  .nn.l { translate: calc(-100% - 8px) -50%; }
+  .nn.d { translate: -50% 8px; }
+  .nn.u { translate: -50% calc(-100% - 8px); }
+  .ring { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--rc) 35%, transparent)); }
+  .ring rect, .frm rect { fill: none; stroke-linejoin: round; }
+  .ring .k, .frm .k { stroke: var(--ink); }
+  .ring .c, .frm .c { stroke: var(--rc); }
+  .frm .k { stroke-width: 13; }
+  .frm .c { stroke-width: 5.5; }
+  .frm.rev .c { stroke-width: 6.5; }
+  .arw path, .ldr path, .wire path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .arw .k { stroke: var(--ink); stroke-width: 17; }
+  .arw .c { stroke: var(--rc); stroke-width: 8; }
+  .arw .h { fill: var(--rc); stroke: var(--ink); stroke-width: 5; }
+  .ldr path { stroke-dasharray: 11 9; }
+  .ldr .k { stroke: var(--ink); stroke-width: 12; }
+  .ldr .c { stroke: var(--rc); stroke-width: 5.5; }
+  .wire .k { stroke: var(--ink); stroke-width: 18; }
+  .wire .c { stroke: var(--rc); stroke-width: 9; }
+  .wire.rev .c { stroke-width: 10; }
+  .wire .cv { stroke: var(--ink); stroke-width: 4.5; }
+  .wire.rev .cv { stroke: var(--white); }
+  .wire .pt { fill: var(--yellow); stroke: var(--ink); stroke-width: 3.5; }
+  .fill { position: absolute; border-radius: 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--rc) 50%, transparent),
+    color-mix(in srgb, var(--rc) 22%, transparent) 45%, transparent); }
+  .bdg { position: absolute; translate: -50% -50%; width: 66px; height: 66px; box-sizing: border-box; border-radius: 50%; border: 5px solid var(--ink);
+    filter: drop-shadow(0 5px 0 var(--ink)); background: var(--bg); display: flex; align-items: center; justify-content: center;
+    font: 900 40px/1 var(--title); color: var(--fg); }
+  .msg { position: absolute; translate: -50% -50%; display: flex; align-items: center; gap: 12px; padding: 12px 28px 14px 16px;
+    background: var(--white); border: 5px solid var(--ink); border-radius: 18px; filter: drop-shadow(7px 9px 0 var(--ink));
+    font: 900 42px/1.2 var(--body); color: var(--ink); white-space: nowrap; }
+  .msg svg { position: static; width: 54px; height: 54px; flex: none; }
+  .msg .tx { position: relative; z-index: 0; }
+  .msg .mk { position: absolute; left: -6px; right: -6px; bottom: 2px; height: 22px; z-index: -1; border-radius: 8px; background: var(--yellow); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // 囲む枠と札の間をあける幅、枠の角丸、札の高さの半分（しっぽの向きを決める）。7_mix の marks と同じ。
+  const PAD = 8, RING_RADIUS = 14, TAG_HALF = 32;
+  // 矢印の矢じりの根元までの長さの上限と、点線の先の札の大きさ。
+  const HEAD_BACK = 16, MIN_CHEVRON = 90;
+  const COLORS = { white: 'dry', blue: 'rev', yellow: 'duck', new: 'duck' };
+  const STAR = (() => {
+    const pts = Array.from({ length: 10 }, (_, i) => {
+      const a = (i / 10) * 2 * Math.PI - Math.PI / 2, r = i % 2 ? 6 : 14;
+      return `${i ? 'L' : 'M'}${(26 + Math.cos(a) * r).toFixed(1)} ${(27.5 + Math.sin(a) * r).toFixed(1)}`;
+    });
+    return `${pts.join('')}Z`;
+  })();
+  const ICON = {
+    ok: '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23.5" fill="var(--ink)" stroke="var(--ink)" stroke-width="5"/>'
+      + `<path d="${STAR}" fill="var(--yellow)" stroke="var(--yellow)" stroke-width="2.4" stroke-linejoin="round"/></svg>`,
+    ng: '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23.5" fill="var(--yellow)" stroke="var(--ink)" stroke-width="5"/>'
+      + '<path d="M26 13 V30" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/><circle cx="26" cy="38.5" r="4" fill="var(--ink)"/></svg>',
+  };
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const units = (s) => [...String(s ?? '')].reduce((a, ch) => a + (/[ -~]/.test(ch) ? 0.6 : 1), 0);
+  const points = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).map((p) => p.split(',').map(Number))
+    .filter((p) => p.length === 2 && p.every(Number.isFinite));
+  const rect = (s) => {
+    const r = String(s || '').split(',').map(Number);
+    return r.length === 4 && r.every(Number.isFinite) ? r : null;
+  };
+  const rrect = (cls, x, y, w, h, rx, extra = '') => `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${extra}/>`;
+
+  // 箱の真ん中が札の上か下なら上・下、札の高さの中で横にあれば左・右にしっぽを出す。
+  const tailSide = (text, [x, y], [bx, by, bw, bh]) => {
+    const cx = bx + bw / 2, cy = by + bh / 2, hw = (units(text) * 40 + 54) / 2;
+    if (cy < y - TAG_HALF) return 'up';
+    if (cy > y + TAG_HALF) return 'dn';
+    if (cx < x - hw) return 'lf';
+    if (cx > x + hw) return 'rt';
+    return cy < y ? 'up' : 'dn';
+  };
+  // 箱の外に色の線（5px）と墨の線（9px まで）を外向きにだけ引く。
+  const ring = ([bx, by, bw, bh]) => {
+    const x = bx - PAD, y = by - PAD, w = bw + PAD * 2, h = bh + PAD * 2;
+    return '<svg class="ring">'
+      + rrect('k', x - 4.5, y - 4.5, w + 9, h + 9, RING_RADIUS + 4.5, ' stroke-width="9"')
+      + rrect('c', x - 2.5, y - 2.5, w + 5, h + 5, RING_RADIUS + 2.5, ' stroke-width="5"') + '</svg>';
+  };
+  const tag = (d) => {
+    const [p] = points(d.pts), box = rect(d.box);
+    if (!p) return '';
+    let tl = box ? tailSide(d.text, p, box) : '';
+    if (d.tail && d.tail !== 'auto') tl = d.tail === 'none' ? '' : d.tail;
+    const ic = d.color === 'new' ? `<span class="ic">${ICON.ok}</span>` : '';
+    return `${box && d.ring !== false && d.ring !== 'false' ? ring(box) : ''}`
+      + `<div class="tag${d.color === 'new' ? ' new' : ''}" style="left:${p[0]}px;top:${p[1]}px">`
+      + `${tl ? `<i class="tl ${tl}"></i>` : ''}${ic}<span class="tx">${esc(d.text)}</span></div>`;
+  };
+  const frame = (d) => {
+    const box = rect(d.box);
+    if (!box) return '';
+    const [bx, by, bw, bh] = box, w = bw + PAD * 2, h = bh + PAD * 2;
+    const dash = d.dash === true || d.dash === 'true' ? ' stroke-dasharray="18 13"' : '';
+    const r = Math.min(12, h / 2);
+    return `<svg class="frm">${rrect('k', bx - PAD, by - PAD, w, h, r, dash)}${rrect('c', bx - PAD, by - PAD, w, h, r, dash)}</svg>`;
+  };
+  const arrow = (d) => {
+    const pts = points(d.pts);
+    if (pts.length < 2) return '';
+    const a = pts[pts.length - 2], b = pts[pts.length - 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+    // 線は矢じりの根元まで（先まで引くと、太い墨の線が矢じりの先から覗く）。
+    const back = Math.min(HEAD_BACK, len * 0.45), e = [b[0] - (b[0] - a[0]) / len * back, b[1] - (b[1] - a[1]) / len * back];
+    const path = `M${pts.slice(0, -1).map((q) => `${q[0]} ${q[1]}`).join(' L')} L${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+    return `<svg class="arw"><path class="k" d="${path}"/><path class="c" d="${path}"/>`
+      + `<g transform="translate(${b[0]} ${b[1]}) rotate(${ang.toFixed(1)})"><path class="h" d="M-20 -14 L5 0 L-20 14 Z"/></g></svg>`;
+  };
+  const note = (d) => {
+    const pts = points(d.pts);
+    if (pts.length < 2) return '';
+    const [[xa, ya], [xb, yb]] = pts;
+    const side = Math.abs(xb - xa) >= Math.abs(yb - ya) ? (xb >= xa ? 'r' : 'l') : (yb >= ya ? 'd' : 'u');
+    const path = `M${xa} ${ya} L${xb} ${yb}`;
+    return `<svg class="ldr"><path class="k" d="${path}"/><path class="c" d="${path}"/></svg>`
+      + `<div class="tag nn ${side}" style="left:${xb}px;top:${yb}px"><span class="tx">${esc(d.text)}</span></div>`;
+  };
+  const fill = (d) => {
+    const box = rect(d.box);
+    return box ? `<i class="fill" style="left:${box[0]}px;top:${box[1]}px;width:${box[2]}px;height:${box[3]}px"></i>` : '';
+  };
+  const badge = (d) => {
+    const [p] = points(d.pts);
+    return p ? `<div class="bdg" style="left:${p[0]}px;top:${p[1]}px"><span>${esc(d.text)}</span></div>` : '';
+  };
+  const msg = (d) => {
+    const [p] = points(d.pts);
+    return p ? `<div class="msg" style="left:${p[0]}px;top:${p[1]}px">${ICON[d.icon === 'ng' ? 'ng' : 'ok']}`
+      + `<span class="tx"><i class="mk"></i>${esc(d.text)}</span></div>` : '';
+  };
+  // 配線: 隣り合う点を、つなぎ口から横に出て横から入る S 字でつなぐ（Patcher の配線と同じ形）。
+  const wire = (d) => {
+    const pts = points(d.pts);
+    if (pts.length < 2) return '';
+    const kf = 0.5;
+    let path = `M${pts[0][0]} ${pts[0][1]}`;
+    const chevs = [];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const k = Math.max(12, Math.abs(b[0] - a[0]) * kf);
+      const c = Math.abs(b[1] - a[1]) < 0.5 ? [a, a, b, b] : [a, [a[0] + k, a[1]], [b[0] - k, b[1]], b];
+      path += c[1] === a ? ` L${b[0]} ${b[1]}` : ` C${c[1][0]} ${c[1][1]} ${c[2][0]} ${c[2][1]} ${b[0]} ${b[1]}`;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > MIN_CHEVRON) {
+        const bez = (t) => [0, 1].map((j) => (1 - t) ** 3 * c[0][j] + 3 * (1 - t) ** 2 * t * c[1][j] + 3 * (1 - t) * t * t * c[2][j] + t ** 3 * c[3][j]);
+        const m = bez(0.5), m2 = bez(0.52), ang = Math.atan2(m2[1] - m[1], m2[0] - m[0]) * 180 / Math.PI;
+        chevs.push(`<path class="cv" d="M-7 -9 L6 0 L-7 9" transform="translate(${m[0].toFixed(1)} ${m[1].toFixed(1)}) rotate(${ang.toFixed(1)})"/>`);
+      }
+    }
+    const ends = [pts[0], pts[pts.length - 1]].map((q) => `<circle class="pt" cx="${q[0]}" cy="${q[1]}" r="7"/>`).join('');
+    return `<svg class="wire"><path class="k" d="${path}"/><path class="c" d="${path}"/>${chevs.join('')}${ends}</svg>`;
+  };
+  const KINDS = { tag, frame, arrow, note, fill, badge, msg, wire };
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    s.setProperty('--body', stack(f.body));
+    s.setProperty('--title', stack(f.title));
+    // 線と枠の青は、墨の縁の上で見えるようにサファイアを白で明るくした色。
+    s.setProperty('--blue2', 'color-mix(in srgb, var(--sapphire) 66%, var(--white))');
+  };
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const draw = KINDS[data.kind] || tag;
+    const col = COLORS[data.color] || 'dry';
+    document.getElementById('root').innerHTML = `<div class="${col}">${draw(data)}</div>`;
+  };
+</script>
+</body>
+</html>

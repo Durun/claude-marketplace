@@ -126,6 +126,8 @@ define_ops! {
     SetLayerAudio => "setLayerAudio",
     /// コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。
     SetMixer => "setMixer",
+    /// カットの頭のトランジションを置く・差し替える・外す。
+    SetTransition => "setTransition",
     /// レンダーターゲットを足す。
     AddRenderTarget => "addRenderTarget",
     /// レンダーターゲットを外す。

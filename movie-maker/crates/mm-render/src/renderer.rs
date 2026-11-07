@@ -145,7 +145,17 @@ impl WgpuRenderer {
     /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
     /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
     fn report_gpu_time(&mut self) {
-        for ns in self.timer.collect() {
+        Self::report(self.timer.collect());
+    }
+
+    /// 頼んだ GPU の時間の読み取りが終わるまで待ち、全部を `mm-trace` に載せる。
+    /// 通常の描画は待たないので、最後の数フレームの分は次の描画まで載らない。結果を確定させたい所で呼ぶ。
+    pub fn flush_gpu_time(&mut self) {
+        Self::report(self.timer.collect_all());
+    }
+
+    fn report(times_ns: Vec<u64>) {
+        for ns in times_ns {
             mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
             mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
         }

@@ -37,6 +37,7 @@ pub fn expand(
             Step::Op(raw) => vec![env.fill_json(raw)?],
             Step::Text(t) => text_ops(pack, &TextInput::read(pack, &env, t)?, shaper)?,
             Step::Mixer(m) => vec![mixer_op(pack, &env.fill_text(&m.comp)?)?],
+            Step::Transition(t) => vec![crate::transition::transition_op(pack, &env, t)?],
             Step::Web(w) => vec![crate::web::web_op(pack, &env, w)?],
         };
         for value in values {

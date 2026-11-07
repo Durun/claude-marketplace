@@ -3,8 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use mm_doc::Project;
-use mm_ops::{Editor, OpContext};
+use mm_doc::{Cut, Node, Project, Sequence};
+use mm_ops::{AddSequence, Editor, OpContext, Transaction};
+use mm_types::{Id, RationalTime};
 
 use crate::args::{referenced_names, Env};
 use crate::expand::expand;
@@ -173,6 +174,11 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
             Step::Web(w) => check_web(pack, w)
                 .into_iter()
                 .for_each(|e| report.push(at(e))),
+            Step::Transition(t)
+                if !t.name.contains("{{") && !pack.transitions.code.contains_key(&t.name) =>
+            {
+                report.push(at(format!("transitions/{}.wgsl が無い", t.name)));
+            }
             _ => {}
         }
         for s in step.strings() {
@@ -215,7 +221,28 @@ fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
     errors
 }
 
-/// テンプレートを例の引数で空のプロジェクトに適用し、その上に各マクロを例の引数で適用してみる。
+/// カットに掛けるマクロ（`transition`）の例が引く、2 つのカット `c1`、`c2` の sequence `check`。
+fn sample_sequence() -> Transaction {
+    let cut = |id: &str| {
+        Cut::new(
+            id,
+            Node::new("solid", 1),
+            RationalTime::ZERO,
+            RationalTime::seconds(2),
+        )
+    };
+    let op = AddSequence {
+        sequence: Sequence {
+            id: Id::new("check"),
+            cuts: vec![cut("c1"), cut("c2")],
+            origin: None,
+        },
+    };
+    Transaction::new("検査の sequence", vec![op.into()])
+}
+
+/// テンプレートを例の引数で空のプロジェクトに適用し、2 つのカットの sequence を足して、その上に各マクロを例の引数で
+/// 適用してみる。
 fn apply_examples(pack: &Pack, report: &mut Report) {
     let ctx = OpContext::human();
     let mut base = Editor::new(Project::new());
@@ -227,6 +254,9 @@ fn apply_examples(pack: &Pack, report: &mut Report) {
             },
             Err(e) => report.push(format!("{}: 例を展開できない: {e}", def.name)),
         }
+    }
+    if let Err(e) = base.apply(sample_sequence(), &ctx) {
+        report.push(format!("検査の sequence を適用できない: {e}"));
     }
     for def in pack.macros.iter().filter(|m| m.kind == MacroKind::Macro) {
         let mut editor = Editor::new(base.project().clone());

@@ -658,6 +658,13 @@ export type SetMixerOp = {
   "mixer"?: CompMixer | null;
   "op": "setMixer";
 };
+/** カットの頭のトランジションを置く・差し替える・外す。 */
+export type SetTransitionOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "cut": string;
+  "op": "setTransition";
+  "transition"?: Transition | null;
+};
 /** レンダーターゲットを足す。 */
 export type AddRenderTargetOp = {
   "index"?: number | null;
@@ -917,6 +924,7 @@ export type Op =
   | SetCaptionOp
   | SetLayerAudioOp
   | SetMixerOp
+  | SetTransitionOp
   | AddRenderTargetOp
   | RemoveRenderTargetOp
   | AddMarkerOp
@@ -989,6 +997,7 @@ export const OP_NAMES: readonly OpName[] = [
   "setCaption",
   "setLayerAudio",
   "setMixer",
+  "setTransition",
   "addRenderTarget",
   "removeRenderTarget",
   "addMarker",

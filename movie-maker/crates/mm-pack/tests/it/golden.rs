@@ -1,6 +1,6 @@
-//! `packs/vlog` の文字のスタイルの期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
-//! `fixtures/golden/<バックエンド>/pack-vlog.png` と比べる（`mm_testkit::golden`）。文字はモックの矩形で描くので、
-//! 見るのはプレートの位置、大きさ、色、縁、影、傾きと、文字の塊がプレートの内側に収まっているか。
+//! `packs/vlog` の期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
+//! `fixtures/golden/<バックエンド>/pack-vlog*.png` と比べる（`mm_testkit::golden`）。文字と `web.cef` はモックの矩形で描くので、
+//! 見るのはプレートの位置、大きさ、色、縁、影、傾き、文字の塊がプレートの内側に収まっているかと、`web` 手順のレイヤーの重なり。
 //! 更新は `cargo xtask golden-update --test pack_vlog`。GPU と期待画像のフォルダーが無い環境ではスキップする。
 
 use std::collections::BTreeMap;
@@ -12,6 +12,7 @@ use mm_doc::{Layer, Node, Project};
 use mm_gpu::enumerate_adapters;
 use mm_node_api::{Quality, Services};
 use mm_nodes_basic::all_kinds;
+use mm_nodes_cef::WebCefKind;
 use mm_ops::{Editor, OpContext, Transaction};
 use mm_pack::{expand, Pack};
 use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
@@ -28,19 +29,19 @@ const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
 /// 背景の色（暗い青灰色。プレートの白と墨の縁が見分けられる）。
 const BACKGROUND: Rgba = Rgba::new(0.06, 0.09, 0.13, 1.0);
 
-fn vlog_dir() -> PathBuf {
+pub(crate) fn vlog_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
 }
 
 /// 描くときと同じモックの文字（`sample_services`）と、実際の色の変換。
-fn services() -> Services {
+pub(crate) fn services() -> Services {
     Services {
         color: Arc::new(LutColor),
         ..sample_services()
     }
 }
 
-fn gpu() -> Option<Arc<GpuContext>> {
+pub(crate) fn gpu() -> Option<Arc<GpuContext>> {
     let request = if std::env::var(BACKEND_ENV).as_deref() == Ok("warp") {
         let adapter = enumerate_adapters()
             .into_iter()
@@ -88,13 +89,22 @@ fn args(list: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// テンプレート、背景、セクションの見出し、ラベル、テロップ、字幕を適用したプロジェクト。
-fn demo_project() -> Project {
+/// `web.cef` の部品（見出しの ToDo）。0.15 秒は出る動き（0.3 秒）の途中で、レイヤーの不透明度が半分。
+const WEB_DEMO: [(&str, &str); 2] = [
+    ("episode", "n=4"),
+    (
+        "card",
+        "id=cd;list=VOCALOID6 で歌わせる|ボーカルミックス;no=2;at=0;dur=4",
+    ),
+];
+
+/// テンプレート、背景、`demo` のマクロを適用したプロジェクト。先頭はテンプレートで、その直後に背景を敷く。
+fn demo_project(demo: &[(&str, &str)]) -> Project {
     let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
     let shaper = services().text_shaper;
     let ctx = OpContext::human();
     let mut editor = Editor::new(Project::new());
-    for (i, (name, pairs)) in DEMO.iter().enumerate() {
+    for (i, (name, pairs)) in demo.iter().enumerate() {
         let txn = expand(&pack, name, &args(pairs), &*shaper).expect("展開できる");
         editor.apply(txn, &ctx).expect("適用できる");
         if i == 0 {
@@ -120,6 +130,26 @@ fn background() -> Transaction {
 
 #[test]
 fn pack_vlog_の文字のスタイルの期待画像() {
+    check_golden(
+        "pack-vlog",
+        &demo_project(&DEMO),
+        RationalTime::new(5, 2).unwrap(),
+    );
+}
+
+/// `web.cef` は CEF の代わりの描画（ページと `data` で色の決まる矩形）で描く。見るのは、`web` 手順のレイヤーが
+/// 背景の上に重なり、出る動きの途中の不透明度で透けるか。ページの HTML か `data` を変えると矩形の色が変わる。
+#[test]
+fn pack_vlog_の_web_の部品の期待画像() {
+    check_golden(
+        "pack-vlog-web",
+        &demo_project(&WEB_DEMO),
+        RationalTime::new(3, 20).unwrap(),
+    );
+}
+
+/// `project` の `main` を `time` で描き、期待画像 `name` と比べる。GPU か期待画像のフォルダーが無ければ何もしない。
+fn check_golden(name: &str, project: &Project, time: RationalTime) {
     let Some(ctx) = gpu() else { return };
     let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
@@ -127,11 +157,11 @@ fn pack_vlog_の文字のスタイルの期待画像() {
     let Some(golden) = Golden::open(&root, &backend, &actual) else {
         return;
     };
-    let project = demo_project();
     let mut nodes = MapRegistry::default();
     for kind in all_kinds() {
         nodes.insert(kind);
     }
+    nodes.insert(Arc::new(WebCefKind::mock()));
     let mut r = WgpuRenderer::new(
         ctx.clone(),
         Arc::new(SampleDecoderFactory::default()),
@@ -140,9 +170,9 @@ fn pack_vlog_の文字のスタイルの期待画像() {
     );
     let frame = r
         .render_frame(&RenderRequest {
-            project: &project,
+            project,
             composition: &Id::new("main"),
-            time: RationalTime::new(5, 2).unwrap(),
+            time,
             size: GOLDEN_SIZE,
             quality: Quality::Full,
             nodes: &nodes,
@@ -151,7 +181,30 @@ fn pack_vlog_の文字のスタイルの期待画像() {
     let errors = r.take_errors();
     assert!(errors.is_empty(), "どのレイヤーも描けている: {errors:?}");
     let img = r.gpu().download(&frame).expect("リードバックできる");
-    if let Err(message) = golden.check("pack-vlog", &img) {
+    if let Err(message) = golden.check(name, &img) {
         panic!("{message}");
+    }
+}
+
+/// 期待画像に残すトランジションと進み具合。動きとぼかし（whip）、ハッシュで作る表（stepseq）、巻き戻し（rewind）。
+const TRANSITION_GOLDENS: [(&str, f64); 3] = [("whip", 0.4), ("stepseq", 0.35), ("rewind", 0.18)];
+
+#[test]
+fn pack_vlog_のトランジションの期待画像() {
+    let Some(ctx) = gpu() else { return };
+    let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
+    let actual = Path::new(env!("CARGO_TARGET_TMPDIR")).join("golden-actual");
+    let Some(golden) = Golden::open(&root, &backend, &actual) else {
+        return;
+    };
+    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
+    let mut stage = crate::transitions::Stage::new(ctx);
+    for (name, progress) in TRANSITION_GOLDENS {
+        let project = crate::transitions::project_with(&pack, name);
+        let img = stage.render(&project, progress, GOLDEN_SIZE);
+        if let Err(message) = golden.check(&format!("transition-{name}"), &img) {
+            panic!("{message}");
+        }
     }
 }

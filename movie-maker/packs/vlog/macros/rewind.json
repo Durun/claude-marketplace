@@ -1,0 +1,14 @@
+{
+  "name": "rewind",
+  "title": "巻き戻し",
+  "description": "カットの頭に巻き戻しのトランジションを置く。前の場面を逆向きに早回しで戻しながら、大きな「<」の矢印が右から左へ流れ、覆っている間に次の場面へ切り替わる。過去の場面や、やり直しに戻るとき",
+  "params": {
+    "cut": {"type": "id", "description": "トランジションを置くカット（戻った先の場面）"},
+    "dur": {"type": "time", "default": "1.6", "description": "長さ（秒）"},
+    "speed": {"type": "number", "default": "3", "description": "前の場面を逆向きに再生する倍率"}
+  },
+  "example": {"cut": "c2"},
+  "steps": [
+    {"transition": {"name": "rewind", "cut": "{{cut}}", "dur": "{{dur}}", "params": {"rewind": "{{speed}}"}}}
+  ]
+}

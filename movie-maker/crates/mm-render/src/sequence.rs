@@ -10,21 +10,36 @@ use std::sync::Arc;
 use mm_doc::{Cut, Framing, Layer, Sequence, SEQUENCE_PARAM};
 use mm_eval::{node_params_at, place_cuts, reframe_at, source_time, PlacedCut};
 use mm_node_api::{GpuTexture, NodeKind};
-use mm_types::{Id, MmError, ParamValue, Params, Rect, Result};
+use mm_types::{Id, MmError, ParamValue, Params, RationalTime, Rect, Result};
 
-use crate::crossfade::{crossfade_at, handles_in, Crossfade};
+use crate::crossfade::{crossfade_at, handles_in, rewind_rate, Crossfade};
 use crate::effects::NodeRun;
 use crate::layers::{CompCx, LayerImage, Prepared, MAX_DEPTH};
 use crate::renderer::WgpuRenderer;
 
 /// トランジションが担う進み具合のパラメータの名前（`transition.*` の規約）。
 const PROGRESS_PARAM: &str = "progress";
+/// 掛かる長さ（秒）のパラメータの名前。種類のパラメータにあるときだけ書く。
+const DURATION_PARAM: &str = "duration";
 
 /// 境のトランジションを描く手順。種類は `Transition.node.kind` で引いたもの。
 struct Plan {
     fade: Crossfade,
     kind: Arc<dyn NodeKind>,
     params: Params,
+    /// 出ていくカットを逆向きに描く倍率。0 なら普通に描く。
+    rewind: f64,
+}
+
+/// 逆向きの時刻を有理数に丸める刻み（1 秒あたり）。24、25、30、48、50、60 fps のコマの境を割り切る。
+const REWIND_TICKS: u32 = 120_000;
+
+/// 逆向きに描くときの出ていくカットの時刻。掛かり始めから `rate` 倍で戻り、カットの頭で止まる。
+fn rewound_time(placed: &PlacedCut, fade: &Crossfade, t: RationalTime, rate: f64) -> RationalTime {
+    let back = fade.start - (t.to_f64() - fade.start) * rate;
+    let ticks = (back * f64::from(REWIND_TICKS)).round() as i128;
+    RationalTime::new(ticks, REWIND_TICKS)
+        .map_or(placed.range.start, |time| time.max(placed.range.start))
 }
 
 /// 描く sequence と、それを置いたレイヤーのコンポジションごとの見せ方（再フレーミング）。
@@ -114,9 +129,18 @@ impl WgpuRenderer {
             ));
             return Ok(None);
         };
-        let mut params = node_params_at(&tr.node, cx.t).with_defaults(&kind.params());
+        let schema = kind.params();
+        let mut params = node_params_at(&tr.node, cx.t).with_defaults(&schema);
         params.set(PROGRESS_PARAM, ParamValue::Number(f64::from(fade.progress)));
-        Ok(Some(Plan { fade, kind, params }))
+        if schema.get(DURATION_PARAM).is_some() {
+            params.set(DURATION_PARAM, ParamValue::Number(fade.length));
+        }
+        Ok(Some(Plan {
+            fade,
+            kind,
+            params,
+            rewind: rewind_rate(tr),
+        }))
     }
 
     /// カット 1 つを画布の大きさのテクスチャに描く。再フレーミングがあればカットの画像に掛ける。
@@ -159,7 +183,16 @@ impl WgpuRenderer {
         placed: &[PlacedCut],
         plan: &Plan,
     ) -> Result<u64> {
-        let from = self.cut_canvas(encoder, cx, shown, &placed[plan.fade.from])?;
+        let before = &placed[plan.fade.from];
+        let from = if plan.rewind > 0.0 {
+            let back = CompCx {
+                t: rewound_time(before, &plan.fade, cx.t, plan.rewind),
+                ..*cx
+            };
+            self.cut_canvas(encoder, &back, shown, before)?
+        } else {
+            self.cut_canvas(encoder, cx, shown, before)?
+        };
         let to = self.cut_canvas(encoder, cx, shown, &placed[plan.fade.to])?;
         let run = NodeRun {
             kind: plan.kind.as_ref(),

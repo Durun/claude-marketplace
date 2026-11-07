@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::macros::{MacroDef, MacroKind};
 use crate::style::TextStyleSpec;
 use crate::theme::Theme;
+use crate::transition::Transitions;
 
 /// この実装が読めるパックの形式の番号。`pack.json` の `format` と比べる。
 pub const FORMAT: u32 = 1;
@@ -46,6 +47,8 @@ pub struct Pack {
     pub macros: Vec<MacroDef>,
     /// `web/*.html` の名前（拡張子を除く）→ HTML。`web` 手順が `web.cef` のレイヤーにする。
     pub pages: BTreeMap<String, String>,
+    /// `transitions/*.wgsl`。`transition` 手順が `transition.wgsl` のトランジションにする。
+    pub transitions: Transitions,
 }
 
 impl Pack {
@@ -68,6 +71,7 @@ impl Pack {
             corrections,
             macros,
             pages: read_pages(&dir.join("web"))?,
+            transitions: Transitions::load(&dir.join("transitions"))?,
         })
     }
 

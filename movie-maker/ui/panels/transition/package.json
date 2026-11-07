@@ -1,0 +1,11 @@
+{
+  "name": "@mm/transition",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@mm/sdk": "workspace:*",
+    "@tauri-apps/api": "^2.12.4",
+    "preact": "^10.27.0"
+  }
+}

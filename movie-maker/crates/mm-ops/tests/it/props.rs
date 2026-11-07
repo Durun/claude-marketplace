@@ -162,7 +162,7 @@ fn 生成器は全部の操作と参照の種類を通す() {
     let mut seen = std::collections::BTreeSet::new();
     let mut precompose_elsewhere = false;
     let human = OpContext::human();
-    for _ in 0..12000 {
+    for _ in 0..20000 {
         let p = arb_project().new_tree(&mut runner).unwrap().current();
         seen.extend(features(&p));
         let spec = arb_spec().new_tree(&mut runner).unwrap().current();
