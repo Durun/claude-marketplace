@@ -92,7 +92,7 @@ fn save(name: &str, image: &RgbaImage) {
     let mut board = RgbaImage::transparent(image.size());
     for y in 0..image.height() {
         for x in 0..image.width() {
-            let v = if (x / CELL + y / CELL) % 2 == 0 {
+            let v = if (x / CELL + y / CELL).is_multiple_of(2) {
                 0.2
             } else {
                 0.4
