@@ -39,8 +39,8 @@ classDiagram
     attachTo: Cut
     blend, opacity: Param
     effects: Effect[]
-    masks, trackMatte
-    audio: role, gain, pan, mute, solo
+    crop, masks, trackMatte
+    audio: role, gain, pan, mute, solo, fades
     enabled, lock
   }
   class Sequence {
@@ -131,11 +131,15 @@ classDiagram
 ## コンポジションとレイヤー
 
 - コンポジションは、大きさ、画素の縦横比、fps、長さ、背景、レイヤーの重なり、マーカーを持つ。
-- レイヤーはノード（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、`speed`、`timeRemap`）、接続（`attachTo`。カットの ID。カットがリップルで動くと一緒に動く）、形（変形と `parent`）、重ね方（`blend`、`masks`、`trackMatte`）、効果の列（`effects`。ID つきのノード）、音（役割（送り先のバス）、音量、パン、ミュート、ソロ）、`enabled`、ロック（人が直した所を AI が上書きしないフラグ）。
+- レイヤーはノード（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、`speed`、`timeRemap`）、接続（`attachTo`。カットの ID。カットがリップルで動くと一緒に動く）、形（変形と `parent`）、見える範囲（`crop`、`masks`）、重ね方（`blend`、`trackMatte`）、効果の列（`effects`。ID つきのノード）、音（役割（送り先のバス）、音量、パン、ミュート、ソロ、頭と尻のフェード）、`enabled`、ロック（人が直した所を AI が上書きしないフラグ）。
 - コンポジションはミキサーの設定（`mixer`）を持てる。役割ごとのバスの音量、マスターの音量、ダッキング（`trigger` のバスが鳴る間 `targets` のバスを下げる）。ミュートとソロはプレビューと書き出しの両方に効き、ソロはそのコンポジションの中だけで効く。入れ子の中のミキサーはバスとマスターだけを効かせる（ダッキングは開いたコンポジションだけ）。 バスとマスターの音量は +24 dB（`MAX_MIXER_GAIN_DB`）まで。
 - レイヤーのコンポジション上の範囲は `[start, start + (out - in) / speed)`。`speed` は正の有理数（型が 0 を拒否する。逆再生は後で足す）。`timeRemap` はレイヤーの始まりからの時刻を素材の時刻に変換する折れ線（補間はホールドと直線。有理数のまま変換する）で、あれば `in` と `speed` の代わりに使うが範囲は変えない。
 - 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ画像の中心）。どれもキーフレームを持てる。レンダラーが合成で掛け、ノードの種類には渡さない。3D はカメラのフィールドを足すときに広げる。
-- 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。マスク（頂点の列を `Json` のパラメータで）とトラックマット（同じコンポジションのレイヤーのアルファか輝度）は段階 1 では型だけ。
+- 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。トラックマット（同じコンポジションのレイヤーのアルファか輝度）は型だけ。
+- 切り抜き（`Layer.crop`）とマスク（`Layer.masks`）の座標はレイヤーの座標（変形の前の、コンポジションの画素。`anchor` と同じ）で、変形と一緒に動く。素材を `fit: none` で置いたレイヤーでは素材の画素になる。レンダラーは効果を掛けた後の画像に、変形と一緒に合成で掛ける。
+  - 切り抜きは上下左右（`left`、`top`、`right`、`bottom`）を、レイヤーの画像の縁から内側へ削る幅で別々に持つ。無い辺は削らない。先行事例は DaVinci Resolve の Inspector の Cropping と Premiere Pro の Crop（どちらも 4 辺を別々に持ち、キーフレームできる）。
+  - マスクの形は角丸の矩形（`rect`: 左上 `position`、大きさ `size`、角の半径 `radius`）か、頂点の列（`path`。`Json` のパラメータで、型だけ。レンダラーは描かない）。ほかに組み合わせ方（`mode`: 足す・引く・重なり）、反転、ぼかし（`feather`。縁を中心にこの幅で移る）、不透明度。上から順に組み合わせ、最初のマスクが足すなら空から、ほかなら全部から始める（After Effects のレイヤーのマスクと同じ）。角丸の矩形の形は DaVinci Resolve（Fusion）の Rectangle Mask と geneva の `mask` に合わせた。描くのはレイヤーごとに先頭の 4 つまで。
+- 音のフェード（`LayerAudio.fade_in`、`fade_out`）は長さ（正）と曲線を持ち、音量のキーフレームとは別にレイヤーの頭と尻で音量に掛ける（DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じ）。曲線は振幅の直線（`linear`。既定）、等パワー（`equal_power`。`sin(p π/2)`）、dB の直線（`db`。-60 dB から）。頭と尻が重なれば小さい方。
 - マーカーはコンポジションに持ち（ID、時刻、長さ、名前。時刻の厳密な昇順で、同じ時刻には 2 つ置けない）、YouTube のチャプターの書き出しに使う。
 - スキーマのバージョンは 9。v1 はノードのパラメータ `transform.*` に変形を書いていた。v2 で `Layer.transform` に移し、v3 でレイヤーの時間・重ね方・効果、キーフレームのイージング、マーカー、`sequences` を足した。v4 でマーカーの時刻を厳密な昇順にした（v3 の同じ時刻のマーカーは、後ろのものを 1/1000 秒ずつ後ろへずらして上げる）。v5 で `color.lut` の LUT を素材にし、v6 で `bins` と `transcript_edits` を足した（v5 からは空で上げる）。v7 でレンダーターゲットの `delivery` を足し（v6 からは既定で上げる）、v8 で本編とショートの `Cut.overrides`、`Cut.origin_base`、`Layer.framing` を足した（v7 のショートのカットは今の元の値を `origin_base` にし、参照のショートで元と違う in/out は `overrides` を立て、素材・速さ・有効が元と違うカットがあればショートごと複製にして上げる）。v9 でレンダーターゲットの `delivery.burn_in_captions`（字幕を絵に焼き込む）を足した（v8 からは偽で上げる）。`mm_doc::load` が上げ、`fixtures/doc/vN/` に各バージョンのフィクスチャを凍結している。整数のバージョンは 9 で止め、以降の形の変更は名前つきの移行（`crates/mm-doc/src/migrations/`）で足す。プロジェクトのデータは済ませた移行の名前を `migrations` に持つ（[並行開発の境界](14-dev-structure.md#共有のファイルの書き方)）。
 
