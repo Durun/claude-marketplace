@@ -9,6 +9,7 @@ DTM_Vlog（`D:/dev/DTM_Vlog/`）の作り方を、movie-maker の上のデータ
 | `theme.json` | 5 色（サファイア、黄色、墨、紙、ミクの色）と白、書体の役割、動きの上限（出る 0.8 秒、消える 0.3 秒）、本編とショートの画面 | `docs/design-guide.md` の「見た目の土台」 |
 | `styles.json` | 文字のスタイル: 字幕、右上のラベル、注釈、テロップ、セクションの見出し。`text` と、プレートを描く `shader.wgsl`（角丸の地、縁、ずらした影、傾き） | `design/theme.yaml` の `overlays`、`docs/design-guide.md` の「置き場所」 |
 | `macros/` | `caption`、`label`、`note`、`telop`、`section`（プレートとチャプターのマーカー）と、`web.cef` で描く部品（下の「web の部品」） | `docs/design-guide.md` の「どの部品で伝えるか」 |
+| `transitions/` | カットの境のトランジション 20 種（下の「トランジション」）。マクロ `transition`（種類と長さ）と `rewind`（巻き戻し）が `setTransition` で置く | `tools/transitions/fx/*.js`、`design/templates/rewind.html` |
 | `web/` | `web.cef` で描く HTML の部品（下の「web の部品」）。マクロの `web` 手順がレイヤーにし、テーマの色と書体を `data.theme` で渡す | `design/templates/tip.html`、`tools/overlay.mjs`、`design/proposals/directions/7_mix` |
 | `templates/episode.json` | 本編とショートのコンポジション、YouTube 向けのレンダーターゲット（-14 LUFS、チャプター） | `templates/ep/`、`tools/short.py` |
 | `mixer.json` | 喋り（`voice`）が鳴ると DAW の音と BGM を 11 dB 下げるダッキング（`mm_doc::CompMixer` の形。`episode` を適用すると本編とショートに `setMixer` で入る） | `templates/ep/edit.yaml` の `levels` |
@@ -59,6 +60,19 @@ mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで
 
 アプリは Tauri のコマンド `pack_list`（`{dir}`）と `pack_apply`（`{dir, name, args}`）で同じことをする。
 
+### トランジション
+
+```sh
+mm pack apply ep04 packs/vlog transition --var cut=c12 --var kind=whip --var dur=0.7
+mm pack apply ep04 packs/vlog rewind --var cut=c20 --var speed=3
+```
+
+- 種類は `transitions/<名前>.wgsl`。DTM_Vlog の WebGL2 のトランジション 19 種（boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip）と、巻き戻し（rewind）。
+- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく sRGB の値で行う。
+- 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。
+- 置き直すと差し替わる。外すのは操作 `setTransition`（`transition: null`）。
+- 元のコードは DTM_Vlog の自作で、gl-transitions のコードは含まない。小道具のうち `hash11`、`hash21`、`hash22` は Dave Hoskins の Hash without Sine（MIT）、`sdBox`、`sdSeg`、`sdHex` は Inigo Quilez の 2D の距離関数（MIT）と同じ形。
+
 ## 段階 6 に回すもの
 
 `web.cef`（HTML と CSS を Chromium で描く）が要るもの。仕組み（`web` 手順、`web/` の部品）と、上の「web の部品」はできた。残りは `web/` に部品を足し、マクロを書けば作れる。
@@ -70,13 +84,11 @@ mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで
 | 回ごとの形の図解（曲の構成、倍音、ノートの図、コードのピアノロール、アタックの図など）。行の形の図解（`figure`）に無い絵 | `epNN/design/look.yaml`、`fig_*.html`、7_mix の `figure_*` |
 | Claude の吹き出しの番号つきの項目（`items`）、読む窓の下に重ねる図（`cover`、`vis`） | 7_mix の `claude`、`figure_doc` |
 | `marks` の時間で動く印（鳴っている間の流れる点と拍の脈、`play` の再生位置の線、`band` の光、`lane` の別のパートの MIDI、`ping` の波紋）、`cta` の照準と顔のまわりの印（`lock`、ハートなど） | `7_mix` の `marks`、`cta` |
-| 巻き戻しのトランジション（`rewind`） | `design/templates/rewind.html` |
 
 `web.cef` は要らないが、ほかの領域の機能を待つもの。
 
 | もの | 待っているもの |
 |---|---|
-| WebGL のトランジション 19 種（`tools/transitions/fx/*.js`）を WGSL に | 2 つの入力を受ける `shader.wgsl` のトランジションの種類（レンダラー） |
 | 字幕の縁取り、書体の指定（M PLUS Rounded 1c など）、歌詞だけミクの色にする | `text` の種類の縁と書体のパラメータ（レンダラー。文字の `TextStyle::stroke` と、縁を描く `text: cef` はある）、文字の一部の色（文字） |
 | 字幕を語と文節の切れ目で折る（`tools/linebreak.py`） | `text` の種類の折り返しの位置のパラメータ（レンダラー。文字の `LineBreak::Phrase` はある） |
 | 注釈が出ている間にセクションの見出しを抜く、顔の反対側に置く | 部品の重なりと被写体の位置を見る組み立て（ep04 で要るか確かめる） |

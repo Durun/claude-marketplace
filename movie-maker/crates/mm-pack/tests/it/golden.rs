@@ -29,19 +29,19 @@ const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
 /// 背景の色（暗い青灰色。プレートの白と墨の縁が見分けられる）。
 const BACKGROUND: Rgba = Rgba::new(0.06, 0.09, 0.13, 1.0);
 
-fn vlog_dir() -> PathBuf {
+pub(crate) fn vlog_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
 }
 
 /// 描くときと同じモックの文字（`sample_services`）と、実際の色の変換。
-fn services() -> Services {
+pub(crate) fn services() -> Services {
     Services {
         color: Arc::new(LutColor),
         ..sample_services()
     }
 }
 
-fn gpu() -> Option<Arc<GpuContext>> {
+pub(crate) fn gpu() -> Option<Arc<GpuContext>> {
     let request = if std::env::var(BACKEND_ENV).as_deref() == Ok("warp") {
         let adapter = enumerate_adapters()
             .into_iter()
@@ -183,5 +183,28 @@ fn check_golden(name: &str, project: &Project, time: RationalTime) {
     let img = r.gpu().download(&frame).expect("リードバックできる");
     if let Err(message) = golden.check(name, &img) {
         panic!("{message}");
+    }
+}
+
+/// 期待画像に残すトランジションと進み具合。動きとぼかし（whip）、ハッシュで作る表（stepseq）、巻き戻し（rewind）。
+const TRANSITION_GOLDENS: [(&str, f64); 3] = [("whip", 0.4), ("stepseq", 0.35), ("rewind", 0.18)];
+
+#[test]
+fn pack_vlog_のトランジションの期待画像() {
+    let Some(ctx) = gpu() else { return };
+    let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
+    let actual = Path::new(env!("CARGO_TARGET_TMPDIR")).join("golden-actual");
+    let Some(golden) = Golden::open(&root, &backend, &actual) else {
+        return;
+    };
+    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
+    let mut stage = crate::transitions::Stage::new(ctx);
+    for (name, progress) in TRANSITION_GOLDENS {
+        let project = crate::transitions::project_with(&pack, name);
+        let img = stage.render(&project, progress, GOLDEN_SIZE);
+        if let Err(message) = golden.check(&format!("transition-{name}"), &img) {
+            panic!("{message}");
+        }
     }
 }

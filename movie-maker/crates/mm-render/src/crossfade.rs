@@ -6,11 +6,14 @@
 //! - 両側のカットの長さ。カットの両端にトランジションがあるときは、その半分（隣の境の掛かりと重ならない）。
 //! - 延ばす側の素材の余白（ハンドル）。出ていくカットは出の後ろ、入ってくるカットはイン点の前の素材の長さ。
 
-use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{Cut, Project, Sequence, Transition, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{node_params_at, place_cuts, PlacedCut};
 use mm_types::{Id, ParamValue, RationalTime, Result};
 
 use crate::layers::{NESTED_KIND, NESTED_PARAM};
+
+/// 出ていくカットを逆向きに描く倍率のパラメータの名前（`transition.*` の規約）。
+const REWIND_PARAM: &str = "rewind";
 
 /// 境のトランジションの掛かり方。番号は配置したカットの並びの中の位置。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -19,6 +22,10 @@ pub(crate) struct Crossfade {
     pub to: usize,
     /// 0 で出ていくカットだけ、1 で入ってくるカットだけ。
     pub progress: f32,
+    /// 掛かり始めの時刻（シーケンスの時間軸の秒）。
+    pub start: f64,
+    /// 掛かる長さ（秒）。トランジションの長さを両側のカットと余白で縮めたもの。
+    pub length: f64,
 }
 
 /// カットの素材の余白（シーケンスの時間軸の秒）。素材の長さに限りが無い種類（単色、シェーダー）は無限。
@@ -67,11 +74,26 @@ pub(crate) fn crossfade_at(
 }
 
 fn crossfade(from: usize, to: usize, t: f64, boundary: f64, half: f64) -> Crossfade {
+    let start = boundary - half;
     Crossfade {
         from,
         to,
-        progress: ((t - (boundary - half)) / (2.0 * half)).clamp(0.0, 1.0) as f32,
+        progress: ((t - start) / (2.0 * half)).clamp(0.0, 1.0) as f32,
+        start,
+        length: 2.0 * half,
     }
+}
+
+/// トランジションが出ていくカットを逆向きに描くか（種類のパラメータ `rewind` が正）。逆向きなら出の後ろの余白は使わない。
+pub(crate) fn rewinds(tr: &Transition) -> bool {
+    rewind_rate(tr) > 0.0
+}
+
+/// 出ていくカットを逆向きに描く倍率。0 なら普通に描く。
+pub(crate) fn rewind_rate(tr: &Transition) -> f64 {
+    node_params_at(&tr.node, RationalTime::ZERO)
+        .number_or(REWIND_PARAM, 0.0)
+        .max(0.0)
 }
 
 /// `placed[to - 1]` と `placed[to]` の境のトランジションの半分の長さ。トランジションが無いか、0 なら `None`。
@@ -96,10 +118,15 @@ fn half_at(
         let len = p.range.duration()?.to_f64();
         Ok(if shared { len / 2.0 } else { len })
     };
+    let tail = if rewinds(tr) {
+        f64::INFINITY
+    } else {
+        handles(&seq.cuts[before.index]).tail
+    };
     let half = (tr.duration.to_f64() / 2.0)
         .min(room(before, has_transition(to - 1))?)
         .min(room(after, has_transition(to + 1))?)
-        .min(handles(&seq.cuts[before.index]).tail)
+        .min(tail)
         .min(handles(&seq.cuts[after.index]).head);
     Ok((half > 0.0).then_some(half))
 }

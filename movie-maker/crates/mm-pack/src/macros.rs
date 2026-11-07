@@ -104,8 +104,25 @@ pub enum Step {
     Text(TextStep),
     /// パックの `mixer.json` を、コンポジションのミキサーの設定として `setMixer` で当てる。
     Mixer(MixerStep),
+    /// パックの `transitions/<name>.wgsl` を、カットの頭のトランジションとして置く。
+    Transition(TransitionStep),
     /// パックの `web/<page>.html` を `web.cef` のレイヤーとして置く。
     Web(WebStep),
+}
+
+/// パックの WGSL のトランジションをカットの頭に置く手順。文字列は `{{…}}` を埋めてから読む。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransitionStep {
+    /// `transitions/` の中のトランジションの名前（拡張子を除く）。
+    pub name: String,
+    /// トランジションを置くカット（前のカットとの境に掛かる）。
+    pub cut: String,
+    /// トランジションの長さ。
+    pub dur: String,
+    /// `transition.wgsl` の数のパラメータ（`p0`..`p7`、`rewind`）。値は数の文字。
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
 }
 
 /// HTML の部品を `web.cef` のレイヤーとして置く手順。文字列は `{{…}}` を埋めてから読む。
@@ -182,6 +199,11 @@ impl Step {
                 out
             }
             Step::Mixer(m) => vec![m.comp.as_str()],
+            Step::Transition(t) => {
+                let mut out = vec![t.name.as_str(), &t.cut, &t.dur];
+                out.extend(t.params.values().map(String::as_str));
+                out
+            }
             Step::Web(w) => {
                 let mut out = vec![w.page.as_str(), &w.comp, &w.layer, &w.at, &w.dur];
                 out.extend(w.attach.as_deref());
