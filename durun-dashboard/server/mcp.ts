@@ -1,4 +1,4 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼、FL Connect での FL Studio の読み書きを受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼、FL Connect での FL Studio の読み書き、ムービーメーカーでの movie-maker の操作を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
 import { autoRunCommand, dropStaleRequests, unwait, waitFor } from './deliver.ts';
 import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
+import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
@@ -31,7 +32,8 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。
-- fl_ で始まるツールは、人間が FL Connect のウィンドウを開いてこのセッションにつないでいる間だけ、FL Studio を読み書きできます。最初に fl_state で読んでください。まとまった変更は fl_python の 1 回のコードでまとめて書いてください。人間も同時に FL を触っており、人間がした操作はフックで届きます。ピアノロールのスクリプトを動かすと、FL が前に出ます。`;
+- fl_ で始まるツールは、人間が FL Connect のウィンドウを開いてこのセッションにつないでいる間だけ、FL Studio を読み書きできます。最初に fl_state で読んでください。まとまった変更は fl_python の 1 回のコードでまとめて書いてください。人間も同時に FL を触っており、人間がした操作はフックで届きます。ピアノロールのスクリプトを動かすと、FL が前に出ます。
+- mm_ で始まるツールは、人間がムービーメーカーのウィンドウを開いてこのセッションにつないでいる間だけ、movie-maker のプロジェクトを読み書きできます。最初に mm_state で読み、操作は mm_tool で movie-maker のツールを呼んでください。コメントへの対応 1 回は mm_tool の transaction の 1 回にまとめ、responds_to にコメントの ID を渡してください。人間がした操作はフックで届きます。`;
 
 const TOOLS = [
   {
@@ -261,6 +263,30 @@ const TOOLS = [
         arguments: { type: 'object', description: 'ツールの引数。' },
       },
     },
+  },
+  {
+    name: 'mm_state',
+    description:
+      'movie-maker で開いているプロジェクトを読む（ムービーメーカー）。プロジェクトのフォルダー、バージョン、取り消せるトランザクションの数、コンポジションとレイヤー（ID、ノードの種類、イン点とアウト点の秒、ロック）、sequence、素材を短い形で返す。全部の値は mm_tool の project で読める。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'mm_tool',
+    description:
+      'movie-maker の MCP のツールを呼ぶ（ムービーメーカー）。操作ごとのツール（addLayer、ripple、setParam など）、transaction（複数の操作を 1 つのトランザクションに）、undo、redo、project、frame（1 フレームの PNG を画像で返す）がある。tool を省くと一覧を、arguments を省くとそのツールの引数のスキーマを返す。操作は人間の Ctrl+Z と同じ取り消しの列に入る。ロックしたレイヤーには触れない。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool: { type: 'string', description: '呼ぶツールの名前。省くと一覧を返す。' },
+        arguments: { type: 'object', description: 'ツールの引数。省くとスキーマを返す（引数の無いツールはそのまま呼ぶ）。' },
+      },
+    },
+  },
+  {
+    name: 'mm_changes',
+    description:
+      'movie-maker で、前に読んでから適用したトランザクションを、人間（human）とエージェント（agent）に分けて時刻順に返す（ムービーメーカー）。1 行に 1 件、movie-maker の変更の通知の生の値で返す。人間の操作はフックでも届き、そこで届いた分は含まない。',
+    inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'true なら、読んだかどうかによらず、最近の 50 件を返す。' } } },
   },
   {
     name: 'fl_undo',
@@ -578,6 +604,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'revise_proofread':
       return void reviseProofread(res, rpcId, params, args);
     default:
+      if (MM_TOOL_NAMES.has(String(params.name))) return void callMmTool(String(params.name), sessionId, args).then((result) => send(res, { id: rpcId, result }));
       if (FL_TOOL_NAMES.has(String(params.name))) {
         // remove_channels は人間がウィンドウで許すまで返らないので、打ち切られないよう SSE で返す。
         // Esc などで取り消されて接続が切れたら、人間に確かめている remove_channels も取り下げる。

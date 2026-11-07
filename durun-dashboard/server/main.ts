@@ -55,6 +55,7 @@ import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
 import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, sendCdRekordbox, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
+import { installMovieMaker, launchMovieMaker, setMmProject, setMmSession, streamMovieMaker } from './movieMaker.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -89,6 +90,7 @@ const STATIC: Record<string, string> = {
   '/proofread.svg': 'public/proofread.svg',
   '/terminal.svg': 'public/terminal.svg',
   '/flconnect.svg': 'public/flconnect.svg',
+  '/moviemaker.svg': 'public/moviemaker.svg',
   '/cdrip.svg': 'public/cdrip.svg',
   '/ie.svg': 'public/ie.svg',
   '/ie-toolbar.svg': 'public/ie-toolbar.svg',
@@ -1304,6 +1306,11 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/flconnect\/removal\/([\w-]+)$/, ([, id = ''], b) => {
     if (!answerFlRemoval(id, field<boolean>(b, 'allow', 'boolean'))) throw new HttpError(404, 'この確認は終わっています');
   }],
+  [/^\/api\/moviemaker\/session$/, (_, b) => setMmSession(optionalString(b, 'session'))],
+  [/^\/api\/moviemaker\/project$/, (_, b) => setMmProject(optionalString(b, 'project'))],
+  // ビルドしてファイルを書き、アプリを起動するので、他のサイトから GET で起こされないよう POST で受ける。
+  [/^\/api\/moviemaker\/install$/, () => installMovieMaker()],
+  [/^\/api\/moviemaker\/launch$/, () => launchMovieMaker(), WEB_API_MS],
   [/^\/api\/terminal\/([\w-]+)\/input$/, ([, id = ''], b) => terminalInput(id, b)],
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],
@@ -1455,6 +1462,12 @@ const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> =
     const fetchSite = req.headers['sec-fetch-site'];
     if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
     return streamFlConnect(res, url.searchParams.get('session') || undefined);
+  }
+  // つないでいる間は movie-maker の操作の通知を受けて流すので、ダッシュボードの画面からの接続に限る。
+  if (req.method === 'GET' && url.pathname === '/api/moviemaker/events') {
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite && fetchSite !== 'same-origin') throw new HttpError(403, 'forbidden');
+    return streamMovieMaker(res, url.searchParams.get('session') || undefined, url.searchParams.get('project') || undefined);
   }
   // 光学ドライブの状態と音楽フォルダーの中身を流すので、ダッシュボードの画面からの接続に限る。
   if (req.method === 'GET' && url.pathname === '/api/cdrip/events') {

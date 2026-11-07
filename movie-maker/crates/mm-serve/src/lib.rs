@@ -11,6 +11,8 @@ mod client;
 mod core;
 mod frames;
 mod http;
+mod mcp;
+mod mcp_tools;
 mod server;
 mod transcripts;
 

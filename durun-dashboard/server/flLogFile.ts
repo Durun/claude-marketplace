@@ -1,8 +1,8 @@
-// FL Connect のログを、つないだセッションごと、日ごとの JSONL のファイルに書き足す。1 行に 1 件、FL が返した生の値のまま書き、人間に見せる文にするのはウィンドウに任せる。
+// FL Connect とムービーメーカーのログを、つないだセッションごと、日ごとの JSONL のファイルに書き足す。1 行に 1 件、アプリが返した生の値のまま書き、人間に見せる文にするのはウィンドウに任せる。
 // ファイルはセッションの資料に足し、人間とエージェントがあとから読む。ここの関数は FL にも MIDI にも触れないので、テストで確かめる。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FlLogEntry } from '../shared/types.ts';
+import type { FlLogEntry, MmLogEntry } from '../shared/types.ts';
 
 /**
  * ファイルに書く、エージェントの 1 件のコードと出力の長さ。全部は、セッションの会話ログのツールの呼び出しに残る。
@@ -29,10 +29,16 @@ export const isoLocal = (at: number): string => {
 /** ログの区切りの印。FL とつながったときなど。 */
 export type FlLogEvent = { at: number; event: string } & Record<string, unknown>;
 
+/** ログの 1 件。 */
+export type LogItem = FlLogEntry | MmLogEntry | FlLogEvent;
+
+/** ファイルの名前の頭。日付の前に付ける。 */
+const DEFAULT_TITLE = 'FL Connect';
+
 const clip = (text: unknown): unknown => (typeof text === 'string' && text.length > MAX_TEXT_CHARS ? `${text.slice(0, MAX_TEXT_CHARS)}…（${text.length} 文字のうち、先頭の ${MAX_TEXT_CHARS} 文字）` : text);
 
 /** ログの 1 件を、JSONL の 1 行にする。時刻は読める形にし、ウィンドウが並べるための id は書かない。 */
-export const jsonLine = (item: FlLogEntry | FlLogEvent): string => {
+export const jsonLine = (item: LogItem): string => {
   const { at, id: _id, ...fields } = item as { at: number; id?: string } & Record<string, unknown>;
   if ('detail' in fields) fields.detail = clip(fields.detail);
   if ('output' in fields) fields.output = clip(fields.output);
@@ -40,17 +46,17 @@ export const jsonLine = (item: FlLogEntry | FlLogEvent): string => {
 };
 
 /** ログを書くファイル。セッションごとのフォルダーに、日ごとに分ける。 */
-export const logFilePath = (dir: string, sessionId: string, at: number): string => path.join(dir, sessionId, `FL Connect ${dayOf(at)}.jsonl`);
+export const logFilePath = (dir: string, sessionId: string, at: number, title = DEFAULT_TITLE): string => path.join(dir, sessionId, `${title} ${dayOf(at)}.jsonl`);
 
 /**
  * ログを、その日のファイルに書き足す。新しく作ったファイルの場所を返す。
  * 項目は時刻の順に渡す。日をまたいだら、次の日のファイルに書く。
  */
-export const appendLog = (dir: string, sessionId: string, items: (FlLogEntry | FlLogEvent)[]): string[] => {
+export const appendLog = (dir: string, sessionId: string, items: LogItem[], title = DEFAULT_TITLE): string[] => {
   const created: string[] = [];
   const byFile = new Map<string, string[]>();
   for (const item of items) {
-    const file = logFilePath(dir, sessionId, item.at);
+    const file = logFilePath(dir, sessionId, item.at, title);
     byFile.set(file, [...(byFile.get(file) ?? []), jsonLine(item)]);
   }
   for (const [file, lines] of byFile) {
