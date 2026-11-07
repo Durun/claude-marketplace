@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { MediaApi, MediaItem } from "@mm/sdk";
+import type { MediaApi, MediaItem } from "./api.ts";
 
 export interface ThumbProps {
   api: MediaApi;

@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { StoryWord } from "@mm/sdk";
+import type { StoryWord } from "./api.ts";
 import { defaultTitle, formatClock, shownText, toSeconds } from "./model.ts";
 
 const TITLE_MAX_CHARS = 16;

@@ -1,4 +1,5 @@
-import type { StoryWord, Topic } from "@mm/sdk";
+import type { Topic } from "@mm/sdk";
+import type { StoryWord } from "./api.ts";
 import { describe, expect, it } from "vitest";
 import { buildBlocks, compareTime, defaultTitle, formatClock, newId, orphanTopics, spanOf } from "./model.ts";
 

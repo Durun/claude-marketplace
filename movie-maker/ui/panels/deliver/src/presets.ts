@@ -1,4 +1,5 @@
-import type { DeliverOverview, Rational, RenderTarget } from "@mm/sdk";
+import type { Rational, RenderTarget } from "@mm/sdk";
+import type { DeliverOverview } from "./api.ts";
 import { withRequired, type FieldSpec } from "./form.ts";
 
 /** プリセット。大きさ、フレームレート、コーデック、拡張子だけを決め、残りのフィールドは足すときに埋める。 */

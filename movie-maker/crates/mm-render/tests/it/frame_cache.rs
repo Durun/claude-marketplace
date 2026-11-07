@@ -134,16 +134,14 @@ fn nested(layer: &str, comp: &str) -> Layer {
 }
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(10),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        SIZE.width,
+        SIZE.height,
+        Rational::integer(30),
+        RationalTime::seconds(10),
+    )
+    .with_layers(layers)
 }
 
 fn project(comps: Vec<Composition>) -> Project {

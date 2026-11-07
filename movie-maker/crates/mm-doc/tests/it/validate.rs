@@ -9,16 +9,14 @@ use mm_doc::{
 use mm_types::{Id, MmError, Result};
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: 16,
-        height: 9,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        16,
+        9,
+        Rational::integer(30),
+        RationalTime::seconds(2),
+    )
+    .with_layers(layers)
 }
 
 fn layer(id: &str, node: Node) -> Layer {

@@ -1,7 +1,8 @@
 // Mixer パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 // `?scene=meters`（既定）はダッキングなしでメーターが振れる。`?scene=ducking` はダッキング有効で、ミュートとソロがある。
 import { render } from "preact";
-import type { LayerAudio, MixerApi, MixerMeters, MixerState, MixerTrack } from "@mm/sdk";
+import type { LayerAudio } from "@mm/sdk";
+import type { MixerApi, MixerMeters, MixerState, MixerTrack } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { MixerPanel } from "../src/index.ts";
 import "../../../shell/src/shell.css";

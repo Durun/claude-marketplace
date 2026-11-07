@@ -1,4 +1,4 @@
-import type { MixerApi } from "@mm/sdk";
+import type { MixerApi } from "./api.ts";
 import { BusSection, DuckingSection, MasterSection } from "./Sections.tsx";
 import { TrackRow } from "./TrackRow.tsx";
 import { useMeters, useMixer } from "./useMixer.ts";

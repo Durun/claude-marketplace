@@ -53,16 +53,16 @@ fn render_layers(
     let base = fx.project.composition(fx.composition).expect("ある");
     let mut project: Project = fx.project.clone();
     let id: CompositionId = Id::new(CASE_COMPOSITION);
-    project.compositions.push(Composition {
-        mixer: None,
-        id: id.clone(),
-        width: fx.size.width,
-        height: fx.size.height,
-        fps: base.fps,
-        duration: RationalTime::seconds(1),
-        layers,
-        markers: Vec::new(),
-    });
+    project.compositions.push(
+        Composition::new(
+            id.clone(),
+            fx.size.width,
+            fx.size.height,
+            base.fps,
+            RationalTime::seconds(1),
+        )
+        .with_layers(layers),
+    );
     let frame = r
         .render_frame(&RenderRequest {
             project: &project,

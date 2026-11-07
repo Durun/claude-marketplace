@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import type { Proposal, ReviewApi } from "@mm/sdk";
+import type { Proposal, ReviewApi } from "./api.ts";
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 

@@ -1,6 +1,7 @@
 // Review パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 import { render } from "preact";
-import type { Op, Proposal, ProposalOp, ProposalScope, RationalTime, ReviewApi } from "@mm/sdk";
+import type { Op, RationalTime } from "@mm/sdk";
+import type { Proposal, ProposalOp, ProposalScope, ReviewApi } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { ReviewPanel } from "../src/index.ts";
 import "../../../shell/src/shell.css";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { MediaApi, WaveformView } from "@mm/sdk";
+import type { MediaApi, WaveformView } from "./api.ts";
 import { formatDuration } from "./format.ts";
 
 /** 画面に出すピークの数。パネルの幅より細かくても見えない。 */

@@ -1,4 +1,4 @@
-import type { MixerMeters } from "@mm/sdk";
+import type { MixerMeters } from "./api.ts";
 import { describe, expect, it } from "vitest";
 import { DECAY_DB_PER_S, HOLD_MS, MeterEngine } from "./meterEngine.ts";
 

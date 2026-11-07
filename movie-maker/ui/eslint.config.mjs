@@ -5,7 +5,7 @@ const MAX_FILE_LINES = 500;
 const MAX_FUNCTION_LINES = 50;
 
 export default tseslint.config(
-  { ignores: ["**/generated/**", "**/dist/**", "**/node_modules/**", "tools/screenshot.mjs"] },
+  { ignores: ["**/generated/**", "**/dist/**", "**/node_modules/**", "tools/screenshot.mjs", "panels/*/screenshots.mjs"] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {

@@ -1,4 +1,4 @@
-import type { MixerTrack } from "@mm/sdk";
+import type { MixerTrack } from "./api.ts";
 import { PeakBar, Slider } from "./Controls.tsx";
 import { FADER_MAX_DB, FADER_MIN_DB, FADER_STEP_DB, formatDb, formatPan, PAN_STEP } from "./levels.ts";
 import type { MeterEngine } from "./meterEngine.ts";

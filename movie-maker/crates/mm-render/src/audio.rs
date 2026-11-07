@@ -207,16 +207,14 @@ impl WgpuRenderer {
             .iter()
             .map(|p| cut_layer(&seq.cuts[p.index], p))
             .collect();
-        let cuts = Composition {
-            mixer: None,
-            id: Id::new(name),
-            width: scope.comp.width,
-            height: scope.comp.height,
-            fps: scope.comp.fps,
-            duration: scope.comp.duration,
-            layers,
-            markers: Vec::new(),
-        };
+        let cuts = Composition::new(
+            Id::new(name),
+            scope.comp.width,
+            scope.comp.height,
+            scope.comp.fps,
+            scope.comp.duration,
+        )
+        .with_layers(layers);
         self.mix_range(scope, &cuts, source_range).map(Some)
     }
 

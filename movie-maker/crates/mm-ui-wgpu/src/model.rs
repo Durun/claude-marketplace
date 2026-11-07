@@ -112,19 +112,17 @@ mod tests {
     }
 
     fn comp() -> Composition {
-        Composition {
-            mixer: None,
-            id: mm_types::Id::new("c"),
-            width: 64,
-            height: 36,
-            fps: Rational::new(30, 1).unwrap(),
-            duration: RationalTime::seconds(10),
-            layers: vec![
-                layer("bottom", "footage", 0, 0, 4),
-                layer("top", "text", 2, 0, 5),
-            ],
-            markers: Vec::new(),
-        }
+        Composition::new(
+            mm_types::Id::new("c"),
+            64,
+            36,
+            Rational::new(30, 1).unwrap(),
+            RationalTime::seconds(10),
+        )
+        .with_layers(vec![
+            layer("bottom", "footage", 0, 0, 4),
+            layer("top", "text", 2, 0, 5),
+        ])
     }
 
     #[test]

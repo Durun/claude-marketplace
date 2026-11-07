@@ -1,4 +1,5 @@
-import type { DeliverOverview, RenderTarget } from "@mm/sdk";
+import type { RenderTarget } from "@mm/sdk";
+import type { DeliverOverview } from "./api.ts";
 import { extraFields, type FieldSpec } from "./form.ts";
 import { formatDuration, formatFps } from "./format.ts";
 

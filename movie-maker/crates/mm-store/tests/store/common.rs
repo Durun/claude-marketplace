@@ -29,21 +29,22 @@ pub fn project_with(layers: usize) -> Project {
         fps: Some(Rational::integer(30)),
         timebase_offset: RationalTime::ZERO,
     });
-    p.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("c"),
-        width: 320,
-        height: 180,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(10),
-        layers: (0..layers).map(layer).collect(),
-        markers: vec![Marker {
+    p.compositions.push(
+        Composition::new(
+            Id::new("c"),
+            320,
+            180,
+            Rational::integer(30),
+            RationalTime::seconds(10),
+        )
+        .with_layers((0..layers).map(layer).collect())
+        .with_markers(vec![Marker {
             id: Id::new("m1"),
             time: RationalTime::seconds(2),
             duration: RationalTime::ZERO,
             name: "オープニングの章".into(),
-        }],
-    });
+        }]),
+    );
     p
 }
 

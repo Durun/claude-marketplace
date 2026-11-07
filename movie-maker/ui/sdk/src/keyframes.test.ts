@@ -1,4 +1,4 @@
-import type { Keyframe, Op, Param } from "@mm/sdk";
+import type { Keyframe, Op, Param } from "./generated/ops.ts";
 import { describe, expect, it } from "vitest";
 import {
   applyKeyframeOp,

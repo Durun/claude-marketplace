@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
-import { announceAsset, type MediaApi } from "@mm/sdk";
+import { announceAsset } from "@mm/sdk";
+import type { MediaApi } from "./api.ts";
 import { CacheSection } from "./CacheSection.tsx";
 import { Failures, PendingRow, Row } from "./Rows.tsx";
 import { useMedia } from "./useMedia.ts";

@@ -82,16 +82,14 @@ impl Apply for Precompose {
             comp.duration,
         );
         comp.layers.insert(index, new_layer);
-        let new_comp = Composition {
-            mixer: None,
-            id: self.new_composition.clone(),
-            width: comp.width,
-            height: comp.height,
-            fps: comp.fps,
-            duration: comp.duration,
-            layers: moved,
-            markers: Vec::new(),
-        };
+        let new_comp = Composition::new(
+            self.new_composition.clone(),
+            comp.width,
+            comp.height,
+            comp.fps,
+            comp.duration,
+        )
+        .with_layers(moved);
         project.compositions.push(new_comp);
         Ok(Unprecompose {
             layer: self.new_layer.clone(),

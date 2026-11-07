@@ -110,16 +110,14 @@ fn layer(id: &str, source: Node, start: RationalTime, length: RationalTime) -> L
 }
 
 fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: size.width,
-        height: size.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(4),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        size.width,
+        size.height,
+        Rational::integer(30),
+        RationalTime::seconds(4),
+    )
+    .with_layers(layers)
 }
 
 fn project(comps: Vec<Composition>) -> Project {

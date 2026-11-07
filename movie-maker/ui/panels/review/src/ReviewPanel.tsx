@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { ReviewApi } from "@mm/sdk";
+import type { ReviewApi } from "./api.ts";
 import { DecidedCard, PendingCard } from "./ProposalCard.tsx";
 import { useReview } from "./useReview.ts";
 

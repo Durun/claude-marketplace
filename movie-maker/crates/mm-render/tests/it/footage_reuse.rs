@@ -197,16 +197,16 @@ fn project() -> Project {
     };
     let mut top = layer("next", FIRST + 1);
     top.transform.scale = Param::constant(ParamValue::Number(0.5));
-    p.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("main"),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(1),
-        layers: vec![layer("first", FIRST), top],
-        markers: Vec::new(),
-    });
+    p.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            SIZE.width,
+            SIZE.height,
+            Rational::integer(30),
+            RationalTime::seconds(1),
+        )
+        .with_layers(vec![layer("first", FIRST), top]),
+    );
     p
 }
 

@@ -122,22 +122,22 @@ fn project(size: Size) -> Project {
     });
     let footage =
         Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
-    p.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("main"),
-        width: size.width,
-        height: size.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers: vec![Layer::new(
+    p.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            size.width,
+            size.height,
+            Rational::integer(30),
+            RationalTime::seconds(2),
+        )
+        .with_layers(vec![Layer::new(
             "f",
             footage,
             RationalTime::ZERO,
             RationalTime::ZERO,
             RationalTime::seconds(2),
-        )],
-        markers: Vec::new(),
-    });
+        )]),
+    );
     p
 }
 

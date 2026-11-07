@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { MixerApi, MixerState } from "@mm/sdk";
+import type { MixerApi, MixerState } from "./api.ts";
 import { MeterEngine } from "./meterEngine.ts";
 import type { BuildOps } from "./ops.ts";
 

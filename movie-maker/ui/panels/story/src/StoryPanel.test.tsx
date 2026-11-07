@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { Op, StoryApi, StoryTranscript, StoryWord, Topic } from "@mm/sdk";
+import type { Op, Topic } from "@mm/sdk";
+import type { StoryApi, StoryTranscript, StoryWord } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StoryPanel } from "./StoryPanel.tsx";
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { CacheFolder, CacheInfo, MediaApi } from "@mm/sdk";
+import type { CacheFolder, CacheInfo, MediaApi } from "./api.ts";
 import { formatBytes } from "./format.ts";
 
 export interface CacheSectionProps {

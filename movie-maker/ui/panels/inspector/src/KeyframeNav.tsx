@@ -1,5 +1,13 @@
-import type { Interpolation, Keyframe, Op, Param, ParamRef } from "@mm/sdk";
-import { keyIndexAt, nextKeySec, prevKeySec } from "@mm/graph";
+import {
+  type Interpolation,
+  type Keyframe,
+  type Op,
+  type Param,
+  type ParamRef,
+  keyIndexAt,
+  nextKeySec,
+  prevKeySec,
+} from "@mm/sdk";
 import { activeKey, addKeyframeOp, interpolationOp, INTERPOLATIONS, removeKeyframeOp, type Playhead } from "./keyframes.ts";
 
 export interface KeyframeNavProps {
