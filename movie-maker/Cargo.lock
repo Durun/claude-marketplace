@@ -3277,6 +3277,7 @@ dependencies = [
  "mm-testkit",
  "mm-text-api",
  "mm-types",
+ "png",
  "serde",
  "serde_json",
  "tempfile",

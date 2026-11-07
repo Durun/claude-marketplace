@@ -8,6 +8,7 @@
 //! - `shader.wgsl`: 利用者が書いた WGSL のフラグメントシェーダー。
 //! - `color.adjust`、`color.cdl`、`color.lut`、`color.convert`: 線形の光の上の色の処理（効果）。
 //! - `transition.dissolve`: カットの境のクロスディゾルブ。
+//! - `transition.wgsl`: 利用者が書いた WGSL で前後のカットを混ぜるトランジション。
 //!
 //! 画像の大きさは `cx.size`（画布）にそろえる。例外は 2 つで、レンダラーはどちらも `cx.region` の矩形に置く:
 //! `text` は `cx.region` の分だけの画布を返し、`footage` の GPU のフレームは素材のままの大きさで返す。
@@ -23,6 +24,7 @@ mod shader;
 mod solid;
 mod text;
 mod transition;
+mod transition_wgsl;
 mod util;
 
 use std::sync::Arc;
@@ -38,6 +40,7 @@ pub use shader::ShaderWgslKind;
 pub use solid::SolidKind;
 pub use text::TextKind;
 pub use transition::{DissolveKind, TRANSITION_PROGRESS_PARAM};
+pub use transition_wgsl::{TransitionWgslKind, TRANSITION_DURATION_PARAM, TRANSITION_REWIND_PARAM};
 
 /// 種類のバージョン。パラメータの形を変えたら上げる。
 pub const KIND_VERSION: u32 = 1;
@@ -57,5 +60,6 @@ pub fn all_kinds() -> Vec<Arc<dyn NodeKind>> {
         Arc::new(ColorLutKind::default()),
         Arc::new(ColorConvertKind::default()),
         Arc::new(DissolveKind::default()),
+        Arc::new(TransitionWgslKind::default()),
     ]
 }

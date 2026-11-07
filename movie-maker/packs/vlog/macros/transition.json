@@ -1,0 +1,15 @@
+{
+  "name": "transition",
+  "title": "トランジション",
+  "description": "カットの頭（前のカットとの境）に、DTM_Vlog の WebGL のトランジションを移したものを置く。種類は transitions/ のファイルの名前（README の表）。同じカットに置き直すと差し替わる",
+  "params": {
+    "cut": {"type": "id", "description": "トランジションを置くカット。前のカットとの境を中心に前後へ半分ずつ掛かる"},
+    "kind": {"type": "text", "default": "dissolve", "description": "種類: boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip"},
+    "dur": {"type": "time", "default": "0.7", "description": "長さ（秒）。元の既定は 170 BPM の 1〜6 拍（0.35〜2.1 秒）"},
+    "seed": {"type": "number", "default": "1", "description": "乱数の種。光の筋や粒の並びが変わる"}
+  },
+  "example": {"cut": "c2", "kind": "whip"},
+  "steps": [
+    {"transition": {"name": "{{kind}}", "cut": "{{cut}}", "dur": "{{dur}}", "params": {"p0": "{{seed}}"}}}
+  ]
+}

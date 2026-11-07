@@ -28,19 +28,19 @@ const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
 /// 背景の色（暗い青灰色。プレートの白と墨の縁が見分けられる）。
 const BACKGROUND: Rgba = Rgba::new(0.06, 0.09, 0.13, 1.0);
 
-fn vlog_dir() -> PathBuf {
+pub(crate) fn vlog_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
 }
 
 /// 描くときと同じモックの文字（`sample_services`）と、実際の色の変換。
-fn services() -> Services {
+pub(crate) fn services() -> Services {
     Services {
         color: Arc::new(LutColor),
         ..sample_services()
     }
 }
 
-fn gpu() -> Option<Arc<GpuContext>> {
+pub(crate) fn gpu() -> Option<Arc<GpuContext>> {
     let request = if std::env::var(BACKEND_ENV).as_deref() == Ok("warp") {
         let adapter = enumerate_adapters()
             .into_iter()

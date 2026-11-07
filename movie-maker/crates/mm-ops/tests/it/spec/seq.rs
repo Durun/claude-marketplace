@@ -24,6 +24,8 @@ pub enum SeqSpec {
     Slip(u8, i64),
     Slide(u8, i64),
     Disable(u8, bool),
+    /// カット、トランジションの長さ（1/4 秒。`None` で外す、負は弾かれる）。
+    SetTransition(u8, Option<i64>),
 }
 
 pub fn arb() -> impl Strategy<Value = SeqSpec> {
@@ -55,6 +57,7 @@ pub fn arb() -> impl Strategy<Value = SeqSpec> {
         (s(), t()).prop_map(|(a, b)| SeqSpec::Slip(a, b)),
         (s(), t()).prop_map(|(a, b)| SeqSpec::Slide(a, b)),
         (s(), any::<bool>()).prop_map(|(a, b)| SeqSpec::Disable(a, b)),
+        (s(), prop::option::of(-1i64..8)).prop_map(|(a, b)| SeqSpec::SetTransition(a, b)),
     ]
 }
 
@@ -170,6 +173,14 @@ fn timing_op(spec: &SeqSpec, p: &Project) -> Option<Op> {
         SeqSpec::Disable(i, d) => Disable {
             cut: cut_id(p, *i)?,
             disabled: *d,
+        }
+        .into(),
+        SeqSpec::SetTransition(i, d) => SetTransition {
+            cut: cut_id(p, *i)?,
+            transition: d.map(|q| mm_doc::Transition {
+                node: mm_doc::Node::new("transition.dissolve", 1),
+                duration: quarters(q),
+            }),
         }
         .into(),
         _ => return None,

@@ -777,6 +777,36 @@
       ]
     },
     {
+      "description": "カットの頭のトランジションを置く・差し替える・外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setTransition"
+        },
+        "transition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
+      ]
+    },
+    {
       "description": "レンダーターゲットを足す。",
       "type": "object",
       "properties": {

@@ -24,6 +24,8 @@ mm-nodes-basic = { workspace = true }
 mm-color-lut = { workspace = true }
 mm-testkit = { workspace = true }
 wgpu = { workspace = true }
+# トランジションを目で見るための PNG を書く。
+png = { workspace = true }
 # 検査のテストで、壊したパックを一時フォルダーに作る。
 tempfile = { workspace = true }
 
