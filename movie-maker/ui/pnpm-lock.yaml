@@ -123,6 +123,18 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/transition:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   sdk:
     dependencies:
       '@tauri-apps/api':

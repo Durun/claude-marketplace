@@ -35,6 +35,7 @@ use crate::win::state::Shared;
 use crate::win::story::StoryState;
 use crate::win::story_ipc;
 use crate::win::surface::{self, PixelRect};
+use crate::win::transition_ipc;
 use crate::win::verify::{self, Telemetry};
 
 /// サーフェスの幅の割合。残りが WebView。
@@ -288,6 +289,7 @@ enum Panel {
     Review,
     Source,
     Story,
+    Transition,
 }
 
 /// コマンド名の前置きで受け持つ処理を決める。前置きが合わないものは、所属を明示した名前だけが例外。
@@ -301,6 +303,7 @@ fn route(command: &str) -> Panel {
         c if c.starts_with("review_") => Panel::Review,
         c if c.starts_with("source_") => Panel::Source,
         c if c.starts_with("story_") => Panel::Story,
+        c if c.starts_with("transition_") => Panel::Transition,
         _ => Panel::Common,
     }
 }
@@ -316,6 +319,7 @@ fn dispatch(invoke: tauri::ipc::Invoke) -> bool {
         Panel::Review => review_ipc::handler,
         Panel::Source => source_ipc::handler,
         Panel::Story => story_ipc::handler,
+        Panel::Transition => transition_ipc::handler,
     };
     handler(invoke)
 }
@@ -435,6 +439,7 @@ mod tests {
             ("source_open", Panel::Source),
             ("edit_action", Panel::Source),
             ("story_search", Panel::Story),
+            ("transition_cuts", Panel::Transition),
             ("unknown_command", Panel::Common),
         ];
         for (name, panel) in cases {

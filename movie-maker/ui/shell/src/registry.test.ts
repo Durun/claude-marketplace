@@ -4,8 +4,8 @@ import { createPanelApis, PANELS } from "./registry.ts";
 const idsOf = (column: "left" | "right") => PANELS.filter((p) => p.column === column).map((p) => p.id);
 
 describe("パネルの登録", () => {
-  it("左の列は Tasks、Media、Story、Mixer、Deliver の順", () => {
-    expect(idsOf("left")).toEqual(["tasks", "media", "story", "mixer", "deliver"]);
+  it("左の列は Tasks、Media、Story、Transition、Mixer、Deliver の順", () => {
+    expect(idsOf("left")).toEqual(["tasks", "media", "story", "transition", "mixer", "deliver"]);
   });
 
   it("右の列は Inspector、Review の順", () => {

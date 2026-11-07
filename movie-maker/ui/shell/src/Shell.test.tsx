@@ -5,6 +5,7 @@ import type { Layer } from "@mm/sdk";
 import type { DeliverApi } from "../../panels/deliver/src/api.ts";
 import type { MediaApi } from "../../panels/media/src/api.ts";
 import type { MixerApi } from "../../panels/mixer/src/api.ts";
+import type { TransitionApi } from "../../panels/transition/src/api.ts";
 import type { ReviewApi } from "../../panels/review/src/api.ts";
 import type { StoryApi } from "../../panels/story/src/api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -136,6 +137,24 @@ describe("Shell の Mixer タブ", () => {
     expect(panels[1]?.hidden).toBe(false);
     expect(host.querySelector(".mm-mixer")).not.toBeNull();
     expect(mixer.state).toHaveBeenCalled();
+  });
+});
+
+describe("Shell の Transition タブ", () => {
+  it("Transition を渡すとタブが出て、開くとカットを読む", async () => {
+    const transition: TransitionApi = {
+      cuts: vi.fn().mockResolvedValue({ sequence: null, cuts: [] }),
+      kinds: vi.fn().mockResolvedValue([]),
+      set: vi.fn(),
+      remove: vi.fn(),
+    };
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ transition }} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Transition"]);
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(host.querySelector(".mm-tr")).not.toBeNull();
+    expect(transition.cuts).toHaveBeenCalled();
   });
 });
 

@@ -6,3 +6,4 @@ export { panel as mixer } from "../../panels/mixer/src/index.ts";
 export { panel as review } from "../../panels/review/src/index.ts";
 export { panel as story } from "../../panels/story/src/index.ts";
 export { panel as tasks } from "../../panels/tasks/src/index.ts";
+export { panel as transition } from "../../panels/transition/src/index.ts";

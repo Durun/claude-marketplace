@@ -133,3 +133,14 @@ Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は
 `Proposal` の `applied` は適用したトランザクションが今も取り消されていないこと、`undoable` はそれが取り消しのスタックの一番上にあること、`conflict` は保留中で提案の後の編集と触る所が重なる ID（あれば承認できない）。
 
 Tauri のイベント `mm:proposals-changed`（`{ id, state }`）が提案の追加・決定のたびに届く。取り消しで `applied` と `undoable` が変わるので、`mm:doc-changed` でも一覧を読み直す。
+
+## Transition のコマンド
+
+Transition パネル（`ui/panels/transition`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/win/transition_ipc.rs` と `pack_ipc.rs`、型は `ui/panels/transition/src/api.ts`（`createIpcTransitionApi` が呼ぶ）。`dir` はパックのフォルダー（既定 `packs/vlog`）。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null` |
+| `pack_transitions` | `{ dir }` | パックの `transitions/` の名前（名前の順） |
+| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る |
+| `apply_op` | `{ op: { op: "setTransition", cut, transition: null } }` | 外す |

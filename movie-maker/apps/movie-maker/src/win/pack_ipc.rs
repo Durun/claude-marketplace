@@ -13,8 +13,16 @@ use crate::win::ipc::SyncState;
 
 /// このパネルのコマンドを呼び出す。知らない名前には `false` を返す。
 pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
-    let h: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![pack_list, pack_apply,];
+    let h: fn(tauri::ipc::Invoke) -> bool =
+        tauri::generate_handler![pack_list, pack_apply, pack_transitions,];
     h(invoke)
+}
+
+/// パックの `transitions/` にあるトランジションの名前（名前の順）。
+#[tauri::command]
+pub async fn pack_transitions(dir: String) -> Result<Vec<String>, String> {
+    let pack = Pack::load(&PathBuf::from(dir)).map_err(|e| e.to_string())?;
+    Ok(pack.transitions.names().map(str::to_owned).collect())
 }
 
 /// パックのテンプレートとマクロの一覧（テンプレートが先）。
