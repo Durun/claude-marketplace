@@ -21,6 +21,8 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 - `client_pid` が無いと、CPU の画像（RGBA f32、premultiplied、線形）で返す。
 - `Prepare` の `params` は `{"html": "..."}` か `{"url": "..."}`。ページは `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と `params` の関数としてだけ画面を作る。ビューポートは `RenderFrame` の `size`。
 - 時刻を変えても画面が変わらないページは CEF がフレームを出さないので、60 ms 待って前のフレームを返す。
+- アプリ側（`mm-runtime`）は `find_host()` でホストを探す。`CEF_PATH` が無ければ探さない。`MM_CEF_HOST` があればそれ、無ければ今の実行ファイルと同じフォルダー（テストの実行ファイルなら 1 つ上も）の `mm-host-cef`。既定のビルドの `mm-host-cef` は `cef` の feature が無く起動に失敗するので、`MM_CEF_HOST` で release の `--features cef` のものを指す。
+- 使う側: `web.cef` のノード（[mm-nodes-cef](../mm-nodes-cef/README.md)）と、CSS で描く文字（[mm-text-cef](../mm-text-cef/README.md)）。
 
 ## CEF を入れて動かす（Windows）
 
