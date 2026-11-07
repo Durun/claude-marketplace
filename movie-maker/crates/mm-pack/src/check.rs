@@ -9,7 +9,7 @@ use mm_ops::{Editor, OpContext};
 use crate::args::{referenced_names, Env};
 use crate::expand::expand;
 use crate::layout::EstimateShaper;
-use crate::macros::{MacroDef, MacroKind, Step};
+use crate::macros::{MacroDef, MacroKind, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
 use crate::style::TextStyleSpec;
 
@@ -170,6 +170,9 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
             Step::Mixer(_) if pack.mixer.is_none() => {
                 report.push(at("mixer 手順があるのに mixer.json が無い".into()));
             }
+            Step::Web(w) => check_web(pack, w)
+                .into_iter()
+                .for_each(|e| report.push(at(e))),
             _ => {}
         }
         for s in step.strings() {
@@ -188,6 +191,28 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     for name in def.example.keys().filter(|n| !def.params.contains_key(*n)) {
         report.push(at(format!("example の {name} は引数に無い")));
     }
+}
+
+/// `web` 手順のページがあり、動きの長さが theme の上限の中か。
+fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
+    let mut errors = Vec::new();
+    if !w.page.contains("{{") && !pack.pages.contains_key(&w.page) {
+        errors.push(format!("web/{}.html が無い", w.page));
+    }
+    let motion = pack.theme.motion;
+    if !(0.0..=motion.in_max).contains(&w.fade_in) {
+        errors.push(format!(
+            "web の fade_in は 0..{}（theme の motion.in_max）",
+            motion.in_max
+        ));
+    }
+    if !(0.0..=motion.out_max).contains(&w.fade_out) {
+        errors.push(format!(
+            "web の fade_out は 0..{}（theme の motion.out_max）",
+            motion.out_max
+        ));
+    }
+    errors
 }
 
 /// テンプレートを例の引数で空のプロジェクトに適用し、その上に各マクロを例の引数で適用してみる。

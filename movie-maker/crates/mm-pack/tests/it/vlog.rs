@@ -322,3 +322,61 @@ fn mixer_json_が無いパックでは_mixer_手順を検査が捕まえる() {
         report.errors
     );
 }
+
+#[test]
+fn 吹き出しは_web_cef_のレイヤーで_theme_と引数をページに渡す() {
+    let pack = vlog();
+    let txn = expand_est(
+        &pack,
+        "callout",
+        &args(&[
+            ("id", "co1"),
+            ("text", "ここ"),
+            ("x", "1200"),
+            ("y", "640"),
+            ("at", "2"),
+        ]),
+    )
+    .unwrap();
+    let project = apply_on_episode(&pack, txn);
+    let layer = &project.compositions[0].layers[0];
+    assert_eq!(
+        (layer.id.as_str(), layer.source.kind.as_str()),
+        ("co1", "web.cef")
+    );
+    let params = &layer.source.params;
+    let ParamValue::Text(html) = &params["html"].value else {
+        panic!("html は文字");
+    };
+    assert!(
+        html.contains("window.mmSetTime"),
+        "パックの web/callout.html を写す"
+    );
+    let ParamValue::Json(data) = &params["data"].value else {
+        panic!("data は JSON");
+    };
+    assert_eq!(data["text"], "ここ");
+    assert_eq!(data["x"], 1200, "数の引数は数のまま渡す");
+    assert_eq!(data["side"], "right", "既定の側");
+    assert_eq!(
+        data["theme"]["colors"]["ink"], "#0B1230",
+        "theme の色を足す"
+    );
+    assert_eq!(
+        params["static"].value,
+        ParamValue::Bool(true),
+        "動きは不透明度で付ける"
+    );
+    assert_eq!(layer.opacity.keyframes.len(), 4, "出る動きと消える動き");
+    assert_eq!(layer.out_point, RationalTime::seconds(3), "既定の長さ 3 秒");
+}
+
+#[test]
+fn 検査は無いページと長すぎる動きの_web_手順を捕まえる() {
+    let errors = check_broken("macros/callout.json", |v| {
+        v["steps"][0]["web"]["page"] = "nothing".into();
+        v["steps"][0]["web"]["fade_in"] = 5.0.into();
+    });
+    assert!(mentions(&errors, "web/nothing.html が無い"), "{errors:?}");
+    assert!(mentions(&errors, "fade_in"), "{errors:?}");
+}
