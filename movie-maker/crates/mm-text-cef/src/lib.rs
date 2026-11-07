@@ -3,9 +3,9 @@
 //! - 行組み（どこで折るか、行の位置）はシェーパー（cosmic-text）が決め、ここでは行の中を折り返さずに描く。
 //!   文字の幅と行の数がネイティブの描画と同じになり、`bounds` とプレートの大きさが合う。
 //! - CSS で付けるもの: 書体（`font-family`）、縁取り（`-webkit-text-stroke` を `paint-order: stroke fill` で外側だけ）、
-//!   ルビ（`<ruby>`。注記はシェーパーと同じ読み方）。
+//!   ルビ（`<ruby>`。注記はシェーパーと同じ `mm_text_api::parse_ruby` で読む）。
 //! - 文字は `ShapedText::text` から取る。元の文字列を持たない行組みの結果は `Unsupported`。
-//! - 画像は CPU の経路（RGBA f32、premultiplied、線形）で受ける。文字の画布は小さく、`text` の種類が覚えるので、
+//! - 画像は CPU の経路（RGBA f32、premultiplied、線形）で受ける。文字の画布は小さく、`text` の種類がキャッシュするので、
 //!   共有テクスチャの経路を使わない。
 //!
 //! ホストの実行ファイルとランチャーは組み立て（`mm-runtime`）が選んで渡す（実装は実装に依存しない）。
@@ -20,7 +20,7 @@ use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec
 use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, RationalTime, Result, RgbaImage, Size};
 
-pub use page::{css_color, page_params, segments, Segment};
+pub use page::{css_color, page_params};
 
 /// 描画のページ。
 const PAGE: &str = include_str!("../assets/text.html");
@@ -66,7 +66,7 @@ impl CefRasterizer {
         }
     }
 
-    /// ホストに 1 枚描かせる。落ちていたら 1 回だけ起こし直す。
+    /// ホストに 1 枚描かせる。クラッシュしていたら 1 回だけ起こし直す。
     fn draw(&self, size: Size, params: serde_json::Value) -> Result<SharedFrame> {
         let mut slot = self
             .host

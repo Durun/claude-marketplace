@@ -94,3 +94,19 @@ fn 縁取りの分だけ四方に広げる() {
     assert!((b.width - a.width - 12.0).abs() < 1e-3 && (b.x - a.x + 6.0).abs() < 1e-3);
     assert!((b.height - a.height - 12.0).abs() < 1e-3);
 }
+
+#[test]
+fn 親文字にならない注記の記号は文字のまま組む() {
+    let shaper = CosmicShaper::new();
+    let cases = [
+        ("見て《ほしい》", "見て《ほしい》"),
+        ("A｜B", "A｜B"),
+        ("｜東京《とうきょう》都《と》へ", "東京都へ"),
+    ];
+    for (text, expected) in cases {
+        let shaped = shaper
+            .shape(text, &style(None, LineBreak::Anywhere))
+            .unwrap();
+        assert_eq!(line_texts(&shaped, text).concat(), expected, "{text}");
+    }
+}

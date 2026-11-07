@@ -87,9 +87,9 @@ fn face_ref(
     }
 }
 
-/// 組む文字列のバイト範囲を、元の文字列の範囲にする。挟んだ文字（WORD JOINER）から始まるなら `None`。
+/// 組む文字列のバイト範囲を、元の文字列の範囲にする。挟んだ文字（WORD JOINER）だけのグリフなら `None`。
 fn source_range(prepared: &Prepared, start: usize, end: usize) -> Option<(usize, usize)> {
-    let (at, len) = prepared.source(start)?;
+    let (at, len) = prepared.first_source(start, end)?;
     let last = end.checked_sub(1).and_then(|e| prepared.source(e));
     let stop = last.map_or(at + len, |(a, l)| a + l).max(at + len);
     Some((at, stop - at))
