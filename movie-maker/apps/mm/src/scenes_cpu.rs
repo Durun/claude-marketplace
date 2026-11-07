@@ -46,6 +46,7 @@ fn big_project() -> Project {
         .collect();
     let mut project = Project::new();
     project.compositions.push(Composition {
+        mixer: None,
         id: Id::new("c"),
         width: 320,
         height: 180,

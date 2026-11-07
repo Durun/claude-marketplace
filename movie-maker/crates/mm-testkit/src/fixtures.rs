@@ -74,6 +74,7 @@ pub fn vertical_project(
         timebase_offset: RationalTime::ZERO,
     });
     project.compositions.push(Composition {
+        mixer: None,
         id: comp_id.clone(),
         width: media.size.width,
         height: media.size.height,
@@ -103,6 +104,8 @@ fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalT
             role: "voice".into(),
             gain_db: Param::constant(ParamValue::Number(0.0)),
             pan: Param::constant(ParamValue::Number(0.0)),
+            mute: false,
+            solo: false,
         }),
         ..Layer::new(
             "l-footage",

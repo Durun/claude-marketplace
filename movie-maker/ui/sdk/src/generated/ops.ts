@@ -25,6 +25,15 @@ export type CaptionPlacement = {
 };
 /** 色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。 */
 export type ColorSpace = string;
+/** コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。 */
+export type CompMixer = {
+  /** 役割ごとのバス。載っていない役割は 0 dB。 */
+  "buses"?: Record<string, MixerBus>;
+  /** ダッキング。`None` で無効。 */
+  "ducking"?: Ducking | null;
+  /** マスターの音量（dB）。 */
+  "master_db"?: number;
+};
 /** コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。 */
 export type Composition = {
   "duration": RationalTime;
@@ -36,6 +45,8 @@ export type Composition = {
   "layers": Layer[];
   /** 時刻の順。 */
   "markers"?: Marker[];
+  /** ミキサーの設定。`None` は既定（全部 0 dB、ダッキングなし）。 */
+  "mixer"?: CompMixer | null;
   "width": number;
 };
 /** 進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。 `x1`、`x2` は `[0,1]` に収める（時間が単調になる）。 */
@@ -107,6 +118,21 @@ export type Delivery = {
   /** トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。 */
   "true_peak_dbtp"?: number | null;
 };
+/** ダッキング。`trigger` のバスが鳴っている間、`targets` のバスを `reduction_db` だけ下げる。 */
+export type Ducking = {
+  /** 下がりきるまでの時間（ms）。 */
+  "attack_ms": number;
+  /** 下げる量（dB）。0 以下。 */
+  "reduction_db": number;
+  /** 戻りきるまでの時間（ms）。 */
+  "release_ms": number;
+  /** 下げられるバスの役割（例: `bgm`）。 */
+  "targets": string[];
+  /** 鳴っていると見なす大きさ（dBFS）。 */
+  "threshold_db": number;
+  /** 鳴ると他を下げるバスの役割（例: `voice`）。 */
+  "trigger": string;
+};
 /** `Linear` の進み具合に掛けるイージングの型。 */
 export type Ease = "none" | "in" | "out" | "in_out";
 /** 動かす端。 */
@@ -175,9 +201,13 @@ export type Layer = {
 /** レイヤーの音の設定。 */
 export type LayerAudio = {
   "gain_db": Param;
+  /** 鳴らさない。プレビューと書き出しの両方に効く。 */
+  "mute"?: boolean;
   "pan": Param;
   /** 役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。 */
   "role": string;
+  /** ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。 */
+  "solo"?: boolean;
 };
 /** マーカー。YouTube のチャプターの書き出しに使う。`duration` が 0 なら点。 */
 export type Marker = {
@@ -203,6 +233,11 @@ export type Mask = {
 export type MaskMode = "add" | "subtract" | "intersect";
 /** マットに使う成分。 */
 export type MatteKind = "alpha" | "luma";
+/** バス 1 本の設定。 */
+export type MixerBus = {
+  /** バスの音量（dB）。 */
+  "gain_db": number;
+};
 /** ノード。ノードの種類の名前とバージョン、パラメータ、入力。 */
 export type Node = {
   "inputs"?: Node[];
@@ -552,6 +587,20 @@ export type SetCaptionOp = {
   "layer": string;
   "op": "setCaption";
 };
+/** レイヤーの音の設定（送り先のバス、音量、パン、ミュート、ソロ）を置く・外す。 */
+export type SetLayerAudioOp = {
+  "audio"?: LayerAudio | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "setLayerAudio";
+};
+/** コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。 */
+export type SetMixerOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "composition": string;
+  "mixer"?: CompMixer | null;
+  "op": "setMixer";
+};
 /** レンダーターゲットを足す。 */
 export type AddRenderTargetOp = {
   "index"?: number | null;
@@ -806,6 +855,8 @@ export type Op =
   | ResetCutOp
   | SetReframeOp
   | SetCaptionOp
+  | SetLayerAudioOp
+  | SetMixerOp
   | AddRenderTargetOp
   | RemoveRenderTargetOp
   | AddMarkerOp
@@ -873,6 +924,8 @@ export const OP_NAMES: readonly OpName[] = [
   "resetCut",
   "setReframe",
   "setCaption",
+  "setLayerAudio",
+  "setMixer",
   "addRenderTarget",
   "removeRenderTarget",
   "addMarker",

@@ -95,6 +95,7 @@ fn arrange(mut project: Project) -> Project {
         duration: secs(total),
         layers: vec![Layer::new("l1", source, secs(0), secs(0), secs(total))],
         markers: Vec::new(),
+        mixer: None,
     });
     project
 }

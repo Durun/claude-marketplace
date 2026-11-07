@@ -172,6 +172,7 @@ impl WgpuRenderer {
             .map(|p| cut_layer(&seq.cuts[p.index], p))
             .collect();
         let cuts = Composition {
+            mixer: None,
             id: Id::new(name),
             width: scope.comp.width,
             height: scope.comp.height,

@@ -113,6 +113,7 @@ mod tests {
 
     fn comp() -> Composition {
         Composition {
+            mixer: None,
             id: mm_types::Id::new("c"),
             width: 64,
             height: 36,

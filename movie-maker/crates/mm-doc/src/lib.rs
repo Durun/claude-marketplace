@@ -27,7 +27,9 @@ use mm_types::{
 /// - v8: 本編とショート。カットの上書き（`Cut.overrides`）とショートの元の値（`Cut.origin_base`）、
 ///   sequence のレイヤーの再フレーミングと字幕の置き場所（`Layer.framing`）。v7 のショートのカットは今の元の値を元の値にし、
 ///   参照のショートの元と違う in/out は上書きに、素材・速さ・有効が元と違えばショートごと複製にして上げる。
-pub const SCHEMA_VERSION: u32 = 8;
+/// - v9: ミキサー。コンポジションのバス・マスター・ダッキング（`Composition.mixer`）と、レイヤーの音のミュートとソロ
+///   （`LayerAudio.mute`、`solo`）。v8 からは serde の既定（ミキサーなし、ミュートもソロもなし）で上げる。
+pub const SCHEMA_VERSION: u32 = 9;
 
 mod bins;
 mod delivery;
@@ -35,6 +37,7 @@ mod layer;
 mod migrate;
 mod migrate_lut;
 mod migrate_shorts;
+mod mixer;
 mod node;
 mod param;
 mod sequence;
@@ -52,6 +55,10 @@ pub use layer::{
     Transform,
 };
 pub use migrate::{load, migrate};
+pub use mixer::{
+    CompMixer, Ducking, MixerBus, DEFAULT_DUCK_ATTACK_MS, DEFAULT_DUCK_REDUCTION_DB,
+    DEFAULT_DUCK_RELEASE_MS, DEFAULT_DUCK_THRESHOLD_DB,
+};
 pub use node::{
     Node, FOOTAGE_KIND, FOOTAGE_PARAM, GAP_KIND, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
     SEQUENCE_PARAM,
@@ -258,6 +265,9 @@ pub struct Composition {
     /// 時刻の順。
     #[serde(default)]
     pub markers: Vec<Marker>,
+    /// ミキサーの設定。`None` は既定（全部 0 dB、ダッキングなし）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mixer: Option<CompMixer>,
 }
 
 impl Composition {
@@ -312,6 +322,7 @@ mod tests {
 
     fn comp(id: &str, layers: Vec<Layer>) -> Composition {
         Composition {
+            mixer: None,
             id: Id::new(id),
             width: 320,
             height: 180,

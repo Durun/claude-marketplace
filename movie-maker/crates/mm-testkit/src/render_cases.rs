@@ -54,6 +54,7 @@ fn render_layers(
     let mut project: Project = fx.project.clone();
     let id: CompositionId = Id::new(CASE_COMPOSITION);
     project.compositions.push(Composition {
+        mixer: None,
         id: id.clone(),
         width: fx.size.width,
         height: fx.size.height,

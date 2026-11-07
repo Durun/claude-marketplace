@@ -104,6 +104,7 @@ fn sequence_comp(
             duration,
         )],
         markers: Vec::new(),
+        mixer: None,
     }
 }
 

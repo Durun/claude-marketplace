@@ -135,6 +135,7 @@ fn nested(layer: &str, comp: &str) -> Layer {
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: SIZE.width,
         height: SIZE.height,

@@ -42,6 +42,7 @@ pub(crate) fn retarget_to_sequence(
     );
     layer.framing = framing_of(&project, &rt.composition, sequence);
     project.compositions.push(Composition {
+        mixer: None,
         id: id.clone(),
         width: rt.width,
         height: rt.height,
@@ -152,6 +153,7 @@ mod tests {
             transform,
         });
         Composition {
+            mixer: None,
             id: Id::new(id),
             width: 360,
             height: 640,

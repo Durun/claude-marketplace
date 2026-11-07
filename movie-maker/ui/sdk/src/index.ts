@@ -67,5 +67,15 @@ export {
   type StoryWord,
   type WordRange,
 } from "./story.ts";
+export {
+  createIpcMixerApi,
+  MIXER_METERS_EVENT,
+  type MasterMeter,
+  type MixerApi,
+  type MixerMeters,
+  type MixerState,
+  type MixerTrack,
+  type TrackMeter,
+} from "./mixer.ts";
 export { DOC_CHANGED_EVENT, onDocChanged, type DocChanged } from "./docChanged.ts";
 export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";
