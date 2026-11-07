@@ -2,7 +2,7 @@
 //! レビューで再現した、順で結果が変わるプロジェクトのデータを固定する。
 
 use crate::common::{self, canon, comp, layer, project};
-use mm_doc::{Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
+use mm_doc::{Cut, Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, RationalTime};
 
@@ -199,6 +199,40 @@ fn ロックしたレイヤーが接続したカットを_claude_の操作経路
             "ロックを素通りした: {op:?}"
         );
     }
+}
+
+#[test]
+fn cut_words_は素材を映す全部のカットを_touches_に含める() {
+    // f の素材の範囲は [0, 2)。範囲 [2, 2.25) は掛からず、CutWords は単独だと「変わるものが無い」で拒否される。
+    // Slip で f が [1, 3) に動いた後なら範囲が掛かって割れるので、順で成否が変わる。
+    let a1 = Id::new("a1");
+    let mut p = project();
+    p.sequences[0].cuts.push(Cut::new(
+        "f",
+        Node::footage(&a1),
+        common::secs(0),
+        common::secs(2),
+    ));
+    p.validate().unwrap();
+    let cut_words: Op = CutWords {
+        asset: a1,
+        sequence: Id::new("s1"),
+        words: Vec::new(),
+        ranges: vec![SourceRange {
+            in_point: common::secs(2),
+            out_point: common::quarters(9),
+        }],
+        restore: false,
+        splices: Vec::new(),
+    }
+    .into();
+    let slip: Op = Slip {
+        cut: Id::new("f"),
+        by: common::secs(1),
+    }
+    .into();
+    assert!(!apply_each(&p, &[&cut_words]).0[0] && apply_each(&p, &[&slip]).0[0]);
+    assert_order_free(&p, &cut_words, &slip);
 }
 
 #[test]

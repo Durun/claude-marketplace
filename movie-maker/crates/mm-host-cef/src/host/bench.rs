@@ -1,103 +1,72 @@
 //! 1 フレームの時間を測る。時刻はこちらが決め、描いたフレームを受け取るまでをスパンで測る。
 
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 use cef::*;
+use mm_gpu::GpuContext;
 use mm_trace::MetricsLayer;
 use tracing_subscriber::layer::SubscriberExt;
 
-use super::handlers::{build_client, Shared};
-use super::{gpu, BenchOptions};
+use super::handlers::Shared;
+use super::share::Client;
+use super::{browser, gpu, BenchOptions};
 
 const PAGE: &str = include_str!("../../assets/bench.html");
-const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
-const RESEND_LIMIT: u32 = 100_000;
 
-/// 条件が成り立つまで CEF のメッセージを回す。待ちの間は寝ない（寝るとタイマーの粒度が測定に入る）。
-fn pump_until(shared: &Shared, what: &str, cond: impl Fn(&Shared) -> bool) -> Result<(), String> {
-    let start = Instant::now();
-    while !cond(shared) {
-        if let Some(e) = shared.error.borrow().as_ref() {
-            return Err(e.clone());
-        }
-        if start.elapsed() > FRAME_TIMEOUT {
-            return Err(format!("{what} が {FRAME_TIMEOUT:?} 来ない"));
-        }
-        do_message_loop_work();
-        std::hint::spin_loop();
-    }
-    Ok(())
+struct Bench<'a> {
+    browser: Browser,
+    shared: Rc<Shared>,
+    opts: &'a BenchOptions,
+    /// `--share` のとき、自分のプロセスへハンドルを複製して受け渡しまで測る。
+    client: Option<Client>,
 }
 
-/// 時刻 `t` の画面にして、1 フレーム受け取る。
-fn render_frame(
-    browser: &Browser,
-    shared: &Shared,
-    opts: &BenchOptions,
-    seq: u64,
-    t: f64,
-) -> Result<(), String> {
-    let _frame = tracing::info_span!("host_cef.frame").entered();
-    {
-        let _span = tracing::info_span!("host_cef.set_time").entered();
-        let main = browser.main_frame().ok_or("メインフレームが無い")?;
-        let code = format!("mmSetTime({t},{seq})");
-        main.execute_java_script(Some(&CefString::from(code.as_str())), None, 0);
-        let want = format!("ready:{seq}");
-        pump_until(shared, "時刻の反映", |s| *s.title.borrow() == want)?;
-    }
-    let _span = tracing::info_span!("host_cef.begin_frame").entered();
-    let before = shared.painted.get();
-    let host = browser.host().ok_or("ブラウザのホストが無い")?;
-    // 描画の準備ができる前に送ったフレームは捨てられるので、来なければ送り直す。
-    for attempt in 0..RESEND_LIMIT {
-        host.send_external_begin_frame();
-        let start = Instant::now();
-        while shared.painted.get() == before && start.elapsed() < opts.resend {
-            if let Some(e) = shared.error.borrow().as_ref() {
-                return Err(e.clone());
-            }
-            do_message_loop_work();
-            std::hint::spin_loop();
+impl Bench<'_> {
+    /// 時刻 `t` の画面にして、1 フレーム受け取る。
+    fn frame(&self, seq: u64, t: f64) -> Result<(), String> {
+        let _frame = tracing::info_span!("host_cef.frame").entered();
+        let (browser, shared) = (&self.browser, &*self.shared);
+        let js = format!("mmSetTime({t},{seq})");
+        browser::run_js(browser, shared, &js, &format!("ready:{seq}"))?;
+        let got = browser::begin_frame(
+            browser,
+            shared,
+            self.opts.resend,
+            browser::WAIT_LIMIT,
+            |_| true,
+        )?;
+        if !got {
+            return Err(format!("seq {seq} のフレームが来ない"));
         }
-        if shared.painted.get() > before {
-            if attempt > 0 {
-                mm_trace::counter!("host_cef.begin_frame_resent", attempt);
-            }
-            return Ok(());
+        if let Some(client) = &self.client {
+            self.export(client)?;
         }
+        Ok(())
     }
-    Err(format!("描画が {RESEND_LIMIT} 回送っても来ない"))
-}
 
-fn create_browser(shared: &Rc<Shared>, opts: &BenchOptions, url: &str) -> Result<Browser, String> {
-    let window_info = WindowInfo {
-        windowless_rendering_enabled: true as _,
-        shared_texture_enabled: shared.accelerated as _,
-        external_begin_frame_enabled: true as _,
-        ..Default::default()
-    };
-    let browser_settings = BrowserSettings {
-        windowless_frame_rate: opts.rate as _,
-        ..Default::default()
-    };
-    browser_host_create_browser_sync(
-        Some(&window_info),
-        Some(&mut build_client(shared)),
-        Some(&CefString::from(url)),
-        Some(&browser_settings),
-        None,
-        None,
-    )
-    .ok_or_else(|| "ブラウザを作れない".to_string())
-}
+    fn export(&self, client: &Client) -> Result<(), String> {
+        let _span = tracing::info_span!("host_cef.share").entered();
+        let frame = self.shared.frame.borrow();
+        let resource = frame
+            .as_ref()
+            .and_then(|f| f.shared.as_ref())
+            .ok_or("共有テクスチャが無い")?;
+        let handle = client.export(&self.shared.gpu.device, resource)?;
+        // 自分のプロセスへ複製したハンドルなので、受け取った側として閉じる。
+        let raw = windows::Win32::Foundation::HANDLE(handle as usize as *mut _);
+        // SAFETY: export が返した、このプロセスで有効なハンドル。
+        unsafe { windows::Win32::Foundation::CloseHandle(raw) }
+            .map_err(|e| format!("ハンドルを閉じられない: {e}"))
+    }
 
-fn read_hash(shared: &Shared) -> Result<(u64, Vec<u8>), String> {
-    let frame = shared.frame.borrow();
-    let texture = frame.as_ref().ok_or("フレームが無い")?;
-    let rgba = gpu::read_rgba(&shared.device, &shared.queue, texture)?;
-    Ok((gpu::fnv1a(&rgba), rgba))
+    fn read_hash(&self) -> Result<(u64, Vec<u8>), String> {
+        let frame = self.shared.frame.borrow();
+        let texture = &frame.as_ref().ok_or("フレームが無い")?.texture;
+        let rgba = gpu::bgra_to_rgba(&gpu::read_bgra(&self.shared.gpu, texture)?);
+        Ok((gpu::fnv1a(&rgba), rgba))
+    }
 }
 
 /// ページが左上に塗る 16px の四角から、どの `seq` のフレームかを読む。古いフレームが来ていないかの確認に使う。
@@ -106,50 +75,68 @@ fn marker_seq(rgba: &[u8], width: u32) -> u64 {
     u64::from(rgba[at]) | u64::from(rgba[at + 1]) << 8 | u64::from(rgba[at + 2]) << 16
 }
 
-pub fn run(opts: &BenchOptions) -> Result<(), String> {
+fn page_url(opts: &BenchOptions) -> Result<String, String> {
+    let dir = std::env::temp_dir().join(format!("mm-host-cef-page-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // `--page-css` は原因の切り分け用。ページの先頭に CSS を足す。
+    let page = PAGE.replace("<style>", &format!("<style>{}", opts.page_css));
+    std::fs::write(dir.join("bench.html"), page).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "file:///{}",
+        dir.join("bench.html").to_string_lossy().replace('\\', "/")
+    ))
+}
+
+/// 結果を表で出す。`--out` があれば `metrics-*.jsonl` も書く。
+pub fn run(opts: &BenchOptions, gpu: Arc<GpuContext>) -> Result<(), String> {
     let (layer, metrics) = MetricsLayer::new();
     tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
         .map_err(|e| e.to_string())?;
-
-    let (device, queue, adapter) = gpu::create_device(&opts.adapter)?;
-    let path = if opts.accelerated {
-        "accel (OnAcceleratedPaint, 共有テクスチャ)"
-    } else {
-        "cpu (OnPaint, BGRA のアップロード)"
+    let path = match (opts.accelerated, opts.share) {
+        (true, true) => "accel + share（共有ヒープへコピーし、ハンドルを複製）",
+        (true, false) => "accel (OnAcceleratedPaint, 共有テクスチャ)",
+        (false, _) => "cpu (OnPaint, BGRA のアップロード)",
     };
     println!(
-        "adapter: {adapter}\npath: {path}\nsize: {}x{}  frames: {} (warmup {})",
-        opts.size.0, opts.size.1, opts.frames, opts.warmup
+        "adapter: {}\npath: {path}\nsize: {}x{}  frames: {} (warmup {})",
+        gpu.adapter.name, opts.size.0, opts.size.1, opts.frames, opts.warmup
     );
-
-    let dir = std::env::temp_dir().join("mm-host-cef-page");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("bench.html"), PAGE).map_err(|e| e.to_string())?;
-    let url = format!(
-        "file:///{}",
-        dir.join("bench.html").to_string_lossy().replace('\\', "/")
-    );
-
-    let shared = Shared::new(device, queue, opts.accelerated, opts.size);
-    let browser = create_browser(&shared, opts, &url)?;
-    pump_until(&shared, "読み込み", |s| {
+    let shared = Shared::new(gpu, opts.size);
+    shared.share.set(opts.share);
+    let browser = browser::create(&shared, opts.accelerated, opts.rate, &page_url(opts)?)?;
+    browser::pump_until(&shared, "読み込み", browser::WAIT_LIMIT, |s| {
         s.loaded.get() && !s.title.borrow().is_empty()
     })?;
+    let client = match opts.share {
+        true => Some(Client::open(std::process::id())?),
+        false => None,
+    };
+    let bench = Bench {
+        browser,
+        shared,
+        opts,
+        client,
+    };
+    let result = measure(&bench, &metrics);
+    browser::close(&bench.browser);
+    result
+}
 
+fn measure(bench: &Bench, metrics: &mm_trace::MetricsHandle) -> Result<(), String> {
+    let opts = bench.opts;
     let dt = 1.0 / f64::from(opts.fps);
     let mut seq = 0u64;
     for _ in 0..opts.warmup {
-        render_frame(&browser, &shared, opts, seq, seq as f64 * dt)?;
+        bench.frame(seq, seq as f64 * dt)?;
         seq += 1;
     }
     metrics.drain();
-
     let (mut hashes, mut shots, mut stale) = (Vec::new(), Vec::new(), 0u32);
     let wall = Instant::now();
     for i in 0..opts.frames {
-        render_frame(&browser, &shared, opts, seq, seq as f64 * dt)?;
+        bench.frame(seq, seq as f64 * dt)?;
         if opts.verify {
-            let (hash, rgba) = read_hash(&shared)?;
+            let (hash, rgba) = bench.read_hash()?;
             if marker_seq(&rgba, opts.size.0) != seq {
                 stale += 1;
             }
@@ -161,58 +148,42 @@ pub fn run(opts: &BenchOptions) -> Result<(), String> {
         seq += 1;
     }
     let wall = wall.elapsed();
-
     if opts.verify {
         println!(
             "古い時刻のフレームが来たフレーム: {stale} / {}",
             opts.frames
         );
-        verify(&browser, &shared, dt, &hashes, &shots, opts)?;
+        verify(bench, dt, &hashes, &shots)?;
     }
     report(&metrics.snapshot(), wall, opts);
-    if let Some(host) = browser.host() {
-        host.close_browser(1);
-    }
-    let end = Instant::now();
-    while end.elapsed() < Duration::from_millis(300) {
-        do_message_loop_work();
-    }
     Ok(())
 }
 
 /// 同じ時刻を描き直して同じ画像になるか、PNG に書く。
 fn verify(
-    browser: &Browser,
-    shared: &Shared,
+    bench: &Bench,
     dt: f64,
     hashes: &[(u64, u64)],
     shots: &[(u64, Vec<u8>)],
-    opts: &BenchOptions,
 ) -> Result<(), String> {
-    for (s, h) in hashes {
-        println!("hash seq={s} {h:016x}");
-    }
     let (first_seq, first_hash) = hashes
         .get(hashes.len() / 2)
         .copied()
         .ok_or("検証するフレームが無い")?;
-    render_frame(browser, shared, opts, first_seq, first_seq as f64 * dt)?;
-    let (again, _) = read_hash(shared)?;
-    println!(
-        "再描画 seq={first_seq}: {first_hash:016x} -> {again:016x} {}",
-        if again == first_hash {
-            "同一"
-        } else {
-            "不一致"
-        }
-    );
+    bench.frame(first_seq, first_seq as f64 * dt)?;
+    let (again, _) = bench.read_hash()?;
+    let same = if again == first_hash {
+        "同一"
+    } else {
+        "不一致"
+    };
+    println!("再描画 seq={first_seq}: {first_hash:016x} -> {again:016x} {same}");
+    let opts = bench.opts;
     if let Some(out) = &opts.out {
         std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+        let kind = if opts.accelerated { "accel" } else { "cpu" };
         for (s, rgba) in shots {
-            let p = out.join(format!(
-                "frame-{}-{s:04}.png",
-                if opts.accelerated { "accel" } else { "cpu" }
-            ));
+            let p = out.join(format!("frame-{kind}-{s:04}.png"));
             gpu::write_png(&p, opts.size.0, opts.size.1, rgba)?;
             println!("png: {}", p.display());
         }
@@ -220,10 +191,10 @@ fn verify(
     Ok(())
 }
 
-fn report(snap: &mm_trace::MetricsSnapshot, wall: Duration, opts: &BenchOptions) {
+fn report(snap: &mm_trace::MetricsSnapshot, wall: std::time::Duration, opts: &BenchOptions) {
     println!("\nspan                 count    p50 ms   p95 ms   p99 ms   max ms");
+    let ms = |us: u64| us as f64 / 1000.0;
     for (name, s) in &snap.spans {
-        let ms = |us: u64| us as f64 / 1000.0;
         println!(
             "{name:<20} {:>5} {:>9.2} {:>8.2} {:>8.2} {:>8.2}",
             s.count,
@@ -233,24 +204,28 @@ fn report(snap: &mm_trace::MetricsSnapshot, wall: Duration, opts: &BenchOptions)
             ms(s.max_us)
         );
     }
+    for (name, v) in &snap.counters {
+        println!("{name}: {v}");
+    }
+    let total_ms = wall.as_secs_f64() * 1000.0;
+    let frames = f64::from(opts.frames);
     println!(
-        "wall: {:.1} ms / {} frames = {:.2} ms/frame ({:.1} fps)",
-        wall.as_secs_f64() * 1000.0,
+        "wall: {total_ms:.1} ms / {} frames = {:.2} ms/frame ({:.1} fps)",
         opts.frames,
-        wall.as_secs_f64() * 1000.0 / f64::from(opts.frames),
-        f64::from(opts.frames) / wall.as_secs_f64()
+        total_ms / frames,
+        frames * 1000.0 / total_ms
     );
-    if let Some(out) = &opts.out {
-        let line = snap.to_jsonl_line();
-        let name = if opts.accelerated {
-            "metrics-accel.jsonl"
-        } else {
-            "metrics-cpu.jsonl"
-        };
-        if let Err(e) =
-            std::fs::create_dir_all(out).and_then(|()| std::fs::write(out.join(name), line + "\n"))
-        {
-            eprintln!("metrics の書き出しに失敗: {e}");
-        }
+    let Some(out) = &opts.out else {
+        return;
+    };
+    let name = match (opts.accelerated, opts.share) {
+        (true, true) => "metrics-share.jsonl",
+        (true, false) => "metrics-accel.jsonl",
+        (false, _) => "metrics-cpu.jsonl",
+    };
+    let line = snap.to_jsonl_line() + "\n";
+    if let Err(e) = std::fs::create_dir_all(out).and_then(|()| std::fs::write(out.join(name), line))
+    {
+        eprintln!("metrics の書き出しに失敗: {e}");
     }
 }

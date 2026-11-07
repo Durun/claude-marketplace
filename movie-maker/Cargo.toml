@@ -10,44 +10,47 @@ license = "MIT"
 publish = false
 
 # 外のクレートのバージョンはここに集約し、各クレートは `workspace = true` で参照する。
+# 中のクレートは名前の順に並べる（末尾に足すと並行の PR が同じ行で衝突する）。scripts/check-conventions.sh が確かめる。
 [workspace.dependencies]
-mm-types = { path = "crates/mm-types" }
-mm-trace = { path = "crates/mm-trace" }
-mm-doc = { path = "crates/mm-doc" }
-mm-eval = { path = "crates/mm-eval" }
-mm-node-api = { path = "crates/mm-node-api" }
-mm-render-api = { path = "crates/mm-render-api" }
-mm-decode-api = { path = "crates/mm-decode-api" }
-mm-color-api = { path = "crates/mm-color-api" }
 mm-audio-api = { path = "crates/mm-audio-api" }
-mm-text-api = { path = "crates/mm-text-api" }
-mm-host-api = { path = "crates/mm-host-api" }
+mm-audio-cpal = { path = "crates/mm-audio-cpal" }
+mm-audio-dsp = { path = "crates/mm-audio-dsp" }
 mm-cache-api = { path = "crates/mm-cache-api" }
 mm-cache-fs = { path = "crates/mm-cache-fs" }
-mm-ingest-api = { path = "crates/mm-ingest-api" }
-mm-testkit = { path = "crates/mm-testkit" }
-mm-runtime = { path = "crates/mm-runtime" }
-mm-gpu = { path = "crates/mm-gpu" }
-mm-render = { path = "crates/mm-render" }
-mm-nodes-basic = { path = "crates/mm-nodes-basic" }
+mm-color-api = { path = "crates/mm-color-api" }
+mm-color-lut = { path = "crates/mm-color-lut" }
+mm-color-ocio = { path = "crates/mm-color-ocio" }
+mm-decode-api = { path = "crates/mm-decode-api" }
+mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
+mm-decode-d3d12va = { path = "crates/mm-decode-d3d12va" }
+mm-decode-ffmpeg = { path = "crates/mm-decode-ffmpeg" }
 mm-decode-ffmpeg-core = { path = "crates/mm-decode-ffmpeg-core" }
 mm-decode-hw = { path = "crates/mm-decode-hw" }
-mm-decode-d3d12va = { path = "crates/mm-decode-d3d12va" }
-mm-decode-cuvid = { path = "crates/mm-decode-cuvid" }
-mm-text-glyphon = { path = "crates/mm-text-glyphon" }
-mm-audio-dsp = { path = "crates/mm-audio-dsp" }
-mm-decode-ffmpeg = { path = "crates/mm-decode-ffmpeg" }
-mm-encode-ffmpeg-core = { path = "crates/mm-encode-ffmpeg-core" }
+mm-doc = { path = "crates/mm-doc" }
 mm-encode-ffmpeg = { path = "crates/mm-encode-ffmpeg" }
+mm-encode-ffmpeg-core = { path = "crates/mm-encode-ffmpeg-core" }
 mm-encode-nvenc = { path = "crates/mm-encode-nvenc" }
+mm-eval = { path = "crates/mm-eval" }
 mm-export = { path = "crates/mm-export" }
+mm-gpu = { path = "crates/mm-gpu" }
+mm-host-api = { path = "crates/mm-host-api" }
+mm-ingest = { path = "crates/mm-ingest" }
+mm-ingest-api = { path = "crates/mm-ingest-api" }
+mm-node-api = { path = "crates/mm-node-api" }
+mm-nodes-basic = { path = "crates/mm-nodes-basic" }
 mm-ops = { path = "crates/mm-ops" }
+mm-render = { path = "crates/mm-render" }
+mm-render-api = { path = "crates/mm-render-api" }
+mm-runtime = { path = "crates/mm-runtime" }
+mm-serve = { path = "crates/mm-serve" }
 mm-store = { path = "crates/mm-store" }
+mm-testkit = { path = "crates/mm-testkit" }
+mm-text-api = { path = "crates/mm-text-api" }
+mm-text-glyphon = { path = "crates/mm-text-glyphon" }
+mm-trace = { path = "crates/mm-trace" }
+mm-types = { path = "crates/mm-types" }
 mm-ui-layout = { path = "crates/mm-ui-layout" }
 mm-ui-wgpu = { path = "crates/mm-ui-wgpu" }
-mm-audio-cpal = { path = "crates/mm-audio-cpal" }
-mm-ingest = { path = "crates/mm-ingest" }
-mm-serve = { path = "crates/mm-serve" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -92,8 +95,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgsl-in", "wgsl-out"] }
 bindgen = "0.73"
 cc = "1.2"
-mm-color-lut = { path = "crates/mm-color-lut" }
-mm-color-ocio = { path = "crates/mm-color-ocio" }
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
