@@ -1,11 +1,40 @@
 //! 文字起こしの取り込み（`mm ingest` の付属ファイルから DB へ）と `mm search`。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mm_ingest::CacheLayout;
 use mm_ingest_api::Transcript;
 use mm_store::{Store, TranscriptInput, WordInput};
 use mm_types::{AssetId, MmError, Result};
+
+/// `mm search`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 文字起こしから語を引く。1 行に 1 件（素材、始まりと終わりの秒、単語の ID、続きの文字）。
+    Search {
+        dir: PathBuf,
+        query: String,
+        #[arg(long, default_value_t = DEFAULT_LIMIT)]
+        limit: usize,
+        /// 1 行に 1 件の JSON（時刻は有理数）で出す。
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Search {
+                dir,
+                query,
+                limit,
+                json,
+            } => search(&dir, &query, limit, json),
+        }
+    }
+}
 
 /// `mm search` が出す件数の既定。
 pub const DEFAULT_LIMIT: usize = 50;

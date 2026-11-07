@@ -14,6 +14,25 @@ use crate::commands::{
 };
 use crate::describe::describe_op_text;
 
+/// `mm proposal`。上の段の登録は `main.rs` の 1 行。
+#[derive(Subcommand)]
+pub enum Cmd {
+    /// Claude の編集の提案（保留、一覧、承認、却下、保留に戻す）。
+    Proposal {
+        #[command(subcommand)]
+        command: ProposalCommand,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Proposal { command } => run(command),
+        }
+    }
+}
+
 /// `mm proposal` のサブコマンド。
 #[derive(Subcommand)]
 pub enum ProposalCommand {

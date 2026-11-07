@@ -2,7 +2,7 @@
 //! 書く操作は書き手のロックを取れたときだけ受け、別のプロセスが書いているときは拒否する。
 //! 読むだけのコマンド（`log`、`diff`、`export`）はロックを取らずに開き、アプリの邪魔をしない。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mm_doc::Project;
@@ -16,6 +16,94 @@ use crate::describe::describe_txns;
 use crate::opargs::{parse_op, usage};
 use crate::project::load_json_absolute;
 use crate::remote;
+
+/// `project.mmdb` のフォルダーを扱うサブコマンド。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 空のプロジェクト（`project.mmdb`）を作る。
+    New { dir: PathBuf },
+    /// `versions/` のフォルダーか、1 つの JSON から `project.mmdb` を作る。
+    Import {
+        dir: PathBuf,
+        /// `versions/` のフォルダー、または 1 つのプロジェクトの JSON。
+        source: PathBuf,
+        /// すでにある `project.mmdb` を（バックアップを `backups/` に残して）置き換える。
+        #[arg(long)]
+        overwrite: bool,
+    },
+    /// `versions/` に決定的な JSON を書く。
+    Export {
+        dir: PathBuf,
+        /// 名前付きバージョンとして残す。
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// 操作を適用する。`mm op <dir> ripple --cut c12 --edge out --by -0.4`。
+    ///
+    /// 引数は操作ごとのフィールドの名前（`mm op --schema` が一覧）。複雑なフィールドは `--json '{...}'`、
+    /// 元にしたバージョンは `--base <バージョン>`、記録の名前は `--label <名前>`。
+    Op {
+        dir: Option<PathBuf>,
+        /// 操作の名前（addLayer、ripple、setParam など）。
+        op_name: Option<String>,
+        /// 全部の操作の JSON Schema を出す。
+        #[arg(long)]
+        schema: bool,
+        /// 複数の操作を 1 つのトランザクションとして適用する（`Transaction` の JSON）。
+        #[arg(long)]
+        txn: Option<PathBuf>,
+        /// 操作の引数（`--フィールド 値` の並び）。
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// 直前のトランザクションを取り消す。
+    Undo { dir: PathBuf },
+    /// 取り消したトランザクションをやり直す。
+    Redo { dir: PathBuf },
+    /// 操作の記録を出す。
+    Log { dir: PathBuf },
+    /// 2 つのバージョンの間の意味の差分を出す。バージョンは番号、`head`、名前付きバージョンの名前。
+    Diff {
+        dir: PathBuf,
+        from: String,
+        to: String,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::New { dir } => new_project(&dir),
+            Self::Import {
+                dir,
+                source,
+                overwrite,
+            } => import(&dir, &source, overwrite),
+            Self::Export { dir, name } => export(&dir, name.as_deref()),
+            Self::Op { schema: true, .. } => {
+                schema();
+                Ok(())
+            }
+            Self::Op {
+                dir,
+                op_name,
+                txn,
+                args,
+                ..
+            } => {
+                let dir = dir.ok_or_else(|| {
+                    MmError::InvalidArgument("プロジェクトのフォルダーを渡す".into())
+                })?;
+                op(&dir, op_name.as_deref(), &args, txn.as_deref())
+            }
+            Self::Undo { dir } => undo(&dir),
+            Self::Redo { dir } => redo(&dir),
+            Self::Log { dir } => log(&dir),
+            Self::Diff { dir, from, to } => diff(&dir, &from, &to),
+        }
+    }
+}
 
 /// 記録に残す操作経路の種類と名前。
 const ACTOR_KIND: &str = "cli";

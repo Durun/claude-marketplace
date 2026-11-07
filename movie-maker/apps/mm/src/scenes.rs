@@ -12,6 +12,23 @@ use mm_types::{CompositionId, MmError, RationalTime, Result, Size};
 use crate::perf::{Budget, Item, Limit, PerfArgs};
 use crate::project::load_project;
 
+/// 内部のサブコマンド。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// `perf run startup` が起動する子プロセス。
+    #[command(hide = true)]
+    ProbeStartup { project: std::path::PathBuf },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::ProbeStartup { project } => probe_child(&project),
+        }
+    }
+}
+
 /// 子プロセスが「入力を受け付けられる」ときに標準出力へ出す行。
 pub const READY_LINE: &str = "ready";
 /// 子プロセスが最初のフレームを描き終えたときの行。
