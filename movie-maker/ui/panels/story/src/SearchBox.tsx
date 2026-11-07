@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { StoryAsset, StoryHit } from "@mm/sdk";
+import type { StoryAsset, StoryHit } from "./api.ts";
 import { formatClock, toSeconds } from "./model.ts";
 
 export interface SearchBoxProps {

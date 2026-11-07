@@ -1,4 +1,5 @@
-import type { Op, Rating, StoryApi, StoryHit, StoryWord, Topic, WordRange } from "@mm/sdk";
+import type { Op, Rating, Topic } from "@mm/sdk";
+import type { StoryApi, StoryHit, StoryWord, WordRange } from "./api.ts";
 import { addTopicOp, cutOp, fixOp, hideOp, insertTopicsOp, rateOp, tagOp } from "./ops.ts";
 import { seekToCut, seekToSource, type Loaded, type Tray } from "./useStory.ts";
 

@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen as tauriListen } from "@tauri-apps/api/event";
+import type { MediaInvoke, MediaListen } from "@mm/sdk";
 
 /** 素材の取り込みの状態。`ready` は作るべき出力が全部ある、`partial` は足りない、`missing` は元のファイルが無い。 */
 export type MediaStatus = "ready" | "partial" | "missing";
@@ -77,15 +78,6 @@ export interface MediaApi {
   onProgress: (handler: (event: ImportEvent) => void) => Promise<() => void>;
   onDrop: (handler: (event: DropEvent) => void) => Promise<() => void>;
 }
-
-/** Tauri の invoke と同じ形の関数。テストで差し替える。 */
-export type MediaInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
-
-/** Tauri の listen と同じ形の関数。テストで差し替える。 */
-export type MediaListen = (
-  event: string,
-  handler: (e: { payload: unknown }) => void,
-) => Promise<UnlistenFn>;
 
 interface DropPayload {
   paths?: string[];

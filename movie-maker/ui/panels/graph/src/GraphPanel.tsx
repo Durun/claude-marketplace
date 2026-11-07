@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { Keyframe, Op, Param, ParamRef } from "@mm/sdk";
-import { keyIndexAt, numbersOf, toSec } from "./keyframes.ts";
+import { type Keyframe, type Op, type Param, type ParamRef, keyIndexAt, numbersOf, toSec } from "@mm/sdk";
 import {
   curvePath,
   dragHandle,

@@ -1,7 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { CompMixer, LayerAudio, Op } from "./generated/ops.ts";
-import type { MediaInvoke, MediaListen } from "./media.ts";
+import type { CompMixer, LayerAudio, MediaInvoke, MediaListen, Op } from "@mm/sdk";
 
 /** Mixer のトラック 1 本。音を持てるレイヤー（撮影素材、入れ子、sequence）だけ。上のレイヤーが先頭。 */
 export interface MixerTrack {

@@ -1,7 +1,8 @@
 // Deliver パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 // 書き出しは `window.__deliverStep(frames)` を呼んだ分だけ進む（撮る状態を決められるように、時間では進めない）。
 import { render } from "preact";
-import type { DeliverApi, DeliverOverview, ExportItem, ExportRequest, ExportStatus, Op, RenderTarget } from "@mm/sdk";
+import type { Op, RenderTarget } from "@mm/sdk";
+import type { DeliverApi, DeliverOverview, ExportItem, ExportRequest, ExportStatus } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { DeliverPanel } from "../src/index.ts";
 import "../../../shell/src/shell.css";

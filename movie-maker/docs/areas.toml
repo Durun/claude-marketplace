@@ -97,8 +97,6 @@ name = "ui-panels"
 title = "UI（1 つのパネルの縦の切り口）"
 write = [
   "ui/panels/<panel>/",
-  "ui/sdk/src/<panel>.ts",
-  "ui/sdk/src/<panel>.test.ts",
   "apps/movie-maker/src/<panel>/",
   "apps/movie-maker/src/<panel>.rs",
   "apps/movie-maker/src/<panel>_ipc.rs",
@@ -237,7 +235,7 @@ reshape = "integration"
 
 [[shared]]
 path = "ui/sdk/src/index.ts"
-rule = "パネルの API の export を名前の順の位置に 1 行"
+rule = "書かない。パネルの API は ui/panels/<panel>/src/api.ts に置く"
 reshape = "integration"
 
 [[shared]]
@@ -271,8 +269,13 @@ rule = "依存を名前の順の位置に 1 行"
 reshape = "claude-entry"
 
 [[shared]]
+path = "ui/shell/src/panels.ts"
+rule = "パネルの記述子の export を名前の順の位置に 1 行。タブの並びは記述子の order"
+reshape = "app-shell"
+
+[[shared]]
 path = "ui/shell/src/Shell.tsx"
-rule = "タブの列と ShellProps にパネルを 1 行ずつ。並びは表の順"
+rule = "書かない。パネルは panels.ts に 1 行で足す"
 reshape = "app-shell"
 
 [[shared]]
@@ -282,7 +285,7 @@ reshape = "app-shell"
 
 [[shared]]
 path = "ui/shell/src/main.tsx"
-rule = "パネルの API を Shell に渡す 1 行"
+rule = "書かない。API は記述子の createApi が作る"
 reshape = "app-shell"
 
 [[shared]]
@@ -292,7 +295,7 @@ reshape = "app-shell"
 
 [[shared]]
 path = "ui/shell/package.json"
-rule = "パネルのパッケージの依存を名前の順の位置に 1 行"
+rule = "書かない。panels.ts はパネルを相対パスで読む"
 reshape = "app-shell"
 
 [[shared]]
@@ -302,12 +305,12 @@ reshape = "integration"
 
 [[shared]]
 path = "ui/tools/build.ts"
-rule = "デモのエントリーと HTML を 1 つずつ（名前の順）"
+rule = "書かない。panels/*/demo/*.tsx を走査する"
 reshape = "app-shell"
 
 [[shared]]
 path = "ui/tools/screenshot.mjs"
-rule = "撮る関数を 1 つと、名前の表に 1 行（名前の順）"
+rule = "書かない。panels/*/screenshots.mjs を走査する"
 reshape = "app-shell"
 
 [[shared]]

@@ -3,7 +3,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import type { Layer } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { KeyframePanels, PLAYHEAD_EVENT, SEEK_EVENT } from "./keyframePanels.tsx";
+import { KeyframePanels, PLAYHEAD_EVENT, SEEK_EVENT } from "./KeyframePanels.tsx";
 
 const host = document.createElement("div");
 document.body.append(host);

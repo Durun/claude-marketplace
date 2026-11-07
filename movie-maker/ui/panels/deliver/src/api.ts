@@ -1,7 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { Op, RenderTarget } from "./generated/ops.ts";
-import type { MediaInvoke, MediaListen } from "./media.ts";
+import type { MediaInvoke, MediaListen, Op, RenderTarget } from "@mm/sdk";
 
 /** コンポジション 1 つ。レンダーターゲットの `composition` の選択肢と、範囲の表示に使う。時間は秒。 */
 export interface DeliverComposition {

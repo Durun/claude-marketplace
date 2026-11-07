@@ -1,6 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { createIpcTransport, type OpResult } from "./client.ts";
-import type { Op, RationalTime, Selection, Topic } from "./generated/ops.ts";
+import { createIpcTransport, type Op, type OpResult, type RationalTime, type Selection, type Topic } from "@mm/sdk";
 
 /** Story の素材 1 つ（アプリの `story_overview`）。時間は秒。 */
 export interface StoryAsset {

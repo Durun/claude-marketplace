@@ -1,17 +1,34 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { generateCss } from "../theme/src/index.ts";
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
-const DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/main.tsx", import.meta.url));
-const MEDIA_DEMO_ENTRY = fileURLToPath(new URL("../panels/media/demo/main.tsx", import.meta.url));
-const DELIVER_DEMO_ENTRY = fileURLToPath(new URL("../panels/deliver/demo/main.tsx", import.meta.url));
-const MIXER_DEMO_ENTRY = fileURLToPath(new URL("../panels/mixer/demo/main.tsx", import.meta.url));
-const STORY_DEMO_ENTRY = fileURLToPath(new URL("../panels/story/demo/main.tsx", import.meta.url));
-const KEYFRAMES_DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/keyframes.tsx", import.meta.url));
-const REVIEW_DEMO_ENTRY = fileURLToPath(new URL("../panels/review/demo/main.tsx", import.meta.url));
+const PANELS = fileURLToPath(new URL("../panels/", import.meta.url));
+
+interface Demo {
+  /** dist/ に出す名前。`panels/<panel>/demo/main.tsx` は `<panel>-demo`、`<name>.tsx` は `<name>-demo`。 */
+  name: string;
+  title: string;
+  entry: string;
+}
+
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** `panels/<panel>/demo/*.tsx` を走査して、パネルごとのデモのページを集める。アプリには載せない。 */
+const findDemos = async (): Promise<Demo[]> => {
+  const demos: Demo[] = [];
+  for (const panel of (await readdir(PANELS)).sort()) {
+    const dir = `${PANELS}${panel}/demo/`;
+    const files = await readdir(dir).catch(() => [] as string[]);
+    for (const file of files.filter((f) => f.endsWith(".tsx")).sort()) {
+      const base = file === "main.tsx" ? panel : file.slice(0, -".tsx".length);
+      demos.push({ name: `${base}-demo`, title: `${capitalize(base)} demo`, entry: `${dir}${file}` });
+    }
+  }
+  return demos;
+};
 
 // Tauri は dist/ をそのまま読む。相対パスだけにして、どの場所から開いても動くようにする。
 const page = (title: string, name: string): string => `<!doctype html>
@@ -30,18 +47,10 @@ const page = (title: string, name: string): string => `<!doctype html>
 </html>
 `;
 
+const demos = await findDemos();
 await mkdir(DIST, { recursive: true });
 await build({
-  entryPoints: {
-    shell: ENTRY,
-    "inspector-demo": DEMO_ENTRY,
-    "media-demo": MEDIA_DEMO_ENTRY,
-    "story-demo": STORY_DEMO_ENTRY,
-    "deliver-demo": DELIVER_DEMO_ENTRY,
-    "mixer-demo": MIXER_DEMO_ENTRY,
-    "review-demo": REVIEW_DEMO_ENTRY,
-    "keyframes-demo": KEYFRAMES_DEMO_ENTRY,
-  },
+  entryPoints: { shell: ENTRY, ...Object.fromEntries(demos.map((d) => [d.name, d.entry])) },
   outdir: DIST,
   bundle: true,
   format: "iife",
@@ -53,17 +62,4 @@ await build({
 });
 await writeFile(`${DIST}theme.css`, generateCss());
 await writeFile(`${DIST}index.html`, page("Movie Maker", "shell"));
-// Inspector を fixtures のデータで確かめるページ。アプリには載せない。
-await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-demo"));
-// Media をモックの API で動かすページ。アプリには載せない。
-await writeFile(`${DIST}media-demo.html`, page("Media demo", "media-demo"));
-// Story をモックの API で動かすページ。アプリには載せない。
-await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));
-// Inspector のキーフレームナビゲーターと Graph を手元のレイヤーで動かすページ。アプリには載せない。
-await writeFile(`${DIST}keyframes-demo.html`, page("Keyframes demo", "keyframes-demo"));
-// Deliver をモックの API で動かすページ。アプリには載せない。
-await writeFile(`${DIST}deliver-demo.html`, page("Deliver demo", "deliver-demo"));
-// Mixer をモックの API で動かすページ。アプリには載せない。
-await writeFile(`${DIST}mixer-demo.html`, page("Mixer demo", "mixer-demo"));
-// Review をモックの API で動かすページ。アプリには載せない。
-await writeFile(`${DIST}review-demo.html`, page("Review demo", "review-demo"));
+for (const d of demos) await writeFile(`${DIST}${d.name}.html`, page(d.title, d.name));

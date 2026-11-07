@@ -1,4 +1,5 @@
-import type { Keyframe, Op, OpName, OpOf, ParamRef, ParamValue, ProposalOp, ProposalScope, RationalTime } from "@mm/sdk";
+import type { Keyframe, Op, OpName, OpOf, ParamRef, ParamValue, RationalTime } from "@mm/sdk";
+import type { ProposalOp, ProposalScope } from "./api.ts";
 
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;

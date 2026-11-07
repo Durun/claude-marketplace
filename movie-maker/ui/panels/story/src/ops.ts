@@ -1,4 +1,5 @@
-import type { Op, Rating, StoryWord, Topic, WordRange } from "@mm/sdk";
+import type { Op, Rating, Topic } from "@mm/sdk";
+import type { StoryWord, WordRange } from "./api.ts";
 import { newId } from "./model.ts";
 
 /**

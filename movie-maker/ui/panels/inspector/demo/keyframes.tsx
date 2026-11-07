@@ -2,8 +2,8 @@
 // 送った操作は applyKeyframeOp で同じ画面に適用して見せる（本番は mm-ops が適用する）。
 import { render } from "preact";
 import { useState } from "preact/hooks";
-import type { Keyframe, Layer, Op, Param } from "@mm/sdk";
-import { applyKeyframeOp, GraphPanel } from "@mm/graph";
+import { applyKeyframeOp, type Keyframe, type Layer, type Op, type Param } from "@mm/sdk";
+import { GraphPanel } from "@mm/graph";
 import { InspectorPanel } from "../src/index.ts";
 import "./demo.css";
 import "./keyframes.css";

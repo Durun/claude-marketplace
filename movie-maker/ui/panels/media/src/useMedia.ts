@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
-import type { MediaApi, MediaItem } from "@mm/sdk";
+import type { MediaApi, MediaItem } from "./api.ts";
 import { IDLE_PROGRESS, reduceProgress, type ImportProgress } from "./progress.ts";
 
 /** 購読を始める。解除は非同期で返るので、先に外れたら返ってきた時点で解除する。 */

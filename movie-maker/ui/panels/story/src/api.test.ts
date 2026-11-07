@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Op } from "./generated/ops.ts";
-import { createIpcStoryApi } from "./story.ts";
+import type { Op } from "@mm/sdk";
+import { createIpcStoryApi } from "./api.ts";
 
 describe("createIpcStoryApi", () => {
   it("コマンドの名前と引数をアプリの形で渡す", async () => {

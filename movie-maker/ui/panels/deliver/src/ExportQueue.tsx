@@ -1,4 +1,4 @@
-import type { ExportItem, ExportStatus, ExportVerification } from "@mm/sdk";
+import type { ExportItem, ExportStatus, ExportVerification } from "./api.ts";
 import { formatBytes, formatDuration, PERCENT, percent } from "./format.ts";
 
 const STATE_LABEL: Record<ExportItem["state"], string> = {

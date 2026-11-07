@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createIpcReviewApi, PROPOSALS_CHANGED_EVENT } from "./review.ts";
-import type { MediaListen } from "./media.ts";
+import type { MediaListen } from "@mm/sdk";
+import { createIpcReviewApi, PROPOSALS_CHANGED_EVENT } from "./api.ts";
 
 type Handler = (e: { payload: unknown }) => void;
 

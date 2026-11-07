@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createIpcDeliverApi, EXPORT_PROGRESS_EVENT } from "./deliver.ts";
-import type { MediaListen } from "./media.ts";
+import type { MediaListen } from "@mm/sdk";
+import { createIpcDeliverApi, EXPORT_PROGRESS_EVENT } from "./api.ts";
 
 type Handler = (e: { payload: unknown }) => void;
 

@@ -1,4 +1,4 @@
-import type { Proposal } from "@mm/sdk";
+import type { Proposal } from "./api.ts";
 import { approveLabel, describeOp, describeScope, relativeTime } from "./model.ts";
 import { checkedIndexes, type ReviewState } from "./useReview.ts";
 
