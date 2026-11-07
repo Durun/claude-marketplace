@@ -11,6 +11,7 @@
     "@mm/graph": "workspace:*",
     "@mm/inspector": "workspace:*",
     "@mm/story": "workspace:*",
-    "@mm/deliver": "workspace:*"
+    "@mm/deliver": "workspace:*",
+    "@mm/review": "workspace:*"
   }
 }

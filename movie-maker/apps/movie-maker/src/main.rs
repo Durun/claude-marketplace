@@ -36,6 +36,10 @@ mod project;
 #[cfg(windows)]
 mod render;
 #[cfg(windows)]
+mod review;
+#[cfg(windows)]
+mod review_ipc;
+#[cfg(windows)]
 mod sequence_edit;
 #[cfg(windows)]
 mod source;

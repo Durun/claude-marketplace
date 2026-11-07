@@ -1,0 +1,183 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-review-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-review-card[data-state="pending"] {
+  border-color: var(--mm-color-border-strong);
+}
+
+.mm-review-name {
+  margin: 0;
+  font-size: var(--mm-font-size-base);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.mm-review-meta,
+.mm-review-scope,
+.mm-review-status {
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-review-scope,
+.mm-review-ops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-review-ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-review-op {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mm-space-xs);
+  overflow-wrap: anywhere;
+}
+
+.mm-review-op-plain {
+  overflow-wrap: anywhere;
+}
+
+.mm-review-op-plain[data-skipped="true"] {
+  color: var(--mm-color-text-muted);
+  text-decoration: line-through;
+}
+
+.mm-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.mm-review-toggle {
+  display: flex;
+  flex: 1 0 100%;
+}
+
+.mm-review-actions .mm-review-button:nth-of-type(1) {
+  margin-left: auto;
+}
+
+.mm-review-button,
+.mm-review-seg,
+.mm-review-fold {
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mm-review-button {
+  border-radius: var(--mm-radius-md);
+}
+
+.mm-review-seg:first-child {
+  border-radius: var(--mm-radius-md) 0 0 var(--mm-radius-md);
+}
+
+.mm-review-seg:last-child {
+  margin-left: calc(var(--mm-border-width) * -1);
+  border-radius: 0 var(--mm-radius-md) var(--mm-radius-md) 0;
+}
+
+.mm-review-seg[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+  font-weight: 700;
+}
+
+.mm-review-button:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
+.mm-review-primary:not(:disabled) {
+  border-color: var(--mm-color-accent);
+  color: var(--mm-color-task-link);
+  font-weight: 700;
+}
+
+.mm-review-button:focus-visible,
+.mm-review-seg:focus-visible,
+.mm-review-fold:focus-visible,
+.mm-review-op input:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-review-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  width: 100%;
+  margin-bottom: var(--mm-space-md);
+  border-radius: var(--mm-radius-md);
+  font-weight: 700;
+  text-align: left;
+}
+
+.mm-review-chevron {
+  width: var(--mm-size-chevron);
+  height: var(--mm-size-chevron);
+  border-right: var(--mm-stroke-focus) solid currentcolor;
+  border-bottom: var(--mm-stroke-focus) solid currentcolor;
+  transform: rotate(45deg) translate(-25%, -25%);
+}
+
+.mm-review-fold[aria-expanded="false"] .mm-review-chevron {
+  transform: rotate(-45deg);
+}
+
+.mm-review-conflict,
+.mm-review-error {
+  margin: 0;
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-danger);
+  border-radius: var(--mm-radius-sm);
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mm-review-empty {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+}

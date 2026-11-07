@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { DeliverPanel } from "@mm/deliver";
 import { MediaPanel } from "@mm/media";
+import { ReviewPanel } from "@mm/review";
 import {
   invoke,
   onDocChanged,
@@ -10,6 +11,7 @@ import {
   type MediaApi,
   type MediaListen,
   type Op,
+  type ReviewApi,
   type StoryApi,
 } from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
@@ -33,12 +35,17 @@ export interface ShellProps {
   story?: StoryApi;
   /** Deliver パネルがアプリを呼ぶ API。無ければ Deliver は出さない。 */
   deliver?: DeliverApi;
+  /** Review パネルがアプリを呼ぶ API。無ければ Review は出さない。 */
+  review?: ReviewApi;
   /** Tauri のイベントの購読。無ければ本番の listen。テストで差し替える。 */
   listen?: MediaListen;
 }
 
 /** 左の列で見せているパネル。XP のムービーメーカーの Tasks と Collections の切り替えに倣う。 */
 type LeftTab = "tasks" | "media" | "story" | "deliver";
+
+/** 右の列で見せているパネル。左の列のタブに倣う。 */
+type RightTab = "inspector" | "review";
 
 /** Tasks の項目のうち、Media を開いて取り込みを始めるもの。 */
 const IMPORT_COMMAND = "media.import";
@@ -51,6 +58,28 @@ const TABS: { id: LeftTab; label: string }[] = [
   { id: "story", label: "Story" },
   { id: "deliver", label: "Deliver" },
 ];
+
+const RIGHT_TABS: { id: RightTab; label: string }[] = [
+  { id: "inspector", label: "Inspector" },
+  { id: "review", label: "Review" },
+];
+
+const RightTabs = ({ tab, onSelect }: { tab: RightTab; onSelect: (tab: RightTab) => void }) => (
+  <div class="mm-shell-tabs mm-shell-right-tabs" role="tablist" aria-label="Right panel">
+    {RIGHT_TABS.map(({ id, label }) => (
+      <button
+        key={id}
+        type="button"
+        role="tab"
+        class="mm-shell-tab"
+        aria-selected={tab === id}
+        onClick={() => onSelect(id)}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+);
 
 const LeftTabs = ({ tabs, tab, onSelect }: { tabs: LeftTab[]; tab: LeftTab; onSelect: (tab: LeftTab) => void }) => (
   <div class="mm-shell-tabs" role="tablist" aria-label="Left panel">
@@ -139,8 +168,9 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
   return { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits };
 };
 
-/** 左に Tasks、Media、Story、Deliver（タブで切り替え）、右に Inspector と Graph。API を渡したパネルだけタブを出す。 */
-export const Shell = ({ sendOp, media, story, deliver, listen }: ShellProps) => {
+/** 左に Tasks、Media、Story、Deliver、右に Inspector（その下に Graph）と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
+export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellProps) => {
+  const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const selection = useLayerSelection();
   const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, deliver });
   const docChanges = useDocChanges(listen);
@@ -175,7 +205,15 @@ export const Shell = ({ sendOp, media, story, deliver, listen }: ShellProps) => 
             {opError}
           </p>
         )}
-        <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={send} />
+        {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
+        <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
+          <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={send} />
+        </div>
+        {review && (
+          <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
+            <ReviewPanel api={review} refreshKey={docChanges} />
+          </div>
+        )}
       </aside>
     </>
   );

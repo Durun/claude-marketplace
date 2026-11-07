@@ -139,6 +139,8 @@ pub struct Shared {
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
+    /// Review パネルが Program に当てて見せている提案。
+    pub review_preview: crate::review::PreviewSlot,
     /// `core` の取り消しのスタックのコピー。取り消しの文言に、戻したトランザクションの発行元を出すのに使う。
     pub history: HistoryMirror,
     /// いま開いているプロジェクトのデータ。Timeline の表示と WebView のレイヤーの一覧はここから作る。
@@ -179,6 +181,7 @@ impl Shared {
             edit_lane: Mutex::new(None),
             core: OnceLock::new(),
             reload_touched: Mutex::new(Vec::new()),
+            review_preview: crate::review::PreviewSlot::default(),
             history: HistoryMirror::default(),
             doc: Mutex::new(None),
             doc_serial: AtomicU64::new(0),

@@ -1,6 +1,6 @@
 [package]
 name = "mm"
-description = "movie-maker の CLI。mm new、import、export、op、undo、redo、log、diff、ingest、render、perf"
+description = "movie-maker の CLI。mm new、import、export、op、proposal、undo、redo、log、diff、ingest、render、perf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
