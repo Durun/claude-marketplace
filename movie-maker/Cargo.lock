@@ -3223,6 +3223,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-nodes-cef"
+version = "0.1.0"
+dependencies = [
+ "mm-gpu",
+ "mm-host-api",
+ "mm-host-cef",
+ "mm-node-api",
+ "mm-testkit",
+ "mm-types",
+ "png",
+ "serde_json",
+ "tracing",
+ "wgpu",
+ "windows",
+]
+
+[[package]]
 name = "mm-ops"
 version = "0.1.0"
 dependencies = [
