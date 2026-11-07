@@ -105,3 +105,12 @@ cef = { version = "156.3", default-features = false, features = ["accelerated_os
 
 [workspace.lints.clippy]
 all = "warn"
+
+# テストのバイナリが多く、Windows ではデバッグ情報（PDB）の書き出しとリンクが重い。バックトレースに要る行番号だけ残す。
+[profile.dev]
+debug = "line-tables-only"
+
+# 依存は書き換えないので最適化し、画像や proptest のテストの実行を速くする。作り直しの費用はキャッシュが払う。
+[profile.dev.package."*"]
+opt-level = 2
+debug = false

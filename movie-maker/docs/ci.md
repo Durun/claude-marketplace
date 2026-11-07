@@ -1,28 +1,66 @@
 # CI
 
-`.github/workflows/movie-maker.yml`。`movie-maker/**` か workflow 自体を変えた PR、main への push、手動の起動（`workflow_dispatch`）、夜間（`schedule`、毎日 03:00 JST）で走る。権限は `contents: read` だけで、秘密の値は使わない（例外は `perf-record` の `issues: write`）。Rust のバージョンは `rust-toolchain.toml` に従う。夜間は `perf-record` だけが走る。
+`.github/workflows/movie-maker.yml`。PR、merge queue（`merge_group`）、`movie-maker/**` か workflow 自体を変えた main への push、手動の起動（`workflow_dispatch`）、夜間（`schedule`、毎日 03:00 JST）で走る。権限は `contents: read` が基本で、秘密の値は使わない（`issues: write` を持つのは `check`、`ffmpeg`、`perf-record`）。Rust のバージョンは `rust-toolchain.toml` に従う。夜間は `perf-record` だけが走る。
+
+PR と merge queue は paths で絞らず、`changes` ジョブが差分（PR は `origin/<base>...HEAD`、merge queue は `base_sha...head_sha`）を見て、`movie-maker/` に関係の無い変更では各ジョブを飛ばす。必須のチェックは報告が無いと待ち続けるが、飛ばしたジョブは成功と見なされる。
 
 | ジョブ | 環境 | いつ | 内容 |
 |---|---|---|---|
-| `check` | windows-latest | PR、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（main と手動は `--include-ignored` を付け、通しの試験も回す）。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない）。`fixtures/golden/warp/` があれば、WARP で期待画像のテストを必須で回す手順が続く |
-| `ffmpeg` | windows-latest | PR、main、手動 | BtbN の FFmpeg 9.0 の shared ビルドを展開し、feature `ffmpeg` などを入れた clippy とテスト（feature で中身が変わるクレートと `mm-ingest` だけ。main と手動は通しの試験も回す）、`mm render fixtures/projects/stage0/project.json` の書き出し。LLVM は runner のものを使い、無ければ choco で入れる。手順の元は [mm-decode-ffmpeg の README](../crates/mm-decode-ffmpeg/README.md) |
+| `changes` | ubuntu-latest | 全部 | `rust`（`movie-maker/**` か workflow）と `ui`（`ui/**` か `crates/mm-ops/schema/**`）に変更があるか。push、手動、夜間は常に true |
+| `check` | windows-latest | PR、merge queue、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`scripts/nextest-ci.sh --workspace`（cargo-nextest。下の「テストの回し方」）。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない）。`fixtures/golden/warp/` があれば、WARP で期待画像のテストを必須で回す手順が続く |
+| `ffmpeg` | windows-latest | PR、merge queue、main、手動 | BtbN の FFmpeg 9.0 の shared ビルドを展開し、feature `ffmpeg` などを入れた clippy とテスト（feature で中身が変わるクレートと `mm-ingest` だけ）、`mm render fixtures/projects/stage0/project.json` の書き出し。LLVM は runner のものを使い、無ければ choco で入れる。手順の元は [mm-decode-ffmpeg の README](../crates/mm-decode-ffmpeg/README.md) |
 | `semver` | ubuntu-latest | PR のみ | `cargo-semver-checks` で `crates/mm-*-api` の全部を PR の基点（`origin/<base>`）と比べる |
-| `conventions` | ubuntu-latest | PR、main、手動 | `scripts/check-conventions.sh`。ルートの `Cargo.toml` の `mm-*` が名前の順にまとまっているか。PR では、足した RFC のファイルの名前が PR の番号で始まるか（[並行開発の境界](design/14-dev-structure.md#並行開発の境界)） |
-| `ui` | ubuntu-latest | `movie-maker/ui/**` か `crates/mm-ops/schema/**` を変えた PR、main、手動 | Node 24 と pnpm 12（pnpm のキャッシュ）。`pnpm install --frozen-lockfile` のあと `gen:check`（コミット済みの `generated/ops.ts` が `ops.json` と合うか）、`build`、`typecheck`、`lint`、`test`。PR で `ui/` に差が無ければ、ジョブは走るが各手順をスキップする |
+| `conventions` | ubuntu-latest | PR、merge queue、main、手動 | `scripts/check-conventions.sh`。ルートの `Cargo.toml` の `mm-*` が名前の順にまとまっているか。PR では、足した RFC のファイルの名前が PR の番号で始まるか（[並行開発の境界](design/14-dev-structure.md#並行開発の境界)） |
+| `ui` | ubuntu-latest | `ui/**` か `crates/mm-ops/schema/**` を変えた PR と merge queue、main、手動 | Node 24 と pnpm 12（pnpm のキャッシュ）。`pnpm install --frozen-lockfile` のあと `gen:check`（コミット済みの `generated/ops.ts` が `ops.json` と合うか）、`build`、`typecheck`、`lint`、`test` |
 | `perf-gate` | windows-latest | PR のみ（docs、ui、テストだけの PR は測らず成功で終わる） | 性能の回帰のゲート。基点と PR の `mm` を作り、`scripts/perf-gate.sh` で `mm perf run cpu` と、WARP の `playback`・`scrub` を交互に回して比べる。下の「性能の回帰のゲート」 |
-| `perf-record` | windows-latest | main、夜間 | `mm perf run cpu` を 10 回測り、結果を artifact（90 日）に残し、予算を超えた項目を issue にする。`issues: write` を持つのはこのジョブだけ |
+| `perf-record` | windows-latest | main、夜間 | `mm perf run cpu` を 10 回測り、結果を artifact（90 日）に残し、予算を超えた項目を issue にする |
 
-## PR と main の違い
+## PR と merge queue と main の違い
 
-PR は速く返すことを優先し、1 本が 30 秒を超える通しの試験を `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。main への push と手動の起動は `-- --include-ignored` で全部を回す。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は `--skip` で除く。
+PR は速く返すことを優先し、1 本が 30 秒を超える通しの試験を `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。merge queue、main への push、手動の起動は全部を回す（nextest の `--run-ignored all`）。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は filterset で除く。
 
-| 項目 | PR | main の push、手動 |
+先行事例は GitHub の merge queue（Bors、Zuul のゲートの系譜）。PR では軽い検査で早く返し、main に入る直前の組み合わせ（基点の先端と PR を合わせたコミット）で重い試験を回す。重い試験が main を壊すのを、入った後ではなく入る前に止める。
+
+| 項目 | PR | merge queue、main の push、手動 |
 |---|---|---|
 | 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`caption_burn_in`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
 | `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
-| `perf-gate` | 性能に関わるファイルを変えたときだけ | なし（`perf-record` が測る） |
+| `perf-gate`、`semver` | 回す（`perf-gate` は性能に関わるファイルを変えたときだけ） | なし（main では `perf-record` が測る） |
+| 再試行で通ったテストの起票 | しない（job summary と注釈に出すだけ） | merge queue と main の push でする |
 
-手元で全部を回すときは `cargo test --workspace -- --include-ignored --skip 操作_10_万件の大きさ --skip 一万語の素材`。
+手元で全部を回すときは `cargo nextest run --workspace --run-ignored all -E 'not (test(操作_10_万件の大きさ) | test(一万語の素材))'`。
+
+merge queue は GitHub の ruleset で有効にする（リポジトリの設定。workflow からは変えない）。必須のチェックは `check` と `ffmpeg`。
+
+## テストの回し方
+
+テストは [cargo-nextest](https://nexte.st/) で回す。設定は `.config/nextest.toml`、CI の入り口は `scripts/nextest-ci.sh`。nextest はテストを 1 つずつ別のプロセスで走らせるので、同じプロセスで wgpu のデバイスを並列に作る衝突（`STATUS_HEAP_CORRUPTION`）が起きない。doc テストは無いので `cargo test --doc` は回さない。
+
+| プロファイル | 再試行 | 用途 |
+|---|---|---|
+| `default` | なし | 手元。揺れを隠さない |
+| `ci` | 2 回（1 秒おき） | CI。JUnit を `target/nextest/ci/junit.xml` に出す |
+| `quarantine` | なし | 隔離したテストだけ。結果はゲートにせず、JUnit を `target/nextest/quarantine/junit-quarantine.xml` に出す |
+
+JUnit は artifact（`junit-check`、`junit-ffmpeg`、14 日）に残る。
+
+## 揺れるテストの隔離
+
+先行事例:
+
+- nextest の再試行と JUnit。再試行で通ったテストは JUnit の `flakyFailure` に残る。これを揺れの検出に使う
+- Google の TAP と Uber の自動隔離。揺れたテストは自動で隔離し、ゲートから外したまま回し続けて記録し、持ち主に直させる。隔離の一覧はコードの外（データベース）に置き、コミット無しで足し外しする
+- Chromium の flakiness dashboard。テストごとの結果の履歴を残し、直ったかを判断する
+
+ここでは、隔離の一覧をラベル `flaky` の開いた issue にする。CI がコミット無しで足せて、直す PR の `Closes #N` で自動で外れる。
+
+1. `scripts/nextest-ci.sh` は、まずラベル `flaky` の開いた issue を読む。題 `flaky: <binary_id> <テスト名>` から nextest の filterset を作る（この実行に無いバイナリの issue は除く）
+2. 隔離したテストを除いて `--profile ci` で回す。この結果がジョブの成否になる
+3. 隔離したテストだけを `--profile quarantine` で回す。結果は問わず、job summary と JUnit に残す
+4. 2 の JUnit から、再試行で通ったテストを拾う。PR では job summary と注釈に出すだけ。merge queue と main の push では issue を作る（同じ題の開いた issue があれば、実行の URL をコメントに足す）。次の実行から隔離される
+5. 直したら、直す PR の本文に `Closes #<issue>` と書く。マージで issue が閉じ、隔離が外れる。隔離中の実行で続けて通っていれば、issue を閉じるだけでもよい
+
+再試行でも落ちたテストは揺れではなく失敗として扱い、ジョブを落とす。issue を読めない（トークンが無いなど）ときは、隔離なしで回す。
 
 ## API クレートのバージョンの検査
 
@@ -36,7 +74,7 @@ API クレートのインターフェースを壊す PR は、バージョンを
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo nextest run --workspace       # cargo test --workspace でも回る
 sh scripts/check-ffmpeg.sh clippy   # FFmpeg あり（FFMPEG_DIR などは README のとおり）
 sh scripts/check-ffmpeg.sh render
 cargo install cargo-semver-checks --locked

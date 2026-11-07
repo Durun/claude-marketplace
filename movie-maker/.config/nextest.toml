@@ -1,0 +1,27 @@
+# cargo-nextest の設定。CI の使い方と揺れるテストの隔離は docs/ci.md の「揺れるテストの隔離」。
+# nextest はテストを 1 つずつ別のプロセスで走らせる。同じプロセスで wgpu のデバイスを並列に作る衝突が起きない。
+
+# 手元は再試行しない。揺れを隠さず、その場で見えるようにする。
+[profile.default]
+retries = 0
+slow-timeout = { period = "60s" }
+
+# CI。失敗は 2 回まで再試行し、再試行で通ったテストを JUnit の flakyFailure で残す（scripts/nextest-ci.sh が読む）。
+[profile.ci]
+retries = { backoff = "fixed", count = 2, delay = "1s" }
+fail-fast = false
+failure-output = "immediate-final"
+slow-timeout = { period = "60s" }
+
+[profile.ci.junit]
+path = "junit.xml"
+
+# 隔離したテストだけを回す。結果はゲートにせず、JUnit を記録に残す。
+[profile.quarantine]
+retries = 0
+fail-fast = false
+failure-output = "final"
+slow-timeout = { period = "60s" }
+
+[profile.quarantine.junit]
+path = "junit-quarantine.xml"
