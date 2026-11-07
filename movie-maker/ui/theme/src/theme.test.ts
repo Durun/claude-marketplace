@@ -25,6 +25,7 @@ describe("パネルとシェルの CSS", () => {
     "../../panels/tasks/src/tasks.css",
     "../../panels/media/src/media.css",
     "../../panels/story/src/story.css",
+    "../../panels/mixer/src/mixer.css",
     "../../shell/src/shell.css",
   ];
 
