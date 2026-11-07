@@ -154,6 +154,16 @@ impl PassTimer {
 
     /// 読み取りが終わった分の GPU の時間（ナノ秒）を、古い順に返す。待たない。
     pub fn collect(&self) -> Vec<u64> {
+        self.collect_with(wgpu::PollType::Poll)
+    }
+
+    /// 頼んだ読み取りの完了を待ってから、全部の GPU の時間（ナノ秒）を古い順に返す。
+    /// 描画を止めて結果を確定させたい所（試験、書き出しの終わり）が使う。
+    pub fn collect_all(&self) -> Vec<u64> {
+        self.collect_with(wgpu::PollType::wait_indefinitely())
+    }
+
+    fn collect_with(&self, poll: wgpu::PollType) -> Vec<u64> {
         let Some(inner) = self.inner.as_ref() else {
             return Vec::new();
         };
@@ -161,7 +171,7 @@ impl PassTimer {
         if ring.pending.is_empty() {
             return Vec::new();
         }
-        let _ = inner.ctx.device.poll(wgpu::PollType::Poll);
+        let _ = inner.ctx.device.poll(poll);
         let mut out = Vec::new();
         while let Some(&(slot, used)) = ring.pending.front() {
             match inner.slots[slot].state.load(Ordering::Acquire) {
