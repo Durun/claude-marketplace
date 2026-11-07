@@ -87,3 +87,11 @@ body {
   font-size: var(--mm-font-size-sm);
   overflow-wrap: anywhere;
 }
+
+.mm-shell-right-tabs {
+  margin-bottom: var(--mm-space-md);
+}
+
+.mm-shell-right-body[hidden] {
+  display: none;
+}

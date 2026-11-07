@@ -10,6 +10,7 @@
     "preact": "^10.27.0",
     "@mm/inspector": "workspace:*",
     "@mm/story": "workspace:*",
-    "@mm/deliver": "workspace:*"
+    "@mm/deliver": "workspace:*",
+    "@mm/review": "workspace:*"
   }
 }
