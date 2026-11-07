@@ -1,4 +1,4 @@
-# RFC 0016: Inspector のキーフレームの編集と Graph（段階 4）
+# RFC 0017: Inspector のキーフレームの編集と Graph（段階 4）
 
 状態: 採用
 
