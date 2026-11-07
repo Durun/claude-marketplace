@@ -17,7 +17,7 @@ PR は速く返すことを優先し、1 本が 30 秒を超える通しの試�
 
 | 項目 | PR | main の push、手動 |
 |---|---|---|
-| 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
+| 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`caption_burn_in`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
 | `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
 | `perf-gate` | 性能に関わるファイルを変えたときだけ | なし（`perf-record` が測る） |
 
