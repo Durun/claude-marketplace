@@ -5,7 +5,7 @@
 ## 起動
 
 ```sh
-claude plugin marketplace add Durun/claude-marketplace
+claude plugin marketplace add durun-lab/claude-marketplace
 claude plugin install durun-dashboard@durun-toolbox   # フックと MCP を Claude Code に登録する
 pnpm install
 pnpm start                                            # http://localhost:7337
