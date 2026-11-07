@@ -4,7 +4,8 @@
 //! - [`GlyphonRasterizer`]（`glyphon`）: glyphon（wgpu）のグリフの atlas とパイプラインで描く。
 //!
 //! シェーパーはルビの注記を外して親文字だけを組み、`LineBreak::Phrase` なら文節（BudouX）の中で折らない。
-//! 縁取りとふりがなの分だけ `bounds` を広げるが、ここの描画は縁とふりがなを描かない（CSS で描く `mm-text-cef` が描く）。
+//! 縁取りとふりがなの分だけ `bounds` を広げる。描画は縁取りを描く（glyphon も縁があるときは CPU の経路）。
+//! ふりがなは描かない（CSS で描く `mm-text-cef` が描く）。
 //!
 //! `ShapedText` がフォントの名前とグリフの番号を持つので、描画は行組みをやり直さずグリフを引くだけ。
 //! シェーパーとレンダラーは別々に作れる。フォントの読み込みは重いので、同じプロセスでは
@@ -15,6 +16,7 @@ mod gpu;
 mod layout;
 mod markup;
 mod raster;
+mod stroke;
 
 pub use gpu::GlyphonRasterizer;
 
