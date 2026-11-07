@@ -1,4 +1,4 @@
-//! GPU の時間が `mm-trace` に載ること。購読者の登録が他のテストと競合しないよう、1 ファイル 1 テストにする。
+//! GPU の時間が `mm-trace` に載ること。購読者は `with_default` でスレッドごとに置くので、同じプロセスの他のテストと競合しない。
 
 use std::sync::Arc;
 
@@ -15,9 +15,7 @@ use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, Size};
 use tracing_subscriber::prelude::*;
 
 const SIZE: Size = Size::new(64, 36);
-/// 結果は待たずに数フレーム遅れて読むので、間を空けて何枚か描く。
 const FRAMES: u32 = 8;
-const FRAME_GAP: std::time::Duration = std::time::Duration::from_millis(10);
 
 fn project() -> Project {
     let layer = Layer::new(
@@ -41,8 +39,20 @@ fn project() -> Project {
     p
 }
 
+/// 購読者が 1 つだけのとき、tracing は新しい呼び出し箇所の関心を「今のスレッドの購読者」で決めて
+/// プロセス全体に覚える。購読者の無い別のテストのスレッドが先に踏むと「関心なし」で固まり、
+/// このテストのスパンが落ちる。何もしない購読者を全体の既定に 1 つ置き、常に全購読者で決めさせる。
+fn keep_callsite_interest_global() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        tracing::subscriber::set_global_default(tracing_subscriber::registry())
+            .expect("この実行ファイルで全体の購読者を置くのはここだけ");
+    });
+}
+
 #[test]
 fn gpu_の時間が_mm_trace_に載る() {
+    keep_callsite_interest_global();
     let ctx = match GpuContext::shared(&GpuRequest::default()) {
         Ok(ctx) => ctx,
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
@@ -82,14 +92,15 @@ fn gpu_の時間が_mm_trace_に載る() {
                 nodes: &nodes,
             })
             .expect("描ける");
-            std::thread::sleep(FRAME_GAP);
         }
+        // 通常の描画は GPU の読み取りを待たないので、負荷で遅れても結果が決まるよう待って載せる。
+        r.flush_gpu_time();
     });
     let snap = handle.snapshot();
     assert_eq!(snap.spans["render.frame"].count, u64::from(FRAMES));
     assert!(snap.gauges["render.gpu_frame_us"] >= 0.0);
     assert!(
         snap.spans["render.gpu_frame"].count >= 2,
-        "数フレーム遅れて前のフレームの分が出る"
+        "読み取りの空きがあった分のフレームが載る"
     );
 }
