@@ -17,7 +17,7 @@ pub const DEFAULT_DUCK_RELEASE_MS: f64 = 300.0;
 
 /// バスとマスターの音量の上限（dB）。ミキサーは `f32` の振幅に直すので、大きすぎる値は無限大になって音が壊れる。
 /// 卓のフェーダーの上限（+6〜+12 dB）より余裕を持たせる。
-pub const MAX_MIXER_GAIN_DB: f64 = 24.0;
+pub(crate) const MAX_MIXER_GAIN_DB: f64 = 24.0;
 
 /// コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -51,7 +51,7 @@ pub struct MixerBus {
 pub struct Ducking {
     /// 鳴ると他を下げるバスの役割（例: `voice`）。
     pub trigger: String,
-    /// 対象のバス（下げられる側）の役割（例: `bgm`）。
+    /// 下げられるバスの役割（例: `bgm`）。
     pub targets: Vec<String>,
     /// 下げる量（dB）。0 以下。
     pub reduction_db: f64,

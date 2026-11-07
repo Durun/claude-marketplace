@@ -134,6 +134,21 @@ fn 却下はデータを変えず_保留に戻せる() {
 }
 
 #[test]
+fn プレビューは保留中の提案だけで_承認や却下の後は操作を二重に適用しない() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
+    let approved = propose(&mut s, vec![opacity(0, 0.5)], None).unwrap();
+    let rejected = propose(&mut s, vec![opacity(1, 0.5)], None).unwrap();
+    assert!(s.preview_proposal(approved, None).is_ok());
+    s.approve_proposal(approved, None, &human(), NOW).unwrap();
+    s.reject_proposal(rejected, &human(), NOW).unwrap();
+    for id in [approved, rejected] {
+        let err = s.preview_proposal(id, None).unwrap_err();
+        assert!(err.to_string().contains("保留中でない"), "{err}");
+    }
+}
+
+#[test]
 fn 提案の後に同じ所を触られたら承認は衝突で拒否し_別の所なら通る() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(3), NOW).unwrap();

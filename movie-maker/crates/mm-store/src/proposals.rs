@@ -196,13 +196,14 @@ impl Store {
             .intersection(&touches))
     }
 
-    /// 提案（`selection` は承認する操作の番号、`None` は全部）を今のプロジェクトのデータのコピーに適用する。書かない。
+    /// 保留中の提案（`selection` は承認する操作の番号、`None` は全部）を今のプロジェクトのデータのコピーに適用する。書かない。
+    /// 承認した提案は今のデータに入っているので、もう一度適用すると操作が二重になる。保留中でなければ拒否する。
     pub fn preview_proposal(
         &self,
         id: i64,
         selection: Option<&[usize]>,
     ) -> OpResult<(Project, TxnOutcome)> {
-        let proposal = self.proposal(id)?;
+        let proposal = self.pending(id)?;
         let ops = select_ops(&proposal.ops, selection)?;
         preview_ops(self.project(), &ops, &OpContext::new(proposal.entry))
     }

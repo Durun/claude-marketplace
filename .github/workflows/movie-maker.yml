@@ -88,7 +88,7 @@ jobs:
           tool: cargo-nextest@${{ env.NEXTEST_VERSION }}
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      # OTIO の往復の試験（crates/mm-doc/tests/otio/python.rs）が Python の opentimelineio を呼ぶ。
+      # OTIO の往復の試験（crates/mm-doc/tests/it/otio/python.rs）が Python の opentimelineio を呼ぶ。
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -103,7 +103,7 @@ jobs:
       - name: 期待画像（WARP）
         run: |
           if [ -d fixtures/golden/warp ]; then
-            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run --workspace -E 'binary_id(mm-render::golden)'
+            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run --workspace -E '(binary_id(mm-render::it) | binary_id(mm-pack::it)) & test(/^golden::/)'
           else
             echo "fixtures/golden/warp が無いので飛ばす"
           fi

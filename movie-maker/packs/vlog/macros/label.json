@@ -1,0 +1,17 @@
+{
+  "name": "label",
+  "title": "右上のラベル",
+  "description": "状態（途中経過、処理前、FXを入れた後、おまけ、早送りの倍率）。右上に、白い紙と墨の縁のプレートを少し傾けて出す",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "文字のレイヤーの ID（プレートは <ID>.plate）"},
+    "text": {"type": "text", "description": "何をした後か、何をしているか（「今日の到達点」のような決まり文句にしない）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "label1", "text": "FXを入れた後", "at": "0"},
+  "steps": [
+    {"text": {"style": "label", "comp": "{{comp}}", "layer": "{{id}}", "text": "{{text}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}"}}
+  ]
+}

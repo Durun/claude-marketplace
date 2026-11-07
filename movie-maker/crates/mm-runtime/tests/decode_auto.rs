@@ -3,6 +3,7 @@
 //!
 //! レンダラーの `footage` の種類はまだ GPU のフレームを受けない（段階 2）ので、ここでは `Engine::decoders` の
 //! インターフェースでフレームを開き、レンダラーと同じ手順（`GpuHelper::import`）でリードバックして番号を確かめる。
+//! 共有の GPU を D3D12 で頼むので、既定の頼み方で共有の GPU を作るほかのテストと同じプロセスに置かない（別の実行ファイル。docs/ci.md）。
 #![cfg(all(feature = "ffmpeg", feature = "d3d12va", feature = "cuvid"))]
 
 use std::path::PathBuf;

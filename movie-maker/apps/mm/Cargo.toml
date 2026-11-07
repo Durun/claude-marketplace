@@ -1,6 +1,6 @@
 [package]
 name = "mm"
-description = "movie-maker の CLI。mm new、import、export、op、proposal、undo、redo、log、diff、ingest、render、perf"
+description = "movie-maker の CLI。mm new、import、export、op、proposal、pack、undo、redo、log、diff、ingest、render、perf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,8 @@ mm-runtime = { workspace = true }
 mm-gpu = { workspace = true }
 mm-export = { workspace = true }
 mm-ops = { workspace = true }
+# `mm pack`。パックのマクロを展開して適用する。
+mm-pack = { workspace = true }
 mm-store = { workspace = true }
 mm-ingest = { workspace = true }
 mm-serve = { workspace = true }

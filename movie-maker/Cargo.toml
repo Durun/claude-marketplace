@@ -39,6 +39,7 @@ mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-node-api = { path = "crates/mm-node-api" }
 mm-nodes-basic = { path = "crates/mm-nodes-basic" }
 mm-ops = { path = "crates/mm-ops" }
+mm-pack = { path = "crates/mm-pack" }
 mm-render = { path = "crates/mm-render" }
 mm-render-api = { path = "crates/mm-render-api" }
 mm-runtime = { path = "crates/mm-runtime" }

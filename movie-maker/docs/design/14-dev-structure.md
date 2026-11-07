@@ -57,6 +57,7 @@ flowchart BT
     cli[mm（CLI）]
     improve[mm-improve]
     uiw[mm-ui-wgpu<br>Program / Timeline]
+    pack[mm-pack<br>パックの検査・操作の列への展開]
     export --> runtime
     serve --> runtime
     uiw --> runtime
@@ -66,10 +67,13 @@ flowchart BT
     cli --> export
     cli --> serve
     improve --> serve
+    app --> pack
+    cli --> pack
   end
   API --> BASE
   IMPL --> API
   runtime --> IMPL
+  pack --> API
   testkit[mm-testkit<br>モック・契約テスト・期待画像] --> API
   bench[mm-bench<br>ベンチと perf のシナリオ] --> runtime
 ```
@@ -80,6 +84,8 @@ flowchart BT
 2. API クレートは基礎だけに依存する。API クレート同士の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
 3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core` の 4 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0015）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。操作経路（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
+
+`mm-pack` は操作経路（アプリと CLI）が使う部品で、`mm-ops` と API クレートの型（`mm-text-api`、`mm-audio-api`）だけに依存し、実装を選ばない。実装のクレートは試験（dev-dependencies）でだけ使う。
 
 循環は `cargo` が拒否する（クレート間の循環依存はビルドできない）ので、この図のとおりに分けていれば起きない。クレートの中のモジュールの循環は、API クレートと実装を別のクレートに置くことで防ぐ。
 
@@ -132,6 +138,7 @@ movie-maker/
     mm-ingest/          取り込みの流れ（ハッシュ、プレビュー動画、波形、サムネイル、外のツールの起動、付属ファイルの取り込み）
     mm-runtime/         assemble()（実装を選んで Engine を作る）、ノードの種類のレジストリ、再生の状態（再生位置、選択）
     mm-export/          レンダーターゲット → 区間 → 並行の描画 → mux、ラウドネスの正規化、字幕とチャプター
+    mm-pack/            パック（packs/）の読み込み、検査、マクロとテンプレートの操作の列への展開
     mm-serve/           HTTP（axum）と MCP。操作と描画を外に出す
     mm-ui-layout/       wgpu サーフェス上の UI の計算（端のつまみ、スナップ、範囲）。純関数
     mm-ui-wgpu/         Program、Timeline、メーターの描画と入力
@@ -204,17 +211,20 @@ movie-maker/
 | 音 | `crates/mm-audio-*` | `mm-audio-api` |
 | 文字 | `crates/mm-text-*` | `mm-text-api` |
 | Web のノードの種類と OFX のホスト | `crates/mm-host-*`、`mm-nodes-cef`、`mm-nodes-ofx` | `mm-host-api` |
-| 取り込み | `crates/mm-ingest`、`tools/` | `mm-ingest-api` |
+| 取り込みと cache/ | `crates/mm-ingest`、`mm-cache-*`、`tools/` | `mm-ingest-api`、`mm-cache-api` |
 | 書き出し | `crates/mm-export` | |
+| パック | `crates/mm-pack`、`packs/` | `mm-ops` の中（新しい操作は「プロジェクトのデータと操作」の形で足す）、`ui/panels/` |
 | UI（wgpu のサーフェス） | `crates/mm-ui-layout`、`mm-ui-wgpu` | `ui/` |
-| UI（各パネル） | `ui/panels/<パネル>/` | ほかのパネル、`ui/sdk` |
+| UI（1 つのパネルの縦の切り口） | `ui/panels/<panel>/`、`ui/sdk/src/<panel>.ts`、`apps/movie-maker/src/<panel>*` | ほかのパネル、`ui/sdk/src/generated/`、`ui/theme` |
+| アプリの骨組み | `apps/movie-maker`（パネルとパックの切り口を除く）、`ui/shell`、`ui/tools` | パネルの切り口のファイル |
 | Claude の操作経路 | `crates/mm-serve`、`apps/mm` | |
 | 自動の改善 | `crates/mm-improve` | |
 | テストキットとベンチ | `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/` | |
 | 計装 | `crates/mm-trace`、`xtask/` | ほかのクレートのスパンの名前（名前は各領域が付け、`mm-trace` は決まりだけ持つ） |
-| インターフェースと組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-gpu`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`docs/` | |
+| インターフェースと組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-gpu`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`scripts/`、`docs/` | |
 
-- 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は、下の「共有のファイルの書き方」に従う 1 行ずつの追加なら領域の PR が書いてよい。消す・並べ替える・形を変える変更は統合の担当が書く。
+- 各領域は自分の設計書（`05-ops.md` はプロジェクトのデータと操作、`13-vlog-pack.md` はパック、など。`areas.toml` の `write`）も書く。`apps/mm/src/<領域>_cmd.rs` はその領域が書く。
+- 共有のファイルは `areas.toml` の `[[shared]]` に列挙する。どの領域の PR も、そこに書いた形（`rule`。多くは名前の順の位置に 1 行）でだけ書いてよい。消す・並べ替える・形を変える変更は `reshape` の担当が書く。書き方の共通の決まりは下の「共有のファイルの書き方」。
 - 2 つ以上のエージェントが同じリポジトリを書くときは、各々を別の worktree に置く（この表の 1 行ずつ）。同じ領域を 2 人で書かない。
 
 ### 共有のファイルの書き方
@@ -237,6 +247,67 @@ movie-maker/
 - CI は、変えたクレートとそれに依存するクレートだけをテストする（`cargo nextest run -p <crate>` と、依存の逆引き）。API クレートを変えた PR は全部を回す。夜間は全部と、実機の GPU、性能、耐久、ファズ（[テスト](11-testing.md#層の一覧)）。
 - 実装済みの CI の PR と main の違いは [ci.md](../ci.md#pr-と-main-の違い)。PR は 1 本 30 秒を超える通しの試験（`#[ignore]`）と、性能に関わらない PR の `perf-gate` を外し、main の push と手動で全部を回す。
 
+### 作業の分担
+
+一度に 4〜6 の担当が別々の機能（パネル、エンコード、パック、MCP、e2e の再現）を作り、merge queue で順に入れる。2026-10-28 から 11-07 の main への PR 63 本で、複数の PR が触ったファイルを数えると、衝突は 5 つの型に分かれる。
+
+| 型 | 例（触った PR の数） | 対処 |
+|---|---|---|
+| 登録の列の同じ位置への追記 | `apps/movie-maker/src/app.rs`（17）と `main.rs`（12）の mod・use・Tauri のコマンド、`apps/mm/src/main.rs`（17）、`ui/shell/src/Shell.tsx`（11）、`ui/tools/screenshot.mjs`（10）と `build.ts`（9）、`ui/sdk/src/index.ts`（10）、`mm-ops` の `op.rs`（10）と `ops/mod.rs`（9） | 登録を 2 段に分ける（下の「登録の列を分ける提案」）。それまでは名前の順の位置に 1 行 |
+| 同じ行の並ぶ列で差分がずれる | `main.rs` の `#[cfg(windows)]` と `mod` の 2 行の組、最後の項目にカンマの無い `generate_handler!` | 1 項目 1 行にし、最後の項目にもカンマを付ける |
+| 数や全部のフィールドを書く試験 | `mm-serve/tests/mcp.rs` の `EXTRA_TOOLS`、`Composition` の literal（35 ファイル、37 か所）、性質テストの生成器（`mm-ops/tests/spec/mod.rs`、10） | 数を名前の組の比較に、literal を作る関数に、生成器を操作の組ごとのファイルに |
+| 生成物 | `Cargo.lock`（30）、`ops.json` と `ops.ts`（14）、`ui/pnpm-lock.yaml`（8） | `scripts/regen.sh`。`pnpm-lock.yaml` は main の側を土台に `pnpm install` |
+| 設計書の表と節への追記 | `05-ops.md`（19）、`15-roadmap.md`（14）、`03-data-model.md`（14）、`08-ui.md`（9） | 領域の設計書は領域が書く。ほかの表には意味の位置に 1 行。`15-roadmap.md` は統合の担当が段階の締めに書く |
+
+#### 先行事例
+
+| 事例 | 中身 | 採るもの |
+|---|---|---|
+| GitHub の CODEOWNERS、Chromium と Kubernetes の OWNERS | パスの型で持ち主を決める。CODEOWNERS は 1 ファイル、OWNERS はディレクトリごとのファイル | `areas.toml` は 1 ファイルのまま（領域が 20 に満たない）。共有のファイルも同じ表に `[[shared]]` で書く |
+| Bevy の `Plugin` と `PluginGroup` | 組み立ての列は Plugin を 1 行ずつ並べ、各 Plugin が `build` で自分の system と resource を足す | 登録を 2 段に分ける。中央の列は領域を 1 行、細目は領域のファイル |
+| Zed の `main.rs` の `<crate>::init(cx)` の列と `Panel::activation_priority` | crate ごとの `init` がアクションと設定を登録する。ドックのパネルの並びは数の優先度で決める | パネルの記述子に並びの数を持たせ、配列の位置を取り合わない |
+| cargo の `src/bin/cargo/commands/` | サブコマンド 1 つ 1 ファイル（`cli()` と `exec()`）。`mod.rs` の `builtin()` と `builtin_exec` は名前の順 | `mm` の CLI を同じ形に |
+| rust-analyzer の `ide-assists`、Clippy の lint の一覧 | 一覧と文書を各ハンドラーや lint の doc コメントから生成する | 操作ごとの説明を引数の型の doc コメントに書き、`ops.json` の `description` に出す |
+| VS Code の contribution points | 拡張が `package.json` に views と `order` を宣言し、本体が集める | `build.ts` と `screenshot.mjs` がパネルのディレクトリを走査する |
+| Tauri の plugin（`tauri::plugin::Builder`） | plugin ごとに `invoke_handler` と `setup`（状態の `manage`）を閉じる | 形だけ借りる。plugin にすると JS の呼び名が `plugin:<名前>|<コマンド>` に変わり、ACL の権限も要るので、plugin にはしない |
+| Rust API Guidelines の builder、`#[non_exhaustive]` | 構造体の literal を外のクレートに書かせず、作る関数を通す | `Composition` などを作る関数に寄せる |
+| `inventory`、`linkme`、`automod` | 静的な初期化やリンカーのセクションで分散登録する。ディレクトリから `mod` を生成する | 採らない。上の「自動の登録」と同じ理由に加え、2 段の列で衝突は領域が増えるときの 1 行に減る。生成した `mod` は grep で追えない |
+
+#### 新しい設計
+
+1. 領域を機能の縦の切り口にする。パネル 1 つは、画面（`ui/panels/<panel>/`）、パネルの API（`ui/sdk/src/<panel>.ts`）、アプリ側の処理（`apps/movie-maker/src/<panel>*`）をまとめて 1 つの担当が書く。パック、取り込み、書き出しも `apps/mm/src/<領域>_cmd.rs` をその領域に含める。画面だけの領域だと、1 つの機能が 3 つの領域にまたがり、持ち主のいない `apps/movie-maker` に全部の PR が書いていた。
+2. 共有のファイルを `areas.toml` の `[[shared]]` に列挙し、ファイルごとに書いてよい形（`rule`）と形を変える担当（`reshape`）を書く。1 つの PR が書いてよいのは、自分の領域の `write` と、`rule` に合う `[[shared]]` の変更だけ。
+3. `apps/movie-maker` の再生、ウィンドウ、Timeline の編集と、`ui/shell`、`ui/tools` を「アプリの骨組み」の領域にする。同時に 2 つの担当を置かない。
+4. 統合の担当が引き受けるもの: `[[shared]]` の並べ替えと形の変更、登録の列を分ける作り替え、多くの領域にまたがる機械的な書き換え（literal を作る関数に寄せる、など）、`15-roadmap.md` と `glossary.md` の更新（段階の締め）。ほかの PR が少ない時間に 1 本ずつ入れる。
+5. 割り当ては、`write` が重ならない領域の組にする（例: パネル 2 つ、パック、デコードとエンコード、Claude の操作経路、テストキット）。同じ `[[shared]]` を触る PR が 3 本を超えそうなら、統合の担当が merge queue の順を決め、後の PR は前の PR が入ってから main を取り込む。
+
+#### 登録の列を分ける提案
+
+まだ作らない。作るときは統合の担当が下の順で入れる。
+
+| 列 | 今 | 分け方 |
+|---|---|---|
+| パネルのタブ（`Shell.tsx`、`main.tsx`） | タブの配列、`ShellProps`、API を作る行をパネルごとに足す | 各パネルが `ui/panels/<panel>/src/panel.ts` に記述子（`id`、`label`、`column`、`order`、API を作る関数、描く関数）を持つ。`ui/shell/src/panels.ts` は記述子の import を名前の順に 1 行ずつ並べ、Shell は `order` で並べる。パネルの API の型と IPC の関数はパネルのパッケージに移し、`ui/sdk` は `invoke`、操作、イベントだけを持つ |
+| デモとスクリーンショット（`build.ts`、`screenshot.mjs`） | パネルごとに定数、エントリー、HTML、撮る関数 | `build.ts` が `panels/*/demo/*.tsx` を走査する。撮る関数は `panels/<panel>/screenshots.mjs` に移し、`screenshot.mjs` は走査して名前で選ぶ |
+| アプリの mod とコマンド（`main.rs`、`app.rs`） | `#[cfg(windows)]` つきの mod が 30 余り、`manage` と `generate_handler!` が 1 つの列 | `main.rs` は `#[cfg(windows)] mod win;` だけにし、`win/mod.rs` に cfg の無い mod の列を置く。パネルごとの処理を `<panel>/mod.rs` にまとめ（`media.rs` と `media_ipc.rs` を 1 つの mod に）、各々が `manage` をする関数と自分の `generate_handler!` を持つ。`app.rs` はコマンドの名前の前置き（`media_` など）で領域の handler に振り分け、列は領域 1 行。`generate_handler!` の作る関数は知らない名前に `false` を返すので、振り分けに使える。前置きの合わないコマンド（`source_ipc::edit_action`）は名前を揃える |
+| CLI のサブコマンド（`apps/mm/src/main.rs`） | `Command` の 1 つの enum と match | cargo の形。入れ子のサブコマンドは今の `Pack { command }` の形で 1 行。上の段に並べるものは、領域の `Subcommand` の enum を `#[command(flatten)]` で 1 行 |
+| MCP のツール（`mcp_tools.rs`、`tests/mcp.rs`） | 操作でないツールの数を `EXTRA_TOOLS = 5` で数える | ツールの定義の隣に名前の定数の列を置き、試験は `Op::NAMES` とその列の和が `tools/list` の名前の組と一致するかを見る |
+| 性質テストの生成器（`mm-ops/tests/spec/mod.rs`） | `Spec` の enum、`prop_oneof!`、操作を作る腕が 1 つのファイル | 操作の組ごとのファイル（今の `bins.rs`、`shorts.rs` の形）に enum と生成器と腕を移し、`mod.rs` は組の 1 行と重みだけにする |
+| `Composition` などの literal | 全部のフィールドを書く literal が 35 ファイル | `mm-doc` に作る関数（`Composition::new(id, size, fps, duration)`）を、`mm-testkit` に試験の組み立て（`comp(id).layers(..)`）を置いて literal を寄せる。そのあと `#[non_exhaustive]` で外のクレートの literal を禁じる |
+| 操作（`op.rs`、`ops/mod.rs`） | 2 つの列に 1 行ずつ | 今のまま。衝突が続いたら、移行と同じく `build.rs` がディレクトリから表を作る形にする |
+| 設計書（`05-ops.md`、`08-ui.md`） | 操作やパネルの細目を 1 つのファイルに足す | 操作の細目は引数の型の doc コメントに書き、`ops.json` の `description` に出す。`05-ops.md` は決まりと操作の組の説明だけを持つ。パネルの細目は `ui/panels/<panel>/README.md` |
+
+- 実装は sonnet の 3 体を並行に走らせる（各々 worktree）。書くファイルが重ならない。新しい機能を始めない時間に、merge queue を空にしてから入れる。
+  1. UI の登録: `ui/shell`、`ui/tools`、各パネルの `panel.ts` と `screenshots.mjs`、パネルの API の移動。完了条件は `pnpm build`、typecheck、vitest、全部のパネルのスクリーンショットが前と同じ。
+  2. アプリと CLI の登録: `apps/movie-maker` の mod のまとめ方と振り分け、`apps/mm` のサブコマンド。完了条件は clippy、アプリの `--play-test`、IPC のコマンドの名前が変わらない（ui の呼び出しを変えない）。
+  3. Rust の試験の形: `Composition` を作る関数と literal の置き換え、`mcp.rs` の名前の組、性質テストの生成器の分割。完了条件は `cargo check --workspace`、変えたクレートの nextest。
+- 3 が入ったあとに、`#[non_exhaustive]` と設計書の寄せ方（`05-ops.md` を doc コメントへ）を 1 体ずつ。急がない。
+
+#### 衝突を減らす小さな仕組み（提案）
+
+- `scripts/check-conventions.sh` に、登録の列（`win/mod.rs` の mod、`panels.ts`、`app.rs` の振り分け）が名前の順で、最後の項目にカンマがあるかの検査を足す。rust-lang の tidy と cargo-sort の型。
+- `scripts/shared-touched.sh`: `git diff --name-only origin/main...` を `[[shared]]` と突き合わせ、触った共有のファイルを出す。PR 本文の 1 行にし、統合の担当が merge queue の順を決める材料にする。
+
 ## 自動の改善の領域
 
 自動の回が書いてよい領域と、人の承認が要る領域を、この木に対応させる。
@@ -246,7 +317,7 @@ movie-maker/
 | `ui/panels/*`、`ui/theme` | 書いて取り込む（検査が通れば） | 画面の直し。esbuild のバンドルし直しとリロードだけで反映 |
 | `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 操作の追加と直し、配置の計算。性質テストが守る |
 | `crates/mm-nodes-*`、`mm-text-*`、`mm-color-lut`、`mm-audio-dsp` | 書いて取り込む | ノードの種類の追加、文字と色と音の実装。契約テストと期待画像が守る |
-| `crates/mm-testkit`、`mm-bench`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | フィクスチャとベンチとパックと外のツール。期待画像（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
+| `crates/mm-testkit`、`mm-bench`、`mm-pack`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | フィクスチャとベンチとパックと外のツール。期待画像（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
 | `crates/mm-trace` | PR までで止める | 計装の決まりと出力の形。変えると比較の相手が変わる |
 | `crates/mm-*-api`、`mm-types`、`mm-doc`（スキーマの移行）、`mm-runtime` | PR までで止める | インターフェースの変更、プロジェクトのデータの形、組み立て。RFC が要る |
 | `crates/mm-render`、`mm-decode-*`、`mm-encode-*`、`mm-host-*`、`mm-color-ocio`、`mm-export` | PR までで止める | GPU と unsafe なバックエンド、別プロセス、書き出しの一致。期待画像で機械が検査しても人が見る |
