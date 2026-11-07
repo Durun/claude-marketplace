@@ -25,6 +25,7 @@ use crate::ipc::{self, ProjectInfo, SyncState};
 use crate::media::{self, MediaState};
 use crate::media_ipc;
 use crate::mixer_ipc;
+use crate::pack_ipc;
 use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
@@ -292,6 +293,8 @@ fn build_and_run(boot: Boot) {
             media_ipc::media_cache_info,
             media_ipc::media_cache_clear,
             mixer_ipc::mixer_state,
+            pack_ipc::pack_list,
+            pack_ipc::pack_apply,
             story_ipc::story_overview,
             story_ipc::story_transcript,
             story_ipc::story_range,

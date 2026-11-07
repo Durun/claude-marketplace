@@ -1,0 +1,21 @@
+{
+  "colors": {
+    "sapphire": "#2459E0",
+    "yellow": "#FFD43B",
+    "ink": "#0B1230",
+    "paper": "#F5F8FF",
+    "miku": "#39C5BB",
+    "white": "#FFFFFF"
+  },
+  "fonts": {
+    "body": "M PLUS Rounded 1c",
+    "title": "Dela Gothic One",
+    "sticker": "Mochiy Pop One"
+  },
+  "motion": {
+    "in_max": 0.8,
+    "out_max": 0.3
+  },
+  "canvas": {"width": 1920, "height": 1080, "fps": 30},
+  "short": {"width": 1080, "height": 1920, "fps": 30}
+}

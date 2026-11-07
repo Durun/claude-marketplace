@@ -25,7 +25,7 @@ if command -v powershell.exe >/dev/null 2>&1; then
       \$s.Dispose()
     }
   "
-  # 10 分を超える日本語の話（speech-long-ja.txt を REPEATS 回読む）。通しの試験（apps/mm/tests/stage3_e2e.rs）の素材
+  # 10 分を超える日本語の話（speech-long-ja.txt を REPEATS 回読む）。通しの試験（apps/mm/tests/it/stage3_e2e/）の素材
   win_long=$(cygpath -w "$out/speech-long-ja.wav")
   win_txt=$(cygpath -w "$here/speech-long-ja.txt")
   powershell.exe -NoProfile -Command "

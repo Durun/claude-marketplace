@@ -6,8 +6,11 @@
 
 use std::process::{Command, ExitCode};
 
-/// 期待画像のテストの置き場所（クレート、テストの binary の名前）。
-const GOLDEN_TESTS: &[(&str, &str)] = &[("mm-render", "golden")];
+/// 期待画像のテストの置き場所（クレート、テストの binary の名前、テストのモジュールの絞り込み）。
+const GOLDEN_TESTS: &[(&str, &str, &str)] = &[
+    ("mm-pack", "it", "golden::"),
+    ("mm-render", "it", "golden::"),
+];
 /// 更新モードにする環境変数。`mm_testkit::golden::UPDATE_ENV` と同じ。
 const UPDATE_ENV: &str = "MM_GOLDEN_UPDATE";
 /// バックエンドの確認の環境変数。`mm_testkit::golden::BACKEND_ENV` と同じ。
@@ -42,12 +45,11 @@ fn parse_golden_args(args: &[String]) -> Result<GoldenArgs, String> {
 }
 
 fn golden_update(args: &GoldenArgs) -> Result<(), String> {
-    for (package, test) in GOLDEN_TESTS {
+    for (package, test, module) in GOLDEN_TESTS {
         let mut cmd = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
         cmd.args(["test", "-p", package, "--test", test, "--"]);
-        if let Some(filter) = &args.test {
-            cmd.arg(filter);
-        }
+        // 名前の一部を渡されたらそれだけで絞る（libtest の絞り込みは和なので、モジュールと重ねられない）。
+        cmd.arg(args.test.as_deref().unwrap_or(module));
         cmd.arg("--nocapture")
             .env(UPDATE_ENV, "1")
             // GPU が無い環境で何も書かずに成功するのを防ぐ。

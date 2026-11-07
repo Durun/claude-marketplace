@@ -2853,6 +2853,7 @@ dependencies = [
  "mm-node-api",
  "mm-nodes-basic",
  "mm-ops",
+ "mm-pack",
  "mm-render",
  "mm-render-api",
  "mm-runtime",
@@ -3234,6 +3235,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-pack"
+version = "0.1.0"
+dependencies = [
+ "mm-audio-api",
+ "mm-color-lut",
+ "mm-doc",
+ "mm-gpu",
+ "mm-node-api",
+ "mm-nodes-basic",
+ "mm-ops",
+ "mm-render",
+ "mm-render-api",
+ "mm-testkit",
+ "mm-text-api",
+ "mm-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "wgpu",
+]
+
+[[package]]
 name = "mm-render"
 version = "0.1.0"
 dependencies = [
@@ -3441,6 +3464,7 @@ dependencies = [
  "mm-ingest-api",
  "mm-node-api",
  "mm-ops",
+ "mm-pack",
  "mm-runtime",
  "mm-serve",
  "mm-store",

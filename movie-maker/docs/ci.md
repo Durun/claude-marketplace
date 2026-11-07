@@ -23,7 +23,7 @@ PR は速く返すことを優先し、1 本が 30 秒を超える通しの試�
 
 | 項目 | PR | merge queue、main の push、手動 |
 |---|---|---|
-| 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`caption_burn_in`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
+| 通しの試験（`stage3_e2e`、`stage4_e2e`、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
 | `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
 | `perf-gate`、`semver` | 回す（`perf-gate` は性能に関わるファイルを変えたときだけ） | なし（main では `perf-record` が測る） |
 | 再試行で通ったテストの起票 | しない（job summary と注釈に出すだけ） | merge queue と main の push でする |
@@ -43,6 +43,14 @@ merge queue は GitHub の ruleset で有効にする（リポジトリの設定
 | `quarantine` | なし | 隔離したテストだけ。結果はゲートにせず、JUnit を `target/nextest/quarantine/junit-quarantine.xml` に出す |
 
 JUnit は artifact（`junit-check`、`junit-ffmpeg`、14 日）に残る。
+
+### 結合テストは 1 クレートに 1 つの実行ファイル
+
+結合テストは `tests/it/main.rs` に `mod` で寄せ、1 クレートに 1 つの実行ファイルにする（matklad の [Delete Cargo Integration Tests](https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html)）。`tests/*.rs` は 1 ファイルが 1 つの実行ファイルになり、それぞれが依存の全部とリンクされる。Windows ではリンクとディスクがテストのビルドの大半を占める。
+
+- 新しい結合テストは `tests/it/<題>.rs` に置き、`tests/it/main.rs` に `mod <題>;` を足す。feature が要るものは `#[cfg(feature = "…")]` を `mod` の行に付ける
+- nextest の `binary_id` は `<クレート>::it`、テストの名前は `<題>::<関数>`（例: `binary_id(mm-render::it) & test(/^golden::/)`）
+- プロセスで 1 つの状態（大域の購読者、共有の GPU のコンテキストを壊す、故障の注入）を触るテストだけは、`cargo test` で同じプロセスの別のテストに響くので、別の実行ファイル（`tests/<題>.rs`）に置き、冒頭の doc コメントに「別の実行ファイル」と理由を書く（`scripts/check-conventions.sh` が確かめる）。今は `mm-render` の `device_loss` と `export_device_loss`、`mm-runtime` の `decode_auto`、`mm-ingest` の `spans`、`mm-decode-cuvid` の `faults`
 
 ## 揺れるテストの隔離
 
@@ -128,7 +136,7 @@ WARP のシナリオを足した後の所要時間は、2026-11 の実行で、P
 
 ### WARP の期待画像
 
-`check` ジョブは `fixtures/golden/warp/` があるとき、`MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1` で `cargo test -p mm-render --test golden` をもう一度回す。runner のアダプターが WARP でなければ（`MM_GOLDEN_BACKEND` の食い違いで）失敗し、WARP の期待画像が欠けていても失敗する。WARP の期待画像が無いうちはこの手順をスキップする。
+`check` ジョブは `fixtures/golden/warp/` があるとき、`MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1` で `(binary_id(mm-render::it) | binary_id(mm-pack::it)) & test(/^golden::/)` をもう一度回す。runner のアダプターが WARP でなければ（`MM_GOLDEN_BACKEND` の食い違いで）失敗し、WARP の期待画像が欠けていても失敗する。WARP の期待画像が無いうちはこの手順をスキップする。
 
 ### ベースラインの置き場所と更新
 
