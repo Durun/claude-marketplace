@@ -59,7 +59,7 @@ await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-
 await writeFile(`${DIST}media-demo.html`, page("Media demo", "media-demo"));
 // Story をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));
-// Inspector のキーフレームの列と Graph を手元のレイヤーで動かすページ。アプリには載せない。
+// Inspector のキーフレームナビゲーターと Graph を手元のレイヤーで動かすページ。アプリには載せない。
 await writeFile(`${DIST}keyframes-demo.html`, page("Keyframes demo", "keyframes-demo"));
 // Deliver をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}deliver-demo.html`, page("Deliver demo", "deliver-demo"));

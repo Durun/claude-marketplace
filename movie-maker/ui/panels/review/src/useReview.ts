@@ -19,11 +19,15 @@ export const checkedIndexes = (p: Proposal, selections: Selections): number[] =>
 /** 一覧を読み、`refreshKey` の変化、提案のイベント、`mm:doc-changed` での読み直しを受ける。 */
 const useProposals = (api: ReviewApi, refreshKey: number, onError: (m: string | null) => void) => {
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
+  // 提案のイベントと `mm:doc-changed` が続けて届くと読み直しが重なる。最後に頼んだ読み直しの結果だけを使う。
+  const loads = useRef(0);
   const reload = useCallback(async () => {
+    const id = ++loads.current;
     try {
-      setProposals(await api.list());
+      const next = await api.list();
+      if (id === loads.current) setProposals(next);
     } catch (e) {
-      onError(message(e));
+      if (id === loads.current) onError(message(e));
     }
   }, [api, onError]);
   useEffect(() => {
@@ -47,26 +51,39 @@ const useProposals = (api: ReviewApi, refreshKey: number, onError: (m: string | 
   return { proposals, reload };
 };
 
-/** 1 つの提案だけが Proposed になれる。いまの選択を Program に当てた絵に送る。 */
+/**
+ * 1 つの提案だけが Proposed になれる。いまの選択を適用したフレームを Program に出させる。
+ * 切り替えは順に送り（アプリは別々のスレッドで受けるので、重ねると後の頼みが先に効くことがある）、
+ * 適用できなかったらアプリの側のまま（直前のプレビュー）に表示を戻す。
+ */
 const usePreview = (api: ReviewApi, onError: (m: string | null) => void) => {
   const [previewId, setPreviewId] = useState<number | null>(null);
-  const active = useRef<number | null>(null);
+  const applied = useRef<number | null>(null);
+  const requests = useRef(0);
+  const chain = useRef<Promise<void>>(Promise.resolve());
   const show = useCallback(
-    async (id: number | null, ops: number[] | null) => {
-      active.current = id;
+    (id: number | null, ops: number[] | null): Promise<void> => {
+      const request = ++requests.current;
       setPreviewId(id);
-      try {
-        await api.preview(id, ops);
-      } catch (e) {
-        onError(message(e));
-      }
+      chain.current = chain.current.then(async () => {
+        try {
+          await api.preview(id, ops);
+          applied.current = id;
+        } catch (e) {
+          onError(message(e));
+          if (request === requests.current) setPreviewId(applied.current);
+        }
+      });
+      return chain.current;
     },
     [api, onError],
   );
-  // 別のパネルへ移ったあとも Program に提案の絵を残さない。
+  // パネルが外れたあとも Program に提案を適用したフレームを残さない。
   useEffect(
     () => () => {
-      if (active.current !== null) void api.preview(null, null).catch(() => undefined);
+      void chain.current.then(() => {
+        if (applied.current !== null) void api.preview(null, null).catch(() => undefined);
+      });
     },
     [api],
   );
@@ -87,13 +104,18 @@ export interface ReviewState {
 }
 
 /** Review パネルの状態と、アプリへの頼みごと。失敗の理由は `error` に残す。 */
-export const useReview = (api: ReviewApi, refreshKey = 0): ReviewState => {
+export const useReview = (api: ReviewApi, refreshKey = 0, active = true): ReviewState => {
   const [error, setError] = useState<string | null>(null);
   const [selections, setSelections] = useState<Selections>({});
   const { proposals, reload } = useProposals(api, refreshKey, setError);
   const { previewId, show } = usePreview(api, setError);
 
-  // 決まった・消えた提案の絵は残さない。
+  // 隠れている間は Program を元のフレームにする。Inspector は元のデータを見せるので、フレームと食い違わせない。
+  useEffect(() => {
+    if (!active && previewId !== null) void show(null, null);
+  }, [active, previewId, show]);
+
+  // 決まった・消えた提案のプレビューは残さない。
   useEffect(() => {
     if (previewId === null || !proposals) return;
     if (!proposals.some((p) => p.id === previewId && p.state === "pending")) void show(null, null);

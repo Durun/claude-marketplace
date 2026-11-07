@@ -164,9 +164,15 @@ const shootMixer = async (browser) => {
       await page.close();
     }
   }
+  // 本体の画面: 左の列のタブ（Mixer を含む 5 つ）と、右の列のタブ。
+  const page = await browser.newPage({ viewport: { width: 1100, height: 600 } });
+  await page.goto(`${dist("index.html")}?theme=light`);
+  await page.waitForSelector(".mm-shell-tab");
+  await page.screenshot({ path: `${outDir}shell-light.png` });
+  await page.close();
 };
 
-// Inspector のキーフレームの列と Graph。ドラッグの途中（離す前）も撮る。
+// Inspector のキーフレームナビゲーターと Graph。ドラッグの途中（離す前）も撮る。
 const shootKeyframes = async (browser) => {
   const outDir = here("../panels/graph/screenshots/");
   await mkdir(outDir, { recursive: true });

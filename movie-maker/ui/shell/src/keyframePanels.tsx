@@ -13,11 +13,17 @@ export interface Playhead {
   fps: number;
 }
 
-/** 再生位置のイベントを受けて持つ。届くまでは null（Inspector はキーフレームの列を出さない）。 */
+/**
+ * 再生位置のイベントを受けて持つ。届くまでは null（Inspector はキーフレームナビゲーターを出さない）。
+ * 止まっている間も同じ位置が繰り返し届くので、位置が変わったときだけ描き直す（描き直すと入力中の入力欄が元の値に戻る）。
+ */
 const usePlayhead = (): Playhead | null => {
   const [playhead, setPlayhead] = useState<Playhead | null>(null);
   useEffect(() => {
-    const on = (e: Event) => setPlayhead((e as CustomEvent<Playhead>).detail);
+    const on = (e: Event) => {
+      const next = (e as CustomEvent<Playhead>).detail;
+      setPlayhead((prev) => (prev && prev.time === next.time && prev.fps === next.fps ? prev : next));
+    };
     window.addEventListener(PLAYHEAD_EVENT, on);
     return () => window.removeEventListener(PLAYHEAD_EVENT, on);
   }, []);

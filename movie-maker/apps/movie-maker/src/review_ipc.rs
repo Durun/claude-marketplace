@@ -36,7 +36,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| e.to_string())?
 }
 
-/// 決めた提案を Program に当てていれば、元の絵に戻す（承認した後はデータ自体が提案を含む）。
+/// 決めた提案を Program に適用していれば、元のフレームに戻す（承認した後はデータ自体が提案を含む）。
 fn end_preview(state: &ReviewState, id: i64) -> Result<(), String> {
     match state.shared.review_preview.get().map(|p| p.id) {
         Some(current) if current == id => review::set_preview(&state.shared, None),
@@ -58,10 +58,12 @@ pub async fn review_approve(
     ops: Option<Vec<usize>>,
 ) -> Result<Approval, String> {
     blocking(state, move |s| {
-        end_preview(s, id)?;
-        s.core()?
+        let approval = s
+            .core()?
             .approve(id, ops.as_deref(), &Caller::webview())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        end_preview(s, id)?;
+        Ok(approval)
     })
     .await
 }
@@ -70,10 +72,12 @@ pub async fn review_approve(
 #[tauri::command]
 pub async fn review_reject(state: Review<'_>, id: i64) -> Result<ProposalView, String> {
     blocking(state, move |s| {
-        end_preview(s, id)?;
-        s.core()?
+        let proposal = s
+            .core()?
             .reject(id, &Caller::webview())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        end_preview(s, id)?;
+        Ok(proposal)
     })
     .await
 }
@@ -89,22 +93,17 @@ pub async fn review_reopen(state: Review<'_>, id: i64) -> Result<ProposalView, S
     .await
 }
 
-/// 承認で適用したトランザクションが取り消しのスタックの一番上なら取り消す（Ctrl+Z と同じ道）。
+/// 承認で適用したトランザクションが取り消しのスタックの一番上なら取り消す（Ctrl+Z と同じ経路）。
 #[tauri::command]
 pub async fn review_undo(state: Review<'_>, id: i64) -> Result<ProposalView, String> {
     blocking(state, move |s| {
         let core = s.core()?;
-        let before = core.proposal(id).map_err(|e| e.to_string())?;
-        if !before.undoable {
-            return Err(format!("提案 {id} の承認は、いま取り消せる位置に無い"));
-        }
-        crate::edit::step_saved(&s.shared, &core, true);
-        core.proposal(id).map_err(|e| e.to_string())
+        review::undo_approved(&s.shared, &core, id)
     })
     .await
 }
 
-/// Program に提案を当てた絵を出す。`id` が `None` なら元の絵に戻す。
+/// Program に提案を適用したフレームを出す。`id` が `None` なら元のフレームに戻す。
 #[tauri::command]
 pub async fn review_preview(
     state: Review<'_>,

@@ -142,7 +142,7 @@
   font-weight: 700;
 }
 
-/* キーフレームの列: 前へ、再生位置のキー、次へ、補間。 */
+/* キーフレームナビゲーター: 前へ、再生位置のキー、次へ、補間。 */
 .mm-insp-kfnav {
   display: flex;
   align-items: center;

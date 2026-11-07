@@ -11,7 +11,7 @@ export interface View {
   height: number;
 }
 
-/** 曲線の周りに空ける割合。端のキーフレームとハンドルが枠に掛からないようにする。 */
+/** 曲線の周りに空ける割合。端のキーフレームとベジェのハンドルが枠に掛からないようにする。 */
 const MARGIN = 0.1;
 /** キーフレームが 1 つか値が一定のときに見せる幅。 */
 const MIN_SPAN_SEC = 1;
@@ -47,7 +47,7 @@ const padded = (lo: number, hi: number, min: number): [number, number] => {
 export const segmentBezier = (k: Keyframe): CubicBezier | null =>
   k.interpolation === "bezier" ? (k.bezier ?? EASE_IN_OUT) : null;
 
-/** ハンドルの位置（秒と値）。区間 i の始点側が 1、終点側が 2。 */
+/** ベジェのハンドルの位置（秒と値）。区間 i の始点側が 1、終点側が 2。 */
 export const handlePoint = (from: Keyframe, to: Keyframe, side: Side, c: number): [number, number] => {
   const b = segmentBezier(from) ?? EASE_IN_OUT;
   const [t0, t1] = [toSec(from.time), toSec(to.time)];
@@ -56,7 +56,7 @@ export const handlePoint = (from: Keyframe, to: Keyframe, side: Side, c: number)
   return [t0 + x * (t1 - t0), v0 + y * (v1 - v0)];
 };
 
-/** 全部のキーフレームとハンドルが収まる範囲（Blender の View All、AE の Fit All に当たる）。 */
+/** 全部のキーフレームとベジェのハンドルが収まる範囲（Blender の View All、AE の Fit All に当たる）。 */
 export const fitView = (param: Param, components: number, width: number, height: number): View => {
   const keys = param.keyframes ?? [];
   const times = keys.map((k) => toSec(k.time));
@@ -149,7 +149,7 @@ export const dragKey = (keys: readonly Keyframe[], i: number, c: number, drag: K
 const EPSILON = 1e-9;
 
 /**
- * 区間 i のハンドルを (sec, value) へ動かした後の制御点。
+ * 区間 i のベジェのハンドルを (sec, value) へ動かした後の制御点。
  * x は [0,1] に収めて時間を単調に保つ（AE と Blender のハンドルが区間の外へ出ないのと同じ）。
  * 区間の両端の値が同じときは y を決められないので、y は元のまま。
  */

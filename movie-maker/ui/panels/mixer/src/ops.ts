@@ -1,5 +1,27 @@
 import type { CompMixer, Ducking, LayerAudio, MixerState, MixerTrack, Op, Param } from "@mm/sdk";
 
+/**
+ * 送る直前の state から操作を作る関数。操作は変えた後の全体を置くので、押した時点の state で作ると、
+ * 前の操作の応答を待つ間に続けて押した変更（ミュートの直後のソロなど）が前の変更を上書きして消す。
+ */
+export type BuildOps = (state: MixerState) => Op[];
+
+/** 送る直前の state のトラック `layer` から操作を作る。トラックが消えていれば何も送らない。 */
+export const forTrack =
+  (layer: string, build: (track: MixerTrack) => Op): BuildOps =>
+  (state) => {
+    const track = state.tracks.find((t) => t.layer === layer);
+    return track ? [build(track)] : [];
+  };
+
+/** 送る直前の state のダッキングに `patch` を重ねる。無効になっていれば何も送らない。 */
+export const duckingOps =
+  (patch: (ducking: Ducking) => Partial<Ducking>): BuildOps =>
+  (state) => {
+    const ducking = state.mixer?.ducking;
+    return ducking ? [mixerOp(state, { ducking: { ...ducking, ...patch(ducking) } })] : [];
+  };
+
 /** 音の設定が無いトラックの既定の送り先。コアの既定（役割 voice、0 dB、中央）と同じ。 */
 export const DEFAULT_ROLE = "voice";
 

@@ -66,6 +66,11 @@ body {
   font-weight: 700;
 }
 
+/* 折り返す左の列は 1 行に 3 つまでにし、2 行目の 1 つだけが列の幅に伸びる形を避ける。 */
+.mm-shell-tabs:not(.mm-shell-right-tabs) > .mm-shell-tab {
+  flex-basis: 30%;
+}
+
 .mm-shell-tab:focus-visible {
   outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
   outline-offset: var(--mm-size-focus-offset);

@@ -28,7 +28,7 @@ export const fpsRational = (fps: number): { num: number; den: number } => {
   return { num: Math.round(fps * NTSC_DEN), den: NTSC_DEN };
 };
 
-/** 秒を、いちばん近いフレームの頭の時刻（既約の有理数）にする。キーフレームの時刻はフレームにそろえる。 */
+/** 秒を、いちばん近いフレームの先頭の時刻（既約の有理数）にする。キーフレームの時刻はフレームにそろえる。 */
 export const frameTime = (sec: number, fps: number): RationalTime => {
   const r = fpsRational(fps);
   const frame = Math.round((sec * r.num) / r.den);
@@ -161,7 +161,7 @@ const putKey = (keys: Keyframe[], k: Keyframe): Keyframe[] =>
   sorted([...keys.filter((x) => !sameTime(x.time, k.time)), k]);
 
 /**
- * キーフレームの操作をパラメータに当てた結果（mm-ops と同じ決まり）。
+ * キーフレームの操作をパラメータに適用した結果（mm-ops と同じ決まり）。
  * ドラッグ中の見た目とデモが使う。プロジェクトのデータを変えるのは操作を送った先だけ。
  */
 export const applyKeyframeOp = (param: Param, op: Op): Param => {

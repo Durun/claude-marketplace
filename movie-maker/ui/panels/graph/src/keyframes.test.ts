@@ -23,7 +23,7 @@ const param = (...keyframes: Keyframe[]): Param => ({ value: { type: "number", v
 const at = (p: Param, t: number) => (evalParam(p, t) as { value: number }).value;
 
 describe("frameTime", () => {
-  it("秒をいちばん近いフレームの頭にそろえ、既約の有理数にする", () => {
+  it("秒をいちばん近いフレームの先頭にそろえ、既約の有理数にする", () => {
     expect(frameTime(1.01, 30)).toEqual({ num: 1, den: 1 });
     expect(frameTime(0.5, 30)).toEqual({ num: 1, den: 2 });
     expect(frameTime(1 / 30 + 0.001, 30)).toEqual({ num: 1, den: 30 });
