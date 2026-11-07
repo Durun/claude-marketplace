@@ -83,6 +83,8 @@ fn audio_clip(
         role: role.to_owned(),
         gain_db: gain_param(&gain, &fades, start)?,
         pan: Param::constant(ParamValue::Number(0.0)),
+        mute: false,
+        solo: false,
     });
     Ok(layer)
 }

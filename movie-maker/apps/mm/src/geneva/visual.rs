@@ -27,8 +27,6 @@ const FOOTAGE_KIND: &str = "footage";
 const IMAGE_KIND: &str = "image";
 const ASSET_PARAM: &str = "asset";
 const KIND_VERSION: u32 = 1;
-/// 映像の音を鳴らさないときの音量（dB）。24 ビットの分解能より小さい。
-pub const MUTE_DB: f64 = -144.0;
 /// 切り抜きの縁が画面の外に出ているとみなす許容（画素）。
 const COVER_EPS: f64 = 0.5;
 
@@ -366,8 +364,10 @@ fn timed_layer(
         let muted = source.get("audio").and_then(Value::as_bool) == Some(false);
         layer.audio = Some(LayerAudio {
             role: "video".into(),
-            gain_db: Param::constant(ParamValue::Number(if muted { MUTE_DB } else { 0.0 })),
+            gain_db: Param::constant(ParamValue::Number(0.0)),
             pan: Param::constant(ParamValue::Number(0.0)),
+            mute: muted,
+            solo: false,
         });
     }
     Ok(layer)
@@ -406,6 +406,7 @@ fn nested_layer(
         duration: timing.duration,
         layers: vec![inner],
         markers: Vec::new(),
+        mixer: None,
     });
     let outer_node =
         Node::new(NESTED_KIND, KIND_VERSION).with_param(NESTED_PARAM, ParamValue::Text(comp_id));
@@ -483,8 +484,7 @@ mod tests {
         let below = (1080.0 - 2092.0 * k) / 2.0;
         assert!((p[0] + 60.0 * k).abs() < 1e-9, "{p:?}");
         assert!((p[1] - below).abs() < 1e-9, "{p:?}");
-        let gain = l.audio.expect("映像の音").gain_db.value.as_number();
-        assert_eq!(gain, Some(MUTE_DB));
+        assert!(l.audio.expect("映像の音").mute);
     }
 
     #[test]

@@ -71,6 +71,8 @@ mod tests {
             role: "voice".into(),
             gain_db,
             pan: Param::constant(ParamValue::Number(0.0)),
+            mute: false,
+            solo: false,
         });
         l
     }

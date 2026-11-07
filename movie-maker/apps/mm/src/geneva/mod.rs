@@ -129,6 +129,7 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
         duration,
         layers,
         markers: Vec::new(),
+        mixer: None,
     });
     project
         .render_targets
