@@ -119,5 +119,7 @@ fn 前置きはページの_mm_set_time_を包む() {
         html.contains("defineProperty(window, 'mmSetTime'"),
         "{html}"
     );
-    assert!(html.starts_with("<!doctype html><html><head><script>"));
+    assert!(
+        html.starts_with("<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\"")
+    );
 }

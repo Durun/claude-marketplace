@@ -14,7 +14,12 @@ pub const STATIC_PARAM: &str = "static";
 
 /// ページの `window.mmSetTime(t, data)` を、ホストが渡す `(t, {data, scale})` から呼ぶ前置き。
 /// 倍率は CSS の `zoom` で掛けるので、ページは 1 倍の画素で組めばプレビューの縮小でも同じ見た目になる。
-const PRELUDE: &str = "<script>(() => {\
+/// 先頭の CSP は、パックやプロジェクトの HTML がネットワークとローカルのファイルを読まないようにする
+/// （外の資源は画素を決定的でなくし、ファイルの中身を画面に出せてしまう）。資源は `data:` と `blob:` で埋め込む。
+const PRELUDE: &str = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; \
+script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; \
+font-src data:; media-src data: blob:; base-uri 'none'; form-action 'none'\">\
+<script>(() => {\
 let user = null;\
 Object.defineProperty(window, 'mmSetTime', { configurable: true,\
 get() { return (t, p) => { const q = p || {};\
@@ -87,16 +92,28 @@ pub fn hash_of(value: &impl Hash) -> u64 {
     h.finish()
 }
 
+/// 最初の `tag` の開きタグの直後の位置。`<head` が `<header>` に当たらないよう、名前の直後の文字も見る。
+fn tag_end(lower: &str, tag: &str) -> Option<usize> {
+    lower.match_indices(tag).find_map(|(start, _)| {
+        let rest = &lower[start + tag.len()..];
+        let ends_name = rest
+            .chars()
+            .next()
+            .is_some_and(|c| c == '>' || c == '/' || c.is_ascii_whitespace());
+        ends_name
+            .then(|| rest.find('>'))
+            .flatten()
+            .map(|end| start + tag.len() + end + 1)
+    })
+}
+
 /// `<head>` の直後（無ければ `<html>`、`<!doctype>` の直後、どれも無ければ先頭）に前置きを差し込む。
 /// doctype より前に差し込むと Chromium が互換モードで組むので、先頭は最後の手段にする。
 pub fn inject(html: &str) -> String {
     let lower = html.to_ascii_lowercase();
     let at = ANCHORS
         .iter()
-        .find_map(|tag| {
-            let start = lower.find(tag)?;
-            lower[start..].find('>').map(|end| start + end + 1)
-        })
+        .find_map(|tag| tag_end(&lower, tag))
         .unwrap_or(0);
     let mut out = String::with_capacity(html.len() + PRELUDE.len());
     out.push_str(&html[..at]);
@@ -123,7 +140,7 @@ mod tests {
         let html = "<!DOCTYPE html><html><HEAD><title>x</title></HEAD><body></body></html>";
         let out = inject(html);
         assert!(
-            out.starts_with("<!DOCTYPE html><html><HEAD><script>"),
+            out.starts_with(&format!("<!DOCTYPE html><html><HEAD>{PRELUDE}")),
             "{out}"
         );
         assert!(out.ends_with("<title>x</title></HEAD><body></body></html>"));
@@ -132,12 +149,36 @@ mod tests {
     #[test]
     fn head_が無ければ_doctype_の後に入る() {
         let out = inject("<!doctype html><p>x</p>");
-        assert!(out.starts_with("<!doctype html><script>"), "{out}");
+        assert!(
+            out.starts_with(&format!("<!doctype html>{PRELUDE}")),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn header_の要素は_head_と取り違えない() {
+        let out = inject("<!doctype html><html><body><header>x</header></body></html>");
+        assert!(
+            out.starts_with(&format!("<!doctype html><html>{PRELUDE}")),
+            "{out}"
+        );
+        let out = inject("<html><head lang=\"ja\"><title>x</title></head></html>");
+        assert!(
+            out.starts_with(&format!("<html><head lang=\"ja\">{PRELUDE}")),
+            "{out}"
+        );
     }
 
     #[test]
     fn 目印が無ければ先頭に入る() {
-        assert!(inject("<p>x</p>").starts_with("<script>"));
+        assert!(inject("<p>x</p>").starts_with(PRELUDE));
+    }
+
+    #[test]
+    fn 前置きはネットワークとファイルの読み込みを禁じる() {
+        assert!(PRELUDE.starts_with("<meta http-equiv=\"Content-Security-Policy\""));
+        assert!(PRELUDE.contains("default-src 'none'"));
+        assert!(!PRELUDE.contains("http:") && !PRELUDE.contains("file:"));
     }
 
     #[test]
