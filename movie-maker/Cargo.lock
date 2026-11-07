@@ -3113,6 +3113,7 @@ dependencies = [
  "mm-render-api",
  "mm-runtime",
  "mm-testkit",
+ "mm-text-api",
  "mm-trace",
  "mm-types",
  "serde_json",

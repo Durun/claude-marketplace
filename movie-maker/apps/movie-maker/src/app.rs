@@ -210,6 +210,7 @@ pub fn run() {
     let options = PlayerOptions {
         no_audio: args.no_audio,
         config: None,
+        store_dir: mm_store::store_dir(&args.project),
     };
     shared.source.configure(options.clone());
     let (playback, pinfo) =

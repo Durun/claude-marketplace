@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use mm_doc::{Project, RenderTarget, SubtitleOutput};
+use mm_doc::{Project, RenderTarget};
 use mm_export::{
     export_run, reject_shared_outputs, verify_output, CaptionWord, Expected, ExportControl,
     ExportOptions, ExportOutcome, ExportProgress, ExportSummary, ProgressFn, TranscriptWords,
@@ -160,6 +160,34 @@ pub struct StartRequest {
 /// 状態が変わったときに呼ぶ関数。書き出しのスレッドから呼ばれる。
 pub type Emit = Arc<dyn Fn(&ExportStatus) + Send + Sync>;
 
+/// 素材ごとの字幕にする単語。消した単語は除き、直した文字を使う。DB が無い、読めないときは空
+/// （空だと書き出しは字幕なしの警告で終わる）。書き出しとプレビューの字幕の焼き込みが同じ元を読む。
+pub(crate) fn transcript_words(store_dir: Option<&Path>, project: &Project) -> TranscriptWords {
+    let mut out = TranscriptWords::new();
+    let Some(store) = store_dir.and_then(|d| Store::open_read_only(d).ok()) else {
+        return out;
+    };
+    for asset in &project.assets {
+        let words: Vec<CaptionWord> = store
+            .transcript_words(&asset.id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|w| {
+                let text = w.shown()?.to_owned();
+                Some(CaptionWord {
+                    start: w.start,
+                    end: w.end,
+                    text,
+                })
+            })
+            .collect();
+        if !words.is_empty() {
+            out.insert(asset.id.clone(), words);
+        }
+    }
+    out
+}
+
 /// Deliver の状態。アプリに 1 つ持つ。
 pub struct DeliverState {
     shared: Arc<Shared>,
@@ -248,40 +276,8 @@ impl DeliverState {
     ) -> Option<Arc<TranscriptWords>> {
         targets
             .iter()
-            .any(|t| t.delivery.subtitles != SubtitleOutput::None)
-            .then(|| Arc::new(self.transcript_words(project)))
-    }
-
-    /// 素材ごとの字幕にする単語。消した単語は除き、直した文字を使う。DB が無い、読めないときは空
-    /// （空だと書き出しは字幕なしの警告で終わる）。
-    fn transcript_words(&self, project: &Project) -> TranscriptWords {
-        let mut out = TranscriptWords::new();
-        let Some(store) = self
-            .store_dir
-            .as_deref()
-            .and_then(|d| Store::open_read_only(d).ok())
-        else {
-            return out;
-        };
-        for asset in &project.assets {
-            let words: Vec<CaptionWord> = store
-                .transcript_words(&asset.id)
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|w| {
-                    let text = w.shown()?.to_owned();
-                    Some(CaptionWord {
-                        start: w.start,
-                        end: w.end,
-                        text,
-                    })
-                })
-                .collect();
-            if !words.is_empty() {
-                out.insert(asset.id.clone(), words);
-            }
-        }
-        out
+            .any(|t| t.delivery.needs_transcript())
+            .then(|| Arc::new(transcript_words(self.store_dir.as_deref(), project)))
     }
 
     /// いまのキューの状態。

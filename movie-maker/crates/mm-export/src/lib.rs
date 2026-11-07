@@ -11,9 +11,11 @@
 //! - 進み具合と取り消しは [`ExportControl`]。結果の検証は [`verify`]（ffprobe）。
 //! - 並行の描画（[`ExportOptions::parallel`]）。区間を短いチャンクに分けて複数のレンダラーで描き、フレームの順に
 //!   エンコーダーへ送る。2 パスのコーデックは、同じ描画を 2 回通す。
+//! - 字幕の焼き込み（`burn_in`）: 字幕を text ノードのレイヤーにしたプロジェクトのデータを作る。書き出しとプレビューが同じものを描く。
 //! - 納品物（`deliver`、`captions`、`chapters`）: 目標のラウドネスへの正規化（2 パス、トゥルーピークの上限つき）、
 //!   字幕（書き出しの隣の SRT と WebVTT、または MP4 の字幕のトラック）、チャプター（MP4 と YouTube の説明欄の文字列）。
 
+mod burn_in;
 mod captions;
 mod chapters;
 mod control;
@@ -35,6 +37,7 @@ use mm_doc::{Project, SequenceId};
 use mm_runtime::Engine;
 use mm_types::{MmError, RenderTargetId, Result, TimeRange};
 
+pub use burn_in::{burn_in_captions, burn_in_enabled};
 pub use captions::{sequence_cues, CaptionWord, TranscriptWords};
 pub use chapters::{chapter_marks, youtube_description};
 pub use control::{ExportControl, ExportProgress, ProgressFn};
@@ -225,3 +228,6 @@ mod tests_parallel;
 
 #[cfg(test)]
 mod tests_deliver;
+
+#[cfg(test)]
+mod tests_burn_in;
