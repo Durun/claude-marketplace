@@ -9,6 +9,7 @@
     "@mm/tasks": "workspace:*",
     "@mm/theme": "workspace:*",
     "preact": "^10.27.0",
+    "@mm/graph": "workspace:*",
     "@mm/inspector": "workspace:*",
     "@mm/story": "workspace:*",
     "@mm/deliver": "workspace:*",

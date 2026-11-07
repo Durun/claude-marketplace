@@ -27,7 +27,7 @@ GitHub 公式リポジトリ [github/gh-stack](https://github.com/github/gh-stac
 ## 導入
 
 ```bash
-claude plugin marketplace add Durun/claude-marketplace
+claude plugin marketplace add durun-lab/claude-marketplace
 claude plugin install tech-writing@durun-toolbox
 claude plugin install gankooyaji@durun-toolbox
 claude plugin install claude-run@durun-toolbox
@@ -46,7 +46,7 @@ gankooyaji と claude-run は Function Hooks で動きます。早期アクセ�
 [claude.ai/code](https://claude.ai/code) の環境設定ダイアログで、セットアップスクリプトに次を記述します。
 
 ```bash
-claude plugin marketplace add Durun/claude-marketplace
+claude plugin marketplace add durun-lab/claude-marketplace
 claude plugin install tech-writing@durun-toolbox -y --scope user
 claude plugin install gankooyaji@durun-toolbox -y --scope user
 claude plugin install claude-run@durun-toolbox -y --scope user

@@ -1,7 +1,9 @@
 //! Mixer の操作（`setLayerAudio`、`setMixer`）。取り消し 1 回で前のプロジェクトのデータにバイトで戻る。
 
 use mm_doc::{CompMixer, Composition, Ducking, Layer, LayerAudio, MixerBus, Node, Param, Project};
-use mm_ops::{Editor, Op, OpContext, SetLayerAudio, SetMixer, Transaction};
+use mm_ops::{
+    Editor, Op, OpContext, Precompose, SetLayerAudio, SetMixer, Transaction, Unprecompose,
+};
 use mm_types::{Id, ParamValue, Rational, RationalTime};
 
 /// コンポジション `c1` に、音の設定の無いレイヤー `l1` が 1 つ。
@@ -106,6 +108,34 @@ fn 有限でない音量のミキサーは検証で拒否し_データを変え�
     let r = ed.apply(Transaction::new("bad", vec![op]), &OpContext::human());
     assert!(r.is_err());
     assert_eq!(canon(ed.project()), canon(&before));
+}
+
+#[test]
+fn ミキサーを持つ入れ子は_unprecompose_で戻さない() {
+    // 戻すとミキサーの設定が消え、逆操作の precompose で元のプロジェクトのデータに戻らないため。
+    let mut ed = Editor::new(project());
+    let ctx = OpContext::human();
+    let pre: Op = Precompose {
+        composition: Id::new("c1"),
+        layers: vec![Id::new("l1")],
+        new_composition: Id::new("inner"),
+        new_layer: Id::new("nest"),
+    }
+    .into();
+    let mix: Op = SetMixer {
+        composition: Id::new("inner"),
+        mixer: Some(ducking_mixer()),
+    }
+    .into();
+    ed.apply(Transaction::new("nest", vec![pre, mix]), &ctx)
+        .unwrap();
+    let before = canon(ed.project());
+    let un: Op = Unprecompose {
+        layer: Id::new("nest"),
+    }
+    .into();
+    assert!(ed.apply(Transaction::new("un", vec![un]), &ctx).is_err());
+    assert_eq!(canon(ed.project()), before);
 }
 
 #[test]

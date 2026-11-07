@@ -121,10 +121,11 @@ const toSubagent = (sub: claude.SubagentLog, alive: boolean): Subagent => ({
   outputTokens: sub.log.totals.output,
 });
 
-const toBgTask = ({ outputFile: _, ...t }: claude.BgTaskLog, alive: boolean): BgTask => ({
-  ...t,
-  status: t.status === 'running' && !alive ? 'stopped' : t.status,
-});
+/** バックグラウンドのタスクは Claude Code のプロセスの子なので、プロセスが終わるか起動し直すと止まる。 */
+export const toBgTask = ({ outputFile: _, expiresAt: __, ...t }: claude.BgTaskLog, live: Pick<claude.LiveSession, 'startedAt'> | undefined): BgTask => {
+  const orphan = !live || (!!live.startedAt && !!t.startedAt && t.startedAt < live.startedAt);
+  return { ...t, status: t.status === 'running' && orphan ? 'stopped' : t.status };
+};
 
 // ponytail: 最後の発言が文章なら返し終えたとみなすので、API エラーなどの合成メッセージで止まったものも done になる。
 // 分けるなら、model が <synthetic> の発言を除く。
@@ -216,7 +217,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     lastMessageAt: log?.lastMessageAt,
     tasks: claude.readTasks(meta.id),
     subagents: subs.map((s) => toSubagent(s, !!live)),
-    background: claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, !!live)),
+    background: claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, live)),
     pr,
     prs,
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),

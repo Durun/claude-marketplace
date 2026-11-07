@@ -88,6 +88,8 @@ define_ops! {
     RemoveKeyframe => "removeKeyframe",
     /// キーフレームの補間とイージングを変える。
     SetEase => "setEase",
+    /// キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。
+    MoveKeyframe => "moveKeyframe",
     /// 親のレイヤーを付ける・外す。
     ParentLayer => "parentLayer",
     /// カットへの接続を付ける・外す。

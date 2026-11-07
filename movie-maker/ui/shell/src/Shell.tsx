@@ -1,6 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
 import { DeliverPanel } from "@mm/deliver";
-import { InspectorPanel } from "@mm/inspector";
 import { MediaPanel } from "@mm/media";
 import { MixerPanel } from "@mm/mixer";
 import { ReviewPanel } from "@mm/review";
@@ -18,6 +17,7 @@ import {
   type StoryApi,
 } from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
+import { KeyframePanels } from "./keyframePanels.tsx";
 import { TasksPanel } from "@mm/tasks";
 
 /** 選択の変わったことを知らせるイベント。アプリの再生の操作列（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
@@ -181,7 +181,7 @@ interface RightColumnProps {
   refreshKey: number;
 }
 
-/** 右の列。Inspector と、API があれば Review をタブで切り替える。 */
+/** 右の列。Inspector（その下に Graph）と、API があれば Review をタブで切り替える。 */
 const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) => {
   const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const selection = useLayerSelection();
@@ -194,7 +194,7 @@ const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) =>
       )}
       {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
       <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
-        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={onOp} />
+        <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={onOp} />
       </div>
       {review && (
         <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
@@ -205,7 +205,7 @@ const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) =>
   );
 };
 
-/** 左に Tasks、Media、Story、Mixer、Deliver、右に Inspector と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
+/** 左に Tasks、Media、Story、Mixer、Deliver、右に Inspector（その下に Graph）と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
 export const Shell = ({ sendOp, media, story, mixer, deliver, review, listen }: ShellProps) => {
   const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, mixer, deliver });
   const docChanges = useDocChanges(listen);

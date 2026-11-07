@@ -169,13 +169,18 @@ fn luma(video: &Path, index: i64, png: Option<&Path>) -> Vec<u8> {
         run(Command::new("ffmpeg")
             .args(["-hide_banner", "-v", "error", "-y", "-i"])
             .arg(video)
-            .args(["-vf", &select, "-vsync", "0", "-frames:v", "1"])
+            .args(["-vf", &select, "-fps_mode", "passthrough", "-frames:v", "1"])
             .arg(png));
     }
     run(Command::new("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-i"])
         .arg(video)
-        .args(["-vf", &format!("{select},format=gray"), "-vsync", "0"])
+        .args([
+            "-vf",
+            &format!("{select},format=gray"),
+            "-fps_mode",
+            "passthrough",
+        ])
         .args(["-frames:v", "1", "-f", "rawvideo", "-"]))
     .stdout
 }

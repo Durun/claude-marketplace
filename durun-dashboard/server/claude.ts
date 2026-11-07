@@ -192,6 +192,8 @@ export type BgTaskLog = {
   summary?: string;
   /** shell はツールの結果、Monitor は最初の通知で分かる。 */
   outputFile?: string;
+  /** 期限のある Monitor が止まる時刻。期限が切れても通知が届かないことがある。 */
+  expiresAt?: number;
 };
 
 export const ASK_TOOL = 'AskUserQuestion';
@@ -218,7 +220,7 @@ type LogEntry = {
   /** queued_command は、作業中に届いた依頼とタスク通知。誰から届いたかを origin に持つ。 */
   attachment?: SkillListing & { prompt?: string; origin?: { kind?: string } };
   /** shell は backgroundTaskId、Monitor は taskId に、動かしたタスクの id を持つ。 */
-  toolUseResult?: { backgroundTaskId?: string; taskId?: string; task_id?: string; message?: string };
+  toolUseResult?: { backgroundTaskId?: string; taskId?: string; task_id?: string; message?: string; timeoutMs?: number; persistent?: boolean };
   /** queue-operation エントリが持つ、待ち行列に積んだ依頼や通知の文。 */
   content?: unknown;
   /** frame-link エントリが持つ、公開した artifact の URL と題名と元のファイル。 */
@@ -328,7 +330,8 @@ const applyTaskStop = (s: LogSummary, e: LogEntry): void => {
 /** ツールの結果に載るタスクの id を、呼び出したときの入力と結びつける。 */
 const applyBgResult = (s: LogSummary, e: LogEntry): void => {
   applyTaskStop(s, e);
-  const id = e.toolUseResult?.backgroundTaskId ?? e.toolUseResult?.taskId;
+  const { backgroundTaskId, taskId, timeoutMs, persistent } = e.toolUseResult ?? {};
+  const id = backgroundTaskId ?? taskId;
   const content = e.message?.content;
   if (!id || !Array.isArray(content)) return;
   for (const b of content) {
@@ -336,7 +339,8 @@ const applyBgResult = (s: LogSummary, e: LogEntry): void => {
     if (!call || !b.tool_use_id) continue;
     s.pendingBg.delete(b.tool_use_id);
     const text = typeof b.content === 'string' ? b.content : JSON.stringify(b.content);
-    s.bgTasks.set(id, { id, ...call, status: 'running', outputFile: /written to: (\S+?\.output)/.exec(text)?.[1] });
+    const expiresAt = timeoutMs && !persistent && call.startedAt ? call.startedAt + timeoutMs : undefined;
+    s.bgTasks.set(id, { id, ...call, status: 'running', outputFile: /written to: (\S+?\.output)/.exec(text)?.[1], expiresAt });
   }
 };
 
@@ -620,12 +624,40 @@ const subagentLogs = (transcript: string): string[] => {
     .map((f) => path.join(dir, f));
 };
 
-/** セッションとサブエージェントのログが動かしたタスク。ほかのログに届いた終わりの通知も当てる。 */
-export const backgroundOf = (logs: LogSummary[]): BgTaskLog[] => {
+const KILLED_MARK = '[killed]';
+
+/** Claude Code はタスクを止めると出力の末尾に印を書く。サブエージェントが返し終えて止めたタスクには、終わった通知が届かない。 */
+const killedByOutput = (file: string | undefined): boolean => {
+  if (!file) return false;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      const buf = Buffer.alloc(Math.min(size, KILLED_MARK.length + 2));
+      fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+      return buf.toString('utf8').trimEnd().endsWith(KILLED_MARK);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // 一時ファイルが消えていれば止まったかは分からないので、実行中のままにする。
+    return false;
+  }
+};
+
+/** 通知の届かない終わりを、Monitor の期限と出力の末尾の印から補う。 */
+const settle = (t: BgTaskLog, now: number): BgTaskLog => {
+  if (t.status !== 'running') return t;
+  if (t.expiresAt && t.expiresAt <= now) return { ...t, status: 'stopped' };
+  return killedByOutput(t.outputFile) ? { ...t, status: 'killed' } : t;
+};
+
+/** セッションとサブエージェントのログが動かしたタスク。ほかのログに届いた終わりの通知と、通知の届かない終わりも当てる。 */
+export const backgroundOf = (logs: LogSummary[], now = Date.now()): BgTaskLog[] => {
   const ended = new Map(logs.flatMap((l) => [...l.bgEnded]));
   return logs.flatMap((l) => [...l.bgTasks.values()]).map((t) => {
     const end = t.status === 'running' ? ended.get(t.id) : undefined;
-    return end ? { ...t, ...end } : t;
+    return settle(end ? { ...t, ...end } : t, now);
   });
 };
 

@@ -10,6 +10,7 @@ const MEDIA_DEMO_ENTRY = fileURLToPath(new URL("../panels/media/demo/main.tsx", 
 const DELIVER_DEMO_ENTRY = fileURLToPath(new URL("../panels/deliver/demo/main.tsx", import.meta.url));
 const MIXER_DEMO_ENTRY = fileURLToPath(new URL("../panels/mixer/demo/main.tsx", import.meta.url));
 const STORY_DEMO_ENTRY = fileURLToPath(new URL("../panels/story/demo/main.tsx", import.meta.url));
+const KEYFRAMES_DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/keyframes.tsx", import.meta.url));
 const REVIEW_DEMO_ENTRY = fileURLToPath(new URL("../panels/review/demo/main.tsx", import.meta.url));
 
 // Tauri は dist/ をそのまま読む。相対パスだけにして、どの場所から開いても動くようにする。
@@ -39,6 +40,7 @@ await build({
     "deliver-demo": DELIVER_DEMO_ENTRY,
     "mixer-demo": MIXER_DEMO_ENTRY,
     "review-demo": REVIEW_DEMO_ENTRY,
+    "keyframes-demo": KEYFRAMES_DEMO_ENTRY,
   },
   outdir: DIST,
   bundle: true,
@@ -57,6 +59,8 @@ await writeFile(`${DIST}inspector-demo.html`, page("Inspector demo", "inspector-
 await writeFile(`${DIST}media-demo.html`, page("Media demo", "media-demo"));
 // Story をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));
+// Inspector のキーフレームの列と Graph を手元のレイヤーで動かすページ。アプリには載せない。
+await writeFile(`${DIST}keyframes-demo.html`, page("Keyframes demo", "keyframes-demo"));
 // Deliver をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}deliver-demo.html`, page("Deliver demo", "deliver-demo"));
 // Mixer をモックの API で動かすページ。アプリには載せない。

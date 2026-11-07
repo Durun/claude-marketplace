@@ -12,7 +12,8 @@ use mm_types::Result;
 use serde_json::{json, Value};
 
 const NOW: i64 = 1_700_000_000_000;
-const OPS: usize = 57;
+/// 操作の数は mm-ops の一覧から取る（操作を足すたびに数を書き直さない）。
+const OPS: usize = mm_ops::Op::NAMES.len();
 const EXTRA_TOOLS: usize = 5;
 
 struct StubFrames;
@@ -101,7 +102,7 @@ fn refs(v: &Value, out: &mut BTreeSet<String>) {
 }
 
 #[test]
-fn tools_list_は_57_の操作と_5_つのツールを返し_参照は_defs_で解決する() {
+fn tools_list_は全部の操作と_5_つのツールを返し_参照は_defs_で解決する() {
     let r = rig();
     let tools = rpc(&r, "tools/list", json!({}))["result"]["tools"]
         .as_array()

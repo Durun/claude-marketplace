@@ -97,7 +97,7 @@ Function Hooks は早期アクセスなので、有効化が必要です。
 ```
 
 ```
-/plugin marketplace add Durun/claude-marketplace
+/plugin marketplace add durun-lab/claude-marketplace
 /plugin install gankooyaji@durun-toolbox
 ```
 

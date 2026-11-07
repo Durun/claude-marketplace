@@ -94,6 +94,13 @@ body {
   margin-bottom: var(--mm-space-md);
 }
 
+/* Inspector のタブは Inspector と Graph を縦に並べる。 */
+.mm-shell-right-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+}
+
 .mm-shell-right-body[hidden] {
   display: none;
 }
