@@ -106,7 +106,7 @@ export const inlineRefs = (schema: JsonSchema, defs: OpsSchema["$defs"]): JsonSc
   if (typeof schema !== "object") return schema;
   if (schema.$ref) {
     const target = inlineRefs(defs[refName(schema.$ref)] ?? false, defs);
-    // 参照する側の既定値（`#[serde(default)]` の欄）は、参照先に無いので引き継ぐ。
+    // 参照する側の既定値（`#[serde(default)]` のフィールド）は、参照先に無いので引き継ぐ。
     return typeof target === "object" && schema.default !== undefined ? { ...target, default: schema.default } : target;
   }
   const out: SchemaObject = { ...schema };

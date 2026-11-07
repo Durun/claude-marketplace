@@ -1,6 +1,6 @@
 //! 字幕。コンポジションに置いた sequence のカットの文字起こしを、書き出しの時間軸の字幕にする。
 //!
-//! 単語は素材の時間軸にあり、カットの `in`・`out`・速さと、レイヤーの置き方を通して書き出しの時間軸に写す。
+//! 単語は素材の時間軸にあり、カットの `in`・`out`・速さと、レイヤーの置き方を通して書き出しの時間軸に変換する。
 //! 消した単語と直した文字は呼ぶ側が [`CaptionWord`] に反映して渡す（DB の `words` とプロジェクトのデータの
 //! `transcript_edits` を読むのは操作経路の仕事で、このクレートは DB を知らない）。区切りと折り返しは [`crate::cue_text`]。
 
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn 書き出す区間の外は落とし_区間の始まりを_0_にする() {
+    fn 書き出す区間の外は除き_区間の始まりを_0_にする() {
         let (p, comp) = project(vec![Cut::new("k", footage("a"), t(0, 1), t(4, 1))]);
         let range = TimeRange::new(t(2, 1), t(4, 1)).unwrap();
         let cues = composition_cues(&p, &comp, range, &transcript()).unwrap();

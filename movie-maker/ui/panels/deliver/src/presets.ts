@@ -1,7 +1,7 @@
 import type { DeliverOverview, Rational, RenderTarget } from "@mm/sdk";
 import { withRequired, type FieldSpec } from "./form.ts";
 
-/** プリセット。大きさ、フレームレート、コーデック、拡張子だけを決め、残りの欄は足すときに埋める。 */
+/** プリセット。大きさ、フレームレート、コーデック、拡張子だけを決め、残りのフィールドは足すときに埋める。 */
 export interface Preset {
   id: string;
   label: string;
@@ -19,7 +19,7 @@ export interface Preset {
 const FPS_30: Rational = { num: 30, den: 1 };
 const YOUTUBE_LUFS = -14;
 
-/** 書き出し先ごとの定番。ProRes のプロファイル（HQ）はコーデックの名前に出ないので、エンコーダーの側の既定に従う。 */
+/** 配信先ごとのプリセット。ProRes のプロファイル（HQ）はコーデックの名前に出ないので、エンコーダーの側の既定に従う。 */
 export const PRESETS: readonly Preset[] = [
   { id: "youtube-1080p", label: "YouTube 1080p", width: 1920, height: 1080, fps: FPS_30, codec: "h264_nvenc", extension: "mp4", loudness_lufs: YOUTUBE_LUFS },
   { id: "youtube-shorts", label: "YouTube Shorts 1080x1920", width: 1080, height: 1920, fps: FPS_30, codec: "h264_nvenc", extension: "mp4", loudness_lufs: YOUTUBE_LUFS, portrait: true },
@@ -37,7 +37,7 @@ export const uniqueId = (base: string, taken: readonly string[]): string => {
   return taken.includes(base) ? from(FIRST_SUFFIX) : base;
 };
 
-/** プリセットからレンダーターゲットを作る。必須の欄が増えていても、スキーマの既定値で埋める。 */
+/** プリセットからレンダーターゲットを作る。必須のフィールドが増えていても、スキーマの既定値で埋める。 */
 export const targetFromPreset = (
   preset: Preset,
   context: { composition: string; takenIds: readonly string[] },

@@ -1,5 +1,5 @@
 //! 映像のトラック: 線形の RGBA の f32 → エンコーダーの画素形式（Rec.709、tv レンジ）→ エンコーダー。
-//! レンダラーが GPU で作った NV12 は、NV12 を受けるコーデックならそのまま押す。
+//! レンダラーが GPU で作った NV12 は、NV12 を受けるコーデックならそのまま送る。
 
 use std::path::PathBuf;
 
@@ -94,7 +94,7 @@ impl VideoTrack {
         })
     }
 
-    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を控える。
+    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を記録する。
     pub fn after_header(mut self, output: &Output) -> Self {
         if let Some(stream) = self.stream_index.and_then(|i| output.stream(i)) {
             self.stream_tb = stream.time_base();
@@ -102,7 +102,7 @@ impl VideoTrack {
         self
     }
 
-    /// NV12 をそのまま押せるか。
+    /// NV12 をそのまま送れるか。
     pub fn accepts_nv12(&self) -> bool {
         self.input == VideoInput::Nv12
     }
@@ -330,7 +330,7 @@ fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
     }
 }
 
-/// `fill_rgba` の 16 ビット版（リトルエンディアン）。
+/// `fill_rgba` の 16 ビットにしたもの（リトルエンディアン）。
 fn fill_rgba64(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable16) {
     let width = image.width() as usize;
     let stride = dst.stride(0);

@@ -19,7 +19,7 @@
 //!   `r.frame_indices(fps)`、VFR は PTS が `[start, end)` に入るフレーム全部（最後のフレームも取りこぼさない）。
 //! - `frame_index_at(t)` は最初のフレームより前の `t` で CFR も VFR も -1。
 //! - 壊れたファイルは `Err(Corrupt)` を返し、panic しない。
-//! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のフレーム数が押した数と一致する。
+//! - エンコーダーは `begin` → `push_frames`/`push_audio` → `finish` の順で、報告のフレーム数が送った数と一致する。
 
 use std::any::Any;
 use std::fmt;
@@ -288,7 +288,7 @@ impl ExtraTracks {
     }
 }
 
-/// エンコーダー。フレームはバッチで押す。
+/// エンコーダー。フレームはバッチで送る。
 pub trait Encoder: Send {
     /// 字幕のトラックとチャプターを入れる。`begin` の前に呼ぶ。対応しない実装は `Err(Unsupported)`（既定）を返し、
     /// 呼ぶ側は字幕を書き出しの隣のファイルにするか、書き出しを拒否する。
@@ -300,8 +300,8 @@ pub trait Encoder: Send {
     }
     /// 出力を開く。
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()>;
-    /// 映像を通す回数。`begin` の後に呼ぶ。2 パスのエンコーダーは 2 を返し、呼ぶ側は `begin_pass(1)` で映像の全フレームを押し、
-    /// 続けて `begin_pass(2)` で同じフレームをもう一度押す（音は 2 回目の後）。1 パスは 1 で、`begin_pass` を呼ばなくてよい。
+    /// 映像を通す回数。`begin` の後に呼ぶ。2 パスのエンコーダーは 2 を返し、呼ぶ側は `begin_pass(1)` で映像の全フレームを送り、
+    /// 続けて `begin_pass(2)` で同じフレームをもう一度送る（音は 2 回目の後）。1 パスは 1 で、`begin_pass` を呼ばなくてよい。
     fn passes(&self) -> u32 {
         1
     }
@@ -310,22 +310,22 @@ pub trait Encoder: Send {
         let _ = pass;
         Ok(())
     }
-    /// フレームの列を押す。順序は再生順。
+    /// フレームの並びを送る。順序は再生順。
     fn push_frames(&mut self, frames: &[RgbaImage]) -> Result<()>;
-    /// GPU で YUV にしたフレームの列を押す。順序は再生順。対応しない実装は `Err(Unsupported)` を返し、
-    /// 呼ぶ側は `push_frames` に切り替える。空の列は何もせず、対応の有無だけを返す（切り替えの判断に使う）。
+    /// GPU で YUV にしたフレームの並びを送る。順序は再生順。対応しない実装は `Err(Unsupported)` を返し、
+    /// 呼ぶ側は `push_frames` に切り替える。空のスライスは何もせず、対応の有無だけを返す（切り替えの判断に使う）。
     fn push_nv12_frames(&mut self, frames: &[Nv12Frame]) -> Result<()> {
         let _ = frames;
         Err(mm_types::MmError::Unsupported(
             "このエンコーダーは NV12 を受けない".into(),
         ))
     }
-    /// 音を押す。
+    /// 音を送る。
     fn push_audio(&mut self, block: &AudioBlock) -> Result<()>;
     /// 閉じて報告を返す。
     fn finish(&mut self) -> Result<EncodeReport>;
     /// 実際に書いた実装とコーデック（`nvenc/h264_nvenc`、`ffmpeg/h264` など）。`begin` の後に呼ぶ。
-    /// 候補から選ぶ実装が、代わりのコーデックに落ちたことを呼ぶ側に伝えるため。選ばない実装は `None`（既定）。
+    /// 候補から選ぶ実装が、代わりのコーデックにフォールバックしたことを呼ぶ側に伝えるため。選ばない実装は `None`（既定）。
     fn implementation(&self) -> Option<String> {
         None
     }

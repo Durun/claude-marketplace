@@ -75,7 +75,7 @@ export interface ExportQueueProps {
   onReveal: (path: string) => void;
 }
 
-/** 書き出しの列。1 本ずつの進み具合、取り消し、終わったあとの検証の結果と「フォルダーを開く」。 */
+/** 書き出しのキュー。1 本ずつの進み具合、取り消し、終わったあとの検証の結果と「フォルダーを開く」。 */
 export const ExportQueue = ({ status, onCancel, onReveal }: ExportQueueProps) => {
   if (status.items.length === 0) return null;
   const finished = status.items.filter((i) => i.state === "done").length;

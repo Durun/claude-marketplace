@@ -59,7 +59,7 @@ fn finished(rx: &Receiver<ExportStatus>) -> ExportStatus {
 }
 
 #[test]
-fn 列のレンダーターゲットを順に書き出し_書き出したファイルだけフォルダーを開ける() {
+fn キューのレンダーターゲットを順に書き出し_書き出したファイルだけフォルダーを開ける() {
     let dir = temp("order");
     let state = state(&dir);
     let (emit, rx) = collect();
@@ -82,7 +82,7 @@ fn 列のレンダーターゲットを順に書き出し_書き出したファ�
 }
 
 #[test]
-fn 同じ出力先を指す組と_無い対象は始める前に断る() {
+fn 同じ出力先を指す組と_無い対象は始める前に拒否する() {
     let dir = temp("reject");
     let state = state(&dir);
     let (emit, _rx) = collect();
@@ -99,11 +99,11 @@ fn 同じ出力先を指す組と_無い対象は始める前に断る() {
         .start(request(&["none"]), config(), emit.clone())
         .is_err());
     assert!(state.start(request(&[]), config(), emit).is_err());
-    assert!(!state.status().running, "断ったときは列を作らない");
+    assert!(!state.status().running, "拒否したときはキューを作らない");
 }
 
 #[test]
-fn 取り消すと走っている分を止め_残りは書き出さず_一時ファイルを残さない() {
+fn 取り消すと書き出し中の分を止め_残りは書き出さず_一時ファイルを残さない() {
     let dir = temp("cancel");
     let state = state(&dir);
     let (tx, rx) = channel();
@@ -129,7 +129,7 @@ fn 取り消すと走っている分を止め_残りは書き出さず_一時フ
 }
 
 #[test]
-fn 書き出し中にもう一度始めようとすると断る() {
+fn 書き出し中にもう一度始めようとすると拒否する() {
     let dir = temp("busy");
     let state = state(&dir);
     let (gate_tx, gate_rx) = channel::<()>();
@@ -254,11 +254,14 @@ fn 一覧の出力先は開くときに直す前の相対のまま返す() {
     let state = DeliverState::new(shared, &base.join("project.json"));
     let overview = state.overview().unwrap();
     assert_eq!(overview.targets[0].output_path, "exports/yt.mp4");
-    assert!(overview.targets[0].delivery.chapters, "ほかの欄は変えない");
+    assert!(
+        overview.targets[0].delivery.chapters,
+        "ほかのフィールドは変えない"
+    );
 }
 
 #[test]
-fn 大文字小文字と区切りだけが違う出力先も同じとして断る() {
+fn 大文字小文字と区切りだけが違う出力先も同じとして拒否する() {
     let dir = temp("shared");
     let state = state(&dir);
     let comp = state.shared.doc().unwrap().comp;
@@ -276,7 +279,7 @@ fn 大文字小文字と区切りだけが違う出力先も同じとして断�
 }
 
 #[test]
-fn 一時ファイルの名前と重なる出力先も断る() {
+fn 一時ファイルの名前と重なる出力先も拒否する() {
     let dir = temp("partial");
     let state = state(&dir);
     let comp = state.shared.doc().unwrap().comp;
@@ -312,7 +315,7 @@ fn 一本が失敗しても残りは書き出す() {
 }
 
 #[test]
-fn 書き出しのスレッドがパニックしても_列は止まった状態で知らせる() {
+fn 書き出しのスレッドがパニックしても_キューは止まった状態で知らせる() {
     let dir = temp("panic");
     let state = state(&dir);
     let (tx, rx) = channel();
@@ -325,7 +328,7 @@ fn 書き出しのスレッドがパニックしても_列は止まった状態�
             .first()
             .is_some_and(|i| i.state == ItemState::Running);
         if running && armed.swap(false, Ordering::SeqCst) {
-            panic!("書き出しのスレッドの途中で落ちる");
+            panic!("書き出しのスレッドの途中でパニックする");
         }
     });
     state
@@ -343,7 +346,7 @@ fn 書き出しのスレッドがパニックしても_列は止まった状態�
 }
 
 #[test]
-fn 列を止めると_動いていない項目だけ理由つきの失敗になる() {
+fn キューを止めると_動いていない項目だけ理由つきの失敗になる() {
     let target = state(&temp("stop")).project().unwrap().render_targets[0].clone();
     let queued = ExportItem::queued(&target);
     let done = ExportItem {

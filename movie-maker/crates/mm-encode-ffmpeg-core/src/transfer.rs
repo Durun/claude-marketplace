@@ -4,19 +4,19 @@
 
 const GAMMA: f32 = 2.4;
 
-/// ルックアップテーブルの分解能。1 段が符号化値の半分の幅より細かくなる暗部の下限（`DARK_LIMIT`）から上で、
+/// ルックアップテーブルの分解能。1 ステップが符号化値の半分の幅より細かくなる暗部の下限（`DARK_LIMIT`）から上で、
 /// 符号化値の丸めと一致する。
 const LUT_SIZE: usize = 1 << 16;
 
-/// これより暗い線形の値はルックアップテーブルの 1 段が符号化値の幅を超えるので、境目の二分探索で決める。
+/// これより暗い線形の値はルックアップテーブルの 1 ステップが符号化値の幅を超えるので、境界の二分探索で決める。
 const DARK_LIMIT: f32 = 1.0e-4;
 
 /// 線形の値を 8 ビットの符号化値へ丸める表。符号化値どうしの中点の線形値で区切る。
 /// 全画素で `powf` を呼ばないので 1080p でも書き出しの足を引かない。
 pub struct EncodeTable {
-    /// `bounds[c]` は符号化値 `c` と `c + 1` の境目。
+    /// `bounds[c]` は符号化値 `c` と `c + 1` の境界。
     bounds: [f32; 255],
-    /// 線形の値を `LUT_SIZE - 1` 倍した段の符号化値。
+    /// 線形の値を `LUT_SIZE - 1` 倍したステップの符号化値。
     lut: Vec<u8>,
 }
 
@@ -34,15 +34,15 @@ impl EncodeTable {
         if linear.is_nan() || linear < DARK_LIMIT {
             return search(&self.bounds, linear);
         }
-        // `as` は飽和するので 1 を超える値は最後の段になる
+        // `as` は飽和するので 1 を超える値は最後のステップになる
         self.lut[((linear * (LUT_SIZE - 1) as f32) as usize).min(LUT_SIZE - 1)]
     }
 }
 
-/// 16 ビットの表で、これより暗い線形の値は式で求める。表の 1 段（`1 / LUT_SIZE`）の符号化値の幅が、10 ビットの
-/// 半段（`TOLERANCE_16` = 32）を超える暗さの上限。
+/// 16 ビットの表で、これより暗い線形の値は式で求める。表の 1 ステップ（`1 / LUT_SIZE`）の符号化値の幅が、10 ビットの
+/// 半ステップ（`TOLERANCE_16` = 32）を超える暗さの上限。
 const DARK_LIMIT_16: f32 = 1.0e-3;
-/// 16 ビットの表と式のずれの上限（16 ビットの符号化値で、10 ビットの半段）。
+/// 16 ビットの表と式のずれの上限（16 ビットの符号化値で、10 ビットの半ステップ）。
 #[cfg(test)]
 const TOLERANCE_16: i32 = 32;
 
@@ -59,7 +59,7 @@ impl EncodeTable16 {
         Self { lut }
     }
 
-    /// 線形の値 → 符号化値。範囲外は端に丸め、NaN は 0。暗部は表の 1 段が粗いので式で求める。
+    /// 線形の値 → 符号化値。範囲外は端に丸め、NaN は 0。暗部は表の 1 ステップが粗いので式で求める。
     pub fn encode(&self, linear: f32) -> u16 {
         if linear.is_nan() || linear < DARK_LIMIT_16 {
             return exact16(linear);
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn 全域で式の丸めと高々_1_段しかずれない() {
+    fn 全域で式の丸めと高々_1_ステップしかずれない() {
         let table = EncodeTable::new();
         let mut v = 1.0e-7f32;
         while v < 1.0 {
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn 十六ビットの表は式と_10_ビットの半段以内しかずれない() {
+    fn 十六ビットの表は式と_10_ビットの半ステップ以内しかずれない() {
         let table = EncodeTable16::new();
         let mut v = 1.0e-7f32;
         while v < 1.0 {

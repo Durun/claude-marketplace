@@ -14,7 +14,7 @@ export type Control =
   | { kind: "output" }
   | { kind: "codec" };
 
-/** レンダーターゲットの欄 1 つ。入れ子の `delivery` の子は `delivery.subtitles` のように点でつなぐ。 */
+/** レンダーターゲットの入力欄 1 つ。入れ子の `delivery` の子は `delivery.subtitles` のように点でつなぐ。 */
 export interface FieldSpec {
   key: string;
   /** 値のある場所。`key` を点で分けたもの。 */
@@ -26,12 +26,12 @@ export interface FieldSpec {
   fallback?: unknown;
 }
 
-/** 下書き。欄の値を、入力欄が持つ文字（真偽の欄だけ真偽）で持つ。 */
+/** 下書き。入力欄の値を、入力欄が持つ文字（真偽の入力欄だけ真偽）で持つ。 */
 export type Draft = Record<string, string | boolean>;
 
-/** 先頭に並べる欄。ここに無い欄（あとから増えたもの）はスキーマの順に続く。 */
+/** 先頭に並べる入力欄。ここに無い入力欄（あとから増えたもの）はスキーマの順に続く。 */
 const FIELD_ORDER = ["id", "composition", "width", "height", "fps", "codec", "output_path"];
-/** 一覧の行が専用の形で見せる欄。残りは「その他」として key と値を並べる。 */
+/** 一覧の行が専用の形で見せる入力欄。残りは「その他」として key と値を並べる。 */
 export const CORE_KEYS: readonly string[] = FIELD_ORDER;
 
 const LABELS: Record<string, string> = {
@@ -104,11 +104,11 @@ const controlOf = (key: string, s: SchemaObject): Control => {
   return { kind: "json" };
 };
 
-/** 子の欄を持つ入れ子の object（有理数と、子の無い辞書は欄 1 つのまま）。 */
+/** 子の入力欄を持つ入れ子の object（有理数と、子の無い辞書は入力欄 1 つのまま）。 */
 const isNested = (s: SchemaObject): boolean =>
   s.type === "object" && !isRational(s) && Object.values(s.properties ?? {}).some(isObject);
 
-/** `schema` の子を欄にする。入れ子の object は再帰して子の欄にし、親が任意なら子の必須も任意として扱う。 */
+/** `schema` の子を入力欄にする。入れ子の object は再帰して子の入力欄にし、親が任意なら子の必須も任意として扱う。 */
 const specsOf = (entries: [string, SchemaObject][], required: Set<string>, parent: string[], parentRequired: boolean): FieldSpec[] =>
   entries.flatMap(([key, v]) => {
     const inner = unwrapNullable(v);
@@ -131,7 +131,7 @@ const specsOf = (entries: [string, SchemaObject][], required: Set<string>, paren
     ];
   });
 
-/** レンダーターゲットのスキーマから欄の一覧を作る。欄が増えても、ここは直さずに済む。 */
+/** レンダーターゲットのスキーマから入力欄の一覧を作る。入力欄が増えても、ここは直さずに済む。 */
 export const fieldSpecs = (schema: JsonSchema = RENDER_TARGET_SCHEMA): FieldSpec[] => {
   if (!isObject(schema)) return [];
   const rank = (key: string): number => {
@@ -149,10 +149,10 @@ export const fieldSpecs = (schema: JsonSchema = RENDER_TARGET_SCHEMA): FieldSpec
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** 入れ子の値を道筋で読む。 */
+/** 入れ子の値をパスで読む。 */
 const getAt = (obj: Rec, path: string[]): unknown => path.reduce<unknown>((cur, k) => (isRec(cur) ? cur[k] : undefined), obj);
 
-/** 入れ子の値を道筋で置いた複製（元は変えない）。 */
+/** 入れ子の値をパスで置いた複製（元は変えない）。 */
 const setAt = (obj: Rec, path: string[], value: unknown): Rec => {
   const [head, ...rest] = path;
   if (head === undefined) return obj;
@@ -161,7 +161,7 @@ const setAt = (obj: Rec, path: string[], value: unknown): Rec => {
   return { ...obj, [head]: setAt(isRec(child) ? child : {}, rest, value) };
 };
 
-/** 道筋の値を外した複製。外して空になった入れ子は、`base` に無かったなら残さない。 */
+/** パスの値を外した複製。外して空になった入れ子は、`base` に無かったなら残さない。 */
 const removeAt = (obj: Rec, path: string[], base: Rec): Rec => {
   const [head, ...rest] = path;
   if (head === undefined) return obj;
@@ -183,7 +183,7 @@ const toText = (spec: FieldSpec, value: unknown): string | boolean => {
 export const draftOf = (target: Partial<RenderTarget>, specs: FieldSpec[]): Draft =>
   Object.fromEntries(specs.map((s) => [s.key, toText(s, getAt(target as Rec, s.path))]));
 
-/** 1 つの欄の下書きから値を取る。`undefined` は「無い」（省ける欄）、`Error` は入力の誤り。 */
+/** 1 つの入力欄の下書きから値を取る。`undefined` は「無い」（省ける入力欄）、`Error` は入力の誤り。 */
 const parseField = (spec: FieldSpec, text: string | boolean): unknown => {
   const { control } = spec;
   if (control.kind === "bool") return text === true;
@@ -237,10 +237,10 @@ const parseValue = (control: Control, raw: string): unknown => {
 
 export type Parsed = { ok: true; value: RenderTarget } | { ok: false; errors: Record<string, string> };
 
-/** ProRes と DNxHR は MOV に書く（アプリの書き出しも `.mov` 以外を断る）。 */
+/** ProRes と DNxHR は MOV に書く（アプリの書き出しも `.mov` 以外を拒否する）。 */
 const MOV_CODEC_PREFIXES = ["prores", "dnx"];
 
-/** 欄をまたぐ決まり。コーデックと出力先の拡張子の組。 */
+/** 入力欄をまたぐ決まり。コーデックと出力先の拡張子の組。 */
 const crossErrors = (values: Rec): Record<string, string> => {
   const codec = String(values.codec ?? "").toLowerCase();
   const output = String(values.output_path ?? "");
@@ -248,11 +248,11 @@ const crossErrors = (values: Rec): Record<string, string> => {
   return needsMov && output !== "" && !output.toLowerCase().endsWith(".mov") ? { output_path: "ProRes and DNxHR need a .mov file" } : {};
 };
 
-/** 省ける真偽の欄が、元に無く偽のままなら「無い」にする（開いて保存しただけで既定の欄が増えないように）。 */
+/** 省ける真偽の入力欄が、元に無く偽のままなら「無い」にする（開いて保存しただけで既定のフィールドが増えないように）。 */
 const omitDefaultBool = (spec: FieldSpec, value: unknown, base: Rec): unknown =>
   spec.control.kind === "bool" && !spec.required && value === false && getAt(base, spec.path) === undefined ? undefined : value;
 
-/** 下書きからレンダーターゲットを作る。スキーマに無い欄は `base` のまま残す。 */
+/** 下書きからレンダーターゲットを作る。スキーマに無いフィールドは `base` のまま残す。 */
 export const targetOf = (draft: Draft, specs: FieldSpec[], base: Partial<RenderTarget> = {}): Parsed => {
   const baseRec = base as Rec;
   const values: [FieldSpec, unknown][] = [];
@@ -265,7 +265,7 @@ export const targetOf = (draft: Draft, specs: FieldSpec[], base: Partial<RenderT
   const flat = Object.fromEntries(values.map(([s, v]) => [s.key, v])) as Rec;
   for (const [key, message] of Object.entries(crossErrors(flat))) errors[key] ??= message;
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  // 省いた欄（undefined）は base の値も含めて外し、スキーマに無い欄は base のまま残す。
+  // 省いた入力欄（undefined）は base の値も含めて外し、スキーマに無いフィールドは base のまま残す。
   const merged = values.reduce<Rec>((acc, [spec, v]) => (v === undefined ? removeAt(acc, spec.path, baseRec) : setAt(acc, spec.path, v)), { ...baseRec });
   return { ok: true, value: merged as unknown as RenderTarget };
 };
@@ -289,7 +289,7 @@ const zeroOf = (control: Control): unknown => {
   }
 };
 
-/** 必須の欄のうち `base` に無いものを、スキーマの既定値か型の初期値で埋める。 */
+/** 必須のフィールドのうち `base` に無いものを、スキーマの既定値か型の初期値で埋める。 */
 export const withRequired = (base: Record<string, unknown>, specs: FieldSpec[]): RenderTarget => {
   let filled: Rec = { ...base };
   for (const spec of specs) {
@@ -298,7 +298,7 @@ export const withRequired = (base: Record<string, unknown>, specs: FieldSpec[]):
   return filled as unknown as RenderTarget;
 };
 
-/** 一覧の行の「その他」に出す欄。専用の形で見せる欄と、既定値のままの欄を除き、値のある欄だけ。 */
+/** 一覧の行の「その他」に出す入力欄。専用の形で見せる入力欄と、既定値のままのフィールドを除き、値のある入力欄だけ。 */
 export const extraFields = (target: RenderTarget, specs: FieldSpec[]): { label: string; text: string }[] =>
   specs
     .filter((s) => !CORE_KEYS.includes(s.key))

@@ -60,7 +60,7 @@ fn nvenc_が無い環境では_supports_が偽で_あれば二つの名前を扱
 #[test]
 fn nv12_と_rgba_のどちらでも書けて_ffprobe_で読める() {
     if !available() {
-        eprintln!("NVENC が使えない環境なので飛ばす");
+        eprintln!("NVENC が使えない環境なのでスキップする");
         return;
     }
     let size = Size::new(1280, 720);

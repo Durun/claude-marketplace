@@ -442,7 +442,7 @@ fn misc_op(spec: &Spec, p: &Project) -> Option<Op> {
                 composition: pick(&p.compositions, *i)?.id.clone(),
                 ..p.render_targets.first()?.clone()
             },
-            // 奇数なら位置を指し、偶数なら末尾に足す（生成の列を変えずに両方を通す）。
+            // 奇数なら位置を指し、偶数なら末尾に足す（生成した値の並びを変えずに両方を通す）。
             index: (i % 2 == 1).then(|| usize::from(i / 2) % (p.render_targets.len() + 1)),
         }
         .into(),

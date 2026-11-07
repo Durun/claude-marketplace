@@ -130,7 +130,7 @@ describe("編集", () => {
     ]);
   });
 
-  it("入力の誤りは送らずに欄の横へ出す", async () => {
+  it("入力の誤りは送らずに入力欄の横へ出す", async () => {
     const { api } = await mount(overview([target("yt")]));
     await click(byText("button", "Edit"));
     setValue(host.querySelector("#mm-deliver-field-fps"), "fast");
@@ -139,7 +139,7 @@ describe("編集", () => {
     expect(host.querySelector(".mm-deliver-field-error")?.textContent).toContain("Enter a rate");
   });
 
-  it("消す: removeRenderTarget を送る。断られた理由は画面に出す", async () => {
+  it("消す: removeRenderTarget を送る。拒否された理由は画面に出す", async () => {
     const applyOps = vi.fn().mockRejectedValue(new Error("コンポジションが無い"));
     await mount(overview([target("yt")]), { applyOps });
     await click(byText("button", "Remove"));
@@ -149,7 +149,7 @@ describe("編集", () => {
   });
 });
 
-describe("書き出しの列", () => {
+describe("書き出しのキュー", () => {
   it("積んだ順に書き出しを頼む。何も積んでいないときは押せない", async () => {
     const { api } = await mount(overview([target("a"), target("b")]));
     expect((byText("button", "Export") as HTMLButtonElement).disabled).toBe(true);
@@ -193,14 +193,14 @@ describe("書き出しの進み具合", () => {
     expect(api.reveal).toHaveBeenCalledWith("out/a.mp4");
   });
 
-  it("失敗は理由を出し、検証できないときは検証の欄を無効にする", async () => {
+  it("失敗は理由を出し、検証できないときは検証のチェックボックスを無効にする", async () => {
     const { push } = await mount(overview([target("a")], { can_verify: false }));
     expect((host.querySelector(".mm-deliver-check-line input") as HTMLInputElement).disabled).toBe(true);
     await push({ running: false, items: [item({ state: "failed", error: "ffprobe を起動できない" })] });
     expect(host.querySelector(".mm-deliver-item [role=alert]")?.textContent).toBe("ffprobe を起動できない");
   });
 
-  it("開き直したときは、走っている列の状態を読む", async () => {
+  it("開き直したときは、動いているキューの状態を読む", async () => {
     await mount(overview([target("a")]), {
       status: vi.fn().mockResolvedValue({ running: true, items: [item({ state: "running", frames_done: 1, frames_total: 2 })] }),
     });
@@ -223,7 +223,7 @@ describe("レビューの指摘（編集）", () => {
     expect((host.querySelector("#mm-deliver-field-composition") as HTMLSelectElement).value).toBe("short");
   });
 
-  it("入れ子の delivery を、実際のスキーマの欄（選択とチェック）として出し、選んだ値を送る", async () => {
+  it("入れ子の delivery を、実際のスキーマの入力欄（選択とチェック）として出し、選んだ値を送る", async () => {
     const { api } = await mount(overview([]));
     await click(byText("button", "Add target"));
     const subtitles = host.querySelector<HTMLSelectElement>('[id="mm-deliver-field-delivery.subtitles"]');
@@ -239,7 +239,7 @@ describe("レビューの指摘（編集）", () => {
     expect(ops?.[0]).toMatchObject({ op: "addRenderTarget", target: { delivery: { subtitles: "sidecar" }, loudness_lufs: -14 } });
   });
 
-  it("誤りは欄に結び付き、aria-invalid が立つ", async () => {
+  it("誤りは入力欄に結び付き、aria-invalid が立つ", async () => {
     await mount(overview([target("yt")]));
     await click(byText("button", "Edit"));
     setValue(host.querySelector("#mm-deliver-field-width"), "1081");
@@ -259,7 +259,7 @@ describe("レビューの指摘（編集）", () => {
   });
 });
 
-describe("レビューの指摘（書き出しの列）", () => {
+describe("レビューの指摘（書き出しのキュー）", () => {
   it("書き出しの依頼が返るまで、もう一度押しても依頼は 1 回", async () => {
     let finish: () => void = () => {};
     const start = vi.fn().mockImplementation(() => new Promise<void>((ok) => (finish = ok)));

@@ -101,7 +101,7 @@ impl Framing {
         self.cuts.iter().find(|r| &r.cut == cut)
     }
 
-    /// 持っているパラメータの列（検証が巡る）。
+    /// 持っているパラメータの並び（検証が巡る）。
     pub fn params(&self) -> impl Iterator<Item = &Param> {
         self.cuts
             .iter()
@@ -130,7 +130,7 @@ pub struct CaptionPlacement {
 }
 
 impl CaptionPlacement {
-    /// 持っているパラメータの列。
+    /// 持っているパラメータの並び。
     pub fn params(&self) -> impl Iterator<Item = &Param> {
         [&self.position, &self.width].into_iter()
     }
@@ -267,7 +267,7 @@ impl Transform {
         *self == Self::default()
     }
 
-    /// 持っているパラメータの列（検証と操作が巡る）。
+    /// 持っているパラメータの並び（検証と操作が巡る）。
     pub fn params(&self) -> impl Iterator<Item = &Param> {
         [&self.position, &self.scale, &self.rotation]
             .into_iter()

@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn 区間を指すと_区間の外のマーカーを落とし_始まりを_0_にする() {
+    fn 区間を指すと_区間の外のマーカーを除き_始まりを_0_にする() {
         let range = TimeRange::new(RationalTime::seconds(10), RationalTime::seconds(70)).unwrap();
         let marks =
             chapter_marks(&comp(&[(0, "a"), (20, "b"), (65, "c"), (80, "d")]), range).unwrap();

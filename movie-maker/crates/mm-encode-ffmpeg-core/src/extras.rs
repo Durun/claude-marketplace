@@ -55,7 +55,7 @@ pub struct SubtitleTrack {
 }
 
 impl SubtitleTrack {
-    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を控える。
+    /// ヘッダーを書いた後の、muxer が決めたストリームの時間の単位を記録する。
     pub fn after_header(mut self, output: &Output) -> Self {
         if let Some(stream) = output.stream(self.stream_index) {
             self.stream_tb = stream.time_base();
