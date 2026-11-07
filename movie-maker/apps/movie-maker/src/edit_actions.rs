@@ -161,6 +161,7 @@ mod tests {
                 present: true,
                 ..RuntimeConfig::real()
             }),
+            store_dir: None,
         }
     }
 
