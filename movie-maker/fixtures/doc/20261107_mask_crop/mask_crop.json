@@ -1,0 +1,62 @@
+{
+  "schema_version": 9,
+  "migrations": ["20261107_mask_crop", "20261107_mixer"],
+  "assets": [
+    {
+      "id": "cap",
+      "path": "cap.mkv",
+      "content_hash": "hash-cap",
+      "color_space": "bt709",
+      "duration": { "num": 10, "den": 1 },
+      "fps": { "num": 30, "den": 1 },
+      "timebase_offset": { "num": 0, "den": 1 }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main", "width": 1920, "height": 1080, "fps": { "num": 30, "den": 1 },
+      "duration": { "num": 10, "den": 1 },
+      "layers": [
+        {
+          "id": "wipe",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "cap" } } } },
+          "start": { "num": 0, "den": 1 },
+          "in": { "num": 0, "den": 1 },
+          "out": { "num": 10, "den": 1 },
+          "opacity": { "value": { "type": "number", "value": 1.0 } },
+          "crop": {
+            "left": { "value": { "type": "number", "value": 1220.0 } },
+            "top": {
+              "value": { "type": "number", "value": 1080.0 },
+              "keyframes": [
+                { "time": { "num": 0, "den": 1 }, "value": { "type": "number", "value": 1080.0 }, "interpolation": "linear" },
+                { "time": { "num": 1, "den": 1 }, "value": { "type": "number", "value": 900.0 }, "interpolation": "linear" }
+              ]
+            }
+          },
+          "masks": [
+            {
+              "id": "wipe-mask",
+              "rect": {
+                "position": { "value": { "type": "vec2", "value": [1220.0, 1080.0] } },
+                "size": { "value": { "type": "vec2", "value": [1530.0, 861.0] } },
+                "radius": { "value": { "type": "number", "value": 55.25 } }
+              },
+              "feather": { "value": { "type": "number", "value": 1.0 } }
+            }
+          ],
+          "audio": {
+            "role": "video",
+            "gain_db": { "value": { "type": "number", "value": 0.0 } },
+            "pan": { "value": { "type": "number", "value": 0.0 } },
+            "fade_in": { "duration": { "num": 1, "den": 2 }, "curve": "equal_power" },
+            "fade_out": { "duration": { "num": 1, "den": 1 } }
+          }
+        }
+      ],
+      "markers": []
+    }
+  ],
+  "sequences": [],
+  "render_targets": []
+}
