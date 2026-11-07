@@ -40,7 +40,7 @@ classDiagram
     blend, opacity: Param
     effects: Effect[]
     masks, trackMatte
-    audio: role, gain, pan
+    audio: role, gain, pan, mute, solo
     enabled, lock
   }
   class Sequence {
@@ -131,7 +131,8 @@ classDiagram
 ## コンポジションとレイヤー
 
 - コンポジションは、大きさ、画素の縦横比、fps、長さ、背景、レイヤーの重なり、マーカーを持つ。
-- レイヤーはノード（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、`speed`、`timeRemap`）、接続（`attachTo`。カットの ID。カットがリップルで動くと一緒に動く）、形（変形と `parent`）、重ね方（`blend`、`masks`、`trackMatte`）、効果の列（`effects`。ID つきのノード）、音（役割、音量、パン）、`enabled`、ロック（人が直した所を AI が上書きしないフラグ）。
+- レイヤーはノード（`source`）を 1 つ持ち、次を足す。時間（`start`、`in`・`out`、`speed`、`timeRemap`）、接続（`attachTo`。カットの ID。カットがリップルで動くと一緒に動く）、形（変形と `parent`）、重ね方（`blend`、`masks`、`trackMatte`）、効果の列（`effects`。ID つきのノード）、音（役割（送り先のバス）、音量、パン、ミュート、ソロ）、`enabled`、ロック（人が直した所を AI が上書きしないフラグ）。
+- コンポジションはミキサーの設定（`mixer`）を持てる。役割ごとのバスの音量、マスターの音量、ダッキング（`trigger` のバスが鳴る間 `targets` のバスを下げる）。ミュートとソロはプレビューと書き出しの両方に効き、ソロはそのコンポジションの中だけで効く。入れ子の中のミキサーはバスとマスターだけを効かせる（ダッキングは開いたコンポジションだけ）。
 - レイヤーのコンポジション上の範囲は `[start, start + (out - in) / speed)`。`speed` は正の有理数（型が 0 を拒否する。逆再生は後で足す）。`timeRemap` はレイヤーの始まりからの時刻を素材の時刻に変換する折れ線（補間はホールドと直線。有理数のまま変換する）で、あれば `in` と `speed` の代わりに使うが範囲は変えない。
 - 変形（`Layer.transform`）は当面 2D で、`position`（Vec2、コンポジションの画素）、`scale`（Number か Vec2）、`rotation`（度、時計回り）、`anchor`（Vec2。無ければ画像の中心）。どれもキーフレームを持てる。レンダラーが合成で掛け、ノードの種類には渡さない。3D はカメラのフィールドを足すときに広げる。
 - 合成モードは W3C Compositing and Blending Level 1 の 16 種と `add`。マスク（頂点の列を `Json` のパラメータで）とトラックマット（同じコンポジションのレイヤーのアルファか輝度）は段階 1 では型だけ。

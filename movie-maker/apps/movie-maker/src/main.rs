@@ -30,6 +30,10 @@ mod media;
 #[cfg(windows)]
 mod media_ipc;
 #[cfg(windows)]
+mod mixer;
+#[cfg(windows)]
+mod mixer_ipc;
+#[cfg(windows)]
 mod playback;
 #[cfg(windows)]
 mod project;

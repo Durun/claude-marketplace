@@ -59,7 +59,7 @@ fn マスターのメーターは基準の正弦波で_20_lufs_と振幅のピ�
     assert!((short - -20.0).abs() < 0.2, "{short}");
     assert!((integrated - -20.0).abs() < 0.2, "{integrated}");
     let tp = r.true_peak.expect("鳴っている");
-    assert!(tp >= 0.1 - 1e-3 && tp < 0.11, "{tp}");
+    assert!((0.1 - 1e-3..0.11).contains(&tp), "{tp}");
 }
 
 #[test]

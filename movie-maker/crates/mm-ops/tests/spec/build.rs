@@ -223,7 +223,12 @@ pub fn build_layer(spec: &LayerSpec, p: &Project, start: i64, len: i64) -> Layer
 /// 種からレイヤーの音の設定を作る。0 は外す、奇数はミュート、4 以上はソロ、3 の倍数は BGM に送る。
 pub fn layer_audio(seed: u8) -> Option<LayerAudio> {
     (seed != 0).then(|| LayerAudio {
-        role: if seed % 3 == 0 { "bgm" } else { "voice" }.to_owned(),
+        role: if seed.is_multiple_of(3) {
+            "bgm"
+        } else {
+            "voice"
+        }
+        .to_owned(),
         gain_db: Param::constant(ParamValue::Number(-f64::from(seed % 24))),
         pan: Param::constant(ParamValue::Number(0.0)),
         mute: seed % 2 == 1,
@@ -236,7 +241,7 @@ pub fn comp_mixer(seed: u8) -> Option<mm_doc::CompMixer> {
     (seed != 0).then(|| mm_doc::CompMixer {
         master_db: -f64::from(seed % 12),
         buses: [("bgm".to_owned(), mm_doc::MixerBus { gain_db: -6.0 })].into(),
-        ducking: (seed % 2 == 0).then(mm_doc::Ducking::voice_over_bgm),
+        ducking: seed.is_multiple_of(2).then(mm_doc::Ducking::voice_over_bgm),
     })
 }
 
