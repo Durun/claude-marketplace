@@ -15,6 +15,38 @@ use crate::commands::{actor, cli_context, finish, now_ms, op_error, open_target,
 use crate::remote;
 use crate::transcript_cmd::put_transcripts;
 
+/// `mm ingest`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 素材を取り込む。`cache/` にプレビュー動画・波形・サムネイルを作り、素材を足す操作を適用する。
+    Ingest {
+        dir: PathBuf,
+        /// 取り込む素材のパス（1 つ以上）。
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// プレビュー動画のエンコーダー（auto、nvenc、x264）。
+        #[arg(long, default_value = "auto", value_parser = parse_encoder)]
+        encoder: PreviewEncoder,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Ingest {
+                dir,
+                inputs,
+                encoder,
+            } => ingest(&IngestArgs {
+                dir,
+                inputs,
+                encoder,
+            }),
+        }
+    }
+}
+
 /// プロジェクトの中のキャッシュのフォルダー名。
 const CACHE_DIR: &str = "cache";
 /// トランザクションの名前。

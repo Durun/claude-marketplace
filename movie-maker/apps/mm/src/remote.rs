@@ -1,7 +1,7 @@
 //! 動いているアプリへ HTTP で転送する経路（`mm-serve`）。別のプロセスが書き手で、HTTP のポートとトークンが
 //! `.mm/` にあるときに使う。動いていなければ `commands.rs` が `project.mmdb` を直接開く。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mm_ops::Transaction;
 use mm_runtime::{assemble, RuntimeConfig};
@@ -11,6 +11,47 @@ use mm_types::{AssetId, MmError, Result};
 use serde_json::{json, Value};
 
 use crate::project::load_project;
+
+/// `mm frame`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 1 フレームを PNG に書く（Claude が目で見る）。アプリが動いていればアプリが描く。
+    Frame {
+        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
+        project: PathBuf,
+        /// コンポジションの時間軸での時刻（秒。`1.5`、`3/2`）。
+        t: String,
+        #[arg(short, long)]
+        output: PathBuf,
+        /// コンポジションの ID。省くと `main`、それも無ければ先頭。
+        #[arg(long)]
+        comp: Option<String>,
+        /// 出力の幅。省くとコンポジションの大きさ。
+        #[arg(long)]
+        width: Option<u32>,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Frame {
+                project,
+                t,
+                output,
+                comp,
+                width,
+            } => frame(&FrameArgs {
+                project: &project,
+                time: &t,
+                output: &output,
+                composition: comp.as_deref(),
+                width,
+            }),
+        }
+    }
+}
 
 /// 操作経路の名前。アプリ側でロックの付いた所に触る操作を拒否する扱いになる。
 const ENTRY: &str = "cli";

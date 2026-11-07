@@ -11,6 +11,25 @@ use mm_types::{MmError, Result};
 
 use crate::commands::apply_txn;
 
+/// `mm pack`。上の段の登録は `main.rs` の 1 行。
+#[derive(Subcommand)]
+pub enum Cmd {
+    /// パック（vlog など）の検査、マクロの一覧、マクロを展開して適用する。
+    Pack {
+        #[command(subcommand)]
+        command: PackCommand,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Pack { command } => run(command),
+        }
+    }
+}
+
 /// `mm pack` のサブコマンド。
 #[derive(Subcommand)]
 pub enum PackCommand {

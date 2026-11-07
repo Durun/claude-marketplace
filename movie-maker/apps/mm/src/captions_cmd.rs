@@ -7,6 +7,22 @@ use mm_export::{CaptionWord, TranscriptWords};
 use mm_store::Store;
 use mm_types::{Id, MmError, Result};
 
+/// `mm subtitles`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// sequence の字幕（文字起こしから。消した単語を除く）を SRT か WebVTT で出す。
+    Subtitles(SubtitlesArgs),
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Subtitles(args) => subtitles(&args),
+        }
+    }
+}
+
 /// `mm subtitles` の引数。
 #[derive(clap::Args)]
 pub struct SubtitlesArgs {

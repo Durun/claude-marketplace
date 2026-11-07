@@ -59,16 +59,14 @@ fn layer(id: &str, node: Node) -> Layer {
 }
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        SIZE.width,
+        SIZE.height,
+        Rational::integer(30),
+        RationalTime::seconds(2),
+    )
+    .with_layers(layers)
 }
 
 /// 単色に `color.lut`（素材 `lut`）を掛けた入れ子を、親に置いたプロジェクト。

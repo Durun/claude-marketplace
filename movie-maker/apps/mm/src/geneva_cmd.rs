@@ -22,6 +22,22 @@ use self::media::Media;
 use self::report::{Gap, Report};
 use self::visual::Ctx;
 
+/// `mm geneva`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// geneva のタイムライン（JSON）を movie-maker のプロジェクトの JSON にする。変換できない要素は一覧で出す。
+    Geneva(GenevaArgs),
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Geneva(args) => run(&args),
+        }
+    }
+}
+
 /// 出力の既定（geneva の既定と同じ）。
 const DEFAULT_WIDTH: u32 = 1920;
 const DEFAULT_HEIGHT: u32 = 1080;
@@ -121,16 +137,9 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     let mut project = Project::new();
     project.assets = assets;
     project.compositions = std::mem::take(&mut ctx.nested);
-    project.compositions.push(Composition {
-        id: Id::new(MAIN_ID),
-        width,
-        height,
-        fps,
-        duration,
-        layers,
-        markers: Vec::new(),
-        mixer: None,
-    });
+    project
+        .compositions
+        .push(Composition::new(Id::new(MAIN_ID), width, height, fps, duration).with_layers(layers));
     project
         .render_targets
         .push(render_target(&out, [width, height], fps, render_output));

@@ -1,6 +1,6 @@
 //! `mm shorts`: 本編のカットごとに使っているショートと、複製のショートの元が変わったカットを出す。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
@@ -8,6 +8,28 @@ use mm_doc::{CutOverrides, OriginRelation, Project, ShortUse};
 use mm_types::Result;
 
 use crate::project::load_project;
+
+/// `mm shorts`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 本編のカットごとに使っているショート（上書きのフラグつき）と、複製のショートの元が変わったカットを出す。
+    Shorts {
+        /// プロジェクトの JSON、または `project.mmdb` のあるフォルダー。
+        project: PathBuf,
+        /// 1 行に 1 件の JSON で出す。
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Shorts { project, json } => shorts(&project, json),
+        }
+    }
+}
 
 /// 結果を出す。`json` なら 1 行に 1 件の JSON。
 pub fn shorts(project: &Path, json: bool) -> Result<()> {

@@ -8,11 +8,158 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ValueEnum;
-use mm_trace::{MetricsHandle, MetricsSnapshot};
+use mm_trace::{MetricsHandle, MetricsLayer, MetricsSnapshot};
 use mm_types::{MmError, Result};
 use serde_json::{json, Value};
+use tracing_subscriber::prelude::*;
 
-use crate::{scenes, scenes_cpu, scenes_export, scenes_render};
+use crate::{compare, scenes, scenes_cpu, scenes_export, scenes_render};
+
+/// `mm perf`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// 性能の計測。
+    Perf {
+        #[command(subcommand)]
+        command: PerfCommand,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Perf { command } => run_perf(command),
+        }
+    }
+}
+
+/// フィクスチャのプロジェクト。`--project` を省くと、作業フォルダー（`movie-maker/`）基準の位置から探す。
+/// ビルドした場所の絶対パスを埋め込まないので、別の場所に置いた実行ファイルでも同じ規則で動く。
+fn default_project(scene: Scene) -> PathBuf {
+    PathBuf::from(scene.default_project())
+}
+
+#[derive(clap::Subcommand)]
+pub enum PerfCommand {
+    /// シナリオを回し、結果を JSON と metrics.jsonl に書く。
+    Run {
+        scene: Scene,
+        #[arg(long, default_value_t = 5)]
+        repeat: usize,
+        /// 結果の置き場所。
+        #[arg(long, default_value = ".mm/perf")]
+        out_dir: PathBuf,
+        /// シナリオに使うプロジェクト。
+        #[arg(long)]
+        project: Option<PathBuf>,
+        /// export、playback、scrub の描画の大きさ（WxH）。
+        #[arg(long, default_value = "1920x1080", value_parser = scenes::parse_size)]
+        size: (u32, u32),
+        /// playback で再生する秒数。
+        #[arg(long, default_value_t = 10.0)]
+        seconds: f64,
+        /// scrub のシーク回数（繰り返し 1 回あたり）。
+        #[arg(long, default_value_t = 100)]
+        seeks: usize,
+        /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
+        #[arg(long)]
+        baseline: bool,
+        /// 描画のシナリオ（playback、scrub）で使う GPU を、名前の一部（大小文字を区別しない）で選ぶ。
+        /// CI は `Microsoft Basic Render Driver`（WARP、D3D12 のソフトウェアの GPU）を指す。
+        #[arg(long)]
+        adapter: Option<String>,
+        /// export のコーデックを上書きする（`h264`、`h264_nvenc`、`prores_422hq` など）。
+        #[arg(long)]
+        codec: Option<String>,
+        /// export で並行に描くレンダラーの数。
+        #[arg(long, default_value_t = 1)]
+        parallel: usize,
+        /// export で、コーデックと並行の数の組を全部測る（libx264、2 パス、NVENC、ProRes を並行なしと 4 本で）。
+        #[arg(long)]
+        matrix: bool,
+    },
+    /// 2 つの結果（JSON かそのフォルダー）を比べ、閾値を超えて遅くなった項目があれば失敗する。
+    Compare {
+        before: PathBuf,
+        after: PathBuf,
+        /// 遅くなったとみなす割合（5%、0.3 など）。
+        #[arg(long, default_value = "10%", value_parser = compare::parse_threshold)]
+        threshold: f64,
+        /// この絶対値より小さい差は無視する（項目の単位）。
+        #[arg(long, default_value_t = 0.0)]
+        min_delta: f64,
+    },
+    /// 結果（JSON かそのフォルダー）の項目を予算と並べる。
+    Budget {
+        results: PathBuf,
+        /// 超えた項目だけを JSON で出す（起票の入力）。
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+fn run_perf(command: PerfCommand) -> Result<()> {
+    let PerfCommand::Run {
+        scene,
+        repeat,
+        out_dir,
+        project,
+        size,
+        seconds,
+        seeks,
+        baseline,
+        adapter,
+        codec,
+        parallel,
+        matrix,
+    } = command
+    else {
+        return run_perf_report(command);
+    };
+    let (layer, metrics) = MetricsLayer::new();
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer))
+        .map_err(|e| MmError::Internal(format!("購読者を置けない: {e}")))?;
+    let args = PerfArgs {
+        scene,
+        repeat,
+        out_dir,
+        project: project.unwrap_or_else(|| default_project(scene)),
+        size,
+        seconds,
+        seeks,
+        baseline,
+        adapter,
+        codec,
+        parallel,
+        matrix,
+    };
+    run(&args, &metrics)
+}
+
+/// 結果を読むだけのサブコマンド（`compare`、`budget`）。
+fn run_perf_report(command: PerfCommand) -> Result<()> {
+    match command {
+        PerfCommand::Compare {
+            before,
+            after,
+            threshold,
+            min_delta,
+        } => {
+            let options = compare::CompareOptions {
+                threshold,
+                min_delta,
+            };
+            if !compare::run_compare(&before, &after, options)? {
+                // 回帰は使い方の誤りではないので、エラーの文言は出さず終了コードだけで知らせる。
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        PerfCommand::Budget { results, json } => compare::run_budget(&results, json),
+        PerfCommand::Run { .. } => Err(MmError::Internal("run は別の経路".into())),
+    }
+}
 
 /// 4K（3840x2160）として扱う幅。
 const UHD_WIDTH: u32 = 3840;
@@ -297,6 +444,11 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 既定のプロジェクトはビルドした場所の絶対パスでない() {
+        assert!(default_project(Scene::Export).is_relative());
+    }
 
     #[test]
     fn 中央値() {

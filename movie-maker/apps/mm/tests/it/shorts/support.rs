@@ -90,22 +90,15 @@ fn sequence_comp(
     duration: RationalTime,
 ) -> Composition {
     let node = Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text(seq.into()));
-    Composition {
-        id: Id::new(id),
-        width,
-        height,
-        fps: Rational::integer(FPS),
-        duration,
-        layers: vec![Layer::new(
+    Composition::new(Id::new(id), width, height, Rational::integer(FPS), duration).with_layers(
+        vec![Layer::new(
             format!("{id}-seq"),
             node,
             secs(0),
             secs(0),
             duration,
         )],
-        markers: Vec::new(),
-        mixer: None,
-    }
+    )
 }
 
 fn target(id: &str, comp: &str, (width, height): (u32, u32), dir: &Path) -> RenderTarget {

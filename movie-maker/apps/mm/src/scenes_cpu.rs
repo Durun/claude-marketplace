@@ -45,16 +45,16 @@ fn big_project() -> Project {
         })
         .collect();
     let mut project = Project::new();
-    project.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("c"),
-        width: 320,
-        height: 180,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(10),
-        layers,
-        markers: Vec::new(),
-    });
+    project.compositions.push(
+        Composition::new(
+            Id::new("c"),
+            320,
+            180,
+            Rational::integer(30),
+            RationalTime::seconds(10),
+        )
+        .with_layers(layers),
+    );
     project.normalize();
     project
 }

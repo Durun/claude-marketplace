@@ -16,6 +16,22 @@ use mm_types::{Id, MmError, RationalTime, Result, TimeRange};
 use crate::captions_cmd;
 use crate::project::load_project;
 
+/// `mm render`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// プロジェクトのレンダーターゲットを MP4 に書き出す。Ctrl+C で取り消せる。
+    Render(RenderArgs),
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Render(args) => render(&args),
+        }
+    }
+}
+
 /// 取り消したときの終了コード（シェルの慣例で 128 + SIGINT）。
 const EXIT_CANCELLED: i32 = 130;
 /// 進み具合の表示の間隔（ミリ秒）。
