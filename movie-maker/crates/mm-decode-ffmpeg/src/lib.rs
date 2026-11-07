@@ -12,6 +12,7 @@
 
 mod audio;
 mod convert;
+mod sound_only;
 mod transfer;
 #[cfg(feature = "gpu")]
 mod upload;
@@ -23,6 +24,7 @@ use std::sync::OnceLock;
 use mm_decode_api::{Decoder, DecoderFactory, GpuContextRef};
 use mm_types::{MmError, Result};
 
+pub use sound_only::SoundOnlyDecoder;
 pub use video::FfmpegDecoder;
 
 /// 実装の名前。`mm-runtime` の設定で選ぶ。
@@ -43,10 +45,23 @@ impl DecoderFactory for FfmpegDecoderFactory {
         init()?;
         #[cfg(feature = "gpu")]
         if let Some(ctx) = gpu.and_then(|g| g.as_any().downcast_ref::<mm_gpu::GpuContext>()) {
-            return Ok(Box::new(FfmpegDecoder::open_with_gpu(path, ctx)?));
+            return or_sound_only(path, FfmpegDecoder::open_with_gpu(path, ctx));
         }
         let _ = gpu;
-        Ok(Box::new(FfmpegDecoder::open(path)?))
+        or_sound_only(path, FfmpegDecoder::open(path))
+    }
+}
+
+/// 映像のデコーダーが開けない（`Unsupported`）素材は、映像の無い素材として開き直す。
+/// 映像のある素材を 2 回開かないよう、映像のデコーダーが断ったときだけ調べる。
+fn or_sound_only(path: &Path, opened: Result<FfmpegDecoder>) -> Result<Box<dyn Decoder>> {
+    match opened {
+        Ok(dec) => Ok(Box::new(dec)),
+        Err(MmError::Unsupported(reason)) => match SoundOnlyDecoder::open_if_sound_only(path)? {
+            Some(dec) => Ok(Box::new(dec)),
+            None => Err(MmError::Unsupported(reason)),
+        },
+        Err(e) => Err(e),
     }
 }
 
@@ -61,7 +76,7 @@ impl DecoderFactory for FfmpegCpuDecoderFactory {
 
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         init()?;
-        Ok(Box::new(FfmpegDecoder::open(path)?))
+        or_sound_only(path, FfmpegDecoder::open(path))
     }
 }
 

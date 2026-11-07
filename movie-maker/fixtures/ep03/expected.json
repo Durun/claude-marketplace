@@ -1,0 +1,13 @@
+{
+  "note": "ep03（作曲Vlog #3）の再現の入力と、前の書き出し。素材は D:/dev/DTM_Vlog/ep03/ にあり、リポジトリに入れない。apps/mm/tests/it/ep03.rs が MM_EP03_DIR で読む。",
+  "timeline": {
+    "path": "timeline.json",
+    "sha256": "e6c482a0d47c10fa857a03bc8e322704daff5c443b8a468ad56e62572bb6dfce"
+  },
+  "reference": {
+    "path": "render/ep03_final.mp4",
+    "sha256": "a0b60f60e4804cf14afce9c8205e05e7b3a02e05fea25717cee1b5ad3449bce4",
+    "frames": 17349,
+    "fps": 30
+  }
+}

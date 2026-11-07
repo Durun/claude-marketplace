@@ -5,6 +5,7 @@
 //! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
+//! - `mm geneva <timeline.json> -o <project.json>`: geneva のタイムラインを取り込む（geneva_cmd.rs）。
 //! - `mm otio export <project> -o x.otio` と `mm otio import <dir> x.otio`: sequence と OTIO の変換（otio_cmd.rs）。
 //! - `mm pack check / list / expand / apply`: パックの検査、マクロの一覧、マクロを展開して適用する（pack_cmd.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
@@ -16,6 +17,7 @@ mod captions_cmd;
 mod commands;
 mod compare;
 mod describe;
+mod geneva_cmd;
 mod ingest_cmd;
 mod opargs;
 mod otio_cmd;
@@ -64,6 +66,8 @@ enum Command {
     #[command(flatten)]
     Proposal(proposal_cmd::Cmd),
     #[command(flatten)]
+    Geneva(geneva_cmd::Cmd),
+    #[command(flatten)]
     Otio(otio_cmd::Cmd),
     #[command(flatten)]
     Pack(pack_cmd::Cmd),
@@ -93,6 +97,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Search(c) => c.run(),
         Command::Shorts(c) => c.run(),
         Command::Proposal(c) => c.run(),
+        Command::Geneva(c) => c.run(),
         Command::Otio(c) => c.run(),
         Command::Pack(c) => c.run(),
         Command::Perf(c) => c.run(),

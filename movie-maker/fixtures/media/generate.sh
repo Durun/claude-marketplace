@@ -82,6 +82,13 @@ x264="-c:v libx264 -preset veryfast -crf 12 -pix_fmt yuv420p -color_primaries bt
 "$FFMPEG" -y -v error -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=2,aformat=channel_layouts=stereo" \
   -c:a pcm_s16le "$out/tone.wav"
 
+# 映像の無い AAC（M4A）。周波数が上がり続けるので、ずれた位置で読むと一致しない（ノイズは AAC の PNS が
+# デコードのたびに乱数で作り直すので、同じ位置でも一致しない）。
+# 途中から再エンコードせず切り出すと、edit list が最初のパケットの途中まで（フレームの長さの半端）を捨てる。
+"$FFMPEG" -y -v error -f lavfi -i "aevalsrc=0.4*sin(2*PI*(200+300*t)*t)|0.4*sin(2*PI*(500+200*t)*t):s=48000:d=3" \
+  -c:a aac -b:a 192k "$out/chirp.m4a"
+"$FFMPEG" -y -v error -ss 0.31 -i "$out/chirp.m4a" -c copy "$out/chirp_cut.m4a"
+
 # 壊れた動画: moov が末尾にある MP4 を途中で切る。パスに "broken" を含める。
 size=$(wc -c <"$out/cfr.mp4")
 head -c $((size / 3)) "$out/cfr.mp4" >"$out/broken.mp4"
@@ -103,4 +110,4 @@ if "$FFMPEG" -hide_banner -encoders 2>/dev/null | grep -q hevc_nvenc; then
     "$out/nvenc4k.mp4" || rm -f "$out/nvenc4k.mp4"
 fi
 
-date >"$out/.stamp-2"
+date >"$out/.stamp-3"

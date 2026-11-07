@@ -87,8 +87,11 @@ impl AudioReader {
         let tb = TimeBase::new(stream.time_base())?;
         let ctx = ff::codec::Context::from_parameters(stream.parameters())
             .map_err(|e| MmError::Unsupported(format!("音のコーデック: {e}")))?;
-        let decoder = ctx
-            .decoder()
+        let mut decoder = ctx.decoder();
+        // デコーダーが前置き（AAC の priming）を捨てたとき、フレームの PTS を捨てた分だけ進めるのに要る。
+        // 無いと、最初のパケットの途中までを捨てる素材で、音全体が捨てた分だけ早くなる。
+        decoder.set_packet_time_base(stream.time_base());
+        let decoder = decoder
             .audio()
             .map_err(|e| MmError::Unsupported(format!("音のデコーダー: {e}")))?;
         Ok(Self {

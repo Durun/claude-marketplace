@@ -166,6 +166,75 @@ fn 区間を続けて読んでも一度に読んだ音と一致する() {
 }
 
 #[test]
+fn 途中へシークして読んだ音は頭から読んだ音と同じ位置になる() {
+    // 1.5〜1.6 秒は、先読みの 1 秒を引いても素材の頭に戻らず、途中のパケットへシークする
+    let name = "cfr.mp4";
+    let whole = open(name).decode_audio(tenths(0, 19)).unwrap().samples;
+    let got = open(name).decode_audio(tenths(15, 16)).unwrap().samples;
+    let from = 15 * 4_800 * 2;
+    let want = &whole[from..from + got.len()];
+    let worst = got
+        .iter()
+        .zip(want)
+        .fold(0.0f32, |m, (a, b)| m.max((a - b).abs()));
+    assert!(worst < 5e-3, "最大の差 {worst}");
+}
+
+/// FFmpeg のコマンドで頭からデコードした 48 kHz・ステレオの音（前置きを捨てた正しい位置の基準）。
+fn ffmpeg_pcm(name: &str) -> Vec<f32> {
+    let out = std::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(common::fixtures().join(name))
+        .args(["-ac", "2", "-ar", "48000", "-f", "f32le", "-"])
+        .output()
+        .expect("ffmpeg を実行できる");
+    assert!(out.status.success(), "ffmpeg がデコードできた");
+    out.stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect()
+}
+
+fn worst_diff(a: &[f32], b: &[f32]) -> f32 {
+    a.iter()
+        .zip(b)
+        .fold(0.0f32, |m, (x, y)| m.max((x - y).abs()))
+}
+
+#[test]
+fn 映像の無い素材は音だけを返す() {
+    let name = "tone.wav";
+    let mut dec = open(name);
+    let info = dec.info().clone();
+    assert_eq!((info.size.width, info.size.height), (0, 0), "絵が無い");
+    assert_eq!(info.duration, RationalTime::new(2, 1).unwrap());
+    assert!(dec.next_frame().unwrap().is_none(), "フレームを返さない");
+    let got = dec.decode_audio(tenths(5, 6)).unwrap().samples;
+    let want = ffmpeg_pcm(name);
+    let from = 5 * 4_800 * 2;
+    assert!(
+        worst_diff(&got, &want[from..from + got.len()]) < 1e-4,
+        "音の位置"
+    );
+}
+
+#[test]
+fn 最初のパケットの途中まで捨てる_aac_も前置きを捨てた位置で読む() {
+    let name = "chirp_cut.m4a";
+    let want = ffmpeg_pcm(name);
+    let whole = open(name).decode_audio(tenths(0, 20)).unwrap().samples;
+    let n = whole.len().min(want.len());
+    assert!(worst_diff(&whole[..n], &want[..n]) < 1e-4, "頭から読んだ音");
+    // 途中へシークしても同じ位置
+    let got = open(name).decode_audio(tenths(15, 16)).unwrap().samples;
+    let from = 15 * 4_800 * 2;
+    assert!(
+        worst_diff(&got, &want[from..from + got.len()]) < 5e-3,
+        "シークして読んだ音"
+    );
+}
+
+#[test]
 fn 区間が飛んでも後戻りしても同じ音が出る() {
     for name in ["cfr.mp4", "mono44.mp4"] {
         let mut dec = open(name);

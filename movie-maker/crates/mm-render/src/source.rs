@@ -16,6 +16,10 @@ use mm_types::{AssetId, MmError, ParamValue, Params, RationalTime, Result, TimeR
 /// 素材ごとに持つデコーダーの上限。重ねる数がこれを超えたら、最も前に使ったものをシークし直す。
 pub(crate) const MAX_DECODERS_PER_ASSET: usize = 4;
 
+/// この数のフレームの間に使わなかったデコーダーは閉じる。字幕の画像のように短い間だけ使う素材が多いと、
+/// 開いたままのデコーダー（直前のフレームの画像を持つ）でメモリが増え続けるため。30 fps で 10 秒。
+pub(crate) const IDLE_FRAMES: u64 = 300;
+
 /// `Decoder` を `FrameSource` にする。直前のフレームを保持し、次のフレームはシークせずに読む。
 pub struct DecoderSource {
     decoder: Box<dyn Decoder>,
@@ -93,8 +97,16 @@ impl SourcePool {
     }
 
     /// 次のフレームを描き始める。前のフレームで使ったデコーダーも、次のフレームでは空きになる。
+    /// [`IDLE_FRAMES`] ごとに、その間に使わなかったデコーダーを閉じる。
     pub fn begin_frame(&mut self) {
         self.frame += 1;
+        if self.frame.is_multiple_of(IDLE_FRAMES) {
+            let frame = self.frame;
+            for opened in self.sources.values_mut() {
+                opened.retain(|s| frame - s.used <= IDLE_FRAMES);
+            }
+            self.sources.retain(|_, opened| !opened.is_empty());
+        }
     }
 
     /// 素材を読んでいるデコーダーの実装の名前。開いていないか、実装が名乗らなければ `None`。

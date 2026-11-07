@@ -23,7 +23,7 @@ fn media_root() -> PathBuf {
 pub fn fixtures() -> PathBuf {
     let root = media_root();
     let out = root.join("out");
-    let stamp = out.join(".stamp-2");
+    let stamp = out.join(".stamp-3");
     let lock = root.join(".generate.lock");
     let deadline = Instant::now() + Duration::from_secs(180);
     while !stamp.exists() {
