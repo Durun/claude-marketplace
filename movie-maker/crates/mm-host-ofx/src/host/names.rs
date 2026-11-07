@@ -1,0 +1,137 @@
+//! OpenFX の文字列の定数（action、property、suite の名前）。値は公式のヘッダーの `#define` と同じ。
+//! ヘッダーの名前と値が違うもの（`kOfxImageEffectPropSupportsMultipleClipDepths` など）に気を付ける。
+
+pub const ACTION_LOAD: &str = "OfxActionLoad";
+pub const ACTION_UNLOAD: &str = "OfxActionUnload";
+pub const ACTION_DESCRIBE: &str = "OfxActionDescribe";
+pub const ACTION_CREATE_INSTANCE: &str = "OfxActionCreateInstance";
+pub const ACTION_DESTROY_INSTANCE: &str = "OfxActionDestroyInstance";
+pub const ACTION_DESCRIBE_IN_CONTEXT: &str = "OfxImageEffectActionDescribeInContext";
+pub const ACTION_RENDER: &str = "OfxImageEffectActionRender";
+pub const ACTION_BEGIN_SEQUENCE_RENDER: &str = "OfxImageEffectActionBeginSequenceRender";
+pub const ACTION_END_SEQUENCE_RENDER: &str = "OfxImageEffectActionEndSequenceRender";
+
+pub const SUITE_PROPERTY: &str = "OfxPropertySuite";
+pub const SUITE_IMAGE_EFFECT: &str = "OfxImageEffectSuite";
+pub const SUITE_PARAMETER: &str = "OfxParameterSuite";
+pub const SUITE_MEMORY: &str = "OfxMemorySuite";
+pub const SUITE_MULTI_THREAD: &str = "OfxMultiThreadSuite";
+pub const SUITE_MESSAGE: &str = "OfxMessageSuite";
+
+pub const IMAGE_EFFECT_API: &str = "OfxImageEffectPluginAPI";
+
+pub const PROP_TYPE: &str = "OfxPropType";
+pub const PROP_NAME: &str = "OfxPropName";
+pub const PROP_LABEL: &str = "OfxPropLabel";
+pub const PROP_SHORT_LABEL: &str = "OfxPropShortLabel";
+pub const PROP_LONG_LABEL: &str = "OfxPropLongLabel";
+pub const PROP_VERSION: &str = "OfxPropVersion";
+pub const PROP_VERSION_LABEL: &str = "OfxPropVersionLabel";
+pub const PROP_API_VERSION: &str = "OfxPropAPIVersion";
+pub const PROP_TIME: &str = "OfxPropTime";
+pub const PROP_IS_INTERACTIVE: &str = "OfxPropIsInteractive";
+pub const PROP_INSTANCE_DATA: &str = "OfxPropInstanceData";
+pub const PROP_PLUGIN_DESCRIPTION: &str = "OfxPropPluginDescription";
+pub const PROP_PLUGIN_FILE_PATH: &str = "OfxPluginPropFilePath";
+
+pub const TYPE_HOST: &str = "OfxTypeImageEffectHost";
+pub const TYPE_EFFECT: &str = "OfxTypeImageEffect";
+pub const TYPE_EFFECT_INSTANCE: &str = "OfxTypeImageEffectInstance";
+pub const TYPE_CLIP: &str = "OfxTypeClip";
+pub const TYPE_IMAGE: &str = "OfxTypeImage";
+pub const TYPE_PARAMETER: &str = "OfxTypeParameter";
+pub const TYPE_PARAMETER_INSTANCE: &str = "OfxTypeParameterInstance";
+
+pub const FX_SUPPORTED_CONTEXTS: &str = "OfxImageEffectPropSupportedContexts";
+pub const FX_SUPPORTED_DEPTHS: &str = "OfxImageEffectPropSupportedPixelDepths";
+pub const FX_SUPPORTED_COMPONENTS: &str = "OfxImageEffectPropSupportedComponents";
+pub const FX_GROUPING: &str = "OfxImageEffectPluginPropGrouping";
+pub const FX_CONTEXT: &str = "OfxImageEffectPropContext";
+pub const FX_PIXEL_DEPTH: &str = "OfxImageEffectPropPixelDepth";
+pub const FX_COMPONENTS: &str = "OfxImageEffectPropComponents";
+pub const FX_PREMULTIPLICATION: &str = "OfxImageEffectPropPreMultiplication";
+pub const FX_FRAME_RATE: &str = "OfxImageEffectPropFrameRate";
+pub const FX_FRAME_RANGE: &str = "OfxImageEffectPropFrameRange";
+pub const FX_FRAME_STEP: &str = "OfxImageEffectPropFrameStep";
+pub const FX_UNMAPPED_FRAME_RATE: &str = "OfxImageEffectPropUnmappedFrameRate";
+pub const FX_UNMAPPED_FRAME_RANGE: &str = "OfxImageEffectPropUnmappedFrameRange";
+pub const FX_RENDER_SCALE: &str = "OfxImageEffectPropRenderScale";
+pub const FX_RENDER_WINDOW: &str = "OfxImageEffectPropRenderWindow";
+pub const FX_FIELD_TO_RENDER: &str = "OfxImageEffectPropFieldToRender";
+pub const FX_SEQUENTIAL_RENDER_STATUS: &str = "OfxImageEffectPropSequentialRenderStatus";
+pub const FX_INTERACTIVE_RENDER_STATUS: &str = "OfxImageEffectPropInteractiveRenderStatus";
+pub const FX_RENDER_QUALITY_DRAFT: &str = "OfxImageEffectPropRenderQualityDraft";
+pub const FX_PROJECT_SIZE: &str = "OfxImageEffectPropProjectSize";
+pub const FX_PROJECT_EXTENT: &str = "OfxImageEffectPropProjectExtent";
+pub const FX_PROJECT_OFFSET: &str = "OfxImageEffectPropProjectOffset";
+pub const FX_PROJECT_PIXEL_ASPECT: &str = "OfxImageEffectPropPixelAspectRatio";
+pub const FX_EFFECT_DURATION: &str = "OfxImageEffectInstancePropEffectDuration";
+pub const FX_SEQUENTIAL_RENDER: &str = "OfxImageEffectInstancePropSequentialRender";
+pub const FX_SUPPORTS_MULTI_RESOLUTION: &str = "OfxImageEffectPropSupportsMultiResolution";
+pub const FX_SUPPORTS_TILES: &str = "OfxImageEffectPropSupportsTiles";
+pub const FX_TEMPORAL_CLIP_ACCESS: &str = "OfxImageEffectPropTemporalClipAccess";
+pub const FX_MULTIPLE_CLIP_DEPTHS: &str = "OfxImageEffectPropMultipleClipDepths";
+pub const FX_MULTIPLE_CLIP_PARS: &str = "OfxImageEffectPropSupportsMultipleClipPARs";
+pub const FX_SUPPORTS_OVERLAYS: &str = "OfxImageEffectPropSupportsOverlays";
+pub const FX_RENDER_THREAD_SAFETY: &str = "OfxImageEffectPluginRenderThreadSafety";
+pub const FX_SINGLE_INSTANCE: &str = "OfxImageEffectPluginPropSingleInstance";
+pub const FX_HOST_FRAME_THREADING: &str = "OfxImageEffectPluginPropHostFrameThreading";
+pub const FX_SETABLE_FRAME_RATE: &str = "OfxImageEffectPropSetableFrameRate";
+pub const FX_SETABLE_FIELDING: &str = "OfxImageEffectPropSetableFielding";
+pub const FX_HOST_IS_BACKGROUND: &str = "OfxImageEffectHostPropIsBackground";
+pub const FX_HOST_NATIVE_ORIGIN: &str = "OfxImageEffectHostPropNativeOrigin";
+
+pub const CLIP_OPTIONAL: &str = "OfxImageClipPropOptional";
+pub const CLIP_IS_MASK: &str = "OfxImageClipPropIsMask";
+pub const CLIP_CONNECTED: &str = "OfxImageClipPropConnected";
+pub const CLIP_UNMAPPED_DEPTH: &str = "OfxImageClipPropUnmappedPixelDepth";
+pub const CLIP_UNMAPPED_COMPONENTS: &str = "OfxImageClipPropUnmappedComponents";
+pub const CLIP_FIELD_ORDER: &str = "OfxImageClipPropFieldOrder";
+pub const CLIP_FIELD_EXTRACTION: &str = "OfxImageClipPropFieldExtraction";
+pub const CLIP_CONTINUOUS_SAMPLES: &str = "OfxImageClipPropContinuousSamples";
+
+pub const IMAGE_DATA: &str = "OfxImagePropData";
+pub const IMAGE_BOUNDS: &str = "OfxImagePropBounds";
+pub const IMAGE_ROD: &str = "OfxImagePropRegionOfDefinition";
+pub const IMAGE_ROW_BYTES: &str = "OfxImagePropRowBytes";
+pub const IMAGE_FIELD: &str = "OfxImagePropField";
+pub const IMAGE_UNIQUE_ID: &str = "OfxImagePropUniqueIdentifier";
+pub const IMAGE_PIXEL_ASPECT: &str = "OfxImagePropPixelAspectRatio";
+
+pub const PARAM_TYPE: &str = "OfxParamPropType";
+pub const PARAM_DEFAULT: &str = "OfxParamPropDefault";
+pub const PARAM_MIN: &str = "OfxParamPropMin";
+pub const PARAM_MAX: &str = "OfxParamPropMax";
+pub const PARAM_DISPLAY_MIN: &str = "OfxParamPropDisplayMin";
+pub const PARAM_DISPLAY_MAX: &str = "OfxParamPropDisplayMax";
+pub const PARAM_HINT: &str = "OfxParamPropHint";
+pub const PARAM_PARENT: &str = "OfxParamPropParent";
+pub const PARAM_SECRET: &str = "OfxParamPropSecret";
+pub const PARAM_ENABLED: &str = "OfxParamPropEnabled";
+pub const PARAM_ANIMATES: &str = "OfxParamPropAnimates";
+pub const PARAM_CHOICE_OPTION: &str = "OfxParamPropChoiceOption";
+pub const PARAM_SCRIPT_NAME: &str = "OfxParamPropScriptName";
+
+pub const HOST_MAX_PARAMETERS: &str = "OfxParamHostPropMaxParameters";
+pub const HOST_MAX_PAGES: &str = "OfxParamHostPropMaxPages";
+pub const HOST_SUPPORTS_CUSTOM_INTERACT: &str = "OfxParamHostPropSupportsCustomInteract";
+pub const HOST_SUPPORTS_STRING_ANIMATION: &str = "OfxParamHostPropSupportsStringAnimation";
+pub const HOST_SUPPORTS_CHOICE_ANIMATION: &str = "OfxParamHostPropSupportsChoiceAnimation";
+pub const HOST_SUPPORTS_BOOLEAN_ANIMATION: &str = "OfxParamHostPropSupportsBooleanAnimation";
+pub const HOST_SUPPORTS_CUSTOM_ANIMATION: &str = "OfxParamHostPropSupportsCustomAnimation";
+
+pub const CONTEXT_FILTER: &str = "OfxImageEffectContextFilter";
+pub const CONTEXT_GENERATOR: &str = "OfxImageEffectContextGenerator";
+pub const CLIP_OUTPUT: &str = "Output";
+pub const CLIP_SOURCE: &str = "Source";
+pub const COMPONENT_RGBA: &str = "OfxImageComponentRGBA";
+pub const DEPTH_FLOAT: &str = "OfxBitDepthFloat";
+pub const DEPTH_SHORT: &str = "OfxBitDepthShort";
+pub const DEPTH_BYTE: &str = "OfxBitDepthByte";
+pub const PREMULTIPLIED: &str = "OfxImageAlphaPremultiplied";
+pub const FIELD_NONE: &str = "OfxFieldNone";
+pub const FIELD_DOUBLED: &str = "OfxFieldDoubled";
+pub const RENDER_INSTANCE_SAFE: &str = "OfxImageEffectRenderInstanceSafe";
+pub const ORIGIN_BOTTOM_LEFT: &str = "kOfxImageEffectHostPropNativeOriginBottomLeft";
+pub const MESSAGE_FATAL: &str = "OfxMessageFatal";
+pub const MESSAGE_ERROR: &str = "OfxMessageError";
