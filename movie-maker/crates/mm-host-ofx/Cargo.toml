@@ -1,0 +1,23 @@
+[package]
+name = "mm-host-ofx"
+description = "OpenFX のプラグインを別プロセスで読み込み、1 フレームを描いて返すホスト（mm-host-api の実装）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-host-api = { workspace = true }
+mm-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+libloading = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true
