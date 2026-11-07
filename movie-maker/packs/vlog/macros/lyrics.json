@@ -1,0 +1,25 @@
+{
+  "name": "lyrics",
+  "title": "採点モード風の歌詞",
+  "description": "試聴で歌っている歌詞。歌詞の行は言葉ごとにミクの色に染まり、notes があればその上に暗い音程の帯（ノートの棒が右から流れ、黄色の「今」の線を過ぎた所が染まり、矢印が今の音の高さへ動く）。時刻はレイヤーの始まりからの秒で、同じ時刻なら同じ画面。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "words": {"type": "text", "description": "「言葉@始まり+長さ」を空白で区切り、「/」で行を分ける（秒はレイヤーの始まりから）。例: 帰り道@0.2+0.6 イヤホン@0.8+0.7 から@1.5+0.4"},
+    "notes": {"type": "text", "optional": true, "description": "「音の高さ（MIDI の番号）@始まり+長さ」を空白で区切る。無ければ帯を出さず、歌詞の行だけ"},
+    "bars": {"type": "text", "optional": true, "description": "帯に線を引く小節の頭の秒を空白で区切る"},
+    "x": {"type": "number", "default": "72", "description": "帯の左上の x"},
+    "y": {"type": "number", "default": "618", "description": "帯の左上の y（既定は字幕の帯より上で、帯と歌詞の下の端が下から 196）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "6", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "ly1", "words": "帰り道@0.6+0.6 イヤホン@1.2+0.7 から@1.9+0.5", "notes": "69@0.6+0.3 67@0.9+0.3 69@1.2+0.35 72@1.55+0.35 74@1.9+0.5", "bars": "0 2.8", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "lyrics", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2, "animated": true,
+      "data": {"words": "{{words}}", "notes": "{{notes}}", "bars": "{{bars}}", "x": "{{x}}", "y": "{{y}}"}
+    }}
+  ]
+}

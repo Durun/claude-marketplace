@@ -1,0 +1,27 @@
+{
+  "name": "tip",
+  "title": "小ネタ",
+  "description": "後から足す小ネタ。ワイプのどぅるんから出る「ちなみに」の吹き出し（紙の地、墨の縁、真下の影、黄色の札）。見出しの｜の後ろは縦線で区切った添え。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "head": {"type": "text", "description": "見出し。「Pro-C 2｜FabFilter のコンプ」のように｜で添えを区切る"},
+    "body": {"type": "text", "optional": true, "description": "本文。長ければ文節の切れ目で折り返す"},
+    "tag": {"type": "text", "default": "ちなみに", "description": "左上の札。空にすると札を出さない"},
+    "x": {"type": "number", "default": "1742", "description": "しっぽが指す点の x（既定は右下のワイプの上の縁）"},
+    "y": {"type": "number", "default": "695", "description": "しっぽが指す点の y"},
+    "side": {"type": "text", "default": "left", "description": "吹き出しを置く側。left は指す点の左、right は右（ワイプが左にあるとき）"},
+    "tail": {"type": "text", "default": "down", "description": "down は吹き出しが点の上、up は点の下（ワイプが上にあるとき）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "4", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "tp1", "head": "Pro-C 2｜FabFilter のコンプ", "body": "反応が速く、音を前に出したいときの定番", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "tip", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2,
+      "data": {"head": "{{head}}", "body": "{{body}}", "tag": "{{tag}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}", "tail": "{{tail}}"}
+    }}
+  ]
+}

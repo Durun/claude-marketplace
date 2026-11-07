@@ -1,0 +1,26 @@
+{
+  "name": "sticker",
+  "title": "ステッカー",
+  "description": "7_mix のステッカー。paper は紙の質感の白い（黄色の）紙に札の書体、墨の太い縁、ずらした影、少しの傾き。oto は描き文字（題字の書体の大きな文字を 1 字ずつ傾けて大きくし、墨とサファイアの縁を重ねる。最後の 3 字は黄色）。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "description": "ステッカーの文字。oto は擬音（シュイーーン など）"},
+    "look": {"type": "text", "default": "paper", "description": "paper（紙のステッカー）か oto（描き文字）"},
+    "tone": {"type": "text", "default": "white", "description": "paper の紙の色。white か yellow"},
+    "tilt": {"type": "number", "default": "-4", "description": "傾き（度）。一瞬だけ出る札は傾け、ずっと出ている札は 0"},
+    "x": {"type": "number", "default": "960", "description": "ステッカーの真ん中の x"},
+    "y": {"type": "number", "default": "420", "description": "ステッカーの真ん中の y（字幕の帯より上）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "2.5", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "st1", "text": "社会人DTMer", "tone": "yellow", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "sticker", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.2, "fade_out": 0.2,
+      "data": {"text": "{{text}}", "look": "{{look}}", "tone": "{{tone}}", "tilt": "{{tilt}}", "x": "{{x}}", "y": "{{y}}"}
+    }}
+  ]
+}

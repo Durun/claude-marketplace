@@ -1,6 +1,8 @@
 //! `packs/vlog` の文字のスタイルの期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
 //! `fixtures/golden/<バックエンド>/pack-vlog.png` と比べる（`mm_testkit::golden`）。文字はモックの矩形で描くので、
 //! 見るのはプレートの位置、大きさ、色、縁、影、傾きと、文字の塊がプレートの内側に収まっているか。
+//! `web.cef` の部品は CEF の代わりのモックの矩形（ページと data で決まる色）で描き、レイヤーの置き方と不透明度を見る
+//! （`pack-vlog-web.png`。部品の HTML か引数を変えると矩形の色が変わるので、更新する）。
 //! 更新は `cargo xtask golden-update --test pack_vlog`。GPU と期待画像のフォルダーが無い環境ではスキップする。
 
 use std::collections::BTreeMap;
@@ -12,6 +14,7 @@ use mm_doc::{Layer, Node, Project};
 use mm_gpu::enumerate_adapters;
 use mm_node_api::{Quality, Services};
 use mm_nodes_basic::all_kinds;
+use mm_nodes_cef::WebCefKind;
 use mm_ops::{Editor, OpContext, Transaction};
 use mm_pack::{expand, Pack};
 use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
@@ -88,13 +91,19 @@ fn args(list: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// web の部品の見本。ステッカーが 1 秒に出て、2 秒には出きっている。
+const WEB_DEMO: [(&str, &str); 2] = [
+    ("episode", "n=4"),
+    ("sticker", "id=st;text=社会人DTMer;tone=yellow;at=1;dur=3"),
+];
+
 /// テンプレート、背景、セクションの見出し、ラベル、テロップ、字幕を適用したプロジェクト。
-fn demo_project() -> Project {
+fn demo_project(demo: &[(&str, &str)]) -> Project {
     let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
     let shaper = services().text_shaper;
     let ctx = OpContext::human();
     let mut editor = Editor::new(Project::new());
-    for (i, (name, pairs)) in DEMO.iter().enumerate() {
+    for (i, (name, pairs)) in demo.iter().enumerate() {
         let txn = expand(&pack, name, &args(pairs), &*shaper).expect("展開できる");
         editor.apply(txn, &ctx).expect("適用できる");
         if i == 0 {
@@ -118,8 +127,8 @@ fn background() -> Transaction {
     Transaction::new("背景", vec![serde_json::from_value(op).unwrap()])
 }
 
-#[test]
-fn pack_vlog_の文字のスタイルの期待画像() {
+/// `demo` を適用したプロジェクトの `time` の 1 フレームを描き、期待画像 `name` と比べる。
+fn check_golden(name: &str, demo: &[(&str, &str)], time: RationalTime) {
     let Some(ctx) = gpu() else { return };
     let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
@@ -127,11 +136,12 @@ fn pack_vlog_の文字のスタイルの期待画像() {
     let Some(golden) = Golden::open(&root, &backend, &actual) else {
         return;
     };
-    let project = demo_project();
+    let project = demo_project(demo);
     let mut nodes = MapRegistry::default();
     for kind in all_kinds() {
         nodes.insert(kind);
     }
+    nodes.insert(Arc::new(WebCefKind::mock()));
     let mut r = WgpuRenderer::new(
         ctx.clone(),
         Arc::new(SampleDecoderFactory::default()),
@@ -142,7 +152,7 @@ fn pack_vlog_の文字のスタイルの期待画像() {
         .render_frame(&RenderRequest {
             project: &project,
             composition: &Id::new("main"),
-            time: RationalTime::new(5, 2).unwrap(),
+            time,
             size: GOLDEN_SIZE,
             quality: Quality::Full,
             nodes: &nodes,
@@ -151,7 +161,17 @@ fn pack_vlog_の文字のスタイルの期待画像() {
     let errors = r.take_errors();
     assert!(errors.is_empty(), "どのレイヤーも描けている: {errors:?}");
     let img = r.gpu().download(&frame).expect("リードバックできる");
-    if let Err(message) = golden.check("pack-vlog", &img) {
+    if let Err(message) = golden.check(name, &img) {
         panic!("{message}");
     }
+}
+
+#[test]
+fn pack_vlog_の文字のスタイルの期待画像() {
+    check_golden("pack-vlog", &DEMO, RationalTime::new(5, 2).unwrap());
+}
+
+#[test]
+fn pack_vlog_の_web_の部品の期待画像() {
+    check_golden("pack-vlog-web", &WEB_DEMO, RationalTime::seconds(2));
 }
