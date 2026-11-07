@@ -2863,6 +2863,7 @@ dependencies = [
  "mm-trace",
  "mm-types",
  "serde_json",
+ "sha2",
  "tempfile",
  "tracing",
  "tracing-subscriber",
