@@ -1,7 +1,7 @@
 #!/bin/sh
 # フィクスチャの素材を ffmpeg の CLI で out/ に作る。生成物は git に入れない。
 # フレームの番号は左上の 16x16 の 16 個の箱（下位ビットが左）に白黒で焼く。
-# 圧縮に強く、デコード後の画素から番号を読み戻せる（読み方は mm-decode-ffmpeg/tests/common.rs）。
+# 圧縮に強く、デコード後の画素から番号を読み戻せる（読み方は mm-decode-ffmpeg/tests/it/common/mod.rs）。
 # 人の目用の番号は drawtext で重ねる（フォントが見つからなければ省く）。
 set -eu
 

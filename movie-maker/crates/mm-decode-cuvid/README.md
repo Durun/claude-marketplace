@@ -29,5 +29,5 @@ cargo test -p mm-decode-cuvid --features cuvid
 
 ## テスト
 
-`tests/contract.rs` が `mm-testkit` の契約（CFR と VFR）、焼き込んだ番号、シーク、10 bit、リングバッファ、フェンス（GPU を 600 ms 遅らせる負荷）、NVENC の 4K HEVC を実機で確かめる。
+`tests/it/contract.rs` が `mm-testkit` の契約（CFR と VFR）、焼き込んだ番号、シーク、10 bit、リングバッファ、フェンス（GPU を 600 ms 遅らせる負荷）、NVENC の 4K HEVC を実機で確かめる。
 共通の補助は `mm-decode-d3d12va/tests/common/` を取り込む。素材は `fixtures/media/generate.sh`。

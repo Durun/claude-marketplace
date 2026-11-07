@@ -37,7 +37,7 @@
 | 予算 | 計装の項目ごとの上限。超えたら性能のテストが失敗する | 17-instrumentation |
 | シナリオ | `mm perf run` が回す計測の筋書き | `mm perf run <シナリオ>` |
 | 集約する | 計測の結果のファイルを項目ごとに集め、中央値で比べられる形にすること | `mm perf compare` |
-| テストパターン | 期待画像のテストが描く、色のパッチや縞の決まった画像 | `mm-render/tests/golden.rs` |
+| テストパターン | 期待画像のテストが描く、色のパッチや縞の決まった画像 | `mm-render/tests/it/golden.rs` |
 | スキップする | 条件が揃わない処理やテストを行わずに進むこと（GPU や ffmpeg が無いなど） | `MM_REQUIRE_GPU`、`MM_REQUIRE_FFMPEG` |
 | 呼び出し側 | 関数やインターフェースを呼ぶ側のコード | — |
 | 規約 | 名前や形の取り決め | `transition.*` |

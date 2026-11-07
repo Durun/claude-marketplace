@@ -39,7 +39,7 @@ MM_TRANSCRIBE_E2E=1 .venv/Scripts/python.exe -I -m unittest discover # 日本語
 ```
 
 通しの試験は `fixtures/ingest/generate.sh` が作る `fixtures/ingest/out/speech-ja.wav`（Windows の音声合成）を使う。
-`fixtures/ingest/transcript-ja.json` はその出力を git に入れたもので、Rust 側（`crates/mm-ingest/tests/sidecar_fixture.rs`）が読めることを確かめている。
+`fixtures/ingest/transcript-ja.json` はその出力を git に入れたもので、Rust 側（`crates/mm-ingest/tests/it/sidecar_fixture.rs`）が読めることを確かめている。
 
 ## 別のツールを書くとき
 
