@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  7_mix のステッカー。look が paper なら、紙の質感の白い（または黄色の）紙に札の書体の文字、墨の太い縁、ずらした墨の影、少しの傾き。
+  look が oto なら描き文字: 題字の書体の大きな文字を 1 字ずつ傾けて大きくし、外の墨・文字に接する縁（白い字はサファイア、黄色い字は墨）・
+  文字の面の 3 枚を重ねる（後ろの 2 枚は文字を透明にして縁だけ描く）。最後の 3 字は黄色。
+  data: text、look、tone（paper の紙の色。white か yellow）、tilt（傾き。度）、x と y（ステッカーの真ん中）、theme（展開が足す）。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #st { position: absolute; translate: -50% -50%; width: max-content; }
+  #paper { position: relative; box-sizing: border-box; padding: 18px 40px 22px; border: 6px solid; border-radius: 26px; overflow: hidden; }
+  #paper p { position: relative; margin: 0; font-size: 64px; line-height: 1.2; white-space: nowrap; letter-spacing: 0.02em; }
+  #grain { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: multiply; }
+  #oto { position: relative; }
+  .lay { position: relative; white-space: nowrap; line-height: 1.05; }
+  .lay + .lay { position: absolute; left: 0; top: 0; }
+  .ch { display: inline-block; vertical-align: bottom; }
+</style>
+</head>
+<body>
+<div id="st"></div>
+<script>
+  // 描き文字の決まり（7_mix の c2-oto）。字の大きさは 120 から 180 へだんだん大きく、傾きとずれは 8 字で繰り返す。
+  const OTO_MIN = 120, OTO_MAX = 180, OTO_LONG = 10, OTO_WIDTH = 1500;
+  const ROT = [-7, 5, -4, 7, -6, 4, -8, 6], DY = [0, -6, 4, -10, 2, -12, 0, -16];
+  // 紙の影のずれと、紙の質感（決まった種の雑音の濃さに GRAIN_ALPHA を掛け、乗算で薄く重ねる）。
+  const SHADOW = [8, 10], GRAIN_SEED = 7, GRAIN_ALPHA = 0.18;
+
+  const ring = (r, color, rMin) => {
+    const out = [];
+    for (let rr = r; rr > Math.max(rMin, 0.6); rr -= 2.2) {
+      const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 2 * Math.PI + rr;
+        out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+      }
+    }
+    return out.join(', ');
+  };
+
+  const paper = (st, data, c, fonts) => {
+    const yellow = data.tone === 'yellow';
+    const bg = yellow ? c.yellow : c.white;
+    st.innerHTML = `<div id="paper"><svg id="grain" xmlns="http://www.w3.org/2000/svg"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${GRAIN_SEED}"/>`
+      + `<feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${GRAIN_ALPHA} 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg><p></p></div>`;
+    const p = st.querySelector('p');
+    p.textContent = String(data.text || '');
+    Object.assign(p.style, { color: c.ink, fontFamily: `"${fonts.sticker || 'Mochiy Pop One'}", "Yu Gothic UI", sans-serif` });
+    Object.assign(st.querySelector('#paper').style, { background: bg, borderColor: c.ink });
+    st.style.filter = `drop-shadow(${SHADOW[0]}px ${SHADOW[1]}px 0 ${c.ink})`;
+  };
+
+  const oto = (st, data, c, fonts) => {
+    const cs = [...String(data.text || '')];
+    const n = cs.length, grow = n <= OTO_LONG;
+    const meta = cs.map((ch, i) => ({
+      ch,
+      s: grow ? OTO_MIN + (n > 1 ? i / (n - 1) : 1) * (OTO_MAX - OTO_MIN) : Math.max(64, Math.min(110, OTO_WIDTH / n)),
+      r: ROT[i % 8] * (grow ? 1 : 0.4),
+      y: DY[i % 8] * (grow ? 1 : 0.3),
+      yellow: grow ? i >= n - 3 : i === n - 1,
+    }));
+    const outer = ring(28, c.ink, 17);
+    const midBlue = ring(18, c.sapphire, 0), midInk = ring(18, c.ink, 0);
+    const lay = (kind) => {
+      const div = document.createElement('div');
+      div.className = 'lay';
+      div.style.fontFamily = `"${fonts.title || 'Dela Gothic One'}", "Yu Gothic UI", sans-serif`;
+      for (const m of meta) {
+        const s = document.createElement('span');
+        s.className = 'ch';
+        s.textContent = m.ch;
+        Object.assign(s.style, { fontSize: `${m.s}px`, rotate: `${m.r}deg`, translate: `0 ${m.y}px` });
+        if (kind === 'outer') Object.assign(s.style, { color: 'transparent', textShadow: outer });
+        else if (kind === 'mid') Object.assign(s.style, { color: 'transparent', textShadow: m.yellow ? midInk : midBlue });
+        else s.style.color = m.yellow ? c.yellow : c.white;
+        div.append(s);
+      }
+      return div;
+    };
+    const box = document.createElement('div');
+    box.id = 'oto';
+    box.append(lay('outer'), lay('mid'), lay('fill'));
+    st.replaceChildren(box);
+    st.style.filter = 'none';
+  };
+
+  window.mmSetTime = (t, data) => {
+    const theme = data.theme || {};
+    const c = { ink: '#0B1230', white: '#FFFFFF', yellow: '#FFD43B', sapphire: '#2459E0', ...(theme.colors || {}) };
+    const fonts = theme.fonts || {};
+    const st = document.getElementById('st');
+    if (data.look === 'oto') oto(st, data, c, fonts);
+    else paper(st, data, c, fonts);
+    Object.assign(st.style, { left: `${Number(data.x) || 0}px`, top: `${Number(data.y) || 0}px`, rotate: `${Number(data.tilt) || 0}deg` });
+  };
+</script>
+</body>
+</html>

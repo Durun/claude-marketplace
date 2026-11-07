@@ -1,0 +1,31 @@
+{
+  "name": "short_end",
+  "title": "縦の動画の終わりの札",
+  "description": "ショートの終わりで本編へ誘う札。上に紙の札「続きは本編で！」と矢印、下に名乗りの速度線の帯、題字、ミクの色のリボン（誘い → 誰の何か、の順に読む）。顔や見せたい所を避けて位置を決める。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "short", "description": "置くコンポジション（縦の画面）"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "default": "続きは本編で！", "description": "誘いの札の文"},
+    "who": {"type": "text", "default": "どぅるんの", "description": "名乗りの帯の文"},
+    "series": {"type": "text", "default": "作曲Vlog", "description": "題字"},
+    "sub": {"type": "text", "description": "リボンの文（初音ミク × J-core）"},
+    "cta": {"type": "text", "default": "true", "description": "false なら誘いの札を出さない"},
+    "cta_y": {"type": "number", "default": "560", "description": "誘いの札の上端（縦の画面の画素）"},
+    "title_x": {"type": "number", "default": "110", "description": "名乗りの帯の左上の x（縦の画面の画素）"},
+    "title_y": {"type": "number", "default": "880", "description": "名乗りの帯の左上の y（縦の画面の画素）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "se1", "sub": "初音ミク × J-core", "at": "0"},
+  "steps": [
+    {"web": {
+      "page": "short_end", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2, "animated": true,
+      "data": {
+        "text": "{{text}}", "who": "{{who}}", "series": "{{series}}", "sub": "{{sub}}", "cta": "{{cta}}",
+        "cta_y": "{{cta_y}}", "title_x": "{{title_x}}", "title_y": "{{title_y}}"
+      }
+    }}
+  ]
+}

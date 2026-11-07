@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <!--
-  画面の一点を指す吹き出し。data: text（文）、x と y（しっぽが指す点。コンポジションの画素）、
-  side（right は指す点の右上、left は左上に置く）、theme（パックの色、書体、画面。展開が足す）。
+  画面の一点を指す吹き出し。data: text（文）、name（任意。道具の名前を題字の書体で前に置く）、x と y（しっぽが指す点。
+  コンポジションの画素）、side（吹き出しを置く側。right か left）、tail（しっぽの向き。down は点の上、up は点の下、
+  side は点の横に吹き出しを置く）、theme（パックの色、書体、画面。展開が足す）。
   地と縁と影としっぽは 1 本の SVG のパスで描き、縁の継ぎ目を出さない。
 -->
 <style>
@@ -15,6 +16,9 @@
     font-size: 40px; font-weight: 700; line-height: 1.35; letter-spacing: 0.02em;
     word-break: auto-phrase; overflow-wrap: anywhere; white-space: pre-wrap;
   }
+  #text.named { max-width: 960px; }
+  #text .nm { font-size: 52px; font-weight: 400; letter-spacing: 0.02em; margin-right: 0.15em; }
+  #text.stack .nm { display: block; margin: 0 0 6px; }
 </style>
 </head>
 <body>
@@ -24,38 +28,75 @@
   // 吹き出しの寸法（1 倍の画素）。sticker の決まり（縁 5、影のずれ 7、角丸 8 より大きめの 22）に揃える。
   const BORDER = 5, SHADOW = 7, RADIUS = 22, TAIL = 72, BASE = 46, INSET = 64;
 
-  const plate = (x0, y0, w, h, tip, base) => {
+  // しっぽの付け根を、時計回りに辺をたどる向き（上は右へ、右は下へ、下は左へ、左は上へ）に並べて差し込む。
+  const plate = (x0, y0, w, h, tail) => {
     const x1 = x0 + w, y1 = y0 + h, r = RADIUS;
+    const [b0, b1] = tail.base, [tx, ty] = tail.tip;
+    const edge = {
+      top: tail.edge === 'top' ? [`H${b0}`, `L${tx},${ty}`, `L${b1},${y0}`] : [],
+      right: tail.edge === 'right' ? [`V${b0}`, `L${tx},${ty}`, `L${x1},${b1}`] : [],
+      bottom: tail.edge === 'bottom' ? [`H${b1}`, `L${tx},${ty}`, `L${b0},${y1}`] : [],
+      left: tail.edge === 'left' ? [`V${b1}`, `L${tx},${ty}`, `L${x0},${b0}`] : [],
+    };
     return [
-      `M${x0 + r},${y0}`, `H${x1 - r}`, `A${r},${r} 0 0 1 ${x1},${y0 + r}`,
-      `V${y1 - r}`, `A${r},${r} 0 0 1 ${x1 - r},${y1}`,
-      `H${base[1]}`, `L${tip[0]},${tip[1]}`, `L${base[0]},${y1}`,
-      `H${x0 + r}`, `A${r},${r} 0 0 1 ${x0},${y1 - r}`,
-      `V${y0 + r}`, `A${r},${r} 0 0 1 ${x0 + r},${y0}`, 'Z',
+      `M${x0 + r},${y0}`, ...edge.top, `H${x1 - r}`, `A${r},${r} 0 0 1 ${x1},${y0 + r}`,
+      ...edge.right, `V${y1 - r}`, `A${r},${r} 0 0 1 ${x1 - r},${y1}`,
+      ...edge.bottom, `H${x0 + r}`, `A${r},${r} 0 0 1 ${x0},${y1 - r}`,
+      ...edge.left, `V${y0 + r}`, `A${r},${r} 0 0 1 ${x0 + r},${y0}`, 'Z',
     ].join(' ');
+  };
+
+  // 吹き出しの左上と、しっぽの辺と付け根。点の上（down）、下（up）、横（side）に置く。
+  const layout = (tx, ty, w, h, right, tail) => {
+    if (tail === 'side') {
+      const x0 = right ? tx + TAIL : tx - TAIL - w, y0 = ty - h / 2;
+      return { x0, y0, edge: right ? 'left' : 'right', base: [ty - BASE / 2, ty + BASE / 2] };
+    }
+    const x0 = right ? tx - INSET : tx + INSET - w;
+    const mid = right ? x0 + INSET : x0 + w - INSET;
+    const y0 = tail === 'up' ? ty + TAIL : ty - TAIL - h;
+    return { x0, y0, edge: tail === 'up' ? 'top' : 'bottom', base: [mid - BASE / 2, mid + BASE / 2] };
+  };
+
+  const fill = (el, colors, fonts, data, tail) => {
+    el.replaceChildren();
+    el.className = '';
+    const name = String(data.name || '');
+    const text = String(data.text || '');
+    if (name) {
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = name;
+      nm.style.color = colors.sapphire || '#2459E0';
+      nm.style.fontFamily = `"${fonts.title || 'Dela Gothic One'}", "Yu Gothic UI", sans-serif`;
+      el.classList.add('named');
+      if (tail === 'side') el.classList.add('stack');
+      el.append(nm, tail === 'side' || !text ? text : `（${text}）`);
+    } else {
+      el.textContent = text;
+    }
+    el.style.color = colors.ink || '#0B1230';
+    el.style.fontFamily = `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`;
   };
 
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
     const colors = theme.colors || {};
     const fonts = theme.fonts || {};
+    const tail = ['up', 'side'].includes(data.tail) ? data.tail : 'down';
     const text = document.getElementById('text');
-    text.textContent = data.text || '';
-    text.style.color = colors.ink || '#0B1230';
-    text.style.fontFamily = `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    fill(text, colors, fonts, data, tail);
     const w = text.offsetWidth, h = text.offsetHeight;
     const tx = Number(data.x) || 0, ty = Number(data.y) || 0;
     const right = (data.side || 'right') !== 'left';
-    const x0 = right ? tx - INSET : tx + INSET - w;
-    const y0 = ty - TAIL - h;
-    const mid = right ? x0 + INSET : x0 + w - INSET;
-    text.style.left = x0 + 'px';
-    text.style.top = y0 + 'px';
+    const box = layout(tx, ty, w, h, right, tail);
+    text.style.left = box.x0 + 'px';
+    text.style.top = box.y0 + 'px';
     const canvas = theme.canvas || { width: 1920, height: 1080 };
     const art = document.getElementById('art');
     art.setAttribute('width', canvas.width);
     art.setAttribute('height', canvas.height);
-    const d = plate(x0, y0, w, h, [tx, ty], [mid - BASE / 2, mid + BASE / 2]);
+    const d = plate(box.x0, box.y0, w, h, { edge: box.edge, tip: [tx, ty], base: box.base });
     const shadow = document.getElementById('shadow');
     shadow.setAttribute('d', d);
     shadow.setAttribute('fill', colors.ink || '#0B1230');

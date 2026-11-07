@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  名乗りの札（ゲームのキャラ紹介の形）。斜めのサファイアの帯に白い名前、上に黄色の肩書きの札、顔を指す黄色の矢印。
+  data: text（名前）、sub（肩書き）、x と y（札の左上。コンポジションの画素）、side（left なら顔が右にある型。
+  矢印は帯の右端から右下を指す）、arrow（false なら矢印を出さない）、theme。
+  帯の中の速度線は出た後も流れ続ける（vlog の決まりで止まらない部品）ので、ページは t で描く。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  p { margin: 0; }
+  svg { display: block; overflow: visible; }
+  .name { position: absolute; width: max-content; }
+  .band { position: relative; height: 172px; padding: 0 70px 0 64px; display: flex; align-items: center; }
+  .bg, .shade { position: absolute; inset: 0; transform: skewX(-12deg); border-radius: 14px; }
+  .shade { translate: 12px 12px; background: var(--ink); }
+  .bg { background: var(--sapphire); border: 7px solid var(--ink); overflow: hidden; }
+  .lines { position: absolute; left: -200px; top: 0; width: 1200px; height: 100%; }
+  .nm { position: relative; font: 900 124px/1 var(--title); color: var(--white); letter-spacing: .02em;
+    text-shadow: var(--ring-name); white-space: nowrap; }
+  .tag { position: absolute; left: 10px; top: -58px; z-index: 3; padding: 10px 30px 14px; background: var(--yellow);
+    border: 6px solid var(--ink); border-radius: 40px; filter: drop-shadow(0 7px 0 var(--ink));
+    font: 700 46px/1 var(--sticker); color: var(--ink); rotate: -5deg; white-space: nowrap; }
+  .arrow { position: absolute; left: -128px; top: 50%; margin-top: -42px; width: 120px; height: 84px; z-index: 3; }
+  .left .arrow { left: auto; right: -132px; top: 62%; rotate: 28deg; }
+  .left .arrow svg { transform: scaleX(-1); }
+  .spk { position: absolute; z-index: 4; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  const DEFAULT_X = 1104, DEFAULT_Y = 520;
+  // 速度線: 帯の大きさ、本数、種、長さの範囲。線は 0.5 秒で 640px 流れて繰り返す（7_mix の m7-run）。
+  const LINES = { w: 1200, h: 172, n: 16, seed: 3, min: 80, max: 320 };
+  const RUN_PERIOD = 0.5, RUN_FROM = 320, RUN_SPAN = 640;
+  const SPARKS = [[640, -40, 46, 'yellow'], [700, 150, 30, 'white']];
+  const STAR4 = 'M0 -1.1Q.16 -.16 1.1 0Q.16 .16 0 1.1Q-.16 .16 -1.1 0Q-.16 -.16 0 -1.1Z';
+  const ARROW_L = '<svg width="120" height="84" viewBox="0 0 120 84"><path d="M5 42 L50 6 L50 26 L115 26 L115 58 L50 58 L50 78 Z" '
+    + 'fill="var(--yellow)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/></svg>';
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  // 種から決まる乱数（mulberry32）。同じ種なら毎回同じ線になる。
+  const rng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  // 縁取り。text-shadow を円周に並べると、角が丸く文字に食い込まない縁になる。layers は内側から [半径, 色]。
+  const outline = (...layers) => {
+    const out = [];
+    let prev = 0;
+    for (const [r, color] of layers) {
+      for (let rr = r; rr > Math.max(prev - 0.5, 0.6); rr -= 2.2) {
+        const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * 2 * Math.PI + rr;
+          out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+        }
+      }
+      prev = r;
+    }
+    return out.join(', ');
+  };
+  const speedLines = ({ w, h, n, seed, min, max }) => {
+    const r = rng(seed), colors = ['var(--line-a)', 'var(--line-b)'];
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const y = (r() * h).toFixed(0), x = (r() * w).toFixed(0), len = (min + r() * (max - min)).toFixed(0);
+      s += `<line x1="${x}" y1="${y}" x2="${+x + +len}" y2="${y}" stroke="${colors[i % colors.length]}" `
+        + `stroke-width="${(3 + r() * 9).toFixed(1)}" stroke-linecap="round"/>`;
+    }
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${s}</svg>`;
+  };
+  const spark = ([x, y, size, color]) => `<div class="spk" style="left:${x - size / 2}px;top:${y - size / 2}px">`
+    + `<svg width="${size}" height="${size}" viewBox="-1.25 -1.25 2.5 2.5"><path d="${STAR4}" fill="var(--${color})" `
+    + 'stroke="var(--ink)" stroke-width="0.13" stroke-linejoin="round"/></svg></div>';
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    s.setProperty('--title', stack(f.title));
+    s.setProperty('--sticker', stack(f.sticker));
+    // 速度線は白と、サファイアを白で薄めた水色を半透明で。
+    s.setProperty('--line-a', 'color-mix(in srgb, var(--white) 33%, transparent)');
+    s.setProperty('--line-b', 'color-mix(in srgb, color-mix(in srgb, var(--sapphire) 35%, var(--white)) 40%, transparent)');
+    s.setProperty('--ring-name', outline([13, 'var(--ink)']));
+  };
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const left = data.side === 'left';
+    const arrow = data.arrow === false || data.arrow === 'false' ? '' : `<div class="arrow">${ARROW_L}</div>`;
+    const run = RUN_FROM - RUN_SPAN * (((Math.max(0, t) / RUN_PERIOD) % 1));
+    document.getElementById('root').innerHTML = `<div class="name${left ? ' left' : ''}" style="left:${x}px;top:${y}px">`
+      + `<div class="band"><i class="shade"></i><div class="bg"><div class="lines" style="translate:${run.toFixed(1)}px 0">`
+      + `${speedLines(LINES)}</div></div><p class="nm">${esc(data.text)}</p></div>`
+      + `<div class="tag">${esc(data.sub)}</div>${arrow}${SPARKS.map(spark).join('')}</div>`;
+  };
+</script>
+</body>
+</html>

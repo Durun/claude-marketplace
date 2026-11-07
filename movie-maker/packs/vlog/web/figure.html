@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  図解（仕組みや違い）と、その cues（差し込んだ試聴の間に行が光り、スピーカーの札が出て、再生位置の線が行の絵の上を走る）。
+  まっすぐの紙に、見出し（音符の印と黄色のマーカー）と行を並べる。最後の行はねらい（★ と黄色のマーカー）。
+  data: head（見出し）、labels（行の名前を | で区切る）、comments（行のひとことを | で区切る。空でよい）、kinds（行の絵を空白で区切る。
+  dry は声の箱だけ、reverb はぼけた面、delay は間をあけて小さくなる箱、both は両方、none は絵なし）、row_at（行が出る秒を空白で区切る）、
+  cues（「行の番号（1 から）@始まり+長さ」を空白で区切る）、x と y（紙の外側の上の角）、side（right なら x は右の端、left なら左の端）、
+  theme（展開が足す）。時刻はレイヤーの始まりからの秒で、画面は t と data だけで決まる。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #fig { position: absolute; width: max-content; }
+  #paper { position: relative; box-sizing: border-box; padding: 28px 34px; border: 7px solid; border-radius: 30px; }
+  .hd { display: flex; align-items: center; gap: 16px; }
+  .hd svg { width: 58px; height: 58px; flex: none; display: block; }
+  .t { position: relative; z-index: 0; margin: 0; font-size: 46px; font-weight: 900; line-height: 1.25; letter-spacing: 0.03em; }
+  .mk { position: absolute; left: -8px; right: -8px; bottom: 4px; height: 24px; z-index: -1; border-radius: 8px; transform-origin: 0 50%; }
+  .rows { display: flex; flex-direction: column; gap: 14px; margin-top: 22px; }
+  .rw { position: relative; display: flex; align-items: center; gap: 26px; }
+  .hl { position: absolute; left: -18px; right: -18px; top: -9px; bottom: -9px; z-index: -1; border-radius: 18px; }
+  .gr { position: relative; width: 300px; height: 88px; flex: none; }
+  .gr svg { position: absolute; left: 0; top: 0; overflow: visible; }
+  .ph { position: absolute; left: 0; top: 2px; width: 7px; height: 84px; border-radius: 4px; outline: 3px solid; }
+  .txs { display: flex; flex-direction: column; gap: 2px; }
+  .lb { display: flex; align-items: center; gap: 16px; margin: 0; font-size: 42px; font-weight: 900; line-height: 1.25; white-space: nowrap; letter-spacing: 0.02em; }
+  .pb { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 56px; height: 56px; box-sizing: border-box; border-radius: 50%; border: 4px solid; }
+  .pb svg { width: 36px; height: 36px; margin-left: 2px; }
+  .cm { position: relative; z-index: 0; display: flex; align-items: center; gap: 8px; width: max-content; margin: 0; font-size: 40px; font-weight: 800; line-height: 1.25; white-space: nowrap; }
+  .cm svg { width: 44px; height: 44px; flex: none; }
+  .cm span { position: relative; z-index: 0; }
+  .cm i { position: absolute; left: -6px; right: -6px; bottom: 3px; height: 22px; z-index: -1; border-radius: 8px; transform-origin: 0 50%; }
+</style>
+</head>
+<body>
+<div id="fig"><div id="paper"></div></div>
+<script>
+  // 行の絵の大きさと、声の箱の下の線の高さ（7_mix の figure_delay_reverb）。
+  const GW = 300, GH = 88, BASE = 80, SWEEP = 292;
+  // 動き（秒）。行は ROW で左から入り、見出しのマーカーは MARK_AT から、ねらいのマーカーは行の GOAL_AT 後に引く。
+  const ROW = 0.34, MARK_AT = 0.3, WIPE = 0.3, GOAL_AT = 0.4, SMEAR = 0.45, ECHO = 0.28, LIGHT_IN = 0.16, LIGHT_OUT = 0.3, OFF = 0.2;
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const out3 = (u) => 1 - (1 - clamp01(u)) ** 3;
+  const back = (u) => { const v = clamp01(u) - 1; return 1 + 2.2 * v ** 3 + 1.2 * v ** 2; };
+
+  // 試聴の間だけ 1、入りと抜けは不透明度でつなぐ。
+  const lit = (t, p, fin, fout) => (p ? Math.min(clamp01((t - p.t0) / fin), 1 - clamp01((t - p.t1) / fout)) : 0);
+
+  const star = (cx, cy, ro, ri) => Array.from({ length: 10 }, (_, i) => {
+    const a = (i / 10) * 2 * Math.PI - Math.PI / 2, r = i % 2 ? ri : ro;
+    return `${i ? 'L' : 'M'}${(cx + Math.cos(a) * r).toFixed(1)} ${(cy + Math.sin(a) * r).toFixed(1)}`;
+  }).join('') + 'Z';
+  const note8 = (c) => `<ellipse cx="21.5" cy="33.5" rx="7.2" ry="5.6" fill="${c}" transform="rotate(-22 21.5 33.5)"/><rect x="26.4" y="12.5" width="4.2" height="21.5" rx="1.5" fill="${c}"/>`
+    + `<path d="M30 13.5 Q38.5 16.5 37 25" fill="none" stroke="${c}" stroke-width="4.2" stroke-linecap="round"/>`;
+  const speaker = (c) => `<svg viewBox="0 0 40 40"><path d="M5 15 H12 L21 7 V33 L12 25 H5 Z" fill="${c}" stroke="${c}" stroke-width="2.5" stroke-linejoin="round"/>`
+    + `<path d="M26 14 Q30.5 20 26 26 M30.5 9.5 Q38 20 30.5 30.5" fill="none" stroke="${c}" stroke-width="3.6" stroke-linecap="round"/></svg>`;
+
+  // 行の絵。声は白い箱、エフェクトの音はサファイア（ぼけた面がリバーブ、間をあけて小さくなる箱がディレイ）。
+  const art = (kind, t, at, c, i) => {
+    const echoTone = [c.sapphire, `color-mix(in srgb, ${c.sapphire} 65%, ${c.white})`, `color-mix(in srgb, ${c.sapphire} 35%, ${c.white})`];
+    const voice = `<rect x="10" y="${BASE - 60}" width="62" height="60" rx="9" fill="${c.white}" stroke="${c.ink}" stroke-width="5"/>`;
+    const smear = (op) => {
+      const s = out3((t - at - 0.12) / SMEAR);
+      return `<path d="M60 ${BASE} L60 ${BASE - 52} C 118 ${BASE - 46} 186 ${BASE - 22} 294 ${BASE - 4} L294 ${BASE} Z" fill="url(#sm${i})" opacity="${op}" style="filter:blur(3px)" transform="translate(60 0) scale(${s} 1) translate(-60 0)"/>`;
+    };
+    const echoes = (soft) => [[112, 44], [180, 30], [248, 18]].map(([x, h], k) => {
+      const g = back((t - at - 0.12 - k * 0.08) / ECHO);
+      return `<rect x="${x}" y="${BASE - h * g}" width="46" height="${Math.max(0, h * g)}" rx="7" fill="${echoTone[k]}" stroke="${soft ? 'none' : c.ink}" stroke-width="4.5"${soft ? ' style="filter:blur(2.2px)"' : ''}/>`;
+    }).join('');
+    const defs = `<defs><linearGradient id="sm${i}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${c.sapphire}" stop-opacity=".95"/><stop offset="1" stop-color="${c.sapphire}" stop-opacity="0"/></linearGradient></defs>`;
+    const line = `<line x1="3" y1="${BASE + 3}" x2="${GW - 3}" y2="${BASE + 3}" stroke="${c.ink}" stroke-width="6" stroke-linecap="round"/>`;
+    const body = { reverb: smear(1) + voice, delay: echoes(false) + voice, both: smear(0.42) + echoes(true) + voice }[kind] || voice;
+    return `<svg width="${GW}" height="${GH}" viewBox="0 0 ${GW} ${GH}">${defs}${body}${line}</svg>`;
+  };
+
+  const split = (s, sep) => String(s ?? '').split(sep).map((x) => x.trim());
+  const parseCues = (s) => {
+    const out = {};
+    for (const m of String(s || '').matchAll(/(\d+)@(-?[\d.]+)\+([\d.]+)/g)) {
+      const t0 = Number(m[2]);
+      out[Number(m[1]) - 1] = { t0, t1: t0 + Number(m[3]) };
+    }
+    return out;
+  };
+
+  const rowHtml = (r, i, n, t, c) => {
+    const show = out3((t - r.at) / ROW);
+    const goal = i === n - 1;
+    const p = r.cue;
+    const hl = `<i class="hl" style="background:color-mix(in srgb, ${c.yellow} 60%, ${c.white});opacity:${lit(t, p, LIGHT_IN, LIGHT_OUT)}"></i>`;
+    const sweep = p ? clamp01((t - p.t0) / Math.max(0.1, p.t1 - p.t0)) * SWEEP : 0;
+    const ph = r.kind !== 'none' && p
+      ? `<i class="ph" style="background:${c.ink};outline-color:${c.white};translate:${sweep}px 0;opacity:${lit(t, p, 0.1, OFF)}"></i>` : '';
+    const gr = r.kind !== 'none' ? `<div class="gr">${art(r.kind, t, r.at, c, i)}${ph}</div>` : '';
+    const pbOn = lit(t, p, 0.26, OFF);
+    const pb = p ? `<span class="pb" style="background:${c.sapphire};border-color:${c.ink};opacity:${pbOn};scale:${0.5 + 0.5 * out3(pbOn)}">${speaker(c.white)}</span>` : '';
+    const lbColor = r.kind === 'dry' ? c.ink : c.sapphire;
+    const mark = out3((t - r.at - GOAL_AT) / WIPE);
+    const cm = !r.comment ? '' : goal
+      ? `<p class="cm"><svg viewBox="0 0 40 40"><path d="${star(20, 21, 19, 8.5)}" fill="${c.yellow}" stroke="${c.ink}" stroke-width="4" stroke-linejoin="round"/></svg><span>${esc(r.comment)}<i style="background:${c.yellow};scale:${mark} 1"></i></span></p>`
+      : `<p class="cm">${esc(r.comment)}</p>`;
+    return `<div class="rw" style="opacity:${show};translate:${(1 - show) * -60}px 0">${hl}${gr}<div class="txs"><p class="lb" style="color:${lbColor}"><span>${esc(r.label)}</span>${pb}</p>${cm}</div></div>`;
+  };
+
+  window.mmSetTime = (t, data) => {
+    const theme = data.theme || {};
+    const c = { ink: '#0B1230', paper: '#F5F8FF', white: '#FFFFFF', yellow: '#FFD43B', sapphire: '#2459E0', ...(theme.colors || {}) };
+    const fonts = theme.fonts || {};
+    const labels = split(data.labels, '|').filter(Boolean);
+    const comments = split(data.comments, '|');
+    const kinds = split(data.kinds, /\s+/);
+    const at = split(data.row_at, /\s+/).map(Number);
+    const cues = parseCues(data.cues);
+    const rows = labels.map((label, i) => ({
+      label, comment: comments[i] || '', kind: kinds[i] || 'none',
+      at: Number.isFinite(at[i]) ? at[i] : 0, cue: cues[i],
+    }));
+    const paper = document.getElementById('paper');
+    Object.assign(paper.style, {
+      background: c.paper, borderColor: c.ink, color: c.ink, filter: `drop-shadow(12px 14px 0 ${c.ink})`,
+      fontFamily: `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`,
+    });
+    const icon = `<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23.5" fill="${c.sapphire}" stroke="${c.ink}" stroke-width="5"/>${note8(c.white)}</svg>`;
+    const mk = out3((t - MARK_AT) / WIPE);
+    paper.innerHTML = `<div class="hd">${icon}<p class="t"><b>${esc(data.head || '')}</b><i class="mk" style="background:${c.yellow};scale:${mk} 1"></i></p></div>`
+      + `<div class="rows">${rows.map((r, i) => rowHtml(r, i, rows.length, t, c)).join('')}</div>`;
+    const fig = document.getElementById('fig');
+    const canvas = theme.canvas || { width: 1920 };
+    const right = (data.side || 'right') !== 'left';
+    const x = Number(data.x) || 0;
+    fig.style.top = `${Number(data.y) || 0}px`;
+    fig.style.left = right ? 'auto' : `${x}px`;
+    fig.style.right = right ? `${canvas.width - x}px` : 'auto';
+  };
+</script>
+</body>
+</html>
