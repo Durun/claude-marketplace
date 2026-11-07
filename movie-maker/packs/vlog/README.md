@@ -10,7 +10,7 @@ DTM_Vlog（`D:/dev/DTM_Vlog/`）の作り方を、movie-maker の上のデータ
 | `styles.json` | 文字のスタイル: 字幕、右上のラベル、注釈、テロップ、セクションの見出し。`text` と、プレートを描く `shader.wgsl`（角丸の地、縁、ずらした影、傾き） | `design/theme.yaml` の `overlays`、`docs/design-guide.md` の「置き場所」 |
 | `macros/` | `caption`、`label`、`note`、`telop`、`section`（プレートとチャプターのマーカー） | `docs/design-guide.md` の「どの部品で伝えるか」 |
 | `templates/episode.json` | 本編とショートのコンポジション、YouTube 向けのレンダーターゲット（-14 LUFS、チャプター） | `templates/ep/`、`tools/short.py` |
-| `mixer.json` | 喋り（`voice`）が鳴ると DAW の音と BGM を 11 dB 下げるダッキング | `templates/ep/edit.yaml` の `levels` |
+| `mixer.json` | 喋り（`voice`）が鳴ると DAW の音と BGM を 11 dB 下げるダッキング（`mm_doc::CompMixer` の形。`episode` を適用すると本編とショートに `setMixer` で入る） | `templates/ep/edit.yaml` の `levels` |
 | `corrections.json` | 字幕の表記の置き換え。`caption` が適用する | `templates/ep/edit.yaml` の `corrections` |
 
 ## 使い方
@@ -43,7 +43,6 @@ mm pack expand packs/vlog note --var id=n1 --var text=OTTって？ --var at=3 > 
 | もの | 待っているもの |
 |---|---|
 | WebGL のトランジション 19 種（`tools/transitions/fx/*.js`）を WGSL に | 2 つの入力を受ける `shader.wgsl` のトランジションの種類（レンダラー） |
-| `mixer.json` を書き出しとプレビューに効かせる | プロジェクトのデータにミキサーの設定を持つ所（プロジェクトのデータと操作、レンダラー） |
 | 字幕の縁取り、書体の指定（M PLUS Rounded 1c など）、歌詞だけミクの色にする | `text` の縁、書体、文字の一部の色のパラメータ（文字） |
 | 字幕を語と文節の切れ目で折る（`tools/linebreak.py`） | 折り返しの位置の指定（文字） |
 | 注釈が出ている間にセクションの見出しを抜く、顔の反対側に置く | 部品の重なりと被写体の位置を見る組み立て（ep04 で要るか確かめる） |

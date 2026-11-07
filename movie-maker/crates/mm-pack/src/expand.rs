@@ -36,6 +36,7 @@ pub fn expand(
         let values = match step {
             Step::Op(raw) => vec![env.fill_json(raw)?],
             Step::Text(t) => text_ops(pack, &TextInput::read(pack, &env, t)?, shaper)?,
+            Step::Mixer(m) => vec![mixer_op(pack, &env.fill_text(&m.comp)?)?],
         };
         for value in values {
             let op: Op = serde_json::from_value(value).map_err(|e| {
@@ -46,6 +47,17 @@ pub fn expand(
     }
     let title = format!("{}（{}）", def.title, pack.manifest.name);
     Ok(Transaction::new(title, ops))
+}
+
+/// `mixer.json` を `comp` に当てる `setMixer`。パックに `mixer.json` が無ければ `InvalidArgument`。
+fn mixer_op(pack: &Pack, comp: &str) -> Result<Value> {
+    let mixer = pack.mixer.as_ref().ok_or_else(|| {
+        MmError::InvalidArgument(format!(
+            "パック {} に mixer.json が無い（mixer 手順が要る）",
+            pack.manifest.name
+        ))
+    })?;
+    Ok(json!({"op": "setMixer", "composition": comp, "mixer": serde_json::to_value(mixer)?}))
 }
 
 /// 引数を埋めて読んだ文字の手順。

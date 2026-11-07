@@ -17,6 +17,8 @@
       "id": "short", "width": "{{short.width}}", "height": "{{short.height}}",
       "fps": {"num": "{{short.fps}}", "den": 1}, "duration": "{{short_duration}}", "layers": [], "markers": []
     }}},
+    {"mixer": {"comp": "main"}},
+    {"mixer": {"comp": "short"}},
     {"op": {"op": "addRenderTarget", "target": {
       "id": "main", "composition": "main", "width": "{{canvas.width}}", "height": "{{canvas.height}}",
       "fps": {"num": "{{canvas.fps}}", "den": 1}, "codec": "h264", "output_path": "render/ep{{n}}.mp4",

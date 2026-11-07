@@ -8,7 +8,7 @@
     "trigger": "voice",
     "targets": ["daw", "bgm"],
     "reduction_db": -11,
-    "threshold": 0.01,
+    "threshold_db": -40,
     "attack_ms": 20,
     "release_ms": 300
   },
