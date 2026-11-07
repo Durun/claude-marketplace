@@ -30,6 +30,8 @@ mod story_ipc;
 mod surface;
 mod theme;
 mod timebase;
+mod transition;
+mod transition_ipc;
 mod verify;
 mod verify_edit;
 
