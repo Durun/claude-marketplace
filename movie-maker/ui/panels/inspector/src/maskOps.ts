@@ -39,6 +39,13 @@ const FADE_DEN = 1000;
 
 export const FADE_CURVES: readonly FadeCurve[] = ["linear", "equal_power", "db"];
 
+/** 曲線の表示名（UI の文言は英語）。dB は dB の直線。 */
+export const FADE_CURVE_LABELS: Record<FadeCurve, string> = {
+  linear: "Linear",
+  equal_power: "Equal power",
+  db: "dB linear",
+};
+
 export type FadeEdge = "fade_in" | "fade_out";
 
 /** フェードの長さ（秒）。無ければ 0。 */

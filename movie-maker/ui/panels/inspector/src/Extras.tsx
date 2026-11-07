@@ -1,6 +1,7 @@
 import type { FadeCurve, Layer, Op } from "@mm/sdk";
 import {
   FADE_CURVES,
+  FADE_CURVE_LABELS,
   addRectMaskOp,
   fadeSeconds,
   removeMaskOp,
@@ -24,7 +25,7 @@ export const FadeRows = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void
       return (
         <div key={edge} class="mm-insp-row">
           <label class="mm-insp-label">{label}</label>
-          <div class="mm-insp-value mm-insp-vector">
+          <div class="mm-insp-value mm-insp-fade">
             <input
               type="number"
               class="mm-insp-input"
@@ -49,7 +50,7 @@ export const FadeRows = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void
             >
               {FADE_CURVES.map((c) => (
                 <option key={c} value={c}>
-                  {c}
+                  {FADE_CURVE_LABELS[c]}
                 </option>
               ))}
             </select>

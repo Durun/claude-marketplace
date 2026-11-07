@@ -33,6 +33,11 @@
   font-weight: 700;
 }
 
+/* 長さ（数）は狭く、曲線の名前は切れない幅にする。 */
+.mm-insp-fade {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
 /* マスクの追加と削除のボタン。 */
 .mm-insp-maskbtn {
   padding: 0 var(--mm-space-sm);
