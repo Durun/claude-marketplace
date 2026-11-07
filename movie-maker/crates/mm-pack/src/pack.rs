@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use mm_audio_api::MixerConfig;
+use mm_doc::CompMixer;
 use mm_types::{MmError, Result};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -39,7 +39,7 @@ pub struct Pack {
     /// 文字のスタイルの名前 → スタイル。
     pub styles: BTreeMap<String, TextStyleSpec>,
     /// ミキサーの設定。`mixer.json` が無ければ `None`。
-    pub mixer: Option<MixerConfig>,
+    pub mixer: Option<CompMixer>,
     /// 字幕の表記の置き換え（誤認識の語 → 正しい表記）。
     pub corrections: BTreeMap<String, String>,
     /// テンプレートとマクロ。テンプレートが先で、それぞれ名前の順。

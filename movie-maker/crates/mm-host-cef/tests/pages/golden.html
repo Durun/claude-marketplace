@@ -16,7 +16,7 @@
       const s = params.seq;
       document.getElementById('seq').style.background = `rgb(${s & 255},${(s >> 8) & 255},0)`;
     }
-    // 時間切れの試験用。レンダラのスレッドを止める。
+    // 時間切れのテスト用。レンダラのスレッドを止める。
     if (params && params.busy_ms) {
       const end = performance.now() + params.busy_ms;
       while (performance.now() < end) {}

@@ -2,7 +2,7 @@
 
 使い方: python -I roundtrip.py <入力.otio> <書き直す先.otio>
 標準出力に 1 行の JSON（トラックの本数、項目の種類、マーカーの数、メタデータの movie-maker が残っているか）を出す。
-crates/mm-doc/tests/otio_python.rs が、Rust の書いたファイルを opentimelineio が読めること、
+crates/mm-doc/tests/otio/python.rs が、Rust の書いたファイルを opentimelineio が読めること、
 opentimelineio が書き直したファイルを Rust が同じに読み戻せることを確かめるのに使う。
 """
 

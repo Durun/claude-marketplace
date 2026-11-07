@@ -39,11 +39,13 @@ impl ProposalState {
         }
     }
 
-    fn parse(s: &str) -> Self {
+    /// 表の値から戻す。知らない値を保留と読むと承認できてしまうので、壊れた行として拒否する。
+    fn parse(s: &str) -> Result<Self> {
         match s {
-            "approved" => Self::Approved,
-            "rejected" => Self::Rejected,
-            _ => Self::Pending,
+            "pending" => Ok(Self::Pending),
+            "approved" => Ok(Self::Approved),
+            "rejected" => Ok(Self::Rejected),
+            other => Err(MmError::Corrupt(format!("提案の状態が読めない: {other}"))),
         }
     }
 }
@@ -63,7 +65,7 @@ pub struct StoredProposal {
     /// 提案を作ったときのプロジェクトのデータのバージョン。
     pub base_version: i64,
     pub ops: Vec<Op>,
-    /// 受け付けたときに当てて求めた、触る所。
+    /// 受け付けたときに適用して求めた、触る所。
     pub touches: Vec<String>,
     pub state: ProposalState,
     pub decided_by: Option<Actor>,
@@ -96,7 +98,7 @@ const SELECT: &str =
 FROM proposals p";
 
 impl Store {
-    /// トランザクションを提案として保留する。今のプロジェクトのデータの写しに当てて検証し（ロック、検証、文字起こし）、
+    /// トランザクションを提案として保留する。今のプロジェクトのデータのコピーに適用して検証し（ロック、検証、文字起こし）、
     /// 触る所を記録する。`base_version` が古く、その後の操作と触る所が重なれば [`OpError::Conflict`]。
     pub fn propose(
         &mut self,
@@ -194,13 +196,14 @@ impl Store {
             .intersection(&touches))
     }
 
-    /// 提案（`selection` は承認する操作の番号、`None` は全部）を今のプロジェクトのデータの写しに当てる。書かない。
+    /// 保留中の提案（`selection` は承認する操作の番号、`None` は全部）を今のプロジェクトのデータのコピーに適用する。書かない。
+    /// 承認した提案は今のデータに入っているので、もう一度適用すると操作が二重になる。保留中でなければ拒否する。
     pub fn preview_proposal(
         &self,
         id: i64,
         selection: Option<&[usize]>,
     ) -> OpResult<(Project, TxnOutcome)> {
-        let proposal = self.proposal(id)?;
+        let proposal = self.pending(id)?;
         let ops = select_ops(&proposal.ops, selection)?;
         preview_ops(self.project(), &ops, &OpContext::new(proposal.entry))
     }
@@ -281,7 +284,8 @@ impl Store {
                 proposal.state.as_str()
             )));
         }
-        self.conn
+        let changed = self
+            .conn
             .execute(
                 "UPDATE proposals SET state = 'pending', decided_kind = NULL, decided_name = NULL,
                         decided_at_ms = NULL
@@ -289,6 +293,7 @@ impl Store {
                 [id],
             )
             .sql()?;
+        expect_one(changed, id)?;
         self.proposal(id)
     }
 
@@ -321,7 +326,7 @@ fn expect_one(changed: usize, id: i64) -> Result<()> {
         Ok(())
     } else {
         Err(MmError::InvalidArgument(format!(
-            "提案 {id} は保留中でない"
+            "提案 {id} の状態が読んだ後に変わった"
         )))
     }
 }
@@ -381,7 +386,7 @@ fn read_row(r: &Row) -> rusqlite::Result<RawProposal> {
 
 impl RawProposal {
     fn into_stored(self) -> Result<StoredProposal> {
-        let state = ProposalState::parse(&self.state);
+        let state = ProposalState::parse(&self.state)?;
         let approved = state == ProposalState::Approved;
         Ok(StoredProposal {
             id: self.id,
@@ -404,5 +409,22 @@ impl RawProposal {
             applied: approved && self.applied,
             undoable: approved && self.undoable,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProposalState;
+
+    #[test]
+    fn 提案の状態は表の値と往復し_知らない値は保留と読まない() {
+        for s in [
+            ProposalState::Pending,
+            ProposalState::Approved,
+            ProposalState::Rejected,
+        ] {
+            assert_eq!(ProposalState::parse(s.as_str()).unwrap(), s);
+        }
+        assert!(ProposalState::parse("merged").is_err());
     }
 }

@@ -3239,7 +3239,6 @@ dependencies = [
 name = "mm-pack"
 version = "0.1.0"
 dependencies = [
- "mm-audio-api",
  "mm-color-lut",
  "mm-doc",
  "mm-gpu",

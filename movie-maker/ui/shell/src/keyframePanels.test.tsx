@@ -27,7 +27,7 @@ const layer = {
 } as unknown as Layer;
 
 describe("KeyframePanels", () => {
-  it("再生位置のイベントでキーフレームの列を出し、前後の移動はシークのイベントにする", () => {
+  it("再生位置のイベントでキーフレームナビゲーターを出し、前後の移動はシークのイベントにする", () => {
     act(() => render(<KeyframePanels layer={layer} onOp={vi.fn()} />, host));
     expect(host.querySelector('[aria-label="opacity keyframe at playhead"]')).toBeNull();
     act(() => {
@@ -39,6 +39,20 @@ describe("KeyframePanels", () => {
     act(() => host.querySelector<HTMLButtonElement>('[aria-label="opacity next keyframe"]')?.click());
     window.removeEventListener(SEEK_EVENT, onSeek);
     expect(seeks).toEqual([2]);
+  });
+
+  it("止まっている間に同じ再生位置が届いても、入力中の入力欄を戻さない", () => {
+    const playhead = () => {
+      window.dispatchEvent(new CustomEvent(PLAYHEAD_EVENT, { detail: { time: 1, fps: 30 } }));
+    };
+    act(() => render(<KeyframePanels layer={layer} onOp={vi.fn()} />, host));
+    act(playhead);
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="opacity"]');
+    if (!input) throw new Error("opacity の入力欄が無い");
+    input.value = "0.75";
+    act(() => void input.dispatchEvent(new Event("input", { bubbles: true })));
+    act(playhead);
+    expect(input.value).toBe("0.75");
   });
 
   it("Inspector で名前を押したパラメータを Graph に出す", () => {

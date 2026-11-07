@@ -25,7 +25,7 @@ export interface InspectorPanelProps {
   hints?: ParamHints;
   /** 値を変えたときに操作を渡す。送るのは呼び出し側（sdk の client）。 */
   onOp: (op: Op) => void;
-  /** 再生位置（コンポジションの秒）。渡すとキーフレームの列を出し、動きのある値を再生位置で編集する。 */
+  /** 再生位置（コンポジションの秒）。渡すとキーフレームナビゲーターを出し、動きのある値を再生位置で編集する。 */
   time?: number;
   /** コンポジションの fps。キーフレームの時刻をフレームにそろえる。 */
   fps?: number;
@@ -99,7 +99,7 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
 
 /**
  * 選んだレイヤーのパラメータを、値の型の JSON Schema から作った入力欄で編集する。
- * 再生位置を渡すと、各パラメータにキーフレームの列（前へ・足す外す・次へ・補間）を出す。
+ * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）を出す。
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
   const { layer, assets = [], hints = DEFAULT_HINTS, onOp, time, onSeek, selectedPath, onSelectParam } = props;

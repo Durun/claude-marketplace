@@ -1,4 +1,4 @@
-//! OTIO の試験で使うプロジェクトと、取り込みの結果をプロジェクトに足す手順。
+//! OTIO のテストで使うプロジェクトと、取り込みの結果をプロジェクトに足す手順。
 
 use mm_doc::otio::Imported;
 use mm_doc::{
@@ -70,7 +70,7 @@ pub fn sample_project() -> Project {
     });
     p.compositions.push(main_composition());
     p.normalize();
-    p.validate().expect("試験のプロジェクトは正しい");
+    p.validate().expect("テストのプロジェクトは正しい");
     p
 }
 

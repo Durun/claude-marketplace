@@ -15,6 +15,10 @@ pub const DEFAULT_DUCK_ATTACK_MS: f64 = 20.0;
 /// ダッキングの既定の戻りきるまでの時間（ms）。
 pub const DEFAULT_DUCK_RELEASE_MS: f64 = 300.0;
 
+/// バスとマスターの音量の上限（dB）。ミキサーは `f32` の振幅に直すので、大きすぎる値は無限大になって音が壊れる。
+/// 卓のフェーダーの上限（+6〜+12 dB）より余裕を持たせる。
+pub(crate) const MAX_MIXER_GAIN_DB: f64 = 24.0;
+
 /// コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -74,13 +78,18 @@ impl Ducking {
 }
 
 impl CompMixer {
-    /// 不変条件。数は有限、ダッキングは下げる向きで時間は負でなく、自分のバスを対象にしない。
+    /// 不変条件。音量は有限で [`MAX_MIXER_GAIN_DB`] 以下、ダッキングは下げる向きで時間は負でなく、自分のバスを対象にしない。
     pub(crate) fn check(&self) -> std::result::Result<(), String> {
-        if !self.master_db.is_finite() {
-            return Err("マスターの音量が有限でない".into());
+        let ok = |db: f64| db.is_finite() && db <= MAX_MIXER_GAIN_DB;
+        if !ok(self.master_db) {
+            return Err(format!(
+                "マスターの音量は有限で {MAX_MIXER_GAIN_DB} dB 以下"
+            ));
         }
-        if let Some((role, _)) = self.buses.iter().find(|(_, b)| !b.gain_db.is_finite()) {
-            return Err(format!("バス {role} の音量が有限でない"));
+        if let Some((role, _)) = self.buses.iter().find(|(_, b)| !ok(b.gain_db)) {
+            return Err(format!(
+                "バス {role} の音量は有限で {MAX_MIXER_GAIN_DB} dB 以下"
+            ));
         }
         self.ducking.as_ref().map_or(Ok(()), Ducking::check)
     }
@@ -123,6 +132,27 @@ mod tests {
     fn 既定のミキサーは空の_json_になる() {
         let json = serde_json::to_string(&CompMixer::default()).unwrap();
         assert_eq!(json, r#"{"master_db":0.0}"#);
+    }
+
+    #[test]
+    fn 上限を超える音量は拒否する() {
+        for db in [1e39, MAX_MIXER_GAIN_DB + 1.0] {
+            let master = CompMixer {
+                master_db: db,
+                ..CompMixer::default()
+            };
+            assert!(master.check().is_err(), "{db}");
+            let bus = CompMixer {
+                buses: [("bgm".to_owned(), MixerBus { gain_db: db })].into(),
+                ..CompMixer::default()
+            };
+            assert!(bus.check().is_err(), "{db}");
+        }
+        let edge = CompMixer {
+            master_db: MAX_MIXER_GAIN_DB,
+            ..CompMixer::default()
+        };
+        assert!(edge.check().is_ok());
     }
 
     #[test]

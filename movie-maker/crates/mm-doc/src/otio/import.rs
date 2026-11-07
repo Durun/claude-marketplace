@@ -41,7 +41,7 @@ pub(super) struct Ctx<'a> {
     pub assets: Vec<Asset>,
     /// OTIO のメタデータの素材の ID から、割り当てた素材の ID。ノードの素材の参照を書き換える。
     pub asset_remap: HashMap<String, AssetId>,
-    /// メタデータが無く、取り込みで作った素材。長さをカットの出の最大まで延ばす。
+    /// メタデータが無く、取り込みで作った素材。長さをカットのアウト点の最大まで延ばす。
     generated: HashSet<AssetId>,
     extent: HashMap<AssetId, RationalTime>,
     used: HashMap<&'static str, HashSet<String>>,
@@ -77,46 +77,41 @@ pub(super) fn slug(name: &str) -> String {
     }
 }
 
-impl<'a> Ctx<'a> {
-    fn new(project: &'a Project, opts: &ImportOptions) -> Self {
-        let mut used: HashMap<&'static str, HashSet<String>> = HashMap::new();
-        let ids = |v: Vec<String>| v.into_iter().collect::<HashSet<_>>();
-        used.insert(
-            SEQUENCE,
-            ids(project.sequences.iter().map(|s| s.id.to_string()).collect()),
-        );
-        used.insert(
+/// プロジェクトで使っている ID を種類ごとに集める。取り込む ID はこれと重ならないように選ぶ。
+fn existing_ids(project: &Project) -> HashMap<&'static str, HashSet<String>> {
+    let comps = &project.compositions;
+    let seqs = &project.sequences;
+    HashMap::from([
+        (SEQUENCE, seqs.iter().map(|s| s.id.to_string()).collect()),
+        (
             CUT,
-            ids(project
-                .sequences
-                .iter()
+            seqs.iter()
                 .flat_map(|s| s.cuts.iter().map(|c| c.id.to_string()))
-                .collect()),
-        );
-        used.insert(
+                .collect(),
+        ),
+        (
             COMPOSITION,
-            ids(project
-                .compositions
-                .iter()
-                .map(|c| c.id.to_string())
-                .collect()),
-        );
-        used.insert(
+            comps.iter().map(|c| c.id.to_string()).collect(),
+        ),
+        (
             MARKER,
-            ids(project
-                .compositions
+            comps
                 .iter()
                 .flat_map(|c| c.markers.iter().map(|m| m.id.to_string()))
-                .collect()),
-        );
-        used.insert(
+                .collect(),
+        ),
+        (
             LAYER,
-            ids(project
-                .compositions
+            comps
                 .iter()
                 .flat_map(|c| c.layers.iter().map(|l| l.id.to_string()))
-                .collect()),
-        );
+                .collect(),
+        ),
+    ])
+}
+
+impl<'a> Ctx<'a> {
+    fn new(project: &'a Project, opts: &ImportOptions) -> Self {
         Self {
             project,
             keep_ids: opts.sequence_id.is_none(),
@@ -125,7 +120,7 @@ impl<'a> Ctx<'a> {
             asset_remap: HashMap::new(),
             generated: HashSet::new(),
             extent: HashMap::new(),
-            used,
+            used: existing_ids(project),
             warned: HashSet::new(),
         }
     }
@@ -139,6 +134,14 @@ impl<'a> Ctx<'a> {
         if self.warned.insert(msg.clone()) {
             self.warnings.push(msg);
         }
+    }
+
+    /// [`super::read_meta`] の読めない理由を警告にして `None` にする。
+    pub fn meta<T: for<'de> serde::Deserialize<'de>>(&mut self, object: &Value) -> Option<T> {
+        super::read_meta(object).unwrap_or_else(|e| {
+            self.warn_once(e);
+            None
+        })
     }
 
     pub fn is_used(&self, kind: &'static str, id: &str) -> bool {
@@ -166,11 +169,12 @@ impl<'a> Ctx<'a> {
             .and_then(Value::as_str)
             .ok_or_else(|| invalid("素材の参照に target_url が無い".into()))?;
         let path = url_to_path(url);
-        let meta = super::read_meta::<AssetMeta>(reference)
+        let meta = self
+            .meta::<AssetMeta>(reference)
             .map(|m| m.asset)
             .filter(|a| path_to_url(&a.path) == url);
         let meta_id = meta.as_ref().map(|a| a.id.to_string());
-        if let Some(existing) = self.find_asset(&path) {
+        if let Some(existing) = self.find_asset(&path_to_url(&path)) {
             self.remember_remap(meta_id, &existing);
             return Ok(existing);
         }
@@ -191,8 +195,9 @@ impl<'a> Ctx<'a> {
         Ok(id)
     }
 
-    fn find_asset(&self, path: &str) -> Option<AssetId> {
-        let same = |a: &&Asset| a.path == path;
+    /// URL どうしで比べる。取り込みは Windows の区切り（`D:\a.mp4`）で保存し、URL から戻したパスは `/` 区切りになる。
+    fn find_asset(&self, url: &str) -> Option<AssetId> {
+        let same = |a: &&Asset| path_to_url(&a.path) == url;
         self.project
             .assets
             .iter()
@@ -238,7 +243,7 @@ impl<'a> Ctx<'a> {
         Ok(AssetId::new(id))
     }
 
-    /// カットの出を覚える。作った素材の長さをそこまで延ばす。
+    /// カットのアウト点を覚える。作った素材の長さをそこまで延ばす。
     pub fn note_extent(&mut self, id: &AssetId, out: RationalTime) {
         let e = self.extent.entry(id.clone()).or_insert(RationalTime::ZERO);
         *e = (*e).max(out);

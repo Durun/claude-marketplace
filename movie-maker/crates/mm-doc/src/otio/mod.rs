@@ -28,9 +28,9 @@ pub const NAMESPACE: &str = "movie-maker";
 /// メタデータの形のバージョン。
 pub const META_VERSION: u32 = 1;
 
-/// カットの OTIO に無い値と、OTIO の値の厳密な写し。
+/// カットの OTIO に無い値と、OTIO の値の厳密なコピー。
 ///
-/// OTIO の値（`source_range`、`LinearTimeWarp`）が写しと食い違うときは、別のツールが編集したとみなして OTIO の値に従う。
+/// OTIO の値（`source_range`、`LinearTimeWarp`）がコピーと食い違うときは、別のツールが編集したとみなして OTIO の値に従う。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct CutMeta {
     pub id: String,
@@ -65,10 +65,17 @@ pub(crate) struct TrackMeta {
     pub composition: Option<Composition>,
 }
 
-/// `metadata["movie-maker"]` を `T` として読む。無い・読めないときは `None`。
-pub(crate) fn read_meta<T: for<'de> Deserialize<'de>>(object: &Value) -> Option<T> {
-    let value = object.get("metadata")?.get(NAMESPACE)?;
-    serde_json::from_value(value.clone()).ok()
+/// `metadata["movie-maker"]` を `T` として読む。無ければ `Ok(None)`。あるのに読めないときは理由を `Err` で返し、
+/// 呼ぶ側が警告にして OTIO の値で取り込む（新しい形や壊れた値を黙って捨てない）。
+pub(crate) fn read_meta<T: for<'de> Deserialize<'de>>(
+    object: &Value,
+) -> std::result::Result<Option<T>, String> {
+    let Some(value) = object.get("metadata").and_then(|m| m.get(NAMESPACE)) else {
+        return Ok(None);
+    };
+    serde_json::from_value(value.clone())
+        .map(Some)
+        .map_err(|e| format!("{NAMESPACE} のメタデータが読めないので OTIO の値で取り込む: {e}"))
 }
 
 /// `metadata` に `movie-maker` の値だけを入れた JSON。

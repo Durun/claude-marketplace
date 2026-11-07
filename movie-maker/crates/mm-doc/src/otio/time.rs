@@ -18,6 +18,8 @@ const MAX_TERMS: usize = 48;
 const MAX_EXACT: i128 = 1 << 53;
 /// メタデータの厳密な値と OTIO の値が同じとみなす差（秒）。
 const NEAR_SECONDS: f64 = 1e-6;
+/// メタデータの厳密な速さと OTIO の速さが同じとみなす差（倍率）。
+const NEAR_SPEED: f64 = 1e-6;
 
 fn invalid(msg: String) -> MmError {
     MmError::InvalidArgument(msg)
@@ -32,10 +34,11 @@ fn gcd(mut a: i128, mut b: i128) -> i128 {
 
 /// 有限の `x` を、分母が [`MAX_DEN`] 以下で許容誤差に収まる有理数 `(分子, 分母)` に直す。
 pub(super) fn ratio_from_f64(x: f64) -> Option<(i128, i128)> {
-    if !x.is_finite() {
+    // 整数を厳密に持てない大きさは、分子どうしの掛け算があふれるので受けない。
+    if !x.is_finite() || x.abs() >= MAX_EXACT as f64 {
         return None;
     }
-    if x.fract() == 0.0 && (x.abs() as i128) < MAX_EXACT {
+    if x.fract() == 0.0 {
         return Some((x as i128, 1));
     }
     let tol = RELATIVE_TOLERANCE * x.abs().max(1.0);
@@ -95,7 +98,10 @@ pub(super) fn time_from_json(v: &Value) -> Result<RationalTime> {
         .ok_or_else(|| invalid(format!("RationalTime の rate を有理数にできない: {rate}")))?;
     let (vn, vd) = ratio_from_f64(value)
         .ok_or_else(|| invalid(format!("RationalTime の value を有理数にできない: {value}")))?;
-    let (num, den) = (vn * rd, vd * rn);
+    let (num, den) = vn
+        .checked_mul(rd)
+        .zip(vd.checked_mul(rn))
+        .ok_or_else(|| invalid(format!("RationalTime が大きすぎる: {value}/{rate}")))?;
     let g = gcd(num, den);
     let den = u32::try_from(den / g)
         .map_err(|_| invalid(format!("RationalTime の分母が大きすぎる: {value}/{rate}")))?;
@@ -133,9 +139,9 @@ pub(super) fn near(a: RationalTime, b: RationalTime) -> bool {
     (a.to_f64() - b.to_f64()).abs() <= NEAR_SECONDS
 }
 
-/// 2 つの速さが [`NEAR_SECONDS`] の範囲で等しいか。
+/// 2 つの速さが [`NEAR_SPEED`] の範囲で等しいか。
 pub(super) fn near_speed(a: Rational, b: Rational) -> bool {
-    (a.to_f64() - b.to_f64()).abs() <= NEAR_SECONDS
+    (a.to_f64() - b.to_f64()).abs() <= NEAR_SPEED
 }
 
 #[cfg(test)]
@@ -187,5 +193,13 @@ mod tests {
         let v = json!({"rate": 0.0, "value": 1.0});
         assert!(time_from_json(&v).is_err());
         assert_eq!(ratio_from_f64(f64::NAN), None);
+    }
+
+    #[test]
+    fn 整数を厳密に持てない大きさの_value_と_rate_はあふれずに拒否する() {
+        for (value, rate) in [(1e38, 2.5), (0.5, 1e38), (2.5e37, 24.0), (9.1e15, 1e6)] {
+            let v = json!({"rate": rate, "value": value});
+            assert!(time_from_json(&v).is_err(), "{value}/{rate}");
+        }
     }
 }

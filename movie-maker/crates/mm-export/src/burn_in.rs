@@ -20,6 +20,8 @@ const DEFAULT_BOTTOM_MARGIN_RATIO: f64 = 0.08;
 const SHADOW_COLOR: Rgba = Rgba::BLACK;
 /// 影のずらしの大きさ。字の大きさに対する比。
 const SHADOW_OFFSET_RATIO: f64 = 1.0 / 16.0;
+/// 影のずらしの下限（画素）。小さな字でも影が字に重なりきらないようにする。
+const MIN_SHADOW_OFFSET_PX: f64 = 1.0;
 /// text ノードのバージョン。
 const TEXT_KIND_VERSION: u32 = 1;
 /// 足すレイヤーの ID の接頭辞。
@@ -108,7 +110,7 @@ fn caption_layers(
     shaper: &dyn TextShaper,
 ) -> Result<Vec<Layer>> {
     let mut layers = Vec::new();
-    let offset = (placement.size * SHADOW_OFFSET_RATIO).max(1.0);
+    let offset = (placement.size * SHADOW_OFFSET_RATIO).max(MIN_SHADOW_OFFSET_PX);
     for (i, cue) in cues.iter().enumerate().filter(|(_, c)| c.end > c.start) {
         let origin = origin_of(shaper, &cue.text, placement)?;
         let duration = cue.end.checked_sub(cue.start)?;

@@ -19,7 +19,7 @@
 | 場所 | 足したもの |
 |---|---|
 | `mm-ops` | `moveKeyframe { target, from, keyframe }`。時刻 `from` のキーフレームを外して `keyframe` を置く。動かした先に別のキーフレームがあれば拒否する。逆操作は同じ操作で `from` と `keyframe` を入れ替えた形 |
-| `ui/panels/graph` | `GraphPanel`（SVG）。キーとハンドルのドラッグ中は手元の見た目と `onPreview` に映し、離したら `moveKeyframe` か `setEase` を 1 つ送る。`mm-eval` と同じ評価（`evalParam`）と、操作を手元に当てる `applyKeyframeOp` |
+| `ui/panels/graph` | `GraphPanel`（SVG）。キーとハンドルのドラッグ中は手元の見た目と `onPreview` に映し、離したら `moveKeyframe` か `setEase` を 1 つ送る。`mm-eval` と同じ評価（`evalParam`）と、操作を手元に適用する `applyKeyframeOp` |
 | `ui/panels/inspector` | 再生位置（`time`、`fps`）を渡すと、各パラメータにキーフレームの列（前へ、足す・外す、次へ、補間）を出す。名前を押すと Graph に出す（`onSelectParam`） |
 | `ui/shell`、`apps/movie-maker/web/transport.js` | 再生位置の DOM のイベント `mm:playhead { time, fps }` と、前後のキーへのシークの頼み `mm:seek { time }` |
 

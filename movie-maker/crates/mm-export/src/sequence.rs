@@ -1,9 +1,7 @@
 //! sequence をそのまま書き出す。sequence を 1 つのレイヤーに置いただけの書き出し用のコンポジションを足す。
 //! レンダラーは sequence のノードを展開して描く（カット、トランジション、音）ので、書き出しは普通のコンポジションと同じ経路になる。
 
-use mm_doc::{
-    Composition, Framing, Layer, Node, Project, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM,
-};
+use mm_doc::{Composition, Layer, Node, Project, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{CompositionId, Id, MmError, ParamValue, RationalTime, RenderTargetId, Result};
 
 /// 書き出し用のコンポジションの ID の接頭辞。
@@ -40,9 +38,12 @@ pub(crate) fn retarget_to_sequence(
         RationalTime::ZERO,
         duration,
     );
-    layer.framing = framing_of(&project, &rt.composition, sequence);
+    let host = host_of(&project, &rt.composition, sequence);
+    layer.framing = host.map(|(_, l)| l.framing.clone()).unwrap_or_default();
+    layer.audio = host.and_then(|(_, l)| l.audio.clone());
+    let mixer = host.and_then(|(c, _)| c.mixer.clone());
     project.compositions.push(Composition {
-        mixer: None,
+        mixer,
         id: id.clone(),
         width: rt.width,
         height: rt.height,
@@ -60,36 +61,38 @@ pub(crate) fn retarget_to_sequence(
     Ok((project, id))
 }
 
-/// `sequence` を置いたレイヤーの見せ方（再フレーミングと字幕の置き場所）。
+/// 見せ方（再フレーミングと字幕の置き場所）と音（レイヤーの音の設定とミキサー）を引き継ぐ、`sequence` を置いたレイヤー。
 /// レンダーターゲットが描いていたコンポジションに 1 つあればそれを、無ければプロジェクト全体で 1 つだけのものを使う。
-/// ショートの見せ方はショートのコンポジションのレイヤーにあり、どれを引き継ぐか決まらないときは変形なしにする。
-fn framing_of(project: &Project, current: &CompositionId, sequence: &SequenceId) -> Framing {
-    let places = |c: &Composition| -> Vec<Framing> {
+/// ショートの見せ方はショートのコンポジションのレイヤーにあり、どれを引き継ぐか決まらないときは何も引き継がない。
+fn host_of<'a>(
+    project: &'a Project,
+    current: &CompositionId,
+    sequence: &SequenceId,
+) -> Option<(&'a Composition, &'a Layer)> {
+    let places = |c: &'a Composition| -> Vec<(&'a Composition, &'a Layer)> {
         c.layers
             .iter()
             .filter(|l| {
                 l.source.kind == SEQUENCE_KIND
                     && l.source.text_param(SEQUENCE_PARAM) == Some(sequence.as_str())
             })
-            .map(|l| l.framing.clone())
+            .map(|l| (c, l))
             .collect()
     };
-    let only = |v: Vec<Framing>| (v.len() == 1).then(|| v.into_iter().next()).flatten();
+    let only = |v: Vec<(&'a Composition, &'a Layer)>| (v.len() == 1).then(|| v[0]);
     let in_current = project
         .compositions
         .iter()
         .find(|c| c.id == *current)
         .map(places)
         .and_then(only);
-    in_current
-        .or_else(|| only(project.compositions.iter().flat_map(places).collect()))
-        .unwrap_or_default()
+    in_current.or_else(|| only(project.compositions.iter().flat_map(places).collect()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mm_doc::{Cut, CutReframe, Param, RenderTarget, Sequence, Transform};
+    use mm_doc::{Cut, CutReframe, Framing, Param, RenderTarget, Sequence, Transform};
     use mm_types::Rational;
 
     fn project() -> Project {
@@ -188,6 +191,29 @@ mod tests {
         let framing = exported_framing(p);
         let expected = Param::constant(ParamValue::Vec2([99.0, 0.0]));
         assert_eq!(framing.cuts[0].transform.position, expected);
+    }
+
+    #[test]
+    fn 置いたレイヤーの音の設定とコンポジションのミキサーを引き継ぐ() {
+        let mut p = project();
+        let mut comp = short_comp("short", 0.0);
+        comp.mixer = Some(mm_doc::CompMixer {
+            master_db: -3.0,
+            ..mm_doc::CompMixer::default()
+        });
+        comp.layers[0].audio = Some(mm_doc::LayerAudio {
+            role: "voice".into(),
+            gain_db: Param::constant(ParamValue::Number(-6.0)),
+            pan: Param::constant(ParamValue::Number(0.0)),
+            mute: true,
+            solo: false,
+        });
+        let (want_mixer, want_audio) = (comp.mixer.clone(), comp.layers[0].audio.clone());
+        p.compositions.push(comp);
+        let (p, id) = retarget_to_sequence(p, &Id::new("t"), &Id::new("s")).unwrap();
+        let c = p.composition(&id).unwrap();
+        assert_eq!(c.mixer, want_mixer);
+        assert_eq!(c.layers[0].audio, want_audio);
     }
 
     #[test]

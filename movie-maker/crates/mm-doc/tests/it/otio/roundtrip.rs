@@ -2,8 +2,8 @@
 
 use super::common::{apply, sample_project, t};
 use mm_doc::otio::{export_sequence, import_timeline, ImportOptions};
-use mm_doc::{Project, SequenceId};
-use mm_types::{Id, RationalTime};
+use mm_doc::{CompMixer, Ducking, Layer, Node, Project, SequenceId};
+use mm_types::{Id, ParamValue, RationalTime};
 use serde_json::{json, Value};
 
 fn export(p: &Project, id: &str) -> Value {
@@ -212,7 +212,13 @@ fn 壊れた入力でパニックしない() {
     let mut paths = Vec::new();
     collect(&base, &mut Vec::new(), &mut paths);
     for path in paths {
-        for replacement in [Value::Null, json!(1e300), json!(-1.0), json!("x")] {
+        for replacement in [
+            Value::Null,
+            json!(1e300),
+            json!(1e38),
+            json!(-1.0),
+            json!("x"),
+        ] {
             let mut tl = base.clone();
             if let Some(target) = slot(&mut tl, &path) {
                 *target = replacement;
@@ -220,4 +226,84 @@ fn 壊れた入力でパニックしない() {
             let _ = import_timeline(&tl, &Project::new(), &ImportOptions::default());
         }
     }
+}
+
+/// sequence を置いたコンポジションに、ミキサーと、OTIO に出ない sequence を置いたレイヤーを足す。
+fn project_with_mixer() -> Project {
+    let mut p = sample_project();
+    let comp = &mut p.compositions[0];
+    comp.mixer = Some(CompMixer {
+        master_db: -2.0,
+        ducking: Some(Ducking::voice_over_bgm()),
+        ..CompMixer::default()
+    });
+    let short = Node::new("sequence", 1).with_param("sequence", ParamValue::Text("short".into()));
+    comp.layers
+        .push(Layer::new("l-short", short, t(0, 1), t(0, 1), t(2, 1)));
+    p.validate().unwrap();
+    p
+}
+
+#[test]
+fn ミキサーは往復し_出さない_sequence_を置いたレイヤーは持ち込まない() {
+    let p = project_with_mixer();
+    let tl = through_text(&export(&p, "main"));
+    let imported = import_timeline(&tl, &Project::new(), &ImportOptions::default()).unwrap();
+    let back = apply(&imported);
+    let comp = &back.compositions[0];
+    assert_eq!(comp.mixer, p.compositions[0].mixer);
+    let ids: Vec<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
+    assert_eq!(ids, ["l-main"]);
+}
+
+#[test]
+fn 取り込む先に同じ_id_のレイヤーがあれば_as_を案内して拒否する() {
+    let p = sample_project();
+    let mut target = Project::new();
+    let mut other = p.compositions[0].clone();
+    other.id = Id::new("other");
+    target.compositions.push(other);
+    let tl = export(&p, "main");
+    let err = import_timeline(&tl, &target, &ImportOptions::default()).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("l-main") && msg.contains("--as"), "{msg}");
+}
+
+#[test]
+fn 別の_id_で取り込むと捨てるコンポジションの設定を警告する() {
+    let p = project_with_mixer();
+    let tl = export(&p, "main");
+    let opts = ImportOptions {
+        sequence_id: Some("copy".into()),
+    };
+    let imported = import_timeline(&tl, &p, &opts).unwrap();
+    assert!(
+        imported.warnings.iter().any(|w| w.contains("main-comp")),
+        "{:?}",
+        imported.warnings
+    );
+}
+
+#[test]
+fn windows_の区切りのパスの素材も同じ素材として見つける() {
+    let mut p = sample_project();
+    p.assets[0].path = "D:\\dev\\日本語 の\\cam.mp4".into();
+    let tl = export(&p, "main");
+    let opts = ImportOptions {
+        sequence_id: Some("copy".into()),
+    };
+    let imported = import_timeline(&tl, &p, &opts).unwrap();
+    assert!(imported.assets.is_empty(), "{:?}", imported.assets);
+}
+
+#[test]
+fn 読めないメタデータと形のバージョンの違いは警告する() {
+    let p = sample_project();
+    let mut tl = export(&p, "main");
+    tl["tracks"]["children"][0]["metadata"]["movie-maker"]["version"] = json!(99);
+    tl["tracks"]["children"][0]["children"][0]["metadata"]["movie-maker"] = json!({"id": 3});
+    let imported = import_timeline(&tl, &Project::new(), &ImportOptions::default()).unwrap();
+    let warned = |word: &str| imported.warnings.iter().any(|w| w.contains(word));
+    assert!(warned("99"), "{:?}", imported.warnings);
+    assert!(warned("メタデータが読めない"), "{:?}", imported.warnings);
 }

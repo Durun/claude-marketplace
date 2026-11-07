@@ -1,14 +1,14 @@
-import type { MixerTrack, Op } from "@mm/sdk";
+import type { MixerTrack } from "@mm/sdk";
 import { PeakBar, Slider } from "./Controls.tsx";
 import { FADER_MAX_DB, FADER_MIN_DB, FADER_STEP_DB, formatDb, formatPan, PAN_STEP } from "./levels.ts";
 import type { MeterEngine } from "./meterEngine.ts";
-import { audioOf, paramNumber, trackGainOp, trackOp, trackPanOp } from "./ops.ts";
+import { audioOf, forTrack, paramNumber, trackGainOp, trackOp, trackPanOp, type BuildOps } from "./ops.ts";
 
 export interface TrackRowProps {
   track: MixerTrack;
   roles: string[];
   engine: MeterEngine;
-  apply: (ops: Op[]) => void;
+  apply: (build: BuildOps) => void;
 }
 
 const ANIMATED_TITLE = "Animated with keyframes. Edit it in the Timeline.";
@@ -27,9 +27,12 @@ const TrackHead = ({ track, roles, apply }: Omit<TrackRowProps, "engine">) => {
       <span class="mm-mixer-name" title={`${track.label} (${track.kind})`}>
         {track.label}
       </span>
-      <ToggleButton kind="mute" label={`Mute ${track.label}`} on={audio.mute === true} onClick={() => apply([trackOp(track, { mute: audio.mute !== true })])} />
-      <ToggleButton kind="solo" label={`Solo ${track.label}`} on={audio.solo === true} onClick={() => apply([trackOp(track, { solo: audio.solo !== true })])} />
-      <select aria-label={`Bus for ${track.label}`} value={audio.role} onChange={(e) => apply([trackOp(track, { role: (e.target as HTMLSelectElement).value })])}>
+      <ToggleButton kind="mute" label={`Mute ${track.label}`} on={audio.mute === true} onClick={() => apply(forTrack(track.layer, (t) => trackOp(t, { mute: audioOf(t).mute !== true })))} />
+      <ToggleButton kind="solo" label={`Solo ${track.label}`} on={audio.solo === true} onClick={() => apply(forTrack(track.layer, (t) => trackOp(t, { solo: audioOf(t).solo !== true })))} />
+      <select aria-label={`Bus for ${track.label}`} value={audio.role} onChange={(e) => {
+          const role = (e.target as HTMLSelectElement).value;
+          apply(forTrack(track.layer, (t) => trackOp(t, { role })));
+        }}>
         {roleOptions.map((r) => (
           <option key={r} value={r}>
             {r}
@@ -55,7 +58,7 @@ const TrackControls = ({ track, apply }: Pick<TrackRowProps, "track" | "apply">)
         format={(v) => `${formatDb(v)} dB`}
         disabled={track.animated}
         title={title}
-        onCommit={(v) => apply([trackGainOp(track, v)])}
+        onCommit={(v) => apply(forTrack(track.layer, (t) => trackGainOp(t, v)))}
       />
       <Slider
         label={`Pan of ${track.label}`}
@@ -67,7 +70,7 @@ const TrackControls = ({ track, apply }: Pick<TrackRowProps, "track" | "apply">)
         format={formatPan}
         disabled={track.animated}
         title={title}
-        onCommit={(v) => apply([trackPanOp(track, v)])}
+        onCommit={(v) => apply(forTrack(track.layer, (t) => trackPanOp(t, v)))}
       />
     </div>
   );

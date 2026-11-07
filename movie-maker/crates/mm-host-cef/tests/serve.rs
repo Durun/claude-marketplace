@@ -1,5 +1,5 @@
 //! `mm-host-cef serve` を子プロセスで起こし、`mm-host-api` の契約と、共有テクスチャで受け取った 1 フレームを
-//! 期待画像と比べる。CEF の配布物（`CEF_PATH`）が無い環境では飛ばす（`MM_REQUIRE_CEF` があれば失敗にする）。
+//! 期待画像と比べる。CEF の配布物（`CEF_PATH`）が無い環境ではスキップする（`MM_REQUIRE_CEF` があれば失敗にする）。
 #![cfg(all(feature = "cef", windows))]
 
 use std::path::{Path, PathBuf};
@@ -22,14 +22,14 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 const BUSY_MS: u64 = 8000;
 const REQUIRE_ENV: &str = "MM_REQUIRE_CEF";
 
-/// CEF の配布物が無ければ `None`（飛ばす）。
+/// CEF の配布物が無ければ `None`（スキップする）。
 fn host_exe() -> Option<PathBuf> {
     if std::env::var_os(CEF_PATH_ENV).is_none() {
         assert!(
             std::env::var_os(REQUIRE_ENV).is_none(),
             "{REQUIRE_ENV} があるのに {CEF_PATH_ENV} が無い"
         );
-        eprintln!("{CEF_PATH_ENV} が無いので CEF の試験を飛ばす");
+        eprintln!("{CEF_PATH_ENV} が無いので CEF のテストをスキップする");
         return None;
     }
     Some(PathBuf::from(env!("CARGO_BIN_EXE_mm-host-cef")))
@@ -261,7 +261,7 @@ fn 共有テクスチャと_cpu_の画像が期待画像と一致する() {
     }
 }
 
-/// フレームの seq の印（左上の 4px）を読む。
+/// フレームの seq を書いた画素（左上の 4px）を読む。
 fn marker(bgra: &[u8], width: u32) -> u64 {
     let at = ((2 * width + 2) * 4) as usize;
     u64::from(bgra[at + 2]) | u64::from(bgra[at + 1]) << 8

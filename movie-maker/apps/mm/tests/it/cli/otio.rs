@@ -1,4 +1,4 @@
-//! `mm otio export` と `mm otio import`。取り込みが操作として当たり、`mm undo` で取り消せる。
+//! `mm otio export` と `mm otio import`。取り込みが操作として適用され、`mm undo` で取り消せる。
 
 use std::path::{Path, PathBuf};
 

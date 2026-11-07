@@ -56,12 +56,16 @@ impl WgpuRenderer {
             &comp_inputs.inputs,
             audio_frames_in(req.range, req.sample_rate),
         );
-        self.audio_levels = comp_inputs
-            .layers
-            .into_iter()
-            .zip(stream.mixer.input_peaks().iter().copied())
-            .map(|(layer, peak)| TrackLevel { layer, peak })
-            .collect();
+        // 混ぜられなかった区間のピークは途中までの値なので、メーターに出さない。
+        self.audio_levels = match &result {
+            Ok(_) => comp_inputs
+                .layers
+                .into_iter()
+                .zip(stream.mixer.input_peaks().iter().copied())
+                .map(|(layer, peak)| TrackLevel { layer, peak })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         stream.next_start = req.range.end;
         self.audio = Some(stream);
         result

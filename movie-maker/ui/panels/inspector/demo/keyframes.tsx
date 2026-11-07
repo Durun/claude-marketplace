@@ -1,5 +1,5 @@
-// Inspector のキーフレームの列と Graph を、手元のレイヤーで動かす確認用のページ。アプリには載せない。
-// 送った操作は applyKeyframeOp で同じ画面に当てて見せる（本番は mm-ops が当てる）。
+// Inspector のキーフレームナビゲーターと Graph を、手元のレイヤーで動かす確認用のページ。アプリには載せない。
+// 送った操作は applyKeyframeOp で同じ画面に適用して見せる（本番は mm-ops が適用する）。
 import { render } from "preact";
 import { useState } from "preact/hooks";
 import type { Keyframe, Layer, Op, Param } from "@mm/sdk";

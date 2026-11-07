@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use mm_types::{MmError, Rational, RationalTime, Result};
 
 use super::time::{range_to_json, time_to_json};
-use super::{meta_json, sequence_layer, CutMeta, TrackMeta, META_VERSION};
+use super::{meta_json, sequence_layer, CutMeta, TrackMeta, META_VERSION, NAMESPACE};
 use crate::{
     Asset, Composition, Cut, Layer, Node, Project, SequenceId, Transition, FOOTAGE_KIND,
     FOOTAGE_PARAM,
@@ -18,6 +18,8 @@ pub(super) const DISSOLVE_KIND: &str = "transition.dissolve";
 pub(super) const DISSOLVE_TYPE: &str = "SMPTE_Dissolve";
 /// 映像トラックの名前。
 const TRACK_NAME: &str = "V1";
+/// マーカーの色。OTIO の色は名前の列挙で、movie-maker のマーカーは色を持たないので既定の赤にする。
+const MARKER_COLOR: &str = "RED";
 
 fn invalid(msg: String) -> MmError {
     MmError::InvalidArgument(msg)
@@ -54,10 +56,7 @@ pub fn export_sequence(project: &Project, id: &SequenceId) -> Result<Value> {
         version: META_VERSION,
         sequence: id.to_string(),
         origin: seq.origin.clone(),
-        composition: host.map(|(c, _)| Composition {
-            markers: Vec::new(),
-            ..c.clone()
-        }),
+        composition: host.map(|(c, _)| host_composition(c, id.as_str())),
     };
     let mut track = object("Track.1", TRACK_NAME, meta_json(&meta)?);
     track["kind"] = json!("Video");
@@ -76,6 +75,48 @@ pub fn export_sequence(project: &Project, id: &SequenceId) -> Result<Value> {
     timeline["global_start_time"] = Value::Null;
     timeline["tracks"] = stack;
     Ok(timeline)
+}
+
+/// メタデータに入れるコンポジション。OTIO に出すのはこの sequence のカットの素材だけなので、ほかの素材や
+/// コンポジションを参照するレイヤーを入れると取り込む先で参照が切れる。この sequence を置いたレイヤーだけを残し、
+/// 外したレイヤーへの親とトラックマットを外す。マーカーは OTIO のマーカーに出すので空にする。
+fn host_composition(comp: &Composition, seq: &str) -> Composition {
+    let keep = |l: &crate::Layer| {
+        l.source.kind == crate::SEQUENCE_KIND
+            && l.source.text_param(crate::SEQUENCE_PARAM) == Some(seq)
+    };
+    let kept: Vec<String> = comp
+        .layers
+        .iter()
+        .filter(|l| keep(l))
+        .map(|l| l.id.to_string())
+        .collect();
+    let layers = comp
+        .layers
+        .iter()
+        .filter(|l| keep(l))
+        .cloned()
+        .map(|mut l| {
+            if l.parent
+                .as_ref()
+                .is_some_and(|p| !kept.contains(&p.to_string()))
+            {
+                l.parent = None;
+            }
+            if l.track_matte
+                .as_ref()
+                .is_some_and(|m| !kept.contains(&m.layer.to_string()))
+            {
+                l.track_matte = None;
+            }
+            l
+        })
+        .collect();
+    Composition {
+        markers: Vec::new(),
+        layers,
+        ..comp.clone()
+    }
 }
 
 /// タイムラインの fps。sequence を置いたコンポジションの fps、無ければ最初の素材の fps、それも無ければ 30。
@@ -176,7 +217,7 @@ fn external_reference(asset: &Asset, timeline_rate: Rational) -> Result<Value> {
     Ok(reference)
 }
 
-/// 素材の厳密な写し。メタデータの `asset` に入れる。
+/// 素材の厳密なコピー。メタデータの `asset` に入れる。
 fn asset_meta(asset: &Asset) -> Value {
     json!({ "asset": asset })
 }
@@ -214,8 +255,8 @@ fn marker_jsons(comp: &Composition, layer: &Layer, rate: Rational) -> Result<Vec
                 .scale(layer.speed)?
                 .checked_add(layer.in_point)?;
             let duration = m.duration.scale(layer.speed)?;
-            let mut out = object("Marker.2", &m.name, json!({"movie-maker": {"id": m.id}}));
-            out["color"] = json!("RED");
+            let mut out = object("Marker.2", &m.name, json!({ NAMESPACE: {"id": m.id} }));
+            out["color"] = json!(MARKER_COLOR);
             out["comment"] = json!("");
             out["marked_range"] = range_to_json(start, duration, rate)?;
             Ok(out)

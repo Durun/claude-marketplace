@@ -9,7 +9,7 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 |---|---|---|
 | アプリ側のランチャー（`CefLauncher`、`PipeHost`） | `src/launcher.rs` | 要らない。既定のビルドでコンパイルする |
 | ホストの実行ファイル（`serve` と `bench`） | `src/host/` | 要る（`--features cef`） |
-| 試験（契約、期待画像、古いフレーム、往復の時間） | `tests/serve.rs` | 要る。`CEF_PATH` が無ければ飛ばす（`MM_REQUIRE_CEF=1` で失敗にする） |
+| テスト（契約、期待画像、古いフレーム、往復の時間） | `tests/serve.rs` | 要る。`CEF_PATH` が無ければスキップする（`MM_REQUIRE_CEF=1` で失敗にする） |
 
 既定のワークスペースのビルド、clippy、テストは CEF を取りに行かない。`--features cef` なしの実行ファイルは何もせず終了コード 2。
 
@@ -41,11 +41,11 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
    export CEF_PATH=D:/dev/cef/156 CARGO_TARGET_DIR=D:/dev/mmt
    cargo build --release -p mm-host-cef --features cef
    ```
-4. 試験。ランチャーが `CEF_PATH` を子プロセスの `PATH` の先頭に足すので、そのまま走る。
+4. テスト。ランチャーが `CEF_PATH` を子プロセスの `PATH` の先頭に足すので、そのまま動く。
    ```bash
    cargo test --release -p mm-host-cef --features cef -- --nocapture
    ```
-   期待画像は `fixtures/golden/rtx/cef-frame.png`。更新は `MM_GOLDEN_UPDATE=1` を付けて走らせ、目で確かめてからコミットする。
+   期待画像は `fixtures/golden/rtx/cef-frame.png`。更新は `MM_GOLDEN_UPDATE=1` を付けて実行し、目で確かめてからコミットする。
 5. 測る。`libcef.dll` を `PATH` から見つけさせるので、`run.sh` を通す。
    ```bash
    crates/mm-host-cef/run.sh bench --frames 300 --warmup 30 --verify --out D:/dev/mm-spike-out

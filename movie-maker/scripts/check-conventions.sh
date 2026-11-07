@@ -38,10 +38,12 @@ done
 # RFC の番号は PR の番号。作業中は docs/rfcs/<題>.md で書き、PR を作ったら <PR の番号 4 桁>-<題>.md に改める。
 if [ -n "${PR_NUMBER:-}" ] && [ -n "${BASE:-}" ]; then
   want="$(printf '%04d' "$PR_NUMBER")"
-  for f in $(git diff --name-only --diff-filter=A "$BASE...HEAD" -- docs/rfcs); do
+  # for の中の置換の失敗は set -e に掛からないので、先に取って失敗を検査の失敗にする。
+  added="$(git diff --name-only --diff-filter=A "$BASE...HEAD" -- docs/rfcs)" || exit 1
+  for f in $added; do
     case "$(basename "$f")" in
       "$want"-*.md) ;;
-      *)
+      *.md)
         echo "$f: RFC のファイルの名前は ${want}-<題>.md にする（番号は PR の番号）" >&2
         status=1
         ;;

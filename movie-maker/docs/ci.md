@@ -17,13 +17,13 @@ PR と merge queue は paths で絞らず、`changes` ジョブが差分（PR �
 
 ## PR と merge queue と main の違い
 
-PR は速く返すことを優先し、1 本が 30 秒を超える通しの試験を `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。merge queue、main への push、手動の起動は全部を回す（nextest の `--run-ignored all`）。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は filterset で除く。
+PR は速く返すことを優先し、1 本が 30 秒を超える通しのテストを `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。merge queue、main への push、手動の起動は全部を回す（nextest の `--run-ignored all`）。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は filterset で除く。
 
 先行事例は GitHub の merge queue（Bors、Zuul のゲートの系譜）。PR では軽い検査で早く返し、main に入る直前の組み合わせ（基点の先端と PR を合わせたコミット）で重い試験を回す。重い試験が main を壊すのを、入った後ではなく入る前に止める。
 
 | 項目 | PR | merge queue、main の push、手動 |
 |---|---|---|
-| 通しの試験（`stage3_e2e`、`stage4_e2e`、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
+| 通しのテスト（`stage3_e2e`、`stage4_e2e`、`mm` の kill のテスト、`mm-store` の kill のテスト 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
 | `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
 | `perf-gate`、`semver` | 回す（`perf-gate` は性能に関わるファイルを変えたときだけ） | なし（main では `perf-record` が測る） |
 | 再試行で通ったテストの起票 | しない（job summary と注釈に出すだけ） | merge queue と main の push でする |

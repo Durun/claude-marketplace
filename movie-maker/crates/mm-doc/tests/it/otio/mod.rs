@@ -1,4 +1,4 @@
-//! OTIO の変換の試験。
+//! OTIO の変換のテスト。
 
 mod common;
 mod official;

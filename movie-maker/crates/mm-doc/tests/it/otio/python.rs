@@ -1,6 +1,6 @@
 //! Python の opentimelineio との往復。Rust が書いたファイルを opentimelineio が読み、書き直したファイルを Rust が読み戻す。
 //!
-//! opentimelineio が入っていない環境では飛ばす。CI は入れて `MM_REQUIRE_OTIO=1` で必ず走らせる。
+//! opentimelineio が入っていない環境ではスキップする。CI は入れて `MM_REQUIRE_OTIO=1` で必ず実行する。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -46,7 +46,7 @@ fn run_python(src: &Path, dst: &Path) -> Value {
 fn rust_の書いたファイルを_opentimelineio_が読み_書き直したものを_rust_が読み戻す() {
     if !python_has_otio() {
         assert!(!require(), "MM_REQUIRE_OTIO=1 だが opentimelineio が無い");
-        eprintln!("opentimelineio が無いので飛ばす");
+        eprintln!("opentimelineio が無いのでスキップする");
         return;
     }
     let original = sample_project();

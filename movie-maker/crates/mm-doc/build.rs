@@ -9,7 +9,7 @@ const DATE_DIGITS: usize = 8;
 
 fn main() {
     let src = Path::new(&env("CARGO_MANIFEST_DIR")).join("src");
-    // 移行のディレクトリはまだ無いことがあり、無いパスを見張ると毎回走り直すので、必ずある src を見張る。
+    // 移行のディレクトリはまだ無いことがあり、無いパスを見張ると毎回実行し直すので、必ずある src を見張る。
     println!("cargo:rerun-if-changed={}", src.display());
     let dir = src.join("migrations");
     let mut names = migration_names(&dir);
