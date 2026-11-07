@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{canon, project, secs};
+use common::{canon, project, quarters, secs};
 use mm_doc::{CubicBezier, Interpolation, Keyframe, Project};
 use mm_ops::{Editor, MoveKeyframe, Op, OpContext, ParamRef, Transaction};
 use mm_types::{Id, ParamValue};
@@ -57,6 +57,15 @@ fn 区間の形も置き直せる() {
         .unwrap();
     let (_, l) = p.layer(&Id::new("l2")).unwrap();
     assert_eq!(l.opacity.keyframes[0], k);
+}
+
+#[test]
+fn 秒の途中の時刻へも動かせる() {
+    let mut p = project();
+    let to = Keyframe::new(quarters(5), ParamValue::Number(0.5), Interpolation::Linear);
+    moved(0, to).apply(&mut p, &OpContext::human()).unwrap();
+    let (_, l) = p.layer(&Id::new("l2")).unwrap();
+    assert_eq!(l.opacity.keyframes[0].time, quarters(5));
 }
 
 #[test]
