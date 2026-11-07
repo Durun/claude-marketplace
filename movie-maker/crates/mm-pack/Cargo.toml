@@ -21,6 +21,8 @@ mm-render = { workspace = true }
 mm-render-api = { workspace = true }
 mm-node-api = { workspace = true }
 mm-nodes-basic = { workspace = true }
+# web 手順のレイヤーを、CEF の代わりの描画（モックの矩形）で期待画像にする。
+mm-nodes-cef = { workspace = true }
 mm-color-lut = { workspace = true }
 mm-testkit = { workspace = true }
 wgpu = { workspace = true }

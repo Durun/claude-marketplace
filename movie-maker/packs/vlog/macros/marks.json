@@ -1,0 +1,31 @@
+{
+  "name": "marks",
+  "title": "画面の注記と線",
+  "description": "画面に映っている本物の箱、配線、音符に重ねる印 1 つ（札、枠、矢印、音名、塗り、丸い札、ねらいの一言、配線の色の線）。描いた図を足さずに画面そのものを指す。札が 3 つ以上なら前の印を残したまま順に置く。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "kind": {"type": "text", "default": "tag", "description": "tag（札。box を囲んでしっぽで指す）、frame（文字のない枠）、arrow（矢印）、note（点線の先の音名）、fill（右へ透ける塗り）、badge（丸い札）、msg（ねらいの一言）、wire（配線の色の線）"},
+    "text": {"type": "text", "default": "", "description": "札の文字"},
+    "pts": {"type": "text", "default": "", "description": "点の並び「x,y x,y」（コンポジションの画素）。tag、badge、msg は真ん中、arrow と wire は通る点、note は点線の始めと終わり"},
+    "box": {"type": "text", "default": "", "description": "矩形「x,y,w,h」。tag が囲む箱（空なら囲まない）、frame と fill の矩形"},
+    "color": {"type": "text", "default": "white", "description": "white（原音・全部の音）、blue（リバーブ・低い音）、yellow（ダッキング・高い音）、new（今日足した音。★ つきの黄色の札）"},
+    "dash": {"type": "text", "default": "false", "description": "true なら frame を点線に（音がなくなった所）"},
+    "tail": {"type": "text", "default": "auto", "description": "tag のしっぽの向き。auto は box の側、up、dn、lf、rt、none"},
+    "icon": {"type": "text", "default": "ok", "description": "msg の印。ok は ★、ng は !"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "mk1", "kind": "tag", "text": "ダッキング", "pts": "1110,722", "box": "1000,560,140,80", "color": "yellow", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "marks", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.2, "fade_out": 0.2,
+      "data": {
+        "kind": "{{kind}}", "text": "{{text}}", "pts": "{{pts}}", "box": "{{box}}", "color": "{{color}}",
+        "dash": "{{dash}}", "tail": "{{tail}}", "icon": "{{icon}}"
+      }
+    }}
+  ]
+}

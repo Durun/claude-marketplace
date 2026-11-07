@@ -1,0 +1,26 @@
+{
+  "name": "name",
+  "title": "名乗り",
+  "description": "名乗りの札。斜めのサファイアの帯に白い名前、上に黄色の肩書きの札、顔を指す黄色の矢印。帯の中の速度線は出た後も流れる。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "default": "どぅるん", "description": "名前"},
+    "sub": {"type": "text", "default": "社会人DTMer", "description": "肩書き（黄色の札）"},
+    "x": {"type": "number", "default": "1104", "description": "札の左上の x（コンポジションの画素）"},
+    "y": {"type": "number", "default": "520", "description": "札の左上の y（コンポジションの画素）"},
+    "side": {"type": "text", "default": "right", "description": "札を置く側。right は顔の右（矢印は左の顔を指す）、left は顔の左（矢印は右下の顔を指す）"},
+    "arrow": {"type": "text", "default": "true", "description": "false なら矢印を出さない（札を顔から離して置くとき）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "nm1", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "name", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2, "animated": true,
+      "data": {"text": "{{text}}", "sub": "{{sub}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}", "arrow": "{{arrow}}"}
+    }}
+  ]
+}
