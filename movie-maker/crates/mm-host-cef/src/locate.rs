@@ -15,6 +15,8 @@ pub const HOST_ENV: &str = "MM_CEF_HOST";
 pub const PROBE_COMMAND: &str = "probe";
 /// `probe` の答え。`cef` の feature つきで作ったホストだけが書く。
 pub const PROBE_REPLY: &str = "mm-host-cef cef";
+/// sandbox つきの起動（`bundle.sh` の組み立て）のホストが `probe` の答えの後ろに足す印。
+pub const PROBE_SANDBOX: &str = " sandbox";
 /// ホストの実行ファイルの名前（拡張子を除く）。
 const HOST_STEM: &str = "mm-host-cef";
 /// 問い合わせの期限。`libcef.dll` の読み込みを含む。
@@ -49,11 +51,17 @@ pub fn supports_cef(exe: &Path) -> bool {
     if let Some(answer) = known.lock().ok().and_then(|k| k.get(exe).copied()) {
         return answer;
     }
-    let answer = probe(exe).is_some_and(|out| out.trim() == PROBE_REPLY);
+    let answer = probe_reply(exe).is_some_and(|out| out.starts_with(PROBE_REPLY));
     if let Ok(mut k) = known.lock() {
         k.insert(exe.to_path_buf(), answer);
     }
     answer
+}
+
+/// `exe probe` の答えの 1 行（[`PROBE_REPLY`]、sandbox つきなら [`PROBE_SANDBOX`] が続く）。
+/// 起動できないか、期限までに正常に終わらなければ `None`。
+pub fn probe_reply(exe: &Path) -> Option<String> {
+    probe(exe).map(|out| out.trim().to_string())
 }
 
 /// `exe probe` の標準出力。起動できないか、期限までに正常に終わらなければ `None`。

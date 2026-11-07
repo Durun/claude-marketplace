@@ -29,7 +29,7 @@ enum Mode {
 }
 
 /// エントリーポイント。CEF はサブプロセス（GPU、レンダラ）にも同じ実行ファイルを使うので、最初に判定する。
-pub fn run() -> ExitCode {
+pub fn run(sandbox: *mut std::ffi::c_void) -> ExitCode {
     raise_timer_resolution();
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
     let args = Args::new();
@@ -38,11 +38,7 @@ pub fn run() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let is_browser = cmd.has_switch(Some(&CefString::from("type"))) != 1;
-    let code = execute_process(
-        Some(args.as_main_args()),
-        None::<&mut App>,
-        std::ptr::null_mut(),
-    );
+    let code = execute_process(Some(args.as_main_args()), None::<&mut App>, sandbox.cast());
     if !is_browser {
         return if code >= 0 {
             ExitCode::SUCCESS
@@ -57,7 +53,7 @@ pub fn run() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match start(&args, mode) {
+    match start(&args, mode, sandbox) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("失敗: {e}");
@@ -95,12 +91,12 @@ fn luid_switch(gpu: &GpuContext) -> Option<String> {
     Some(format!("{high},{low}"))
 }
 
-fn settings(cef_dir: &str, cache: &std::path::Path) -> Settings {
+fn settings(cef_dir: &str, cache: &std::path::Path, no_sandbox: bool) -> Settings {
     let log_file = std::env::var("MM_CEF_LOG").ok();
     Settings {
         windowless_rendering_enabled: true as _,
         external_message_pump: true as _,
-        no_sandbox: true as _,
+        no_sandbox: no_sandbox as _,
         root_cache_path: CefString::from(cache.to_string_lossy().as_ref()),
         resources_dir_path: CefString::from(cef_dir),
         locales_dir_path: CefString::from(format!("{cef_dir}/locales").as_str()),
@@ -115,7 +111,7 @@ fn settings(cef_dir: &str, cache: &std::path::Path) -> Settings {
     }
 }
 
-fn start(args: &Args, mode: Mode) -> Result<(), String> {
+fn start(args: &Args, mode: Mode, sandbox: *mut std::ffi::c_void) -> Result<(), String> {
     let cef_dir = std::env::var(mm_host_cef::CEF_PATH_ENV)
         .map_err(|_| "環境変数 CEF_PATH（CEF の配布物の配置先）が無い".to_string())?;
     let wanted = match &mode {
@@ -128,9 +124,9 @@ fn start(args: &Args, mode: Mode) -> Result<(), String> {
     let mut app = handlers::HostApp::new(luid_switch(&gpu));
     if initialize(
         Some(args.as_main_args()),
-        Some(&settings(&cef_dir, &cache)),
+        Some(&settings(&cef_dir, &cache, sandbox.is_null())),
         Some(&mut app),
-        std::ptr::null_mut(),
+        sandbox.cast(),
     ) != 1
     {
         return Err("cef::initialize が失敗".into());

@@ -5,15 +5,8 @@
 //! 取得と実行の手順は README を見る。
 
 #[cfg(feature = "cef")]
-mod host;
-
-#[cfg(feature = "cef")]
 fn main() -> std::process::ExitCode {
-    if std::env::args().nth(1).as_deref() == Some(mm_host_cef::PROBE_COMMAND) {
-        println!("{}", mm_host_cef::PROBE_REPLY);
-        return std::process::ExitCode::SUCCESS;
-    }
-    host::run()
+    mm_host_cef::host_main(std::ptr::null_mut())
 }
 
 #[cfg(not(feature = "cef"))]

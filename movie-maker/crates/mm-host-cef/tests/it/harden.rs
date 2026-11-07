@@ -244,3 +244,35 @@ fn 渡す共有ハンドルは読み取りの権限だけ() {
         "読み取りの標準の権限だけ: {access:#x}"
     );
 }
+
+/// `bundle.sh` で組み立てた、sandbox つきで動くホストを指す環境変数。無ければその検査をスキップする。
+const SANDBOX_HOST_ENV: &str = "MM_CEF_SANDBOX_HOST";
+
+#[test]
+fn sandbox_つきのホストも同じ画素で描く() {
+    let Some(exe) = host_exe() else { return };
+    let Some(sandboxed) = std::env::var_os(SANDBOX_HOST_ENV).map(std::path::PathBuf::from) else {
+        eprintln!("{SANDBOX_HOST_ENV} が無いので sandbox の検査をスキップする");
+        return;
+    };
+    let reply = mm_host_cef::probe_reply(&sandboxed);
+    let expected = format!("{}{}", mm_host_cef::PROBE_REPLY, mm_host_cef::PROBE_SANDBOX);
+    assert_eq!(
+        reply.as_deref(),
+        Some(expected.as_str()),
+        "bootstrapc から起こすと sandbox つき"
+    );
+    let ctx = gpu();
+    let size = Size::new(320, 180);
+    let page = include_str!("pages/golden.html");
+    let frames: Vec<_> = [exe, sandboxed]
+        .iter()
+        .map(|exe| {
+            let mut host = PipeHost::start(spec(exe, Some(std::process::id()))).expect("起動");
+            prepare(&mut host, page);
+            let t = RationalTime::seconds(1);
+            to_image(&render(&mut host, t, size, serde_json::json!({})), &ctx)
+        })
+        .collect();
+    assert_eq!(frames[0], frames[1], "sandbox の有無で画素が変わらない");
+}

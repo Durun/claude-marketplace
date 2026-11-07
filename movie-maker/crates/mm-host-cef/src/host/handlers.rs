@@ -263,6 +263,7 @@ wrap_app! {
             let Some(command_line) = command_line else {
                 return;
             };
+            guard::isolate_network(command_line);
             // CEF の GPU プロセスは既定で内蔵 GPU を選ぶことがあり、wgpu の別の GPU では共有ハンドルを開けない。
             // LUID があればそのアダプターを、無ければ wgpu の既定と同じ高性能の GPU を選ばせる。
             match &self.adapter_luid {

@@ -128,6 +128,19 @@ wrap_life_span_handler! {
     }
 }
 
+/// Chromium のネットワークを、届かないプロキシ（閉じたポート）へ向ける。ループバックも外さない。
+/// `RequestHandler` は遷移と要求を拒否するが、遷移を始めた時点の先読みの接続（preconnect）と名前解決は
+/// その前に始まり、外のサーバーへ TCP の接続だけが届くため。プロキシに向ければ行き先へは何も出ない。
+pub fn isolate_network(command_line: &mut CommandLine) {
+    /// discard（9 番）。ふつうは閉じていて、つなごうとしても拒否される。
+    const DEAD_PROXY: &str = "http://127.0.0.1:9";
+    command_line.append_switch_with_value(Some(&"proxy-server".into()), Some(&DEAD_PROXY.into()));
+    command_line.append_switch_with_value(
+        Some(&"proxy-bypass-list".into()),
+        Some(&"<-loopback>".into()),
+    );
+}
+
 /// 遷移と要求を拒否するハンドラ。
 pub fn request_handler(page: &AllowedPage) -> RequestHandler {
     let resource = GuardResourceHandler::new(page.clone());

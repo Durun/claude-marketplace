@@ -11,6 +11,12 @@ publish.workspace = true
 # 切ったビルドでもアプリ側のランチャー（CefLauncher）とテストの枠はコンパイルする。
 cef = ["dep:cef", "dep:wgpu", "dep:pollster", "dep:png", "dep:tracing", "dep:tracing-subscriber", "dep:mm-trace", "dep:mm-gpu"]
 
+# sandbox つきの起動（CEF の bootstrapc.exe）が読み込む本体の DLL。bundle.sh が組み立てる。
+[[example]]
+name = "sandboxed"
+crate-type = ["cdylib"]
+required-features = ["cef"]
+
 [dependencies]
 mm-host-api = { workspace = true }
 mm-types = { workspace = true }
