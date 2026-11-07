@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mm_audio_api::{DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
-use mm_doc::{Composition, Interpolation, Keyframe, MixerBus, Node, Param};
+use mm_doc::{Composition, Interpolation, Keyframe, MixerBus, Node};
 use mm_runtime::{assemble, Backend, RuntimeConfig};
 use mm_types::{ColorSpace, Id, ParamValue, Rational, RationalTime};
 
@@ -12,13 +12,7 @@ fn secs(n: i64) -> RationalTime {
 }
 
 fn audio(role: &str) -> LayerAudio {
-    LayerAudio {
-        role: role.into(),
-        gain_db: Param::constant(ParamValue::Number(0.0)),
-        pan: Param::constant(ParamValue::Number(0.0)),
-        mute: false,
-        solo: false,
-    }
+    LayerAudio::new(role)
 }
 
 /// 下から、撮影素材（音の設定なし）、単色、入れ子（役割 `fx`、音量にキーフレーム）。BGM のバスは `music`。

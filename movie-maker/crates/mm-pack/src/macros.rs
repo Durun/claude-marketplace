@@ -104,6 +104,39 @@ pub enum Step {
     Text(TextStep),
     /// パックの `mixer.json` を、コンポジションのミキサーの設定として `setMixer` で当てる。
     Mixer(MixerStep),
+    /// パックの `web/<page>.html` を `web.cef` のレイヤーとして置く。
+    Web(WebStep),
+}
+
+/// HTML の部品を `web.cef` のレイヤーとして置く手順。文字列は `{{…}}` を埋めてから読む。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebStep {
+    /// `web/` の中のページの名前（拡張子を除く）。
+    pub page: String,
+    /// 置くコンポジション。
+    pub comp: String,
+    /// レイヤーの ID。
+    pub layer: String,
+    /// コンポジションの時間軸での出る時刻。
+    pub at: String,
+    /// 出ている長さ。
+    pub dur: String,
+    /// 接続するカット。空なら接続しない。
+    #[serde(default)]
+    pub attach: Option<String>,
+    /// ページの `mmSetTime(t, data)` に渡す値。展開でテーマ（色、書体、画面）を `theme` に足す。
+    #[serde(default)]
+    pub data: serde_json::Value,
+    /// 出る動き（不透明度、秒）。テーマの `motion.in_max` まで。
+    #[serde(default)]
+    pub fade_in: f64,
+    /// 消える動き（不透明度、秒）。テーマの `motion.out_max` まで。
+    #[serde(default)]
+    pub fade_out: f64,
+    /// ページ自身が時刻で動くか。偽ならパラメータの組ごとに 1 回だけ描く（動きは不透明度で付ける）。
+    #[serde(default)]
+    pub animated: bool,
 }
 
 /// パックのミキサーの設定を当てる手順。
@@ -149,6 +182,12 @@ impl Step {
                 out
             }
             Step::Mixer(m) => vec![m.comp.as_str()],
+            Step::Web(w) => {
+                let mut out = vec![w.page.as_str(), &w.comp, &w.layer, &w.at, &w.dur];
+                out.extend(w.attach.as_deref());
+                collect_strings(&w.data, &mut out);
+                out
+            }
         }
     }
 }

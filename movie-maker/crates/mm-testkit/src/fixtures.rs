@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget};
+use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Project, RenderTarget};
 use mm_node_api::Services;
 use mm_types::{
     AssetId, ColorSpace, CompositionId, Id, ParamValue, Rational, RationalTime, RenderTargetId,
@@ -100,13 +100,7 @@ pub fn vertical_project(
 /// 素材を `in_point` から `duration` だけ切り、音を `voice` の役割で付けたレイヤー。
 fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalTime) -> Layer {
     Layer {
-        audio: Some(LayerAudio {
-            role: "voice".into(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
-            mute: false,
-            solo: false,
-        }),
+        audio: Some(LayerAudio::new("voice")),
         ..Layer::new(
             "l-footage",
             Node::new("footage", SAMPLE_KIND_VERSION)

@@ -2,20 +2,18 @@
 //!
 //! geneva はクリップの矩形（切り抜いて `fit` で収めたもの）のアンカーを `position` に置き、その周りで拡大する。
 //! movie-maker では素材を `fit: none`（素材の画素のまま左上に置く）で描き、アンカーを原点に固定して、
-//! 同じ対応になる拡大と位置を求める。切り抜きが画面の外にはみ出すだけなら変形だけで表せ、
-//! 画面の中に縁が出るときは、切り抜いた大きさの入れ子のコンポジションで縁を作る。
+//! 同じ対応になる拡大と位置を求める。レイヤーの座標は素材の画素なので、切り抜きはレイヤーの切り抜き（`crop`）、
+//! 角丸の矩形のマスクはレイヤーのマスクに、クリップの矩形の画素を素材の画素に戻して置く。
 
 use std::collections::HashMap;
 
-use mm_doc::{
-    Composition, Interpolation, Keyframe, Layer, LayerAudio, Node, Param, Transform, NESTED_KIND,
-    NESTED_PARAM,
-};
+use mm_doc::{Interpolation, Keyframe, Layer, LayerAudio, Node, Param, Transform};
 use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
 use serde_json::Value;
 
 use super::media::Media;
 use super::report::{Gap, Report};
+use super::shape;
 use super::syntax::{self, Anim};
 
 /// 素材の画素のまま置く `fit` のパラメータ（`mm-nodes-basic` の footage と image）。
@@ -27,8 +25,6 @@ const FOOTAGE_KIND: &str = "footage";
 const IMAGE_KIND: &str = "image";
 const ASSET_PARAM: &str = "asset";
 const KIND_VERSION: u32 = 1;
-/// 切り抜きの縁が画面の外に出ているとみなす許容（画素）。
-const COVER_EPS: f64 = 0.5;
 
 /// 変換の共通の状態。
 pub struct Ctx<'a> {
@@ -37,16 +33,14 @@ pub struct Ctx<'a> {
     pub frame: [f64; 2],
     pub media: &'a HashMap<String, Media>,
     pub report: Report,
-    /// 切り抜きのために作った入れ子のコンポジション。
-    pub nested: Vec<Composition>,
 }
 
 /// クリップの置き方（geneva の意味のまま）。
 struct Geometry {
     /// 素材の画素の切り抜き `[x, y, w, h]`。
     crop: [f64; 4],
-    /// 切り抜きが素材の全体か。全体なら縁は素材の縁で、入れ子が要らない。
-    whole: bool,
+    /// 素材の大きさ。
+    src: [f64; 2],
     /// 切り抜きをクリップの矩形に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
     k: f64,
     /// クリップの矩形の上のアンカー（その矩形の画素）。
@@ -121,24 +115,21 @@ fn convert_clip(
         }
     };
     let geo = geometry(ctx, clip, size, is_video)?;
-    let opacity = opacity_param(ctx, clip, timing.start)?;
-    let node = picture_node(asset, is_video);
-    let mut layer = if needs_crop(&geo, ctx.frame) {
-        nested_layer(ctx, id, node, clip, &geo, timing)?
-    } else {
-        let mut l = timed_layer(id, node, clip, timing, ctx.fps)?;
-        l.transform = transform(&geo, [geo.crop[0], geo.crop[1]], timing.start)?;
-        l
-    };
-    layer.opacity = opacity;
+    let mut layer = timed_layer(id, picture_node(asset, is_video), clip, timing, ctx.fps)?;
+    layer.transform = transform(&geo, timing.start)?;
+    layer.crop = shape::layer_crop(geo.crop, geo.src);
+    if let Some(m) = clip.get("mask").filter(|m| !m.is_null()) {
+        match shape::layer_mask(geo.crop, geo.k, &format!("{id}-mask"), m)? {
+            Some(mask) => layer.masks.push(mask),
+            None => ctx.report.add(Gap::Mask),
+        }
+    }
+    layer.opacity = opacity_param(ctx, clip, timing.start)?;
     Ok(Some(layer))
 }
 
 fn note_gaps(report: &mut Report, clip: &Value) {
     let has = |k: &str| clip.get(k).is_some_and(|v| !v.is_null());
-    if has("mask") {
-        report.add(Gap::Mask);
-    }
     if clip
         .get("effects")
         .and_then(Value::as_array)
@@ -177,7 +168,7 @@ fn picture_node(asset: &str, is_video: bool) -> Node {
 
 fn geometry(ctx: &mut Ctx<'_>, clip: &Value, size: [u32; 2], is_video: bool) -> Result<Geometry> {
     let src = [f64::from(size[0]), f64::from(size[1])];
-    let crop = crop_rect(clip.get("crop"), src)?;
+    let crop = shape::crop_rect(clip.get("crop"), src)?;
     let default_fit = if is_video { "contain" } else { FIT_NONE };
     let fit = clip
         .get("fit")
@@ -209,41 +200,13 @@ fn geometry(ctx: &mut Ctx<'_>, clip: &Value, size: [u32; 2], is_video: bool) -> 
     if position.has_easing() || scale.has_easing() {
         ctx.report.add(Gap::Easing);
     }
-    let whole = crop == [0.0, 0.0, src[0], src[1]];
     Ok(Geometry {
         crop,
-        whole,
+        src,
         k,
         anchor,
         position,
         scale,
-    })
-}
-
-fn crop_rect(crop: Option<&Value>, src: [f64; 2]) -> Result<[f64; 4]> {
-    let Some(c) = crop.filter(|c| !c.is_null()) else {
-        return Ok([0.0, 0.0, src[0], src[1]]);
-    };
-    let get = |k: &str, reference: f64| c.get(k).map(|v| syntax::length(v, reference)).transpose();
-    let x = get("x", src[0])?.unwrap_or(0.0).clamp(0.0, src[0]);
-    let y = get("y", src[1])?.unwrap_or(0.0).clamp(0.0, src[1]);
-    let w = get("width", src[0])?.unwrap_or(src[0] - x).min(src[0] - x);
-    let h = get("height", src[1])?.unwrap_or(src[1] - y).min(src[1] - y);
-    Ok([x, y, w.max(1.0), h.max(1.0)])
-}
-
-/// 切り抜きの縁が画面の中に見えるか。見えなければ変形だけで表せる。
-fn needs_crop(geo: &Geometry, frame: [f64; 2]) -> bool {
-    if geo.whole {
-        return false;
-    }
-    key_times(geo).into_iter().any(|t| {
-        let (p, s) = (geo.position.at(t), geo.scale.at(t));
-        (0..2).any(|c| {
-            let lo = p[c] - s[c] * geo.anchor[c];
-            let hi = p[c] + s[c] * (geo.crop[2 + c] * geo.k - geo.anchor[c]);
-            lo > COVER_EPS || hi < frame[c] - COVER_EPS
-        })
     })
 }
 
@@ -260,8 +223,9 @@ fn key_times(geo: &Geometry) -> Vec<RationalTime> {
     times
 }
 
-/// 素材の画素 `p` が `P + s (k (p - offset) - A)` へ移る変形（アンカーは原点）。
-fn transform(geo: &Geometry, offset: [f64; 2], start: RationalTime) -> Result<Transform> {
+/// 素材の画素 `p` が `P + s (k (p - crop) - A)` へ移る変形（アンカーは原点）。
+fn transform(geo: &Geometry, start: RationalTime) -> Result<Transform> {
+    let offset = [geo.crop[0], geo.crop[1]];
     let at = |t: RationalTime| {
         let (p, s) = (geo.position.at(t), geo.scale.at(t));
         let sm = [s[0] * geo.k, s[1] * geo.k];
@@ -363,11 +327,8 @@ fn timed_layer(
     if source.get("kind").and_then(Value::as_str) == Some("video") {
         let muted = source.get("audio").and_then(Value::as_bool) == Some(false);
         layer.audio = Some(LayerAudio {
-            role: "video".into(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
             mute: muted,
-            solo: false,
+            ..LayerAudio::new("video")
         });
     }
     Ok(layer)
@@ -376,49 +337,6 @@ fn timed_layer(
 fn scale_time(t: RationalTime, by: RationalTime) -> Result<RationalTime> {
     let r = Rational::new(u32::try_from(by.num()).unwrap_or(1), by.den())?;
     t.scale(r)
-}
-
-/// 切り抜いた大きさの入れ子のコンポジションに素材を置き、外のレイヤーでそれを置く。
-fn nested_layer(
-    ctx: &mut Ctx<'_>,
-    id: &str,
-    node: Node,
-    clip: &Value,
-    geo: &Geometry,
-    timing: &Timing,
-) -> Result<Layer> {
-    let comp_id = format!("crop-{id}");
-    let inner_timing = Timing {
-        start: RationalTime::ZERO,
-        duration: timing.duration,
-    };
-    let mut inner = timed_layer(&format!("{comp_id}-in"), node, clip, &inner_timing, ctx.fps)?;
-    inner.transform = Transform {
-        anchor: Some(Param::constant(ParamValue::Vec2([0.0, 0.0]))),
-        position: Param::constant(ParamValue::Vec2([-geo.crop[0], -geo.crop[1]])),
-        ..Transform::default()
-    };
-    ctx.nested.push(
-        Composition::new(
-            Id::new(comp_id.clone()),
-            geo.crop[2].round().max(1.0) as u32,
-            geo.crop[3].round().max(1.0) as u32,
-            ctx.fps,
-            timing.duration,
-        )
-        .with_layers(vec![inner]),
-    );
-    let outer_node =
-        Node::new(NESTED_KIND, KIND_VERSION).with_param(NESTED_PARAM, ParamValue::Text(comp_id));
-    let mut outer = Layer::new(
-        id,
-        outer_node,
-        timing.start,
-        RationalTime::ZERO,
-        timing.duration,
-    );
-    outer.transform = transform(geo, [0.0, 0.0], timing.start)?;
-    Ok(outer)
 }
 
 #[cfg(test)]

@@ -8,6 +8,8 @@
 //! 手順と数字は README と `docs/design/spikes/cef.md`。
 
 mod launcher;
+mod locate;
 pub mod pixel;
 
 pub use launcher::{CefLauncher, PipeHost, CEF_PATH_ENV, SERVE_COMMAND, SPEC_ENV};
+pub use locate::{find_host, HOST_ENV};

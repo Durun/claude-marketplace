@@ -3,6 +3,9 @@
 //! - [`CpuRasterizer`]（`cpu`）: swash で CPU に描く。
 //! - [`GlyphonRasterizer`]（`glyphon`）: glyphon（wgpu）のグリフの atlas とパイプラインで描く。
 //!
+//! シェーパーはルビの注記を外して親文字だけを組み、`LineBreak::Phrase` なら文節（BudouX）の中で折らない。
+//! 縁取りとふりがなの分だけ `bounds` を広げるが、ここの描画は縁とふりがなを描かない（CSS で描く `mm-text-cef` が描く）。
+//!
 //! `ShapedText` がフォントの名前とグリフの番号を持つので、描画は行組みをやり直さずグリフを引くだけ。
 //! シェーパーとレンダラーは別々に作れる。フォントの読み込みは重いので、同じプロセスでは
 //! [`TextEngine`] を共有して両方を取り出すと速い。
@@ -10,6 +13,7 @@
 mod glyph_ids;
 mod gpu;
 mod layout;
+mod markup;
 mod raster;
 
 pub use gpu::GlyphonRasterizer;
@@ -20,7 +24,7 @@ use cosmic_text::{FontSystem, SwashCache};
 use mm_gpu::GpuContext;
 
 use mm_text_api::{ShapedText, TextRasterizer, TextShaper, TextStyle};
-use mm_types::{MmError, Result, RgbaImage};
+use mm_types::{MmError, Rect, Result, RgbaImage};
 
 pub(crate) struct Inner {
     pub(crate) fonts: Mutex<(FontSystem, SwashCache)>,
@@ -102,17 +106,38 @@ impl TextShaper for CosmicShaper {
         if text.is_empty() {
             return Ok(ShapedText::empty());
         }
+        let prepared = markup::prepare(text, style.line_break);
         let mut fonts = lock(&self.inner.fonts)?;
         let (fs, cache) = &mut *fonts;
-        let buffer = layout::layout(fs, text, style);
-        let mut shaped = layout::to_shaped(fs, &buffer, text, style);
+        let buffer = layout::layout(fs, &prepared.text, style);
+        let mut shaped = layout::to_shaped(fs, &buffer, &prepared, style);
+        shaped.text = text.to_string();
         if !shaped.bounds.is_empty() {
             // 送り幅と行の高さの矩形に、グリフのインクの張り出しを足す（斜体、アクセント、絵文字）。
             let ink = raster::ink_bounds(fs, cache, &shaped, style);
-            shaped.bounds = shaped.bounds.union(&ink);
+            shaped.bounds = widen(shaped.bounds.union(&ink), style, prepared.has_ruby);
         }
         Ok(shaped)
     }
+}
+
+/// ふりがなの大きさの、親文字に対する割合（CSS の `ruby` の既定の 50%）。
+const RUBY_SHARE: f32 = 0.5;
+
+/// ふりがなの分だけ上に、縁取りの分だけ四方に広げる。CSS で描く実装がこの中に収まる。
+fn widen(bounds: Rect, style: &TextStyle, has_ruby: bool) -> Rect {
+    let ruby = if has_ruby {
+        style.size_px * RUBY_SHARE
+    } else {
+        0.0
+    };
+    let stroke = style.stroke.map_or(0.0, |s| s.width_px.max(0.0));
+    Rect::new(
+        bounds.x - stroke,
+        bounds.y - stroke - ruby,
+        bounds.width + 2.0 * stroke,
+        bounds.height + 2.0 * stroke + ruby,
+    )
 }
 
 /// swash による CPU の描画。出力は線形・premultiplied の RGBA。

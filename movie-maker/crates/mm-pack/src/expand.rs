@@ -37,6 +37,7 @@ pub fn expand(
             Step::Op(raw) => vec![env.fill_json(raw)?],
             Step::Text(t) => text_ops(pack, &TextInput::read(pack, &env, t)?, shaper)?,
             Step::Mixer(m) => vec![mixer_op(pack, &env.fill_text(&m.comp)?)?],
+            Step::Web(w) => vec![crate::web::web_op(pack, &env, w)?],
         };
         for value in values {
             let op: Op = serde_json::from_value(value).map_err(|e| {
@@ -115,7 +116,7 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
     let frame = Frame {
         at: input.at,
         dur: input.dur,
-        opacity: fade(style, input.at, input.dur)?,
+        opacity: fade(style.fade_in, style.fade_out, input.at, input.dur)?,
         attach: input.attach.clone(),
         spot,
         tilt: style.tilt,
@@ -196,14 +197,19 @@ fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, spot: &Pl
         .with_param("align", ParamValue::Text("center".into()))
 }
 
-/// 出る・消える動きの不透明度。動きの長さの和が出ている長さを超えるときは動かさない。
-fn fade(style: &TextStyleSpec, at: RationalTime, dur: RationalTime) -> Result<Param> {
+/// 出る・消える動き（秒）の不透明度。動きの長さの和が出ている長さを超えるときは動かさない。
+pub(crate) fn fade(
+    fade_in: f64,
+    fade_out: f64,
+    at: RationalTime,
+    dur: RationalTime,
+) -> Result<Param> {
     let constant = Param::constant(ParamValue::Number(1.0));
-    if style.fade_in <= 0.0 && style.fade_out <= 0.0 {
+    if fade_in <= 0.0 && fade_out <= 0.0 {
         return Ok(constant);
     }
-    let fade_in = millis(style.fade_in)?;
-    let fade_out = millis(style.fade_out)?;
+    let fade_in = millis(fade_in)?;
+    let fade_out = millis(fade_out)?;
     if fade_in.checked_add(fade_out)? > dur {
         return Ok(constant);
     }

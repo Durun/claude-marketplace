@@ -7,15 +7,24 @@ use mm_types::ParamValue;
 
 /// 数のパラメータ（キーフレームを置ける）のパス。
 fn numeric_paths(l: &Layer) -> Vec<String> {
-    let mut paths: Vec<String> = ["opacity", "transform.scale", "transform.rotation"]
-        .map(String::from)
-        .into();
+    let mut paths: Vec<String> = [
+        "opacity",
+        "transform.scale",
+        "transform.rotation",
+        "crop.left",
+        "crop.bottom",
+    ]
+    .map(String::from)
+    .into();
     if l.audio.is_some() {
         paths.extend(["audio.gain_db", "audio.pan"].map(String::from));
     }
     for m in &l.masks {
         paths.push(format!("masks.{}.opacity", m.id));
         paths.push(format!("masks.{}.feather", m.id));
+        if m.rect.is_some() {
+            paths.push(format!("masks.{}.rect.radius", m.id));
+        }
     }
     for r in &l.framing.cuts {
         paths.push(format!("reframe.{}.scale", r.cut));
@@ -41,6 +50,10 @@ fn layer_paths(l: &Layer) -> Vec<String> {
         ]
         .map(String::from),
     );
+    for m in l.masks.iter().filter(|m| m.rect.is_some()) {
+        paths.push(format!("masks.{}.rect.position", m.id));
+        paths.push(format!("masks.{}.rect.size", m.id));
+    }
     for e in &l.effects {
         paths.push(format!("effects.{}.amount", e.id));
         paths.push(format!("effects.{}.composition", e.id));
@@ -82,6 +95,8 @@ pub fn value_for(p: &Project, path: &str, v: i64) -> ParamValue {
         ParamValue::Text(id.to_owned())
     } else if path.contains("position") || path.contains("anchor") {
         ParamValue::Vec2([v as f64, 0.0])
+    } else if path.ends_with(".size") {
+        ParamValue::Vec2([v.unsigned_abs() as f64, 1.0])
     } else {
         ParamValue::Number(v as f64)
     }

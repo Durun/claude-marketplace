@@ -1,0 +1,23 @@
+[package]
+name = "mm-text-cef"
+description = "文字の描画の実装（cef）。行組みの結果を CSS（縁取り、書体、ルビ）で別プロセスの CEF に描かせる"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-text-api = { workspace = true }
+mm-host-api = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+mm-host-cef = { workspace = true }
+mm-text-glyphon = { workspace = true }
+png = { workspace = true }
+
+[lints]
+workspace = true

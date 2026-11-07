@@ -34,10 +34,7 @@ pub enum Gap {
 impl Gap {
     fn describe(self) -> (&'static str, &'static str) {
         match self {
-            Self::Mask => (
-                "mask",
-                "マスクを描かない（movie-maker のマスクは型だけで、レンダラーが描かない）",
-            ),
+            Self::Mask => ("mask", "楕円と画像のマスクを除いた（角丸の矩形だけ描く）"),
             Self::Effects => ("effects", "クリップの効果を除いた"),
             Self::Blend => ("blend", "重ね方を normal にした"),
             Self::Transition => ("transition", "トランジションを除いた"),

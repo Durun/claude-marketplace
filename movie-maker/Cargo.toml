@@ -34,10 +34,12 @@ mm-eval = { path = "crates/mm-eval" }
 mm-export = { path = "crates/mm-export" }
 mm-gpu = { path = "crates/mm-gpu" }
 mm-host-api = { path = "crates/mm-host-api" }
+mm-host-cef = { path = "crates/mm-host-cef" }
 mm-ingest = { path = "crates/mm-ingest" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-node-api = { path = "crates/mm-node-api" }
 mm-nodes-basic = { path = "crates/mm-nodes-basic" }
+mm-nodes-cef = { path = "crates/mm-nodes-cef" }
 mm-ops = { path = "crates/mm-ops" }
 mm-pack = { path = "crates/mm-pack" }
 mm-render = { path = "crates/mm-render" }
@@ -47,6 +49,7 @@ mm-serve = { path = "crates/mm-serve" }
 mm-store = { path = "crates/mm-store" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-text-api = { path = "crates/mm-text-api" }
+mm-text-cef = { path = "crates/mm-text-cef" }
 mm-text-glyphon = { path = "crates/mm-text-glyphon" }
 mm-trace = { path = "crates/mm-trace" }
 mm-types = { path = "crates/mm-types" }
@@ -68,6 +71,8 @@ pollster = "1.0"
 # wgpu-hal の D3D12 が使うバージョンにそろえる（ID3D12Resource などの型を受け渡すため）。
 windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
+# 日本語の文節の切れ目（BudouX の Rust 版。Chromium の `word-break: auto-phrase` の元になった分け方）。
+budoux = "0.1.1"
 glyphon = { version = "0.12", default-features = false }
 # プレビューの音の出力（mm-audio-cpal）。
 cpal = "0.18"

@@ -44,6 +44,8 @@ pub struct Pack {
     pub corrections: BTreeMap<String, String>,
     /// テンプレートとマクロ。テンプレートが先で、それぞれ名前の順。
     pub macros: Vec<MacroDef>,
+    /// `web/*.html` の名前（拡張子を除く）→ HTML。`web` 手順が `web.cef` のレイヤーにする。
+    pub pages: BTreeMap<String, String>,
 }
 
 impl Pack {
@@ -65,6 +67,7 @@ impl Pack {
             mixer,
             corrections,
             macros,
+            pages: read_pages(&dir.join("web"))?,
         })
     }
 
@@ -102,6 +105,25 @@ fn read_optional<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     } else {
         Ok(None)
     }
+}
+
+/// フォルダーの `*.html` を名前（拡張子を除く）で読む。フォルダーが無ければ空。
+fn read_pages(dir: &Path) -> Result<BTreeMap<String, String>> {
+    if !dir.is_dir() {
+        return Ok(BTreeMap::new());
+    }
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| MmError::NotFound(format!("{}: {e}", dir.display())))?;
+    entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "html"))
+        .map(|path| {
+            let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let html = std::fs::read_to_string(&path)
+                .map_err(|e| MmError::NotFound(format!("{}: {e}", path.display())))?;
+            Ok((name.to_string(), html))
+        })
+        .collect()
 }
 
 /// フォルダーの `*.json` をマクロとして名前の順に読む。ファイル名とマクロの名前が違えば `InvalidArgument`。

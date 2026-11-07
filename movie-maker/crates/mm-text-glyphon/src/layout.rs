@@ -7,6 +7,8 @@ use cosmic_text::{
 use mm_text_api::{FaceRef, GlyphBox, ShapedLine, ShapedText, TextAlign, TextStyle};
 use mm_types::Rect;
 
+use crate::markup::Prepared;
+
 fn to_cosmic(align: TextAlign) -> CosmicAlign {
     match align {
         TextAlign::Left => CosmicAlign::Left,
@@ -85,14 +87,22 @@ fn face_ref(
     }
 }
 
-/// Buffer の行組みを `ShapedText` にする。
+/// 組む文字列のバイト範囲を、元の文字列の範囲にする。挟んだ文字（WORD JOINER）だけのグリフなら `None`。
+fn source_range(prepared: &Prepared, start: usize, end: usize) -> Option<(usize, usize)> {
+    let (at, len) = prepared.first_source(start, end)?;
+    let last = end.checked_sub(1).and_then(|e| prepared.source(e));
+    let stop = last.map_or(at + len, |(a, l)| a + l).max(at + len);
+    Some((at, stop - at))
+}
+
+/// Buffer の行組みを `ShapedText` にする。グリフの位置は元の文字列（注記を外す前）を指す。
 pub(crate) fn to_shaped(
     fs: &FontSystem,
     buffer: &Buffer,
-    text: &str,
+    prepared: &Prepared,
     style: &TextStyle,
 ) -> ShapedText {
-    let starts = line_starts(text);
+    let starts = line_starts(&prepared.text);
     let lh = line_height_px(style);
     let mut shaped = ShapedText::empty();
     let mut lines = Vec::new();
@@ -101,16 +111,19 @@ pub(crate) fn to_shaped(
         let glyphs: Vec<GlyphBox> = run
             .glyphs
             .iter()
-            .map(|g| GlyphBox {
-                rect: Rect::new(g.x, run.line_top, g.w, lh),
-                byte_offset: base + g.start,
-                byte_len: g.end.saturating_sub(g.start),
-                face: shaped.intern_face(face_ref(fs, g.font_id, g.font_weight)),
-                glyph_id: g.glyph_id,
-                origin: [
-                    g.x + g.font_size * g.x_offset,
-                    run.line_y + g.y - g.font_size * g.y_offset,
-                ],
+            .filter_map(|g| {
+                let (byte_offset, byte_len) = source_range(prepared, base + g.start, base + g.end)?;
+                Some(GlyphBox {
+                    rect: Rect::new(g.x, run.line_top, g.w, lh),
+                    byte_offset,
+                    byte_len,
+                    face: shaped.intern_face(face_ref(fs, g.font_id, g.font_weight)),
+                    glyph_id: g.glyph_id,
+                    origin: [
+                        g.x + g.font_size * g.x_offset,
+                        run.line_y + g.y - g.font_size * g.y_offset,
+                    ],
+                })
             })
             .collect();
         let left = glyphs

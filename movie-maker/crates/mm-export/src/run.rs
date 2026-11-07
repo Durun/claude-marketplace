@@ -7,7 +7,7 @@ use mm_audio_api::{NormalizeReport, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings};
 use mm_doc::{Project, RenderTarget};
 use mm_runtime::Engine;
-use mm_types::{MmError, RationalTime, RenderTargetId, Result, Size, TimeRange};
+use mm_types::{MmError, Rational, RationalTime, RenderTargetId, Result, Size, TimeRange};
 
 use crate::control::{partial_path, PartialFile};
 use crate::passes::{frames_in, render_video_and_audio, PassPosition, Plan};
@@ -22,6 +22,9 @@ const MP4_CODEC_PREFIXES: [&str; 3] = ["h264", "libx264", "hevc"];
 const MP4_EXTENSIONS: [&str; 2] = ["mp4", "m4v"];
 /// MOV にしか書けないコーデックの名前の接頭辞（ProRes と DNxHR）。
 const MOV_CODEC_PREFIXES: [&str; 2] = ["prores", "dnx"];
+/// 区間の端をフレームの境に合わせる幅（フレーム）。マイクロ秒の丸め（240 fps でも 1.2e-4 フレーム）を吸い、
+/// 意図して境から外した指定（1/1000 フレームより離れたもの）は保つ。
+const FRAME_SNAP_TOLERANCE: f64 = 1e-3;
 
 /// 書き出しが終わったときのエンコーダーの報告と、出力が満たすべきこと。
 struct Finished {
@@ -167,8 +170,8 @@ fn export_target(
 ) -> Result<Option<Finished>> {
     let target = project.render_target(target)?;
     let comp = project.composition(&target.composition)?;
-    let range = resolve_range(comp.range()?, options.range)?;
     let settings = encode_settings(target);
+    let range = snap_to_frames(resolve_range(comp.range()?, options.range)?, settings.fps)?;
     let prepared = deliver::prepare(project, target, comp, range, options.transcript.as_deref())?;
     let mut encoder = open_encoder(engine, target, &prepared)?;
     encoder.begin(&settings)?;
@@ -255,6 +258,21 @@ fn audio_range_of(range: TimeRange, settings: &EncodeSettings, frames: usize) ->
     )
 }
 
+/// 区間の端がフレームの境から `FRAME_SNAP_TOLERANCE` フレーム以内なら、境に合わせる。
+/// 秒の小数で渡した区間（`mm render --range` はマイクロ秒に丸める）が境の直前になり、1 フレーム前から始まらないようにする。
+fn snap_to_frames(range: TimeRange, fps: Rational) -> Result<TimeRange> {
+    let snap = |t: RationalTime| -> Result<RationalTime> {
+        let x = t.to_f64() * fps.to_f64();
+        let n = x.round();
+        if (x - n).abs() <= FRAME_SNAP_TOLERANCE {
+            RationalTime::from_frames(n as i64, fps)
+        } else {
+            Ok(t)
+        }
+    };
+    TimeRange::new(snap(range.start)?, snap(range.end)?)
+}
+
 /// 指定の区間をコンポジションの範囲に収める。範囲の外を含む指定は拒否する（黙って縮めない）。
 fn resolve_range(whole: TimeRange, wanted: Option<TimeRange>) -> Result<TimeRange> {
     let Some(wanted) = wanted else {
@@ -267,4 +285,35 @@ fn resolve_range(whole: TimeRange, wanted: Option<TimeRange>) -> Result<TimeRang
         )));
     }
     Ok(wanted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn range(a: (i128, u32), b: (i128, u32)) -> TimeRange {
+        TimeRange::new(
+            RationalTime::new(a.0, a.1).unwrap(),
+            RationalTime::new(b.0, b.1).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn マイクロ秒に丸めた境はフレームの境に合わせる() {
+        let fps = Rational::integer(30);
+        // 301/30 秒をマイクロ秒に丸めると 10.033333 秒で、境の直前になる
+        let micros = range((10_033_333, 1_000_000), (14_033_333, 1_000_000));
+        let r = snap_to_frames(micros, fps).unwrap();
+        assert_eq!(r.start, RationalTime::new(301, 30).unwrap());
+        assert_eq!(r.end, RationalTime::new(421, 30).unwrap());
+        assert_eq!(r.frame_indices(fps), 301..421);
+    }
+
+    #[test]
+    fn 境から離れた端はそのまま() {
+        let fps = Rational::integer(30);
+        let r = range((1, 100), (5, 1));
+        assert_eq!(snap_to_frames(r, fps).unwrap(), r);
+    }
 }

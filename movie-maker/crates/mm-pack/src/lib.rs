@@ -8,6 +8,7 @@
 //! - `corrections.json`: 字幕の表記の置き換え（誤認識の語 → 正しい表記）。
 //! - `macros/*.json` と `templates/*.json`: 引数を受けて操作の列を作る手順（[`MacroDef`]）。テンプレートは
 //!   空のプロジェクトに適用するテンプレート（コンポジション、レンダーターゲット）で、形はマクロと同じ。
+//! - `web/*.html`: HTML と CSS の部品。`web` 手順（[`WebStep`]）が `web.cef` のレイヤーにする。
 //!
 //! 使い方は [`Pack::load`] で読み、[`check`] で検査し、[`expand`] で 1 つのトランザクションにする。
 //! 操作経路はそのトランザクションを `mm op --txn` と同じ経路で適用するので、取り消しも記録も普通の操作と同じ。
@@ -21,12 +22,13 @@ mod pack;
 mod sticker;
 mod style;
 mod theme;
+mod web;
 
 pub use args::{parse_time, ArgValue};
 pub use check::{check, Report};
 pub use expand::expand;
 pub use layout::EstimateShaper;
-pub use macros::{MacroDef, MacroKind, MacroSummary, ParamDef, ParamType, Step, TextStep};
+pub use macros::{MacroDef, MacroKind, MacroSummary, ParamDef, ParamType, Step, TextStep, WebStep};
 pub use pack::{Manifest, Pack, FORMAT};
 pub use style::{PlateSpec, Shadow, Stroke, TextStyleSpec};
 pub use theme::{Canvas, Motion, Theme};

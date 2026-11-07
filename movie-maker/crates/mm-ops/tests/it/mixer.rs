@@ -30,11 +30,11 @@ fn canon(p: &Project) -> serde_json::Value {
 
 fn audio(gain_db: f64, mute: bool, solo: bool) -> LayerAudio {
     LayerAudio {
-        role: "bgm".into(),
         gain_db: Param::constant(ParamValue::Number(gain_db)),
         pan: Param::constant(ParamValue::Number(-0.5)),
         mute,
         solo,
+        ..LayerAudio::new("bgm")
     }
 }
 
