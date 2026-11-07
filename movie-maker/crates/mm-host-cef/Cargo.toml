@@ -1,6 +1,6 @@
 [package]
 name = "mm-host-cef"
-description = "CEF のオフスクリーン描画を共有テクスチャで wgpu へ渡すホスト（段階 0 の試作）"
+description = "CEF のオフスクリーン描画を共有テクスチャで別プロセスのアプリへ渡すホスト（mm-host-api の実装）"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,13 @@ publish.workspace = true
 
 [features]
 # CEF の配布物（libcef.dll など、数百 MB）が要るので既定では切っておく。
-cef = ["dep:cef", "dep:wgpu", "dep:pollster", "dep:png", "dep:tracing", "dep:tracing-subscriber", "dep:mm-trace"]
+# 切ったビルドでもアプリ側のランチャー（CefLauncher）とテストの枠はコンパイルする。
+cef = ["dep:cef", "dep:wgpu", "dep:pollster", "dep:png", "dep:tracing", "dep:tracing-subscriber", "dep:mm-trace", "dep:mm-gpu"]
 
 [dependencies]
+mm-host-api = { workspace = true }
+mm-types = { workspace = true }
+serde_json = { workspace = true }
 cef = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 pollster = { workspace = true, optional = true }
@@ -18,6 +22,22 @@ png = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 mm-trace = { workspace = true, optional = true }
+mm-gpu = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading",
+  "Win32_Media",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi_Common",
+] }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+mm-gpu = { workspace = true }
+wgpu = { workspace = true }
 
 [lints]
 workspace = true

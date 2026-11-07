@@ -3150,12 +3150,18 @@ name = "mm-host-cef"
 version = "0.1.0"
 dependencies = [
  "cef",
+ "mm-gpu",
+ "mm-host-api",
+ "mm-testkit",
  "mm-trace",
+ "mm-types",
  "png",
  "pollster",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "wgpu",
+ "windows",
 ]
 
 [[package]]
