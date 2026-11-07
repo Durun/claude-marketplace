@@ -2,3 +2,4 @@
 
 mod contract;
 mod gpu_kinds;
+mod text;

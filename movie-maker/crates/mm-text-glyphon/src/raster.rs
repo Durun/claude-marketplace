@@ -5,8 +5,10 @@ use std::collections::HashMap;
 use cosmic_text::fontdb::{Weight, ID};
 use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem, SwashCache, SwashContent};
 
-use mm_text_api::{FaceRef, ShapedText, TextStyle};
+use mm_text_api::{FaceRef, ShapedText, TextStroke, TextStyle};
 use mm_types::{Rect, Rgba, RgbaImage, Size};
+
+use crate::stroke::Coverage;
 
 /// インクの矩形に足す余白（1 倍の画素）。倍率ごとのヒンティングのずれで端が切れないようにする。
 const INK_MARGIN: f32 = 1.0;
@@ -101,6 +103,11 @@ fn blend_glyph(
     }
 }
 
+/// 描く縁。太さが 0 以下か透明なら縁なし。
+pub(crate) fn visible_stroke(style: &TextStyle) -> Option<TextStroke> {
+    style.stroke.filter(|s| s.width_px > 0.0 && s.color.a > 0.0)
+}
+
 /// `shaped` のグリフを `scale` 倍で描く。画像の原点は `shaped.bounds` の左上。
 pub(crate) fn draw(
     fs: &mut FontSystem,
@@ -112,6 +119,19 @@ pub(crate) fn draw(
     let size = raster_size(shaped, scale);
     let mut img = RgbaImage::transparent(size);
     let origin = (shaped.bounds.x, shaped.bounds.y);
+    if let Some(stroke) = visible_stroke(style) {
+        let mut coverage = Coverage::new(size.width, size.height);
+        for_each_glyph_image(
+            fs,
+            cache,
+            shaped,
+            style,
+            scale,
+            origin,
+            |_key, image, left, top| coverage.add_glyph(image, left, top),
+        );
+        coverage.paint_stroke(&mut img, stroke.color, stroke.width_px * scale);
+    }
     for_each_glyph_image(
         fs,
         cache,

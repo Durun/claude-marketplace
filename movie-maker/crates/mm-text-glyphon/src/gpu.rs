@@ -386,6 +386,12 @@ impl TextRasterizer for GlyphonRasterizer {
         if shaped.lines.is_empty() || size.area() == 0 {
             return Ok(RgbaImage::transparent(size));
         }
+        if raster::visible_stroke(style).is_some() {
+            // 縁は被覆率の膨張で描くので CPU の経路に任せる。glyphon の atlas は縁を持たない。
+            let mut fonts = lock(&self.inner.fonts)?;
+            let (fs, cache) = &mut *fonts;
+            return Ok(raster::draw(fs, cache, shaped, style, scale));
+        }
         self.draw(shaped, style, scale, size)
     }
 }
