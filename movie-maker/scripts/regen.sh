@@ -1,5 +1,5 @@
 #!/bin/sh
-# 生成物を元から作り直す。マージで生成物が衝突したら手で直さず、これを走らせてから git add する。
+# 生成物を元から作り直す。マージで生成物が衝突したら手で直さず、これを実行してから git add する。
 #   Cargo.lock                                 衝突していれば main の側を土台にし、足りない分だけ cargo に足させる
 #   crates/mm-ops/schema/ops.json              操作の型から書き直す（tests/schema.rs）
 #   crates/mm-ingest-api/schema/*.schema.json  付属ファイルの型から書き直す

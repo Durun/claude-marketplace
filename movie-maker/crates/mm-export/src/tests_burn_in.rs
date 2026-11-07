@@ -223,7 +223,7 @@ fn diff_rows(a: &Arc<RgbaImage>, b: &Arc<RgbaImage>) -> Option<(u32, u32)> {
     rows
 }
 
-/// 字幕の境の前後と中ほどのフレーム（重ならない 3 件の字幕のそれぞれ）。
+/// 字幕の境界の前後と中ほどのフレーム（重ならない 3 件の字幕のそれぞれ）。
 fn probe_frames(cues: &[mm_decode_api::SubtitleCue]) -> Vec<i64> {
     let fps = Rational::integer(FPS as u32);
     let first_at_or_after = |time: RationalTime| {

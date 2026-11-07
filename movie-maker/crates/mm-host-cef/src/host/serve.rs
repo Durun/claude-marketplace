@@ -88,6 +88,14 @@ pub fn run(spec: &HostSpec, gpu: Arc<GpuContext>) -> Result<(), String> {
             break;
         }
     }
+    finish(server, metrics)
+}
+
+/// ブラウザーを閉じ、ページのフォルダーを消し、集めたスパンの分布を書く。
+fn finish(
+    mut server: Server,
+    metrics: Option<(String, mm_trace::MetricsHandle)>,
+) -> Result<(), String> {
     if let Some(browser) = server.browser.take() {
         browser::close(&browser);
     }

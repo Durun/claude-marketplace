@@ -8,7 +8,7 @@ use super::export::{DISSOLVE_KIND, DISSOLVE_TYPE};
 use super::import::{slug, Ctx, ImportOptions, CUT, SEQUENCE};
 use super::import_markers::{build_composition, collect_item_markers, track_markers, RawMarker};
 use super::time::{near, near_speed, range_from_json, rational_from_f64, time_from_json};
-use super::{read_meta, schema_name, CutMeta, TrackMeta};
+use super::{schema_name, CutMeta, TrackMeta, META_VERSION};
 use crate::{Composition, Cut, CutOverrides, Node, Sequence, Transition};
 
 /// 映像の素材のノードの種類のバージョン。
@@ -37,6 +37,28 @@ fn invalid(msg: String) -> MmError {
     MmError::InvalidArgument(msg)
 }
 
+/// トラックのメタデータ。ID を作り直す取り込み（`--as`）では使わず、捨てるコンポジションの設定を警告に出す。
+/// 形のバージョンが違えば、読めた分を使ったうえで警告する。
+fn track_meta(ctx: &mut Ctx, track: &Value) -> Option<TrackMeta> {
+    let meta: TrackMeta = ctx.meta(track)?;
+    if meta.version != META_VERSION {
+        ctx.warn(format!(
+            "トラックのメタデータの形のバージョン {} はこのビルドの {META_VERSION} と違う",
+            meta.version
+        ));
+    }
+    if ctx.keep_ids {
+        return Some(meta);
+    }
+    if let Some(c) = &meta.composition {
+        ctx.warn(format!(
+            "ID を作り直す取り込みでは、コンポジション {} の設定（大きさ、fps、ミキサー、レイヤーの音と変形）を取り込まない",
+            c.id
+        ));
+    }
+    None
+}
+
 /// 映像のトラック 1 本を sequence にする。マーカーかコンポジションのメタデータがあればコンポジションも返す。
 pub(super) fn import_track(
     ctx: &mut Ctx,
@@ -46,7 +68,7 @@ pub(super) fn import_track(
     count: usize,
     opts: &ImportOptions,
 ) -> Result<(Sequence, Option<Composition>)> {
-    let meta: Option<TrackMeta> = if ctx.keep_ids { read_meta(track) } else { None };
+    let meta = track_meta(ctx, track);
     let seq_id = sequence_id(ctx, track, meta.as_ref(), base, index, count, opts)?;
     let mut st = State {
         cuts: Vec::new(),
@@ -229,7 +251,7 @@ fn import_item(
         return Ok(None);
     };
     note_rate(item, st);
-    let meta: Option<CutMeta> = read_meta(item);
+    let meta: Option<CutMeta> = ctx.meta(item);
     let (enabled, gap) = item_state(ctx, item, &name, is_gap, duration, meta.as_ref());
     if enabled && duration <= RationalTime::ZERO {
         ctx.warn(format!("{name:?} は長さが 0 なので取り込まない"));

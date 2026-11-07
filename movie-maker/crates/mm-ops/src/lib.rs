@@ -6,7 +6,7 @@
 //!   [`Editor`] がプロジェクトのデータのバージョン番号、同時書き込みの判定（`touches` の重なり）、取り消しとやり直しを持つ。
 //! - ロックの付いたレイヤーに触る操作は、Claude の操作経路（[`Entry::is_claude`]）からは拒否する。
 //! - 保存の層は [`OpRecord`] と [`TxnRecord`] をそのまま表に書く。
-//! - Claude の編集は提案として保留でき、承認する分を [`select_ops`] で選び、[`preview_ops`] で写しに当てて見せる。
+//! - Claude の編集は提案として保留でき、承認する分を [`select_ops`] で選び、[`preview_ops`] でコピーに適用して見せる。
 //! - 全部の操作の JSON Schema は [`ops_schema`]（`schema/ops.json` に凍結）。
 
 mod context;

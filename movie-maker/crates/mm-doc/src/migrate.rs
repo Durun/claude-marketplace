@@ -23,7 +23,7 @@ pub fn load(json: &str) -> Result<Project> {
     Ok(project)
 }
 
-/// JSON の値を整数のバージョンで v9 まで上げ、まだ当てていない名前つきの移行を当てる。
+/// JSON の値を整数のバージョンで v9 まで上げ、まだ適用していない名前つきの移行を適用する。
 /// 始点より古いバージョン、今のバージョンより新しいバージョン、このビルドが知らない名前つきの移行は `Unsupported`。
 pub fn migrate(mut value: Value) -> Result<Value> {
     let mut version = schema_version(&value)?;

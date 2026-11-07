@@ -1,5 +1,5 @@
 //! `mm otio export` / `mm otio import`: sequence と OpenTimelineIO（`.otio`）の変換。
-//! 取り込みは素材と sequence を足す操作として 1 つのトランザクションで当て、`mm undo` で取り消せる。
+//! 取り込みは素材と sequence を足す操作として 1 つのトランザクションで適用し、`mm undo` で取り消せる。
 
 use std::path::{Path, PathBuf};
 

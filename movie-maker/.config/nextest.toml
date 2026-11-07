@@ -1,5 +1,5 @@
 # cargo-nextest の設定。CI の使い方と揺れるテストの隔離は docs/ci.md の「揺れるテストの隔離」。
-# nextest はテストを 1 つずつ別のプロセスで走らせる。同じプロセスで wgpu のデバイスを並列に作る衝突が起きない。
+# nextest はテストを 1 つずつ別のプロセスで実行する。同じプロセスで wgpu のデバイスを並列に作る衝突が起きない。
 
 # 手元は再試行しない。揺れを隠さず、その場で見えるようにする。
 [profile.default]
@@ -11,7 +11,8 @@ slow-timeout = { period = "60s" }
 retries = { backoff = "fixed", count = 2, delay = "1s" }
 fail-fast = false
 failure-output = "immediate-final"
-slow-timeout = { period = "60s" }
+# 止まったテスト（CEF や GPU の待ち）を 10 分で打ち切り、ジョブの期限まで待たずに JUnit と揺れの記録を残す。
+slow-timeout = { period = "60s", terminate-after = 10 }
 
 [profile.ci.junit]
 path = "junit.xml"

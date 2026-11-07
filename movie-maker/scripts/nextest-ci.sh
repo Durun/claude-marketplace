@@ -2,12 +2,12 @@
 # CI のテスト。隔離した揺れるテスト（ラベル flaky の開いた issue）を外して回し、隔離分は別に回して結果を問わない。
 # 再試行で通ったテストを JUnit から拾い、MM_FILE_FLAKY=1 のときは issue にして隔離する。仕組みは docs/ci.md。
 # 使い方: scripts/nextest-ci.sh [cargo nextest run の引数...]
-# 環境変数: MM_HEAVY=1（#[ignore] の通しの試験も回す）、MM_FILE_FLAKY=1（起票する）、GH_TOKEN、GITHUB_REPOSITORY。
+# 環境変数: MM_HEAVY=1（#[ignore] の通しのテストも回す）、MM_FILE_FLAKY=1（起票する）、GH_TOKEN、GITHUB_REPOSITORY。
 set -u
 
 LABEL=flaky
 PREFIX="flaky: "
-# 測定用の #[ignore]。release で手動で回すので、通しの試験を回すときも除く。
+# 測定用の #[ignore]。release で手動で回すので、通しのテストを回すときも除く。
 MEASURE='test(操作_10_万件の大きさ) | test(一万語の素材)'
 NEXTEST_DIR="${CARGO_TARGET_DIR:-target}/nextest"
 RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-0}"
@@ -19,8 +19,10 @@ summary() {
 
 # 開いた issue の題「flaky: <binary_id> <テスト名>」を nextest の filterset にする。読めなければ空（隔離なし）。
 # nextest はどのバイナリにも当たらない binary_id() を誤りにするので、引数 $1（この実行のバイナリの一覧）に有るものだけ入れる。
+# 題は filterset にそのまま入るので、CI が起票したものだけを読み、filterset の記号を含むテスト名は読みスキップする。
 quarantine_filter() {
-  titles=$(gh issue list --label "$LABEL" --state open --limit 500 --json title --jq '.[].title' 2>/dev/null) || {
+  titles=$(gh issue list --label "$LABEL" --state open --author app/github-actions --limit 500 \
+    --json title --jq '.[].title' 2>/dev/null) || {
     echo "::warning::flaky の issue を読めないので、隔離なしで回す" >&2
     return 0
   }
@@ -31,7 +33,12 @@ quarantine_filter() {
       if (sp == 0) next
       b = substr(rest, 1, sp - 1)
       if (!(b in have)) next
-      f = "(binary_id(=" b ") & test(=" substr(rest, sp + 1) "))"
+      t = substr(rest, sp + 1)
+      if (t ~ /[()|&,\\ ]/ || b ~ /[()|&,\\ ]/) {
+        print "::warning::flaky の issue の題を filterset にできないので読みスキップする: " $0 > "/dev/stderr"
+        next
+      }
+      f = "(binary_id(=" b ") & test(=" t "))"
       out = (out == "") ? f : out " | " f
     }
     END { print out }'
@@ -105,7 +112,7 @@ if [ -n "$quarantine" ]; then
   if cargo nextest run --profile quarantine --no-tests=warn "$@" -E "($base) & ($quarantine)"; then
     summary "全部通った。続けて通るなら issue を閉じて隔離を外せる"
   else
-    summary "落ちたものがある。JUnit（artifact）を見る"
+    summary "失敗したものがある。JUnit（artifact）を見る"
   fi
 fi
 

@@ -73,19 +73,21 @@ pub fn evaluate_audio(layer: &Layer, t: RationalTime) -> EvaluatedAudio<'_> {
 }
 
 /// 並びにソロのレイヤーがあるか。ソロはコンポジションの中だけで効く（入れ子の中のソロは親に及ばない）。
+/// 無効にしたレイヤーは鳴らないので、そのソロも数えない。
 pub fn any_solo(layers: &[Layer]) -> bool {
     layers
         .iter()
-        .any(|l| l.audio.as_ref().is_some_and(|a| a.solo))
+        .any(|l| l.enabled && l.audio.as_ref().is_some_and(|a| a.solo))
 }
 
-/// レイヤーの音が鳴るか。ミュートは鳴らさず、ソロのレイヤーがあればソロだけを鳴らす。
+/// レイヤーの音が鳴るか。無効にしたレイヤーとミュートは鳴らさず、ソロのレイヤーがあればソロだけを鳴らす。
 /// プレビューと書き出しが同じ判定を使うので、聞いた音のまま書き出せる。
 pub fn audible(layer: &Layer, any_solo: bool) -> bool {
-    match &layer.audio {
-        None => !any_solo,
-        Some(a) => !a.mute && (!any_solo || a.solo),
-    }
+    layer.enabled
+        && match &layer.audio {
+            None => !any_solo,
+            Some(a) => !a.mute && (!any_solo || a.solo),
+        }
 }
 
 /// レイヤーの不透明度を時刻 `t` で評価する。型が合わなければ 1。
@@ -171,5 +173,16 @@ mod tests {
         assert!(any_solo(&layers));
         assert!(audible(&solo, true) && !audible(&plain, true));
         assert!(!audible(&muted_solo, true), "ミュートはソロより強い");
+    }
+
+    #[test]
+    fn 無効にしたレイヤーは鳴らさず_そのソロはほかを黙らせない() {
+        let mut disabled_solo = with_audio("ds", false, true);
+        disabled_solo.enabled = false;
+        let plain = with_audio("p", false, false);
+        let layers = [disabled_solo.clone(), plain.clone()];
+        assert!(!any_solo(&layers));
+        assert!(audible(&plain, any_solo(&layers)));
+        assert!(!audible(&disabled_solo, false));
     }
 }

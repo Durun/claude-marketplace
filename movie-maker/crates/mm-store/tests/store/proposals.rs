@@ -134,7 +134,7 @@ fn 却下はデータを変えず_保留に戻せる() {
 }
 
 #[test]
-fn 提案の後に同じ所を触られたら承認は衝突で断り_別の所なら通る() {
+fn 提案の後に同じ所を触られたら承認は衝突で拒否し_別の所なら通る() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(3), NOW).unwrap();
     let a = propose(&mut s, vec![opacity(0, 0.5)], None).unwrap();
@@ -157,7 +157,7 @@ fn 提案の後に同じ所を触られたら承認は衝突で断り_別の所�
 }
 
 #[test]
-fn ロックの付いたレイヤーへの提案は受け付けず_後からロックされたら承認で断る() {
+fn ロックの付いたレイヤーへの提案は受け付けず_後からロックされたら承認で拒否する() {
     let tmp = tempfile::tempdir().unwrap();
     let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
     let id = propose(&mut s, vec![opacity(0, 0.5)], None).unwrap();

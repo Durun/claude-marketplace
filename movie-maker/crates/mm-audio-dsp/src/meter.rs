@@ -7,6 +7,9 @@ use mm_types::{MmError, Result};
 
 /// 統合ラウドネスに要る最短の長さ（秒）。BS.1770 の 1 ブロック（400 ms）に合わせる。
 const MIN_SECONDS: f64 = 0.4;
+/// 短期ラウドネスの窓（秒）。BS.1770 の短期の定義。`ebur128` は埋まるまでの窓を 0 で埋めて平均するので、
+/// 再生の始めとシークの後に低く出る値を出さない。
+const SHORT_TERM_SECONDS: f64 = 3.0;
 
 /// BS.1770 のメーター。
 pub struct DspLoudnessMeter {
@@ -62,8 +65,8 @@ impl DspMasterMeter {
         })
     }
 
-    fn enough_frames(&self) -> bool {
-        self.frames as f64 >= MIN_SECONDS * f64::from(self.sample_rate)
+    fn has_seconds(&self, seconds: f64) -> bool {
+        self.frames as f64 >= seconds * f64::from(self.sample_rate)
     }
 
     /// チャンネルの値を `get` で集める。読めないチャンネルは 0。
@@ -93,11 +96,12 @@ impl MasterMeter for DspMasterMeter {
             .per_channel(|s, c| s.true_peak(c).unwrap_or(0.0))
             .into_iter()
             .fold(0.0f32, f32::max);
-        let enough = self.enough_frames();
+        let short_full = self.has_seconds(SHORT_TERM_SECONDS);
+        let enough = self.has_seconds(MIN_SECONDS);
         Ok(MasterReading {
             peak,
             true_peak: (true_peak > 0.0).then_some(true_peak),
-            short_term_lufs: finite(self.state.loudness_shortterm()).filter(|_| enough),
+            short_term_lufs: finite(self.state.loudness_shortterm()).filter(|_| short_full),
             integrated_lufs: finite(self.state.loudness_global()).filter(|_| enough),
         })
     }

@@ -153,7 +153,7 @@ enum Command {
         #[command(subcommand)]
         command: proposal_cmd::ProposalCommand,
     },
-    /// sequence と OpenTimelineIO（`.otio`）の変換。取り込みは操作として当てる（取り消せる）。
+    /// sequence と OpenTimelineIO（`.otio`）の変換。取り込みは操作として適用する（取り消せる）。
     Otio {
         #[command(subcommand)]
         command: otio_cmd::OtioCommand,

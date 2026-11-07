@@ -60,7 +60,7 @@ pub use migrate::{load, migrate};
 pub use migrate_named::{copy_stamp, is_current, migration_names, version_stamp, MIGRATIONS_FIELD};
 pub use mixer::{
     CompMixer, Ducking, MixerBus, DEFAULT_DUCK_ATTACK_MS, DEFAULT_DUCK_REDUCTION_DB,
-    DEFAULT_DUCK_RELEASE_MS, DEFAULT_DUCK_THRESHOLD_DB,
+    DEFAULT_DUCK_RELEASE_MS, DEFAULT_DUCK_THRESHOLD_DB, MAX_MIXER_GAIN_DB,
 };
 pub use node::{
     Node, FOOTAGE_KIND, FOOTAGE_PARAM, GAP_KIND, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,

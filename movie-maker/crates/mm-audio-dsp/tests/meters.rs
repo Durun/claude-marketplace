@@ -63,6 +63,16 @@ fn マスターのメーターは基準の正弦波で_20_lufs_と振幅のピ�
 }
 
 #[test]
+fn 短期ラウドネスは_3_秒の窓が埋まるまで出さない() {
+    let mut meter = DspMixerFactory.master_meter(RATE, 2).expect("dsp は持つ");
+    let r = meter
+        .feed(&sine(997.0, 0.1, RATE as usize))
+        .expect("食わせる");
+    assert_eq!(r.short_term_lufs, None, "1 秒では窓が埋まらない");
+    assert!(r.integrated_lufs.is_some(), "統合は 400 ms から出す");
+}
+
+#[test]
 fn マスターのメーターは無音で測れず_リセットで最初からになる() {
     let mut meter = DspMixerFactory.master_meter(RATE, 2).expect("dsp は持つ");
     let r = meter

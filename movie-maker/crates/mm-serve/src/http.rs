@@ -280,9 +280,9 @@ struct FrameQuery {
     t: String,
     comp: Option<String>,
     width: Option<u32>,
-    /// 提案の ID。あれば提案を当てた絵を描く（書かない）。
+    /// 提案の ID。あれば提案を適用したフレームを描く（書かない）。
     proposal: Option<i64>,
-    /// 提案のうち当てる操作の番号（`0,2`）。省くと全部。
+    /// 提案のうち適用する操作の番号（`0,2`）。省くと全部。
     ops: Option<String>,
 }
 

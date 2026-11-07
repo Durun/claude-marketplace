@@ -1,8 +1,8 @@
 # CI
 
-`.github/workflows/movie-maker.yml`。PR、merge queue（`merge_group`）、`movie-maker/**` か workflow 自体を変えた main への push、手動の起動（`workflow_dispatch`）、夜間（`schedule`、毎日 03:00 JST）で走る。権限は `contents: read` が基本で、秘密の値は使わない（`issues: write` を持つのは `check`、`ffmpeg`、`perf-record`）。Rust のバージョンは `rust-toolchain.toml` に従う。夜間は `perf-record` だけが走る。
+`.github/workflows/movie-maker.yml`。PR、merge queue（`merge_group`）、`movie-maker/**` か workflow 自体を変えた main への push、手動の起動（`workflow_dispatch`）、夜間（`schedule`、毎日 03:00 JST）で実行する。権限は `contents: read` が基本で、秘密の値は使わない（`issues: write` を持つのは `check`、`ffmpeg`、`perf-record`）。Rust のバージョンは `rust-toolchain.toml` に従う。夜間は `perf-record` だけが走る。
 
-PR と merge queue は paths で絞らず、`changes` ジョブが差分（PR は `origin/<base>...HEAD`、merge queue は `base_sha...head_sha`）を見て、`movie-maker/` に関係の無い変更では各ジョブを飛ばす。必須のチェックは報告が無いと待ち続けるが、飛ばしたジョブは成功と見なされる。
+PR と merge queue は paths で絞らず、`changes` ジョブが差分（PR は `origin/<base>...HEAD`、merge queue は `base_sha...head_sha`）を見て、`movie-maker/` に関係の無い変更では各ジョブをスキップする。必須のチェックは報告が無いと待ち続けるが、飛ばしたジョブは成功と見なされる。
 
 | ジョブ | 環境 | いつ | 内容 |
 |---|---|---|---|
@@ -17,13 +17,13 @@ PR と merge queue は paths で絞らず、`changes` ジョブが差分（PR �
 
 ## PR と merge queue と main の違い
 
-PR は速く返すことを優先し、1 本が 30 秒を超える通しの試験を `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。merge queue、main への push、手動の起動は全部を回す（nextest の `--run-ignored all`）。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は filterset で除く。
+PR は速く返すことを優先し、1 本が 30 秒を超える通しのテストを `#[ignore = "通しのテスト。main への push と手動実行で実行する"]` で外す。merge queue、main への push、手動の起動は全部を回す（nextest の `--run-ignored all`）。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は filterset で除く。
 
-先行事例は GitHub の merge queue（Bors、Zuul のゲートの系譜）。PR では軽い検査で早く返し、main に入る直前の組み合わせ（基点の先端と PR を合わせたコミット）で重い試験を回す。重い試験が main を壊すのを、入った後ではなく入る前に止める。
+先行事例は GitHub の merge queue（Bors、Zuul のゲートの系譜）。PR では軽い検査で早く返し、main に入る直前の組み合わせ（基点の先端と PR を合わせたコミット）で重いテストを回す。重いテストが main を壊すのを、入った後ではなく入る前に止める。
 
 | 項目 | PR | merge queue、main の push、手動 |
 |---|---|---|
-| 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`caption_burn_in`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
+| 通しのテスト（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`caption_burn_in`、`render` の 2 レンダーターゲット、`mm` の kill のテスト、`mm-store` の kill のテスト 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
 | `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
 | `perf-gate`、`semver` | 回す（`perf-gate` は性能に関わるファイルを変えたときだけ） | なし（main では `perf-record` が測る） |
 | 再試行で通ったテストの起票 | しない（job summary と注釈に出すだけ） | merge queue と main の push でする |
@@ -34,7 +34,7 @@ merge queue は GitHub の ruleset で有効にする（リポジトリの設定
 
 ## テストの回し方
 
-テストは [cargo-nextest](https://nexte.st/) で回す。設定は `.config/nextest.toml`、CI の入り口は `scripts/nextest-ci.sh`。nextest はテストを 1 つずつ別のプロセスで走らせるので、同じプロセスで wgpu のデバイスを並列に作る衝突（`STATUS_HEAP_CORRUPTION`）が起きない。doc テストは無いので `cargo test --doc` は回さない。
+テストは [cargo-nextest](https://nexte.st/) で回す。設定は `.config/nextest.toml`、CI から呼ぶのは `scripts/nextest-ci.sh`。nextest はテストを 1 つずつ別のプロセスで実行するので、同じプロセスで wgpu のデバイスを並列に作る衝突（`STATUS_HEAP_CORRUPTION`）が起きない。doc テストは無いので `cargo test --doc` は回さない。
 
 | プロファイル | 再試行 | 用途 |
 |---|---|---|
@@ -60,7 +60,7 @@ JUnit は artifact（`junit-check`、`junit-ffmpeg`、14 日）に残る。
 4. 2 の JUnit から、再試行で通ったテストを拾う。PR では job summary と注釈に出すだけ。merge queue と main の push では issue を作る（同じ題の開いた issue があれば、実行の URL をコメントに足す）。次の実行から隔離される
 5. 直したら、直す PR の本文に `Closes #<issue>` と書く。マージで issue が閉じ、隔離が外れる。隔離中の実行で続けて通っていれば、issue を閉じるだけでもよい
 
-再試行でも落ちたテストは揺れではなく失敗として扱い、ジョブを落とす。issue を読めない（トークンが無いなど）ときは、隔離なしで回す。
+再試行でも失敗したテストは揺れではなく失敗として扱い、ジョブを失敗にする。issue を読めない（トークンが無いなど）ときは、隔離なしで回す。
 
 ## API クレートのバージョンの検査
 

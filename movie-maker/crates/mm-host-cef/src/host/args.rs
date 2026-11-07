@@ -65,7 +65,7 @@ fn parse_size(v: &str) -> Result<(u32, u32), String> {
     Ok((number("--size", w)?, number("--size", h)?))
 }
 
-/// コマンドラインを読む。`--名前=値` は Chromium のスイッチとして CEF が読むので飛ばす。
+/// コマンドラインを読む。`--名前=値` は Chromium のスイッチとして CEF が読むのでスキップする。
 pub fn parse_bench() -> Result<BenchOptions, String> {
     let mut opts = BenchOptions::default();
     let mut it = std::env::args()

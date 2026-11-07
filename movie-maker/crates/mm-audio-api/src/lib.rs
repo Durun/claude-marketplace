@@ -127,7 +127,7 @@ pub struct BusConfig {
 pub struct DuckingConfig {
     /// 鳴ると他を下げるバスの役割（例: `voice`）。
     pub trigger: String,
-    /// 下げられるバスの役割（例: `bgm`）。
+    /// 対象のバス（下げられる側）の役割（例: `bgm`）。
     pub targets: Vec<String>,
     /// 下げる量（dB）。負の値。
     pub reduction_db: f32,

@@ -19,8 +19,8 @@ use crate::frames::{parse_time, FrameRequest};
 use crate::http::{blocking, error_body, AppState};
 use crate::mcp_tools::{tools, COMMON_ARGS};
 
-/// 要求の `protocolVersion` が無いときに返す版。
-const DEFAULT_PROTOCOL: &str = "2025-06-18";
+/// 応じられる MCP の仕様の日付。先頭が最新で、要求が無いか知らない日付のときに返す（仕様の版の交渉）。
+const SUPPORTED_PROTOCOLS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
@@ -29,7 +29,8 @@ const INVALID_PARAMS: i64 = -32602;
 
 const INSTRUCTIONS: &str = "動画編集アプリ movie-maker を操作する。操作ごとのツール（ripple、addLayer など）は 1 回で 1 つの取り消しの単位になる。\
 コメントへの対応のように複数の操作を 1 つの単位にしたいときは transaction を使い、responds_to にコメントの ID を渡す。\
-frame で仕上がりを見て確かめ、間違えたら undo で戻す。ロックの付いたレイヤーには触れない。";
+frame で仕上がりを見て確かめ、間違えたら undo で戻す。ロックの付いたレイヤーには触れない。\
+人に見てから入れてほしい編集は propose で提案として保留する（承認と却下は人がアプリでする）。proposals で状態を読み、frame の proposal で提案を適用したフレームを見る。";
 
 /// `POST /mcp`。通知（`id` が無い）は 202 で本体なし、それ以外は JSON-RPC の応答を JSON で返す。
 pub(crate) async fn post_mcp(State(st): State<Arc<AppState>>, body: Bytes) -> Response {
@@ -84,7 +85,8 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Response {
 fn initialize(params: &Value) -> Value {
     let version = params["protocolVersion"]
         .as_str()
-        .unwrap_or(DEFAULT_PROTOCOL);
+        .filter(|v| SUPPORTED_PROTOCOLS.contains(v))
+        .unwrap_or(SUPPORTED_PROTOCOLS[0]);
     json!({
         "protocolVersion": version,
         "capabilities": { "tools": {} },
@@ -128,12 +130,20 @@ async fn run_tool(
     let core = st.core.clone();
     let caller = Caller::mcp();
     match name {
-        "transaction" => {
+        "transaction" | "propose" => {
             let a: TransactionArgs = parse_args(args)?;
             let mut txn = Transaction::new(a.name, a.ops);
             txn.base_version = a.base_version;
-            let change = blocking(move || core.apply(txn, &caller, a.responds_to)).await?;
-            Ok(vec![text(&change)])
+            let result = if name == "propose" {
+                text(&blocking(move || core.propose(txn, &caller, a.responds_to)).await?)
+            } else {
+                text(&blocking(move || core.apply(txn, &caller, a.responds_to)).await?)
+            };
+            Ok(vec![result])
+        }
+        "proposals" => {
+            let proposals = blocking(move || core.proposals()).await?;
+            Ok(vec![text(&json!({ "proposals": proposals }))])
         }
         "undo" => {
             let change = blocking(move || core.undo(&caller)).await?;
@@ -147,20 +157,7 @@ async fn run_tool(
             let view = blocking(move || core.project()).await?;
             Ok(vec![text(&view)])
         }
-        "frame" => {
-            let a: FrameArgs = parse_args(args)?;
-            let request = FrameRequest {
-                composition: a.comp,
-                time: parse_time(&a.t)?,
-                width: a.width,
-            };
-            let png = blocking(move || core.frame_png(&request)).await?;
-            Ok(vec![json!({
-                "type": "image",
-                "data": base64(&png),
-                "mimeType": "image/png",
-            })])
-        }
+        "frame" => frame(core, args).await,
         op if tools().op_names.contains(op) => {
             let (txn, responds_to) = op_transaction(op, args)?;
             let change = blocking(move || core.apply(txn, &caller, responds_to)).await?;
@@ -187,6 +184,38 @@ struct FrameArgs {
     t: String,
     comp: Option<String>,
     width: Option<u32>,
+    /// 提案の ID。あれば提案を適用したフレームを描く（書かない）。
+    proposal: Option<i64>,
+    /// 提案のうち適用する操作の番号。省くと全部。
+    ops: Option<Vec<usize>>,
+}
+
+/// `frame`。`GET /frame` と同じく、`proposal` があれば提案を適用したフレームを描く。
+async fn frame(
+    core: Arc<crate::core::Core>,
+    args: Map<String, Value>,
+) -> Result<Vec<Value>, ServeError> {
+    let a: FrameArgs = parse_args(args)?;
+    if a.ops.is_some() && a.proposal.is_none() {
+        return Err(ServeError::BadRequest(
+            "ops は proposal と一緒に渡す".into(),
+        ));
+    }
+    let request = FrameRequest {
+        composition: a.comp,
+        time: parse_time(&a.t)?,
+        width: a.width,
+    };
+    let png = blocking(move || match a.proposal {
+        Some(id) => core.preview_frame_png(id, a.ops.as_deref(), &request),
+        None => core.frame_png(&request),
+    })
+    .await?;
+    Ok(vec![json!({
+        "type": "image",
+        "data": base64(&png),
+        "mimeType": "image/png",
+    })])
 }
 
 fn parse_args<T: serde::de::DeserializeOwned>(args: Map<String, Value>) -> Result<T, ServeError> {

@@ -23,7 +23,7 @@ const FPS: f64 = 30.0;
 /// 書き出しの絵の大きさ。字幕の字の大きさは短い辺に比例するので、見える大きさにする。
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
-/// 字幕の境から離して見るフレーム数。ms への丸めと MP4 の時刻の誤差に影響されない余白。
+/// 字幕の境界から離して見るフレーム数。ms への丸めと MP4 の時刻の誤差に影響されない余白。
 const MARGIN_FRAMES: i64 = 3;
 /// 字幕が出ているとみなす、違う画素の数と 1 画素の輝度の差（0〜255）。
 const MIN_DIFF_PIXELS: usize = 200;
@@ -220,7 +220,7 @@ fn frames_to_check(cues: &[Cue]) -> Vec<(i64, bool)> {
 }
 
 #[test]
-#[ignore = "通しの試験。main への push と手動実行で走らせる"]
+#[ignore = "通しのテスト。main への push と手動実行で実行する"]
 fn 焼き込んだ字幕は字幕の時間だけ下部に出る() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("p");

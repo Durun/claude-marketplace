@@ -7,7 +7,7 @@ use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
 use super::import::{Ctx, COMPOSITION, LAYER, MARKER};
 use super::import_track::State;
 use super::time::range_from_json;
-use super::{sequence_layer, TrackMeta};
+use super::{sequence_layer, TrackMeta, NAMESPACE};
 use crate::{Composition, Layer, Marker, Node, SEQUENCE_KIND, SEQUENCE_PARAM};
 
 /// マーカーを持つコンポジションの大きさ。OTIO は画面の大きさを持たないので既定にする。
@@ -75,7 +75,7 @@ fn markers_in(
             time: to_track(start)?,
             duration: duration.max(RationalTime::ZERO),
             id: m
-                .pointer("/metadata/movie-maker/id")
+                .pointer(&format!("/metadata/{NAMESPACE}/id"))
                 .and_then(Value::as_str)
                 .map(str::to_owned),
         });
@@ -95,10 +95,12 @@ pub(super) fn build_composition(
         .filter(|c| sequence_layer(c, seq).is_some());
     let mut comp = match from_meta {
         Some(c) => {
-            if ctx.is_used(COMPOSITION, c.id.as_str()) {
+            let taken = std::iter::once((COMPOSITION, c.id.as_str()))
+                .chain(c.layers.iter().map(|l| (LAYER, l.id.as_str())))
+                .find(|(kind, id)| ctx.is_used(kind, id));
+            if let Some((kind, id)) = taken {
                 return Err(MmError::InvalidArgument(format!(
-                    "コンポジション {} は既に在る（--as で別の ID にして取り込める）",
-                    c.id
+                    "{kind} {id} は既に在る（--as で別の ID にして取り込める）"
                 )));
             }
             c
