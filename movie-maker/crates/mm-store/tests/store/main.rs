@@ -5,6 +5,8 @@ mod common;
 mod crash;
 mod export;
 mod history;
+mod proposals;
+mod proposals_props;
 mod scale;
 mod scale_words;
 mod token;

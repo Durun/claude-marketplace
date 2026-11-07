@@ -46,6 +46,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/project", get(get_project))
         .route("/frame", get(get_frame))
         .route("/events", get(get_events))
+        .merge(crate::proposals_http::routes())
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -125,6 +126,7 @@ impl IntoResponse for ServeError {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", json!({})),
             Self::Unavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "unavailable", json!({})),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", json!({})),
+            Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden", json!({})),
         };
         let mut body = json!({ "code": code, "message": message });
         if let (Some(obj), Some(more)) = (body.as_object_mut(), extra.as_object()) {
@@ -137,29 +139,29 @@ impl IntoResponse for ServeError {
 /// `POST /ops` の本体。`txn` か `op` のどちらか 1 つ。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct OpsBody {
+pub(crate) struct OpsBody {
     /// トランザクション（`name`、`base_version`、`ops`）。
-    txn: Option<Transaction>,
+    pub(crate) txn: Option<Transaction>,
     /// 操作 1 つ。`name` と `base_version` でトランザクションにする。
-    op: Option<Op>,
-    name: Option<String>,
-    base_version: Option<u64>,
+    pub(crate) op: Option<Op>,
+    pub(crate) name: Option<String>,
+    pub(crate) base_version: Option<u64>,
     /// 操作経路。`cli`（既定）か `mcp`。ロックの付いた所に触る操作は、どちらでも拒否する。
-    entry: Option<String>,
-    actor: Option<ActorBody>,
+    pub(crate) entry: Option<String>,
+    pub(crate) actor: Option<ActorBody>,
     /// 対応しているコメントの ID。
-    responds_to: Option<String>,
+    pub(crate) responds_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ActorBody {
+pub(crate) struct ActorBody {
     /// 呼び出し側の名前だけ。種類（`cli` か `mcp`）は操作経路で決まり、名乗れない。
     name: String,
 }
 
 impl OpsBody {
-    fn transaction(&mut self) -> Result<Transaction, ServeError> {
+    pub(crate) fn transaction(&mut self) -> Result<Transaction, ServeError> {
         match (self.txn.take(), self.op.take()) {
             (Some(txn), None) => {
                 if self.name.is_some() || self.base_version.is_some() {
@@ -181,7 +183,7 @@ impl OpsBody {
         }
     }
 
-    fn caller(&mut self) -> Result<Caller, ServeError> {
+    pub(crate) fn caller(&mut self) -> Result<Caller, ServeError> {
         let (entry, default_actor) = match self.entry.as_deref().unwrap_or("cli") {
             "cli" => (Entry::Cli, ("cli", "mm")),
             "mcp" => (Entry::Mcp, ("mcp", "claude")),
@@ -218,8 +220,8 @@ async fn post_ops(State(st): State<Arc<AppState>>, body: Bytes) -> Result<Respon
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HistoryBody {
-    entry: Option<String>,
-    actor: Option<ActorBody>,
+    pub(crate) entry: Option<String>,
+    pub(crate) actor: Option<ActorBody>,
 }
 
 fn history_caller(body: &Bytes) -> Result<Caller, ServeError> {
@@ -271,6 +273,10 @@ struct FrameQuery {
     t: String,
     comp: Option<String>,
     width: Option<u32>,
+    /// 提案の ID。あれば提案を当てた絵を描く（書かない）。
+    proposal: Option<i64>,
+    /// 提案のうち当てる操作の番号（`0,2`）。省くと全部。
+    ops: Option<String>,
 }
 
 async fn get_frame(
@@ -282,8 +288,17 @@ async fn get_frame(
         time: parse_time(&q.t)?,
         width: q.width,
     };
+    let selection = q
+        .ops
+        .as_deref()
+        .map(crate::proposals_http::parse_indices)
+        .transpose()?;
     let core = st.core.clone();
-    let png = blocking(move || core.frame_png(&request)).await?;
+    let png = blocking(move || match q.proposal {
+        Some(id) => core.preview_frame_png(id, selection.as_deref(), &request),
+        None => core.frame_png(&request),
+    })
+    .await?;
     Ok(([(header::CONTENT_TYPE, "image/png")], png).into_response())
 }
 
@@ -311,7 +326,14 @@ async fn get_events(
         };
         Ok(event.unwrap_or_else(|e| Event::default().event("error").data(e.to_string())))
     });
-    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes);
+    // 提案の通知は取りこぼしても `GET /proposals` で読み直せるので、取りこぼしは送らない。
+    let proposals = BroadcastStream::new(st.core.subscribe_proposals()).filter_map(|item| {
+        let event = Event::default().event("proposal").json_data(item.ok()?);
+        Some(Ok(event.unwrap_or_else(|e| {
+            Event::default().event("error").data(e.to_string())
+        })))
+    });
+    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals));
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 

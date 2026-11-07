@@ -288,7 +288,8 @@ impl Player {
     fn reload(&mut self) {
         let touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
         let Some(doc) = self.shared.doc() else { return };
-        if let Err(e) = self.adopt_project(doc.project, &touched) {
+        let project = crate::review::previewed(&self.shared).unwrap_or(doc.project);
+        if let Err(e) = self.adopt_project(project, &touched) {
             tracing::warn!("保存した変更を描画に取り込めない: {e}");
         }
     }

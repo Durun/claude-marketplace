@@ -16,6 +16,7 @@ mod ingest_cmd;
 mod opargs;
 mod perf;
 mod project;
+mod proposal_cmd;
 mod remote;
 mod render_cmd;
 mod scenes;
@@ -145,6 +146,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Claude の編集の提案（保留、一覧、承認、却下、保留に戻す）。
+    Proposal {
+        #[command(subcommand)]
+        command: proposal_cmd::ProposalCommand,
+    },
     /// 性能の計測。
     Perf {
         #[command(subcommand)]
@@ -240,6 +246,7 @@ fn run(cli: Cli) -> Result<()> {
             width,
         }),
         Command::Render(args) => render_cmd::render(&args),
+        Command::Proposal { command } => proposal_cmd::run(command),
         Command::Shorts { project, json } => shorts_cmd::shorts(&project, json),
         Command::Subtitles(args) => captions_cmd::subtitles(&args),
         Command::Perf { command } => run_perf(command),
@@ -302,6 +309,7 @@ fn run_store_command(command: Command) -> Result<()> {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Render(_) => "render",
+        Command::Proposal { .. } => "proposal",
         Command::Shorts { .. } => "shorts",
         Command::Subtitles(_) => "subtitles",
         Command::Perf { .. } => "perf",

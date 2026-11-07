@@ -10,10 +10,34 @@ use crate::SqlExt;
 pub const APPLICATION_ID: i32 = 0x4d4d_4442;
 
 /// DDL を 1 つずつ適用した先のバージョン。`MIGRATIONS` の長さと一致する。
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// バージョン `i` から `i + 1` に上げる DDL。プロジェクトのデータの JSON の形の移行は `mm_doc::migrate` が持つ。
-pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3];
+pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
+
+/// バージョン 4: Claude の編集の提案（保留中のトランザクション）。承認で適用したトランザクションを `txn_id` で指す。
+/// `ops` は提案した操作（`Op` の JSON の配列）、`touches` は受け付けたときに当てて求めた所、`approved_ops` は承認した操作の番号。
+const V4: &str = "
+CREATE TABLE proposals (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  entry TEXT NOT NULL,
+  actor_kind TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  at_ms INTEGER NOT NULL,
+  responds_to TEXT,
+  base_version INTEGER NOT NULL,
+  ops TEXT NOT NULL,
+  touches TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected')),
+  decided_kind TEXT,
+  decided_name TEXT,
+  decided_at_ms INTEGER,
+  txn_id INTEGER REFERENCES txns(id),
+  approved_ops TEXT
+);
+CREATE INDEX proposals_state ON proposals(state);
+";
 
 /// バージョン 3: 素材の整理と文字起こしの修正の行（プロジェクトのデータ v6）と、文字起こしの本文と全文検索。
 ///
@@ -352,6 +376,24 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn バージョン_3_の_db_に提案の表が足され_状態の外の値は拒否する() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn, &[V1, V2, V3]).unwrap();
+        migrate(&mut conn, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), 4);
+        let insert = |state: &str| {
+            conn.execute(
+                "INSERT INTO proposals(name, entry, actor_kind, actor_name, at_ms, base_version,
+                                       ops, touches, state)
+                 VALUES ('p', 'mcp', 'mcp', 'claude', 0, 0, '[]', '[]', ?1)",
+                [state],
+            )
+        };
+        assert!(insert("pending").is_ok());
+        assert!(insert("merged").is_err());
     }
 
     #[test]

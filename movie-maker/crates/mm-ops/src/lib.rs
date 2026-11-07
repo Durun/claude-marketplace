@@ -6,6 +6,7 @@
 //!   [`Editor`] がプロジェクトのデータのバージョン番号、同時書き込みの判定（`touches` の重なり）、取り消しとやり直しを持つ。
 //! - ロックの付いたレイヤーに触る操作は、Claude の操作経路（[`Entry::is_claude`]）からは拒否する。
 //! - 保存の層は [`OpRecord`] と [`TxnRecord`] をそのまま表に書く。
+//! - Claude の編集は提案として保留でき、承認する分を [`select_ops`] で選び、[`preview_ops`] で写しに当てて見せる。
 //! - 全部の操作の JSON Schema は [`ops_schema`]（`schema/ops.json` に凍結）。
 
 mod context;
@@ -14,6 +15,7 @@ mod error;
 mod op;
 mod ops;
 mod param_ref;
+mod proposal;
 mod schema;
 mod shorts;
 mod touches;
@@ -25,6 +27,9 @@ pub use error::{OpError, OpResult};
 pub use op::{Applied, Op};
 pub use ops::*;
 pub use param_ref::ParamRef;
+pub use proposal::{
+    preview_ops, proposal_scope, select_ops, LayerRef, ProposalScope, SequenceSpan,
+};
 pub use schema::{ops_schema, ops_schema_json, SCHEMA_PATH};
 pub use touches::Touches;
 pub use txn::{apply_transaction, OpRecord, Transaction, TxnOutcome};

@@ -5,4 +5,5 @@ mod crash;
 mod ingest;
 mod ingest_remote;
 mod ops;
+mod proposals;
 mod remote;

@@ -3331,6 +3331,7 @@ dependencies = [
  "mm-doc",
  "mm-ops",
  "mm-types",
+ "proptest",
  "rusqlite",
  "serde",
  "serde_json",

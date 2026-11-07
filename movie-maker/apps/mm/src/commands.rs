@@ -91,7 +91,7 @@ pub(crate) fn open_target(dir: &Path) -> Result<Target> {
 }
 
 /// 読むだけの用途で開く。ロックを取らず、別のプロセスが書き手でもそのまま読む。
-fn open_reader(dir: &Path) -> Result<Store> {
+pub(crate) fn open_reader(dir: &Path) -> Result<Store> {
     Store::open_read_only(dir)
 }
 
@@ -151,7 +151,28 @@ pub fn op(
     tokens: &[String],
     txn_file: Option<&Path>,
 ) -> Result<()> {
-    let txn = match (name, txn_file) {
+    let txn = build_txn(name, tokens, txn_file)?;
+    let mut store = match open_target(dir)? {
+        Target::Local(store) => *store,
+        Target::Remote(client) => return remote::op(&client, &txn),
+    };
+    let stored = store
+        .apply_txn(txn, &cli_context(), actor(), now_ms(), None)
+        .map_err(op_error)?;
+    println!("バージョン {}: {}", stored.doc_version, stored.name);
+    for line in describe_txns(std::slice::from_ref(&stored)) {
+        println!("  {line}");
+    }
+    finish(store)
+}
+
+/// 操作の名前と引数か、`--txn` のファイルからトランザクションを作る（`mm op` と `mm proposal add`）。
+pub(crate) fn build_txn(
+    name: Option<&str>,
+    tokens: &[String],
+    txn_file: Option<&Path>,
+) -> Result<Transaction> {
+    Ok(match (name, txn_file) {
         (Some(_), Some(_)) => {
             return Err(MmError::InvalidArgument(
                 "操作の名前と --txn は同時に渡せない".into(),
@@ -171,19 +192,7 @@ pub fn op(
             t
         }
         (None, Some(file)) => read_txn(file, tokens)?,
-    };
-    let mut store = match open_target(dir)? {
-        Target::Local(store) => *store,
-        Target::Remote(client) => return remote::op(&client, &txn),
-    };
-    let stored = store
-        .apply_txn(txn, &cli_context(), actor(), now_ms(), None)
-        .map_err(op_error)?;
-    println!("バージョン {}: {}", stored.doc_version, stored.name);
-    for line in describe_txns(std::slice::from_ref(&stored)) {
-        println!("  {line}");
-    }
-    finish(store)
+    })
 }
 
 /// `--txn` のファイル（`Transaction` の JSON）を読む。`--base` で元にしたバージョンを上書きできる。

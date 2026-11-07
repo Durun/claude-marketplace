@@ -118,6 +118,9 @@ pub enum ServeError {
     /// 保存や描画の失敗。
     #[error("{0}")]
     Internal(String),
+    /// この操作経路からは許さない（Claude の操作経路からの提案の決定など）。
+    #[error("{0}")]
+    Forbidden(String),
 }
 
 impl From<OpError> for ServeError {
@@ -155,18 +158,22 @@ pub struct Core {
     /// 走っているバックアップ。`Store` のロックの外の別のスレッドで作る（DB 全体のコピーは長い）。
     backup: Mutex<Option<JoinHandle<()>>>,
     events: broadcast::Sender<Change>,
-    frames: Option<Arc<dyn FrameSource>>,
+    /// 提案の追加と決定の通知。プロジェクトのデータは変わらないので `events` とは分ける。
+    pub(crate) proposals: broadcast::Sender<crate::review::ProposalEvent>,
+    pub(crate) frames: Option<Arc<dyn FrameSource>>,
 }
 
 impl Core {
     /// 書き手として開いた `Store` を預かる。`frames` が無ければ `GET /frame` は 503。
     pub fn new(store: Store, frames: Option<Arc<dyn FrameSource>>) -> Arc<Self> {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
+        let (proposals, _) = broadcast::channel(EVENT_BACKLOG);
         Arc::new(Self {
             version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
             backup: Mutex::new(None),
             events,
+            proposals,
             frames,
         })
     }
@@ -177,7 +184,7 @@ impl Core {
             .map_err(|_| ServeError::Internal("`Store` のロックが壊れた".into()))
     }
 
-    fn with_store<T>(
+    pub(crate) fn with_store<T>(
         &self,
         f: impl FnOnce(&mut Store) -> Result<T, ServeError>,
     ) -> Result<T, ServeError> {
@@ -255,7 +262,12 @@ impl Core {
     }
 
     /// 書いた後の仕事。間隔が過ぎたバックアップ、描画側のキャッシュの無効化、購読者への通知。
-    fn finish(&self, store: &mut Store, stored: &StoredTxn, of: Option<ChangeOf>) -> Change {
+    pub(crate) fn finish(
+        &self,
+        store: &mut Store,
+        stored: &StoredTxn,
+        of: Option<ChangeOf>,
+    ) -> Change {
         self.version.store(store.doc_version(), Ordering::Release);
         if let Some(job) = store.take_due_backup(now_ms()) {
             self.spawn_backup(job);

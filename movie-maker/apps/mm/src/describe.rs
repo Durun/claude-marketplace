@@ -39,6 +39,11 @@ pub fn describe_txns(txns: &[StoredTxn]) -> Vec<String> {
         .collect()
 }
 
+/// 操作 1 つの文（`mm proposal list` が提案の操作を並べる）。
+pub fn describe_op_text(op: &Value) -> String {
+    describe_op(op).0
+}
+
 fn describe_op(op: &Value) -> (String, Option<String>) {
     let name = op["op"].as_str().unwrap_or("?");
     if name == "setParam" {
