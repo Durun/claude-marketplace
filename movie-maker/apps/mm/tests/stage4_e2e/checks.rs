@@ -1,4 +1,4 @@
-//! 通しの試験の測り。書き出したファイルからフレームを抜いて SSIM で比べ、字幕・チャプター・ラウドネスを読む。
+//! 通しのテストの計測。書き出したファイルからフレームを抜いて SSIM で比べ、字幕・チャプター・ラウドネスを読む。
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -43,8 +43,8 @@ pub fn ssim(a: &Path, b: &Path) -> f64 {
     tail.split_whitespace().next().unwrap().parse().unwrap()
 }
 
-/// 本編の PNG から、縦の画布に縦横比を保って収め、`scale` 倍して `shift` だけ横にずらして切り出した絵を作る。
-/// レンダラーの再フレーミング（収める矩形の高さの丸め、画布の中心での拡大）を ffmpeg のフィルターで写したもの。
+/// 本編の PNG から、縦の画布に縦横比を保って収め、`scale` 倍して `shift` だけ横にずらして切り出した画像を作る。
+/// レンダラーの再フレーミング（収める矩形の高さの丸め、画布の中心での拡大）を ffmpeg のフィルターで再現したもの。
 pub fn reframe_png(
     main: &Path,
     out: &Path,

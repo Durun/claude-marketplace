@@ -41,7 +41,7 @@ fn short_cut<'a>(p: &'a Project, id: &str) -> &'a Cut {
 }
 
 #[test]
-fn 元のカットを直すと参照のカットに写る() {
+fn 元のカットを直すと参照のカットに反映される() {
     let mut p = project(OriginRelation::Reference);
     let before = p.reference_snapshot();
     p.cut_mut(&Id::new("m1")).unwrap().out_point = secs(3);
@@ -52,7 +52,7 @@ fn 元のカットを直すと参照のカットに写る() {
 }
 
 #[test]
-fn 上書きした所は写さず_上書きしていない所は写す() {
+fn 上書きした所は反映せず_上書きしていない所は反映する() {
     let mut p = project(OriginRelation::Reference);
     {
         let s1 = p.cut_mut(&Id::new("s1")).unwrap();
@@ -115,7 +115,7 @@ fn 足した参照のカットは元と同じ値なら通り_違えば拒否す�
 }
 
 #[test]
-fn 複製のカットは写さない() {
+fn 複製のカットは反映しない() {
     let mut p = project(OriginRelation::Fork);
     let before = p.reference_snapshot();
     p.cut_mut(&Id::new("m1")).unwrap().out_point = secs(3);
@@ -126,7 +126,7 @@ fn 複製のカットは写さない() {
 }
 
 #[test]
-fn ショートのショートは元のショートを写した後に写す() {
+fn ショートのショートは元のショートを反映した後に反映する() {
     let mut p = project(OriginRelation::Reference);
     p.sequences.push(Sequence {
         id: Id::new("a-shorter"),

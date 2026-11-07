@@ -15,7 +15,7 @@ export interface TargetRowProps {
   specs: FieldSpec[];
   overview: DeliverOverview;
   sequence: string;
-  /** 列に積んだ順番（1 から）。積んでいなければ `null`。 */
+  /** キューに積んだ順番（1 から）。積んでいなければ `null`。 */
   position: number | null;
   onToggle: () => void;
   onEdit: () => void;

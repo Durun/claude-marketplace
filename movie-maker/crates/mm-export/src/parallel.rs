@@ -1,8 +1,8 @@
-//! 並行の書き出し。区間を短いチャンクに分け、複数のレンダラー（`Engine` の組み立てを区間ごとのワーカーに 1 つずつ）で
-//! 描き、受け取りの側がフレームの順にエンコーダーへ押す（`06-engine.md` の「書き出し」）。
+//! 並行の書き出し。区間を短いチャンクに分け、複数のレンダラー（`Engine` の組み立てをワーカーごとに 1 つずつ）で
+//! 描き、受け取りの側がフレームの順にエンコーダーへ送る（`06-engine.md` の「書き出し」）。
 //!
 //! 音は並行にしない。呼び出し側が区間の全体を 1 回で混ぜるので、チャンクの境で音は切れない。
-//! 映像はチャンクの番号順にしか押さないので、順序と数は 1 つのレンダラーで描いたときと同じ。
+//! 映像はチャンクの番号順にしか送らないので、順序と数は 1 つのレンダラーで描いたときと同じ。
 
 use std::ops::Range;
 use std::time::{Duration, Instant};
@@ -61,7 +61,7 @@ enum Chunk {
     Rgba(Vec<RgbaImage>),
 }
 
-/// チャンクを描いている間だけエンコーダーのふりをして、押されたフレームを溜める。
+/// チャンクを描いている間だけエンコーダーのふりをして、送られたフレームを溜める。
 struct Collect {
     chunk: Chunk,
 }
@@ -92,7 +92,7 @@ impl Encoder for Collect {
     }
 
     fn push_audio(&mut self, _block: &mm_audio_api::AudioBlock) -> Result<()> {
-        Err(MmError::Internal("チャンクに音は押さない".into()))
+        Err(MmError::Internal("チャンクに音は送らない".into()))
     }
 
     fn finish(&mut self) -> Result<EncodeReport> {
@@ -100,7 +100,7 @@ impl Encoder for Collect {
     }
 }
 
-/// 1 チャンクのフレーム数。溜まるバイト数（窓と作っている途中の分）が予算に収まるようにする。
+/// 1 チャンクのフレーム数。溜まるバイト数（先取りの幅と作っている途中の分）が予算に収まるようにする。
 fn chunk_frames(size: Size, nv12: bool, workers: usize) -> u64 {
     let per_pixel = if nv12 {
         NV12_BYTES_PER_PIXEL
@@ -121,7 +121,7 @@ fn split(indices: Range<i64>, chunk: u64) -> Vec<Range<i64>> {
         .collect()
 }
 
-/// チャンクの時間の範囲。フレームの番号の端をそのまま時刻にするので、区間のフレームの番号は元の範囲とずれない。
+/// チャンクの時間の範囲。フレームの番号の端をそのまま時刻にするので、チャンクのフレームの番号は元の範囲とずれない。
 fn chunk_range(frames: &Range<i64>, fps: mm_types::Rational) -> Result<TimeRange> {
     TimeRange::new(
         RationalTime::from_frames(frames.start, fps)?,
@@ -129,15 +129,15 @@ fn chunk_range(frames: &Range<i64>, fps: mm_types::Rational) -> Result<TimeRange
     )
 }
 
-/// `sink` は押したフレームごとに、その番号と、そのフレームの描画にかかった時間（チャンクの均等割り）で呼ぶ。
-/// 押したフレームの数を返す。
+/// `sink` は送ったフレームごとに、その番号と、そのフレームの描画にかかった時間（チャンクの均等割り）で呼ぶ。
+/// 送ったフレームの数を返す。
 pub(crate) fn export_parallel(
     job: &ParallelJob<'_>,
     encoder: &mut dyn Encoder,
     sink: &mut dyn FnMut(i64, Duration),
 ) -> Result<usize> {
     let settings = job.settings;
-    // 空の列で NV12 を受けるかを問い合わせる。受けなければチャンクも RGBA で運ぶ。
+    // 空のスライスで NV12 を受けるかを問い合わせる。受けなければチャンクも RGBA で運ぶ。
     let nv12 = encoder.push_nv12_frames(&[]).is_ok();
     let indices = job.range.frame_indices(settings.fps);
     let chunk = job
@@ -213,7 +213,7 @@ fn render_chunk(
     Ok((collect.chunk, started.elapsed()))
 }
 
-/// 溜めたフレームを `EXPORT_BATCH_FRAMES` ずつエンコーダーに押す。
+/// 溜めたフレームを `EXPORT_BATCH_FRAMES` ずつエンコーダーに送る。
 fn push_chunk(encoder: &mut dyn Encoder, chunk: Chunk) -> Result<()> {
     match chunk {
         Chunk::Nv12(frames) => frames
@@ -230,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 区間は端を欠かさず重ねずに分かれる() {
+    fn 区間は端を欠かさず重ねずにチャンクに分かれる() {
         let parts = split(10..95, 30);
         assert_eq!(parts, vec![10..40, 40..70, 70..95]);
         assert_eq!(split(0..0, 30), Vec::<Range<i64>>::new());

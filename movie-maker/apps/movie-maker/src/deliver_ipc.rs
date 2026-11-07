@@ -11,7 +11,7 @@ use crate::deliver::{
     export_config, output_extensions, DeliverState, Emit, ExportStatus, Overview, StartRequest,
 };
 
-/// 書き出しの列の状態を送る Tauri のイベント名。`ui/sdk` の `EXPORT_PROGRESS_EVENT` と同じ。
+/// 書き出しのキューの状態を送る Tauri のイベント名。`ui/sdk` の `EXPORT_PROGRESS_EVENT` と同じ。
 const EXPORT_PROGRESS_EVENT: &str = "mm:export-progress";
 
 type Deliver<'a> = State<'a, Arc<DeliverState>>;
@@ -22,13 +22,13 @@ pub async fn export_overview(state: Deliver<'_>) -> Result<Overview, String> {
     state.overview()
 }
 
-/// 書き出しの列のいまの状態。パネルを開き直したときに読む。
+/// 書き出しのキューのいまの状態。パネルを開き直したときに読む。
 #[tauri::command]
 pub async fn export_status(state: Deliver<'_>) -> Result<ExportStatus, String> {
     Ok(state.status())
 }
 
-/// 列を作って書き出しを始め、すぐ返る。進み具合は `mm:export-progress` で送る。
+/// キューを作って書き出しを始め、すぐ返る。進み具合は `mm:export-progress` で送る。
 #[tauri::command]
 pub async fn export_start(
     app: AppHandle,
@@ -48,7 +48,7 @@ pub async fn export_cancel(state: Deliver<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// 書き出したファイルをエクスプローラーで選んで開く。この書き出しで作ったファイル以外は断る。
+/// 書き出したファイルをエクスプローラーで選んで開く。この書き出しで作ったファイル以外は拒否する。
 #[tauri::command]
 pub async fn export_reveal(state: Deliver<'_>, path: String) -> Result<(), String> {
     let path = state.revealable(&path)?;

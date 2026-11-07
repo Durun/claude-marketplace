@@ -2,11 +2,11 @@
 //! 段階 3 の通しの素材（10 分を超える素材と文字起こし）から、本編（16:9、1080p）を話題で組み、その先頭の 2 話題を
 //! 参照するショート（9:16、1080x1920、再フレーミングと字幕の置き場所つき）を作る。本編をリップルするとショートの
 //! 従うカットだけが変わることを確かめ、2 つのレンダーターゲット（YouTube 用、Shorts 用）で書き出して次を確かめる。
-//! - 書き出したフレームが `mm frame`（プレビューと同じレンダラーの経路）の絵と SSIM で一致する。
-//! - ショートのフレームが、本編の同じ素材の時刻の絵を再フレーミングした絵と一致する。
+//! - 書き出したフレームが `mm frame`（プレビューと同じレンダラーの経路）のフレームと SSIM で一致する。
+//! - ショートのフレームが、本編の同じ素材の時刻のフレームを再フレーミングした画像と一致する。
 //! - 字幕の時刻、チャプター、ラウドネス（-14 LUFS、-1 dBTP）、長さ、フレームの数。
 //!
-//! FFmpeg が要るので feature `ffmpeg` のときだけ走る。環境変数は段階 3 の通し（`stage3_e2e`）と同じ。
+//! FFmpeg が要るので feature `ffmpeg` のときだけ実行する。環境変数は段階 3 の通し（`stage3_e2e`）と同じ。
 //! 既定は縦横を 1/3 にした大きさ。`MM_E2E_FULL_HD=1` で本編 1080p、ショート 1080x1920。`MM_E2E_DIR` を渡すと、プロジェクトと書き出しを残す（アプリの `--play-test` で続きを試す）。
 #![cfg(feature = "ffmpeg")]
 
@@ -34,7 +34,7 @@ use edit::{
     FPS, ORDER, RIPPLE_FOLLOWED, STUTTER_TOPIC,
 };
 
-/// 両方のターゲットのラウドネスの目標（YouTube と Shorts は -14 LUFS）。
+/// 両方のレンダーターゲットのラウドネスの目標（YouTube と Shorts は -14 LUFS）。
 const LUFS: f64 = -14.0;
 /// 統合ラウドネスの許容（LU）。EBU R128 の許容。
 const LUFS_TOLERANCE: f64 = 0.5;
@@ -172,7 +172,7 @@ fn check_loudness(path: &Path, report: &mut Value, key: &str) {
     assert!(peak <= PEAK_LIMIT, "{key}: {peak} dBFS");
 }
 
-/// 章が本編のマーカーの時刻に合い、説明欄の文字列が出ること。
+/// チャプターが本編のマーカーの時刻に合い、説明欄の文字列が出ること。
 fn check_chapters(p: &Project, yt: &Path) {
     let marks = edit::chapter_marks(p);
     let chapters = ffprobe_json(yt, &["-show_chapters"]);
@@ -208,6 +208,7 @@ fn check_sidecar(out: &Path, seq: &Sequence, words: &[TranscriptWord]) -> (usize
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 本編とショートを書き出し_プレビューと一致する() {
     let tmp = tempfile::tempdir().unwrap();
     let env = Env::new(work_root(&tmp));

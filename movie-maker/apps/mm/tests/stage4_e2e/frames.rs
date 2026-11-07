@@ -1,7 +1,7 @@
-//! 書き出したファイルのフレームを、`mm frame`（プレビューと同じレンダラーの経路）の絵と比べる。
+//! 書き出したファイルのフレームを、`mm frame`（プレビューと同じレンダラーの経路）のフレームと比べる。
 //!
 //! 比べ方は SSIM。画素の差の平均より、H.264 の量子化のぼけや色の丸めに強く、位置や時刻のずれには敏感なため。
-//! 正しい時刻の絵との SSIM が `MIN_SSIM` 以上で、時刻をずらした絵との SSIM より `MIN_MARGIN` 以上大きいことを求める。
+//! 正しい時刻のフレームとの SSIM が `MIN_SSIM` 以上で、時刻をずらしたフレームとの SSIM より `MIN_MARGIN` 以上大きいことを求める。
 
 use std::path::Path;
 
@@ -15,11 +15,11 @@ use crate::edit::{
     mm, place_h, reframe_shifts, short_cut_ids, short_size, Env, FPS, REFRAME_SCALE,
 };
 
-/// 書き出しとプレビューの SSIM の下限。testsrc2 の素材は乱数の市松の領域を持ち、H.264 で最も落ちる（実測 1080p で 0.93 から 0.97、縮尺 1/3 で 0.90 から 0.96）。
+/// 書き出しとプレビューの SSIM の下限。testsrc2 の素材は乱数の市松の領域を持ち、H.264 で最も下がる（実測 1080p で 0.93 から 0.97、縮尺 1/3 で 0.90 から 0.96）。
 const MIN_SSIM: f64 = 0.88;
-/// 本編の絵から ffmpeg のフィルターで再フレーミングした絵との SSIM の下限。拡大の補間の違い（二重の双線形）を見込む。
+/// 本編のフレームから ffmpeg のフィルターで再フレーミングした画像との SSIM の下限。拡大の補間の違い（二重の双線形）を見込む。
 const MIN_SSIM_REFRAMED: f64 = 0.85;
-/// 時刻をずらした絵との SSIM を、正しい時刻の SSIM が上回るべき差。
+/// 時刻をずらしたフレームとの SSIM を、正しい時刻の SSIM が上回るべき差。
 const MIN_MARGIN: f64 = 0.03;
 /// 取り違えの比べに使う、ずらすフレームの数。
 const WRONG_SHIFT: i64 = 15;
@@ -41,7 +41,7 @@ fn preview(env: &Env, comp: &str, n: i64, png: &Path) {
     ]);
 }
 
-/// 数か所のフレーム番号。先頭、先頭の次、全長の 1/4・1/2・3/4、最後、カットの境目の前後。
+/// 数か所のフレーム番号。先頭、先頭の次、全長の 1/4・1/2・3/4、最後、編集点の前後。
 fn sample(count: i64, boundaries: &[i64]) -> Vec<i64> {
     let mut v = vec![0, count / 2, count - 1];
     for b in boundaries.iter().take(1) {
@@ -94,14 +94,14 @@ pub fn check_main(env: &Env, p: &Project, video: &Path, report: &mut Value) {
         preview(env, "main", n, &ref_png);
         preview(env, "main", near(n, count), &wrong_png);
         let (got, wrong) = (ssim(&got_png, &ref_png), ssim(&got_png, &wrong_png));
-        eprintln!("本編 {n}: SSIM {got:.4}（ずらした絵 {wrong:.4}）");
+        eprintln!("本編 {n}: SSIM {got:.4}（ずらしたフレーム {wrong:.4}）");
         judge(&format!("本編 {n}"), got, wrong, MIN_SSIM);
         rows.push(json!({"frame": n, "ssim": got, "wrong": wrong}));
     }
     report["main_frames"] = json!(rows);
 }
 
-/// ショートのフレームに写る、本編の同じ素材の時刻のフレーム番号と、ショートのカットの番号。
+/// ショートのフレームに対応する、本編の同じ素材の時刻のフレーム番号と、ショートのカットの番号。
 fn main_frame_of(p: &Project, n: i64) -> (i64, usize) {
     let t = RationalTime::from_frames(n, fps()).unwrap();
     let short = p.sequence(&Id::new("short")).unwrap();
@@ -136,7 +136,7 @@ fn main_frame_of(p: &Project, n: i64) -> (i64, usize) {
     (frame, index)
 }
 
-/// ショートの書き出しを、`mm frame vert`（プレビュー）と、本編の同じ素材の時刻の絵を再フレーミングした絵に比べる。
+/// ショートの書き出しを、`mm frame vert`（プレビュー）と、本編の同じ素材の時刻のフレームを再フレーミングした画像に比べる。
 pub fn check_short(env: &Env, p: &Project, video: &Path, report: &mut Value) {
     let count = frame_count(video);
     let tmp = env.root.join("frames");
@@ -177,7 +177,7 @@ pub fn check_short(env: &Env, p: &Project, video: &Path, report: &mut Value) {
             ssim(&png("s-got.png"), &png("s-expect.png")),
             ssim(&png("s-got.png"), &png("s-expect-wrong.png")),
         );
-        eprintln!("ショート {n}: プレビューと SSIM {got:.4}、本編の素材の時刻 {main_n} 番から {from_main:.4}（ずらした絵 {from_wrong:.4}）");
+        eprintln!("ショート {n}: プレビューと SSIM {got:.4}、本編の素材の時刻 {main_n} 番から {from_main:.4}（ずらしたフレーム {from_wrong:.4}）");
         judge(
             &format!("ショート {n}（本編から）"),
             from_main,

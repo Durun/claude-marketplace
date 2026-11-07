@@ -61,7 +61,7 @@ pub(crate) fn retarget_to_sequence(
 
 /// `sequence` を置いたレイヤーの見せ方（再フレーミングと字幕の置き場所）。
 /// レンダーターゲットが描いていたコンポジションに 1 つあればそれを、無ければプロジェクト全体で 1 つだけのものを使う。
-/// ショートの見せ方はショートのコンポジションのレイヤーにあり、どれを写すか決まらないときは変形なしにする。
+/// ショートの見せ方はショートのコンポジションのレイヤーにあり、どれを引き継ぐか決まらないときは変形なしにする。
 fn framing_of(project: &Project, current: &CompositionId, sequence: &SequenceId) -> Framing {
     let places = |c: &Composition| -> Vec<Framing> {
         c.layers
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn ショートの再フレーミングを写す() {
+    fn ショートの再フレーミングを引き継ぐ() {
         let mut p = project();
         p.compositions.push(short_comp("short", 40.0));
         let framing = exported_framing(p);
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn 置き場所が複数ならレンダーターゲットのコンポジションのものを写す() {
+    fn 置き場所が複数ならレンダーターゲットのコンポジションのものを引き継ぐ() {
         let mut p = project();
         p.compositions.push(short_comp("short-a", 10.0));
         p.compositions.push(short_comp("short-b", 99.0));

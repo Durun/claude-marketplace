@@ -14,7 +14,7 @@ fn temp(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("mm_export_par_{name}_{}", std::process::id()))
 }
 
-/// 押されたフレームの番号と、`begin_pass` の呼ばれ方を残す。
+/// 送られたフレームの番号と、`begin_pass` の呼ばれ方を残す。
 #[derive(Default, Clone)]
 struct Log {
     indices: Arc<Mutex<Vec<i64>>>,
@@ -37,7 +37,7 @@ impl Encoder for Recorder {
 
     fn begin_pass(&mut self, pass: u32) -> Result<()> {
         self.log.passes.lock().unwrap().push(pass);
-        // 2 回目の映像は、1 回目の列と別に並べて見られるよう区切りを入れる
+        // 2 回目の映像は、1 回目と別に並べて見られるよう区切りを入れる
         self.log.indices.lock().unwrap().push(-1);
         Ok(())
     }
@@ -68,7 +68,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
 }
 
 #[test]
-fn 並行で描いたフレームの番号は_1_つのレンダラーと同じ順に押される() {
+fn 並行で描いたフレームの番号は_1_つのレンダラーと同じ順に送られる() {
     let media = SampleMedia::default();
     let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
@@ -152,7 +152,7 @@ fn 並行でも書き出しの数と音は同じで_半端な_fps_の音も揃�
 }
 
 #[test]
-fn 並行の書き出しを取り消すと書きかけを残さず戻る() {
+fn 並行の書き出しを取り消すと一時ファイルを残さず戻る() {
     let media = SampleMedia::default();
     let (project, _, _) = vertical_project(&media, &temp("unused.json"));
     let out = temp("cancel").join("out.json");
@@ -211,7 +211,7 @@ fn ワーカーを組めない設定は並行の書き出しのエラーにな�
 }
 
 #[test]
-fn 二パスのエンコーダーには同じ映像を_2_回押し_進み具合は_2_回分になる() {
+fn 二パスのエンコーダーには同じ映像を_2_回送り_進み具合は_2_回分になる() {
     let media = SampleMedia::default();
     let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
@@ -244,7 +244,7 @@ fn 二パスのエンコーダーには同じ映像を_2_回押し_進み具合�
         .filter(|h| !h.is_empty())
         .collect();
     assert_eq!(halves.len(), 2);
-    assert_eq!(halves[0], halves[1], "2 回とも同じフレームの列");
+    assert_eq!(halves[0], halves[1], "2 回とも同じフレームの並び");
     assert_eq!(frames, halves[0].len(), "数えるのは最後の 1 回");
     assert_eq!(
         *last.lock().unwrap(),
@@ -253,7 +253,7 @@ fn 二パスのエンコーダーには同じ映像を_2_回押し_進み具合�
 }
 
 #[test]
-fn コーデックの入れ物と合わない拡張子は書き出す前に断る() {
+fn コーデックのコンテナと合わない拡張子は書き出す前に拒否する() {
     for (codec, name, ok) in [
         ("prores_422hq", "a.mp4", false),
         ("dnxhr_hq", "a.mxf", false),

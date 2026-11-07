@@ -69,7 +69,7 @@ fn settings(path: PathBuf, codec: &str, size: Size) -> EncodeSettings {
     }
 }
 
-/// `passes` 回、同じ映像を押して閉じる。音は 1 秒の無音。
+/// `passes` 回、同じ映像を送って閉じる。音は 1 秒の無音。
 fn write(codec: &str, path: &Path, size: Size) {
     let mut enc = FfmpegEncoderFactory.create().unwrap();
     enc.begin(&settings(path.to_path_buf(), codec, size))
@@ -203,7 +203,7 @@ fn 色は各コーデックで線形に戻る() {
             let diff = (code(got) - code(want)).abs();
             assert!(
                 diff <= CODE_TOLERANCE,
-                "{codec}: 線形 {want} が {got}（{diff} 段）"
+                "{codec}: 線形 {want} が {got}（{diff} ステップ）"
             );
         }
         let _ = std::fs::remove_file(&path);
@@ -223,7 +223,7 @@ fn 二パスの使い方の誤りはエラーになり統計ファイルを残�
             enc.push_audio(&AudioBlock::silence(RATE, 2, 100)),
             Err(MmError::InvalidArgument(_))
         ),
-        "1 回目に音は押せない"
+        "1 回目に音は送れない"
     );
     assert!(enc.finish().is_err(), "2 回目を始める前には閉じられない");
     drop(enc);

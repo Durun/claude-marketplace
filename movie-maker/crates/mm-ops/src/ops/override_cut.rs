@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::shorts::reference_pair;
 use crate::touches::Touches;
 
-/// 参照のショートのカット `cut` の上書きを置く。値のある所はその値で上書きし（印が付く）、省いた所は上書きを外して
+/// 参照のショートのカット `cut` の上書きを置く。値のある所はその値で上書きし（フラグが立つ）、省いた所は上書きを外して
 /// 元のカットに従う。上書きしていない所は元のカットを直すと一緒に変わる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

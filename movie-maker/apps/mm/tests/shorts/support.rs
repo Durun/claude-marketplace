@@ -24,7 +24,7 @@ const R0_SHIFT: f64 = -30.0;
 const R1_FROM: (i64, u32, f64) = (7, 2, -60.0);
 const R1_TO: (i64, u32, f64) = (11, 2, 60.0);
 
-/// `mm` を走らせて標準出力を返す。失敗したら止める。
+/// `mm` を実行して標準出力を返す。失敗したら止める。
 pub fn mm(args: &[&str]) -> String {
     let out = Command::new(env!("CARGO_BIN_EXE_mm"))
         .args(args)
@@ -39,7 +39,7 @@ pub fn mm(args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-/// 横と縦と時刻で滑らかに変わる絵の素材を作る。切り出しの位置と時刻の取り違えが差に出る。
+/// 横と縦と時刻で滑らかに変わる画像の素材を作る。切り出しの位置と時刻の取り違えが差に出る。
 fn make_clip(path: &Path) {
     let (w, h) = MAIN_SIZE;
     let video = format!(
@@ -257,7 +257,7 @@ impl Mapping {
         }
     }
 
-    /// ショートの点 `(u, v)` に写る本編の点。
+    /// ショートの点 `(u, v)` に対応する本編の点。
     pub fn apply(&self, u: f64, v: f64) -> (f64, f64) {
         let (cx, cy) = (f64::from(SHORT_SIZE.0) / 2.0, f64::from(SHORT_SIZE.1) / 2.0);
         let qx = cx + (u - cx - self.shift) / REFRAME_SCALE;

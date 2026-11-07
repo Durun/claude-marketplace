@@ -1,5 +1,5 @@
 // 実際のアプリ（WebView2 を --remote-debugging-port=9333 で起動したもの）に CDP でつなぎ、Deliver でレンダーターゲットを
-// 2 つ足し、列に積んで書き出し、終わるまでを撮る。素材と project.mmdb は用意してある前提。
+// 2 つ足し、キューに積んで書き出し、終わるまでを撮る。素材と project.mmdb は用意してある前提。
 // 使い方: PLAYWRIGHT_DIR=/tmp/pw node tools/app-deliver.mjs <出力のフォルダー>
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";

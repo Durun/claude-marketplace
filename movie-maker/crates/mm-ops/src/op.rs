@@ -49,7 +49,7 @@ macro_rules! define_ops {
             pub const NAMES: &'static [&'static str] = &[ $( $name, )* ];
 
             /// 読む・書く所の ID。参照のショートのカットと元のカットは、片方に触れば両方に触る
-            /// （元を直すと写り、ショートの上書きは元を読む）。
+            /// （元を直すと反映され、ショートの上書きは元を読む）。
             pub fn touches(&self, project: &Project) -> Result<Touches> {
                 let mut t = match self { $( Self::$variant(x) => x.touches(project), )* }?;
                 add_short_links(project, &mut t);

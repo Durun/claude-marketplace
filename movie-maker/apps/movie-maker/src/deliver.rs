@@ -1,8 +1,8 @@
-//! Deliver パネルのアプリ側の処理。レンダーターゲットと sequence の一覧、書き出しの列（順に書き出す専用スレッド）、
+//! Deliver パネルのアプリ側の処理。レンダーターゲットと sequence の一覧、書き出しのキュー（順に書き出す専用スレッド）、
 //! 進み具合の状態。Tauri のコマンドのハンドラーは `deliver_ipc.rs`、名前と引数の形は `ui/sdk/README.md` の「Deliver のコマンド」。
 //!
 //! 書き出しは再生のスレッドとは別の `Engine`（別の GPU のデバイス）で回すので、再生を止めない。
-//! 進み具合は、列全体の状態（`ExportStatus`）をそのまま送る。画面は受けた状態を描くだけで、差分を畳む処理を持たない。
+//! 進み具合は、キュー全体の状態（`ExportStatus`）をそのまま送る。画面は受けた状態を描くだけで、差分を畳む処理を持たない。
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -67,7 +67,7 @@ pub struct Overview {
     pub can_verify: bool,
 }
 
-/// 列の 1 項目の状態。
+/// キューの 1 項目の状態。
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemState {
@@ -102,7 +102,7 @@ impl From<&Verification> for VerificationView {
     }
 }
 
-/// 列の 1 項目。時間は秒。
+/// キューの 1 項目。時間は秒。
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ExportItem {
     pub target: String,
@@ -137,7 +137,7 @@ impl ExportItem {
     }
 }
 
-/// 書き出しの列全体の状態。進み具合のイベントの中身。
+/// 書き出しのキュー全体の状態。進み具合のイベントの中身。
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct ExportStatus {
     pub running: bool,
@@ -240,7 +240,7 @@ impl DeliverState {
         target
     }
 
-    /// 字幕を出すレンダーターゲットが列にあるときだけ、文字起こしの単語を読む。`mm render` と同じ元（DB の単語）。
+    /// 字幕を出すレンダーターゲットがキューにあるときだけ、文字起こしの単語を読む。`mm render` と同じ元（DB の単語）。
     fn transcript(
         &self,
         project: &Project,
@@ -284,12 +284,12 @@ impl DeliverState {
         out
     }
 
-    /// いまの列の状態。
+    /// いまのキューの状態。
     pub fn status(&self) -> ExportStatus {
         self.status.lock().expect("export status").clone()
     }
 
-    /// 列を作って書き出しのスレッドを始め、すぐ返る。書き出し中にもう一度呼ぶと `Err`。
+    /// キューを作って書き出しのスレッドを始め、すぐ返る。書き出し中にもう一度呼ぶと `Err`。
     pub fn start(
         &self,
         request: StartRequest,
@@ -334,7 +334,7 @@ impl DeliverState {
         Ok(())
     }
 
-    /// 書き出しを取り消す。走っている 1 本は次のフレームで止まり、残りは書き出さない。
+    /// 書き出しを取り消す。書き出し中の 1 本は次のフレームで止まり、残りは書き出さない。
     pub fn cancel(&self) {
         self.cancel
             .lock()
@@ -366,7 +366,7 @@ struct Job {
     emit: Emit,
 }
 
-/// 抜けるとき（パニックも）に、列を止まった状態にして知らせる。
+/// 抜けるとき（パニックも）に、キューを止まった状態にして知らせる。
 struct Finish<'a>(&'a Job);
 
 impl Drop for Finish<'_> {

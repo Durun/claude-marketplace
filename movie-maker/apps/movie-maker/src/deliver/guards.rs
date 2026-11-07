@@ -1,8 +1,8 @@
-//! 書き出しを始める前の確かめ（出力先の重なり、ffprobe）と、列を止める処理。
+//! 書き出しを始める前の確かめ（出力先の重なり、ffprobe）と、キューを止める処理。
 
 use super::*;
 
-/// 依頼のレンダーターゲットと sequence が在るか、同じ出力先を指す組が無いかを確かめて、列の順に返す。
+/// 依頼のレンダーターゲットと sequence が在るか、同じ出力先を指す組が無いかを確かめて、キューの順に返す。
 /// 同じ出力先に順に書くと、先に書いた成果物を黙って上書きするため。
 pub(super) fn pick(project: &Project, request: &StartRequest) -> Result<Vec<RenderTarget>, String> {
     if request.targets.is_empty() {
@@ -37,7 +37,7 @@ fn case_folded_outputs(project: &Project) -> Project {
     folded
 }
 
-/// ffprobe を起動できるか。検証の出口と同じ起動の道（`MM_FFPROBE`）を通すため、存在しないパスを読ませて、
+/// ffprobe を起動できるか。検証と同じ起動の経路（`MM_FFPROBE`）を通すため、存在しないパスを読ませて、
 /// 「起動できない」（`NotFound`）かどうかだけを見る。
 pub(super) fn ffprobe_available() -> bool {
     let expected = Expected {
@@ -61,7 +61,7 @@ pub fn output_extensions(codec: &str) -> &'static [&'static str] {
     }
 }
 
-/// 列を止まった状態にして返す。動いていない項目に理由を付けて失敗にする。
+/// キューを止まった状態にして返す。動いていない項目に理由を付けて失敗にする。
 pub(super) fn stop_all(status: &Mutex<ExportStatus>, message: &str) -> ExportStatus {
     let mut status = status.lock().expect("export status");
     status.running = false;

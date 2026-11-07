@@ -1,7 +1,7 @@
 //! NVENC によるエンコーダー（`mm-decode-api` の `Encoder` の実装）。
 //!
 //! FFmpeg の `h264_nvenc` と `hevc_nvenc` を `mm-encode-ffmpeg-core` の上で使う。NVIDIA の SDK を直接使わないのは、
-//! nvEncodeAPI の動的読み込み、セッションとバッファの管理、MP4 への詰め込みを FFmpeg が済ませていて、
+//! nvEncodeAPI の動的読み込み、セッションとバッファの管理、MP4 への多重化を FFmpeg が済ませていて、
 //! 速さは同じエンコーダーのハードウェアで決まるため。NV12 は CPU のメモリから渡す（リードバックは 3 枚先行している）。
 //!
 //! NVIDIA の GPU かドライバーが無い環境では `supports` が偽を返し、組み立て（`mm-runtime`）が libx264 に落とす。

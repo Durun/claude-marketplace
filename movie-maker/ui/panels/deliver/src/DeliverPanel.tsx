@@ -93,7 +93,7 @@ const useEditing = (deliver: DeliverState, specs: FieldSpec[]) => {
   return { editing, setEditing, add, submit, remove };
 };
 
-/** Deliver。レンダーターゲットの一覧と編集、書き出しの列。欄はスキーマから作る。 */
+/** Deliver。レンダーターゲットの一覧と編集、書き出しのキュー。入力欄はスキーマから作る。 */
 export const DeliverPanel = ({ api, refreshKey = 0 }: DeliverPanelProps) => {
   const deliver = useDeliver(api, refreshKey);
   const specs = useMemo(() => fieldSpecs(), []);

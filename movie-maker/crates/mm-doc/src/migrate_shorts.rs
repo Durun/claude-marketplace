@@ -18,7 +18,7 @@ use crate::sequence::CutBase;
 const FORK: &str = "fork";
 /// 参照を表す `relation` の値。
 const REFERENCE: &str = "reference";
-/// 元の値に写す必須のフィールド。速さと有効は無ければ既定（1、有効）。
+/// 元の値にコピーする必須のフィールド。速さと有効は無ければ既定（1、有効）。
 const BASE_FIELDS: [&str; 3] = ["source", "in", "out"];
 
 /// v7 → v8。
@@ -40,7 +40,7 @@ pub(crate) fn v7_to_v8(value: &mut Value) {
     }
 }
 
-/// ショートのカットに元の値と、参照なら上書きの印を付ける。
+/// ショートのカットに元の値と、参照なら上書きのフラグを付ける。
 fn migrate_cuts(seq: &mut Value, bases: &HashMap<String, Value>) {
     let Some(reference) = relation(seq).map(|r| r == REFERENCE) else {
         return;
@@ -87,7 +87,7 @@ fn has_unfollowable_cut(seq: &Value, bases: &HashMap<String, Value>) -> bool {
     })
 }
 
-/// 元と違う in/out を上書きの印にする。
+/// 元と違う in/out を上書きのフラグにする。
 fn overrides_of(cut: &Value, base: &Value) -> Value {
     let (in_point, out_point) = typed_pair(cut, base).map_or((false, false), |(main, own)| {
         (

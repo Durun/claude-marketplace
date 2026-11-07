@@ -123,7 +123,7 @@ fn measure(
     let work = args.out_dir.join("export-work");
     let (mut fps, mut elapsed_ms) = (Vec::new(), Vec::new());
     for i in 0..args.repeat {
-        // 書き出しは入れ物と合わない拡張子を断るので、ProRes と DNxHR は .mov、ほかは .mp4 にする。
+        // 書き出しはコンテナと合わない拡張子を拒否するので、ProRes と DNxHR は .mov、ほかは .mp4 にする。
         let mov = variant
             .codec
             .is_some_and(|c| c.starts_with("prores") || c.starts_with("dnx"));

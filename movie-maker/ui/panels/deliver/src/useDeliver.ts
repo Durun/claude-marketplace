@@ -4,7 +4,7 @@ import type { DeliverApi, DeliverOverview, ExportStatus, Op, RenderTarget } from
 const IDLE: ExportStatus = { running: false, items: [] };
 
 /**
- * 列の状態を、購読を先に始めてから読む。読んだ応答がイベントより後に届いても、
+ * キューの状態を、購読を先に始めてから読む。読んだ応答がイベントより後に届いても、
  * 先に受けたイベントの新しい状態を古い状態で上書きしない。解除は非同期で返るので、先に外れたら返ってきた時点で解除する。
  */
 const useExportStatus = (api: DeliverApi, setStatus: (s: ExportStatus) => void): void => {
@@ -50,7 +50,7 @@ export interface DeliverState {
   status: ExportStatus;
   /** 書き出しの依頼を送って、アプリが受けるまで。この間はもう一度押せない。 */
   starting: boolean;
-  /** 列に積んだレンダーターゲットの ID（積んだ順）。 */
+  /** キューに積んだレンダーターゲットの ID（積んだ順）。 */
   queue: string[];
   sequence: string;
   verify: boolean;
@@ -58,7 +58,7 @@ export interface DeliverState {
   toggleQueue: (id: string) => void;
   setSequence: (id: string) => void;
   setVerify: (on: boolean) => void;
-  /** 操作を送る。断られたら理由を `error` に出して偽を返す。 */
+  /** 操作を送る。拒否されたら理由を `error` に出して偽を返す。 */
   applyOps: (ops: Op[]) => Promise<boolean>;
   start: () => void;
   cancel: () => void;
@@ -66,7 +66,7 @@ export interface DeliverState {
   setError: (message: string | null) => void;
 }
 
-/** 列に積んだ順の選択、sequence、検証の有無。消えた対象は選択から外す。 */
+/** キューに積んだ順の選択、sequence、検証の有無。消えた対象は選択から外す。 */
 const useSelection = (overview: DeliverOverview | null) => {
   const [queue, setQueue] = useState<string[]>([]);
   const [sequence, setSequence] = useState("");
@@ -83,7 +83,7 @@ const useSelection = (overview: DeliverOverview | null) => {
   return { queue, sequence, verify, toggleQueue, setSequence, setVerify };
 };
 
-/** 一覧、列の状態、積んだ順の選択を持ち、アプリの進み具合のイベントを購読する。 */
+/** 一覧、キューの状態、積んだ順の選択を持ち、アプリの進み具合のイベントを購読する。 */
 export const useDeliver = (api: DeliverApi, refreshKey: number): DeliverState => {
   const [overview, setOverview] = useState<DeliverOverview | null>(null);
   const [status, setStatus] = useState<ExportStatus>(IDLE);

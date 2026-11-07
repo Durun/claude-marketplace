@@ -25,7 +25,7 @@ export interface LayerSelection {
 }
 
 export interface ShellProps {
-  /** 操作を送る。本番は sdk の client（IPC）をつなぐ。断られたら理由の文字を返し、Shell が画面に出す。 */
+  /** 操作を送る。本番は sdk の client（IPC）をつなぐ。拒否されたら理由の文字を返し、Shell が画面に出す。 */
   sendOp: (op: Op) => Promise<string | null> | undefined;
   /** Media パネルがアプリを呼ぶ API。無ければ Media は出さない。 */
   media?: MediaApi;
@@ -80,7 +80,7 @@ const useLayerSelection = (): LayerSelection => {
   return selection;
 };
 
-/** 操作を送り、断られた理由を持つ。次に成功した操作で消える。 */
+/** 操作を送り、拒否された理由を持つ。次に成功した操作で消える。 */
 const useSendOp = (sendOp: ShellProps["sendOp"]) => {
   const [opError, setOpError] = useState<string | null>(null);
   const send = async (op: Op) => setOpError((await sendOp(op)) ?? null);

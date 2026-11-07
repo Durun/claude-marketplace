@@ -78,7 +78,7 @@ pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
 }
 
 /// 操作を、計画に使ったバージョン `base` を元にしたトランザクションとして適用する。
-/// その後に別の発行元（CLI など）が同じ所を触っていたら、衝突として断る。JSON のプロジェクトでは `base` を見ない。
+/// その後に別の発行元（CLI など）が同じ所を触っていたら、衝突として拒否する。JSON のプロジェクトでは `base` を見ない。
 pub fn submit_based(
     shared: &Shared,
     ops: Vec<Op>,

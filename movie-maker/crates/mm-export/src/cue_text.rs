@@ -1,4 +1,4 @@
-//! 単語の列を字幕の 1 件ずつに区切り、行に折る。時間の単位は ms。
+//! 単語の並びを字幕の 1 件ずつに区切り、行に折る。時間の単位は ms。
 //!
 //! 決まり（YouTube 向けの横長の動画の字幕）。土台は Netflix の 2 つの規定:
 //! - Japanese Timed Text Style Guide（<https://partnerhelp.netflixstudios.com/hc/en-us/articles/215767517-Japanese-Timed-Text-Style-Guide>）:
@@ -95,7 +95,7 @@ fn join(left: &str, right: &str) -> String {
     format!("{left}{}{right}", if space { " " } else { "" })
 }
 
-/// 単語（時刻の順）を字幕に区切る。空の単語は読み飛ばす。
+/// 単語（時刻の順）を字幕に区切る。空の単語はスキップする。
 pub fn segment(words: &[Word]) -> Vec<Cue> {
     let mut cues: Vec<Cue> = Vec::new();
     let mut cur: Option<Cue> = None;
@@ -262,7 +262,7 @@ mod tests {
             .flat_map(|c| c.text.chars())
             .filter(|c| *c != '\n')
             .collect();
-        assert_eq!(joined, sentence, "字を落とさない");
+        assert_eq!(joined, sentence, "字を欠かさない");
     }
 
     #[test]

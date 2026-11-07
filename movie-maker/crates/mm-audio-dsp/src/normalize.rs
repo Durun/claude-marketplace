@@ -64,7 +64,7 @@ fn read_meter(state: &EbuR128, channels: u16) -> Result<Measurement> {
     })
 }
 
-/// 元の標本に `gain` をかけ、さらにフレームごとに `limiter` の倍率をかける、という変換の記述。標本は複製しない。
+/// 元のサンプルに `gain` をかけ、さらにフレームごとに `limiter` の倍率をかける、という変換の記述。サンプルは複製しない。
 struct Envelope {
     gain: f32,
     /// フレームごとのリミッターの倍率。削る所が無ければ `None`。
@@ -100,7 +100,7 @@ impl Envelope {
         read_meter(&state, source.channels)
     }
 
-    /// 元の標本へ 1 回だけかける。
+    /// 元のサンプルへ 1 回だけかける。
     fn apply_in_place(&self, block: &mut AudioBlock) {
         let channels = usize::from(block.channels);
         block.samples.iter_mut().for_each(|s| *s *= self.gain);
@@ -113,7 +113,7 @@ impl Envelope {
     }
 }
 
-/// フレームごとのピークの列から、リミッターの倍率の列を作る。削る所が無ければ `None`。
+/// フレームごとのピークの配列から、リミッターの倍率の配列を作る。削る所が無ければ `None`。
 fn limiter_gains(
     peaks: impl Iterator<Item = f32>,
     sample_rate: u32,
@@ -136,8 +136,8 @@ fn frame_peaks(samples: &[f32], channels: usize) -> Vec<f32> {
         .collect()
 }
 
-/// 先読みのリミッター。標本のピークが `ceiling`（線形）を超えないよう、前後 `look` フレームにわたって滑らかに下げる。
-/// 各フレームの必要な倍率の窓の最小値を、同じ長さの窓で平均するので、平均は必ずそのフレームの必要な倍率以下になる。
+/// 先読みのリミッター。サンプルのピークが `ceiling`（線形）を超えないよう、前後 `look` フレームにわたって滑らかに下げる。
+/// 各フレームの必要な倍率の区間の最小値を、同じ長さの区間で平均するので、平均は必ずそのフレームの必要な倍率以下になる。
 /// 削ったら `true`。
 pub fn limit(block: &mut AudioBlock, ceiling: f32) -> bool {
     let peaks = frame_peaks(&block.samples, usize::from(block.channels));
@@ -228,7 +228,7 @@ impl LoudnessNormalizer for DspLoudnessNormalizer {
     }
 }
 
-/// 調整の途中の候補。標本は持たず、変換の記述だけ持つ。
+/// 調整の途中の候補。サンプルは持たず、変換の記述だけ持つ。
 struct Candidate {
     envelope: Envelope,
     after: Measurement,
@@ -256,7 +256,7 @@ impl Best {
 
 /// 倍率 `gain_db` から始め、トゥルーピークが上限に収まり統合ラウドネスが目標に合うまで調整する。
 /// 上限は譲らない（収まった候補のうち最後のものを返す）。収まる候補が無ければ上限を超えた量が最小の候補を返す。
-/// 候補ごとに標本を複製せず、倍率の列だけを作って元の標本から測り直す。
+/// 候補ごとにサンプルを複製せず、倍率の配列だけを作って元のサンプルから測り直す。
 fn fit(source: &AudioBlock, spec: &NormalizeSpec, mut gain_db: f32) -> Result<Candidate> {
     let peaks = frame_peaks(&source.samples, usize::from(source.channels));
     let mut margin_db = 0.0f32;
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn リミッターは上限を超える標本を残さない() {
+    fn リミッターは上限を超えるサンプルを残さない() {
         let mut b = peaky(2.0);
         b.samples.iter_mut().for_each(|s| *s *= 2.0);
         assert!(limit(&mut b, 0.5));
@@ -386,7 +386,7 @@ mod tests {
         assert!(b.samples.iter().all(|s| *s == 0.0));
     }
 
-    /// 候補ごとに音を複製する参照実装。倍率の列だけで測る実装と同じ結果になることを確かめる。
+    /// 候補ごとに音を複製する参照実装。倍率の配列だけで測る実装と同じ結果になることを確かめる。
     fn fit_by_clone(source: &AudioBlock, spec: &NormalizeSpec, mut gain_db: f32) -> AudioBlock {
         let mut margin_db = 0.0f32;
         let mut kept: Option<AudioBlock> = None;
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn 倍率の列で測っても_複製して測った結果と同じ() {
+    fn 倍率の配列で測っても_複製して測った結果と同じ() {
         // MEASURE_CHUNK_FRAMES をまたぐ長さにして、分割の測りも確かめる。
         for src in [peaky(3.0), sine(3.0, 0.05), sine(3.0, 0.9)] {
             let measured = measure(&src).unwrap().integrated_lufs.unwrap();
@@ -428,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn 倍率の列の測りは複製して測った値と一致する() {
+    fn 倍率の配列での測定は複製して測った値と一致する() {
         let src = peaky(3.0);
         let peaks = frame_peaks(&src.samples, 2);
         let gain = db_to_gain(12.0);
@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn 窓の最小と平均は端でも長さを保つ() {
+    fn 区間の最小と平均は端でも長さを保つ() {
         let v = [1.0, 0.5, 1.0, 1.0, 1.0];
         let m = window_min(&v, 1);
         assert_eq!(m, vec![0.5, 0.5, 0.5, 1.0, 1.0]);

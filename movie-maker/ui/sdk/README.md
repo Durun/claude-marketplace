@@ -4,7 +4,7 @@ UI から mm-ops の操作を送る SDK。
 
 ## 型の生成
 
-`crates/mm-ops/schema/ops.json` から `src/generated/ops.ts` を作る（`node tools/gen-sdk.ts`、`pnpm build` の先頭で走る）。
+`crates/mm-ops/schema/ops.json` から `src/generated/ops.ts` を作る（`node tools/gen-sdk.ts`、`pnpm build` の先頭で実行する）。
 生成物は commit する。`ops.json` を作り直したら `pnpm build` を回して差分も commit する。テストが両者のずれを検出する。
 
 - `Op`: 全部の操作の和（`op` が名前）。`OpName`、`OpOf<N>`、`OpArgs<N>`、`OP_NAMES`
@@ -84,19 +84,19 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 | コマンド | 引数 | 成功 |
 |---|---|---|
 | `export_overview` | なし | `{ targets, compositions: [{ id, duration }], sequences: [{ id, duration }], open_composition, can_verify }`。`targets` はプロジェクトのデータの `render_targets`（`ops.ts` の `RenderTarget`）で、相対の出力先は開くときに直す前の相対のまま返す（画面が編集で書き戻しても絶対パスにならない）。`can_verify` は FFmpeg なしのビルドと、ffprobe を起動できないとき（`MM_FFPROBE`、PATH）に偽 |
-| `export_status` | なし | 列のいまの状態 `ExportStatus`。パネルを開き直したときに読む |
-| `export_start` | `{ request: { targets, sequence?, verify } }` | すぐ `()`。`targets` はレンダーターゲットの ID でこの順に書き出す。`sequence` を指すと各レンダーターゲットのコンポジションの代わりにその sequence を全長で書き出す。書き出し中は `Err("書き出し中")`。同じ出力先（大文字小文字と区切りの違い、一時ファイルの名前との重なりを含む）を指す組、無い ID、空の列は始める前に `Err`。字幕を出すレンダーターゲットには `project.mmdb` の文字起こしを渡す |
-| `export_cancel` | なし | `()`。走っている 1 本は次のフレームで止まり（一時ファイルを消す）、残りは書き出さない |
+| `export_status` | なし | キューのいまの状態 `ExportStatus`。パネルを開き直したときに読む |
+| `export_start` | `{ request: { targets, sequence?, verify } }` | すぐ `()`。`targets` はレンダーターゲットの ID でこの順に書き出す。`sequence` を指すと各レンダーターゲットのコンポジションの代わりにその sequence を全長で書き出す。書き出し中は `Err("書き出し中")`。同じ出力先（大文字小文字と区切りの違い、一時ファイルの名前との重なりを含む）を指す組、無い ID、空のスライスは始める前に `Err`。字幕を出すレンダーターゲットには `project.mmdb` の文字起こしを渡す |
+| `export_cancel` | なし | `()`。書き出し中の 1 本は次のフレームで止まり（一時ファイルを消す）、残りは書き出さない |
 | `export_reveal` | `{ path }` | エクスプローラーで選んで開く。この書き出しで作ったファイル以外は `Err` |
 | `export_pick_output` | `{ current?, codec? }` | 出力先の保存ダイアログで選んだパス。`codec` に合う拡張子で絞る（ProRes と DNxHR は `.mov`）。キャンセルは `null` |
 | `apply_ops` | `{ ops: Op[] }` | `apply_op` の複数形。全部を 1 つのトランザクションで適用する（取り消し 1 回で戻る）。レンダーターゲットを直すときの `removeRenderTarget` と、元の位置を指す `addRenderTarget`（`index`）の組に使う |
 
-書き出しは `mm_export::export_run` を、再生とは別のスレッドと別の `Engine` で順に回す。1 本が失敗しても残りは書き出す。進み具合は Tauri のイベント `mm:export-progress`（`EXPORT_PROGRESS_EVENT`）で、**列全体の状態**を送る（最大 10 回/秒と、状態が変わるたび）。受けた側は差分を畳まず、そのまま描く。
+書き出しは `mm_export::export_run` を、再生とは別のスレッドと別の `Engine` で順に回す。1 本が失敗しても残りは書き出す。進み具合は Tauri のイベント `mm:export-progress`（`EXPORT_PROGRESS_EVENT`）で、**キュー全体の状態**を送る（最大 10 回/秒と、状態が変わるたび）。受けた側は差分を畳まず、そのまま描く。
 
 | 項目 | 中身 |
 |---|---|
-| `running` | 列がまだ走っているか |
-| `items[]` | 列の 1 本。`target`、`state`（`queued`、`running`、`done`、`failed`、`cancelled`）、`frames_done`、`frames_total`、`fps`、`elapsed`、`eta`（測れるまで `null`）、`output_path`、`bytes_written`、`verification`（`verify` で書き出したときの ffprobe の結果。`video_codec`、`width`、`height`、`video_frames`、`video_seconds`、`audio_seconds`）、`error` |
+| `running` | キューがまだ動いているか |
+| `items[]` | キューの 1 本。`target`、`state`（`queued`、`running`、`done`、`failed`、`cancelled`）、`frames_done`、`frames_total`、`fps`、`elapsed`、`eta`（測れるまで `null`）、`output_path`、`bytes_written`、`verification`（`verify` で書き出したときの ffprobe の結果。`video_codec`、`width`、`height`、`video_frames`、`video_seconds`、`audio_seconds`）、`error` |
 
 検証に失敗した書き出しは、出力を置き換えずに `failed` と理由で終わる。
 

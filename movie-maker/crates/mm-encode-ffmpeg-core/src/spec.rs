@@ -23,7 +23,7 @@ impl Container {
 /// エンコーダーに渡す画素形式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoInput {
-    /// 8 ビットの 4:2:0。GPU で作った NV12 をそのまま押せる。
+    /// 8 ビットの 4:2:0。GPU で作った NV12 をそのまま送れる。
     Nv12,
     /// 8 ビットの 4:2:2。DNxHR の LB、SQ、HQ。
     Yuv422p8,
@@ -34,7 +34,7 @@ pub enum VideoInput {
 }
 
 impl VideoInput {
-    /// NV12 の 8 ビットの段を経由せず、線形の f32 から 16 ビットの符号化値を作って変換する形式か（NV12 以外の全部）。
+    /// NV12 の 8 ビットの中間を経由せず、線形の f32 から 16 ビットの符号化値を作って変換する形式か（NV12 以外の全部）。
     pub fn is_high_bit_depth(self) -> bool {
         self != VideoInput::Nv12
     }

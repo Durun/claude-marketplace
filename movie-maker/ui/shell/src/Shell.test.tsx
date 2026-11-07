@@ -137,7 +137,7 @@ describe("Shell の外からの変更", () => {
 });
 
 describe("Shell", () => {
-  it("操作が断られたら理由を画面に出す", async () => {
+  it("操作が拒否されたら理由を画面に出す", async () => {
     const sendOp = vi.fn().mockResolvedValue("setParam: no such layer");
     act(() => render(<Shell sendOp={sendOp} />, host));
     act(() => {
