@@ -96,6 +96,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 naga = { version = "30.0", default-features = false, features = ["glsl-in", "wgsl-in", "wgsl-out"] }
 bindgen = "0.73"
 cc = "1.2"
+# mm-host-ofx が OpenFX のプラグイン（.ofx の DLL）を読み込む。
+libloading = "0.8"
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"

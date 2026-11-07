@@ -3169,6 +3169,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-host-ofx"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "libloading 0.8.9",
+ "mm-host-api",
+ "mm-testkit",
+ "mm-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mm-ingest"
 version = "0.1.0"
 dependencies = [
