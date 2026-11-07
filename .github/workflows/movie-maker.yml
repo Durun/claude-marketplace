@@ -99,10 +99,11 @@ jobs:
         run: sh scripts/nextest-ci.sh --workspace
       # runner の GPU は WARP（D3D12 のソフトウェアの GPU）だけ。期待画像の warp 版があるときは、WARP で描いて
       # 必ず比べる（上のテストは版が無いとスキップするため）。無ければこの手順を飛ばす。
+      # -p で絞ると依存の feature の組み合わせが変わって作り直しになるので、--workspace のビルドを filterset で絞る。
       - name: 期待画像（WARP）
         run: |
           if [ -d fixtures/golden/warp ]; then
-            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run -p mm-render --test golden
+            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run --workspace -E 'binary_id(mm-render::golden)'
           else
             echo "fixtures/golden/warp が無いので飛ばす"
           fi
