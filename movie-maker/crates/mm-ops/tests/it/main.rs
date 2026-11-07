@@ -4,6 +4,7 @@ mod common;
 mod cut_words;
 mod editor;
 mod keyframes;
+mod mask_crop;
 mod mixer;
 mod order;
 mod perf;

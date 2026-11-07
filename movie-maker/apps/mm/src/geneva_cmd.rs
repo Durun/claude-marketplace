@@ -6,6 +6,7 @@
 
 mod media;
 mod report;
+mod shape;
 mod sound;
 mod syntax;
 mod visual;
@@ -118,7 +119,6 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
         frame: [f64::from(width), f64::from(height)],
         media: &media,
         report: Report::default(),
-        nested: Vec::new(),
     };
     note_top_level(&mut ctx.report, timeline);
     let list = |k: &str| {
@@ -136,7 +136,6 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
         .try_fold(RationalTime::ZERO, |m, e| e.map(|e| m.max(e)))?;
     let mut project = Project::new();
     project.assets = assets;
-    project.compositions = std::mem::take(&mut ctx.nested);
     project
         .compositions
         .push(Composition::new(Id::new(MAIN_ID), width, height, fps, duration).with_layers(layers));

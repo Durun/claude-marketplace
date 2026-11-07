@@ -22,13 +22,13 @@ const ENV_FULL: &str = "MM_EP03_FULL";
 /// 区間の書き出しで比べる位置（全体の長さに対する割合）と、1 つの区間の秒数。
 const WINDOW_AT: [f64; 6] = [0.02, 0.2, 0.4, 0.6, 0.8, 0.97];
 const WINDOW_SECONDS: f64 = 4.0;
-/// 区間の始まりをそろえる刻み（1 秒あたりの数）。0.1 秒はマイクロ秒でも 30 fps のフレームでも割り切れる。
+/// 区間の始まりをそろえる刻み（1 秒あたりの数）。区間を変えると前の回の数字と比べられないので、0.1 秒の格子に保つ。
 const WINDOW_GRID: f64 = 10.0;
 
 /// 区間ごとの平均の SSIM の下限。
 /// 前の書き出し（geneva、H.264）と movie-maker の書き出し（H.264）は、どちらも非可逆の符号化を通るので一致しない。
 /// 前の書き出しを movie-maker の既定（libx264、CRF 18、medium）で符号化し直しただけで 0.995 になり、
-/// 再現の区間は 0.982〜0.993 だった。残りの差は描き方（縮小のフィルター、描かない角丸のマスク）に充てる。
+/// 再現の区間は 0.982〜0.993 だった。残りの差は描き方（縮小のフィルター）に充てる。
 const SSIM_MEAN_MIN: f64 = 0.97;
 /// 1 フレームの SSIM の下限。60 fps の OBS の収録（mkv の ms 単位の丸め）は、movie-maker が CFR の格子で、
 /// geneva が PTS でフレームを選ぶので、3 フレームに 1 回 1/60 秒違うフレームになり、動きの大きい所で 0.88 まで下がる。
@@ -45,7 +45,7 @@ const LAG_MAX_MS: f64 = 2.0;
 const GAIN_MAX_DB: f64 = 1.0;
 
 /// 変換できない要素として認める一覧（種類、数）。増えたら変換か movie-maker の機能を見直す。
-const KNOWN_GAPS: [(&str, u64); 1] = [("mask", 10)];
+const KNOWN_GAPS: [(&str, u64); 0] = [];
 
 fn fixture() -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/ep03/expected.json");
@@ -111,9 +111,7 @@ fn render(project: &Path, out: &Path, range: Option<(f64, f64)>) {
     mm(&args);
 }
 
-/// 区間（秒）。`full` なら全体 1 つ、そうでなければ短い区間を散らす。
-/// 始まりは 0.1 秒の倍数にする。`mm render --range` はマイクロ秒に丸めるので、1/30 秒の境を小数で渡すと
-/// 境の直前になり、1 フレーム前の絵から始まる。
+/// 区間（秒）。`full` なら全体 1 つ、そうでなければ短い区間を散らす（始まりは 0.1 秒の倍数）。
 fn windows(duration: f64, full: bool) -> Vec<(f64, f64)> {
     if full {
         return vec![(0.0, duration)];

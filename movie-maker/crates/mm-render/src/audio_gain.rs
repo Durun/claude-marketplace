@@ -1,10 +1,10 @@
 //! 時間で変わるレイヤーの音量。ミキサーは入力ごとに 1 つの音量しか受けず、書き出しは音を 10 秒ずつ混ぜるので、
-//! 区間の頭の 1 点で評価するとフェードと音量の動きが消える。キーフレームのある音量はレンダラーがサンプルに掛け、
-//! ミキサーには 0 dB で渡す。
+//! 区間の頭の 1 点で評価するとフェードと音量の動きが消える。キーフレームのある音量と音のフェードはレンダラーが
+//! サンプルに掛け、ミキサーには 0 dB で渡す。
 
 use mm_audio_api::AudioBlock;
 use mm_doc::Layer;
-use mm_eval::eval_param;
+use mm_eval::{eval_param, fade_gain, has_fades};
 use mm_types::{RationalTime, Result};
 
 /// 音量を評価する間隔（サンプル）。間は直線で補間する。48 kHz で約 1.3 ms。
@@ -14,13 +14,17 @@ fn db_to_gain(db: f64) -> f32 {
     10f64.powf(db / 20.0) as f32
 }
 
-/// `layer` の音量にキーフレームがあれば、`start`（コンポジションの時刻）から並ぶ `block` に掛けて `true` を返す。
+/// `layer` の音量にキーフレームかフェードがあれば、`start`（コンポジションの時刻）から並ぶ `block` に掛けて `true` を返す。
 pub(crate) fn apply_gain_envelope(
     block: &mut AudioBlock,
     layer: &Layer,
     start: RationalTime,
 ) -> Result<bool> {
-    let Some(audio) = layer.audio.as_ref().filter(|a| a.gain_db.is_animated()) else {
+    let Some(audio) = layer
+        .audio
+        .as_ref()
+        .filter(|a| a.gain_db.is_animated() || has_fades(layer))
+    else {
         return Ok(false);
     };
     let rate = block.sample_rate;
@@ -28,9 +32,8 @@ pub(crate) fn apply_gain_envelope(
     let frames = block.frames();
     let gain_at = |i: usize| -> Result<f32> {
         let t = start.checked_add(RationalTime::new(i as i128, rate)?)?;
-        Ok(db_to_gain(
-            eval_param(&audio.gain_db, t).as_number().unwrap_or(0.0),
-        ))
+        let db = eval_param(&audio.gain_db, t).as_number().unwrap_or(0.0);
+        Ok(db_to_gain(db) * fade_gain(layer, t) as f32)
     };
     let mut from = 0;
     let mut g0 = gain_at(0)?;
@@ -68,11 +71,8 @@ mod tests {
             RationalTime::seconds(1),
         );
         l.audio = Some(LayerAudio {
-            role: "voice".into(),
             gain_db,
-            pan: Param::constant(ParamValue::Number(0.0)),
-            mute: false,
-            solo: false,
+            ..LayerAudio::new("voice")
         });
         l
     }
@@ -113,5 +113,24 @@ mod tests {
             "中ほどは -10 dB"
         );
         assert!(at(RATE as usize - 1) < 0.11, "終わりは -20 dB 近く");
+    }
+
+    #[test]
+    fn 固定の音量でもフェードがあれば時刻ごとに掛かる() {
+        let mut l = layer_with(Param::constant(ParamValue::Number(-6.0)));
+        let audio = l.audio.as_mut().unwrap();
+        audio.fade_out = Some(mm_doc::Fade::linear(RationalTime::new(1, 2).unwrap()));
+        let mut b = ones(RATE as usize);
+        assert!(apply_gain_envelope(&mut b, &l, RationalTime::ZERO).unwrap());
+        let at = |i: usize| b.samples[i * 2];
+        let base = 10f32.powf(-6.0 / 20.0);
+        assert!(
+            (at(RATE as usize / 4) - base).abs() < 1e-4,
+            "フェードの前は -6 dB"
+        );
+        assert!(
+            (at(RATE as usize * 3 / 4) - base * 0.5).abs() < 1e-3,
+            "尻の 0.25 秒前は振幅が半分"
+        );
     }
 }

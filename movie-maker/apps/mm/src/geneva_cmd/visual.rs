@@ -2,20 +2,18 @@
 //!
 //! geneva はクリップの箱（切り抜いて `fit` で収めた矩形）のアンカーを `position` に置き、その周りで拡大する。
 //! movie-maker では素材を `fit: none`（素材の画素のまま左上に置く）で描き、アンカーを原点に固定して、
-//! 同じ写像になる拡大と位置を求める。切り抜きが画面の外にはみ出すだけなら変形だけで表せ、
-//! 画面の中に縁が出るときは、切り抜いた大きさの入れ子のコンポジションで縁を作る。
+//! 同じ写像になる拡大と位置を求める。レイヤーの座標は素材の画素なので、切り抜きはレイヤーの切り抜き（`crop`）、
+//! 角丸の矩形のマスクはレイヤーのマスクに、箱の画素を素材の画素に戻して置く。
 
 use std::collections::HashMap;
 
-use mm_doc::{
-    Composition, Interpolation, Keyframe, Layer, LayerAudio, Node, Param, Transform, NESTED_KIND,
-    NESTED_PARAM,
-};
+use mm_doc::{Interpolation, Keyframe, Layer, LayerAudio, Node, Param, Transform};
 use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
 use serde_json::Value;
 
 use super::media::Media;
 use super::report::{Gap, Report};
+use super::shape;
 use super::syntax::{self, Anim};
 
 /// 素材の画素のまま置く `fit` のパラメータ（`mm-nodes-basic` の footage と image）。
@@ -27,8 +25,6 @@ const FOOTAGE_KIND: &str = "footage";
 const IMAGE_KIND: &str = "image";
 const ASSET_PARAM: &str = "asset";
 const KIND_VERSION: u32 = 1;
-/// 切り抜きの縁が画面の外に出ているとみなす許容（画素）。
-const COVER_EPS: f64 = 0.5;
 
 /// 変換の共通の状態。
 pub struct Ctx<'a> {
@@ -37,16 +33,14 @@ pub struct Ctx<'a> {
     pub frame: [f64; 2],
     pub media: &'a HashMap<String, Media>,
     pub report: Report,
-    /// 切り抜きのために作った入れ子のコンポジション。
-    pub nested: Vec<Composition>,
 }
 
 /// クリップの置き方（geneva の意味のまま）。
 struct Geometry {
     /// 素材の画素の切り抜き `[x, y, w, h]`。
     crop: [f64; 4],
-    /// 切り抜きが素材の全体か。全体なら縁は素材の縁で、入れ子が要らない。
-    whole: bool,
+    /// 素材の大きさ。
+    src: [f64; 2],
     /// 切り抜きを箱に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
     k: f64,
     /// 箱の上のアンカー（箱の画素）。
@@ -121,24 +115,21 @@ fn convert_clip(
         }
     };
     let geo = geometry(ctx, clip, size, is_video)?;
-    let opacity = opacity_param(ctx, clip, timing.start)?;
-    let node = picture_node(asset, is_video);
-    let mut layer = if needs_crop(&geo, ctx.frame) {
-        nested_layer(ctx, id, node, clip, &geo, timing)?
-    } else {
-        let mut l = timed_layer(id, node, clip, timing, ctx.fps)?;
-        l.transform = transform(&geo, [geo.crop[0], geo.crop[1]], timing.start)?;
-        l
-    };
-    layer.opacity = opacity;
+    let mut layer = timed_layer(id, picture_node(asset, is_video), clip, timing, ctx.fps)?;
+    layer.transform = transform(&geo, timing.start)?;
+    layer.crop = shape::layer_crop(geo.crop, geo.src);
+    if let Some(m) = clip.get("mask").filter(|m| !m.is_null()) {
+        match shape::layer_mask(geo.crop, geo.k, &format!("{id}-mask"), m)? {
+            Some(mask) => layer.masks.push(mask),
+            None => ctx.report.add(Gap::Mask),
+        }
+    }
+    layer.opacity = opacity_param(ctx, clip, timing.start)?;
     Ok(Some(layer))
 }
 
 fn note_gaps(report: &mut Report, clip: &Value) {
     let has = |k: &str| clip.get(k).is_some_and(|v| !v.is_null());
-    if has("mask") {
-        report.add(Gap::Mask);
-    }
     if clip
         .get("effects")
         .and_then(Value::as_array)
@@ -177,7 +168,7 @@ fn picture_node(asset: &str, is_video: bool) -> Node {
 
 fn geometry(ctx: &mut Ctx<'_>, clip: &Value, size: [u32; 2], is_video: bool) -> Result<Geometry> {
     let src = [f64::from(size[0]), f64::from(size[1])];
-    let crop = crop_rect(clip.get("crop"), src)?;
+    let crop = shape::crop_rect(clip.get("crop"), src)?;
     let default_fit = if is_video { "contain" } else { FIT_NONE };
     let fit = clip
         .get("fit")
@@ -209,41 +200,13 @@ fn geometry(ctx: &mut Ctx<'_>, clip: &Value, size: [u32; 2], is_video: bool) -> 
     if position.has_easing() || scale.has_easing() {
         ctx.report.add(Gap::Easing);
     }
-    let whole = crop == [0.0, 0.0, src[0], src[1]];
     Ok(Geometry {
         crop,
-        whole,
+        src,
         k,
         anchor,
         position,
         scale,
-    })
-}
-
-fn crop_rect(crop: Option<&Value>, src: [f64; 2]) -> Result<[f64; 4]> {
-    let Some(c) = crop.filter(|c| !c.is_null()) else {
-        return Ok([0.0, 0.0, src[0], src[1]]);
-    };
-    let get = |k: &str, reference: f64| c.get(k).map(|v| syntax::length(v, reference)).transpose();
-    let x = get("x", src[0])?.unwrap_or(0.0).clamp(0.0, src[0]);
-    let y = get("y", src[1])?.unwrap_or(0.0).clamp(0.0, src[1]);
-    let w = get("width", src[0])?.unwrap_or(src[0] - x).min(src[0] - x);
-    let h = get("height", src[1])?.unwrap_or(src[1] - y).min(src[1] - y);
-    Ok([x, y, w.max(1.0), h.max(1.0)])
-}
-
-/// 切り抜きの縁が画面の中に見えるか。見えなければ変形だけで表せる。
-fn needs_crop(geo: &Geometry, frame: [f64; 2]) -> bool {
-    if geo.whole {
-        return false;
-    }
-    key_times(geo).into_iter().any(|t| {
-        let (p, s) = (geo.position.at(t), geo.scale.at(t));
-        (0..2).any(|c| {
-            let lo = p[c] - s[c] * geo.anchor[c];
-            let hi = p[c] + s[c] * (geo.crop[2 + c] * geo.k - geo.anchor[c]);
-            lo > COVER_EPS || hi < frame[c] - COVER_EPS
-        })
     })
 }
 
@@ -260,8 +223,9 @@ fn key_times(geo: &Geometry) -> Vec<RationalTime> {
     times
 }
 
-/// 素材の画素 `p` が `P + s (k (p - offset) - A)` に写る変形（アンカーは原点）。
-fn transform(geo: &Geometry, offset: [f64; 2], start: RationalTime) -> Result<Transform> {
+/// 素材の画素 `p` が `P + s (k (p - crop) - A)` に写る変形（アンカーは原点）。
+fn transform(geo: &Geometry, start: RationalTime) -> Result<Transform> {
+    let offset = [geo.crop[0], geo.crop[1]];
     let at = |t: RationalTime| {
         let (p, s) = (geo.position.at(t), geo.scale.at(t));
         let sm = [s[0] * geo.k, s[1] * geo.k];
@@ -363,11 +327,8 @@ fn timed_layer(
     if source.get("kind").and_then(Value::as_str) == Some("video") {
         let muted = source.get("audio").and_then(Value::as_bool) == Some(false);
         layer.audio = Some(LayerAudio {
-            role: "video".into(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
             mute: muted,
-            solo: false,
+            ..LayerAudio::new("video")
         });
     }
     Ok(layer)
@@ -376,49 +337,6 @@ fn timed_layer(
 fn scale_time(t: RationalTime, by: RationalTime) -> Result<RationalTime> {
     let r = Rational::new(u32::try_from(by.num()).unwrap_or(1), by.den())?;
     t.scale(r)
-}
-
-/// 切り抜いた大きさの入れ子のコンポジションに素材を置き、外のレイヤーでそれを置く。
-fn nested_layer(
-    ctx: &mut Ctx<'_>,
-    id: &str,
-    node: Node,
-    clip: &Value,
-    geo: &Geometry,
-    timing: &Timing,
-) -> Result<Layer> {
-    let comp_id = format!("crop-{id}");
-    let inner_timing = Timing {
-        start: RationalTime::ZERO,
-        duration: timing.duration,
-    };
-    let mut inner = timed_layer(&format!("{comp_id}-in"), node, clip, &inner_timing, ctx.fps)?;
-    inner.transform = Transform {
-        anchor: Some(Param::constant(ParamValue::Vec2([0.0, 0.0]))),
-        position: Param::constant(ParamValue::Vec2([-geo.crop[0], -geo.crop[1]])),
-        ..Transform::default()
-    };
-    ctx.nested.push(
-        Composition::new(
-            Id::new(comp_id.clone()),
-            geo.crop[2].round().max(1.0) as u32,
-            geo.crop[3].round().max(1.0) as u32,
-            ctx.fps,
-            timing.duration,
-        )
-        .with_layers(vec![inner]),
-    );
-    let outer_node =
-        Node::new(NESTED_KIND, KIND_VERSION).with_param(NESTED_PARAM, ParamValue::Text(comp_id));
-    let mut outer = Layer::new(
-        id,
-        outer_node,
-        timing.start,
-        RationalTime::ZERO,
-        timing.duration,
-    );
-    outer.transform = transform(geo, [0.0, 0.0], timing.start)?;
-    Ok(outer)
 }
 
 #[cfg(test)]
@@ -439,43 +357,45 @@ mod tests {
         ])
     }
 
-    fn one(clip: Value) -> (Layer, Vec<Composition>) {
+    fn one(clip: Value) -> (Layer, Report) {
         let media = media();
         let mut ctx = Ctx {
             fps: Rational::integer(30),
             frame: [1920.0, 1080.0],
             media: &media,
             report: Report::default(),
-            nested: Vec::new(),
         };
         let mut layers = visual_layers(&mut ctx, &[json!({"clips": [clip]})]).unwrap();
-        (layers.remove(0), ctx.nested)
+        (layers.remove(0), ctx.report)
     }
 
     fn vec2(p: &Param) -> [f64; 2] {
         p.value.as_vec2().unwrap()
     }
 
+    fn side(p: &Option<Param>) -> Option<f64> {
+        p.as_ref().and_then(|p| p.value.as_number())
+    }
+
     #[test]
     fn 画像は左上のアンカーを位置に置き_素材の画素のまま() {
-        let (l, nested) = one(json!({
+        let (l, _) = one(json!({
             "source": {"kind": "image", "asset": "png"}, "start": "30f", "duration": "10f",
             "transform": {"position": {"x": 1513, "y": 285}, "anchor": "0% 0%"}
         }));
-        assert!(nested.is_empty());
+        assert!(l.crop.is_empty());
         assert_eq!(vec2(&l.transform.position), [1513.0, 285.0]);
         assert_eq!(vec2(&l.transform.scale), [1.0, 1.0]);
         assert_eq!(l.start, RationalTime::seconds(1));
     }
 
     #[test]
-    fn 画面を覆う切り抜きは変形だけで表す() {
-        let (l, nested) = one(json!({
+    fn 画面を覆う切り抜きも変形とレイヤーの切り抜きで表す() {
+        let (l, _) = one(json!({
             "source": {"kind": "video", "asset": "cap", "in": 2.5, "audio": false},
             "start": "0f", "duration": "30f",
             "crop": {"x": 60, "y": 0, "width": 3720, "height": 2092}
         }));
-        assert!(nested.is_empty());
         let k = 1920.0 / 3720.0;
         let s = vec2(&l.transform.scale);
         assert!((s[0] - k).abs() < 1e-12);
@@ -484,22 +404,57 @@ mod tests {
         let below = (1080.0 - 2092.0 * k) / 2.0;
         assert!((p[0] + 60.0 * k).abs() < 1e-9, "{p:?}");
         assert!((p[1] - below).abs() < 1e-9, "{p:?}");
+        assert_eq!(side(&l.crop.left), Some(60.0));
+        assert_eq!(side(&l.crop.right), Some(60.0));
+        assert_eq!(side(&l.crop.top), None);
+        assert_eq!(side(&l.crop.bottom), Some(68.0));
         assert!(l.audio.expect("映像の音").mute);
     }
 
     #[test]
-    fn 画面の中に縁が出る切り抜きは入れ子で切る() {
-        let (l, nested) = one(json!({
+    fn 画面の中に縁が出る切り抜きはレイヤーの切り抜きで切る() {
+        let (l, _) = one(json!({
             "source": {"kind": "video", "asset": "cap", "in": 1, "audio": false},
             "start": "0f", "duration": "30f", "fit": "none",
             "crop": {"x": 501, "y": 0, "width": 1259, "height": 1005},
             "transform": {"anchor": "0 0", "position": {"x": 1473, "y": 723}, "scale": 0.5}
         }));
-        assert_eq!(nested.len(), 1);
-        assert_eq!((nested[0].width, nested[0].height), (1259, 1005));
-        let inner = &nested[0].layers[0];
-        assert_eq!(vec2(&inner.transform.position), [-501.0, 0.0]);
-        assert_eq!(vec2(&l.transform.position), [1473.0, 723.0]);
+        // 素材の (501, 0) が画面の (1473, 723) に来る
+        let p = vec2(&l.transform.position);
+        assert_eq!(p, [1473.0 - 0.5 * 501.0, 723.0]);
         assert_eq!(vec2(&l.transform.scale), [0.5, 0.5]);
+        assert_eq!(side(&l.crop.left), Some(501.0));
+        assert_eq!(side(&l.crop.right), Some(3840.0 - 501.0 - 1259.0));
+        assert_eq!(side(&l.crop.bottom), Some(2160.0 - 1005.0));
+    }
+
+    #[test]
+    fn 角丸のマスクは切り抜きの箱に重ねた素材の画素の矩形にする() {
+        let (l, report) = one(json!({
+            "source": {"kind": "video", "asset": "cap", "audio": false},
+            "start": "0f", "duration": "30f", "fit": "none",
+            "crop": {"x": 1220, "y": 1080, "width": 1530, "height": 861},
+            "mask": {"radius": 55.25, "feather": 1},
+            "transform": {"anchor": "0 0", "position": {"x": 48, "y": 104}, "scale": 0.47}
+        }));
+        assert!(
+            report.to_json().as_array().unwrap().is_empty(),
+            "マスクを落とさない"
+        );
+        let rect = l.masks[0].rect.as_ref().unwrap();
+        assert_eq!(vec2(&rect.position), [1220.0, 1080.0]);
+        assert_eq!(vec2(&rect.size), [1530.0, 861.0]);
+        assert_eq!(rect.radius.value.as_number(), Some(55.25));
+        assert_eq!(l.masks[0].feather.value.as_number(), Some(1.0));
+    }
+
+    #[test]
+    fn 楕円のマスクは落として数える() {
+        let (l, report) = one(json!({
+            "source": {"kind": "image", "asset": "png"}, "duration": "10f",
+            "mask": {"shape": "ellipse"}
+        }));
+        assert!(l.masks.is_empty());
+        assert_eq!(report.to_json()[0]["what"], "mask");
     }
 }

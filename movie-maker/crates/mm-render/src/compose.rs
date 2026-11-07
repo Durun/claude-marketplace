@@ -5,6 +5,8 @@ use wgpu::util::DeviceExt;
 
 use mm_gpu::{GpuContext, FRAME_FORMAT};
 
+use crate::clip::{Clip, MaskUniform, MAX_MASKS};
+
 /// 重ねる 1 枚。
 pub struct DrawItem<'a> {
     pub texture: &'a wgpu::Texture,
@@ -13,16 +15,21 @@ pub struct DrawItem<'a> {
     pub opacity: f32,
     /// 出力の 1 画素あたりの元の画素の数（軸ごと）。1 を超えると面積平均で縮小する。
     pub taps: [f32; 2],
+    /// 切り抜きとマスク。
+    pub clip: Clip,
 }
 
-/// シェーダーの `Item` と同じフィールド順（80 バイト）。
+/// シェーダーの `Item` と同じフィールド順（240 バイト）。
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct ItemUniform {
     matrix: [f32; 16],
     opacity: f32,
-    _pad: f32,
+    mask_count: u32,
     taps: [f32; 2],
+    place: [f32; 4],
+    crop: [f32; 4],
+    masks: [MaskUniform; MAX_MASKS],
 }
 
 /// 合成のパイプライン。
@@ -96,8 +103,11 @@ impl Compositor {
         let uniform = ItemUniform {
             matrix: item.matrix,
             opacity: item.opacity,
-            _pad: 0.0,
+            mask_count: item.clip.mask_count,
             taps: item.taps,
+            place: item.clip.place,
+            crop: item.clip.crop,
+            masks: item.clip.masks,
         };
         let buffer = ctx
             .device

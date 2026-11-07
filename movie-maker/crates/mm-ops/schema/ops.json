@@ -99,6 +99,56 @@
       ]
     },
     {
+      "description": "レイヤーにマスクを足す。",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "mask": {
+          "$ref": "#/$defs/Mask"
+        },
+        "op": {
+          "type": "string",
+          "const": "addMask"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "mask"
+      ]
+    },
+    {
+      "description": "レイヤーからマスクを外す。",
+      "type": "object",
+      "properties": {
+        "mask": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeMask"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "mask"
+      ]
+    },
+    {
       "description": "レイヤーの重なりの位置を変える。",
       "type": "object",
       "properties": {
@@ -1729,6 +1779,52 @@
         "layers"
       ]
     },
+    "Crop": {
+      "description": "切り抜き。レイヤーの画像の縁から内側へ削る幅（画素）。\nDaVinci Resolve の Inspector の Cropping と Premiere Pro の Crop と同じく上下左右を別々に持ち、どれもキーフレームできる。\n無い辺は削らない。",
+      "type": "object",
+      "properties": {
+        "bottom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "left": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "right": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "top": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "CubicBezier": {
       "description": "進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。\n`x1`、`x2` は `[0,1]` に収める（時間が単調になる）。",
       "type": "object",
@@ -2081,6 +2177,43 @@
         "node"
       ]
     },
+    "Fade": {
+      "description": "音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に\nレイヤーの頭（`fade_in`）と尻（`fade_out`）に持ち、音量に掛ける。",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "$ref": "#/$defs/FadeCurve",
+          "default": "linear"
+        },
+        "duration": {
+          "description": "フェードの長さ（コンポジションの時間）。正。",
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "required": [
+        "duration"
+      ]
+    },
+    "FadeCurve": {
+      "description": "フェードの曲線。進み具合 `p`（無音の側が 0、鳴る側が 1）から振幅の倍率を決める。",
+      "oneOf": [
+        {
+          "description": "振幅の直線（`p`）。geneva と Final Cut Pro の Linear。",
+          "type": "string",
+          "const": "linear"
+        },
+        {
+          "description": "等パワー（`sin(p π/2)`）。重なった 2 つのフェードの和の大きさが保たれる。Final Cut Pro の +3dB。",
+          "type": "string",
+          "const": "equal_power"
+        },
+        {
+          "description": "dB の直線。-60 dB から 0 dB まで、`p = 0` だけ無音。",
+          "type": "string",
+          "const": "db"
+        }
+      ]
+    },
     "Framing": {
       "description": "sequence のレイヤーの、コンポジションごとの見せ方。同じ素材を本編（16:9）とショート（9:16）で別の位置から切り出す。",
       "type": "object",
@@ -2191,6 +2324,10 @@
         "blend": {
           "$ref": "#/$defs/BlendMode",
           "default": "normal"
+        },
+        "crop": {
+          "description": "切り抜き。変形の前のレイヤーの画像に掛ける。",
+          "$ref": "#/$defs/Crop"
         },
         "effects": {
           "description": "効果の列。上から順に掛ける。",
@@ -2331,6 +2468,28 @@
       "description": "レイヤーの音の設定。",
       "type": "object",
       "properties": {
+        "fade_in": {
+          "description": "頭のフェード。音量に掛ける。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fade_out": {
+          "description": "尻のフェード。音量に掛ける。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "gain_db": {
           "$ref": "#/$defs/Param"
         },
@@ -2385,12 +2544,19 @@
       ]
     },
     "Mask": {
-      "description": "マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。",
+      "description": "マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。\n座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。",
       "type": "object",
       "properties": {
         "feather": {
-          "description": "ぼかしの幅（画素）。",
-          "$ref": "#/$defs/Param"
+          "description": "ぼかしの幅（画素）。縁を中心にこの幅で 0 から 1 へ移る。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 0.0
+            }
+          }
         },
         "id": {
           "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
@@ -2405,18 +2571,40 @@
           "default": "add"
         },
         "opacity": {
-          "$ref": "#/$defs/Param"
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 1.0
+            }
+          }
         },
         "path": {
-          "description": "頂点の列（コンポジションの画素）。キーフレームで形を動かせる。",
-          "$ref": "#/$defs/Param"
+          "description": "頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "json",
+              "value": []
+            }
+          }
+        },
+        "rect": {
+          "description": "角丸の矩形。あれば形はこれで決まる。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaskRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "id",
-        "path",
-        "feather",
-        "opacity"
+        "id"
       ]
     },
     "MaskMode": {
@@ -2426,6 +2614,35 @@
         "add",
         "subtract",
         "intersect"
+      ]
+    },
+    "MaskRect": {
+      "description": "角丸の矩形のマスクの形。DaVinci Resolve（Fusion）の Rectangle Mask と geneva の `mask` の `rect` に合わせ、\n位置・大きさ・角の半径をパラメータで持つ（どれもキーフレームできる）。",
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "矩形の左上（Vec2）。",
+          "$ref": "#/$defs/Param"
+        },
+        "radius": {
+          "description": "角の半径（Number）。短い辺の半分で頭打ちにする。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 0.0
+            }
+          }
+        },
+        "size": {
+          "description": "矩形の幅と高さ（Vec2）。",
+          "$ref": "#/$defs/Param"
+        }
+      },
+      "required": [
+        "position",
+        "size"
       ]
     },
     "MatteKind": {

@@ -52,9 +52,9 @@ pub use bins::{
 };
 pub use delivery::{Delivery, SubtitleOutput, DEFAULT_TRUE_PEAK_DBTP};
 pub use layer::{
-    BlendMode, CaptionPlacement, CutReframe, Effect, EffectId, EffectMarker, Framing, Layer,
-    LayerAudio, Mask, MaskId, MaskMarker, MaskMode, MatteKind, TimeKeyframe, TimeRemap, TrackMatte,
-    Transform,
+    BlendMode, CaptionPlacement, Crop, CutReframe, Effect, EffectId, EffectMarker, Fade, FadeCurve,
+    Framing, Layer, LayerAudio, Mask, MaskId, MaskMarker, MaskMode, MaskRect, MatteKind,
+    TimeKeyframe, TimeRemap, TrackMatte, Transform,
 };
 pub use migrate::{load, migrate};
 pub use migrate_named::{copy_stamp, is_current, migration_names, version_stamp, MIGRATIONS_FIELD};

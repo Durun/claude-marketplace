@@ -1,5 +1,9 @@
 //! レイヤーとその付属（変形、時間、重ね方、マスク、効果、音）。
 
+mod shape;
+
+pub use shape::{Crop, Fade, FadeCurve, MaskRect};
+
 use serde::{Deserialize, Serialize};
 
 use mm_types::{Id, LayerId, ParamValue, Rational, RationalTime, Result, TimeRange};
@@ -65,6 +69,9 @@ pub struct Layer {
     /// 位置・拡大・回転・アンカー。レンダラーが合成で掛ける（ノードの種類には渡さない）。
     #[serde(default)]
     pub transform: Transform,
+    /// 切り抜き。変形の前のレイヤーの画像に掛ける。
+    #[serde(default, skip_serializing_if = "Crop::is_empty")]
+    pub crop: Crop,
     #[serde(default)]
     pub masks: Vec<Mask>,
     #[serde(default)]
@@ -158,6 +165,7 @@ impl Layer {
             blend: BlendMode::Normal,
             opacity: Param::constant(ParamValue::Number(1.0)),
             transform: Transform::default(),
+            crop: Crop::default(),
             masks: Vec::new(),
             track_matte: None,
             effects: Vec::new(),
@@ -275,19 +283,26 @@ impl Transform {
     }
 }
 
-/// マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。
+/// マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。
+/// 座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Mask {
     pub id: MaskId,
-    /// 頂点の列（コンポジションの画素）。キーフレームで形を動かせる。
+    /// 頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。
+    #[serde(default = "shape::empty_path")]
     pub path: Param,
+    /// 角丸の矩形。あれば形はこれで決まる。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rect: Option<MaskRect>,
     #[serde(default)]
     pub mode: MaskMode,
     #[serde(default)]
     pub inverted: bool,
-    /// ぼかしの幅（画素）。
+    /// ぼかしの幅（画素）。縁を中心にこの幅で 0 から 1 へ移る。
+    #[serde(default = "shape::zero")]
     pub feather: Param,
+    #[serde(default = "shape::one")]
     pub opacity: Param,
 }
 
@@ -345,6 +360,27 @@ pub struct LayerAudio {
     /// ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。
     #[serde(default, skip_serializing_if = "is_false")]
     pub solo: bool,
+    /// 頭のフェード。音量に掛ける。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_in: Option<Fade>,
+    /// 尻のフェード。音量に掛ける。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_out: Option<Fade>,
+}
+
+impl LayerAudio {
+    /// 役割 `role` の、0 dB・中央・ミュートもソロもフェードもない設定。
+    pub fn new(role: impl Into<String>) -> Self {
+        Self {
+            role: role.into(),
+            gain_db: Param::constant(ParamValue::Number(0.0)),
+            pan: Param::constant(ParamValue::Number(0.0)),
+            mute: false,
+            solo: false,
+            fade_in: None,
+            fade_out: None,
+        }
+    }
 }
 
 fn is_false(v: &bool) -> bool {

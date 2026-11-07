@@ -2,7 +2,7 @@
 
 use crate::common::{cut, layer};
 use mm_doc::{
-    CutId, Effect, Layer, LayerAudio, Mask, MaskMode, MatteKind, Node, Param, Project,
+    CutId, Effect, Layer, LayerAudio, Mask, MaskRect, MatteKind, Node, Param, Project,
     TimeKeyframe, TimeRemap, TrackMatte, Transition, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
     SEQUENCE_PARAM,
 };
@@ -156,15 +156,10 @@ pub fn build_node(spec: &NodeSpec, p: &Project) -> Node {
 }
 
 fn mask_for(id: &str) -> Mask {
-    let num = |v: f64| Param::constant(ParamValue::Number(v));
-    Mask {
-        id: Id::new(format!("{id}-mk")),
-        path: num(0.0),
-        mode: MaskMode::Add,
-        inverted: false,
-        feather: num(0.0),
-        opacity: num(1.0),
-    }
+    Mask::rect(
+        format!("{id}-mk"),
+        MaskRect::new([0.0, 0.0], [16.0, 9.0], 2.0),
+    )
 }
 
 fn remap() -> TimeRemap {
@@ -206,13 +201,7 @@ pub fn build_layer(spec: &LayerSpec, p: &Project, start: i64, len: i64) -> Layer
         l.masks.push(mask_for(&spec.id));
     }
     if spec.audio {
-        l.audio = Some(LayerAudio {
-            role: "voice".to_owned(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
-            mute: false,
-            solo: false,
-        });
+        l.audio = Some(LayerAudio::new("voice"));
     }
     if spec.remap {
         l.time_remap = Some(remap());
@@ -222,17 +211,16 @@ pub fn build_layer(spec: &LayerSpec, p: &Project, start: i64, len: i64) -> Layer
 
 /// 種からレイヤーの音の設定を作る。0 は外す、奇数はミュート、4 以上はソロ、3 の倍数は BGM に送る。
 pub fn layer_audio(seed: u8) -> Option<LayerAudio> {
+    let role = if seed.is_multiple_of(3) {
+        "bgm"
+    } else {
+        "voice"
+    };
     (seed != 0).then(|| LayerAudio {
-        role: if seed.is_multiple_of(3) {
-            "bgm"
-        } else {
-            "voice"
-        }
-        .to_owned(),
         gain_db: Param::constant(ParamValue::Number(-f64::from(seed % 24))),
-        pan: Param::constant(ParamValue::Number(0.0)),
         mute: seed % 2 == 1,
         solo: seed >= 4,
+        ..LayerAudio::new(role)
     })
 }
 
