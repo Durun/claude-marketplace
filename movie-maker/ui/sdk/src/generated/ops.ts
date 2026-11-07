@@ -153,7 +153,7 @@ export type Effect = {
   "id": string;
   "node": Node;
 };
-/** 音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に レイヤーの頭（`fade_in`）と尻（`fade_out`）に持ち、音量に掛ける。 */
+/** 音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に レイヤーの先頭（`fade_in`）と末尾（`fade_out`）に持ち、音量に掛ける。 */
 export type Fade = {
   "curve"?: FadeCurve;
   /** フェードの長さ（コンポジションの時間）。正。 */
@@ -219,9 +219,9 @@ export type Layer = {
 };
 /** レイヤーの音の設定。 */
 export type LayerAudio = {
-  /** 頭のフェード。音量に掛ける。 */
+  /** 先頭のフェード。音量に掛ける。 */
   "fade_in"?: Fade | null;
-  /** 尻のフェード。音量に掛ける。 */
+  /** 末尾のフェード。音量に掛ける。 */
   "fade_out"?: Fade | null;
   "gain_db": Param;
   /** 鳴らさない。プレビューと書き出しの両方に効く。 */

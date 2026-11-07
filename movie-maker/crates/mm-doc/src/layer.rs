@@ -360,10 +360,10 @@ pub struct LayerAudio {
     /// ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。
     #[serde(default, skip_serializing_if = "is_false")]
     pub solo: bool,
-    /// 頭のフェード。音量に掛ける。
+    /// 先頭のフェード。音量に掛ける。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_in: Option<Fade>,
-    /// 尻のフェード。音量に掛ける。
+    /// 末尾のフェード。音量に掛ける。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_out: Option<Fade>,
 }

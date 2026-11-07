@@ -130,7 +130,7 @@ mod tests {
         );
         assert!(
             (at(RATE as usize * 3 / 4) - base * 0.5).abs() < 1e-3,
-            "尻の 0.25 秒前は振幅が半分"
+            "末尾の 0.25 秒前は振幅が半分"
         );
     }
 

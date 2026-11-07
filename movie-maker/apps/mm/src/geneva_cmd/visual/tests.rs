@@ -96,7 +96,7 @@ fn 角丸のマスクは切り抜きの矩形に重ねた素材の画素の矩�
     }));
     assert!(
         report.to_json().as_array().unwrap().is_empty(),
-        "マスクを落とさない"
+        "マスクを除かない"
     );
     let rect = l.masks[0].rect.as_ref().unwrap();
     assert_eq!(vec2(&rect.position), [1220.0, 1080.0]);
@@ -106,7 +106,7 @@ fn 角丸のマスクは切り抜きの矩形に重ねた素材の画素の矩�
 }
 
 #[test]
-fn 楕円のマスクは落として数える() {
+fn 楕円のマスクは除いて数える() {
     let (l, report) = one(json!({
         "source": {"kind": "image", "asset": "png"}, "duration": "10f",
         "mask": {"shape": "ellipse"}

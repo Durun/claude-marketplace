@@ -2178,7 +2178,7 @@
       ]
     },
     "Fade": {
-      "description": "音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に\nレイヤーの頭（`fade_in`）と尻（`fade_out`）に持ち、音量に掛ける。",
+      "description": "音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に\nレイヤーの先頭（`fade_in`）と末尾（`fade_out`）に持ち、音量に掛ける。",
       "type": "object",
       "properties": {
         "curve": {
@@ -2469,7 +2469,7 @@
       "type": "object",
       "properties": {
         "fade_in": {
-          "description": "頭のフェード。音量に掛ける。",
+          "description": "先頭のフェード。音量に掛ける。",
           "anyOf": [
             {
               "$ref": "#/$defs/Fade"
@@ -2480,7 +2480,7 @@
           ]
         },
         "fade_out": {
-          "description": "尻のフェード。音量に掛ける。",
+          "description": "末尾のフェード。音量に掛ける。",
           "anyOf": [
             {
               "$ref": "#/$defs/Fade"

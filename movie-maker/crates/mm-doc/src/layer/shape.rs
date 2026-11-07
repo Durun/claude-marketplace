@@ -110,7 +110,7 @@ impl Mask {
 }
 
 /// 音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に
-/// レイヤーの頭（`fade_in`）と尻（`fade_out`）に持ち、音量に掛ける。
+/// レイヤーの先頭（`fade_in`）と末尾（`fade_out`）に持ち、音量に掛ける。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Fade {

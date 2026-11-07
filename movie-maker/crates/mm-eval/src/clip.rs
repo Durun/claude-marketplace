@@ -101,7 +101,7 @@ pub fn has_fades(layer: &Layer) -> bool {
         .is_some_and(|a| a.fade_in.is_some() || a.fade_out.is_some())
 }
 
-/// レイヤーの頭と尻のフェードの、コンポジションの時刻 `t` での振幅の倍率。重なれば小さい方。
+/// レイヤーの先頭と末尾のフェードの、コンポジションの時刻 `t` での振幅の倍率。重なれば小さい方。
 pub fn fade_gain(layer: &Layer, t: RationalTime) -> f64 {
     let Some(audio) = &layer.audio else {
         return 1.0;
@@ -144,13 +144,13 @@ mod tests {
     }
 
     #[test]
-    fn 振幅の直線のフェードは頭と尻で直線に上がり下がる() {
+    fn 振幅の直線のフェードは先頭と末尾で直線に上がり下がる() {
         let l = layer_with(Some(Fade::linear(secs(2))), Some(Fade::linear(secs(1))));
         let at = |n: i128, d: u32| fade_gain(&l, RationalTime::new(n, d).unwrap());
         assert_eq!(at(10, 1), 0.0);
         assert!((at(11, 1) - 0.5).abs() < 1e-12);
         assert_eq!(at(12, 1), 1.0);
-        assert!((at(27, 2) - 0.5).abs() < 1e-12, "尻の 0.5 秒前");
+        assert!((at(27, 2) - 0.5).abs() < 1e-12, "末尾の 0.5 秒前");
         assert_eq!(at(14, 1), 0.0);
     }
 
