@@ -1,6 +1,6 @@
 //! キーフレームの操作（Inspector と Graph が出す形）。
 
-mod common;
+use crate::common;
 
 use common::{canon, project, quarters, secs};
 use mm_doc::{CubicBezier, Interpolation, Keyframe, Project};

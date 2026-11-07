@@ -3,6 +3,7 @@
 mod common;
 mod cut_words;
 mod editor;
+mod keyframes;
 mod order;
 mod perf;
 mod props;
