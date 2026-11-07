@@ -37,7 +37,7 @@ OFX と VST3 を `offline` に限らなくてよい理由: 前の構成では、
 | `Cut` の `in` と `speed` | `source_range.start_time` と `LinearTimeWarp.time_scalar` | `source_range.duration` は配置の長さ `(out - in) / speed`。OTIO の読み手が配置を正しく並べられる。素材の出は `in + 長さ × 速さ` |
 | 隙間のカット | `Gap` | 長さは配置の長さ |
 | 外したカット（`enabled: false`） | `enabled: false` で長さ 0 の `Clip` | OTIO は無効な項目も長さを数えるので、長さ 0 にして配置を合わせる。別のツールが無効にした長さのある項目は、長さを保つ隙間にする |
-| `transitionIn` | `Transition`（`SMPTE_Dissolve`）を前のカットとの間に置く | 境を中心に前後へ半分ずつ（`in_offset` = `out_offset` = 長さの半分）。取り込みは 2 つの和を長さにする。ディゾルブ以外の種類は種類の名前を `transition_type` に書き、取り込みはメタデータが無ければディゾルブにして警告 |
+| `transitionIn` | `Transition`（`SMPTE_Dissolve`）を前のカットとの間に置く | 編集点を中心に前後へ半分ずつ（`in_offset` = `out_offset` = 長さの半分）。取り込みは 2 つの和を長さにする。ディゾルブ以外の種類は種類の名前を `transition_type` に書き、取り込みはメタデータが無ければディゾルブにして警告 |
 | 撮影素材でないノード（単色、入れ子） | `GeneratorReference`（`generator_kind` = ノードの種類） | ノード全体を `metadata` に持つ。メタデータが無い生成器と、素材が無い `MissingReference` は隙間にして警告 |
 | `Asset` | `ExternalReference` | `available_range` は素材の長さ（fps が可変なら sequence の fps）。取り込みは同じ場所の素材があれば再利用し、無ければ足す（コンテンツハッシュは空、色空間は `bt709`） |
 | コンポジションのマーカー | `Track.markers`（`Marker`） | sequence を置いたレイヤーの `start`、`in`、`speed` でトラックの時間軸に直す。クリップのマーカーは配置の時刻に直して取り込む。同じ時刻は 1/1000 秒ずつ後ろへずらす |
@@ -54,11 +54,11 @@ movie-maker にしか無い値は、各オブジェクトの `metadata["movie-ma
 | `ExternalReference` | `asset`（`Asset` 全体） |
 | `Marker` | `id` |
 
-メタデータは OTIO の値の写しで、別のツールが `source_range` や `time_scalar` を変えたときは OTIO の値に従う（ID と、ショートとの関係は残す）。メタデータを使うと、`mm otio export` → `mm otio import` で `sequence`、素材、コンポジション、ショートとの関係が元のプロジェクトのデータと等しく戻る（試験で確かめている）。
+メタデータは OTIO の値のコピーで、別のツールが `source_range` や `time_scalar` を変えたときは OTIO の値に従う（ID と、ショートとの関係は残す）。メタデータを使うと、`mm otio export` → `mm otio import` で `sequence`、素材、コンポジション、ショートとの関係が元のプロジェクトのデータと等しく戻る（テストで確かめている）。
 
-取り込みは `addAsset`、`addSequence`、`addComposition` を 1 つのトランザクションで当て、`mm undo` で取り消せる。同じ ID の sequence とコンポジションがあれば拒否し、`--as <ID>` でメタデータの ID を使わず作り直せる。
+取り込みは `addAsset`、`addSequence`、`addComposition` を 1 つのトランザクションで適用し、`mm undo` で取り消せる。同じ ID の sequence とコンポジションがあれば拒否し、`--as <ID>` でメタデータの ID を使わず作り直せる。
 
-試験は、OpenTimelineIO のリポジトリの `tests/sample_data/` の実例（`fixtures/otio/official/`）と、Python の opentimelineio が書いたファイル（`fixtures/otio/python/`、`fixtures/otio/generate.py` で作り直す）を読み、Python が Rust の書いたファイルを読んで書き直したものを Rust が読み戻す（`fixtures/otio/roundtrip.py`）。CI は opentimelineio を入れて `MM_REQUIRE_OTIO=1` で必ず走らせる。
+テストは、OpenTimelineIO のリポジトリの `tests/sample_data/` の実例（`fixtures/otio/official/`）と、Python の opentimelineio が書いたファイル（`fixtures/otio/python/`、`fixtures/otio/generate.py` で作り直す）を読み、Python が Rust の書いたファイルを読んで書き直したものを Rust が読み戻す（`fixtures/otio/roundtrip.py`）。CI は opentimelineio を入れて `MM_REQUIRE_OTIO=1` で必ず実行する。
 
 ---
 

@@ -44,7 +44,7 @@ pub struct ProposalView {
     pub approved_ops: Option<Vec<usize>>,
     pub applied: bool,
     pub undoable: bool,
-    /// 保留中で、提案の後の操作と触る所が重なる ID。あれば承認すると衝突で断る。
+    /// 保留中で、提案の後の操作と触る所が重なる ID。あれば承認すると衝突で拒否する。
     pub conflict: Option<Vec<String>>,
     pub ops: Vec<ProposalOpView>,
     pub scope: ProposalScope,
@@ -71,8 +71,12 @@ fn view(store: &Store, p: StoredProposal) -> Result<ProposalView, ServeError> {
         })
         .collect();
     let touches = p.touches.iter().cloned().collect();
-    // 当てられない提案（ロックや後の編集で）は、今のデータだけで範囲を引く。
-    let after = preview_ops(project, &p.ops, &OpContext::new(p.entry)).map(|(a, _)| a);
+    // 決めた提案はもう適用するものではなく（承認した分は今のデータに入っている）、一覧のたびにコピーを作らない。
+    // 適用できない保留中の提案（ロックや後の編集で）も、今のデータだけで範囲を引く。
+    let after = (p.state == ProposalState::Pending)
+        .then(|| preview_ops(project, &p.ops, &OpContext::new(p.entry)).ok())
+        .flatten()
+        .map(|(a, _)| a);
     let scope = proposal_scope(project, after.as_ref().unwrap_or(project), &touches);
     Ok(ProposalView {
         id: p.id,
@@ -209,7 +213,7 @@ impl Core {
         Ok(v)
     }
 
-    /// 提案を当てた描画用のプロジェクトのデータ（素材のパスは絶対）と、当てた操作が触る所。書かない。
+    /// 提案を適用した描画用のプロジェクトのデータ（素材のパスは絶対）と、適用した操作が触る所。書かない。
     pub fn preview_project(
         &self,
         id: i64,
@@ -222,7 +226,7 @@ impl Core {
         })
     }
 
-    /// 提案を当てた 1 フレームの PNG。Claude と dashboard が承認の前に絵を比べるのに使う。
+    /// 提案を適用した 1 フレームの PNG。Claude と dashboard が承認の前にフレームを比べるのに使う。
     pub fn preview_frame_png(
         &self,
         id: i64,
@@ -235,7 +239,7 @@ impl Core {
             .ok_or_else(|| ServeError::Unavailable("この HTTP サーバーは描画を持たない".into()))?;
         let (project, touched) = self.preview_project(id, selection)?;
         let png = frames.frame_png(&project, request);
-        // 提案を当てた絵を、保存したデータの絵としてキャッシュに残さない。
+        // 提案を適用したフレームを、保存したデータのフレームとしてキャッシュに残さない。
         frames.invalidate(&touched);
         png.map_err(ServeError::from)
     }

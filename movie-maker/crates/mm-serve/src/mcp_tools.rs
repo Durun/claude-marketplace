@@ -38,7 +38,18 @@ fn build(schema: &Value) -> Tools {
             list.push(tool);
         }
     }
-    list.push(transaction_tool(&variants, defs));
+    list.push(transaction_tool(
+        "transaction",
+        "操作の列を 1 つのトランザクションとして適用する。コメントへの対応 1 回をまとめて 1 つの取り消しの単位にするときに使う。途中で失敗すれば全部適用しない",
+        &variants,
+        defs,
+    ));
+    list.push(transaction_tool(
+        "propose",
+        "操作の列を適用せずに提案として保留する（引数は transaction と同じ）。人がアプリの Review で承認すると 1 つのトランザクションとして入り、却下すると捨てる。MCP からは承認も却下もできない",
+        &variants,
+        defs,
+    ));
     list.extend(fixed_tools());
     Tools { list, op_names }
 }
@@ -81,10 +92,15 @@ fn common_properties() -> Map<String, Value> {
     map
 }
 
-fn transaction_tool(variants: &[Value], defs: &Map<String, Value>) -> Value {
+fn transaction_tool(
+    name: &str,
+    description: &str,
+    variants: &[Value],
+    defs: &Map<String, Value>,
+) -> Value {
     json!({
-        "name": "transaction",
-        "description": "操作の列を 1 つのトランザクションとして適用する。コメントへの対応 1 回をまとめて 1 つの取り消しの単位にするときに使う。途中で失敗すれば全部適用しない",
+        "name": name,
+        "description": description,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -106,15 +122,18 @@ fn fixed_tools() -> Vec<Value> {
         json!({"name": "undo", "description": "直前のトランザクションを取り消す。戻すものが無ければ change が null", "inputSchema": none}),
         json!({"name": "redo", "description": "取り消したトランザクションをやり直す。無ければ change が null", "inputSchema": none}),
         json!({"name": "project", "description": "今のプロジェクトのデータ（version、undo_depth、project）を読む", "inputSchema": none}),
+        json!({"name": "proposals", "description": "提案の一覧（新しい順）を読む。状態（pending、approved、rejected）、触る範囲 scope、後の編集と重なる conflict", "inputSchema": none}),
         json!({
             "name": "frame",
-            "description": "1 フレームを描いた PNG を返す。仕上がりを目で確かめるのに使う",
+            "description": "1 フレームを描いた PNG を返す。仕上がりを目で確かめるのに使う。proposal を渡すと提案を適用したフレーム（書かない）",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "t": {"type": "string", "description": "コンポジションの時間軸での秒。\"1.5\" や \"3/2\""},
                     "comp": {"type": "string", "description": "コンポジションの ID。省くと main、それも無ければ先頭"},
                     "width": {"type": "integer", "minimum": 1, "description": "出力の幅。省くとコンポジションの大きさ"},
+                    "proposal": {"type": "integer", "description": "提案の ID。あれば提案を適用したフレームを描く"},
+                    "ops": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "提案のうち適用する操作の番号。省くと全部"},
                 },
                 "required": ["t"],
                 "additionalProperties": false,

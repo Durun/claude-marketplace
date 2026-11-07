@@ -12,9 +12,16 @@ use mm_types::Result;
 use serde_json::{json, Value};
 
 const NOW: i64 = 1_700_000_000_000;
-/// 操作の数は mm-ops の一覧から取る（操作を足すたびに数を書き直さない）。
-const OPS: usize = mm_ops::Op::NAMES.len();
-const EXTRA_TOOLS: usize = 5;
+/// 操作でないツールの名前（名前の順）。操作のツールは mm-ops の一覧から取るので、操作を足しても書き直さない。
+const NON_OP_TOOLS: [&str; 7] = [
+    "frame",
+    "project",
+    "propose",
+    "proposals",
+    "redo",
+    "transaction",
+    "undo",
+];
 
 struct StubFrames;
 
@@ -74,7 +81,7 @@ fn marker(id: &str, secs: i64) -> Value {
 }
 
 #[test]
-fn initialize_は要求の版を返し_ツールを名乗る() {
+fn initialize_は要求のバージョンを返し_ツールを名乗る() {
     let r = rig();
     let res = rpc(&r, "initialize", json!({"protocolVersion": "2025-03-26"}));
     let result = &res["result"];
@@ -86,6 +93,54 @@ fn initialize_は要求の版を返し_ツールを名乗る() {
 
     let none = rpc(&r, "initialize", json!({}));
     assert_eq!(none["result"]["protocolVersion"], "2025-06-18");
+    let unknown = rpc(&r, "initialize", json!({"protocolVersion": "1999-01-01"}));
+    assert_eq!(unknown["result"]["protocolVersion"], "2025-06-18");
+}
+
+#[test]
+fn propose_は保留するだけで_mcp_からは承認できず_frame_で提案を適用したフレームを見られる() {
+    let r = rig();
+    let ops =
+        json!([{"op": "addMarker", "composition": "main", "marker": marker("p", 1)["marker"]}]);
+    let result = call(
+        &r,
+        "propose",
+        json!({"name": "提案", "ops": ops, "responds_to": "c-2"}),
+    );
+    assert!(result.get("isError").is_none(), "{result}");
+    let proposal = text_json(&result);
+    assert_eq!(proposal["state"], "pending");
+    assert_eq!(proposal["actor"], "mcp");
+    let id = proposal["id"].as_i64().unwrap();
+    assert_eq!(
+        r.client.get("/project").unwrap().json().unwrap()["version"],
+        0
+    );
+
+    let listed = text_json(&call(&r, "proposals", json!({})));
+    assert_eq!(listed["proposals"][0]["id"], id);
+    let preview = call(&r, "frame", json!({"t": "1", "proposal": id, "ops": [0]}));
+    assert_eq!(preview["content"][0]["type"], "image", "{preview}");
+    let stray = call(&r, "frame", json!({"t": "1", "ops": [0]}));
+    assert_eq!(stray["isError"], true);
+
+    let approve = r
+        .client
+        .post(
+            &format!("/proposals/{id}/approve"),
+            &json!({"entry": "mcp"}),
+        )
+        .unwrap();
+    assert_eq!(approve.status, 403);
+    let names: Vec<String> = rpc(&r, "tools/list", json!({}))["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert!(!names
+        .iter()
+        .any(|n| n.contains("approve") || n.contains("reject")));
 }
 
 fn refs(v: &Value, out: &mut BTreeSet<String>) {
@@ -102,23 +157,19 @@ fn refs(v: &Value, out: &mut BTreeSet<String>) {
 }
 
 #[test]
-fn tools_list_は全部の操作と_5_つのツールを返し_参照は_defs_で解決する() {
+fn tools_list_は全部の操作と操作でないツールを返し_参照は_defs_で解決する() {
     let r = rig();
     let tools = rpc(&r, "tools/list", json!({}))["result"]["tools"]
         .as_array()
         .unwrap()
         .clone();
-    assert_eq!(tools.len(), OPS + EXTRA_TOOLS);
-
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    let unique: BTreeSet<_> = names.iter().collect();
+    let unique: BTreeSet<&str> = names.iter().copied().collect();
     assert_eq!(unique.len(), names.len(), "名前が重ならない");
-    for fixed in ["transaction", "undo", "redo", "project", "frame"] {
-        assert!(names.contains(&fixed), "{fixed}");
-    }
-    for op in ["ripple", "addLayer", "addMarker", "setParam", "lockLayer"] {
-        assert!(names.contains(&op), "{op}");
-    }
+    let ops: BTreeSet<&str> = mm_ops::Op::NAMES.iter().copied().collect();
+    let extra: BTreeSet<&str> = unique.difference(&ops).copied().collect();
+    assert_eq!(extra, BTreeSet::from(NON_OP_TOOLS));
+    assert!(ops.is_subset(&unique), "全部の操作がツールになる");
 
     for tool in &tools {
         let name = tool["name"].as_str().unwrap();

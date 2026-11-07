@@ -16,7 +16,7 @@ pub const SCHEMA_VERSION: u32 = 4;
 pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
 
 /// バージョン 4: Claude の編集の提案（保留中のトランザクション）。承認で適用したトランザクションを `txn_id` で指す。
-/// `ops` は提案した操作（`Op` の JSON の配列）、`touches` は受け付けたときに当てて求めた所、`approved_ops` は承認した操作の番号。
+/// `ops` は提案した操作（`Op` の JSON の配列）、`touches` は受け付けたときに適用して求めた所、`approved_ops` は承認した操作の番号。
 const V4: &str = "
 CREATE TABLE proposals (
   id INTEGER PRIMARY KEY,

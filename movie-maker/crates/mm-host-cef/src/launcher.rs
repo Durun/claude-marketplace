@@ -187,7 +187,14 @@ impl HostProcess for PipeHost {
                     return Err(MmError::HostCrashed("ホストの出力が閉じた".into()))
                 }
             };
-            let response: HostResponse = serde_json::from_str(&line)?;
+            // 読めない行をスキップすると、読み捨てる数が合わなくなり、以後の要求が前の要求の応答を受け取り続ける。
+            let response: HostResponse = match serde_json::from_str(&line) {
+                Ok(response) => response,
+                Err(e) => {
+                    self.kill()?;
+                    return Err(MmError::HostCrashed(format!("ホストの応答が読めない: {e}")));
+                }
+            };
             if self.stale == 0 {
                 return Ok(response);
             }

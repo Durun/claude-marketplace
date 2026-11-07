@@ -39,7 +39,7 @@ pub fn select_ops(ops: &[Op], selection: Option<&[usize]>) -> OpResult<Vec<Op>> 
         .collect()
 }
 
-/// 提案の操作をプロジェクトのデータの写しに当てる。プレビューと、提案を受け付ける前の検証に使う。
+/// 提案の操作をプロジェクトのデータのコピーに適用する。プレビューと、提案を受け付ける前の検証に使う。
 /// sequence の長さへの追従（`fitLayer`）も、承認で適用するときと同じく足す。
 pub fn preview_ops(
     project: &Project,
