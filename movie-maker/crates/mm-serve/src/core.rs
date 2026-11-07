@@ -28,6 +28,17 @@ pub struct Caller {
 }
 
 impl Caller {
+    /// Claude の MCP。ロックの付いた所には触れない。
+    pub fn mcp() -> Self {
+        Self {
+            entry: Entry::Mcp,
+            actor: Actor {
+                kind: "mcp".into(),
+                name: "claude".into(),
+            },
+        }
+    }
+
     /// アプリの WebView（人の操作）。
     pub fn webview() -> Self {
         Self {

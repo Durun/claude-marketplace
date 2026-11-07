@@ -46,6 +46,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/project", get(get_project))
         .route("/frame", get(get_frame))
         .route("/events", get(get_events))
+        .route("/mcp", post(crate::mcp::post_mcp))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -104,34 +105,40 @@ fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
 
 impl IntoResponse for ServeError {
     fn into_response(self) -> Response {
-        let message = self.to_string();
-        let (status, code, extra) = match &self {
-            Self::Op(OpError::Conflict { base, touches }) => (
-                StatusCode::CONFLICT,
-                "conflict",
-                json!({ "base": base, "touches": touches.to_vec() }),
-            ),
-            Self::Op(OpError::FutureBase { base, current }) => (
-                StatusCode::CONFLICT,
-                "future_base",
-                json!({ "base": base, "current": current }),
-            ),
-            Self::Op(OpError::Locked(touches)) => (
-                StatusCode::FORBIDDEN,
-                "locked",
-                json!({ "touches": touches.to_vec() }),
-            ),
-            Self::Op(OpError::Doc(_)) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid", json!({})),
-            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", json!({})),
-            Self::Unavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "unavailable", json!({})),
-            Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", json!({})),
-        };
-        let mut body = json!({ "code": code, "message": message });
-        if let (Some(obj), Some(more)) = (body.as_object_mut(), extra.as_object()) {
-            obj.extend(more.clone());
-        }
-        (status, Json(json!({ "error": body }))).into_response()
+        let (status, body) = error_body(&self);
+        (status, Json(body)).into_response()
     }
+}
+
+/// HTTP の失敗の応答と同じ `{"error": {"code","message", ...}}`。MCP の `isError` の本文にも使う。
+pub(crate) fn error_body(err: &ServeError) -> (StatusCode, serde_json::Value) {
+    let message = err.to_string();
+    let (status, code, extra) = match err {
+        ServeError::Op(OpError::Conflict { base, touches }) => (
+            StatusCode::CONFLICT,
+            "conflict",
+            json!({ "base": base, "touches": touches.to_vec() }),
+        ),
+        ServeError::Op(OpError::FutureBase { base, current }) => (
+            StatusCode::CONFLICT,
+            "future_base",
+            json!({ "base": base, "current": current }),
+        ),
+        ServeError::Op(OpError::Locked(touches)) => (
+            StatusCode::FORBIDDEN,
+            "locked",
+            json!({ "touches": touches.to_vec() }),
+        ),
+        ServeError::Op(OpError::Doc(_)) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid", json!({})),
+        ServeError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", json!({})),
+        ServeError::Unavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "unavailable", json!({})),
+        ServeError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", json!({})),
+    };
+    let mut body = json!({ "code": code, "message": message });
+    if let (Some(obj), Some(more)) = (body.as_object_mut(), extra.as_object()) {
+        obj.extend(more.clone());
+    }
+    (status, json!({ "error": body }))
 }
 
 /// `POST /ops` の本体。`txn` か `op` のどちらか 1 つ。
