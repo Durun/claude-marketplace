@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  締めのお願いのステッカー 1 枚（高評価、チャンネル登録、コメント）。白い紙に丸い印と文字。YouTube のボタンには似せない。
+  data: text（文字）、icon（like、sub、comment）、kind（pill は白い札、tag は名乗りと同じ黄色の札でおまけのオチ、
+  icon は文字のない丸い印だけ）、x と y（真ん中。コンポジションの画素）、tilt（傾き。度）、theme。
+  言った時刻に 1 枚ずつ貼るので、ステッカーごとにレイヤーを分ける。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  svg { display: block; overflow: visible; }
+  .st { position: absolute; width: max-content; translate: -50% -50%; }
+  .pl { position: relative; display: flex; align-items: center; gap: 16px; height: 100px; padding: 0 40px 0 16px; box-sizing: border-box;
+    border-radius: 50px; background: var(--white); border: 6px solid var(--ink);
+    font: 700 52px/1 var(--sticker); color: var(--ink); white-space: nowrap; }
+  .tx { padding-bottom: 4px; }
+  .ic { position: relative; width: 68px; height: 68px; flex: none; }
+  .ic > svg:first-child { width: 68px; height: 68px; }
+  .fx { position: absolute; left: -36px; top: -36px; width: 140px; height: 140px; fill: none; stroke-linecap: round; }
+  .fx .o { stroke: var(--ink); stroke-width: 15; }
+  .fx .i { stroke: var(--yellow); stroke-width: 7; }
+  .tag .pl { height: auto; padding: 10px 30px 14px; gap: 0; background: var(--yellow); border-radius: 40px;
+    font-size: 56px; }
+  .sheet { position: relative; }
+  .shade { position: absolute; inset: 0; border-radius: 50px; translate: 8px 10px; background: var(--ink); }
+  .tag .shade { border-radius: 40px; translate: 0 7px; }
+  .tag .tx { padding-bottom: 0; }
+  .icon .bd { width: 150px; height: 150px; filter: drop-shadow(7px 9px 0 var(--ink)); }
+  .icon .bd svg { width: 150px; height: 150px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // 高評価の印のまわりの「押した」線（3 本の角度と、内と外の半径）。
+  const PRESS = { angles: [-150, -112, -74], r0: 44, r1: 62 };
+  const DEFAULT_TILT = -4;
+  const circ = (inner) => '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23.5" fill="var(--sapphire)" stroke="var(--ink)" stroke-width="5"/>'
+    + `${inner}</svg>`;
+  const ICON = {
+    like: circ('<rect x="13" y="24.5" width="6.5" height="14" rx="1.6" fill="var(--white)"/>'
+      + '<path d="M21.5 25.5 L27 15.5 C28.4 13 32.2 13.6 31.7 17 L30.8 22 L36.6 22 C39.3 22 40.9 24.2 40.3 26.8 L38.5 35.6 C38 38 36.4 39 34.2 39 L21.5 39 Z" fill="var(--white)"/>'),
+    sub: circ('<path d="M26 14 V38 M14 26 H38" fill="none" stroke="var(--white)" stroke-width="6.5" stroke-linecap="round"/>'),
+    comment: circ('<path d="M15.5 16 H36.5 A4 4 0 0 1 40.5 20 V30 A4 4 0 0 1 36.5 34 H25 L18.5 39.5 V34 H15.5 A4 4 0 0 1 11.5 30 V20 A4 4 0 0 1 15.5 16 Z" fill="var(--white)"/>'
+      + '<circle cx="19.5" cy="25" r="2.3" fill="var(--sapphire)"/><circle cx="26" cy="25" r="2.3" fill="var(--sapphire)"/><circle cx="32.5" cy="25" r="2.3" fill="var(--sapphire)"/>'),
+  };
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const press = () => {
+    const d = PRESS.angles.map((a) => {
+      const c = Math.cos(a * Math.PI / 180), s = Math.sin(a * Math.PI / 180);
+      return `M${(c * PRESS.r0).toFixed(1)} ${(s * PRESS.r0).toFixed(1)} L${(c * PRESS.r1).toFixed(1)} ${(s * PRESS.r1).toFixed(1)}`;
+    }).join(' ');
+    return `<svg class="fx" viewBox="-70 -70 140 140"><path class="o" d="${d}"/><path class="i" d="${d}"/></svg>`;
+  };
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    s.setProperty('--sticker', `"${f.sticker}", "Yu Gothic UI", "Meiryo", sans-serif`);
+  };
+
+  const sticker = (data) => {
+    const icon = ICON[data.icon];
+    if (data.kind === 'icon') return `<div class="bd">${icon || ICON.like}</div>`;
+    const ic = data.kind !== 'tag' && icon ? `<span class="ic">${icon}${data.icon === 'like' ? press() : ''}</span>` : '';
+    return `<div class="sheet"><i class="shade"></i><div class="pl">${ic}<span class="tx">${esc(data.text)}</span></div></div>`;
+  };
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const kind = ['tag', 'icon'].includes(data.kind) ? data.kind : 'pill';
+    const tilt = Number.isFinite(Number(data.tilt)) && data.tilt !== '' && data.tilt !== null ? Number(data.tilt) : DEFAULT_TILT;
+    document.getElementById('root').innerHTML = `<div class="st ${kind}" style="left:${Number(data.x) || 0}px;top:${Number(data.y) || 0}px;`
+      + `rotate:${tilt}deg">${sticker({ ...data, kind })}</div>`;
+  };
+</script>
+</body>
+</html>

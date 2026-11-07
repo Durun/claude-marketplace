@@ -1,8 +1,6 @@
-//! `packs/vlog` の文字のスタイルの期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
-//! `fixtures/golden/<バックエンド>/pack-vlog.png` と比べる（`mm_testkit::golden`）。文字はモックの矩形で描くので、
-//! 見るのはプレートの位置、大きさ、色、縁、影、傾きと、文字の塊がプレートの内側に収まっているか。
-//! `web.cef` の部品は CEF の代わりのモックの矩形（ページと data で決まる色）で描き、レイヤーの置き方と不透明度を見る
-//! （`pack-vlog-web.png`。部品の HTML か引数を変えると矩形の色が変わるので、更新する）。
+//! `packs/vlog` の期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
+//! `fixtures/golden/<バックエンド>/pack-vlog*.png` と比べる（`mm_testkit::golden`）。文字と `web.cef` はモックの矩形で描くので、
+//! 見るのはプレートの位置、大きさ、色、縁、影、傾き、文字の塊がプレートの内側に収まっているかと、`web` 手順のレイヤーの重なり。
 //! 更新は `cargo xtask golden-update --test pack_vlog`。GPU と期待画像のフォルダーが無い環境ではスキップする。
 
 use std::collections::BTreeMap;
@@ -91,13 +89,16 @@ fn args(list: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// web の部品の見本。ステッカーが 1 秒に出て、2 秒には出きっている。
+/// `web.cef` の部品（見出しの ToDo）。0.15 秒は出る動き（0.3 秒）の途中で、レイヤーの不透明度が半分。
 const WEB_DEMO: [(&str, &str); 2] = [
     ("episode", "n=4"),
-    ("sticker", "id=st;text=社会人DTMer;tone=yellow;at=1;dur=3"),
+    (
+        "card",
+        "id=cd;list=VOCALOID6 で歌わせる|ボーカルミックス;no=2;at=0;dur=4",
+    ),
 ];
 
-/// テンプレート、背景、セクションの見出し、ラベル、テロップ、字幕を適用したプロジェクト。
+/// テンプレート、背景、`demo` のマクロを適用したプロジェクト。先頭はテンプレートで、その直後に背景を敷く。
 fn demo_project(demo: &[(&str, &str)]) -> Project {
     let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
     let shaper = services().text_shaper;
@@ -127,8 +128,28 @@ fn background() -> Transaction {
     Transaction::new("背景", vec![serde_json::from_value(op).unwrap()])
 }
 
-/// `demo` を適用したプロジェクトの `time` の 1 フレームを描き、期待画像 `name` と比べる。
-fn check_golden(name: &str, demo: &[(&str, &str)], time: RationalTime) {
+#[test]
+fn pack_vlog_の文字のスタイルの期待画像() {
+    check_golden(
+        "pack-vlog",
+        &demo_project(&DEMO),
+        RationalTime::new(5, 2).unwrap(),
+    );
+}
+
+/// `web.cef` は CEF の代わりの描画（ページと `data` で色の決まる矩形）で描く。見るのは、`web` 手順のレイヤーが
+/// 背景の上に重なり、出る動きの途中の不透明度で透けるか。ページの HTML か `data` を変えると矩形の色が変わる。
+#[test]
+fn pack_vlog_の_web_の部品の期待画像() {
+    check_golden(
+        "pack-vlog-web",
+        &demo_project(&WEB_DEMO),
+        RationalTime::new(3, 20).unwrap(),
+    );
+}
+
+/// `project` の `main` を `time` で描き、期待画像 `name` と比べる。GPU か期待画像のフォルダーが無ければ何もしない。
+fn check_golden(name: &str, project: &Project, time: RationalTime) {
     let Some(ctx) = gpu() else { return };
     let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");
@@ -136,7 +157,6 @@ fn check_golden(name: &str, demo: &[(&str, &str)], time: RationalTime) {
     let Some(golden) = Golden::open(&root, &backend, &actual) else {
         return;
     };
-    let project = demo_project(demo);
     let mut nodes = MapRegistry::default();
     for kind in all_kinds() {
         nodes.insert(kind);
@@ -150,7 +170,7 @@ fn check_golden(name: &str, demo: &[(&str, &str)], time: RationalTime) {
     );
     let frame = r
         .render_frame(&RenderRequest {
-            project: &project,
+            project,
             composition: &Id::new("main"),
             time,
             size: GOLDEN_SIZE,
@@ -164,14 +184,4 @@ fn check_golden(name: &str, demo: &[(&str, &str)], time: RationalTime) {
     if let Err(message) = golden.check(name, &img) {
         panic!("{message}");
     }
-}
-
-#[test]
-fn pack_vlog_の文字のスタイルの期待画像() {
-    check_golden("pack-vlog", &DEMO, RationalTime::new(5, 2).unwrap());
-}
-
-#[test]
-fn pack_vlog_の_web_の部品の期待画像() {
-    check_golden("pack-vlog-web", &WEB_DEMO, RationalTime::seconds(2));
 }

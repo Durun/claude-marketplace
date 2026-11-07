@@ -1,0 +1,26 @@
+{
+  "name": "card",
+  "title": "見出しの ToDo",
+  "description": "節の頭の見出し。紙にその回の ToDo を全部並べ（章の一覧として見せる）、済んだ行はチェックと取り消し線、今の行は黄色の欄と再生の印とマーカー。plain なら節の題だけ。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "list": {"type": "text", "default": "", "description": "その回の ToDo を「|」で区切って並べる（作曲|ボーカルミックス|FX とビルドアップ）"},
+    "no": {"type": "number", "default": "1", "description": "今の行（1 から）"},
+    "text": {"type": "text", "default": "", "description": "list が空のときに出す 1 行（plain の節の題）"},
+    "tag": {"type": "text", "default": "", "description": "紙の札の文字。空なら「今日の ToDo」。サブトピックの小さな ToDo では親の題"},
+    "side": {"type": "text", "default": "right", "description": "置く側。right は右上（VR でアバターの頭を避ける）、left は左上（画面収録）"},
+    "plain": {"type": "text", "default": "false", "description": "true なら札と欄を出さず、節の題だけを同じ紙に出す"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "4", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "cd1", "list": "VOCALOID6 で歌わせる|ボーカルミックス|FX とビルドアップ", "no": "2", "at": "0"},
+  "steps": [
+    {"web": {
+      "page": "card", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2,
+      "data": {"list": "{{list}}", "no": "{{no}}", "text": "{{text}}", "tag": "{{tag}}", "side": "{{side}}", "plain": "{{plain}}"}
+    }}
+  ]
+}
