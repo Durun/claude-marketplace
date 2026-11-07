@@ -65,7 +65,7 @@ impl AudioTrack {
         if global_header {
             enc.set_flags(codec::Flags::GLOBAL_HEADER);
         }
-        let opened = enc.open().map_err(|e| {
+        let opened = enc.open_with(encoder_options(kind)).map_err(|e| {
             MmError::Unsupported(format!(
                 "{label} を開けない（{}Hz {}ch）: {e}",
                 info.sample_rate, info.channels
@@ -182,5 +182,49 @@ fn sample_format(kind: AudioCodec) -> Sample {
     match kind {
         AudioCodec::Aac => Sample::F32(Type::Planar),
         AudioCodec::PcmS24 => Sample::I32(Type::Packed),
+    }
+}
+
+/// エンコーダーを開くときの設定。FFmpeg の AAC エンコーダーの雑音の置き換え（PNS）は、
+/// 静かな所に数サンプルで 0 dBFS を超えるクリックを作ることがあるので切る。
+fn encoder_options(kind: AudioCodec) -> ff::Dictionary<'static> {
+    let mut options = ff::Dictionary::new();
+    if kind == AudioCodec::Aac {
+        options.set("aac_pns", "0");
+    }
+    options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 開いたエンコーダーの非公開の設定の整数値。
+    fn private_int(track: &AudioTrack, name: &std::ffi::CStr) -> i64 {
+        let mut value = -1i64;
+        // SAFETY: 開いたエンコーダーの文脈を読むだけ。AV_OPT_SEARCH_CHILDREN でコーデックの非公開の設定を引く。
+        let ret = unsafe {
+            ff::ffi::av_opt_get_int(
+                track.encoder.as_ptr() as *mut std::ffi::c_void,
+                name.as_ptr(),
+                ff::ffi::AV_OPT_SEARCH_CHILDREN,
+                &mut value,
+            )
+        };
+        assert!(ret >= 0, "設定 {name:?} を読めない: {ret}");
+        value
+    }
+
+    #[test]
+    fn aac_は雑音の置き換えを切って開く() {
+        ff::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut output = ff::format::output(&dir.path().join("a.m4a")).unwrap();
+        let info = AudioStreamInfo {
+            sample_rate: 48_000,
+            channels: 2,
+        };
+        let track = AudioTrack::open(&mut output, &info, AudioCodec::Aac, true).unwrap();
+        assert_eq!(private_int(&track, c"aac_pns"), 0);
     }
 }

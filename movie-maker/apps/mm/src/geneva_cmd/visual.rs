@@ -1,8 +1,8 @@
-//! 絵のレイヤー（`layers[].clips[]` の `video` と `image`）を movie-maker のレイヤーにする。
+//! 映像と画像のレイヤー（`layers[].clips[]` の `video` と `image`）を movie-maker のレイヤーにする。
 //!
-//! geneva はクリップの箱（切り抜いて `fit` で収めた矩形）のアンカーを `position` に置き、その周りで拡大する。
+//! geneva はクリップの矩形（切り抜いて `fit` で収めたもの）のアンカーを `position` に置き、その周りで拡大する。
 //! movie-maker では素材を `fit: none`（素材の画素のまま左上に置く）で描き、アンカーを原点に固定して、
-//! 同じ写像になる拡大と位置を求める。切り抜きが画面の外にはみ出すだけなら変形だけで表せ、
+//! 同じ対応になる拡大と位置を求める。切り抜きが画面の外にはみ出すだけなら変形だけで表せ、
 //! 画面の中に縁が出るときは、切り抜いた大きさの入れ子のコンポジションで縁を作る。
 
 use std::collections::HashMap;
@@ -47,9 +47,9 @@ struct Geometry {
     crop: [f64; 4],
     /// 切り抜きが素材の全体か。全体なら縁は素材の縁で、入れ子が要らない。
     whole: bool,
-    /// 切り抜きを箱に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
+    /// 切り抜きをクリップの矩形に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
     k: f64,
-    /// 箱の上のアンカー（箱の画素）。
+    /// クリップの矩形の上のアンカー（その矩形の画素）。
     anchor: [f64; 2],
     position: Anim,
     scale: Anim,
@@ -61,7 +61,7 @@ struct Timing {
     duration: RationalTime,
 }
 
-/// 全部の絵のレイヤーを、下から上の順のレイヤーにする。
+/// 全部の映像と画像のレイヤーを、下から上の順のレイヤーにする。
 pub fn visual_layers(ctx: &mut Ctx<'_>, layers: &[Value]) -> Result<Vec<Layer>> {
     let mut out = Vec::new();
     for (li, layer) in layers.iter().enumerate() {
@@ -260,7 +260,7 @@ fn key_times(geo: &Geometry) -> Vec<RationalTime> {
     times
 }
 
-/// 素材の画素 `p` が `P + s (k (p - offset) - A)` に写る変形（アンカーは原点）。
+/// 素材の画素 `p` が `P + s (k (p - offset) - A)` へ移る変形（アンカーは原点）。
 fn transform(geo: &Geometry, offset: [f64; 2], start: RationalTime) -> Result<Transform> {
     let at = |t: RationalTime| {
         let (p, s) = (geo.position.at(t), geo.scale.at(t));
@@ -298,7 +298,7 @@ fn transform(geo: &Geometry, offset: [f64; 2], start: RationalTime) -> Result<Tr
     Ok(out)
 }
 
-/// キーフレームの列のパラメータ。`value` は最初のキーの値にする。
+/// キーフレームの並びのパラメータ。`value` は最初のキーの値にする。
 pub fn animated(keys: Vec<Keyframe>) -> Param {
     Param {
         value: keys[0].value.clone(),
@@ -422,84 +422,4 @@ fn nested_layer(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn media() -> HashMap<String, Media> {
-        let m = |w, h, still| Media {
-            size: Some([w, h]),
-            duration: RationalTime::seconds(100),
-            fps: None,
-            still,
-        };
-        HashMap::from([
-            ("png".to_owned(), m(400, 100, true)),
-            ("cap".to_owned(), m(3840, 2160, false)),
-        ])
-    }
-
-    fn one(clip: Value) -> (Layer, Vec<Composition>) {
-        let media = media();
-        let mut ctx = Ctx {
-            fps: Rational::integer(30),
-            frame: [1920.0, 1080.0],
-            media: &media,
-            report: Report::default(),
-            nested: Vec::new(),
-        };
-        let mut layers = visual_layers(&mut ctx, &[json!({"clips": [clip]})]).unwrap();
-        (layers.remove(0), ctx.nested)
-    }
-
-    fn vec2(p: &Param) -> [f64; 2] {
-        p.value.as_vec2().unwrap()
-    }
-
-    #[test]
-    fn 画像は左上のアンカーを位置に置き_素材の画素のまま() {
-        let (l, nested) = one(json!({
-            "source": {"kind": "image", "asset": "png"}, "start": "30f", "duration": "10f",
-            "transform": {"position": {"x": 1513, "y": 285}, "anchor": "0% 0%"}
-        }));
-        assert!(nested.is_empty());
-        assert_eq!(vec2(&l.transform.position), [1513.0, 285.0]);
-        assert_eq!(vec2(&l.transform.scale), [1.0, 1.0]);
-        assert_eq!(l.start, RationalTime::seconds(1));
-    }
-
-    #[test]
-    fn 画面を覆う切り抜きは変形だけで表す() {
-        let (l, nested) = one(json!({
-            "source": {"kind": "video", "asset": "cap", "in": 2.5, "audio": false},
-            "start": "0f", "duration": "30f",
-            "crop": {"x": 60, "y": 0, "width": 3720, "height": 2092}
-        }));
-        assert!(nested.is_empty());
-        let k = 1920.0 / 3720.0;
-        let s = vec2(&l.transform.scale);
-        assert!((s[0] - k).abs() < 1e-12);
-        // 切り抜きの左上（素材の 60, 0）が画面の左上に来る。縦は収めた箱の余り（0.26 画素）の半分だけ下がる
-        let p = vec2(&l.transform.position);
-        let below = (1080.0 - 2092.0 * k) / 2.0;
-        assert!((p[0] + 60.0 * k).abs() < 1e-9, "{p:?}");
-        assert!((p[1] - below).abs() < 1e-9, "{p:?}");
-        assert!(l.audio.expect("映像の音").mute);
-    }
-
-    #[test]
-    fn 画面の中に縁が出る切り抜きは入れ子で切る() {
-        let (l, nested) = one(json!({
-            "source": {"kind": "video", "asset": "cap", "in": 1, "audio": false},
-            "start": "0f", "duration": "30f", "fit": "none",
-            "crop": {"x": 501, "y": 0, "width": 1259, "height": 1005},
-            "transform": {"anchor": "0 0", "position": {"x": 1473, "y": 723}, "scale": 0.5}
-        }));
-        assert_eq!(nested.len(), 1);
-        assert_eq!((nested[0].width, nested[0].height), (1259, 1005));
-        let inner = &nested[0].layers[0];
-        assert_eq!(vec2(&inner.transform.position), [-501.0, 0.0]);
-        assert_eq!(vec2(&l.transform.position), [1473.0, 723.0]);
-        assert_eq!(vec2(&l.transform.scale), [0.5, 0.5]);
-    }
-}
+mod tests;

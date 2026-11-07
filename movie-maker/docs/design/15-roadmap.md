@@ -7,7 +7,7 @@
 | 2 | レンダラー（`footage`、`solid`、`image`、`composition`、`sequence`、`text`、`shader.wgsl`、`color.*`）、OCIO、ミキサー、プレビュー、フレームのキャッシュ。`mm perf` の `playback` と `scrub`、WebView の時計の補正、予算の自動の起票 | 入れ子のコンポジションをウィンドウで通して再生できる。期待画像のテストが通る。性能の回帰のゲートが CI で動いている | レンダラーと `mm-nodes-basic` ‖ `mm-cache-fs` ‖ `mm-ui-wgpu` ‖ 取り込み（`mm-ingest`、`tools/`） ‖ `Inspector`（スキーマから作る所） |
 | 3 | `Media`、`Story`、`Source`、`Timeline` と取り込み | 長い素材から話題を切り出して並べ、そのまま再生できる | 各パネルは別々（`story`、`media`、`Timeline`） ‖ 書き出し（`mm-export`） ‖ `mm-serve` |
 | 4 | `Inspector`、`Graph`、`Mixer`、`Deliver`、書き出し（並行、音、ラウドネス、字幕、チャプター、ProRes）、本編とショートの参照 | 1 つのプロジェクトから本編とショートを書き出せ、プレビューと一致する | パネルごと ‖ エンコード（nvenc と ffmpeg） ‖ `mm-host-cef`（段階 6 の準備） |
-| 5 | `Review`、MCP と対応のトランザクション、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する（2026-11-07 に試験の閾値を満たした。[結果と足りない機能](11-testing.md#ep03-の再現の結果)） | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` への変換） ‖ `packs/vlog` |
+| 5 | `Review`、MCP と対応のトランザクション、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する（2026-11-07 にテストの閾値を満たした。[結果と足りない機能](11-testing.md#ep03-の再現の結果)） | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` への変換） ‖ `packs/vlog` |
 | 6 | `web.cef` と vlog のパック、ep04 | ep04 を movie-maker で作れる | `mm-nodes-cef` と `mm-text-cef` ‖ パック ‖ `mm-host-ofx`（段階 8 の準備） |
 | 7 | 自動の改善（worktree の囲い、Feedback、subsecond） | 要望を起票すると、自動で直って返事が付く | `mm-improve` ‖ `feedback` パネル ‖ `areas.toml` の検査 |
 | 8 | `ofx`、VST3、CLAP、`lottie`、`gen.ai`、HLSL、HDR | 種類を足すだけで使える | 全部が別の実装のクレート。互いに独立 |

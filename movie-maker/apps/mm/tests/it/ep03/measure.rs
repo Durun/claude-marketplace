@@ -1,13 +1,13 @@
-//! 2 本の動画の比べ方。絵は FFmpeg の `ssim` と `psnr` のフィルター、音は PCM に戻して数える。
+//! 2 本の動画の比べ方。映像は FFmpeg の `ssim` と `psnr` のフィルター、音は PCM に戻して数える。
 
 use std::path::Path;
 use std::process::Command;
 
 /// 音を比べるサンプルレート。
 pub const RATE: usize = 48_000;
-/// 音の大きさの包絡を取る窓（サンプル）。50 ms。
+/// 音の大きさの包絡を取る区間（サンプル）。50 ms。
 const ENVELOPE_WINDOW: usize = RATE / 20;
-/// 包絡を比べる下限（dBFS）。これより小さい窓は無音として比べない。
+/// 包絡を比べる下限（dBFS）。これより小さい区間は無音として比べない。
 const ENVELOPE_FLOOR_DB: f64 = -45.0;
 /// 音の時刻のずれを探す幅（サンプル）。±50 ms。
 const MAX_LAG: usize = RATE / 20;
@@ -15,8 +15,10 @@ const MAX_LAG: usize = RATE / 20;
 const LAG_PROBE: usize = RATE;
 /// 0 の対数を避ける小さい値。
 const TINY: f64 = 1e-12;
+/// `astats` の出力のピークの行の見出し。
+const PEAK_KEY: &str = "Peak level dB:";
 
-/// 区間の絵の比べ。
+/// 区間の映像の比べ。
 #[derive(Debug, Clone, Copy)]
 pub struct Picture {
     pub frames: usize,
@@ -34,8 +36,10 @@ pub struct Sound {
     pub lag_ms: f64,
     /// 倍率とずれを合わせた後の、参照と差の比（dB）。
     pub snr_db: f64,
-    /// 50 ms ごとの大きさの差の平均（dB）。参照が -45 dBFS より大きい窓だけ。
+    /// 50 ms ごとの大きさの差の平均（dB）。参照が -45 dBFS より大きい区間だけ。
     pub envelope_db: f64,
+    /// 書き出しの音のサンプルのピーク（dBFS。[`peak_dbfs`] で数えた値）。
+    pub peak_dbfs: f64,
 }
 
 fn ffmpeg() -> Command {
@@ -54,7 +58,7 @@ fn run(mut cmd: Command) -> Vec<u8> {
     out.stdout
 }
 
-/// 書き出し `test` の全体と、参照 `reference` の `[start, start + len)` の絵を比べる。
+/// 書き出し `test` の全体と、参照 `reference` の `[start, start + len)` の映像を比べる。
 pub fn picture(test: &Path, reference: &Path, start: f64, len: f64, work: &Path) -> Picture {
     let ssim_log = work.join("ssim.log");
     let psnr_log = work.join("psnr.log");
@@ -105,7 +109,7 @@ fn mean(v: &[f64]) -> f64 {
 }
 
 /// 区間の音をモノラルの 48 kHz の f32 にする。入力の `-ss` は AAC で最大 1 パケット（約 21 ms）ずれるので使わず、
-/// 頭からデコードして `atrim` で切る。
+/// 先頭からデコードして `atrim` で切る。
 pub fn pcm(path: &Path, start: f64, len: f64) -> Vec<f32> {
     let mut cmd = ffmpeg();
     cmd.arg("-i").arg(path);
@@ -127,8 +131,26 @@ pub fn pcm(path: &Path, start: f64, len: f64) -> Vec<f32> {
         .collect()
 }
 
-/// 書き出しの音 `test` を参照 `reference` と比べる。
-pub fn sound(test: &[f32], reference: &[f32]) -> Sound {
+/// 音のサンプルのピーク（dBFS、全部のチャンネルの最大）。片方のチャンネルだけの短いクリックも拾うよう、
+/// モノラルにせず浮動小数のまま `astats` で数える。
+pub fn peak_dbfs(path: &Path) -> f64 {
+    // astats はログの info で書くので、ほかの呼び出しと違い -v info で実行する
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-v", "info", "-nostdin", "-i"]).arg(path);
+    cmd.args(["-af", "aformat=sample_fmts=flt,astats", "-f", "null", "-"]);
+    let out = cmd.output().expect("ffmpeg を実行できる");
+    assert!(out.status.success(), "ffmpeg が成功する");
+    String::from_utf8_lossy(&out.stderr)
+        .lines()
+        .filter_map(|line| {
+            let rest = &line[line.find(PEAK_KEY)? + PEAK_KEY.len()..];
+            rest.trim().parse::<f64>().ok()
+        })
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// 書き出しの音 `test` を参照 `reference` と比べる。`peak_dbfs` は書き出しのピーク（[`peak_dbfs`]）。
+pub fn sound(test: &[f32], reference: &[f32], peak_dbfs: f64) -> Sound {
     let lag = best_lag(test, reference);
     let (t, r) = aligned(test, reference, lag);
     let dot: f64 = t
@@ -149,6 +171,7 @@ pub fn sound(test: &[f32], reference: &[f32]) -> Sound {
         lag_ms: lag as f64 * 1000.0 / RATE as f64,
         snr_db: 10.0 * ((signal + TINY) / (noise + TINY)).log10(),
         envelope_db: envelope_error(t, r, gain),
+        peak_dbfs,
     }
 }
 
@@ -220,7 +243,7 @@ mod tests {
         let r = tone(RATE * 2, 0.5);
         let mut t = vec![0.0; 48];
         t.extend(r.iter().map(|v| v * 0.5));
-        let s = sound(&t, &r);
+        let s = sound(&t, &r, 0.0);
         assert!((s.lag_ms - 1.0).abs() < 1e-9, "{s:?}");
         assert!((s.gain_db - 6.0206).abs() < 0.01, "{s:?}");
         assert!(s.snr_db > 60.0, "{s:?}");

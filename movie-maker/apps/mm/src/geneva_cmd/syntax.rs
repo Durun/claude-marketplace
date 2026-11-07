@@ -5,6 +5,8 @@ use serde_json::Value;
 
 /// 小数の秒を有理数にするときの桁の上限。分母が `u32` に収まる 10^9 まで。
 const MAX_DECIMALS: u32 = 9;
+/// `"250ms"` の換算。
+const MS_PER_SECOND: u32 = 1000;
 
 /// geneva の時刻（`"112f"`、`"0.5s"`、`"250ms"`、数は秒）を有理数にする。`fps` は `"Nf"` の換算に使う。
 pub fn time(value: &Value, fps: Rational) -> Result<RationalTime> {
@@ -23,8 +25,7 @@ fn time_text(s: &str, fps: Rational) -> Result<RationalTime> {
         return RationalTime::new(n * i128::from(fps.den()), fps.num());
     }
     if let Some(ms) = s.strip_suffix("ms") {
-        let t = decimal(ms)?;
-        return RationalTime::new(t.num(), t.den().saturating_mul(1000));
+        return decimal(ms)?.scale(Rational::new(1, MS_PER_SECOND)?);
     }
     decimal(s.strip_suffix('s').unwrap_or(s))
 }
@@ -217,6 +218,10 @@ mod tests {
         assert_eq!(n, RationalTime::new(25_856, 100).unwrap());
         let ms = time(&json!("250ms"), fps30()).unwrap();
         assert_eq!(ms, RationalTime::new(1, 4).unwrap());
+        let fine = time(&json!("1.25ms"), fps30()).unwrap();
+        assert_eq!(fine, RationalTime::new(1, 800).unwrap());
+        // 分母に収まらない桁は、丸めた別の値にせず誤りにする
+        assert!(time(&json!("0.123456789ms"), fps30()).is_err());
     }
 
     #[test]
@@ -244,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn 直線でないイージングを覚える() {
+    fn 直線でないイージングを記録する() {
         let v = json!({"keyframes": [{"t": 0, "v": 0}, {"t": "0.5s", "v": 1, "ease": "ease-out"}]});
         let a = anim(&v, fps30(), &number).unwrap();
         assert!(a.has_easing());
