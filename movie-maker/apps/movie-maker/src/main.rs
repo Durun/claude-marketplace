@@ -34,6 +34,8 @@ mod mixer;
 #[cfg(windows)]
 mod mixer_ipc;
 #[cfg(windows)]
+mod pack_ipc;
+#[cfg(windows)]
 mod playback;
 #[cfg(windows)]
 mod project;

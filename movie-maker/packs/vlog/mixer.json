@@ -1,0 +1,16 @@
+{
+  "buses": {
+    "voice": {"gain_db": 0},
+    "daw": {"gain_db": 0},
+    "bgm": {"gain_db": -7}
+  },
+  "ducking": {
+    "trigger": "voice",
+    "targets": ["daw", "bgm"],
+    "reduction_db": -11,
+    "threshold": 0.01,
+    "attack_ms": 20,
+    "release_ms": 300
+  },
+  "master_db": 0
+}

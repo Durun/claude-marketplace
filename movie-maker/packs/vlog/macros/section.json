@@ -1,0 +1,18 @@
+{
+  "name": "section",
+  "title": "セクションの見出しとチャプター",
+  "description": "節の始まり。左上に今のセクションの見出し（まっすぐ。ずっと出ているプレートは傾けない）を出し、同じ時刻に YouTube のチャプターのマーカーを置く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "文字のレイヤーとマーカーの ID（プレートは <ID>.plate）"},
+    "text": {"type": "text", "description": "節の見出し（「ボーカルミックス › 空間表現」）"},
+    "chapter": {"type": "text", "description": "チャプターの名前（YouTube の説明欄に出る）"},
+    "at": {"type": "time", "description": "節の始まり（コンポジションの秒）"},
+    "dur": {"type": "time", "description": "節の長さ（秒）"}
+  },
+  "example": {"id": "sec1", "text": "ボーカルミックス", "chapter": "ボーカルミックス", "at": "0", "dur": "8"},
+  "steps": [
+    {"text": {"style": "section", "comp": "{{comp}}", "layer": "{{id}}", "text": "{{text}}", "at": "{{at}}", "dur": "{{dur}}"}},
+    {"op": {"op": "addMarker", "composition": "{{comp}}", "marker": {"id": "{{id}}", "time": "{{at}}", "name": "{{chapter}}"}}}
+  ]
+}

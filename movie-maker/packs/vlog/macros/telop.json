@@ -1,0 +1,17 @@
+{
+  "name": "telop",
+  "title": "テロップ",
+  "description": "音のきっかけ（FX が鳴る所など）。擬音でよい。左上寄りに、黄色のプレートを傾けてポンと出す",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "文字のレイヤーの ID（プレートは <ID>.plate）"},
+    "text": {"type": "text", "description": "擬音や短いひとこと（ユーザーの書いた文言は変えない）"},
+    "at": {"type": "time", "description": "音の鳴る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "1.5", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "telop1", "text": "シュイーーン", "at": "3"},
+  "steps": [
+    {"text": {"style": "telop", "comp": "{{comp}}", "layer": "{{id}}", "text": "{{text}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}"}}
+  ]
+}
