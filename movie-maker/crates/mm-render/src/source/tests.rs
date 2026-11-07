@@ -177,3 +177,27 @@ fn 重ねる数が上限を超えたら最も前に使ったデコーダーを�
     }
     assert_eq!(r.opens(), MAX_DECODERS_PER_ASSET);
 }
+
+#[test]
+fn 長く使わないデコーダーは閉じ_次に使うときに開き直す() {
+    let mut r = rig();
+    r.frame(&[0]);
+    for _ in 0..IDLE_FRAMES * 2 {
+        r.pool.begin_frame();
+    }
+    assert!(
+        r.pool.sources.is_empty(),
+        "使わない素材のデコーダーを閉じた"
+    );
+    assert_eq!(r.frame(&[1]), vec![1]);
+    assert_eq!(r.opens(), 2, "閉じた素材は開き直す");
+}
+
+#[test]
+fn 使い続けるデコーダーは閉じない() {
+    let mut r = rig();
+    for i in 0..(IDLE_FRAMES as i64 * 2) {
+        r.frame(&[i % 30]);
+    }
+    assert_eq!(r.opens(), 1);
+}

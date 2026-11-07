@@ -8,6 +8,7 @@ use mm_node_api::{audio_frames_in, AudioCx, NodeKind};
 use mm_render_api::{mixer_config, AudioRequest, TrackLevel};
 use mm_types::{CompositionId, Id, LayerId, Params, RationalTime, Result, TimeRange};
 
+use crate::audio_gain::apply_gain_envelope;
 use crate::layers::{evaluate, MAX_DEPTH, NESTED_KIND, NESTED_PARAM};
 use crate::renderer::WgpuRenderer;
 use crate::sequence::cut_layer;
@@ -135,7 +136,7 @@ impl WgpuRenderer {
             SEQUENCE_KIND => self.sequence_audio(scope, &params, source_range)?,
             _ => Some(self.node_audio(req, kind.as_ref(), &params, overlap, source_range)?),
         };
-        let Some(block) = block else {
+        let Some(mut block) = block else {
             return Ok(None);
         };
         let offset = audio_frames_in(
@@ -143,7 +144,10 @@ impl WgpuRenderer {
             req.sample_rate,
         );
         let total = audio_frames_in(scope.range, req.sample_rate);
-        let (role, gain_db, pan) = mix_settings(layer, overlap.start);
+        let (role, mut gain_db, pan) = mix_settings(layer, overlap.start);
+        if apply_gain_envelope(&mut block, layer, overlap.start)? {
+            gain_db = 0.0;
+        }
         Ok(Some(MixInput {
             block: place_block(&block, offset, total),
             role,
