@@ -103,12 +103,12 @@ pub fn render(args: &RenderArgs) -> Result<()> {
     Ok(())
 }
 
-/// 書き出すレンダーターゲットのどれかが字幕を出す設定か（DB から単語を読む要るか）。
+/// 書き出すレンダーターゲットのどれかが字幕を出すか焼き込む設定か（DB から単語を読む要るか）。
 fn needs_transcript(project: &mm_doc::Project, targets: &[mm_types::RenderTargetId]) -> bool {
     targets.iter().any(|id| {
         project
             .render_target(id)
-            .is_ok_and(|t| t.delivery.subtitles != mm_doc::SubtitleOutput::None)
+            .is_ok_and(|t| t.delivery.needs_transcript())
     })
 }
 
