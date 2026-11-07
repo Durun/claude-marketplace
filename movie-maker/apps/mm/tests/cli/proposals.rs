@@ -1,7 +1,6 @@
 //! `mm proposal`: 直接開いたときと、書き手のアプリへ HTTP で転送したときの、提案・承認・却下。
 
 use std::path::Path;
-use std::sync::Arc;
 
 use mm_doc::Project;
 use mm_serve::{Client, Core, Server};

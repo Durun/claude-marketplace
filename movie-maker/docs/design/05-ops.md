@@ -48,6 +48,15 @@
 - アプリのキーとドラッグの編集は、計画から適用までを 1 本のキューで順に行い、計画に使ったプロジェクトのデータのバージョンを `base_version` に付ける。間に CLI などが同じ所を触っていれば `Conflict` で断り、古い編集点に適用しない。
 - プロジェクトのデータの変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。保存の層は `TxnRecord` に誰が・いつ・どのコメントへの対応かを足して `txns` の 1 行と `ops` の複数行に書き込み、`version` を `meta.doc_version` に置く。
 
+## 提案
+
+Claude の対応 1 回を、適用せずに保留して人が決める単位（[RFC 0017](../rfcs/0017-review-proposals.md)）。
+
+- 提案は `Transaction` と同じ形（名前、`base_version`、操作）で、`project.mmdb` の `proposals` の表に置く。受け付けるとき今のデータの写しに当てて検証し（ロック、`validate`、衝突）、触る所を記録する。保留中はプロジェクトのデータもバージョンも変えない。
+- 承認は、提案の名前・発行元・対応するコメントのまま `base_version` を元にした普通のトランザクションとして適用し（`Store::approve_proposal`）、取り消しとやり直しがそのまま効く。操作の番号を選べば一部だけ承認する。後の編集と触る所が重なれば `Conflict` で断り、Claude が今のデータで作り直す。
+- 却下はデータを変えず、保留に戻せる（`reopen`）。決めるのは人の操作経路だけで、MCP の経路からは断る。
+- プレビュー: 提案を今のデータの写しに当てた絵を、Program（アプリ）と `GET /frame?proposal=<id>` で見せる。書かない。
+
 ## 同時書き込み
 
 - 1 本の列で順に適用し、プロジェクトのデータのバージョン番号を進め、変わった所を開いているすべての画面に送る。
@@ -67,8 +76,10 @@
 | `POST /undo`、`POST /redo` | 本体は空か `{"entry"}`。応答は `{"change": {...}}`、無ければ `{"change": null}` |
 | `GET /project` | `{"version","undo_depth","project": {...}}`（素材のパスはフォルダーからの相対のまま） |
 | `POST /transcripts` | `{"asset","content_hash","producer","language","words":[{"segment","start","end","text"}]}`。素材の文字起こしを DB の表に入れる（前の本文は置き換える）。応答は `{"words": 件数}`。文字起こしは操作ではなく表なので `/ops` に載らない。`mm ingest` がアプリの動作中に使う |
-| `GET /frame?t=3/2&comp=main&width=640` | 1 フレームの PNG（`image/png`）。`t` は秒（`1.5`、`3/2`）。専用のスレッドの `Engine` で描くので再生を止めない |
-| `GET /events` | SSE。最初に `hello`（`{"version"}`）、書くたびに `change`（`POST /ops` の応答と同じ形）、取りこぼしたら `resync`（`GET /project` で読み直す） |
+| `GET /frame?t=3/2&comp=main&width=640` | 1 フレームの PNG（`image/png`）。`t` は秒（`1.5`、`3/2`）。専用のスレッドの `Engine` で描くので再生を止めない。`proposal=<id>`（と `ops=0,2`）で提案を当てた絵 |
+| `GET /events` | SSE。最初に `hello`（`{"version"}`）、書くたびに `change`（`POST /ops` の応答と同じ形）、取りこぼしたら `resync`（`GET /project` で読み直す）。提案の追加と決定で `proposal`（`{"id","state"}`） |
+| `POST /proposals`、`GET /proposals`、`GET /proposals/{id}` | 提案を出す（本体は `POST /ops` と同じ）、一覧（`{"proposals":[...]}`、新しい順）、1 つ。形は `ui/sdk` の `Proposal`（だれが、操作、触る範囲 `scope`、後の編集と重なる `conflict`、`applied`、`undoable`） |
+| `POST /proposals/{id}/approve`、`/reject`、`/reopen` | 承認（任意で `{"ops":[0,2]}`。応答は `{"proposal","change"}`）、却下、却下を保留に戻す。`entry: "mcp"` は 403（`forbidden`） |
 
 失敗は `{"error": {"code","message", ...}}`。`conflict`（409、`touches` を添える）、`future_base`（409）、`locked`（403）、`invalid`（422、検証の失敗）、`bad_request`（400）、`unavailable`（503、閉じた後や描画が無いとき）。
 
