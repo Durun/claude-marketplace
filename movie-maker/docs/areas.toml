@@ -1,18 +1,28 @@
-# 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」の表と同じ内容。
+# 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」と「作業の分担」の表と同じ内容。
 # worktree やエージェントに任せるときは、この表の 1 つの [[area]] を渡す。
-# 自動の改善の回は、`git diff --name-only` を `write` と突き合わせ、外のファイルを変えた PR を落とす。
+# 自動の改善の回は、`git diff --name-only` を `write` と [[shared]] の `path` と突き合わせ、外のファイルを変えた PR を落とす。
 # パスは movie-maker/ からの相対で、末尾の "/" はその配下の全部。glob は "*" だけ。
+# `<panel>` は任せるときに 1 つのパネルの名前（media、mixer など）に置き換える。1 つの担当は 1 つの名前だけを持つ。
+# [[shared]] は、どの領域の PR も決まった形（`rule`）でだけ書いてよい共有のファイル。消す・並べ替える・形を変えるのは `reshape` の担当。
 
 [[area]]
 name = "doc-and-ops"
 title = "プロジェクトのデータと操作"
-write = ["crates/mm-doc/", "crates/mm-eval/", "crates/mm-ops/", "crates/mm-store/"]
+write = [
+  "crates/mm-doc/",
+  "crates/mm-eval/",
+  "crates/mm-ops/",
+  "crates/mm-store/",
+  "docs/design/03-data-model.md",
+  "docs/design/05-ops.md",
+]
 avoid = ["crates/mm-*-api/"]
+note = "操作の追加は、ほかの領域の PR も [[shared]] の形で書いてよい（操作の 1 ファイル、op.rs と ops/mod.rs の 1 行、性質テストの 1 行）"
 
 [[area]]
 name = "render"
 title = "レンダラー"
-write = ["crates/mm-render/", "crates/mm-nodes-basic/"]
+write = ["crates/mm-render/", "crates/mm-nodes-basic/", "docs/design/06-engine.md"]
 avoid = ["crates/mm-node-api/", "crates/mm-render-api/"]
 
 [[area]]
@@ -47,15 +57,34 @@ avoid = ["crates/mm-host-api/"]
 
 [[area]]
 name = "ingest"
-title = "取り込み"
-write = ["crates/mm-ingest/", "tools/"]
-avoid = ["crates/mm-ingest-api/"]
+title = "取り込みと cache/"
+write = [
+  "crates/mm-ingest/",
+  "crates/mm-cache-*/",
+  "tools/",
+  "apps/mm/src/ingest_cmd.rs",
+  "docs/design/09-ingest-storage.md",
+]
+avoid = ["crates/mm-ingest-api/", "crates/mm-cache-api/"]
 
 [[area]]
 name = "export"
 title = "書き出し"
-write = ["crates/mm-export/"]
+write = ["crates/mm-export/", "apps/mm/src/render_cmd.rs", "apps/mm/src/captions_cmd.rs"]
 avoid = []
+
+[[area]]
+name = "pack"
+title = "パック"
+write = [
+  "crates/mm-pack/",
+  "packs/",
+  "apps/mm/src/pack_cmd.rs",
+  "apps/movie-maker/src/pack_ipc.rs",
+  "docs/design/13-vlog-pack.md",
+]
+avoid = ["crates/mm-ops/src/", "ui/panels/"]
+note = "パックは操作の列を作るだけで、新しい操作は doc-and-ops の形で足す。パックを選ぶ画面はパネルの担当（ui-panels）が書く"
 
 [[area]]
 name = "ui-wgpu"
@@ -65,33 +94,62 @@ avoid = ["ui/"]
 
 [[area]]
 name = "ui-panels"
-title = "UI（各パネル）"
-write = ["ui/panels/*/"]
-avoid = ["ui/sdk/"]
-note = "1 つの worktree は 1 つのパネルだけを書く。ほかのパネルは触らない"
+title = "UI（1 つのパネルの縦の切り口）"
+write = [
+  "ui/panels/<panel>/",
+  "ui/sdk/src/<panel>.ts",
+  "ui/sdk/src/<panel>.test.ts",
+  "apps/movie-maker/src/<panel>/",
+  "apps/movie-maker/src/<panel>.rs",
+  "apps/movie-maker/src/<panel>_ipc.rs",
+]
+avoid = ["ui/panels/*/", "ui/sdk/src/generated/", "ui/theme/"]
+note = "1 つの担当は 1 つのパネルの画面、パネルの API、アプリ側の処理をまとめて書く。ほかのパネルは触らない。タブ、ビルド、スクリーンショットへの載せ方は [[shared]] の 1 行"
+
+[[area]]
+name = "app-shell"
+title = "アプリの骨組み（ウィンドウ、再生、Timeline の編集）"
+write = [
+  "apps/movie-maker/",
+  "ui/shell/",
+  "ui/tools/",
+]
+avoid = [
+  "apps/movie-maker/src/*_ipc.rs",
+  "ui/panels/",
+]
+note = "ui-panels と pack の切り口のファイルは除く。再生（playback/）と Timeline の編集（sequence_edit、edit_actions）はここ。同時に 2 人を置かない"
 
 [[area]]
 name = "claude-entry"
 title = "Claude の操作経路"
 write = ["crates/mm-serve/", "apps/mm/"]
 avoid = []
+note = "apps/mm/src/<領域>_cmd.rs はその領域が書く（ingest_cmd は ingest、pack_cmd は pack など）"
 
 [[area]]
 name = "improve"
 title = "自動の改善"
-write = ["crates/mm-improve/"]
+write = ["crates/mm-improve/", "docs/design/10-review-improve.md"]
 avoid = []
 
 [[area]]
 name = "testkit-and-bench"
 title = "テストキットとベンチ"
-write = ["crates/mm-testkit/", "crates/mm-bench/", "fixtures/", "fuzz/"]
+write = [
+  "crates/mm-testkit/",
+  "crates/mm-bench/",
+  "fixtures/",
+  "fuzz/",
+  "docs/design/11-testing.md",
+]
 avoid = []
+note = "e2e の再現（fixtures/ep03/ など）もここ。期待画像の更新は人が見る"
 
 [[area]]
 name = "instrumentation"
 title = "計装"
-write = ["crates/mm-trace/", "xtask/"]
+write = ["crates/mm-trace/", "xtask/", "docs/design/17-instrumentation.md"]
 avoid = []
 note = "ほかのクレートのスパンの名前は各領域が付ける。mm-trace は決まりだけ持つ"
 
@@ -101,13 +159,168 @@ title = "インターフェースと組み立て（統合の担当）"
 write = [
   "crates/mm-*-api/",
   "crates/mm-types/",
+  "crates/mm-gpu/",
   "crates/mm-runtime/",
   "ui/sdk/",
   "ui/theme/",
   "Cargo.toml",
   "Cargo.lock",
   "rust-toolchain.toml",
+  "scripts/",
   "docs/",
 ]
 avoid = []
-note = "共有のファイル（Cargo.toml、Cargo.lock、mm-runtime/src/assemble.rs、ui/sdk）はこの担当だけが書く。外のクレートを足したいときは PR に「workspace.dependencies に X を足す」と書く"
+note = "[[shared]] の並べ替えと形の変更、登録の列を分ける作り替え、多くの領域にまたがる機械的な書き換え（構造体の literal を作る関数に寄せる、など）を、ほかの PR が少ない時間に 1 本ずつ入れる"
+
+# ---- 共有のファイル ----
+# どの領域の PR も `rule` の形でだけ書いてよい。`rule` に合わない変更は `reshape` の担当に頼む。
+
+[[shared]]
+path = "Cargo.toml"
+rule = "[workspace.dependencies] の mm-* は名前の順の位置に 1 行。外のクレートは関係するものの隣に 1 行"
+reshape = "integration"
+
+[[shared]]
+path = "Cargo.lock"
+rule = "手で直さない。衝突したら scripts/regen.sh"
+reshape = "integration"
+
+[[shared]]
+path = "crates/mm-runtime/src/assemble.rs"
+rule = "インターフェースごとの match に 1 腕。Backend のバリアントと腕は名前の順の位置"
+reshape = "integration"
+
+[[shared]]
+path = "crates/mm-runtime/src/config.rs"
+rule = "Backend のバリアントを名前の順の位置に 1 行"
+reshape = "integration"
+
+[[shared]]
+path = "crates/mm-ops/src/op.rs"
+rule = "define_ops! に操作を名前の順の位置で 1 行"
+reshape = "doc-and-ops"
+
+[[shared]]
+path = "crates/mm-ops/src/ops/mod.rs"
+rule = "mod を名前の順の位置に 1 行。操作の本体は ops/<操作>.rs に書く"
+reshape = "doc-and-ops"
+
+[[shared]]
+path = "crates/mm-ops/tests/spec/mod.rs"
+rule = "操作の組の生成器は spec/<組>.rs に書き、ここには mod と prop_oneof! の重みを 1 行ずつ"
+reshape = "doc-and-ops"
+
+[[shared]]
+path = "crates/mm-doc/src/lib.rs"
+rule = "フィールドの追加だけ（serde の既定値つき、移行は migrations/ に 1 ファイル）"
+reshape = "doc-and-ops"
+
+[[shared]]
+path = "crates/mm-serve/src/mcp_tools.rs"
+rule = "操作でないツールを 1 つ足す（名前の順）"
+reshape = "claude-entry"
+
+[[shared]]
+path = "crates/mm-serve/tests/mcp.rs"
+rule = "足したツールの試験を足す。ツールの数の定数は手で変えず、名前の組の比較に寄せる"
+reshape = "claude-entry"
+
+[[shared]]
+path = "crates/mm-ops/schema/ops.json"
+rule = "手で直さない。衝突したら scripts/regen.sh"
+reshape = "doc-and-ops"
+
+[[shared]]
+path = "ui/sdk/src/generated/"
+rule = "手で直さない。衝突したら scripts/regen.sh"
+reshape = "integration"
+
+[[shared]]
+path = "ui/sdk/src/index.ts"
+rule = "パネルの API の export を名前の順の位置に 1 行"
+reshape = "integration"
+
+[[shared]]
+path = "ui/sdk/README.md"
+rule = "パネルの API の節を名前の順の位置に足す"
+reshape = "integration"
+
+[[shared]]
+path = "apps/movie-maker/src/main.rs"
+rule = "mod を名前の順の位置に足す"
+reshape = "app-shell"
+
+[[shared]]
+path = "apps/movie-maker/src/app.rs"
+rule = "use、manage、generate_handler! の各列に、名前の順の位置で 1 行ずつ。列の最後の項目にもカンマを付ける"
+reshape = "app-shell"
+
+[[shared]]
+path = "apps/movie-maker/Cargo.toml"
+rule = "依存を名前の順の位置に 1 行"
+reshape = "app-shell"
+
+[[shared]]
+path = "apps/mm/src/main.rs"
+rule = "mod と Command のバリアントと match の腕を 1 つずつ。本体は apps/mm/src/<領域>_cmd.rs"
+reshape = "claude-entry"
+
+[[shared]]
+path = "apps/mm/Cargo.toml"
+rule = "依存を名前の順の位置に 1 行"
+reshape = "claude-entry"
+
+[[shared]]
+path = "ui/shell/src/Shell.tsx"
+rule = "タブの列と ShellProps にパネルを 1 行ずつ。並びは表の順"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/shell/src/Shell.test.tsx"
+rule = "パネルを載せたことの試験を 1 つ足す。パネルの中の試験はパネルのパッケージに書く"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/shell/src/main.tsx"
+rule = "パネルの API を Shell に渡す 1 行"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/shell/src/shell.css"
+rule = "書かない。パネルの見た目はパネルのパッケージの CSS に書く"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/shell/package.json"
+rule = "パネルのパッケージの依存を名前の順の位置に 1 行"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/pnpm-lock.yaml"
+rule = "手で直さない。衝突したら main の側を土台に pnpm install"
+reshape = "integration"
+
+[[shared]]
+path = "ui/tools/build.ts"
+rule = "デモのエントリーと HTML を 1 つずつ（名前の順）"
+reshape = "app-shell"
+
+[[shared]]
+path = "ui/tools/screenshot.mjs"
+rule = "撮る関数を 1 つと、名前の表に 1 行（名前の順）"
+reshape = "app-shell"
+
+[[shared]]
+path = "docs/design/08-ui.md"
+rule = "パネルの表に 1 行（意味の位置。末尾に足さない）。詳しい振る舞いは ui/panels/<panel>/README.md"
+reshape = "integration"
+
+[[shared]]
+path = "docs/design/glossary.d/"
+rule = "用語は glossary.d/<題>.md に 1 ファイル。glossary.md は書き換えない"
+reshape = "integration"
+
+[[shared]]
+path = "docs/rfcs/"
+rule = "<題>.md で書き始め、PR を作ったら <PR の番号 4 桁>-<題>.md に改める"
+reshape = "integration"
