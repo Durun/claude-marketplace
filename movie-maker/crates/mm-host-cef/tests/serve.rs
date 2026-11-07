@@ -73,7 +73,10 @@ fn render(
         size,
         params,
     };
-    match host.request(&req, TIMEOUT).expect("RenderFrame") {
+    match host
+        .request(&req, TIMEOUT)
+        .unwrap_or_else(|e| panic!("RenderFrame {t:?} {size:?}: {e}"))
+    {
         HostResponse::Frame(frame) => frame,
         other => panic!("Frame のはずが {other:?}"),
     }

@@ -131,6 +131,10 @@ impl Server {
                 self.render(time, size, &params).map(HostResponse::Frame)
             }
         };
+        // 期限を過ぎた要求の応答はアプリが読み捨てるので、理由を標準エラーにも残す。
+        if let Err(e) = &result {
+            eprintln!("mm-host-cef: {e}");
+        }
         (result.unwrap_or_else(error), false)
     }
 
