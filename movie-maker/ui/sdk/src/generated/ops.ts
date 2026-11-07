@@ -100,6 +100,8 @@ export type CutSplice = {
 };
 /** 納品の設定。字幕とチャプターの出力と、トゥルーピークの上限。 ラウドネスの目標は `RenderTarget::loudness_lufs`（YouTube は -14、放送は -23）。 */
 export type Delivery = {
+  /** 字幕を書き出しの絵に描き込む。文字起こしから作った字幕を text ノードのレイヤーにするので、プレビューと同じ描画になる。 置き場所はショートの `setCaption`（無ければ下部中央）。字幕のファイルや mov_text（`subtitles`）とは独立。 */
+  "burn_in_captions"?: boolean;
   /** コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。 */
   "chapters"?: boolean;
   /** 字幕の置き方。字幕はシーケンスのカットの文字起こしから作る。 */
@@ -1002,6 +1004,11 @@ export const RENDER_TARGET_SCHEMA: JsonSchema = {
       "description": "納品の設定。字幕とチャプターの出力と、トゥルーピークの上限。\nラウドネスの目標は `RenderTarget::loudness_lufs`（YouTube は -14、放送は -23）。",
       "type": "object",
       "properties": {
+        "burn_in_captions": {
+          "description": "字幕を書き出しの絵に描き込む。文字起こしから作った字幕を text ノードのレイヤーにするので、プレビューと同じ描画になる。\n置き場所はショートの `setCaption`（無ければ下部中央）。字幕のファイルや mov_text（`subtitles`）とは独立。",
+          "type": "boolean",
+          "default": false
+        },
         "chapters": {
           "description": "コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。",
           "type": "boolean",
@@ -1039,6 +1046,7 @@ export const RENDER_TARGET_SCHEMA: JsonSchema = {
         }
       },
       "default": {
+        "burn_in_captions": false,
         "chapters": false,
         "subtitles": "none",
         "true_peak_dbtp": null
