@@ -42,16 +42,11 @@ pub(crate) fn retarget_to_sequence(
     layer.framing = host.map(|(_, l)| l.framing.clone()).unwrap_or_default();
     layer.audio = host.and_then(|(_, l)| l.audio.clone());
     let mixer = host.and_then(|(c, _)| c.mixer.clone());
-    project.compositions.push(Composition {
-        mixer,
-        id: id.clone(),
-        width: rt.width,
-        height: rt.height,
-        fps: rt.fps,
-        duration,
-        layers: vec![layer],
-        markers: Vec::new(),
-    });
+    project.compositions.push(
+        Composition::new(id.clone(), rt.width, rt.height, rt.fps, duration)
+            .with_layers(vec![layer])
+            .with_mixer_opt(mixer),
+    );
     let t = project
         .render_targets
         .iter_mut()
@@ -155,16 +150,14 @@ mod tests {
             cut: Id::new("a"),
             transform,
         });
-        Composition {
-            mixer: None,
-            id: Id::new(id),
-            width: 360,
-            height: 640,
-            fps: Rational::integer(30),
-            duration: RationalTime::seconds(5),
-            layers: vec![layer],
-            markers: Vec::new(),
-        }
+        Composition::new(
+            Id::new(id),
+            360,
+            640,
+            Rational::integer(30),
+            RationalTime::seconds(5),
+        )
+        .with_layers(vec![layer])
     }
 
     fn exported_framing(p: Project) -> Framing {

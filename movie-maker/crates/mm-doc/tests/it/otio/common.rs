@@ -84,16 +84,18 @@ fn main_composition() -> Composition {
         duration: RationalTime::ZERO,
         name: name.into(),
     };
-    Composition {
-        mixer: None,
-        id: Id::new("main-comp"),
-        width: 1280,
-        height: 720,
-        fps: Rational::integer(60),
-        duration: RationalTime::seconds(30),
-        layers: vec![layer],
-        markers: vec![marker("m1", t(2, 1), "導入"), marker("m2", t(7, 2), "本題")],
-    }
+    Composition::new(
+        Id::new("main-comp"),
+        1280,
+        720,
+        Rational::integer(60),
+        RationalTime::seconds(30),
+    )
+    .with_layers(vec![layer])
+    .with_markers(vec![
+        marker("m1", t(2, 1), "導入"),
+        marker("m2", t(7, 2), "本題"),
+    ])
 }
 
 /// 取り込んだ結果を、空のプロジェクトに足して不変条件を通す。

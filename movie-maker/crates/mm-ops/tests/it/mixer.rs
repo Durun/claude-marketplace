@@ -10,22 +10,17 @@ use mm_types::{Id, ParamValue, Rational, RationalTime};
 fn project() -> Project {
     let secs = RationalTime::seconds;
     let mut p = Project::new();
-    p.compositions.push(Composition {
-        id: Id::new("c1"),
-        width: 320,
-        height: 180,
-        fps: Rational::integer(30),
-        duration: secs(10),
-        layers: vec![Layer::new(
-            "l1",
-            Node::new("solid", 1),
-            secs(0),
-            secs(0),
-            secs(10),
-        )],
-        markers: Vec::new(),
-        mixer: None,
-    });
+    p.compositions.push(
+        Composition::new(Id::new("c1"), 320, 180, Rational::integer(30), secs(10)).with_layers(
+            vec![Layer::new(
+                "l1",
+                Node::new("solid", 1),
+                secs(0),
+                secs(0),
+                secs(10),
+            )],
+        ),
+    );
     p
 }
 

@@ -48,16 +48,16 @@ fn project(path: &str) -> Project {
             RationalTime::seconds(60),
         )
     };
-    p.compositions.push(Composition {
-        id: Id::new("main"),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(FPS),
-        duration: RationalTime::seconds(60),
-        layers: vec![layer("bg", bg), layer("clip-layer", footage)],
-        markers: Vec::new(),
-        mixer: None,
-    });
+    p.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            SIZE.width,
+            SIZE.height,
+            Rational::integer(FPS),
+            RationalTime::seconds(60),
+        )
+        .with_layers(vec![layer("bg", bg), layer("clip-layer", footage)]),
+    );
     p
 }
 

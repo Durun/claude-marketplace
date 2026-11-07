@@ -278,6 +278,55 @@ pub struct Composition {
 }
 
 impl Composition {
+    /// レイヤーもマーカーも無い、ミキサーが既定のコンポジション。
+    /// フィールドを足しても呼び出し側の literal が壊れないよう、作るときはこの関数を通す。
+    pub fn new(
+        id: CompositionId,
+        width: u32,
+        height: u32,
+        fps: Rational,
+        duration: RationalTime,
+    ) -> Self {
+        Self {
+            id,
+            width,
+            height,
+            fps,
+            duration,
+            layers: Vec::new(),
+            markers: Vec::new(),
+            mixer: None,
+        }
+    }
+
+    /// レイヤー（下から上の順）を置き換える。
+    #[must_use]
+    pub fn with_layers(mut self, layers: Vec<Layer>) -> Self {
+        self.layers = layers;
+        self
+    }
+
+    /// マーカー（時刻の順）を置き換える。
+    #[must_use]
+    pub fn with_markers(mut self, markers: Vec<Marker>) -> Self {
+        self.markers = markers;
+        self
+    }
+
+    /// ミキサーの設定を置く。
+    #[must_use]
+    pub fn with_mixer(mut self, mixer: CompMixer) -> Self {
+        self.mixer = Some(mixer);
+        self
+    }
+
+    /// ミキサーの設定を `Option` のまま置き換える。
+    #[must_use]
+    pub fn with_mixer_opt(mut self, mixer: Option<CompMixer>) -> Self {
+        self.mixer = mixer;
+        self
+    }
+
     /// コンポジション全体の範囲 `[0, duration)`。長さが負なら `InvalidArgument`。
     pub fn range(&self) -> Result<TimeRange> {
         TimeRange::new(RationalTime::ZERO, self.duration)
@@ -328,16 +377,14 @@ mod tests {
     use mm_types::ParamValue;
 
     fn comp(id: &str, layers: Vec<Layer>) -> Composition {
-        Composition {
-            mixer: None,
-            id: Id::new(id),
-            width: 320,
-            height: 180,
-            fps: Rational::integer(30),
-            duration: RationalTime::seconds(2),
-            layers,
-            markers: Vec::new(),
-        }
+        Composition::new(
+            Id::new(id),
+            320,
+            180,
+            Rational::integer(30),
+            RationalTime::seconds(2),
+        )
+        .with_layers(layers)
     }
 
     #[test]
