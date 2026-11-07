@@ -2,3 +2,4 @@
 
 mod golden;
 mod vlog;
+mod vlog_episode_parts;

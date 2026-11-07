@@ -1,0 +1,26 @@
+{
+  "name": "cta",
+  "title": "締めのお願い",
+  "description": "高評価、チャンネル登録、コメントのお願いのステッカー 1 枚。言った時刻に 1 枚ずつ貼る（白い紙に丸い印と文字。YouTube のボタンには似せない）。手と顔の反対側に、矢印なしで。kind: tag はおまけのオチの黄色の札。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "default": "", "description": "ステッカーの文字（「高評価」）。kind: icon では使わない"},
+    "icon": {"type": "text", "default": "like", "description": "印（like、sub、comment）"},
+    "kind": {"type": "text", "default": "pill", "description": "pill は白い札に印と文字、tag は黄色の札（名乗りの肩書きと同じ）、icon は文字のない丸い印だけ"},
+    "x": {"type": "number", "description": "真ん中の x（コンポジションの画素）"},
+    "y": {"type": "number", "description": "真ん中の y（コンポジションの画素）"},
+    "tilt": {"type": "number", "default": "-4", "description": "傾き（度）"},
+    "at": {"type": "time", "description": "貼る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "ct1", "text": "高評価", "icon": "like", "x": "1460", "y": "300", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "cta", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.2, "fade_out": 0.2,
+      "data": {"text": "{{text}}", "icon": "{{icon}}", "kind": "{{kind}}", "x": "{{x}}", "y": "{{y}}", "tilt": "{{tilt}}"}
+    }}
+  ]
+}

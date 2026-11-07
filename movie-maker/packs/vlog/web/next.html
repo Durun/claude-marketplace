@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  次回予告。サファイアのぎざぎざの爆発と紙吹雪の上に「次回予告！」、下に次の ToDo の紙（空の欄、回の番号、「つづく →」）。
+  data: kicker（既定「次回」。「次回予告！」になる）、text（次の ToDo）、no（回の番号。空なら出さない）、
+  aside（紙の右下に貼る小さな札。空なら出さない）、x と y（真ん中。コンポジションの画素）、theme。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  p { margin: 0; }
+  svg { display: block; overflow: visible; }
+  .next { position: absolute; width: max-content; translate: -50% -50%; }
+  .tilt { position: relative; rotate: -5deg; display: flex; flex-direction: column; align-items: center; }
+  .boom { position: absolute; left: 50%; top: 70px; width: 900px; height: 330px; margin: -165px 0 0 -450px; z-index: 0; }
+  .conf { position: absolute; left: 50%; top: 90px; z-index: 1; }
+  .conf i { position: absolute; display: block; left: -8px; top: -6px; box-sizing: content-box; border: 3px solid var(--ink); }
+  .k { position: relative; z-index: 2; font: 900 116px/1.12 var(--title); color: var(--yellow); letter-spacing: .02em;
+    white-space: nowrap; text-shadow: var(--ring-next); filter: drop-shadow(0 13px 0 var(--ink)); }
+  .sheet { position: relative; z-index: 2; margin-top: 70px; rotate: 3deg; }
+  .shade, .panel { border-radius: 28px; }
+  .shade { position: absolute; inset: 0; translate: 0 10px; background: var(--ink); }
+  .panel { position: relative; padding: 40px 44px 22px 34px; background: var(--paper); border: 7px solid var(--ink); }
+  .ptag { position: absolute; left: 26px; top: -34px; padding: 8px 26px 12px; background: var(--yellow); border: 5px solid var(--ink);
+    border-radius: 30px; filter: drop-shadow(0 5px 0 var(--ink)); font: 700 38px/1 var(--sticker); color: var(--ink); rotate: -4deg; white-space: nowrap; }
+  .no { position: absolute; right: -38px; top: -46px; width: 104px; height: 104px; box-sizing: border-box; border-radius: 50%; background: var(--sapphire);
+    border: 6px solid var(--ink); display: flex; align-items: center; justify-content: center;
+    font: 900 46px/1 var(--title); color: var(--white); rotate: 8deg; }
+  .row { display: flex; align-items: center; gap: 22px; white-space: nowrap; }
+  .box { width: 66px; height: 66px; flex: none; box-sizing: border-box; border-radius: 16px; border: 6px solid var(--ink); background: var(--white); }
+  .tx { font: 900 60px/1.2 var(--body); color: var(--ink); letter-spacing: .02em; }
+  .foot { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 6px; font: 700 40px/1.2 var(--sticker); color: var(--sapphire); }
+  .foot svg { width: 60px; height: 30px; }
+  .aside { position: absolute; right: -26px; bottom: -30px; padding: 8px 22px 12px; background: var(--yellow); border: 5px solid var(--ink);
+    border-radius: 30px; filter: drop-shadow(0 5px 0 var(--ink)); font: 700 40px/1 var(--sticker); color: var(--ink); rotate: -6deg; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  const DEFAULT_X = 1372, DEFAULT_Y = 400;
+  // 爆発: 940x400、24 の山、横 460・縦 192 の楕円、内側の頂点の比 0.74、縁 8、種 41、乱れ 0.16。7_mix の next() と同じ。
+  const BOOM = { w: 940, h: 400, n: 24, rx: 460, ry: 192, inner: 0.74, stroke: 8, seed: 41, jitter: 0.16 };
+  // 紙吹雪: 16 枚、種 31。飛び散った後の止まった位置で描く。
+  const CONFETTI = { n: 16, seed: 31, colors: ['yellow', 'cyan', 'white', 'sapphire', 'miku'] };
+  const ARROW_R = '<svg viewBox="0 0 60 30"><path d="M4 15 H50 M38 4 L53 15 L38 26" fill="none" stroke="var(--sapphire)" '
+    + 'stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  // 種から決まる乱数（mulberry32）。同じ種なら毎回同じ形になる。
+  const rng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  // 縁取り。text-shadow を円周に並べると、角が丸く文字に食い込まない縁になる。layers は内側から [半径, 色]。
+  const outline = (...layers) => {
+    const out = [];
+    let prev = 0;
+    for (const [r, color] of layers) {
+      for (let rr = r; rr > Math.max(prev - 0.5, 0.6); rr -= 2.2) {
+        const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * 2 * Math.PI + rr;
+          out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+        }
+      }
+      prev = r;
+    }
+    return out.join(', ');
+  };
+  const burst = ({ w, h, n, rx, ry, inner, stroke, seed, jitter }) => {
+    const r = rng(seed), pts = [];
+    for (let i = 0; i < n * 2; i++) {
+      const a = (i / (n * 2)) * 2 * Math.PI - Math.PI / 2, k = (i % 2 ? inner : 1) * (1 + (r() - 0.5) * jitter);
+      pts.push(`${(Math.cos(a) * rx * k).toFixed(1)},${(Math.sin(a) * ry * k).toFixed(1)}`);
+    }
+    return `<svg width="${w}" height="${h}" viewBox="${-w / 2} ${-h / 2} ${w} ${h}"><polygon points="${pts.join(' ')}" `
+      + `fill="var(--sapphire)" stroke="var(--ink)" stroke-width="${stroke}" stroke-linejoin="round"/></svg>`;
+  };
+  const confetti = ({ n, seed, colors }) => {
+    const r = rng(seed);
+    return Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * 2 * Math.PI + r() * 0.3, dist = 250 + r() * 130;
+      const w = (12 + r() * 12).toFixed(0), h = (7 + r() * 6).toFixed(0);
+      const x = (Math.cos(a) * dist * 1.25).toFixed(0), y = (Math.sin(a) * dist * 0.5).toFixed(0), rot = (r() * 720 - 360).toFixed(0);
+      r();
+      return `<i style="width:${w}px;height:${h}px;background:var(--${colors[i % colors.length]});translate:${x}px ${y}px;rotate:${rot}deg"></i>`;
+    }).join('');
+  };
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    s.setProperty('--body', stack(f.body));
+    s.setProperty('--title', stack(f.title));
+    s.setProperty('--sticker', stack(f.sticker));
+    s.setProperty('--cyan', 'color-mix(in srgb, var(--sapphire) 35%, var(--white))');
+    // 黄色い文字に接する縁は墨（青の隣だと明るさの比が足りない）。その外にサファイア、外周に墨。
+    s.setProperty('--ring-next', outline([12, 'var(--ink)'], [19, 'var(--sapphire)'], [24, 'var(--ink)']));
+  };
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const kicker = data.kicker || '次回';
+    const k = kicker === '次回' ? '次回予告！' : `${kicker}！`;
+    const no = data.no ? `<span class="no">#${esc(data.no)}</span>` : '';
+    const aside = data.aside ? `<span class="aside">${esc(data.aside)}</span>` : '';
+    document.getElementById('root').innerHTML = `<div class="next" style="left:${x}px;top:${y}px"><div class="tilt">`
+      + `<div class="boom">${burst(BOOM)}</div><div class="conf">${confetti(CONFETTI)}</div><p class="k">${esc(k)}</p>`
+      + `<div class="sheet"><i class="shade"></i><div class="panel"><div class="row"><i class="box"></i><p class="tx">${esc(data.text)}</p></div>`
+      + `<p class="foot">つづく${ARROW_R}</p></div><span class="ptag">次の ToDo</span>${no}${aside}</div></div></div>`;
+  };
+</script>
+</body>
+</html>

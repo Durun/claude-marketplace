@@ -3271,6 +3271,7 @@ dependencies = [
  "mm-gpu",
  "mm-node-api",
  "mm-nodes-basic",
+ "mm-nodes-cef",
  "mm-ops",
  "mm-render",
  "mm-render-api",

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  サムネ風の題字。白い題に青と墨の二重の縁、右上に黄色の星形のバッジ（番号）、下にミクの色のリボン（帯の文）。
+  data: text（題）、kicker（バッジの文）、sub（リボンの文）、x と y（題字の真ん中。コンポジションの画素）、theme。
+  きらめきだけは出た後も瞬く（vlog の決まりで止まらない部品）ので、ページは t で描く。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  p { margin: 0; }
+  svg { display: block; overflow: visible; }
+  .title { position: absolute; width: max-content; translate: -50% -50%; }
+  .tilt { position: relative; rotate: -6deg; }
+  .main { position: relative; font: 900 168px/1.12 var(--title); letter-spacing: .01em; color: var(--white);
+    text-shadow: var(--ring-title); filter: drop-shadow(0 16px 0 var(--ink)); white-space: nowrap; }
+  .badge { position: absolute; right: -40px; top: -184px; width: 236px; height: 236px; rotate: 12deg; }
+  .badge svg { position: absolute; left: 0; top: 0; }
+  .badge p { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-bottom: 6px;
+    font: 900 104px/1 var(--title); color: var(--ink); letter-spacing: -.02em; }
+  .ribbon { position: relative; margin: 34px 0 0 120px; width: max-content; rotate: 2deg; transform-origin: 0 50%; }
+  .rb { position: relative; z-index: 2; padding: 10px 50px 16px; background: var(--miku); border: 6px solid var(--ink); border-radius: 12px;
+    font: 900 64px/1.15 var(--body); color: var(--ink); white-space: nowrap; filter: drop-shadow(0 9px 0 var(--ink)); }
+  .tail { position: absolute; z-index: 1; top: 30px; width: 104px; height: 100px; }
+  .tail.l { left: -66px; }
+  .tail.r { right: -66px; }
+  .spks { position: absolute; inset: 0; }
+  .spk, .dot { position: absolute; }
+  .dot { border-radius: 50%; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  const DEFAULT_X = 1390, DEFAULT_Y = 548;
+  // 瞬きの周期（秒）。きらめきと光の粒で少しずらす。
+  const TWINKLE = 1.1, DOT_TWINKLE = 1.4;
+  // 星形のバッジ: 236 角、16 の山、内側の頂点の比 0.82、縁 8、乱れ 0.08（種 7）。
+  const BADGE = { size: 236, n: 16, inner: 0.82, stroke: 8, seed: 7, jitter: 0.08 };
+  // きらめきと光の粒の置き場所（題字の左上が原点）、大きさ、色、出る時刻。7_mix の title() と同じ。
+  const SPARKS = [[-40, 40, 64, 'cyan', 0.34], [30, 340, 40, 'white', 0.42], [870, 330, 54, 'yellow', 0.48], [690, -84, 34, 'white', 0.44]];
+  const DOTS = [[-70, 170, 16, 'cyan', 0.4], [950, 150, 14, 'white', 0.46], [800, 390, 12, 'cyan', 0.5]];
+  const STAR4 = 'M0 -1.1Q.16 -.16 1.1 0Q.16 .16 0 1.1Q-.16 .16 -1.1 0Q-.16 -.16 0 -1.1Z';
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  // 種から決まる乱数（mulberry32）。同じ種なら毎回同じ形になる。
+  const rng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  // 縁取り。text-shadow を円周に並べると、角が丸く文字に食い込まない縁になる。layers は内側から [半径, 色]。
+  const outline = (...layers) => {
+    const out = [];
+    let prev = 0;
+    for (const [r, color] of layers) {
+      for (let rr = r; rr > Math.max(prev - 0.5, 0.6); rr -= 2.2) {
+        const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * 2 * Math.PI + rr;
+          out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+        }
+      }
+      prev = r;
+    }
+    return out.join(', ');
+  };
+  const burst = ({ size, n, inner, stroke, seed, jitter }) => {
+    const r = rng(seed), rad = size / 2 - 6, pts = [];
+    for (let i = 0; i < n * 2; i++) {
+      const a = (i / (n * 2)) * 2 * Math.PI - Math.PI / 2, k = (i % 2 ? inner : 1) * (1 + (r() - 0.5) * jitter);
+      pts.push(`${(Math.cos(a) * rad * k).toFixed(1)},${(Math.sin(a) * rad * k).toFixed(1)}`);
+    }
+    return `<svg width="${size}" height="${size}" viewBox="${-size / 2} ${-size / 2} ${size} ${size}"><polygon points="${pts.join(' ')}" `
+      + `fill="var(--yellow)" stroke="var(--ink)" stroke-width="${stroke}" stroke-linejoin="round"/></svg>`;
+  };
+  // リボンの端（折り返して後ろに回る。外側に切り込み）。
+  const ribbonTail = (right) => {
+    const p = right ? 'M0 0 H104 L82 50 L104 100 H0 Z' : 'M104 0 H0 L22 50 L0 100 H104 Z';
+    const fold = right ? 'M0 0 L28 0 L0 -24 Z' : 'M104 0 L76 0 L104 -24 Z';
+    return `<svg width="104" height="100" viewBox="0 -28 104 128"><path d="${fold}" fill="var(--miku-fold)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/>`
+      + `<path d="${p}" fill="var(--miku-tail)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/></svg>`;
+  };
+  // 瞬きの量（0..1）。出た時刻から period ごとに 1 回膨らむ。
+  const pulse = (t, from, period) => (t < from ? 0 : (1 - Math.cos(((t - from) / period) * 2 * Math.PI)) / 2);
+  const twinkle = (t, d, period) => {
+    const u = pulse(t, d, period);
+    return `scale:${(0.5 + 0.5 * u).toFixed(3)};rotate:${(45 * u).toFixed(1)}deg;opacity:${(0.45 + 0.55 * u).toFixed(3)}`;
+  };
+  const spark = (t, [x, y, size, color, d]) => `<div class="spk" style="left:${x - size / 2}px;top:${y - size / 2}px">`
+    + `<svg width="${size}" height="${size}" viewBox="-1.25 -1.25 2.5 2.5" style="${twinkle(t, d + 0.3, TWINKLE)}">`
+    + `<path d="${STAR4}" fill="var(--${color})" stroke="var(--ink)" stroke-width="0.13" stroke-linejoin="round"/></svg></div>`;
+  const dot = (t, [x, y, size, color, d]) => `<div class="dot" style="left:${x - size / 2}px;top:${y - size / 2}px;width:${size}px;`
+    + `height:${size}px;background:var(--${color});${twinkle(t, d + 0.2, DOT_TWINKLE)}"></div>`;
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    s.setProperty('--body', stack(f.body));
+    s.setProperty('--title', stack(f.title));
+    // リボンの端と折り返しはミクの色を墨で沈めた色、きらめきの水色はサファイアを白で薄めた色。
+    s.setProperty('--miku-tail', 'color-mix(in srgb, var(--miku) 80%, var(--ink))');
+    s.setProperty('--miku-fold', 'color-mix(in srgb, var(--miku) 62%, var(--ink))');
+    s.setProperty('--cyan', 'color-mix(in srgb, var(--sapphire) 35%, var(--white))');
+    s.setProperty('--ring-title', outline([18, 'var(--sapphire)'], [28, 'var(--ink)']));
+  };
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const sparks = SPARKS.map((s) => spark(t, s)).join('') + DOTS.map((s) => dot(t, s)).join('');
+    document.getElementById('root').innerHTML = `<div class="title" style="left:${x}px;top:${y}px"><div class="tilt">`
+      + `<p class="main">${esc(data.text)}</p>`
+      + `<div class="badge">${burst(BADGE)}<p>${esc(data.kicker)}</p></div>`
+      + `<div class="ribbon"><div class="tail l">${ribbonTail(false)}</div><div class="tail r">${ribbonTail(true)}</div>`
+      + `<div class="rb">${esc(data.sub)}</div></div><div class="spks">${sparks}</div></div></div>`;
+  };
+</script>
+</body>
+</html>

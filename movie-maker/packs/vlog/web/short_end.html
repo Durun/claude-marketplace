@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  縦の動画の終わりの札（誘いが主役の型）。上に紙の札「続きは本編で！」と矢印、下に名乗りの速度線の帯「どぅるんの」、
+  題字「作曲Vlog」、ミクの色のリボン。本編のタイトルコールと名乗りの部品で組む。
+  data: text（誘い）、who（帯の文）、series（題）、sub（リボンの文）、cta（false なら誘いの札を出さない）、
+  cta_y（誘いの札の上端）、title_x と title_y（帯の左上。縦の画面の画素）、theme。
+  帯の中の速度線は出た後も流れ続けるので、ページは t で描く。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font-synthesis: none; }
+  p { margin: 0; }
+  svg { display: block; overflow: visible; }
+  .paper { position: absolute; left: 50%; translate: -50% 0; rotate: -4deg; }
+  .paper .shade, .paper .pl { border-radius: 36px; }
+  .paper .shade { position: absolute; inset: 0; translate: 12px 14px; background: var(--ink); }
+  .paper .pl { position: relative; padding: 30px 60px 36px; background: var(--paper); border: 8px solid var(--ink); }
+  .paper p { font: 900 96px/1.1 var(--title); color: var(--sapphire); white-space: nowrap; }
+  .arrow { position: absolute; right: -44px; bottom: -36px; width: 140px; height: 70px; rotate: -8deg; }
+  .grp { position: absolute; width: max-content; rotate: -6deg; }
+  .band { position: absolute; left: 0; top: 0; height: 128px; padding: 0 56px 0 50px; display: flex; align-items: center; }
+  .band .bg, .band .shade { position: absolute; inset: 0; transform: skewX(-12deg); border-radius: 14px; }
+  .band .shade { translate: 10px 10px; background: var(--ink); }
+  .band .bg { background: var(--sapphire); border: 7px solid var(--ink); overflow: hidden; }
+  .lines { position: absolute; left: -200px; top: 0; width: 1200px; height: 100%; }
+  .nm { position: relative; font: 900 84px/1 var(--title); color: var(--white); letter-spacing: .02em;
+    text-shadow: var(--ring-name); white-space: nowrap; }
+  .mn { position: relative; margin-top: 150px; font: 900 150px/1.12 var(--title); letter-spacing: .01em; color: var(--white);
+    text-shadow: var(--ring-title); filter: drop-shadow(0 16px 0 var(--ink)); white-space: nowrap; }
+  .ribbon { position: relative; margin: 26px 0 0 120px; width: max-content; rotate: 2deg; transform-origin: 0 50%; }
+  .rb { position: relative; z-index: 2; padding: 10px 50px 16px; background: var(--miku); border: 6px solid var(--ink); border-radius: 12px;
+    font: 900 58px/1.15 var(--body); color: var(--ink); white-space: nowrap; filter: drop-shadow(0 9px 0 var(--ink)); }
+  .tail { position: absolute; z-index: 1; top: 30px; width: 104px; height: 100px; }
+  .tail.l { left: -66px; }
+  .tail.r { right: -66px; }
+  .spk { position: absolute; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // 既定の置き場所（縦の画面 1080x1920 の画素）。7_mix の short_end の lb と同じ。
+  const CTA_Y = 560, TITLE_X = 110, TITLE_Y = 880;
+  const LINES = { w: 1200, h: 172, n: 16, seed: 3, min: 80, max: 320 };
+  const RUN_PERIOD = 0.5, RUN_FROM = 320, RUN_SPAN = 640;
+  const SPARKS = [[880, 150, 44, 'yellow'], [-20, 520, 40, 'white']];
+  const STAR4 = 'M0 -1.1Q.16 -.16 1.1 0Q.16 .16 0 1.1Q-.16 .16 -1.1 0Q-.16 -.16 0 -1.1Z';
+  const ARROW_R = '<svg viewBox="0 0 60 30"><path d="M4 15 H50 M38 4 L53 15 L38 26" fill="none" stroke="var(--sapphire)" '
+    + 'stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  // 種から決まる乱数（mulberry32）。同じ種なら毎回同じ線になる。
+  const rng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let x = Math.imul(a ^ (a >>> 15), 1 | a);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  // 縁取り。text-shadow を円周に並べると、角が丸く文字に食い込まない縁になる。layers は内側から [半径, 色]。
+  const outline = (...layers) => {
+    const out = [];
+    let prev = 0;
+    for (const [r, color] of layers) {
+      for (let rr = r; rr > Math.max(prev - 0.5, 0.6); rr -= 2.2) {
+        const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * 2 * Math.PI + rr;
+          out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+        }
+      }
+      prev = r;
+    }
+    return out.join(', ');
+  };
+  const speedLines = ({ w, h, n, seed, min, max }) => {
+    const r = rng(seed), colors = ['var(--line-a)', 'var(--line-b)'];
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const y = (r() * h).toFixed(0), x = (r() * w).toFixed(0), len = (min + r() * (max - min)).toFixed(0);
+      s += `<line x1="${x}" y1="${y}" x2="${+x + +len}" y2="${y}" stroke="${colors[i % colors.length]}" `
+        + `stroke-width="${(3 + r() * 9).toFixed(1)}" stroke-linecap="round"/>`;
+    }
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${s}</svg>`;
+  };
+  const ribbonTail = (right) => {
+    const p = right ? 'M0 0 H104 L82 50 L104 100 H0 Z' : 'M104 0 H0 L22 50 L0 100 H104 Z';
+    const fold = right ? 'M0 0 L28 0 L0 -24 Z' : 'M104 0 L76 0 L104 -24 Z';
+    return `<svg width="104" height="100" viewBox="0 -28 104 128"><path d="${fold}" fill="var(--miku-fold)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/>`
+      + `<path d="${p}" fill="var(--miku-tail)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/></svg>`;
+  };
+  const spark = ([x, y, size, color]) => `<div class="spk" style="left:${x - size / 2}px;top:${y - size / 2}px">`
+    + `<svg width="${size}" height="${size}" viewBox="-1.25 -1.25 2.5 2.5"><path d="${STAR4}" fill="var(--${color})" `
+    + 'stroke="var(--ink)" stroke-width="0.13" stroke-linejoin="round"/></svg></div>';
+
+  const applyTheme = (theme) => {
+    const s = document.documentElement.style;
+    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    const f = theme.fonts || {};
+    const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    s.setProperty('--body', stack(f.body));
+    s.setProperty('--title', stack(f.title));
+    s.setProperty('--miku-tail', 'color-mix(in srgb, var(--miku) 80%, var(--ink))');
+    s.setProperty('--miku-fold', 'color-mix(in srgb, var(--miku) 62%, var(--ink))');
+    s.setProperty('--line-a', 'color-mix(in srgb, var(--white) 33%, transparent)');
+    s.setProperty('--line-b', 'color-mix(in srgb, color-mix(in srgb, var(--sapphire) 35%, var(--white)) 40%, transparent)');
+    s.setProperty('--ring-name', outline([13, 'var(--ink)']));
+    s.setProperty('--ring-title', outline([18, 'var(--sapphire)'], [28, 'var(--ink)']));
+  };
+
+  const num = (v, fallback) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? fallback : Number(v));
+
+  window.mmSetTime = (t, data) => {
+    applyTheme(data.theme || {});
+    const run = RUN_FROM - RUN_SPAN * ((Math.max(0, t) / RUN_PERIOD) % 1);
+    const showCta = !(data.cta === false || data.cta === 'false');
+    const cta = showCta ? `<div class="paper" style="top:${num(data.cta_y, CTA_Y)}px"><i class="shade"></i>`
+      + `<div class="pl"><p>${esc(data.text)}</p></div><div class="arrow">${ARROW_R}</div></div>` : '';
+    document.getElementById('root').innerHTML = `${cta}<div class="grp" style="left:${num(data.title_x, TITLE_X)}px;top:${num(data.title_y, TITLE_Y)}px">`
+      + `<div class="band"><i class="shade"></i><div class="bg"><div class="lines" style="translate:${run.toFixed(1)}px 0">${speedLines(LINES)}</div></div>`
+      + `<p class="nm">${esc(data.who)}</p></div><p class="mn">${esc(data.series)}</p>`
+      + `<div class="ribbon"><div class="tail l">${ribbonTail(false)}</div><div class="tail r">${ribbonTail(true)}</div>`
+      + `<div class="rb">${esc(data.sub)}</div></div>${SPARKS.map(spark).join('')}</div>`;
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "title",
+  "title": "題字",
+  "description": "サムネ風の題字。白い題に青と墨の縁、番号の黄色い星形のバッジ、帯の文のミクの色のリボン。きらめきは出た後も瞬く。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "default": "作曲Vlog", "description": "題"},
+    "kicker": {"type": "text", "description": "バッジの文（回の番号。#4）"},
+    "sub": {"type": "text", "description": "リボンの文（初音ミク × J-core）"},
+    "x": {"type": "number", "default": "1390", "description": "題字の真ん中の x（コンポジションの画素）。顔の反対側に置く"},
+    "y": {"type": "number", "default": "548", "description": "題字の真ん中の y（コンポジションの画素）"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "3.5", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "ti1", "kicker": "#4", "sub": "初音ミク × J-core", "at": "0"},
+  "steps": [
+    {"web": {
+      "page": "title", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.2, "animated": true,
+      "data": {"text": "{{text}}", "kicker": "{{kicker}}", "sub": "{{sub}}", "x": "{{x}}", "y": "{{y}}"}
+    }}
+  ]
+}
