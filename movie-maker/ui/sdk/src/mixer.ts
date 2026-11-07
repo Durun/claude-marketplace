@@ -36,7 +36,7 @@ export interface TrackMeter {
 export interface MasterMeter {
   /** チャンネルごとのサンプルのピーク（dBFS。L、R の順）。 */
   peak_db: (number | null)[];
-  /** 直近の区間のトゥルーピーク（dBTP）。 */
+  /** トゥルーピーク（dBTP）。統合ラウドネスと同じく、再生を始めてから、またはシークしてからの最大。 */
   true_peak_db: number | null;
   /** 短期ラウドネス（直近 3 秒、LUFS）。 */
   short_term_lufs: number | null;

@@ -225,3 +225,6 @@ mod tests_parallel;
 
 #[cfg(test)]
 mod tests_deliver;
+
+#[cfg(test)]
+mod tests_mixer;

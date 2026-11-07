@@ -1,11 +1,35 @@
 //! Mixer の操作（`setLayerAudio`、`setMixer`）。取り消し 1 回で前のプロジェクトのデータにバイトで戻る。
 
-mod common;
-
-use common::{canon, project};
-use mm_doc::{CompMixer, Ducking, LayerAudio, MixerBus, Param};
+use mm_doc::{CompMixer, Composition, Ducking, Layer, LayerAudio, MixerBus, Node, Param, Project};
 use mm_ops::{Editor, Op, OpContext, SetLayerAudio, SetMixer, Transaction};
-use mm_types::{Id, ParamValue};
+use mm_types::{Id, ParamValue, Rational, RationalTime};
+
+/// コンポジション `c1` に、音の設定の無いレイヤー `l1` が 1 つ。
+fn project() -> Project {
+    let secs = RationalTime::seconds;
+    let mut p = Project::new();
+    p.compositions.push(Composition {
+        id: Id::new("c1"),
+        width: 320,
+        height: 180,
+        fps: Rational::integer(30),
+        duration: secs(10),
+        layers: vec![Layer::new(
+            "l1",
+            Node::new("solid", 1),
+            secs(0),
+            secs(0),
+            secs(10),
+        )],
+        markers: Vec::new(),
+        mixer: None,
+    });
+    p
+}
+
+fn canon(p: &Project) -> serde_json::Value {
+    serde_json::to_value(p).unwrap()
+}
 
 fn audio(gain_db: f64, mute: bool, solo: bool) -> LayerAudio {
     LayerAudio {
