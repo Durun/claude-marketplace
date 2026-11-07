@@ -11,6 +11,12 @@ publish.workspace = true
 # 切ったビルドでもアプリ側のランチャー（CefLauncher）とテストの枠はコンパイルする。
 cef = ["dep:cef", "dep:wgpu", "dep:pollster", "dep:png", "dep:tracing", "dep:tracing-subscriber", "dep:mm-trace", "dep:mm-gpu"]
 
+# sandbox つきの起動（CEF の bootstrapc.exe）が読み込む本体の DLL。bundle.sh が組み立てる。
+[[example]]
+name = "sandboxed"
+crate-type = ["cdylib"]
+required-features = ["cef"]
+
 [dependencies]
 mm-host-api = { workspace = true }
 mm-types = { workspace = true }
@@ -28,9 +34,11 @@ mm-gpu = { workspace = true, optional = true }
 windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_System_JobObjects",
   "Win32_System_Threading",
   "Win32_Media",
   "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
 ] }
 
@@ -38,6 +46,10 @@ windows = { workspace = true, features = [
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
 wgpu = { workspace = true }
+
+# テストが受け取った共有ハンドルの権限を読む。
+[target.'cfg(windows)'.dev-dependencies]
+windows = { workspace = true, features = ["Wdk_Foundation", "Win32_System_WindowsProgramming"] }
 
 [lints]
 workspace = true

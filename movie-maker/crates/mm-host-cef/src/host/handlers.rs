@@ -11,6 +11,7 @@ use cef::{
 };
 use mm_gpu::GpuContext;
 
+use super::guard::{self, AllowedPage};
 use super::share::{self, FrameTexture};
 
 /// コールバックと本体の間で共有する状態。CEF のコールバックは UI スレッド（本体と同じ）で呼ばれる。
@@ -28,6 +29,8 @@ pub struct Shared {
     pub title: RefCell<String>,
     /// 受け取りに失敗した理由。
     pub error: RefCell<Option<String>>,
+    /// 遷移と資源の要求を通すページの URL（`guard`）。
+    pub page: AllowedPage,
 }
 
 impl Shared {
@@ -41,6 +44,7 @@ impl Shared {
             loaded: Cell::new(false),
             title: RefCell::new(String::new()),
             error: RefCell::new(None),
+            page: AllowedPage::default(),
         })
     }
 
@@ -206,6 +210,8 @@ wrap_client! {
         render: RenderHandler,
         load: LoadHandler,
         display: DisplayHandler,
+        request: RequestHandler,
+        life_span: LifeSpanHandler,
     }
 
     impl Client {
@@ -220,15 +226,25 @@ wrap_client! {
         fn display_handler(&self) -> Option<DisplayHandler> {
             Some(self.display.clone())
         }
+
+        fn request_handler(&self) -> Option<RequestHandler> {
+            Some(self.request.clone())
+        }
+
+        fn life_span_handler(&self) -> Option<LifeSpanHandler> {
+            Some(self.life_span.clone())
+        }
     }
 }
 
-/// 3 つのハンドラをまとめたクライアント。
+/// 描画、読み込み、タイトル、遷移と要求の拒否、ポップアップの拒否のハンドラをまとめたクライアント。
 pub fn build_client(shared: &Rc<Shared>) -> Client {
     OsrClient::new(
         OsrRenderHandler::new(shared.clone()),
         OsrLoadHandler::new(shared.clone()),
         OsrDisplayHandler::new(shared.clone()),
+        guard::request_handler(&shared.page),
+        guard::life_span_handler(),
     )
 }
 
@@ -247,6 +263,7 @@ wrap_app! {
             let Some(command_line) = command_line else {
                 return;
             };
+            guard::isolate_network(command_line);
             // CEF の GPU プロセスは既定で内蔵 GPU を選ぶことがあり、wgpu の別の GPU では共有ハンドルを開けない。
             // LUID があればそのアダプターを、無ければ wgpu の既定と同じ高性能の GPU を選ばせる。
             match &self.adapter_luid {

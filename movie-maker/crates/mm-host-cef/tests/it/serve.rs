@@ -16,14 +16,14 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 
 const PAGE: &str = include_str!("pages/golden.html");
-const BENCH_PAGE: &str = include_str!("../assets/bench.html");
-const TIMEOUT: Duration = Duration::from_secs(3);
+const BENCH_PAGE: &str = include_str!("../../assets/bench.html");
+pub(crate) const TIMEOUT: Duration = Duration::from_secs(3);
 /// 契約の時間切れに使う、レンダラを止める長さ。`TIMEOUT` より長くする。
 const BUSY_MS: u64 = 8000;
 const REQUIRE_ENV: &str = "MM_REQUIRE_CEF";
 
 /// CEF の配布物が無ければ `None`（スキップする）。
-fn host_exe() -> Option<PathBuf> {
+pub(crate) fn host_exe() -> Option<PathBuf> {
     if std::env::var_os(CEF_PATH_ENV).is_none() {
         assert!(
             std::env::var_os(REQUIRE_ENV).is_none(),
@@ -35,7 +35,7 @@ fn host_exe() -> Option<PathBuf> {
     Some(PathBuf::from(env!("CARGO_BIN_EXE_mm-host-cef")))
 }
 
-fn gpu() -> Arc<GpuContext> {
+pub(crate) fn gpu() -> Arc<GpuContext> {
     GpuContext::shared(&GpuRequest {
         adapter: None,
         optional_features: wgpu::Features::empty(),
@@ -44,7 +44,7 @@ fn gpu() -> Arc<GpuContext> {
     .expect("D3D12 の GPU")
 }
 
-fn spec(exe: &Path, client_pid: Option<u32>) -> HostSpec {
+pub(crate) fn spec(exe: &Path, client_pid: Option<u32>) -> HostSpec {
     HostSpec {
         executable: exe.to_path_buf(),
         args: Vec::new(),
@@ -54,7 +54,7 @@ fn spec(exe: &Path, client_pid: Option<u32>) -> HostSpec {
     }
 }
 
-fn prepare(host: &mut PipeHost, page: &str) {
+pub(crate) fn prepare(host: &mut PipeHost, page: &str) {
     let req = HostRequest::Prepare {
         params: serde_json::json!({ "html": page }),
     };
@@ -62,7 +62,7 @@ fn prepare(host: &mut PipeHost, page: &str) {
     assert_eq!(res, HostResponse::Prepared);
 }
 
-fn render(
+pub(crate) fn render(
     host: &mut PipeHost,
     t: RationalTime,
     size: Size,
@@ -83,12 +83,12 @@ fn render(
 }
 
 /// アプリ側として共有ハンドルを開き、BGRA8 をリードバックする。
-fn read_shared(ctx: &GpuContext, handle: u64, size: Size) -> Vec<u8> {
+pub(crate) fn read_shared(ctx: &GpuContext, handle: u64, size: Size) -> Vec<u8> {
     readback(ctx, &open_shared(ctx, handle, size))
 }
 
 /// アプリ側として共有ハンドルを開いて wgpu のテクスチャにし、ハンドルを閉じる。
-fn open_shared(ctx: &GpuContext, handle: u64, size: Size) -> wgpu::Texture {
+pub(crate) fn open_shared(ctx: &GpuContext, handle: u64, size: Size) -> wgpu::Texture {
     let handle = HANDLE(handle as usize as *mut _);
     // SAFETY: as_hal の参照はこのブロックの間だけ使う。handle はホストがこのプロセスへ複製したもの。
     let resource = unsafe {
@@ -209,7 +209,7 @@ fn copy_owned(ctx: &GpuContext, source: &wgpu::Texture) -> wgpu::Texture {
     target
 }
 
-fn to_image(frame: &SharedFrame, ctx: &GpuContext) -> RgbaImage {
+pub(crate) fn to_image(frame: &SharedFrame, ctx: &GpuContext) -> RgbaImage {
     let data = match frame {
         SharedFrame::Cpu { data, .. } => data.clone(),
         SharedFrame::SharedTexture {
@@ -262,7 +262,7 @@ fn 共有テクスチャと_cpu_の画像が期待画像と一致する() {
 }
 
 /// フレームの seq を書いた画素（左上の 4px）を読む。
-fn marker(bgra: &[u8], width: u32) -> u64 {
+pub(crate) fn marker(bgra: &[u8], width: u32) -> u64 {
     let at = ((2 * width + 2) * 4) as usize;
     u64::from(bgra[at + 2]) | u64::from(bgra[at + 1]) << 8
 }

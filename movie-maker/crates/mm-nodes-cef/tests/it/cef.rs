@@ -156,6 +156,69 @@ fn 同じ入力なら同じ画素で_gpu_と_cpu_の経路も合う() {
     assert!(diff < TOLERANCE, "GPU と CPU の経路の差 {diff}");
 }
 
+#[test]
+fn デバイスを作り直しても新しいデバイスのホストで描く() {
+    let Some(exe) = host() else { return };
+    let size = Size::new(320, 180);
+    let p = params(serde_json::json!({"label": "recreate"}), false);
+    let t = RationalTime::seconds(1);
+    let kind = kind(&exe);
+    let mut before = gpu();
+    let a = render_gpu(&kind, &mut before, &p, t, size);
+    let fresh = before.context().recreate().expect("作り直せる");
+    let mut after = WgpuGpu::new(fresh);
+    let b = render_gpu(&kind, &mut after, &p, t, size);
+    assert_eq!(a, b, "作り直したデバイスでも同じ画素");
+    assert_eq!(
+        kind.stats().drawn,
+        2,
+        "キャッシュは古いデバイスのテクスチャを使わない"
+    );
+}
+
+/// `data.i` 番目の位置に印を描くページ。`variant` を変えると別のページ（別のホストの割り振り）になる。
+/// 印を動かすのは BeginFrame の後の requestAnimationFrame で、描画に `slow_ms` かかる
+/// （多数のレイヤーの合成や動画のデコードと GPU を取り合って、1 フレームが遅くなった場合）。
+fn mark_page(variant: usize, slow_ms: u32) -> String {
+    format!(
+        r#"<!doctype html><html><head><!-- {variant} --><style>
+html, body {{ margin: 0; background: transparent; }}
+#m {{ position: absolute; top: 4px; width: 12px; height: 12px; background: white; }}
+</style></head><body><div id="m"></div><script>
+window.mmSetTime = (t, d) => {{ requestAnimationFrame(() => {{
+  const end = performance.now() + {slow_ms}; while (performance.now() < end) {{}}
+  document.getElementById('m').style.left = (d.i * 20 + 4) + 'px'; }}); }};
+</script></body></html>"#
+    )
+}
+
+#[test]
+fn 同じフレームに多数のレイヤーが並んでも全部を描く() {
+    const LAYERS: usize = 14;
+    /// ホストの上限（3）に収まる数のページを交互に使い、ページを読み直さずに描く経路を通す。
+    const PAGES: usize = 2;
+    const SLOW_MS: u32 = 80;
+    let Some(exe) = host() else { return };
+    let size = Size::new(LAYERS as u32 * 20, 20);
+    let mut gpu = gpu();
+    let kind = kind(&exe);
+    let t = RationalTime::seconds(1);
+    for i in 0..LAYERS {
+        let mut p = params(serde_json::json!({ "i": i }), false);
+        p.set(HTML_PARAM, ParamValue::Text(mark_page(i % PAGES, SLOW_MS)));
+        let image = render_gpu(&kind, &mut gpu, &p, t, size);
+        let marks: Vec<usize> = (0..LAYERS)
+            .filter(|n| image.pixel(*n as u32 * 20 + 10, 10).a > 0.99)
+            .collect();
+        assert_eq!(
+            marks,
+            vec![i],
+            "{i} 枚目のレイヤーは自分の位置にだけ印を描く"
+        );
+    }
+    assert_eq!(kind.stats().drawn, LAYERS as u64);
+}
+
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     sorted[((sorted.len() - 1) as f64 * p).round() as usize]
 }

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_host_api::{HostLauncher, SharedFrame};
@@ -37,8 +37,27 @@ pub struct WebCefKind {
     source: Mutex<Source>,
     cache: Mutex<FrameCache>,
     converter: Mutex<Option<Converter>>,
+    device: Mutex<DeviceGeneration>,
     drawn: AtomicU64,
     hits: AtomicU64,
+}
+
+/// 最後に共有テクスチャで描いたデバイスと、その世代。デバイスを作り直すと世代が進み、ホストを起こし直す。
+#[derive(Default)]
+struct DeviceGeneration {
+    ctx: Weak<GpuContext>,
+    generation: u64,
+}
+
+impl DeviceGeneration {
+    /// `ctx` の世代。前と違うデバイスなら世代を進める。
+    fn of(&mut self, ctx: &Arc<GpuContext>) -> u64 {
+        if !self.ctx.upgrade().is_some_and(|c| Arc::ptr_eq(&c, ctx)) {
+            self.ctx = Arc::downgrade(ctx);
+            self.generation += 1;
+        }
+        self.generation
+    }
 }
 
 impl WebCefKind {
@@ -47,6 +66,7 @@ impl WebCefKind {
             source: Mutex::new(source),
             cache: Mutex::new(FrameCache::default()),
             converter: Mutex::new(None),
+            device: Mutex::new(DeviceGeneration::default()),
             drawn: AtomicU64::new(0),
             hits: AtomicU64::new(0),
         }
@@ -139,8 +159,17 @@ impl WebCefKind {
 
     /// ホストに共有テクスチャで描かせ、中間の形式のテクスチャにする。
     fn draw_shared(&self, ctx: &Arc<GpuContext>, req: &FrameRequest<'_>) -> Result<wgpu::Texture> {
+        let device = self
+            .device
+            .lock()
+            .map_err(|_| MmError::Internal("web.cef のデバイスの世代のロックが壊れた".into()))?
+            .of(ctx);
+        let delivery = Delivery::Shared {
+            adapter: ctx.adapter.clone(),
+            device,
+        };
         let frame = match &mut *self.source()? {
-            Source::Host(hosts) => hosts.render(req, &Delivery::Shared(ctx.adapter.clone()))?,
+            Source::Host(hosts) => hosts.render(req, &delivery)?,
             Source::Mock => {
                 return Err(MmError::Internal("モックは共有テクスチャを出さない".into()))
             }

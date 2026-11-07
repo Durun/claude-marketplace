@@ -1,7 +1,8 @@
 //! `mm-host-cef serve`: 標準入力の `HostRequest` に 1 行ずつ `HostResponse` で答える。
 //!
-//! ページの約束（`Prepare` の `html` か `url`）: `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と
+//! ページの約束（`Prepare` の `html`）: `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と
 //! `RenderFrame` の `params` の関数としてだけ画面を作る。定義が無いページは静止画として描く。
+//! ページはホストが一時フォルダーに書いたファイルとして開き、ほかのファイルとネットワークは読めない（`guard`）。
 //! ページはビューポート（`RenderFrame` の `size`）に収める。ぼかしなどのフィルタの付いた要素がビューポートの端を
 //! またぐと、1 フレームが 20 ms ほど遅れる（`docs/design/spikes/cef.md`）。
 
@@ -19,7 +20,7 @@ use mm_types::{RationalTime, Size};
 use super::args::{DEFAULT_RATE, DEFAULT_RESEND};
 use super::handlers::Shared;
 use super::share::Client;
-use super::{browser, gpu};
+use super::{browser, gpu, guard};
 
 /// 終わるときにスパンの分布（`metrics.jsonl` の 1 行）を書くファイル。
 const METRICS_ENV: &str = "MM_HOST_METRICS";
@@ -27,14 +28,29 @@ const METRICS_ENV: &str = "MM_HOST_METRICS";
 const IDLE_PUMP: Duration = Duration::from_millis(1);
 /// 最初のビューポートの大きさ（最初の `RenderFrame` で頼まれた大きさに変える）。
 const INITIAL_SIZE: (u32, u32) = (1280, 720);
-/// 時刻を変えても画面が変わらない（ダメージが無い）ページは CEF がフレームを出さないので、
-/// ここまで待って来なければ前のフレームを使う。実測の最も遅いフレーム（約 30 ms）より長くする。
-const NO_DAMAGE_WAIT: Duration = Duration::from_millis(60);
+/// BeginFrame からフレームが来るまで待つ上限。過ぎたら前のフレームを返さずに誤りにする。
+/// アプリの 1 フレームの期限（`mm-nodes-cef` と `mm-text-cef` の 5 秒）より短くし、理由を応答で返せるようにする。
+const FRAME_LIMIT: Duration = Duration::from_secs(4);
 /// ページの読み込み後に足す、時刻の反映と反映済みの合図（タイトル）を行う関数。
-const RUNTIME_JS: &str = "window.__mmFrame = (t, seq, params) => {\
-  if (typeof window.mmSetTime === 'function') { window.mmSetTime(t, params); }\
-  document.title = 'mm-ready:' + seq; };\
-  document.title = 'mm-init';";
+///
+/// - 書体: 時刻の反映で初めて使う Web フォントは、組んだ時点で読み込みが始まる。組み直してから
+///   `document.fonts` の読み込みが終わるまで待ち、読み込み中の代わりの書体で描かないようにする。
+/// - 毎フレームのダメージ: 画面が変わらないフレームは CEF がフレームを出さず、遅いページと区別できない。
+///   左上の透明な 1 画素の canvas を毎回消し直してダメージを作り、どのフレームも必ず届くようにする
+///   （透明の画素は合成しても画素を変えない）。
+const RUNTIME_JS: &str = "(() => {\
+  const c = document.createElement('canvas'); c.width = 1; c.height = 1;\
+  c.setAttribute('style', 'position:fixed!important;left:0!important;top:0!important;\
+width:8px!important;height:8px!important;margin:0!important;display:block!important;\
+visibility:visible!important;opacity:1!important;z-index:2147483647!important;pointer-events:none!important');\
+  document.documentElement.appendChild(c);\
+  const g = c.getContext('2d');\
+  const settle = (done) => { void document.documentElement.getBoundingClientRect();\
+    if (document.fonts.status === 'loaded') { done(); } else { document.fonts.ready.then(() => settle(done)); } };\
+  window.__mmFrame = (t, seq, params) => {\
+    if (typeof window.mmSetTime === 'function') { window.mmSetTime(t, params); }\
+    settle(() => { g.clearRect(0, 0, 1, 1); document.title = 'mm-ready:' + seq; }); };\
+  document.title = 'mm-init'; })();";
 
 struct Server {
     shared: Rc<Shared>,
@@ -54,7 +70,7 @@ pub fn run(spec: &HostSpec, gpu: Arc<GpuContext>) -> Result<(), String> {
         shared,
         browser: None,
         client,
-        page_dir: std::env::temp_dir().join(format!("mm-host-cef-page-{}", std::process::id())),
+        page_dir: super::work_dir().0.join("pages"),
         seq: 0,
     };
     let (tx, rx) = mpsc::channel();
@@ -147,13 +163,10 @@ impl Server {
     }
 
     fn page_url(&self, params: &serde_json::Value) -> Result<String, String> {
-        if let Some(url) = params.get("url").and_then(serde_json::Value::as_str) {
-            return Ok(url.to_string());
-        }
         let html = params
             .get("html")
             .and_then(serde_json::Value::as_str)
-            .ok_or("Prepare の params に html か url が要る")?;
+            .ok_or("Prepare の params に html が要る")?;
         std::fs::create_dir_all(&self.page_dir).map_err(|e| e.to_string())?;
         let path = self.page_dir.join(format!("page-{}.html", self.seq));
         std::fs::write(&path, html).map_err(|e| e.to_string())?;
@@ -172,6 +185,7 @@ impl Server {
         *self.shared.frame.borrow_mut() = None;
         self.shared.loaded.set(false);
         self.shared.title.borrow_mut().clear();
+        guard::reset(&self.shared.page);
         let created = browser::create(&self.shared, true, DEFAULT_RATE, &url)?;
         browser::pump_until(&self.shared, "読み込み", browser::WAIT_LIMIT, |s| {
             s.loaded.get()
@@ -208,16 +222,14 @@ impl Server {
         let js = format!("window.__mmFrame({}, {seq}, {params})", time.to_f64());
         browser::run_js(&browser, &self.shared, &js, &format!("mm-ready:{seq}"))?;
         let wanted = (size.width, size.height);
-        let reuse = self.shared.frame_size() == Some(wanted);
-        let limit = if reuse {
-            NO_DAMAGE_WAIT
-        } else {
-            browser::WAIT_LIMIT
-        };
         let accept = |s: &Shared| s.frame_size() == Some(wanted);
-        let got = browser::begin_frame(&browser, &self.shared, DEFAULT_RESEND, limit, accept)?;
-        if !got && !reuse {
-            return Err(format!("{}x{} のフレームが来ない", size.width, size.height));
+        let got =
+            browser::begin_frame(&browser, &self.shared, DEFAULT_RESEND, FRAME_LIMIT, accept)?;
+        if !got {
+            return Err(format!(
+                "{}x{} のフレームが {FRAME_LIMIT:?} 以内に来ない（ページの描画が遅すぎる）",
+                size.width, size.height
+            ));
         }
         self.output(size)
     }

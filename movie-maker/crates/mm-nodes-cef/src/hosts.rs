@@ -22,8 +22,8 @@ const PREPARE_TIMEOUT: Duration = Duration::from_secs(15);
 pub enum Delivery {
     /// CPU の画像（RGBA f32、premultiplied、線形）。
     Cpu,
-    /// このアダプターの上の共有テクスチャ。
-    Shared(GpuAdapterId),
+    /// このアダプターの上の共有テクスチャ。`device` はレンダラーのデバイスの世代で、作り直すたびに変わる。
+    Shared { adapter: GpuAdapterId, device: u64 },
 }
 
 struct Slot {
@@ -53,7 +53,7 @@ impl HostPages {
     fn spec(&self, delivery: &Delivery) -> HostSpec {
         let (gpu, client_pid) = match delivery {
             Delivery::Cpu => (None, None),
-            Delivery::Shared(adapter) => (Some(adapter.clone()), Some(std::process::id())),
+            Delivery::Shared { adapter, .. } => (Some(adapter.clone()), Some(std::process::id())),
         };
         HostSpec {
             executable: self.executable.clone(),
@@ -67,6 +67,7 @@ impl HostPages {
     /// 1 フレームを描く。ホストがクラッシュしていたら 1 回だけ起こし直してやり直す。
     pub fn render(&mut self, req: &FrameRequest<'_>, delivery: &Delivery) -> Result<SharedFrame> {
         let _span = tracing::info_span!("nodes_cef.host_frame").entered();
+        self.retire_other_devices(delivery);
         match self.try_render(req, delivery) {
             Err(MmError::HostCrashed(why)) => {
                 tracing::warn!(%why, "web.cef のホストを起こし直す");
@@ -74,6 +75,16 @@ impl HostPages {
                 self.try_render(req, delivery)
             }
             other => other,
+        }
+    }
+
+    /// 共有テクスチャで頼むとき、ほかのデバイスの世代に向けて起こしたホストを止める。
+    /// デバイスを作り直すと、古いホストは古いアダプター（か消えたデバイス）の上で描き続けるため、
+    /// 次のフレームで新しいアダプターのホストを起こし直す。
+    fn retire_other_devices(&mut self, delivery: &Delivery) {
+        if matches!(delivery, Delivery::Shared { .. }) {
+            self.slots
+                .retain(|s| s.delivery == Delivery::Cpu || s.delivery == *delivery);
         }
     }
 
@@ -145,5 +156,122 @@ impl std::fmt::Debug for HostPages {
             .field("executable", &self.executable)
             .field("live", &self.slots.len())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    use mm_types::{ParamValue, Params, RationalTime, Size};
+
+    use super::*;
+    use crate::page::{Page, HTML_PARAM};
+
+    /// 起こしたホストの `gpu` と、生きているホストの数を数えるランチャー。
+    #[derive(Default)]
+    struct Counting {
+        spawned: Mutex<Vec<Option<GpuAdapterId>>>,
+        live: Arc<AtomicUsize>,
+    }
+
+    struct Fake {
+        live: Arc<AtomicUsize>,
+    }
+
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            self.live.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    impl HostProcess for Fake {
+        fn is_alive(&self) -> bool {
+            true
+        }
+        fn pid(&self) -> Option<u32> {
+            None
+        }
+        fn request(&mut self, req: &HostRequest, _timeout: Duration) -> Result<HostResponse> {
+            Ok(match req {
+                HostRequest::Prepare { .. } => HostResponse::Prepared,
+                _ => HostResponse::Frame(SharedFrame::Cpu {
+                    size: Size::new(1, 1),
+                    data: vec![0.0; 4],
+                }),
+            })
+        }
+        fn kill(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn restart(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn open_handles(&self) -> usize {
+            0
+        }
+    }
+
+    impl HostLauncher for Counting {
+        fn id(&self) -> &'static str {
+            "counting"
+        }
+        fn spawn(&self, spec: &HostSpec) -> Result<Box<dyn HostProcess>> {
+            self.spawned.lock().unwrap().push(spec.gpu.clone());
+            self.live.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(Fake {
+                live: self.live.clone(),
+            }))
+        }
+    }
+
+    fn adapter(name: &str) -> GpuAdapterId {
+        GpuAdapterId {
+            vendor: 0x10de,
+            device: 1,
+            name: name.into(),
+            luid: Some(1),
+        }
+    }
+
+    #[test]
+    fn デバイスを作り直したらホストを新しいアダプターで起こし直す() {
+        let launcher = Arc::new(Counting::default());
+        let mut hosts = HostPages::new(launcher.clone(), "fake".into());
+        let mut params = Params::new();
+        params.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()));
+        let page = Page::read(&params).unwrap();
+        let req = FrameRequest {
+            page: &page,
+            time: RationalTime::ZERO,
+            size: Size::new(1, 1),
+            scale: 1.0,
+        };
+        let old = Delivery::Shared {
+            adapter: adapter("old"),
+            device: 1,
+        };
+        hosts.render(&req, &old).unwrap();
+        hosts.render(&req, &Delivery::Cpu).unwrap();
+        hosts.render(&req, &old).unwrap();
+        assert_eq!(
+            launcher.spawned.lock().unwrap().len(),
+            2,
+            "同じデバイスなら使い回す"
+        );
+
+        let fresh = Delivery::Shared {
+            adapter: adapter("new"),
+            device: 2,
+        };
+        hosts.render(&req, &fresh).unwrap();
+        let spawned = launcher.spawned.lock().unwrap().clone();
+        assert_eq!(spawned.last(), Some(&Some(adapter("new"))));
+        assert_eq!(
+            launcher.live.load(Ordering::SeqCst),
+            2,
+            "古いデバイスのホストは止め、CPU の経路のホストは残す"
+        );
     }
 }
