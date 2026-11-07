@@ -6,6 +6,7 @@ import path from 'node:path';
 import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests, forgetPermission, noteAutoAllow, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
 import { flHookContext } from './flconnect.ts';
+import { mmHookContext } from './movieMaker.ts';
 import { isHelperSession } from './haiku.ts';
 import { nextImprovement } from './improve.ts';
 import { refreshPr } from './integrations.ts';
@@ -267,7 +268,7 @@ const enterWorktree = (sessionId: string, cwd: string, input: HookInput['tool_in
 
 /**
  * EnterWorktree の PreToolUse には、使ってよいかを返す。
- * FL Connect でつないだセッションの UserPromptSubmit と PostToolUse には、前に知らせてから人間が FL でした操作を添える。
+ * FL Connect とムービーメーカーでつないだセッションの UserPromptSubmit と PostToolUse には、前に知らせてから人間がそのアプリでした操作を添える。
  * サブエージェントに渡すと、本体のセッションに届かないまま読んだことになるので、本体にだけ渡す。
  */
 export const handleHook = (input: HookInput, pid: number): HookOutput | undefined => {
@@ -282,7 +283,7 @@ export const handleHook = (input: HookInput, pid: number): HookOutput | undefine
   if (responded) nextImprovement(input.session_id, input.last_assistant_message);
   if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
   if (!input.agent_id && (event === 'UserPromptSubmit' || event === 'PostToolUse')) {
-    const additionalContext = flHookContext(input.session_id);
+    const additionalContext = [flHookContext(input.session_id), mmHookContext(input.session_id)].filter(Boolean).join('\n\n');
     if (additionalContext) return { hookSpecificOutput: { hookEventName: event, additionalContext } };
   }
 };

@@ -424,6 +424,14 @@ test('Windows では、winget のパッケージの下から、版の階層を *
   assert.equal(platformFor('darwin').executableName('flac'), 'flac');
 });
 
+test('movie-maker のトークンは mm-store と同じフォルダーから読み、共有ライブラリの拡張子は OS で変わる', () => {
+  assert.equal(platformFor('win32').movieMakerTokenDir({ LOCALAPPDATA: 'C:\\L' }), 'C:\\L\\movie-maker\\tokens');
+  assert.equal(platformFor('win32').movieMakerTokenDir({}), undefined);
+  assert.equal(platformFor('linux').movieMakerTokenDir({ XDG_RUNTIME_DIR: '/run/user/1', HOME: '/h' }), '/run/user/1/movie-maker/tokens');
+  assert.equal(platformFor('darwin').movieMakerTokenDir({ HOME: '/h' }), '/h/.local/state/movie-maker/tokens');
+  assert.deepEqual(['win32', 'darwin', 'linux'].map((n) => platformFor(n).sharedLibraryExt), ['.dll', '.dylib', '.so']);
+});
+
 test('macOS と Linux では、パッケージ管理が置くディレクトリから依存ツールを探す', () => {
   const dirs = { exists: (f: string) => f === '/opt/homebrew/bin/flac' || f === '/usr/bin/flac', list: () => [] };
   assert.deepEqual(platformFor('darwin').toolCandidates('flac', {}, dirs), ['/opt/homebrew/bin/flac']);

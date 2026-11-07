@@ -179,6 +179,10 @@ export type Platform = {
   musicDir: (run?: Run) => Promise<string>;
   /** 実行ファイルの名前（Windows では .exe を付ける）。 */
   executableName: (tool: string) => string;
+  /** 共有ライブラリの拡張子（.dll など）。movie-maker に FFmpeg のライブラリを添えるときに使う。 */
+  sharedLibraryExt: string;
+  /** movie-maker の HTTP のトークンを置くフォルダー（mm-store の token.rs と同じ規則）。分からなければ undefined。 */
+  movieMakerTokenDir: (env: NodeJS.ProcessEnv) => string | undefined;
   /** パッケージ管理が置く場所にある依存ツールの候補。新しい版を先に返す。 */
   toolCandidates: (tool: ToolName, env: NodeJS.ProcessEnv, dirs?: DirLookup) => string[];
   /** 依存ツールを入れるコマンド。 */
@@ -264,11 +268,17 @@ const posix = {
   slackAppState: (files: Files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), '.config', 'Slack', 'storage', 'root-state.json')),
   musicDir: async () => path.posix.join(os.homedir(), 'Music'),
   executableName: (tool: string) => tool,
+  sharedLibraryExt: '.so',
+  movieMakerTokenDir: (env: NodeJS.ProcessEnv) => {
+    const base = env.XDG_RUNTIME_DIR || (env.HOME && path.posix.join(env.HOME, '.local', 'state'));
+    return base ? path.posix.join(base, 'movie-maker', 'tokens') : undefined;
+  },
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
   ...posix,
   name: 'darwin',
+  sharedLibraryExt: '.dylib',
   defaultChromePath: () => '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   readMemory: async (run = realRun) => {
     const [sysctl, vmStat] = await Promise.all([run('/usr/sbin/sysctl', ['-n', ...SYSCTL_NAMES]), run('/usr/bin/vm_stat', [])]);
@@ -465,6 +475,8 @@ const win32: Platform = {
     }
   },
   executableName: (tool) => `${tool}.exe`,
+  sharedLibraryExt: '.dll',
+  movieMakerTokenDir: (env) => (env.LOCALAPPDATA ? path.win32.join(env.LOCALAPPDATA, 'movie-maker', 'tokens') : undefined),
   toolCandidates: (tool, env, dirs = realDirs) => {
     const base = path.win32.join(env.LOCALAPPDATA ?? path.win32.join(os.homedir(), 'AppData', 'Local'), 'Microsoft', 'WinGet', 'Packages');
     return WINGET_LAYOUT[tool].flatMap((segments) => expandWild(base, segments, dirs, path.win32.join));

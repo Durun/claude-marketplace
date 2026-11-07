@@ -936,3 +936,52 @@ export type CdRipView = {
 
 /** 翻訳に要るものが揃っているか。runtime は llama-server、model は PLaMo 3 Translate の GGUF。install は llama-server を入れるコマンド。 */
 export type TranslateStatus = { runtime: boolean; model: boolean; installing: boolean; install: string };
+
+// ─── アプリ「ムービーメーカー」 ──────────────────────────────────
+
+/** movie-maker の `GET /events` の change。mm-serve が送った生の値。actor は `gui`（人間）、`mcp`、`cli` など。 */
+export type MmChange = {
+  version: number;
+  txn_id: number;
+  kind: 'apply' | 'undo' | 'redo';
+  name: string;
+  actor: string;
+  touched: string[];
+  of?: { txn_id: number; name: string; actor: string; actor_name: string };
+};
+
+/** ムービーメーカーのログの 1 件。人間の操作は movie-maker が送った change のまま、エージェントは mm_tool の呼び出しか、mm の CLI の change。 */
+export type MmLogEntry =
+  | { id: string; at: number; who: 'you'; change: MmChange }
+  | { id: string; at: number; who: 'agent'; tool: string; args: Record<string, unknown>; ok: boolean; output?: string };
+
+/** movie-maker の入れ方。build はソースからビルドし、release はビルド済みを入れる（配布用）。 */
+export type MmInstallMode = 'build' | 'release';
+
+export type MmInstallView = {
+  mode: MmInstallMode;
+  /** 入れた movie-maker の実行ファイル。入れていなければ無い。 */
+  path?: string;
+  /** 入れたときのソースのコミットと、今のソースのコミット。違えば作り直しを勧める。 */
+  commit?: string;
+  sourceCommit?: string;
+  features?: string[];
+  busy: boolean;
+  /** 入れる手順の出力の最後の数行。 */
+  output: string[];
+  error?: string;
+};
+
+export type MmLinkStatus = 'no-project' | 'waiting' | 'connected';
+
+/** ムービーメーカーのウィンドウに描くもの。ウィンドウがつないでいる間、サーバーが変わるたびに送る。 */
+export type MovieMakerView = {
+  sessionId?: string;
+  install: MmInstallView;
+  /** 開くプロジェクトのフォルダー（project.mmdb のあるところ）。 */
+  project?: string;
+  hasStore: boolean;
+  link: { status: MmLinkStatus; message?: string; port?: number; version?: number; undoDepth?: number };
+  log: MmLogEntry[];
+  logFile?: string;
+};
