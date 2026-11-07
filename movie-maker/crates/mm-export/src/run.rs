@@ -42,6 +42,7 @@ pub fn export_run(
     let _g = span.enter();
     let target = pick_target(project, options.target.as_ref())?;
     let (project, output_path) = prepare_run(project, &target, options)?;
+    let project = apply_burn_in(engine, project, &target, options)?;
     let partial = PartialFile::new(partial_path(&output_path));
     let started = Instant::now();
     let Some(done) = export_target(engine, &project, &target, options)? else {
@@ -96,6 +97,31 @@ fn prepare_run(
     ensure_parent(&output_path)?;
     t.output_path = partial_path(&output_path).to_string_lossy().into_owned();
     Ok((project, output_path))
+}
+
+/// 字幕を焼き込む設定なら、字幕のレイヤーを足したプロジェクトのデータにする。文字起こしが渡されていなければ拒否する
+/// （黙って字幕なしにしない）。
+fn apply_burn_in(
+    engine: &Engine,
+    project: Project,
+    target: &RenderTargetId,
+    options: &ExportOptions,
+) -> Result<Project> {
+    let t = project.render_target(target)?;
+    if !t.delivery.burn_in_captions {
+        return Ok(project);
+    }
+    let words = options.transcript.as_deref().ok_or_else(|| {
+        MmError::InvalidArgument(
+            "レンダーターゲットが字幕を焼き込む設定だが、文字起こしが渡されていない".into(),
+        )
+    })?;
+    crate::burn_in_captions(
+        &project,
+        &t.composition,
+        words,
+        engine.services().text_shaper.as_ref(),
+    )
 }
 
 fn target_mut<'a>(
