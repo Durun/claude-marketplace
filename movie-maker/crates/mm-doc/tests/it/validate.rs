@@ -10,6 +10,7 @@ use mm_types::{Id, MmError, Result};
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: 16,
         height: 9,

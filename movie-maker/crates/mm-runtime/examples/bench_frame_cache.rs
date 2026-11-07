@@ -56,6 +56,7 @@ fn project(path: &str) -> Project {
         duration: RationalTime::seconds(60),
         layers: vec![layer("bg", bg), layer("clip-layer", footage)],
         markers: Vec::new(),
+        mixer: None,
     });
     p
 }

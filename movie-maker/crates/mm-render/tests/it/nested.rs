@@ -111,6 +111,7 @@ fn layer(id: &str, source: Node, start: RationalTime, length: RationalTime) -> L
 
 fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: size.width,
         height: size.height,

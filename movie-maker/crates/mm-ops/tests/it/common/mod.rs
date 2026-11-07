@@ -29,6 +29,7 @@ pub fn cut(id: &str, in_s: i64, out_s: i64, speed: (u32, u32)) -> Cut {
 
 pub fn comp(id: &str, layers: Vec<Layer>, markers: Vec<Marker>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: 320,
         height: 180,

@@ -115,6 +115,7 @@ fn source_project(asset: &Asset, program: &Composition) -> Result<(Project, Rati
     let mut project = Project::new();
     project.assets.push(asset.clone());
     project.compositions.push(Composition {
+        mixer: None,
         id: Id::new(SOURCE_COMPOSITION),
         width: program.width,
         height: program.height,

@@ -8,6 +8,7 @@ const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
 const DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/main.tsx", import.meta.url));
 const MEDIA_DEMO_ENTRY = fileURLToPath(new URL("../panels/media/demo/main.tsx", import.meta.url));
 const DELIVER_DEMO_ENTRY = fileURLToPath(new URL("../panels/deliver/demo/main.tsx", import.meta.url));
+const MIXER_DEMO_ENTRY = fileURLToPath(new URL("../panels/mixer/demo/main.tsx", import.meta.url));
 const STORY_DEMO_ENTRY = fileURLToPath(new URL("../panels/story/demo/main.tsx", import.meta.url));
 const KEYFRAMES_DEMO_ENTRY = fileURLToPath(new URL("../panels/inspector/demo/keyframes.tsx", import.meta.url));
 const REVIEW_DEMO_ENTRY = fileURLToPath(new URL("../panels/review/demo/main.tsx", import.meta.url));
@@ -31,7 +32,16 @@ const page = (title: string, name: string): string => `<!doctype html>
 
 await mkdir(DIST, { recursive: true });
 await build({
-  entryPoints: { shell: ENTRY, "inspector-demo": DEMO_ENTRY, "media-demo": MEDIA_DEMO_ENTRY, "story-demo": STORY_DEMO_ENTRY, "deliver-demo": DELIVER_DEMO_ENTRY, "review-demo": REVIEW_DEMO_ENTRY, "keyframes-demo": KEYFRAMES_DEMO_ENTRY },
+  entryPoints: {
+    shell: ENTRY,
+    "inspector-demo": DEMO_ENTRY,
+    "media-demo": MEDIA_DEMO_ENTRY,
+    "story-demo": STORY_DEMO_ENTRY,
+    "deliver-demo": DELIVER_DEMO_ENTRY,
+    "mixer-demo": MIXER_DEMO_ENTRY,
+    "review-demo": REVIEW_DEMO_ENTRY,
+    "keyframes-demo": KEYFRAMES_DEMO_ENTRY,
+  },
   outdir: DIST,
   bundle: true,
   format: "iife",
@@ -53,5 +63,7 @@ await writeFile(`${DIST}story-demo.html`, page("Story demo", "story-demo"));
 await writeFile(`${DIST}keyframes-demo.html`, page("Keyframes demo", "keyframes-demo"));
 // Deliver をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}deliver-demo.html`, page("Deliver demo", "deliver-demo"));
+// Mixer をモックの API で動かすページ。アプリには載せない。
+await writeFile(`${DIST}mixer-demo.html`, page("Mixer demo", "mixer-demo"));
 // Review をモックの API で動かすページ。アプリには載せない。
 await writeFile(`${DIST}review-demo.html`, page("Review demo", "review-demo"));

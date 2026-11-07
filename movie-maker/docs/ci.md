@@ -136,7 +136,7 @@ WARP のシナリオを足した後の所要時間は、2026-11 の実行で、P
 
 ### WARP の期待画像
 
-`check` ジョブは `fixtures/golden/warp/` があるとき、`MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1` で `binary_id(mm-render::it) & test(/^golden::/)` をもう一度回す。runner のアダプターが WARP でなければ（`MM_GOLDEN_BACKEND` の食い違いで）失敗し、WARP の期待画像が欠けていても失敗する。WARP の期待画像が無いうちはこの手順をスキップする。
+`check` ジョブは `fixtures/golden/warp/` があるとき、`MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1` で `(binary_id(mm-render::it) | binary_id(mm-pack::it)) & test(/^golden::/)` をもう一度回す。runner のアダプターが WARP でなければ（`MM_GOLDEN_BACKEND` の食い違いで）失敗し、WARP の期待画像が欠けていても失敗する。WARP の期待画像が無いうちはこの手順をスキップする。
 
 ### ベースラインの置き場所と更新
 

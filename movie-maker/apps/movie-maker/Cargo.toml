@@ -20,6 +20,8 @@ mm-node-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-runtime = { workspace = true }
 mm-ops = { workspace = true }
+# Tauri のコマンド pack_list と pack_apply。パックのマクロを展開して適用する。
+mm-pack = { workspace = true }
 mm-serve = { workspace = true }
 mm-ingest = { workspace = true }
 mm-ingest-api = { workspace = true }

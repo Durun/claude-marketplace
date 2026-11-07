@@ -103,7 +103,7 @@ jobs:
       - name: 期待画像（WARP）
         run: |
           if [ -d fixtures/golden/warp ]; then
-            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run --workspace -E 'binary_id(mm-render::it) & test(/^golden::/)'
+            MM_GOLDEN_BACKEND=warp MM_REQUIRE_GOLDEN=1 MM_REQUIRE_GPU=1 cargo nextest run --workspace -E '(binary_id(mm-render::it) | binary_id(mm-pack::it)) & test(/^golden::/)'
           else
             echo "fixtures/golden/warp が無いので飛ばす"
           fi

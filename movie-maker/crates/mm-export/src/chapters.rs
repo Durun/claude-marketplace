@@ -99,6 +99,7 @@ mod tests {
 
     fn comp(markers: &[(i64, &str)]) -> Composition {
         Composition {
+            mixer: None,
             id: Id::new("c"),
             width: 16,
             height: 9,

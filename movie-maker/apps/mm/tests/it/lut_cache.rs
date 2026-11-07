@@ -3,7 +3,7 @@
 //! `MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use mm_doc::{Asset, Composition, Effect, Layer, Node, Project};
 use mm_ingest::{CacheLayout, IngestOptions, PreviewEncoder, Tools};
@@ -20,10 +20,13 @@ const SIZE: Size = Size::new(32, 18);
 const INVERT_CUBE: &str = include_str!("../../../../fixtures/luts/invert.cube");
 
 /// 自前のコンテキスト。共有の GPU を既定の頼み方で先に作ると、同じプロセスで D3D12 を頼む書き出しの試験が
-/// 共有の GPU を使えなくなる。
+/// 共有の GPU を使えなくなる。共有の GPU と同じく、プロセスが終わるまでデバイスを捨てない。
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::with(&GpuRequest::default()) {
-        Ok(ctx) => Some(ctx),
+    static CTX: OnceLock<Result<Arc<GpuContext>, String>> = OnceLock::new();
+    let ctx =
+        CTX.get_or_init(|| GpuContext::with(&GpuRequest::default()).map_err(|e| e.to_string()));
+    match ctx {
+        Ok(ctx) => Some(ctx.clone()),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
@@ -57,6 +60,7 @@ fn layer(id: &str, node: Node) -> Layer {
 
 fn comp(id: &str, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: SIZE.width,
         height: SIZE.height,

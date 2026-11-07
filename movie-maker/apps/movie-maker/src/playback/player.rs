@@ -418,6 +418,7 @@ impl Player {
         let t = t.clamp(0.0, self.last_start());
         self.clock.seek(t);
         self.audio_cursor = (t * f64::from(DEFAULT_SAMPLE_RATE)).round() as i64;
+        self.shared.meters.lock().expect("meters").reset();
         let idx =
             crate::timebase::frame_index(t, self.fps_f).clamp(0, (self.frames_total - 1).max(0));
         self.render_frame(idx);
@@ -539,6 +540,12 @@ impl Player {
             let block = self.render_audio_chunk(self.audio_cursor, n);
             // 形の違う音は無音に替えて足す。足せずに止めると、音の位置が進まず時計が終わりに届かない。
             let block = fit_chunk(block, n as usize);
+            let start = self.audio_cursor as f64 / f64::from(DEFAULT_SAMPLE_RATE);
+            let levels = self.engine.audio_levels();
+            let mixers = self.engine.mixers().clone();
+            let mut meters = self.shared.meters.lock().expect("meters");
+            meters.record(mixers.as_ref(), start, &block, levels);
+            drop(meters);
             if let Err(e) = out.push(&block) {
                 tracing::warn!(error = %e, "音を足せなかった。時計を進めるためスキップする");
             }

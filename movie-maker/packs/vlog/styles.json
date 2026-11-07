@@ -1,0 +1,63 @@
+{
+  "caption": {
+    "size": 50,
+    "color": "white",
+    "position": [960, 958],
+    "anchor": [0.5, 1.0],
+    "max_width": 1300,
+    "plate": {"color": "ink", "opacity": 0.78, "padding": [28, 12], "radius": 12},
+    "corrections": true
+  },
+  "label": {
+    "size": 38,
+    "color": "ink",
+    "position": [1872, 48],
+    "anchor": [1.0, 0.0],
+    "plate": {
+      "color": "paper", "padding": [22, 12], "radius": 8,
+      "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
+    },
+    "tilt": 2,
+    "fade_in": 0.2,
+    "fade_out": 0.2
+  },
+  "note": {
+    "size": 40,
+    "color": "ink",
+    "position": [960, 48],
+    "anchor": [0.5, 0.0],
+    "max_width": 1200,
+    "plate": {
+      "color": "paper", "padding": [26, 14], "radius": 8,
+      "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
+    },
+    "tilt": -1.5,
+    "fade_in": 0.3,
+    "fade_out": 0.2
+  },
+  "telop": {
+    "size": 44,
+    "color": "ink",
+    "position": [64, 200],
+    "anchor": [0.0, 0.0],
+    "plate": {
+      "color": "yellow", "padding": [22, 12], "radius": 8,
+      "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
+    },
+    "tilt": -3,
+    "fade_in": 0.18,
+    "fade_out": 0.25
+  },
+  "section": {
+    "size": 32,
+    "color": "ink",
+    "position": [64, 40],
+    "anchor": [0.0, 0.0],
+    "plate": {
+      "color": "paper", "padding": [18, 10], "radius": 8,
+      "border": {"color": "sapphire", "width": 4}, "shadow": {"color": "ink", "offset": 5}
+    },
+    "fade_in": 0.3,
+    "fade_out": 0.2
+  }
+}

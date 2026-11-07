@@ -16,4 +16,5 @@ pub use decode_select::{AutoDecoderFactory, GpuCandidate, SplitDecoder, WithAudi
 pub use encode_select::AutoEncoderFactory;
 pub use engine::{Engine, EngineParts, GpuFrame};
 pub use mm_gpu::GpuContext;
+pub use mm_render_api::TrackLevel;
 pub use registry::Registry;

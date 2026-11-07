@@ -16,6 +16,6 @@ pub use time::{
     comp_time, comp_time_along, remap_forward, remap_inverse, source_time, source_time_along,
 };
 pub use transform::{
-    evaluate_audio, evaluate_opacity, evaluate_transform, EvaluatedAudio, EvaluatedTransform,
-    DEFAULT_AUDIO_ROLE,
+    any_solo, audible, evaluate_audio, evaluate_opacity, evaluate_transform, EvaluatedAudio,
+    EvaluatedTransform, DEFAULT_AUDIO_ROLE,
 };

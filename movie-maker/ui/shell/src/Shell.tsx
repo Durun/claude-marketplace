@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { DeliverPanel } from "@mm/deliver";
 import { MediaPanel } from "@mm/media";
+import { MixerPanel } from "@mm/mixer";
 import { ReviewPanel } from "@mm/review";
 import {
   invoke,
@@ -10,6 +11,7 @@ import {
   type Layer,
   type MediaApi,
   type MediaListen,
+  type MixerApi,
   type Op,
   type ReviewApi,
   type StoryApi,
@@ -35,6 +37,8 @@ export interface ShellProps {
   story?: StoryApi;
   /** Deliver パネルがアプリを呼ぶ API。無ければ Deliver は出さない。 */
   deliver?: DeliverApi;
+  /** Mixer パネルがアプリを呼ぶ API。無ければ Mixer は出さない。 */
+  mixer?: MixerApi;
   /** Review パネルがアプリを呼ぶ API。無ければ Review は出さない。 */
   review?: ReviewApi;
   /** Tauri のイベントの購読。無ければ本番の listen。テストで差し替える。 */
@@ -42,7 +46,7 @@ export interface ShellProps {
 }
 
 /** 左の列で見せているパネル。XP のムービーメーカーの Tasks と Collections の切り替えに倣う。 */
-type LeftTab = "tasks" | "media" | "story" | "deliver";
+type LeftTab = "tasks" | "media" | "story" | "mixer" | "deliver";
 
 /** 右の列で見せているパネル。左の列のタブに倣う。 */
 type RightTab = "inspector" | "review";
@@ -56,6 +60,7 @@ const TABS: { id: LeftTab; label: string }[] = [
   { id: "tasks", label: "Tasks" },
   { id: "media", label: "Media" },
   { id: "story", label: "Story" },
+  { id: "mixer", label: "Mixer" },
   { id: "deliver", label: "Deliver" },
 ];
 
@@ -140,8 +145,8 @@ const useDocChanges = (listen: MediaListen | undefined): number => {
 };
 
 /** 左の列のタブの選択と、Tasks の項目が開く先。 */
-const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
-  const { media, story, deliver } = apis;
+const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "mixer" | "deliver">) => {
+  const { media, story, mixer, deliver } = apis;
   const [tab, setTab] = useState<LeftTab>("tasks");
   const [importRequest, setImportRequest] = useState(0);
   const [storyVisits, setStoryVisits] = useState(0);
@@ -149,6 +154,7 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
     "tasks",
     ...(media ? ["media" as const] : []),
     ...(story ? ["story" as const] : []),
+    ...(mixer ? ["mixer" as const] : []),
     ...(deliver ? ["deliver" as const] : []),
   ];
   const selectTab = (next: LeftTab) => {
@@ -168,11 +174,40 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
   return { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits };
 };
 
-/** 左に Tasks、Media、Story、Deliver、右に Inspector（その下に Graph）と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
-export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellProps) => {
+interface RightColumnProps {
+  review: ReviewApi | undefined;
+  opError: string | null;
+  onOp: (op: Op) => Promise<void>;
+  refreshKey: number;
+}
+
+/** 右の列。Inspector（その下に Graph）と、API があれば Review をタブで切り替える。 */
+const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) => {
   const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const selection = useLayerSelection();
-  const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, deliver });
+  return (
+    <aside class="mm-shell-right">
+      {opError && (
+        <p class="mm-shell-error" role="alert">
+          {opError}
+        </p>
+      )}
+      {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
+      <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
+        <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={onOp} />
+      </div>
+      {review && (
+        <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
+          <ReviewPanel api={review} refreshKey={refreshKey} />
+        </div>
+      )}
+    </aside>
+  );
+};
+
+/** 左に Tasks、Media、Story、Mixer、Deliver、右に Inspector（その下に Graph）と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
+export const Shell = ({ sendOp, media, story, mixer, deliver, review, listen }: ShellProps) => {
+  const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, mixer, deliver });
   const docChanges = useDocChanges(listen);
   const { send, opError } = useSendOp(sendOp);
   return (
@@ -192,6 +227,11 @@ export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellPr
             <StoryPanel api={story} refreshKey={storyVisits + docChanges} />
           </div>
         )}
+        {mixer && (
+          <div class="mm-shell-left-body" role="tabpanel" hidden={tab !== "mixer"}>
+            <MixerPanel api={mixer} refreshKey={docChanges} />
+          </div>
+        )}
         {deliver && (
           <div class="mm-shell-left-body" role="tabpanel" hidden={tab !== "deliver"}>
             <DeliverPanel api={deliver} refreshKey={docChanges} />
@@ -199,22 +239,7 @@ export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellPr
         )}
       </aside>
       <main class="mm-shell-center" />
-      <aside class="mm-shell-right">
-        {opError && (
-          <p class="mm-shell-error" role="alert">
-            {opError}
-          </p>
-        )}
-        {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
-        <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
-          <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={send} />
-        </div>
-        {review && (
-          <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
-            <ReviewPanel api={review} refreshKey={docChanges} />
-          </div>
-        )}
-      </aside>
+      <RightColumn review={review} opError={opError} onOp={send} refreshKey={docChanges} />
     </>
   );
 };

@@ -118,6 +118,10 @@ define_ops! {
     SetReframe => "setReframe",
     /// sequence のレイヤーの字幕の置き場所を置く・外す。
     SetCaption => "setCaption",
+    /// レイヤーの音の設定（送り先のバス、音量、パン、ミュート、ソロ）を置く・外す。
+    SetLayerAudio => "setLayerAudio",
+    /// コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。
+    SetMixer => "setMixer",
     /// レンダーターゲットを足す。
     AddRenderTarget => "addRenderTarget",
     /// レンダーターゲットを外す。

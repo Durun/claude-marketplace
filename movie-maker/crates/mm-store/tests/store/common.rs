@@ -30,6 +30,7 @@ pub fn project_with(layers: usize) -> Project {
         timebase_offset: RationalTime::ZERO,
     });
     p.compositions.push(Composition {
+        mixer: None,
         id: Id::new("c"),
         width: 320,
         height: 180,

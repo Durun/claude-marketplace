@@ -140,6 +140,11 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
         }
         last_marker = Some(m.time);
     }
+    if let Some(mixer) = &comp.mixer {
+        mixer
+            .check()
+            .map_err(|e| invalid(format!("コンポジション {} のミキサー: {e}", comp.id)))?;
+    }
     // 親とトラックマットの先を ID の集合で引く（レイヤー数の 2 乗にしない）。
     let ids: HashSet<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
     for layer in &comp.layers {
