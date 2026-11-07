@@ -23,7 +23,8 @@ pub fn load(json: &str) -> Result<Project> {
     Ok(project)
 }
 
-/// JSON の値を今のバージョンに上げる。始点より古いバージョンと、今のバージョンより新しいバージョンは `Unsupported`。
+/// JSON の値を整数のバージョンで v9 まで上げ、まだ当てていない名前つきの移行を当てる。
+/// 始点より古いバージョン、今のバージョンより新しいバージョン、このビルドが知らない名前つきの移行は `Unsupported`。
 pub fn migrate(mut value: Value) -> Result<Value> {
     let mut version = schema_version(&value)?;
     if version < OLDEST_VERSION {
@@ -55,6 +56,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
         version += 1;
         value["schema_version"] = Value::from(version);
     }
+    crate::migrate_named::apply_named(&mut value)?;
     Ok(value)
 }
 
