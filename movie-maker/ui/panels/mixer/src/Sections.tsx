@@ -1,12 +1,12 @@
-import type { Ducking, MixerState, Op } from "@mm/sdk";
+import type { Ducking, MixerState } from "@mm/sdk";
 import { NumberField, PeakBar, Slider } from "./Controls.tsx";
 import { FADER_MAX_DB, FADER_MIN_DB, FADER_STEP_DB, formatDb, METER_FLOOR_DB, METER_HOT_DB, METER_WARN_DB } from "./levels.ts";
 import type { MeterEngine, ReadoutKey } from "./meterEngine.ts";
-import { busGain, busGainOp, DEFAULT_DUCKING, mixerOp } from "./ops.ts";
+import { busGain, busGainOp, DEFAULT_DUCKING, duckingOps, mixerOp, type BuildOps } from "./ops.ts";
 
 export interface SectionProps {
   state: MixerState;
-  apply: (ops: Op[]) => void;
+  apply: (build: BuildOps) => void;
 }
 
 /** 目盛りの数字（dBFS）。メーターの下に置く。 */
@@ -65,7 +65,7 @@ export const MasterSection = ({ state, apply, engine }: SectionProps & { engine:
       <Readout engine={engine} id="short_term" label="Short-term loudness" unit="LUFS" />
       <Readout engine={engine} id="integrated" label="Integrated loudness" unit="LUFS" />
     </div>
-    {dbSlider("Master gain", state.mixer?.master_db ?? 0, (v) => apply([mixerOp(state, { master_db: v })]))}
+    {dbSlider("Master volume", state.mixer?.master_db ?? 0, (v) => apply((s) => [mixerOp(s, { master_db: v })]))}
   </section>
 );
 
@@ -76,16 +76,16 @@ export const BusSection = ({ state, apply }: SectionProps) => (
     {state.roles.map((role) => (
       <div class="mm-mixer-line" key={role}>
         <span class="mm-mixer-name">{role}</span>
-        {dbSlider(`${role} bus gain`, busGain(state, role), (v) => apply([busGainOp(state, role, v)]))}
+        {dbSlider(`${role} bus volume`, busGain(state, role), (v) => apply((s) => [busGainOp(s, role, v)]))}
       </div>
     ))}
   </section>
 );
 
 const DuckingFields = ({ state, apply, ducking }: SectionProps & { ducking: Ducking }) => {
-  const set = (patch: Partial<Ducking>) => apply([mixerOp(state, { ducking: { ...ducking, ...patch } })]);
+  const set = (patch: Partial<Ducking>) => apply(duckingOps(() => patch));
   const toggleTarget = (role: string, on: boolean) =>
-    set({ targets: on ? [...ducking.targets, role] : ducking.targets.filter((t) => t !== role) });
+    apply(duckingOps((d) => ({ targets: on ? [...d.targets.filter((t) => t !== role), role] : d.targets.filter((t) => t !== role) })));
   return (
     <>
       <div class="mm-mixer-line">
@@ -97,7 +97,7 @@ const DuckingFields = ({ state, apply, ducking }: SectionProps & { ducking: Duck
           value={ducking.trigger}
           onChange={(e) => {
             const trigger = (e.target as HTMLSelectElement).value;
-            set({ trigger, targets: ducking.targets.filter((t) => t !== trigger) });
+            apply(duckingOps((d) => ({ trigger, targets: d.targets.filter((t) => t !== trigger) })));
           }}
         >
           {state.roles.map((r) => (
@@ -138,7 +138,10 @@ export const DuckingSection = ({ state, apply }: SectionProps) => {
         <input
           type="checkbox"
           checked={ducking !== null}
-          onChange={(e) => apply([mixerOp(state, { ducking: (e.target as HTMLInputElement).checked ? { ...DEFAULT_DUCKING } : null })])}
+          onChange={(e) => {
+            const on = (e.target as HTMLInputElement).checked;
+            apply((s) => [mixerOp(s, { ducking: on ? (s.mixer?.ducking ?? { ...DEFAULT_DUCKING }) : null })]);
+          }}
         />
         Enabled
       </label>

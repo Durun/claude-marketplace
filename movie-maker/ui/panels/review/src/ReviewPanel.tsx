@@ -7,13 +7,15 @@ export interface ReviewPanelProps {
   api: ReviewApi;
   /** 増えるたびに一覧を読み直す（`mm:doc-changed` が届いたとき）。 */
   refreshKey?: number;
+  /** 見えているか。隠れている間は Program を元のフレームに戻す。 */
+  active?: boolean;
   /** 相対時刻の基準（ミリ秒）。無ければ現在時刻。スクリーンショットとテストで固定する。 */
   nowMs?: number;
 }
 
 /** Claude が出した編集の提案を、承認、却下する。保留中が上、決定済みが下（畳める）。 */
-export const ReviewPanel = ({ api, refreshKey = 0, nowMs }: ReviewPanelProps) => {
-  const review = useReview(api, refreshKey);
+export const ReviewPanel = ({ api, refreshKey = 0, active = true, nowMs }: ReviewPanelProps) => {
+  const review = useReview(api, refreshKey, active);
   const [showDecided, setShowDecided] = useState(true);
   const now = nowMs ?? Date.now();
   const pending = review.proposals?.filter((p) => p.state === "pending") ?? [];

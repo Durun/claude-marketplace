@@ -60,7 +60,7 @@ const InterpSelect = ({ active, label, onPick }: InterpProps) => (
 );
 
 /**
- * AE のキーフレームナビゲーターの形（前へ、再生位置のキーの有無と切り替え、次へ）に、補間の切り替えを足した列。
+ * AE のキーフレームナビゲーターの形（前へ、再生位置のキーの有無と切り替え、次へ）に、補間の切り替えを足したもの（キーフレームナビゲーター）。
  * 足す・外す・補間の切り替えはどれも 1 つの操作で、取り消し 1 回で戻る。
  */
 export const KeyframeNav = ({ target, param, at, label, onOp, onSeek }: KeyframeNavProps) => {

@@ -1,6 +1,6 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Keyframe, Op, Param, ParamRef } from "@mm/sdk";
-import { numbersOf, toSec } from "./keyframes.ts";
+import { keyIndexAt, numbersOf, toSec } from "./keyframes.ts";
 import {
   curvePath,
   dragHandle,
@@ -24,8 +24,6 @@ const DEFAULT_FPS = 30;
 const KEY_RADIUS = 5;
 const HANDLE_RADIUS = 4;
 const COMPONENT_NAMES = ["x", "y", "z"];
-/** 再生位置にあるキーフレームとみなす差（秒）。 */
-const SAME_SEC = 1e-6;
 /** 読み上げの名前に出す秒の桁。 */
 const LABEL_DIGITS = 3;
 
@@ -65,7 +63,7 @@ const localPoint = (svg: SVGSVGElement | null, v: View, e: PointerEvent): [numbe
   return [(e.clientX - (r?.left ?? 0)) * sx, (e.clientY - (r?.top ?? 0)) * sy];
 };
 
-/** ドラッグ中の位置から、動かした後のキーフレームの列を作る。 */
+/** ドラッグ中の位置から、動かした後のキーフレームの並びを作る。 */
 const dragged = (d: Drag, x: number, y: number, fps: number, shift: boolean): Keyframe[] | null => {
   const keys = d.base.keyframes ?? [];
   const { grab, view } = d;
@@ -114,6 +112,19 @@ const useDrag = (props: GraphPanelProps, svg: { current: SVGSVGElement | null })
     props.onPreview?.(null);
     if (op) props.onOp(op);
   };
+  // Esc でドラッグを取りやめ、操作を送らずに元へ戻す（AE と Blender の Graph Editor と同じ）。
+  const dragging = drag !== null;
+  const { onPreview } = props;
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setDrag(null);
+      onPreview?.(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dragging, onPreview]);
   return { drag, start, move, end };
 };
 
@@ -156,13 +167,13 @@ const Handles = ({ param, c, view, onGrab }: LayerProps) => {
   );
 };
 
-const Keys = ({ param, c, view, onGrab, time }: LayerProps & { time?: number }) => (
+const Keys = ({ param, c, view, onGrab, current }: LayerProps & { current: number }) => (
   <g class="mm-graph-keys">
     {(param.keyframes ?? []).map((k, i) => (
       <circle
         key={i}
         class="mm-graph-key"
-        data-current={time !== undefined && Math.abs(toSec(k.time) - time) < SAME_SEC}
+        data-current={i === current}
         cx={xOf(view, toSec(k.time))}
         cy={yOf(view, keyValue(k, c))}
         r={KEY_RADIUS}
@@ -197,6 +208,8 @@ export const GraphPanel = (props: GraphPanelProps) => {
   const shown = drag?.draft ?? param;
   const view = drag?.view ?? fitView(param, comps, width, height);
   const onGrab = (grab: Grab, e: PointerEvent) => start(grab, view, e);
+  // Inspector の ◆ と同じく、再生位置と同じフレームのキーフレームを再生位置のキーとして示す。
+  const current = time === undefined ? -1 : keyIndexAt(shown, time, props.fps ?? DEFAULT_FPS);
   const ids = Array.from({ length: comps }, (_, c) => c);
   return (
     <div class="mm-graph">
@@ -221,7 +234,7 @@ export const GraphPanel = (props: GraphPanelProps) => {
           <Handles key={c} param={shown} c={c} view={view} onGrab={onGrab} />
         ))}
         {ids.map((c) => (
-          <Keys key={c} param={shown} c={c} view={view} onGrab={onGrab} time={time} />
+          <Keys key={c} param={shown} c={c} view={view} onGrab={onGrab} current={current} />
         ))}
       </svg>
       {(param.keyframes?.length ?? 0) === 0 && <p class="mm-graph-empty">No keyframes. Add one in the Inspector.</p>}

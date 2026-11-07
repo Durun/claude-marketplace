@@ -198,7 +198,7 @@ const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) =>
       </div>
       {review && (
         <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
-          <ReviewPanel api={review} refreshKey={refreshKey} />
+          <ReviewPanel api={review} refreshKey={refreshKey} active={rightTab === "review"} />
         </div>
       )}
     </aside>

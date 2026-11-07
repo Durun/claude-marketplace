@@ -35,14 +35,14 @@ const mount = (props: Partial<InspectorPanelProps> & { onOp: (op: Op) => void })
 const el = <T extends Element>(label: string) => host.querySelector<T>(`[aria-label="${label}"]`);
 const click = (label: string) => act(() => el<HTMLButtonElement>(label)?.click());
 
-describe("Inspector のキーフレームの列", () => {
-  it("再生位置を渡さなければ列を出さず、動きのある値は編集できない", () => {
+describe("Inspector のキーフレームナビゲーター", () => {
+  it("再生位置を渡さなければキーフレームナビゲーターを出さず、動きのある値は編集できない", () => {
     mount({ onOp: vi.fn() });
     expect(el("opacity keyframe at playhead")).toBeNull();
     expect(el<HTMLInputElement>("opacity")?.disabled).toBe(true);
   });
 
-  it("再生位置のキーの有無を印で示し、押すと外す（removeKeyframe）", () => {
+  it("再生位置のキーの有無をひし形で示し、押すと外す（removeKeyframe）", () => {
     const onOp = vi.fn();
     mount({ onOp, time: 2.01 });
     expect(el("opacity keyframe at playhead")?.getAttribute("aria-pressed")).toBe("true");
@@ -50,7 +50,7 @@ describe("Inspector のキーフレームの列", () => {
     expect(onOp).toHaveBeenCalledWith({ op: "removeKeyframe", target: { layer: "l1", path: "opacity" }, time: t(2) });
   });
 
-  it("キーの無い位置で押すと、今の値でフレームの頭に足す（setKeyframe）", () => {
+  it("キーの無い位置で押すと、今の値でフレームの先頭に足す（setKeyframe）", () => {
     const onOp = vi.fn();
     mount({ onOp, time: 1.04 });
     expect(el("opacity keyframe at playhead")?.getAttribute("aria-pressed")).toBe("false");

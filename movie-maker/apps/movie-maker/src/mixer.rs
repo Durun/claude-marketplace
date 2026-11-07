@@ -144,7 +144,7 @@ struct MeterFrame {
     master: MasterMeterView,
 }
 
-/// 再生スレッドが記録し、同期のスレッドが読むメーターの区間の列。
+/// 再生スレッドが記録し、同期のスレッドが読むメーターの区間の並び。
 #[derive(Default)]
 pub struct MeterLane {
     meter: Option<Box<dyn MasterMeter>>,

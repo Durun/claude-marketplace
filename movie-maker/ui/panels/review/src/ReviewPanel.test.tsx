@@ -141,6 +141,41 @@ describe("プレビュー", () => {
     await click(proposed[1]);
     expect(proposed.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
   });
+
+  it("タブで隠れたら Program を元のフレームに戻す", async () => {
+    const api = fakeApi([proposal(1)]);
+    act(() => render(<ReviewPanel api={api} nowMs={NOW} active />, host));
+    await settle();
+    await click(button("Proposed"));
+    act(() => render(<ReviewPanel api={api} nowMs={NOW} active={false} />, host));
+    await settle();
+    expect(api.preview).toHaveBeenLastCalledWith(null, null);
+    expect(button("Original")?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+});
+
+describe("プレビューの失敗と順序", () => {
+  it("適用できなかったら理由を出し、Proposed を押していない表示に戻す", async () => {
+    const api = fakeApi([proposal(1)], { preview: vi.fn().mockRejectedValue(new Error("conflict")) });
+    await mount(api);
+    await click(button("Proposed"));
+    expect(host.querySelector(".mm-review-error")?.textContent).toBe("conflict");
+    expect(button("Proposed")?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("切り替えは前の頼みが終わってから送る", async () => {
+    let finish: () => void = () => undefined;
+    const preview = vi.fn().mockImplementationOnce(() => new Promise<void>((ok) => (finish = ok)));
+    preview.mockResolvedValue(undefined);
+    await mount(fakeApi([proposal(1)], { preview }));
+    await click(button("Proposed"));
+    await click(button("Original"));
+    expect(preview).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    await settle();
+    expect(preview).toHaveBeenLastCalledWith(null, null);
+  });
 });
 
 describe("決定済み", () => {
@@ -190,5 +225,23 @@ describe("読み直し", () => {
     expect(api.list).toHaveBeenCalledTimes(3);
     act(() => render(null, host));
     expect(off).toHaveBeenCalled();
+  });
+
+  it("重なった読み直しは、後から頼んだ方の結果を残す", async () => {
+    let fire: (c: { id: number; state: string }) => void = () => undefined;
+    let slow: (l: Proposal[]) => void = () => undefined;
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => new Promise<Proposal[]>((ok) => (slow = ok)))
+      .mockResolvedValueOnce([proposal(1, { state: "rejected" })]);
+    const api = fakeApi([], { list, onChanged: vi.fn(async (h: (c: { id: number; state: string }) => void) => ((fire = h), () => undefined)) });
+    await mount(api);
+    await act(async () => fire({ id: 1, state: "rejected" }));
+    await act(async () => fire({ id: 1, state: "rejected" }));
+    await settle();
+    await act(async () => slow([proposal(1)]));
+    await settle();
+    expect(host.querySelector(".mm-review-status")?.textContent).toBe("Rejected");
   });
 });

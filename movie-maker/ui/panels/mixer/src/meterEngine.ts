@@ -3,7 +3,7 @@ import { dbToFraction, formatDb, METER_FLOOR_DB } from "./levels.ts";
 
 /** ピークホールドの保持時間（ms）。 */
 export const HOLD_MS = 1500;
-/** 表示の落ちる速さ（dB/秒）。ホールドの目印も保持の後に同じ速さで落ちる。 */
+/** 表示の下がる速さ（dB/秒）。ホールドの目印も保持の後に同じ速さで下がる。 */
 export const DECAY_DB_PER_S = 24;
 const MS_PER_S = 1000;
 const PERCENT = 100;
@@ -40,7 +40,7 @@ export class MeterEngine {
   private readouts = new Map<ReadoutKey, HTMLElement>();
   private last: number | null = null;
 
-  /** 受けた値を落とし先にする。含まれない棒と、`playing: false` の間の全部は下端へ向かう。 */
+  /** 受けた値を棒の目標にする。含まれない棒と、`playing: false` の間の全部は下端へ向かう。 */
   push(m: MixerMeters): void {
     for (const c of this.channels.values()) c.target = METER_FLOOR_DB;
     if (m.playing) {

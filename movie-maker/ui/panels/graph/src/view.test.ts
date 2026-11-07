@@ -32,7 +32,7 @@ describe("fitView", () => {
 });
 
 describe("curvePath", () => {
-  it("hold は水平の後に縦の段を描く", () => {
+  it("hold は水平の後に縦の線を描く", () => {
     const p = param(num(0, 0, "hold"), num(1, 1));
     const v = { t0: 0, t1: 1, v0: 0, v1: 1, width: 100, height: 100 };
     expect(curvePath(p, 0, v)).toBe("M0.00,100.00L0.00,100.00L100.00,100.00L100.00,0.00L100.00,0.00");
@@ -69,7 +69,7 @@ describe("dragKey", () => {
 describe("dragHandle", () => {
   const keys = [num(0, 0, "bezier"), num(2, 10)];
 
-  it("ハンドルの位置は区間を正規化した cubic-bezier の制御点", () => {
+  it("ベジェのハンドルの位置は区間を正規化した cubic-bezier の制御点", () => {
     const b = dragHandle(keys, 0, "out", 0, { sec: 0.5, value: 8 });
     expect(b).toEqual({ x1: 0.25, y1: 0.8, x2: 0.58, y2: 1 });
     const from: Keyframe = { ...num(0, 0, "bezier"), bezier: b };

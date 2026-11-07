@@ -294,9 +294,9 @@ impl Player {
     /// 保存した変更（HTTP サーバーと IPC が書いたもの）を描画に取り込む。データは変更を受けた側が
     /// `Shared::doc` に置き直してから `Reload` を送るので、ここはそれを再生するデータにする。
     fn reload(&mut self) {
-        let touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
+        let mut touched = std::mem::take(&mut *self.shared.reload_touched.lock().expect("reload"));
         let Some(doc) = self.shared.doc() else { return };
-        let project = crate::review::previewed(&self.shared).unwrap_or(doc.project);
+        let project = crate::review::previewed(&self.shared, &mut touched).unwrap_or(doc.project);
         if let Err(e) = self.adopt_project(project, &touched) {
             tracing::warn!("保存した変更を描画に取り込めない: {e}");
         }

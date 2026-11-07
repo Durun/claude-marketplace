@@ -1,7 +1,7 @@
 import type { Interpolation, Keyframe, Op, Param, ParamRef, ParamValue } from "@mm/sdk";
 import { evalParam, frameTime, keyIndexAt, numbersOf, toSec } from "@mm/graph";
 
-/** 再生位置とフレームの数え方。キーフレームの時刻はフレームの頭にそろえる。 */
+/** 再生位置とフレームの数え方。キーフレームの時刻はフレームの先頭にそろえる。 */
 export interface Playhead {
   /** コンポジションの秒。 */
   sec: number;
@@ -32,7 +32,7 @@ export const activeKey = (param: Param, at: Playhead): Keyframe | null => {
  * ease 無しの linear の区間は形が変わらない。ベジェとイージングの区間は、制御点を区間ごとに持つので形が少し変わる。
  */
 export const addKeyframeOp = (target: ParamRef, param: Param, at: Playhead): Op => {
-  // 値は置く先のフレームの頭で評価する。再生位置のままだと、フレームの途中の値がずれて曲線が変わる。
+  // 値は置く先のフレームの先頭で評価する。再生位置のままだと、フレームの途中の値がずれて曲線が変わる。
   const time = frameTime(at.sec, at.fps);
   const value = evalParam(param, toSec(time));
   const prev = activeKey(param, at);

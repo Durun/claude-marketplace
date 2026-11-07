@@ -73,7 +73,7 @@ export interface ReviewApi {
   reopen: (id: number) => Promise<Proposal>;
   /** 承認で適用したトランザクションが取り消しのスタックの一番上のときだけ取り消す。 */
   undo: (id: number) => Promise<Proposal>;
-  /** Program に提案を当てた絵を出す。`id` が `null` で元の絵に戻す。 */
+  /** Program に提案を適用したフレームを出す。`id` が `null` で元のフレームに戻す。 */
   preview: (id: number | null, ops: number[] | null) => Promise<void>;
   onChanged: (handler: (change: ProposalsChanged) => void) => Promise<() => void>;
 }

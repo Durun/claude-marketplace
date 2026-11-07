@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { LayerAudio, MixerApi, MixerMeters, MixerState, MixerTrack } from "@mm/sdk";
+import type { LayerAudio, MixerApi, MixerMeters, MixerState, MixerTrack, Op } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MixerPanel } from "./MixerPanel.tsx";
 
@@ -111,9 +111,9 @@ describe("トラック", () => {
 describe("マスター、バス、ダッキング", () => {
   it("マスターとバスの音量は setMixer で全体を送る", async () => {
     const { api } = await mount(stateOf({ mixer: { master_db: -1, buses: { bgm: { gain_db: -6 } } } }));
-    await change(byLabel("Master gain"), "-4");
+    await change(byLabel("Master volume"), "-4");
     expect(lastOps(api)).toEqual([{ op: "setMixer", composition: "main", mixer: { master_db: -4, buses: { bgm: { gain_db: -6 } } } }]);
-    await change(byLabel("sfx bus gain"), "-2");
+    await change(byLabel("sfx bus volume"), "-2");
     expect(lastOps(api)).toEqual([
       { op: "setMixer", composition: "main", mixer: { master_db: -1, buses: { bgm: { gain_db: -6 }, sfx: { gain_db: -2 } } } },
     ]);
@@ -151,7 +151,7 @@ describe("メーター", () => {
     ...over,
   });
 
-  it("イベントでは数字の欄だけを書き換え、パネルを描き直さない", async () => {
+  it("イベントでは読み出しの数字だけを書き換え、パネルを描き直さない", async () => {
     const { api, push } = await mount(stateOf());
     const row = host.querySelector(".mm-mixer-track");
     push(meters());
@@ -173,9 +173,32 @@ describe("拒否と読み直し", () => {
     expect(byLabel<HTMLInputElement>("Volume of Clip a").value).toBe("-3");
   });
 
+  it("応答を待つ間に続けて押した変更は、前の変更を読み直した state から作り、前の変更を消さない", async () => {
+    let current = stateOf();
+    let release: () => void = () => undefined;
+    const applyOps = vi.fn().mockImplementationOnce(
+      (ops: Op[]) =>
+        new Promise<void>((ok) => {
+          release = () => {
+            const set = ops[0] as Extract<Op, { op: "setLayerAudio" }>;
+            current = stateOf({ tracks: [track("a", { audio: set.audio }), track("b", { audio: null })] });
+            ok();
+          };
+        }),
+    );
+    applyOps.mockResolvedValue(undefined);
+    const { api } = await mount(current, { applyOps, state: vi.fn(async () => current) });
+    await click(byLabel("Mute Clip a"));
+    await click(byLabel("Solo Clip a"));
+    expect(api.applyOps).toHaveBeenCalledTimes(1);
+    await flush(() => release());
+    await settle();
+    expect(lastOps(api)).toEqual([{ op: "setLayerAudio", layer: "a", audio: audio({ mute: true, solo: true }) }]);
+  });
+
   it("成功したら state を読み直し、エラーを消す", async () => {
     const { api } = await mount(stateOf());
-    await change(byLabel("Master gain"), "-4");
+    await change(byLabel("Master volume"), "-4");
     await settle();
     expect(api.state).toHaveBeenCalledTimes(2);
     expect(host.querySelector("[role=alert]")).toBeNull();
