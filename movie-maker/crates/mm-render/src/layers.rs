@@ -12,6 +12,7 @@ use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, NoInputs, NodeKind, NodeRegistry, Quality};
 use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
+use crate::clip::Clip;
 use crate::compose::DrawItem;
 use crate::frame_cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::kind_cache::{render_cached, Placement};
@@ -60,6 +61,7 @@ pub(crate) struct Prepared {
     matrix: [f32; 16],
     opacity: f32,
     taps: [f32; 2],
+    clip: Clip,
 }
 
 /// レイヤーの画像のテクスチャと、コンポジションの画素での置き場所。
@@ -150,6 +152,7 @@ impl WgpuRenderer {
                     matrix: p.matrix,
                     opacity: p.opacity,
                     taps: p.taps,
+                    clip: p.clip,
                 })
             })
             .collect();
@@ -202,6 +205,7 @@ impl WgpuRenderer {
             ),
             opacity,
             taps: minify_taps(&image, &transform, cx.comp_to_out()),
+            clip: Clip::of(layer, cx.t, image.place),
         }))
     }
 

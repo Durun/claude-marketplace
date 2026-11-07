@@ -239,3 +239,22 @@ fn image_の期待画像() {
     img.transform.rotation = mm_doc::Param::constant(ParamValue::Number(10.0));
     check("image", &clip_project(vec![bg, img]), seconds(1));
 }
+
+#[test]
+fn 切り抜きと角丸のマスクの期待画像() {
+    let num = |v: f64| mm_doc::Param::constant(ParamValue::Number(v));
+    let bg = layer("bg", solid(Rgba::new(0.1, 0.1, 0.1, 1.0)), 4);
+    let mut card = layer("card", card(), 4);
+    card.crop.left = Some(num(30.0));
+    card.crop.bottom = Some(num(20.0));
+    let mut mask = mm_doc::Mask::rect(
+        "m",
+        mm_doc::MaskRect::new([20.0, 20.0], [240.0, 150.0], 28.0),
+    );
+    mask.feather = num(3.0);
+    card.masks.push(mask);
+    card.transform.scale = num(0.8);
+    card.transform.rotation = num(6.0);
+    let p = project(vec![main_comp(vec![bg, card])], vec![]);
+    check("mask-crop", &p, seconds(1));
+}

@@ -15,7 +15,7 @@
 |---|---|---|
 | 置き方 | `footage` と `image` が素材を画布に置く方法。`contain` は縦横比を保って画布に収め、`none` は素材の画素のまま左上に置く | `FIT_PARAM`、`FIT_CONTAIN`、`FIT_NONE` |
 | クリップの矩形 | geneva で、切り抜いた素材を `fit` で収めた矩形。アンカーと拡大の基準 | `geneva_cmd::visual::Geometry` |
-| 切り抜き | 素材の一部の矩形だけを使うこと。movie-maker は切り抜いた大きさの入れ子のコンポジションで表す | `crop`、`crop-<レイヤー>` |
+| 切り抜き | 素材の一部の矩形だけを使うこと。movie-maker はレイヤーの切り抜きで表す | `crop`、`Layer.crop` |
 
 ## デコードと色
 

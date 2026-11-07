@@ -1,7 +1,8 @@
 //! パラメータの指し方。レイヤーかカットの ID と、その中のパス。
 //!
 //! パスは `.` で区切る。レイヤーは `opacity`、`transform.position|scale|rotation|anchor`、
-//! `source.<名前>`、`effects.<効果の ID>.<名前>`、`masks.<マスクの ID>.path|feather|opacity`、
+//! `crop.left|top|right|bottom`、`source.<名前>`、`effects.<効果の ID>.<名前>`、
+//! `masks.<マスクの ID>.path|feather|opacity|rect.position|rect.size|rect.radius`、
 //! `audio.gain_db|pan`、`reframe.<カットの ID>.position|scale|rotation|anchor`、`caption.position|width`。
 //! カットは `source.<名前>`。ノードのパラメータの名前は `.` を含んでよい。
 
@@ -16,6 +17,7 @@ use crate::ops::add_nesting_reach;
 use crate::touches::Touches;
 
 const TRANSFORM: &str = "transform";
+const CROP: &str = "crop";
 const SOURCE: &str = "source";
 const EFFECTS: &str = "effects";
 const MASKS: &str = "masks";
@@ -124,6 +126,13 @@ fn resolve_layer<'a>(layer: &'a mut Layer, path: &str) -> Result<ParamSlot<'a>> 
             "anchor" => Ok(ParamSlot::Optional(&mut layer.transform.anchor)),
             _ => Err(unknown_path(path)),
         },
+        CROP => match rest {
+            "left" => Ok(ParamSlot::Optional(&mut layer.crop.left)),
+            "top" => Ok(ParamSlot::Optional(&mut layer.crop.top)),
+            "right" => Ok(ParamSlot::Optional(&mut layer.crop.right)),
+            "bottom" => Ok(ParamSlot::Optional(&mut layer.crop.bottom)),
+            _ => Err(unknown_path(path)),
+        },
         REFRAME => resolve_reframe(layer, rest).ok_or_else(|| unknown_path(path)),
         CAPTION => resolve_caption(layer, rest, path),
         SOURCE if !rest.is_empty() => Ok(ParamSlot::Map(&mut layer.source.params, rest.into())),
@@ -191,6 +200,9 @@ fn resolve_mask<'a>(layer: &'a mut Layer, rest: &str) -> Option<ParamSlot<'a>> {
         "path" => Some(ParamSlot::Fixed(&mut mask.path)),
         "feather" => Some(ParamSlot::Fixed(&mut mask.feather)),
         "opacity" => Some(ParamSlot::Fixed(&mut mask.opacity)),
+        "rect.position" => Some(ParamSlot::Fixed(&mut mask.rect.as_mut()?.position)),
+        "rect.size" => Some(ParamSlot::Fixed(&mut mask.rect.as_mut()?.size)),
+        "rect.radius" => Some(ParamSlot::Fixed(&mut mask.rect.as_mut()?.radius)),
         _ => None,
     }
 }

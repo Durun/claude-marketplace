@@ -195,11 +195,9 @@ mod tests {
             ..mm_doc::CompMixer::default()
         });
         comp.layers[0].audio = Some(mm_doc::LayerAudio {
-            role: "voice".into(),
             gain_db: Param::constant(ParamValue::Number(-6.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
             mute: true,
-            solo: false,
+            ..mm_doc::LayerAudio::new("voice")
         });
         let (want_mixer, want_audio) = (comp.mixer.clone(), comp.layers[0].audio.clone());
         p.compositions.push(comp);

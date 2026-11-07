@@ -76,6 +76,10 @@ define_ops! {
     AddLayer => "addLayer",
     /// レイヤーを外す。
     RemoveLayer => "removeLayer",
+    /// レイヤーにマスクを足す。
+    AddMask => "addMask",
+    /// レイヤーからマスクを外す。
+    RemoveMask => "removeMask",
     /// レイヤーの重なりの位置を変える。
     MoveLayer => "moveLayer",
     /// パラメータの固定の値を置く。

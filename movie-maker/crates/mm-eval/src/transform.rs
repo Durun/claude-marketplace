@@ -146,11 +146,9 @@ mod tests {
             RationalTime::seconds(1),
         );
         l.audio = Some(mm_doc::LayerAudio {
-            role: DEFAULT_AUDIO_ROLE.into(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
             mute,
             solo,
+            ..mm_doc::LayerAudio::new(DEFAULT_AUDIO_ROLE)
         });
         l
     }

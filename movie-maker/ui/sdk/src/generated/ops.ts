@@ -49,6 +49,13 @@ export type Composition = {
   "mixer"?: CompMixer | null;
   "width": number;
 };
+/** 切り抜き。レイヤーの画像の縁から内側へ削る幅（画素）。 DaVinci Resolve の Inspector の Cropping と Premiere Pro の Crop と同じく上下左右を別々に持ち、どれもキーフレームできる。 無い辺は削らない。 */
+export type Crop = {
+  "bottom"?: Param | null;
+  "left"?: Param | null;
+  "right"?: Param | null;
+  "top"?: Param | null;
+};
 /** 進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。 `x1`、`x2` は `[0,1]` に収める（時間が単調になる）。 */
 export type CubicBezier = {
   "x1": number;
@@ -146,6 +153,14 @@ export type Effect = {
   "id": string;
   "node": Node;
 };
+/** 音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に レイヤーの先頭（`fade_in`）と末尾（`fade_out`）に持ち、音量に掛ける。 */
+export type Fade = {
+  "curve"?: FadeCurve;
+  /** フェードの長さ（コンポジションの時間）。正。 */
+  "duration": RationalTime;
+};
+/** フェードの曲線。進み具合 `p`（無音の側が 0、鳴る側が 1）から振幅の倍率を決める。 */
+export type FadeCurve = "linear" | "equal_power" | "db";
 /** sequence のレイヤーの、コンポジションごとの見せ方。同じ素材を本編（16:9）とショート（9:16）で別の位置から切り出す。 */
 export type Framing = {
   /** 字幕の置き場所。`None` は字幕を描く側の既定。 */
@@ -171,6 +186,8 @@ export type Layer = {
   "attach_to"?: string | null;
   "audio"?: LayerAudio | null;
   "blend"?: BlendMode;
+  /** 切り抜き。変形の前のレイヤーの画像に掛ける。 */
+  "crop"?: Crop;
   /** 効果の列。上から順に掛ける。 */
   "effects"?: Effect[];
   /** 無効にしたレイヤーは描かず、鳴らさない。 */
@@ -202,6 +219,10 @@ export type Layer = {
 };
 /** レイヤーの音の設定。 */
 export type LayerAudio = {
+  /** 先頭のフェード。音量に掛ける。 */
+  "fade_in"?: Fade | null;
+  /** 末尾のフェード。音量に掛ける。 */
+  "fade_out"?: Fade | null;
   "gain_db": Param;
   /** 鳴らさない。プレビューと書き出しの両方に効く。 */
   "mute"?: boolean;
@@ -219,20 +240,31 @@ export type Marker = {
   "name": string;
   "time": RationalTime;
 };
-/** マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。 */
+/** マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。 座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。 */
 export type Mask = {
-  /** ぼかしの幅（画素）。 */
-  "feather": Param;
+  /** ぼかしの幅（画素）。縁を中心にこの幅で 0 から 1 へ移る。 */
+  "feather"?: Param;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "id": string;
   "inverted"?: boolean;
   "mode"?: MaskMode;
-  "opacity": Param;
-  /** 頂点の列（コンポジションの画素）。キーフレームで形を動かせる。 */
-  "path": Param;
+  "opacity"?: Param;
+  /** 頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。 */
+  "path"?: Param;
+  /** 角丸の矩形。あれば形はこれで決まる。 */
+  "rect"?: MaskRect | null;
 };
 /** マスクの組み合わせ方。 */
 export type MaskMode = "add" | "subtract" | "intersect";
+/** 角丸の矩形のマスクの形。DaVinci Resolve（Fusion）の Rectangle Mask と geneva の `mask` の `rect` に合わせ、 位置・大きさ・角の半径をパラメータで持つ（どれもキーフレームできる）。 */
+export type MaskRect = {
+  /** 矩形の左上（Vec2）。 */
+  "position": Param;
+  /** 角の半径（Number）。短い辺の半分で頭打ちにする。 */
+  "radius"?: Param;
+  /** 矩形の幅と高さ（Vec2）。 */
+  "size": Param;
+};
 /** マットに使う成分。 */
 export type MatteKind = "alpha" | "luma";
 /** バス 1 本の設定。 */
@@ -440,6 +472,20 @@ export type RemoveLayerOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "layer": string;
   "op": "removeLayer";
+};
+/** レイヤーにマスクを足す。 */
+export type AddMaskOp = {
+  "index"?: number | null;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "mask": Mask;
+  "op": "addMask";
+};
+/** レイヤーからマスクを外す。 */
+export type RemoveMaskOp = {
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "mask": string;
+  "op": "removeMask";
 };
 /** レイヤーの重なりの位置を変える。 */
 export type MoveLayerOp = {
@@ -846,6 +892,8 @@ export type Op =
   | RemoveAssetOp
   | AddLayerOp
   | RemoveLayerOp
+  | AddMaskOp
+  | RemoveMaskOp
   | MoveLayerOp
   | SetParamOp
   | RemoveParamOp
@@ -916,6 +964,8 @@ export const OP_NAMES: readonly OpName[] = [
   "removeAsset",
   "addLayer",
   "removeLayer",
+  "addMask",
+  "removeMask",
   "moveLayer",
   "setParam",
   "removeParam",
