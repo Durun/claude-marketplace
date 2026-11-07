@@ -56,7 +56,7 @@ flowchart BT
     app[movie-maker（Tauri）]
     cli[mm（CLI）]
     improve[mm-improve]
-    uiw[mm-ui-wgpu<br>Program / Timeline / Graph]
+    uiw[mm-ui-wgpu<br>Program / Timeline]
     export --> runtime
     serve --> runtime
     uiw --> runtime
@@ -134,7 +134,7 @@ movie-maker/
     mm-export/          レンダーターゲット → 区間 → 並行の描画 → mux、ラウドネスの正規化、字幕とチャプター
     mm-serve/           HTTP（axum）と MCP。操作と描画を外に出す
     mm-ui-layout/       wgpu サーフェス上の UI の計算（端のつまみ、スナップ、範囲）。純関数
-    mm-ui-wgpu/         Program、Timeline、Graph、メーターの描画と入力
+    mm-ui-wgpu/         Program、Timeline、メーターの描画と入力
     mm-improve/         自動の改善の回（worktree、claude -p、検査、取り込み）
     mm-testkit/         フィクスチャのプロジェクト、フィクスチャの素材の生成、契約テストの本体、期待画像の比較、gpu_contract!、soak の実行ファイル
     mm-bench/           性能。divan のベンチ（基礎の層）と、mm perf run のシナリオ（playback、scrub、export、startup）。結果の比較と履歴は mm-trace の形で

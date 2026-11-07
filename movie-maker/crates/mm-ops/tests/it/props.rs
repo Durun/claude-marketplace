@@ -162,7 +162,7 @@ fn 生成器は全部の操作と参照の種類を通す() {
     let mut seen = std::collections::BTreeSet::new();
     let mut precompose_elsewhere = false;
     let human = OpContext::human();
-    for _ in 0..8000 {
+    for _ in 0..12000 {
         let p = arb_project().new_tree(&mut runner).unwrap().current();
         seen.extend(features(&p));
         let spec = arb_spec().new_tree(&mut runner).unwrap().current();
@@ -265,4 +265,29 @@ fn フィクスチャのプロジェクトのデータのカットは_rational_�
         .unwrap();
     assert_eq!(total, secs(2 + 3 + 1 + 8));
     let _ = solid();
+}
+
+/// 性質テストが見つけた最小の例: sequence を外す操作は、カットが参照する素材を外す操作と重なる。
+#[test]
+fn sequence_を外す操作は_カットが参照する素材に触る() {
+    let mut p = project();
+    let footage = mm_doc::Node::new("footage", 1)
+        .with_param("asset", mm_types::ParamValue::AssetRef(Id::new("a1")));
+    let sequence = mm_doc::Sequence {
+        id: Id::new("s9"),
+        cuts: vec![Cut::new("k9", footage, secs(0), secs(2))],
+        origin: None,
+    };
+    Op::from(AddSequence { sequence })
+        .apply(&mut p, &OpContext::human())
+        .unwrap();
+    let remove_seq = Op::from(RemoveSequence {
+        sequence: Id::new("s9"),
+    });
+    let remove_asset = Op::from(RemoveAsset {
+        asset: Id::new("a1"),
+    });
+    let a = remove_seq.touches(&p).unwrap();
+    let b = remove_asset.touches(&p).unwrap();
+    assert!(a.overlaps(&b), "a={a:?} b={b:?}");
 }
