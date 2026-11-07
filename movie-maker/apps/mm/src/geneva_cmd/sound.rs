@@ -1,4 +1,4 @@
-//! 音のトラック（`audio[].clips[]`）を、絵を持たない素材のレイヤーにする。音量とフェードは音量のキーフレームにする。
+//! 音のトラック（`audio[].clips[]`）を、映像を持たない素材のレイヤーにする。音量とフェードは音量のキーフレームにする。
 
 use mm_doc::{Interpolation, Keyframe, Layer, LayerAudio, Node, Param};
 use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
@@ -141,12 +141,14 @@ impl Fades {
 }
 
 /// 音量のパラメータ。音量のキーとフェードの折れ線の時刻に、両方を足した dB を置く。
+/// クリップの外のキーは捨て、クリップの両端にその時刻の値のキーを置いて、端の間の動きを保つ。
 fn gain_param(gain: &Anim, fades: &Fades, start: RationalTime) -> Result<Param> {
     if !gain.is_animated() && fades.is_empty() {
         return Ok(Param::constant(ParamValue::Number(gain.keys[0].value[0])));
     }
     let mut times: Vec<RationalTime> = gain.keys.iter().map(|k| k.time).collect();
     times.extend(fades.times()?);
+    times.extend([RationalTime::ZERO, fades.duration]);
     times.retain(|t| *t >= RationalTime::ZERO && *t <= fades.duration);
     times.sort();
     times.dedup();
@@ -186,7 +188,7 @@ mod tests {
                 .and_then(|k| k.value.as_number())
                 .unwrap()
         };
-        assert!((at(10.0) - (-63.0)).abs() < 1e-9, "頭は -60 dB の床");
+        assert!((at(10.0) - (-63.0)).abs() < 1e-9, "先頭は -60 dB の下限");
         assert!(
             (at(10.25) - (-3.0 + 20.0 * 0.5f64.log10())).abs() < 1e-9,
             "フェードの中ほどは振幅が半分"
@@ -196,8 +198,32 @@ mod tests {
             "フェードの後はクリップの音量"
         );
         assert!((at(13.0) - (-3.0)).abs() < 1e-9, "フェードアウトの前");
-        assert!((at(14.0) - (-63.0)).abs() < 1e-9, "終わりは床");
+        assert!((at(14.0) - (-63.0)).abs() < 1e-9, "終わりは下限");
         assert_eq!(p.keyframes.len(), 2 * (FADE_SEGMENTS as usize + 1));
+    }
+
+    #[test]
+    fn クリップの外のキーはクリップの端の値で残す() {
+        let key = |t: i128, v: f64| syntax::Key {
+            time: secs(t, 1),
+            value: [v, v],
+            eased: false,
+        };
+        let gain = Anim {
+            keys: vec![key(-2, -20.0), key(8, 0.0)],
+        };
+        let fades = Fades {
+            fade_in: None,
+            fade_out: None,
+            duration: secs(4, 1),
+        };
+        let p = gain_param(&gain, &fades, secs(10, 1)).unwrap();
+        let got: Vec<(f64, f64)> = p
+            .keyframes
+            .iter()
+            .map(|k| (k.time.to_f64(), k.value.as_number().unwrap()))
+            .collect();
+        assert_eq!(got, vec![(10.0, -16.0), (14.0, -8.0)]);
     }
 
     #[test]

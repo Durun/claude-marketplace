@@ -3090,6 +3090,7 @@ dependencies = [
  "mm-audio-api",
  "mm-decode-api",
  "mm-types",
+ "tempfile",
 ]
 
 [[package]]

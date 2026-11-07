@@ -216,26 +216,39 @@ impl AudioReader {
                 DEFAULT_SAMPLE_RATE,
             )?)?
             .checked_sub(RationalTime::seconds(PREROLL_SECONDS))?;
-        let ts = self.tb.ticks_floor(t.max(RationalTime::ZERO));
-        unsafe {
-            let ret = ff::ffi::av_seek_frame(
-                self.input.as_mut_ptr(),
-                self.stream_index as i32,
-                ts,
-                ff::ffi::AVSEEK_FLAG_BACKWARD,
-            );
-            if ret < 0 {
-                return Err(MmError::Corrupt(format!(
-                    "音のシーク: {}",
-                    ff::Error::from(ret)
-                )));
-            }
+        // 先頭の近くは 0 より前を指す。0 を指すと、前置きがちょうど 1 パケットの AAC で前置きのパケット（PTS が負）を
+        // スキップし、デコーダーが最初の 1 パケット分を出さない。先頭より前へ戻れない形式は 0 から読む。
+        let ts = self.tb.ticks_floor(t);
+        let ret = self.seek_backward(ts);
+        let ret = if ret < 0 && ts < 0 {
+            self.seek_backward(0)
+        } else {
+            ret
+        };
+        if ret < 0 {
+            return Err(MmError::Corrupt(format!(
+                "音のシーク: {}",
+                ff::Error::from(ret)
+            )));
         }
         self.decoder.flush();
         self.resampler = None;
         self.chunk = None;
         self.eof = false;
         Ok(())
+    }
+
+    /// 音のストリームの `ts`（ストリームの時間の単位）以前のパケットへシークする。FFmpeg の戻り値を返す。
+    fn seek_backward(&mut self, ts: i64) -> i32 {
+        // SAFETY: `input` は開いたままの文脈で、ストリームの番号は開いたときに確かめてある。
+        unsafe {
+            ff::ffi::av_seek_frame(
+                self.input.as_mut_ptr(),
+                self.stream_index as i32,
+                ts,
+                ff::ffi::AVSEEK_FLAG_BACKWARD,
+            )
+        }
     }
 
     /// デコードしたフレームを、48 kHz・ステレオ・チャンネル交互の f32 にそろえる。
