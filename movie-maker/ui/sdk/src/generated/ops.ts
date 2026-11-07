@@ -445,6 +445,15 @@ export type SetEaseOp = {
   "target": ParamRef;
   "time": RationalTime;
 };
+/** キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。 */
+export type MoveKeyframeOp = {
+  /** 動かすキーフレームの今の時刻。 */
+  "from": RationalTime;
+  /** 置き直した後のキーフレーム（時刻、値、区間の形）。 */
+  "keyframe": Keyframe;
+  "op": "moveKeyframe";
+  "target": ParamRef;
+};
 /** 親のレイヤーを付ける・外す。 */
 export type ParentLayerOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
@@ -792,6 +801,7 @@ export type Op =
   | SetKeyframeOp
   | RemoveKeyframeOp
   | SetEaseOp
+  | MoveKeyframeOp
   | ParentLayerOp
   | AttachLayerOp
   | LockLayerOp
@@ -859,6 +869,7 @@ export const OP_NAMES: readonly OpName[] = [
   "setKeyframe",
   "removeKeyframe",
   "setEase",
+  "moveKeyframe",
   "parentLayer",
   "attachLayer",
   "lockLayer",
