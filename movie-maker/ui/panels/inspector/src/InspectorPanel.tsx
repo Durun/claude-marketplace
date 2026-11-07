@@ -1,5 +1,6 @@
 import { type Asset, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
+import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
 import { fieldSpecFor } from "./fields.ts";
 import { KeyframeNav } from "./KeyframeNav.tsx";
 import { valueAtOp, type Playhead } from "./keyframes.ts";
@@ -111,7 +112,10 @@ export const InspectorPanel = (props: InspectorPanelProps) => {
       <h2 class="mm-insp-header">{layer.id}</h2>
       {describeLayer(layer, hints).map((section) => (
         <section key={section.id} class="mm-insp-section">
-          <h3 class="mm-insp-title">{section.title}</h3>
+          <h3 class="mm-insp-title">
+            {section.title}
+            {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
+          </h3>
           <div class="mm-insp-body">
             {section.rows.map((row) => (
               <RowView
@@ -126,9 +130,16 @@ export const InspectorPanel = (props: InspectorPanelProps) => {
                 onSelect={onSelectParam && (() => onSelectParam(row.path))}
               />
             ))}
+            {section.id === "audio" && <FadeRows layer={layer} onOp={onOp} />}
           </div>
         </section>
       ))}
+      <section class="mm-insp-section">
+        <h3 class="mm-insp-title">Masks</h3>
+        <div class="mm-insp-body">
+          <AddMaskButton layer={layer} onOp={onOp} />
+        </div>
+      </section>
     </div>
   );
 };

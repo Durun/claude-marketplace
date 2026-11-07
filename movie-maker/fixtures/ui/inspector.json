@@ -276,8 +276,55 @@
                 "value": 0.0
               },
               "keyframes": []
+            },
+            "fade_in": {
+              "duration": {
+                "num": 500,
+                "den": 1000
+              },
+              "curve": "equal_power"
             }
-          }
+          },
+          "crop": {
+            "left": {
+              "value": {
+                "type": "number",
+                "value": 24
+              },
+              "keyframes": []
+            }
+          },
+          "masks": [
+            {
+              "id": "mask-1",
+              "rect": {
+                "position": {
+                  "value": {
+                    "type": "vec2",
+                    "value": [
+                      120,
+                      80
+                    ]
+                  }
+                },
+                "size": {
+                  "value": {
+                    "type": "vec2",
+                    "value": [
+                      640,
+                      360
+                    ]
+                  }
+                },
+                "radius": {
+                  "value": {
+                    "type": "number",
+                    "value": 24
+                  }
+                }
+              }
+            }
+          ]
         }
       ]
     }

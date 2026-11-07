@@ -21,6 +21,12 @@ const slot = (layer: Layer, path: string): [Record<string, Param>, string] | und
   if (head === "opacity") return [layer as unknown as Record<string, Param>, "opacity"];
   if (head === "transform") return [(layer.transform ??= {}) as Record<string, Param>, name];
   if (head === "audio" && layer.audio) return [layer.audio as unknown as Record<string, Param>, name];
+  if (head === "crop") return [(layer.crop ??= {}) as Record<string, Param>, name];
+  if (head === "masks") {
+    const [id, , n] = rest;
+    const rect = layer.masks?.find((m) => m.id === id)?.rect;
+    return rect ? [rect as unknown as Record<string, Param>, n ?? ""] : undefined;
+  }
   if (head === "source") return [(layer.source.params ??= {}), name];
   if (head === "effects") {
     const [id, ...n] = rest;
@@ -31,10 +37,20 @@ const slot = (layer: Layer, path: string): [Record<string, Param>, string] | und
 };
 
 const apply = (layer: Layer, op: Op): void => {
+  if (op.op === "addMask") layer.masks = [...(layer.masks ?? []), op.mask];
+  if (op.op === "removeMask") layer.masks = layer.masks?.filter((m) => m.id !== op.mask);
+  if (op.op === "setLayerAudio") layer.audio = op.audio;
   if (op.op !== "setParam") return;
   const found = slot(layer, op.target.path);
   const param = found?.[0][found[1]];
   if (found && param) found[0][found[1]] = { ...param, value: op.value };
+};
+
+const targetLayer = (op: Op, layers: readonly Layer[]): string | null | undefined => {
+  if (op.op === "setParam") return op.target.layer;
+  if (op.op === "addMask" || op.op === "setLayerAudio") return op.layer;
+  if (op.op === "removeMask") return layers.find((l) => l.masks?.some((m) => m.id === op.mask))?.id;
+  return null;
 };
 
 const Demo = () => {
@@ -47,7 +63,7 @@ const Demo = () => {
   const client = useMemo(() => {
     const transport: Transport = {
       send: async (op) => {
-        const target = layers.find((l) => l.id === (op.op === "setParam" ? op.target.layer : null));
+        const target = layers.find((l) => l.id === targetLayer(op, layers));
         if (target) apply(target, op);
         setLog((prev) => [op, ...prev]);
         bump((n) => n + 1);
