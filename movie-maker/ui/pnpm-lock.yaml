@@ -42,8 +42,20 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/graph:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/inspector:
     dependencies:
+      '@mm/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
@@ -86,6 +98,9 @@ importers:
       '@mm/deliver':
         specifier: workspace:*
         version: link:../panels/deliver
+      '@mm/graph':
+        specifier: workspace:*
+        version: link:../panels/graph
       '@mm/inspector':
         specifier: workspace:*
         version: link:../panels/inspector

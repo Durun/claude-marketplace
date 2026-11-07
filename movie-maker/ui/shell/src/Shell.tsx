@@ -1,6 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
 import { DeliverPanel } from "@mm/deliver";
-import { InspectorPanel } from "@mm/inspector";
 import { MediaPanel } from "@mm/media";
 import {
   invoke,
@@ -14,6 +13,7 @@ import {
   type StoryApi,
 } from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
+import { KeyframePanels } from "./keyframePanels.tsx";
 import { TasksPanel } from "@mm/tasks";
 
 /** 選択の変わったことを知らせるイベント。アプリの再生の操作列（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
@@ -139,7 +139,7 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
   return { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits };
 };
 
-/** 左に Tasks、Media、Story、Deliver（タブで切り替え）、右に Inspector。API を渡したパネルだけタブを出す。 */
+/** 左に Tasks、Media、Story、Deliver（タブで切り替え）、右に Inspector と Graph。API を渡したパネルだけタブを出す。 */
 export const Shell = ({ sendOp, media, story, deliver, listen }: ShellProps) => {
   const selection = useLayerSelection();
   const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, deliver });
@@ -175,7 +175,7 @@ export const Shell = ({ sendOp, media, story, deliver, listen }: ShellProps) => 
             {opError}
           </p>
         )}
-        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={send} />
+        <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={send} />
       </aside>
     </>
   );

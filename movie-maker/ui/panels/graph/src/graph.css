@@ -1,0 +1,80 @@
+/* 値は全部 theme の変数から取る。影は使わず border と角丸だけで区切る。 */
+.mm-graph {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-graph-title {
+  margin: 0;
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-gradient-task-title);
+  color: var(--mm-color-task-title-text);
+  font-size: var(--mm-font-size-sm);
+  font-weight: 700;
+}
+
+.mm-graph-empty {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+}
+
+.mm-graph-canvas {
+  box-sizing: border-box;
+  max-width: 100%;
+  height: auto;
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+  touch-action: none;
+}
+
+.mm-graph-zero {
+  stroke: var(--mm-color-border);
+  stroke-dasharray: 3 3;
+}
+
+.mm-graph-playhead {
+  stroke: var(--mm-color-text);
+}
+
+.mm-graph-curve {
+  fill: none;
+  stroke: var(--mm-color-accent);
+  stroke-width: 2;
+}
+
+/* 2・3 次元の数は成分ごとに色を分ける（x、y、z）。 */
+.mm-graph-curve[data-component="1"] {
+  stroke: var(--mm-color-danger);
+}
+
+.mm-graph-curve[data-component="2"] {
+  stroke: var(--mm-color-text-muted);
+}
+
+.mm-graph-key {
+  fill: var(--mm-color-surface);
+  stroke: var(--mm-color-text);
+  stroke-width: 1.5;
+  cursor: move;
+}
+
+.mm-graph-key[data-current="true"] {
+  fill: var(--mm-color-accent);
+}
+
+.mm-graph-handle-line {
+  stroke: var(--mm-color-text-muted);
+}
+
+.mm-graph-handle {
+  fill: var(--mm-color-accent);
+  stroke: var(--mm-color-surface);
+  cursor: grab;
+}

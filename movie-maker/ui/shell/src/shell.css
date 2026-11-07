@@ -75,6 +75,9 @@ body {
 }
 
 .mm-shell-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
   width: var(--mm-size-right-column);
   border-left: var(--mm-border-width) solid var(--mm-color-border);
 }

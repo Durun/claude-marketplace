@@ -1,0 +1,16 @@
+.demo-graph {
+  display: grid;
+  gap: var(--mm-space-md);
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.demo-time {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.demo-time input {
+  flex: 1 1 auto;
+}
