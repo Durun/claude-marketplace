@@ -4,15 +4,15 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use mm_audio_api::{AudioBlock, MixInput, MixerConfig, MixerFactory};
+use mm_audio_api::{AudioBlock, MixInput, MixerFactory};
 use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_doc::{Composition, Layer, Project};
-use mm_eval::{evaluate_audio, evaluate_opacity, node_params_at, source_time};
+use mm_eval::{any_solo, audible, evaluate_audio, evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{
     audio_frames_in, AudioCx, FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry,
     Quality, Services,
 };
-use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer, Scheduler};
+use mm_render_api::{mixer_config, AudioRequest, RangeRequest, RenderRequest, Renderer, Scheduler};
 use mm_types::{
     AssetId, CompositionId, MmError, ParamValue, Params, RationalTime, Result, RgbaImage, Size,
     TimeRange,
@@ -233,7 +233,8 @@ impl Renderer for SampleRenderer {
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock> {
         let comp = req.project.composition(req.composition)?;
         let mut inputs = Vec::new();
-        for layer in &comp.layers {
+        let solo = any_solo(&comp.layers);
+        for layer in comp.layers.iter().filter(|l| audible(l, solo)) {
             let Some(overlap) = layer.range()?.intersect(&req.range) else {
                 continue;
             };
@@ -241,9 +242,9 @@ impl Renderer for SampleRenderer {
                 inputs.push(input);
             }
         }
-        let mut mixer =
-            self.mixers
-                .create(req.sample_rate, req.channels, &MixerConfig::default())?;
+        // 呼ぶたびに作り直すので、ダッキングの状態は区間の切れ目で戻る（モックのミキサーはダッキングを省く）。
+        let config = mixer_config(comp.mixer.as_ref(), true);
+        let mut mixer = self.mixers.create(req.sample_rate, req.channels, &config)?;
         mixer.mix(&inputs, audio_frames_in(req.range, req.sample_rate))
     }
 

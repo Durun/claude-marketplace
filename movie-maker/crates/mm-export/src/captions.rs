@@ -199,6 +199,7 @@ mod tests {
             Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s".into()));
         let layer = Layer::new("l", node, RationalTime::ZERO, RationalTime::ZERO, t(10, 1));
         let comp = Composition {
+            mixer: None,
             id: Id::new("c"),
             width: 16,
             height: 9,

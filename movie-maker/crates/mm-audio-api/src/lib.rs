@@ -108,6 +108,11 @@ pub trait Mixer: Send {
     fn channels(&self) -> u16;
     /// 入力を混ぜて `frames` フレーム分を返す。短い入力は無音で埋め、長い入力は切る。
     fn mix(&mut self, inputs: &[MixInput], frames: usize) -> Result<AudioBlock>;
+    /// 直前の `mix` の入力ごとのピーク（線形の振幅）。音量とパンをかけた後、バスとダッキングの前で、`inputs` と同じ順。
+    /// Mixer のトラックのメーターが使う。測らない実装は空（既定）。
+    fn input_peaks(&self) -> &[f32] {
+        &[]
+    }
 }
 
 /// バス 1 本の設定。
@@ -175,6 +180,33 @@ pub trait MixerFactory: Send + Sync {
     fn loudness_normalizer(&self) -> Option<Box<dyn LoudnessNormalizer>> {
         None
     }
+
+    /// プレビューの Mixer のマスターのメーター。対応しない実装は `None`（既定）で、メーターを出さない。
+    fn master_meter(&self, sample_rate: u32, channels: u16) -> Option<Box<dyn MasterMeter>> {
+        let _ = (sample_rate, channels);
+        None
+    }
+}
+
+/// マスターのメーターの 1 ブロック分の読み。ピークは線形の振幅、ラウドネスは LUFS。測れなければ `None`。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MasterReading {
+    /// このブロックのチャンネルごとのサンプルのピーク。
+    pub peak: Vec<f32>,
+    /// `reset` からのトゥルーピークの最大（全チャンネル）。
+    pub true_peak: Option<f32>,
+    /// 短期ラウドネス（直近 3 秒）。
+    pub short_term_lufs: Option<f32>,
+    /// 統合ラウドネス（`reset` から）。
+    pub integrated_lufs: Option<f32>,
+}
+
+/// Mixer のマスターのメーター（ITU-R BS.1770）。再生中にミキサーの出力を順に食わせる。
+pub trait MasterMeter: Send {
+    /// ブロックを食わせ、その時点の読みを返す。形が違えば `InvalidArgument`。
+    fn feed(&mut self, block: &AudioBlock) -> Result<MasterReading>;
+    /// 計測を最初からにする（シークしたとき）。
+    fn reset(&mut self);
 }
 
 /// ラウドネスの正規化の指定。

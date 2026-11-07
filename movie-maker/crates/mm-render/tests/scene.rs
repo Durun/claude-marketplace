@@ -90,6 +90,7 @@ fn number(node: Node, name: &str, v: f64) -> Node {
 
 fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: size.width,
         height: size.height,

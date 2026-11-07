@@ -83,6 +83,7 @@ impl Apply for Precompose {
         );
         comp.layers.insert(index, new_layer);
         let new_comp = Composition {
+            mixer: None,
             id: self.new_composition.clone(),
             width: comp.width,
             height: comp.height,

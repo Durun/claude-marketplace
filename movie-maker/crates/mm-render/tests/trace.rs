@@ -29,6 +29,7 @@ fn project() -> Project {
     );
     let mut p = Project::new();
     p.compositions.push(Composition {
+        mixer: None,
         id: Id::new("main"),
         width: SIZE.width,
         height: SIZE.height,

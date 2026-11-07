@@ -85,6 +85,7 @@ fn check_shape(
         && nested.fps == comp.fps
         && nested.duration == comp.duration
         && nested.markers.is_empty()
+        && nested.mixer.is_none()
         && !nested.layers.is_empty();
     if !same_shape {
         return Err(invalid(format!(

@@ -79,6 +79,7 @@ pub fn effect(id: &str, node: Node) -> Effect {
 
 pub fn comp(id: &str, size: Size, len: i64, layers: Vec<Layer>) -> Composition {
     Composition {
+        mixer: None,
         id: Id::new(id),
         width: size.width,
         height: size.height,

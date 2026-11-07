@@ -234,6 +234,7 @@ fn 素材の時刻は_sequence_のカットの位置に変わる() {
             origin: None,
         });
         p.compositions.push(mm_doc::Composition {
+            mixer: None,
             id: Id::new("main"),
             width: 320,
             height: 180,
@@ -264,6 +265,7 @@ fn 撮影素材のレイヤーでも素材の時刻が再生位置に変わる()
             secs(20),
         );
         p.compositions.push(mm_doc::Composition {
+            mixer: None,
             id: Id::new("main"),
             width: 320,
             height: 180,

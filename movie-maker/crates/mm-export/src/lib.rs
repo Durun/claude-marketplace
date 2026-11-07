@@ -231,3 +231,6 @@ mod tests_deliver;
 
 #[cfg(test)]
 mod tests_burn_in;
+
+#[cfg(test)]
+mod tests_mixer;

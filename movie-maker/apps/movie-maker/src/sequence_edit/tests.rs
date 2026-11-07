@@ -29,6 +29,7 @@ pub(crate) fn sample_project() -> Project {
     let node =
         Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("talk".into()));
     p.compositions.push(Composition {
+        mixer: None,
         id: Id::new("main"),
         width: 64,
         height: 36,

@@ -38,6 +38,7 @@ mod migrate;
 mod migrate_lut;
 mod migrate_named;
 mod migrate_shorts;
+mod mixer;
 mod node;
 pub mod otio;
 mod param;
@@ -57,6 +58,10 @@ pub use layer::{
 };
 pub use migrate::{load, migrate};
 pub use migrate_named::{copy_stamp, is_current, migration_names, version_stamp, MIGRATIONS_FIELD};
+pub use mixer::{
+    CompMixer, Ducking, MixerBus, DEFAULT_DUCK_ATTACK_MS, DEFAULT_DUCK_REDUCTION_DB,
+    DEFAULT_DUCK_RELEASE_MS, DEFAULT_DUCK_THRESHOLD_DB,
+};
 pub use node::{
     Node, FOOTAGE_KIND, FOOTAGE_PARAM, GAP_KIND, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
     SEQUENCE_PARAM,
@@ -267,6 +272,9 @@ pub struct Composition {
     /// 時刻の順。
     #[serde(default)]
     pub markers: Vec<Marker>,
+    /// ミキサーの設定。`None` は既定（全部 0 dB、ダッキングなし）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mixer: Option<CompMixer>,
 }
 
 impl Composition {
@@ -321,6 +329,7 @@ mod tests {
 
     fn comp(id: &str, layers: Vec<Layer>) -> Composition {
         Composition {
+            mixer: None,
             id: Id::new(id),
             width: 320,
             height: 180,

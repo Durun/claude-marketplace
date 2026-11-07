@@ -1,6 +1,6 @@
 // dist/ を開いてパネルのスクリーンショットを撮る。playwright は repo の依存にせず、
 // PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
-// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [keyframes|tasks|inspector|media|story|deliver|review]
+// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [keyframes|tasks|inspector|media|story|deliver|mixer|review]
 import { createRequire } from "node:module";
 import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -149,6 +149,23 @@ const shootDeliver = async (browser) => {
   }
 };
 
+// Mixer はモックの API でメーターが振れる状態と、ダッキング有効でミュートとソロのある状態を、左の列と同じ幅で撮る。
+const shootMixer = async (browser) => {
+  const outDir = here("../panels/mixer/screenshots/");
+  await mkdir(outDir, { recursive: true });
+  for (const theme of ["light", "dark"]) {
+    for (const scene of ["meters", "ducking"]) {
+      const page = await browser.newPage({ viewport: { width: 320, height: 900 }, deviceScaleFactor: 2 });
+      await page.goto(`${dist("mixer-demo.html")}?theme=${theme}&scene=${scene}`);
+      await page.waitForSelector(".mm-mixer-track");
+      await page.waitForTimeout(700);
+      await page.mouse.move(0, 0);
+      await page.screenshot({ path: `${outDir}mixer-${theme}-${scene}.png`, fullPage: true });
+      await page.close();
+    }
+  }
+};
+
 // Inspector のキーフレームの列と Graph。ドラッグの途中（離す前）も撮る。
 const shootKeyframes = async (browser) => {
   const outDir = here("../panels/graph/screenshots/");
@@ -220,5 +237,6 @@ if (!which || which === "inspector") await shootInspector(browser);
 if (!which || which === "media") await shootMedia(browser);
 if (!which || which === "story") await shootStory(browser);
 if (!which || which === "deliver") await shootDeliver(browser);
+if (!which || which === "mixer") await shootMixer(browser);
 if (!which || which === "review") await shootReview(browser);
 await browser.close();

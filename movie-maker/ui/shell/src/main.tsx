@@ -1,5 +1,13 @@
 import { render } from "preact";
-import { createClient, createIpcDeliverApi, createIpcMediaApi, createIpcReviewApi, createIpcStoryApi, createIpcTransport } from "@mm/sdk";
+import {
+  createClient,
+  createIpcDeliverApi,
+  createIpcMediaApi,
+  createIpcMixerApi,
+  createIpcReviewApi,
+  createIpcStoryApi,
+  createIpcTransport,
+} from "@mm/sdk";
 import { followTheme } from "./followTheme.ts";
 import { Shell } from "./Shell.tsx";
 import "./shell.css";
@@ -13,4 +21,15 @@ const sendOp = async (op: Parameters<typeof client.sendOp>[0]): Promise<string |
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));
 const root = document.getElementById("root");
-if (root) render(<Shell sendOp={sendOp} media={createIpcMediaApi()} story={createIpcStoryApi()} deliver={createIpcDeliverApi()} review={createIpcReviewApi()} />, root);
+if (root)
+  render(
+    <Shell
+      sendOp={sendOp}
+      media={createIpcMediaApi()}
+      story={createIpcStoryApi()}
+      mixer={createIpcMixerApi()}
+      deliver={createIpcDeliverApi()}
+      review={createIpcReviewApi()}
+    />,
+    root,
+  );
