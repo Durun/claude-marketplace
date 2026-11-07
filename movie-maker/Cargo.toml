@@ -70,6 +70,8 @@ pollster = "1.0"
 # wgpu-hal の D3D12 が使うバージョンにそろえる（ID3D12Resource などの型を受け渡すため）。
 windows = "0.62"
 cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
+# 日本語の文節の切れ目（BudouX の Rust 版。Chromium の `word-break: auto-phrase` の元になった分け方）。
+budoux = "0.1.1"
 glyphon = { version = "0.12", default-features = false }
 # プレビューの音の出力（mm-audio-cpal）。
 cpal = "0.18"

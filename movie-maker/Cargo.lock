@@ -408,6 +408,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "budoux"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a08d5acabd55da245659b77f3def887529bd3da4dab3d77cafe2bddfee67fc0"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3420,6 +3429,7 @@ dependencies = [
 name = "mm-text-glyphon"
 version = "0.1.0"
 dependencies = [
+ "budoux",
  "cosmic-text",
  "glyphon",
  "half",
