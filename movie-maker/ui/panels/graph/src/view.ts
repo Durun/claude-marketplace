@@ -1,5 +1,14 @@
-import type { CubicBezier, Keyframe, Param } from "@mm/sdk";
-import { EASE_IN_OUT, frameTime, numbersOf, segmentProgress, toSec, withNumbers } from "./keyframes.ts";
+import {
+  type CubicBezier,
+  type Keyframe,
+  type Param,
+  EASE_IN_OUT,
+  frameTime,
+  numbersOf,
+  segmentProgress,
+  toSec,
+  withNumbers,
+} from "@mm/sdk";
 
 /** 描く範囲（秒と値）と、描く先の大きさ（px）。 */
 export interface View {

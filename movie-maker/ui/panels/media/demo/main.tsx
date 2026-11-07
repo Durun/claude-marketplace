@@ -1,7 +1,7 @@
 // Media パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 // ?state=idle|importing|failed|empty|cache で状態を選ぶ。
 import { render } from "preact";
-import type { CacheInfo, ImportEvent, MediaApi, MediaItem } from "@mm/sdk";
+import type { CacheInfo, ImportEvent, MediaApi, MediaItem } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { MediaPanel } from "../src/index.ts";
 import "../../../shell/src/shell.css";

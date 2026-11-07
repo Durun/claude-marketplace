@@ -1,4 +1,4 @@
-import type { ImportEvent } from "@mm/sdk";
+import type { ImportEvent } from "./api.ts";
 
 /** 取り込みに失敗した素材 1 つ。 */
 export interface ImportFailure {

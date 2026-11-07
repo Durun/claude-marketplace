@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createIpcMediaApi, type MediaListen } from "./media.ts";
+import type { MediaListen } from "@mm/sdk";
+import { createIpcMediaApi } from "./api.ts";
 
 type Handler = (e: { payload: unknown }) => void;
 

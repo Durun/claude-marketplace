@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
-import type { DeliverApi, DeliverOverview, ExportStatus, Op, RenderTarget } from "@mm/sdk";
+import type { Op, RenderTarget } from "@mm/sdk";
+import type { DeliverApi, DeliverOverview, ExportStatus } from "./api.ts";
 
 const IDLE: ExportStatus = { running: false, items: [] };
 

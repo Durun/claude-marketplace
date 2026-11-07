@@ -1,4 +1,4 @@
-import type { MixerMeters } from "@mm/sdk";
+import type { MixerMeters } from "./api.ts";
 import { dbToFraction, formatDb, METER_FLOOR_DB } from "./levels.ts";
 
 /** ピークホールドの保持時間（ms）。 */

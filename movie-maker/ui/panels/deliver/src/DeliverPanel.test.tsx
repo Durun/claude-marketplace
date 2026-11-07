@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { DeliverApi, DeliverOverview, ExportItem, ExportStatus, RenderTarget } from "@mm/sdk";
+import type { RenderTarget } from "@mm/sdk";
+import type { DeliverApi, DeliverOverview, ExportItem, ExportStatus } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeliverPanel } from "./DeliverPanel.tsx";
 

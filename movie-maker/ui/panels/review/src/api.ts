@@ -1,7 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { Op } from "./generated/ops.ts";
-import type { MediaInvoke, MediaListen } from "./media.ts";
+import type { MediaInvoke, MediaListen, Op } from "@mm/sdk";
 
 /** 提案が追加・決定されたことを知らせる Tauri のイベント名。アプリの `review_ipc.rs` と同じ。 */
 export const PROPOSALS_CHANGED_EVENT = "mm:proposals-changed";

@@ -1,4 +1,4 @@
-import type { CubicBezier, Ease, Keyframe, Op, Param, ParamValue, RationalTime } from "@mm/sdk";
+import type { CubicBezier, Ease, Keyframe, Op, Param, ParamValue, RationalTime } from "./generated/ops.ts";
 
 /** `Bezier` の制御点が無いときの既定（mm-doc の `CubicBezier::EASE_IN_OUT`）。 */
 export const EASE_IN_OUT: CubicBezier = { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };

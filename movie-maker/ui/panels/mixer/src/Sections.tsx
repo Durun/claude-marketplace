@@ -1,4 +1,5 @@
-import type { Ducking, MixerState } from "@mm/sdk";
+import type { Ducking } from "@mm/sdk";
+import type { MixerState } from "./api.ts";
 import { NumberField, PeakBar, Slider } from "./Controls.tsx";
 import { FADER_MAX_DB, FADER_MIN_DB, FADER_STEP_DB, formatDb, METER_FLOOR_DB, METER_HOT_DB, METER_WARN_DB } from "./levels.ts";
 import type { MeterEngine, ReadoutKey } from "./meterEngine.ts";

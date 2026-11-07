@@ -1,4 +1,4 @@
-import type { StorySequence } from "@mm/sdk";
+import type { StorySequence } from "./api.ts";
 import type { Tray } from "./useStory.ts";
 
 export interface ArrangeBarProps {

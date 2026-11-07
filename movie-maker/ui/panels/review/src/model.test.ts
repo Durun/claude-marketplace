@@ -1,4 +1,5 @@
-import type { Op, ProposalOp } from "@mm/sdk";
+import type { Op } from "@mm/sdk";
+import type { ProposalOp } from "./api.ts";
 import { describe, expect, it } from "vitest";
 import { approveLabel, clock, describeOp, describeScope, relativeTime } from "./model.ts";
 

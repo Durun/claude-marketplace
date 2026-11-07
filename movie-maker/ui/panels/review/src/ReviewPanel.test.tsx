@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { Proposal, ReviewApi } from "@mm/sdk";
+import type { Proposal, ReviewApi } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReviewPanel } from "./ReviewPanel.tsx";
 

@@ -1,4 +1,5 @@
-import type { RationalTime, StoryWord, Topic } from "@mm/sdk";
+import type { RationalTime, Topic } from "@mm/sdk";
+import type { StoryWord } from "./api.ts";
 
 const SECONDS_PER_MINUTE = 60;
 const ID_RADIX = 36;

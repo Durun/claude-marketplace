@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { StoryApi } from "@mm/sdk";
+import type { StoryApi } from "./api.ts";
 import { ArrangeBar, arrangeTarget } from "./ArrangeBar.tsx";
 import { SearchBox } from "./SearchBox.tsx";
 import { SelectionBar } from "./SelectionBar.tsx";

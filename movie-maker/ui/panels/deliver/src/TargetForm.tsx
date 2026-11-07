@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
-import type { DeliverApi, DeliverOverview, RenderTarget } from "@mm/sdk";
+import type { RenderTarget } from "@mm/sdk";
+import type { DeliverApi, DeliverOverview } from "./api.ts";
 import { draftOf, targetOf, type Draft, type FieldSpec } from "./form.ts";
 
 /** 一般的なコーデックの名前。入力欄の候補で、ほかの名前も書ける。 */

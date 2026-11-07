@@ -1,5 +1,6 @@
 import { useMemo, useState } from "preact/hooks";
-import type { DeliverApi, DeliverOverview, RenderTarget } from "@mm/sdk";
+import type { RenderTarget } from "@mm/sdk";
+import type { DeliverApi, DeliverOverview } from "./api.ts";
 import { ExportQueue } from "./ExportQueue.tsx";
 import { fieldSpecs, type FieldSpec } from "./form.ts";
 import { formatDuration } from "./format.ts";

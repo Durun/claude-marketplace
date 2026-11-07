@@ -1,7 +1,8 @@
 // Story パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 // ?state=plain|topics で最初の状態を選ぶ。編集の操作は手元の配列に反映する。
 import { render } from "preact";
-import type { Op, RationalTime, StoryApi, StoryTranscript, StoryWord, Topic } from "@mm/sdk";
+import type { Op, RationalTime, Topic } from "@mm/sdk";
+import type { StoryApi, StoryTranscript, StoryWord } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { StoryPanel } from "../src/index.ts";
 import "../../../shell/src/shell.css";

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { DropEvent, ImportEvent, MediaApi, MediaItem } from "@mm/sdk";
+import type { DropEvent, ImportEvent, MediaApi, MediaItem } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaPanel } from "./MediaPanel.tsx";
 

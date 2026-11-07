@@ -4,6 +4,7 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
+    "@mm/sdk": "workspace:*",
     "preact": "^10.27.0"
   }
 }

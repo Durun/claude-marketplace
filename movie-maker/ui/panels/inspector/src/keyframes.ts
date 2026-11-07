@@ -1,5 +1,16 @@
-import type { Interpolation, Keyframe, Op, Param, ParamRef, ParamValue } from "@mm/sdk";
-import { evalParam, frameTime, keyIndexAt, numbersOf, toSec } from "@mm/graph";
+import {
+  type Interpolation,
+  type Keyframe,
+  type Op,
+  type Param,
+  type ParamRef,
+  type ParamValue,
+  evalParam,
+  frameTime,
+  keyIndexAt,
+  numbersOf,
+  toSec,
+} from "@mm/sdk";
 
 /** 再生位置とフレームの数え方。キーフレームの時刻はフレームの先頭にそろえる。 */
 export interface Playhead {

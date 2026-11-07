@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { GraphPanel } from "@mm/graph";
-import { describeLayer, InspectorPanel } from "@mm/inspector";
+import { InspectorPanel } from "./InspectorPanel.tsx";
+import { describeLayer } from "./model.ts";
 import type { Asset, Layer, Op } from "@mm/sdk";
 
 /** 再生位置を知らせる DOM のイベント。アプリの再生の操作列（`web/transport.js`）が時計の通知ごとに投げる。 */

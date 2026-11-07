@@ -1,4 +1,4 @@
-import type { MediaApi, MediaItem } from "@mm/sdk";
+import type { MediaApi, MediaItem } from "./api.ts";
 import { baseName, describeItem, STATUS_LABEL } from "./format.ts";
 import type { ImportProgress } from "./progress.ts";
 import { Thumb } from "./Thumb.tsx";

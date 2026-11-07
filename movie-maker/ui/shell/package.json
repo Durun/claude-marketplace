@@ -3,16 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@mm/media": "workspace:*",
-    "@mm/mixer": "workspace:*",
     "@mm/sdk": "workspace:*",
-    "@mm/tasks": "workspace:*",
     "@mm/theme": "workspace:*",
-    "preact": "^10.27.0",
-    "@mm/graph": "workspace:*",
-    "@mm/inspector": "workspace:*",
-    "@mm/story": "workspace:*",
-    "@mm/deliver": "workspace:*",
-    "@mm/review": "workspace:*"
+    "preact": "^10.27.0"
   }
 }

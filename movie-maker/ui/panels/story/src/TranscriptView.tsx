@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
-import type { Rating, StoryWord, Topic } from "@mm/sdk";
+import type { Rating, Topic } from "@mm/sdk";
+import type { StoryWord } from "./api.ts";
 import type { DragSelect } from "./useDragSelect.ts";
 import { buildBlocks, orphanTopics, shownText, type Block, type Span } from "./model.ts";
 import { TopicHead } from "./TopicHead.tsx";

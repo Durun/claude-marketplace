@@ -35,7 +35,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 ## Media のコマンド
 
-Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `src/media.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。
+Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `ui/panels/media/src/api.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -60,7 +60,7 @@ Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハン�
 
 ## Story のコマンド
 
-Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `src/story.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
+Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `ui/panels/story/src/api.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -79,7 +79,7 @@ Story と Media は素材を選んだとき、DOM のイベント `mm:asset-sele
 
 ## Deliver のコマンド
 
-Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `src/deliver.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
+Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `ui/panels/deliver/src/api.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -106,7 +106,7 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 
 ## Mixer のコマンド
 
-Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベント。型は `src/mixer.ts`（`createIpcMixerApi` が呼ぶ）。失敗は `Err(String)`。
+Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベント。型は `ui/panels/mixer/src/api.ts`（`createIpcMixerApi` が呼ぶ）。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -119,7 +119,7 @@ Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベ�
 
 ## Review のコマンド
 
-Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は `src/review.ts`（`createIpcReviewApi` が呼ぶ）。失敗は `Err(String)`。提案（`Proposal`）は 1 つのトランザクション（操作の並び）で、保留中はプロジェクトのデータに入っていない。
+Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は `ui/panels/review/src/api.ts`（`createIpcReviewApi` が呼ぶ）。失敗は `Err(String)`。提案（`Proposal`）は 1 つのトランザクション（操作の並び）で、保留中はプロジェクトのデータに入っていない。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|

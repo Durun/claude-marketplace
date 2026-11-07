@@ -1,4 +1,5 @@
-import type { CompMixer, Ducking, LayerAudio, MixerState, MixerTrack, Op, Param } from "@mm/sdk";
+import type { CompMixer, Ducking, LayerAudio, Op, Param } from "@mm/sdk";
+import type { MixerState, MixerTrack } from "./api.ts";
 
 /**
  * 送る直前の state から操作を作る関数。操作は変えた後の全体を置くので、押した時点の state で作ると、

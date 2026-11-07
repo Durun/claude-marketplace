@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import type {
-  Op,
-  RationalTime,
-  StoryApi,
-  StoryHit,
-  StoryOverview,
-  StoryTranscript,
-  Topic,
-} from "@mm/sdk";
-import { announceAsset } from "@mm/sdk";
+import { type Op, type RationalTime, type Topic, announceAsset } from "@mm/sdk";
+import type { StoryApi, StoryHit, StoryOverview, StoryTranscript } from "./api.ts";
 import { toSeconds } from "./model.ts";
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));

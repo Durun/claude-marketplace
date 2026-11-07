@@ -1,4 +1,4 @@
-import type { MediaItem, MediaStatus } from "@mm/sdk";
+import type { MediaItem, MediaStatus } from "./api.ts";
 
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;

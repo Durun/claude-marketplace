@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { LayerAudio, MixerApi, MixerMeters, MixerState, MixerTrack, Op } from "@mm/sdk";
+import type { LayerAudio, Op } from "@mm/sdk";
+import type { MixerApi, MixerMeters, MixerState, MixerTrack } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MixerPanel } from "./MixerPanel.tsx";
 

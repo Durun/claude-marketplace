@@ -38,6 +38,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8
@@ -68,6 +71,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8
@@ -77,6 +83,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8
@@ -86,6 +95,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8
@@ -95,12 +107,18 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8
 
   panels/tasks:
     dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
       preact:
         specifier: ^10.27.0
         version: 10.29.8
@@ -110,36 +128,15 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.12.4
         version: 2.12.4
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
 
   shell:
     dependencies:
-      '@mm/deliver':
-        specifier: workspace:*
-        version: link:../panels/deliver
-      '@mm/graph':
-        specifier: workspace:*
-        version: link:../panels/graph
-      '@mm/inspector':
-        specifier: workspace:*
-        version: link:../panels/inspector
-      '@mm/media':
-        specifier: workspace:*
-        version: link:../panels/media
-      '@mm/mixer':
-        specifier: workspace:*
-        version: link:../panels/mixer
-      '@mm/review':
-        specifier: workspace:*
-        version: link:../panels/review
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@mm/story':
-        specifier: workspace:*
-        version: link:../panels/story
-      '@mm/tasks':
-        specifier: workspace:*
-        version: link:../panels/tasks
       '@mm/theme':
         specifier: workspace:*
         version: link:../theme

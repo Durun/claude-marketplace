@@ -1,5 +1,5 @@
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { MediaListen } from "./media.ts";
+import type { MediaListen } from "./ipc.ts";
 
 /** プロジェクトのデータが新しくなったことを知らせる Tauri のイベント名。アプリの `app.rs` と同じ。 */
 export const DOC_CHANGED_EVENT = "mm:doc-changed";
