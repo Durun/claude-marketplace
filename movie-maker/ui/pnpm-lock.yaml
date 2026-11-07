@@ -69,6 +69,15 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/review:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/story:
     dependencies:
       '@mm/sdk':
@@ -104,6 +113,9 @@ importers:
       '@mm/mixer':
         specifier: workspace:*
         version: link:../panels/mixer
+      '@mm/review':
+        specifier: workspace:*
+        version: link:../panels/review
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { DeliverApi, Layer, MediaApi, MixerApi, StoryApi } from "@mm/sdk";
+import type { DeliverApi, Layer, MediaApi, MixerApi, ReviewApi, StoryApi } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
 
@@ -58,6 +58,16 @@ const fakeMixer = (): MixerApi => ({
   state: vi.fn().mockResolvedValue({ composition: "main", mixer: null, tracks: [], roles: ["voice", "bgm", "sfx"] }),
   applyOps: vi.fn().mockResolvedValue(undefined),
   onMeters: vi.fn().mockResolvedValue(() => {}),
+});
+
+const fakeReview = (): ReviewApi => ({
+  list: vi.fn().mockResolvedValue([]),
+  approve: vi.fn(),
+  reject: vi.fn(),
+  reopen: vi.fn(),
+  undo: vi.fn(),
+  preview: vi.fn().mockResolvedValue(undefined),
+  onChanged: vi.fn().mockResolvedValue(() => {}),
 });
 
 const click = (el: Element | null | undefined) =>
@@ -121,6 +131,28 @@ describe("Shell の Mixer タブ", () => {
     expect(panels[1]?.hidden).toBe(false);
     expect(host.querySelector(".mm-mixer")).not.toBeNull();
     expect(mixer.state).toHaveBeenCalled();
+  });
+});
+
+describe("Shell の右の列", () => {
+  it("Review を渡さないときはタブを出さず Inspector だけ", () => {
+    act(() => render(<Shell sendOp={vi.fn()} />, host));
+    expect(host.querySelector(".mm-shell-right-tabs")).toBeNull();
+    expect(host.querySelector(".mm-review")).toBeNull();
+  });
+
+  it("Review を渡すと Inspector と Review のタブで切り替え、どちらも作ったまま残す", async () => {
+    const review = fakeReview();
+    act(() => render(<Shell sendOp={vi.fn()} review={review} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-right-tabs .mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Inspector", "Review"]);
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-right-body");
+    expect([panels[0]?.hidden, panels[1]?.hidden]).toEqual([false, true]);
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect([panels[0]?.hidden, panels[1]?.hidden]).toEqual([true, false]);
+    expect(host.querySelector(".mm-review")).not.toBeNull();
+    expect(review.list).toHaveBeenCalled();
   });
 });
 

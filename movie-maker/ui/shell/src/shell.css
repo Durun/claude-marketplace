@@ -43,6 +43,8 @@ body {
 .mm-shell-tabs {
   display: flex;
   flex: none;
+  /* 左の列は狭く 5 つのタブが 1 行に入らないので、はみ出して隠れる代わりに折り返す。 */
+  flex-wrap: wrap;
   gap: var(--mm-space-xs);
 }
 
@@ -86,4 +88,12 @@ body {
   color: var(--mm-color-danger);
   font-size: var(--mm-font-size-sm);
   overflow-wrap: anywhere;
+}
+
+.mm-shell-right-tabs {
+  margin-bottom: var(--mm-space-md);
+}
+
+.mm-shell-right-body[hidden] {
+  display: none;
 }

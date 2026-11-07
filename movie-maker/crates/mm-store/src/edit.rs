@@ -1,6 +1,7 @@
 //! 操作を適用して書く。`mm-ops` の [`Transaction`] をプロジェクトのデータに適用し、結果を [`Store::commit`] の
 //! 形（[`TxnInput`]）に変換する。操作経路（CLI、アプリ、MCP）はこの 3 つの関数だけを呼ぶ。
 
+use mm_doc::Project;
 use mm_ops::{
     apply_transaction, with_fitted_layers, Op, OpContext, OpError, OpRecord, OpResult, Touches,
     Transaction,
@@ -23,6 +24,19 @@ impl Store {
         at_ms: i64,
         responds_to: Option<String>,
     ) -> OpResult<StoredTxn> {
+        let (project, input) = self.prepare_txn(txn, ctx, actor, at_ms, responds_to)?;
+        Ok(self.commit(&project, &input)?)
+    }
+
+    /// [`Store::apply_txn`] の書く前まで。適用した後のプロジェクトのデータと、書くトランザクションを返す。
+    pub(crate) fn prepare_txn(
+        &self,
+        txn: Transaction,
+        ctx: &OpContext,
+        actor: Actor,
+        at_ms: i64,
+        responds_to: Option<String>,
+    ) -> OpResult<(Project, TxnInput)> {
         self.require_writer()?;
         let current = self.doc_version();
         let base = txn.base_version.map_or(current, |b| b as i64);
@@ -52,7 +66,7 @@ impl Store {
             responds_to,
             ops: outcome.records,
         };
-        Ok(self.commit(&project, &input)?)
+        Ok((project, input))
     }
 
     /// 直前のトランザクションを取り消して書く。逆操作を逆順に適用し、その記録を `TxnKind::Undo` のトランザクションとして残す。
@@ -127,7 +141,7 @@ impl Store {
     }
 
     /// バージョン `base` より後に適用された操作が触った所。
-    fn touches_after(&self, base: i64) -> OpResult<Touches> {
+    pub(crate) fn touches_after(&self, base: i64) -> OpResult<Touches> {
         let mut touches = Touches::new();
         for (_, ids) in self.touches_since(base)? {
             for id in &ids {

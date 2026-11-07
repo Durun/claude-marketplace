@@ -156,6 +156,17 @@ impl Store {
     /// 取り消し（やり直し）は、逆操作（元の操作）を適用した記録を同じ形で書き、バージョンも操作の数だけ進む。
     /// 適用したトランザクションの行は後から書き換えない。途中でクラッシュしたら、開き直すと書く前のバージョンに戻る。
     pub fn commit(&mut self, project: &Project, input: &TxnInput) -> Result<StoredTxn> {
+        self.commit_with(project, input, |_, _| Ok(()))
+    }
+
+    /// [`Store::commit`] と同じく書き、同じ SQLite のトランザクションの中で `extra` も書く。
+    /// 提案の承認は、適用したトランザクションと提案の状態を一緒に書き、途中で落ちても片方だけ残らないようにする。
+    pub(crate) fn commit_with(
+        &mut self,
+        project: &Project,
+        input: &TxnInput,
+        extra: impl FnOnce(&rusqlite::Transaction, &StoredTxn) -> Result<()>,
+    ) -> Result<StoredTxn> {
         self.require_writer()?;
         if input.ops.is_empty() {
             return Err(MmError::InvalidArgument(
@@ -179,6 +190,7 @@ impl Store {
         }
         set_meta(&tx, "doc_version", &stored.doc_version.to_string())?;
         set_meta(&tx, "undo_pos", &pos.to_string())?;
+        extra(&tx, &stored)?;
         tx.commit().sql()?;
         self.adopt(project, rows, stored.doc_version, pos);
         Ok(stored)

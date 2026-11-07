@@ -3,6 +3,7 @@ import { DeliverPanel } from "@mm/deliver";
 import { InspectorPanel } from "@mm/inspector";
 import { MediaPanel } from "@mm/media";
 import { MixerPanel } from "@mm/mixer";
+import { ReviewPanel } from "@mm/review";
 import {
   invoke,
   onDocChanged,
@@ -13,6 +14,7 @@ import {
   type MediaListen,
   type MixerApi,
   type Op,
+  type ReviewApi,
   type StoryApi,
 } from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
@@ -37,12 +39,17 @@ export interface ShellProps {
   deliver?: DeliverApi;
   /** Mixer パネルがアプリを呼ぶ API。無ければ Mixer は出さない。 */
   mixer?: MixerApi;
+  /** Review パネルがアプリを呼ぶ API。無ければ Review は出さない。 */
+  review?: ReviewApi;
   /** Tauri のイベントの購読。無ければ本番の listen。テストで差し替える。 */
   listen?: MediaListen;
 }
 
 /** 左の列で見せているパネル。XP のムービーメーカーの Tasks と Collections の切り替えに倣う。 */
 type LeftTab = "tasks" | "media" | "story" | "mixer" | "deliver";
+
+/** 右の列で見せているパネル。左の列のタブに倣う。 */
+type RightTab = "inspector" | "review";
 
 /** Tasks の項目のうち、Media を開いて取り込みを始めるもの。 */
 const IMPORT_COMMAND = "media.import";
@@ -56,6 +63,28 @@ const TABS: { id: LeftTab; label: string }[] = [
   { id: "mixer", label: "Mixer" },
   { id: "deliver", label: "Deliver" },
 ];
+
+const RIGHT_TABS: { id: RightTab; label: string }[] = [
+  { id: "inspector", label: "Inspector" },
+  { id: "review", label: "Review" },
+];
+
+const RightTabs = ({ tab, onSelect }: { tab: RightTab; onSelect: (tab: RightTab) => void }) => (
+  <div class="mm-shell-tabs mm-shell-right-tabs" role="tablist" aria-label="Right panel">
+    {RIGHT_TABS.map(({ id, label }) => (
+      <button
+        key={id}
+        type="button"
+        role="tab"
+        class="mm-shell-tab"
+        aria-selected={tab === id}
+        onClick={() => onSelect(id)}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+);
 
 const LeftTabs = ({ tabs, tab, onSelect }: { tabs: LeftTab[]; tab: LeftTab; onSelect: (tab: LeftTab) => void }) => (
   <div class="mm-shell-tabs" role="tablist" aria-label="Left panel">
@@ -145,9 +174,39 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "mixer" | "deliv
   return { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits };
 };
 
-/** 左に Tasks、Media、Story、Mixer、Deliver（タブで切り替え）、右に Inspector。API を渡したパネルだけタブを出す。 */
-export const Shell = ({ sendOp, media, story, mixer, deliver, listen }: ShellProps) => {
+interface RightColumnProps {
+  review: ReviewApi | undefined;
+  opError: string | null;
+  onOp: (op: Op) => Promise<void>;
+  refreshKey: number;
+}
+
+/** 右の列。Inspector と、API があれば Review をタブで切り替える。 */
+const RightColumn = ({ review, opError, onOp, refreshKey }: RightColumnProps) => {
+  const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const selection = useLayerSelection();
+  return (
+    <aside class="mm-shell-right">
+      {opError && (
+        <p class="mm-shell-error" role="alert">
+          {opError}
+        </p>
+      )}
+      {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
+      <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
+        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={onOp} />
+      </div>
+      {review && (
+        <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
+          <ReviewPanel api={review} refreshKey={refreshKey} />
+        </div>
+      )}
+    </aside>
+  );
+};
+
+/** 左に Tasks、Media、Story、Mixer、Deliver、右に Inspector と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
+export const Shell = ({ sendOp, media, story, mixer, deliver, review, listen }: ShellProps) => {
   const { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits } = useLeftTabs({ media, story, mixer, deliver });
   const docChanges = useDocChanges(listen);
   const { send, opError } = useSendOp(sendOp);
@@ -180,14 +239,7 @@ export const Shell = ({ sendOp, media, story, mixer, deliver, listen }: ShellPro
         )}
       </aside>
       <main class="mm-shell-center" />
-      <aside class="mm-shell-right">
-        {opError && (
-          <p class="mm-shell-error" role="alert">
-            {opError}
-          </p>
-        )}
-        <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={send} />
-      </aside>
+      <RightColumn review={review} opError={opError} onOp={send} refreshKey={docChanges} />
     </>
   );
 };
