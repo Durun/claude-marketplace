@@ -77,17 +77,21 @@ test('SSE の流れは、塊の途中で切れても、イベントの名前と�
   ]);
 });
 
-test('開発用のビルドは UI、cargo の順で、FFMPEG_DIR があれば FFmpeg ありで作り、ライブラリも写す。配布用は環境変数で選ぶ', () => {
+test('開発用のビルドは、専用の作業ツリーを origin/main に合わせ、UI、cargo の順で作る。FFMPEG_DIR があれば FFmpeg ありで作り、ライブラリも写す。配布用は環境変数で選ぶ', () => {
   const win = platformFor('win32');
-  const paths = { source: 'S', target: 'T', bin: 'B' };
-  const plain = buildPlan(paths, {}, win, () => []);
+  const paths = { repo: 'R', worktree: 'W', source: 'W/movie-maker', target: 'T', bin: 'B' };
+  const commands = (exists: boolean) => buildPlan(paths, {}, win, () => [], () => exists).steps.map((s) => s.line ?? `${s.file} ${s.args?.join(' ')}`);
+  assert.deepEqual(commands(false), ['git -C R fetch origin main', 'git -C R worktree add --detach W origin/main', 'pnpm install --frozen-lockfile && pnpm build', 'cargo build --release -p movie-maker -p mm']);
+  assert.equal(commands(true)[1], 'git -C W checkout --detach --force origin/main');
+  const plain = buildPlan(paths, {}, win, () => [], () => true);
+  const cargo = plain.steps.at(-1);
   assert.deepEqual(plain.features, []);
-  assert.deepEqual(plain.steps.map((s) => s.line ?? `${s.file} ${s.args?.join(' ')}`), ['pnpm install --frozen-lockfile && pnpm build', 'cargo build --release -p movie-maker -p mm']);
-  assert.equal(plain.steps[1]?.env?.CARGO_TARGET_DIR, 'T');
+  assert.deepEqual(cargo?.env, { CARGO_TARGET_DIR: 'T', CARGO_INCREMENTAL: '0' });
+  assert.equal(cargo?.cwd, 'W/movie-maker');
   assert.deepEqual(plain.copies.map((c) => c.to), [path.join('B', 'movie-maker.exe'), path.join('B', 'mm.exe')]);
-  const ff = buildPlan(paths, { FFMPEG_DIR: 'F' }, win, () => ['avcodec-62.dll', 'ffmpeg.exe']);
+  const ff = buildPlan(paths, { FFMPEG_DIR: 'F' }, win, () => ['avcodec-62.dll', 'ffmpeg.exe'], () => true);
   assert.deepEqual(ff.features, ['ffmpeg']);
-  assert.deepEqual(ff.steps[1]?.args?.slice(-2), ['--features', 'movie-maker/ffmpeg,mm/ffmpeg']);
+  assert.deepEqual(ff.steps.at(-1)?.args?.slice(-2), ['--features', 'movie-maker/ffmpeg,mm/ffmpeg']);
   assert.deepEqual(ff.copies.at(-1), { from: path.join('F', 'bin', 'avcodec-62.dll'), to: path.join('B', 'avcodec-62.dll') });
   assert.equal(installModeOf({}), 'build');
   assert.equal(installModeOf({ DURUN_DASHBOARD_DISTRIBUTION: '1' }), 'release');

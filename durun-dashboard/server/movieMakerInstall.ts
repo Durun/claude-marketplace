@@ -22,23 +22,40 @@ export type InstallStep = { label: string; cwd: string; file?: string; args?: st
 /** 開発用のビルドの手順と、できた物を入れる場所への写し方。 */
 export type BuildPlan = { steps: InstallStep[]; copies: { from: string; to: string }[]; features: string[] };
 
-export type InstallPaths = { source: string; target: string; bin: string };
+/** repo はダッシュボードのある git リポジトリ、worktree はビルド専用の作業ツリー（origin/main に固定）、source はその中の movie-maker。 */
+export type InstallPaths = { repo: string; worktree: string; source: string; target: string; bin: string };
 
-/** 入れる場所と、ビルドに使う場所。環境変数で変えられる。 */
-export const installPaths = (dataDir: string, env: NodeJS.ProcessEnv = process.env): InstallPaths => ({
-  source: env.DURUN_MM_SOURCE || path.join(import.meta.dirname, '..', '..', 'movie-maker'),
-  // target は 20 GB 近くまで育つので、置き場所を環境変数で別のドライブへ移せるようにする。
-  target: env.DURUN_MM_TARGET_DIR || path.join(dataDir, 'movie-maker', 'target'),
-  bin: path.join(dataDir, 'movie-maker', 'bin'),
-});
+/** ビルドの元にするブランチ。人間の作業中の変更を混ぜないよう、リモートの先端からビルドする。 */
+const BASE_REF = 'origin/main';
+
+/** 入れる場所と、ビルドに使う場所。target は環境変数で変えられる。 */
+export const installPaths = (dataDir: string, env: NodeJS.ProcessEnv = process.env, os: Platform = hostPlatform): InstallPaths => {
+  const worktree = path.join(dataDir, 'movie-maker', 'src');
+  return {
+    repo: path.join(import.meta.dirname, '..', '..'),
+    worktree,
+    source: path.join(worktree, 'movie-maker'),
+    target: env.DURUN_MM_TARGET_DIR || os.movieMakerTargetDir(dataDir),
+    bin: path.join(dataDir, 'movie-maker', 'bin'),
+  };
+};
 
 export const installModeOf = (env: NodeJS.ProcessEnv = process.env): MmInstallMode => (env.DURUN_DASHBOARD_DISTRIBUTION === '1' ? 'release' : 'build');
+
+/** ビルド専用の作業ツリーを origin/main の先端に合わせる手順。無ければ作る。 */
+const sourceSteps = (paths: InstallPaths, exists: (p: string) => boolean): InstallStep[] => [
+  { label: 'git fetch origin main', cwd: paths.repo, file: 'git', args: ['-C', paths.repo, 'fetch', 'origin', 'main'] },
+  exists(paths.worktree)
+    ? { label: `作業ツリーを ${BASE_REF} に合わせる`, cwd: paths.repo, file: 'git', args: ['-C', paths.worktree, 'checkout', '--detach', '--force', BASE_REF] }
+    : { label: `作業ツリーを ${BASE_REF} で作る`, cwd: paths.repo, file: 'git', args: ['-C', paths.repo, 'worktree', 'add', '--detach', paths.worktree, BASE_REF] },
+];
 
 /**
  * ソースからビルドして入れる手順。UI（ui/dist）は Tauri が実行ファイルに埋め込むので、先に作る。
  * FFMPEG_DIR があれば FFmpeg ありで作り、実行ファイルの隣に FFmpeg のライブラリを写す（Windows は実行ファイルの隣の DLL を読む）。
+ * release を一度だけ作るので、増分のキャッシュ（数 GB）は作らない。
  */
-export const buildPlan = (paths: InstallPaths, env: NodeJS.ProcessEnv, os: Platform = hostPlatform, list: (dir: string) => string[] = safeList): BuildPlan => {
+export const buildPlan = (paths: InstallPaths, env: NodeJS.ProcessEnv, os: Platform = hostPlatform, list: (dir: string) => string[] = safeList, exists: (p: string) => boolean = fs.existsSync): BuildPlan => {
   const ffmpeg = env.FFMPEG_DIR;
   const features = ffmpeg ? ['ffmpeg'] : [];
   const cargoArgs = ['build', '--release', '-p', APP, '-p', CLI, ...(ffmpeg ? ['--features', `${APP}/ffmpeg,${CLI}/ffmpeg`] : [])];
@@ -48,8 +65,9 @@ export const buildPlan = (paths: InstallPaths, env: NodeJS.ProcessEnv, os: Platf
   return {
     features,
     steps: [
+      ...sourceSteps(paths, exists),
       { label: 'UI を作る（pnpm install、pnpm build）', cwd: path.join(paths.source, 'ui'), line: 'pnpm install --frozen-lockfile && pnpm build' },
-      { label: `cargo ${cargoArgs.join(' ')}`, cwd: paths.source, file: 'cargo', args: cargoArgs, env: { CARGO_TARGET_DIR: paths.target } },
+      { label: `cargo ${cargoArgs.join(' ')}`, cwd: paths.source, file: 'cargo', args: cargoArgs, env: { CARGO_TARGET_DIR: paths.target, CARGO_INCREMENTAL: '0' } },
     ],
     copies: [...exes.map((exe) => ({ from: path.join(release, exe), to: path.join(paths.bin, exe) })), ...libs.map((lib) => ({ from: path.join(ffmpeg ?? '', 'bin', lib), to: path.join(paths.bin, lib) }))],
   };
@@ -110,10 +128,10 @@ const runStep = (step: InstallStep, onLine: (line: string) => void, os: Platform
     });
   });
 
-/** 今のソースのコミット。git が無いか、ソースが git の中に無ければ undefined。 */
-const sourceCommit = (source: string): Promise<string | undefined> =>
+/** dir の git で ref が指すコミット。git が無いか、dir が git の中に無ければ undefined。 */
+const commitOf = (dir: string, ref: string): Promise<string | undefined> =>
   new Promise((resolve) => {
-    const child = spawn('git', ['-C', source, 'rev-parse', '--short', 'HEAD'], { windowsHide: true });
+    const child = spawn('git', ['-C', dir, 'rev-parse', '--short', ref], { windowsHide: true });
     let out = '';
     child.stdout.on('data', (c: Buffer) => (out += c.toString()));
     child.on('error', () => resolve(undefined));
@@ -128,7 +146,8 @@ export const buildInstaller = (paths: InstallPaths, env: NodeJS.ProcessEnv = pro
   let error: string | undefined;
   let head: string | undefined;
   const changed = (): void => listeners.forEach((fn) => fn());
-  const refreshHead = (): void => void sourceCommit(paths.source).then((c) => c !== head && ((head = c), changed()));
+  // 作り直しを勧めるかは、最後に fetch した origin/main と比べて決める。
+  const refreshHead = (): void => void commitOf(paths.repo, BASE_REF).then((c) => c !== head && ((head = c), changed()));
   refreshHead();
   const line = (l: string): void => {
     output = [...output, l].slice(-OUTPUT_LINES);
@@ -155,7 +174,7 @@ export const buildInstaller = (paths: InstallPaths, env: NodeJS.ProcessEnv = pro
         }
         fs.mkdirSync(paths.bin, { recursive: true });
         for (const c of plan.copies) fs.copyFileSync(c.from, c.to);
-        const commit = await sourceCommit(paths.source);
+        const commit = await commitOf(paths.worktree, 'HEAD');
         const record: InstallRecord = { mode: 'build', commit, features: plan.features, at: new Date().toISOString() };
         fs.writeFileSync(path.join(paths.bin, INSTALL_FILE), `${JSON.stringify(record, null, 2)}\n`);
         head = commit;
@@ -172,7 +191,7 @@ export const buildInstaller = (paths: InstallPaths, env: NodeJS.ProcessEnv = pro
 
 /**
  * 配布用。ビルド済みの movie-maker を落として入れる口。ダッシュボードを配布するときに中身を作る。
- * ponytail: リリースの置き場所（GitHub Releases の zip など）が決まっていないので、今は入れられないと返す。
+ * ponytail: GitHub Releases の zip（movie-maker.exe、mm.exe、FFmpeg の DLL、install.json）を落として bin に展開する想定で、まだリリースを作っていないので、今は入れられないと返す。
  */
 export const releaseInstaller = (paths: InstallPaths, os: Platform = hostPlatform): Installer => {
   const record = (): InstallRecord | undefined => readInstallRecord(paths.bin);

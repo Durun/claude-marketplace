@@ -39,13 +39,13 @@ movie-maker の段階 5 の「MCP」と「durun-dashboard の API」を兼ねる
 | | 開発用（今回） | 配布用（口だけ） |
 |---|---|---|
 | 入れる物 | `movie-maker.exe`、`mm.exe`（FFmpeg ありなら FFmpeg の DLL も） | 同じ |
-| 手順 | `ui/` で `pnpm install --frozen-lockfile` と `pnpm build` → `cargo build --release -p movie-maker -p mm` → 入れる場所へ写す | リリースの zip を落として展開する（未実装） |
-| ソース | ダッシュボードの隣の `movie-maker/`（`DURUN_MM_SOURCE` で変えられる） | 無し |
-| ビルドの置き場所 | `DURUN_MM_TARGET_DIR`、無ければ `<データの場所>/movie-maker/target` | 無し |
+| 手順 | `git fetch origin main` → 専用の作業ツリーを `origin/main` に合わせる → `ui/` で `pnpm install --frozen-lockfile` と `pnpm build` → `CARGO_INCREMENTAL=0 cargo build --release -p movie-maker -p mm` → 入れる場所へ写す | GitHub Releases の zip を落として展開する（未実装） |
+| ソース | `<データの場所>/movie-maker/src`（`git worktree add --detach` で作り、`origin/main` に固定。人間の作業中の変更を混ぜない） | 無し |
+| ビルドの置き場所 | `DURUN_MM_TARGET_DIR`、無ければ Windows は `D:/dev/movie-maker-dashboard/target`（`D:/dev` が無ければ `<データの場所>/movie-maker/target`） | 無し |
 | 入れる場所 | `<データの場所>/movie-maker/bin` と、入れたときのコミットと機能を書いた `install.json` | 同じ |
 | FFmpeg | `FFMPEG_DIR` があれば `--features ffmpeg` で作り、`FFMPEG_DIR/bin` の DLL を写す | 同梱 |
 
-ソースのコミットが `install.json` と違えば、ウィンドウが「作り直す」を出す。
+最後に fetch した `origin/main` のコミットが `install.json` と違えば、ウィンドウが「作り直す」を出す。
 
 ## 確かめ方
 

@@ -432,6 +432,13 @@ test('movie-maker のトークンは mm-store と同じフォルダーから読�
   assert.deepEqual(['win32', 'darwin', 'linux'].map((n) => platformFor(n).sharedLibraryExt), ['.dll', '.dylib', '.so']);
 });
 
+test('movie-maker の target は、Windows では D:\\dev があればその下に、無ければデータの場所に置く', () => {
+  const win = platformFor('win32');
+  assert.equal(win.movieMakerTargetDir('C:\\data', (d) => d === 'D:\\dev'), 'D:\\dev\\movie-maker-dashboard\\target');
+  assert.equal(win.movieMakerTargetDir('C:\\data', () => false), 'C:\\data\\movie-maker\\target');
+  assert.equal(platformFor('darwin').movieMakerTargetDir('/data'), '/data/movie-maker/target');
+});
+
 test('macOS と Linux では、パッケージ管理が置くディレクトリから依存ツールを探す', () => {
   const dirs = { exists: (f: string) => f === '/opt/homebrew/bin/flac' || f === '/usr/bin/flac', list: () => [] };
   assert.deepEqual(platformFor('darwin').toolCandidates('flac', {}, dirs), ['/opt/homebrew/bin/flac']);
