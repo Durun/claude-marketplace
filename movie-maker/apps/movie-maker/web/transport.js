@@ -8,6 +8,9 @@
   const SOURCE_EVENT = "mm:source";
   // Media パネルが素材を選んだときに投げる DOM のイベント（detail.asset が素材の ID）。Source で開く。
   const ASSET_SELECTED_EVENT = "mm:asset-selected";
+  // 再生位置を shell の Inspector と Graph に知らせる DOM のイベントと、前後のキーフレームへのシークの頼み（detail.time は秒）。
+  const PLAYHEAD_EVENT = "mm:playhead";
+  const SEEK_EVENT = "mm:seek";
   // キー操作を再生に渡さない入力部品。値を打つ・選ぶ操作が Space や矢印を使う。
   const TEXT_ENTRY = "input, select, textarea, [contenteditable]";
   // ボタンや単語などフォーカスを受ける部品。編集のキーはここから送らない（Timeline と Source はネイティブのサーフェスで、キーは Rust 側が受ける）。
@@ -201,6 +204,7 @@
     requestAnimationFrame(() => {
       const t = shown();
       draw(t);
+      if (info) window.dispatchEvent(new CustomEvent(PLAYHEAD_EVENT, { detail: { time: t, fps: info.fps } }));
       invoke("sync_ack", { seq: msg.seq, recvUs: recv, rafUs: nowUs(), shownT: t });
     });
   };
@@ -230,6 +234,7 @@
     });
     window.__TAURI__.event.listen(SOURCE_EVENT, (e) => showSource(e.payload));
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
+    window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));
     showSource(await invoke("source_state"));
     // 描画スレッドが GPU を選び終えた後に情報を取り直す。
     setTimeout(async () => {

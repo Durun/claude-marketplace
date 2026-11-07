@@ -259,6 +259,34 @@
       ]
     },
     {
+      "description": "キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。",
+      "type": "object",
+      "properties": {
+        "from": {
+          "description": "動かすキーフレームの今の時刻。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "keyframe": {
+          "description": "置き直した後のキーフレーム（時刻、値、区間の形）。",
+          "$ref": "#/$defs/Keyframe"
+        },
+        "op": {
+          "type": "string",
+          "const": "moveKeyframe"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "from",
+        "keyframe"
+      ]
+    },
+    {
       "description": "親のレイヤーを付ける・外す。",
       "type": "object",
       "properties": {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
 import { DeliverPanel } from "@mm/deliver";
-import { InspectorPanel } from "@mm/inspector";
 import { MediaPanel } from "@mm/media";
 import { ReviewPanel } from "@mm/review";
 import {
@@ -16,6 +15,7 @@ import {
   type StoryApi,
 } from "@mm/sdk";
 import { StoryPanel } from "@mm/story";
+import { KeyframePanels } from "./keyframePanels.tsx";
 import { TasksPanel } from "@mm/tasks";
 
 /** 選択の変わったことを知らせるイベント。アプリの再生の操作列（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
@@ -168,7 +168,7 @@ const useLeftTabs = (apis: Pick<ShellProps, "media" | "story" | "deliver">) => {
   return { tab, tabs, selectTab, onTaskInvoke, importRequest, storyVisits };
 };
 
-/** 左に Tasks、Media、Story、Deliver、右に Inspector と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
+/** 左に Tasks、Media、Story、Deliver、右に Inspector（その下に Graph）と Review（それぞれタブで切り替え）。API を渡したパネルだけタブを出す。 */
 export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellProps) => {
   const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const selection = useLayerSelection();
@@ -207,7 +207,7 @@ export const Shell = ({ sendOp, media, story, deliver, review, listen }: ShellPr
         )}
         {review && <RightTabs tab={rightTab} onSelect={setRightTab} />}
         <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "inspector"}>
-          <InspectorPanel layer={selection.layer} assets={selection.assets} onOp={send} />
+          <KeyframePanels layer={selection.layer} assets={selection.assets} onOp={send} />
         </div>
         {review && (
           <div class="mm-shell-right-body" role="tabpanel" hidden={rightTab !== "review"}>
