@@ -21,7 +21,15 @@
       "story-hits-max": 144,
       "story-tag-input": 60,
       "waveform-height": 40,
-      "progress": 4
+      "progress": 4,
+      "mixer-name": 84,
+      "mixer-value": 56,
+      "mixer-value-narrow": 36,
+      "mixer-meter": 10,
+      "mixer-meter-thin": 5,
+      "mixer-scale-inset": 16,
+      "mixer-bus": 62,
+      "mixer-toggle": 22
     },
     "stroke": { "chevron": 2, "focus": 2 }
   },
@@ -43,7 +51,10 @@
         "task-body-border": "#ffffff",
         "task-link": "#215dc6",
         "task-link-hover": "#428eff",
-        "task-link-disabled": "#8c9bc8"
+        "task-link-disabled": "#8c9bc8",
+        "meter-ok": "#3a9d3a",
+        "meter-warn": "#d9b300",
+        "meter-hot": "#d93a2b"
       },
       "gradient": {
         "task-title": { "direction": "horizontal", "from": "#ffffff", "to": "#c6d3f7" },
@@ -67,7 +78,10 @@
         "task-body-border": "#3b4660",
         "task-link": "#8ab4ff",
         "task-link-hover": "#c2d6ff",
-        "task-link-disabled": "#5f6a86"
+        "task-link-disabled": "#5f6a86",
+        "meter-ok": "#4fbf5f",
+        "meter-warn": "#e6c229",
+        "meter-hot": "#ff6b5e"
       },
       "gradient": {
         "task-title": { "direction": "horizontal", "from": "#33405c", "to": "#26304a" },

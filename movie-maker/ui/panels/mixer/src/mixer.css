@@ -1,0 +1,321 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-mixer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-mixer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+}
+
+.mm-mixer-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-task-body-bg);
+}
+
+.mm-mixer-section h3 {
+  margin: 0;
+  color: var(--mm-color-task-title-text);
+  font-size: var(--mm-font-size-base);
+  font-weight: 700;
+}
+
+.mm-mixer select,
+.mm-mixer input[type="number"] {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 var(--mm-space-xs);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-mixer select:focus-visible,
+.mm-mixer input:focus-visible,
+.mm-mixer-toggle:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-mixer-error {
+  margin: 0;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-danger);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mm-mixer-line {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.mm-mixer-name {
+  flex: 0 0 auto;
+  min-width: var(--mm-size-mixer-name);
+  max-width: var(--mm-size-mixer-name);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-mixer-line select {
+  flex: 1 1 0;
+}
+
+.mm-mixer-unit,
+.mm-mixer-number-label,
+.mm-mixer-scale,
+.mm-mixer-channel,
+.mm-mixer-empty {
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+/* スライダーと数字。数字は幅を固定して、値が変わっても横に動かさない。 */
+.mm-mixer-slider {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  min-width: 0;
+}
+
+.mm-mixer-slider input[type="range"] {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--mm-color-accent);
+}
+
+.mm-mixer-value {
+  flex: 0 0 auto;
+  min-width: var(--mm-size-mixer-value);
+  text-align: right;
+  font-family: var(--mm-font-mono);
+  font-size: var(--mm-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* メーター。fill は全長のグラデーションを clip-path で切る。境目は -18 dBFS（70%）と -6 dBFS（90%）。 */
+.mm-mixer-meter {
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  height: var(--mm-size-mixer-meter);
+  overflow: hidden;
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+}
+
+.mm-mixer-meter[data-thin="true"] {
+  height: var(--mm-size-mixer-meter-thin);
+}
+
+.mm-mixer-meter-fill {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 100% 0 0);
+  background: linear-gradient(
+    to right,
+    var(--mm-color-meter-ok) 0%,
+    var(--mm-color-meter-ok) 70%,
+    var(--mm-color-meter-warn) 70%,
+    var(--mm-color-meter-warn) 90%,
+    var(--mm-color-meter-hot) 90%,
+    var(--mm-color-meter-hot) 100%
+  );
+}
+
+.mm-mixer-meter-hold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--mm-stroke-focus);
+  background: var(--mm-color-text);
+}
+
+.mm-mixer-meter-hold[hidden] {
+  display: none;
+}
+
+.mm-mixer-master-meters {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mm-space-xs) var(--mm-space-sm);
+}
+
+.mm-mixer-scale {
+  position: relative;
+  height: var(--mm-font-size-base);
+  margin-left: var(--mm-size-mixer-scale-inset);
+}
+
+.mm-mixer-scale span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.mm-mixer-scale span:first-child {
+  transform: none;
+}
+
+.mm-mixer-scale span:last-child {
+  transform: translateX(-100%);
+}
+
+.mm-mixer-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mm-space-xs) var(--mm-space-md);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-mixer-readout b {
+  font-family: var(--mm-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.mm-mixer-readout abbr {
+  color: var(--mm-color-text-muted);
+  text-decoration: none;
+}
+
+.mm-mixer-check {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-mixer-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mm-space-xs) var(--mm-space-md);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mm-mixer-targets legend {
+  float: left;
+  padding: 0;
+  margin-right: var(--mm-space-md);
+  color: var(--mm-color-text-muted);
+}
+
+.mm-mixer-numbers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mm-space-xs) var(--mm-space-md);
+}
+
+.mm-mixer-number {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-mixer-number input {
+  width: 100%;
+  text-align: right;
+}
+
+.mm-mixer-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-mixer-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-task-body-border);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+}
+
+.mm-mixer-track-head {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-mixer-track-head .mm-mixer-name {
+  flex: 1 1 0;
+  max-width: none;
+  font-weight: 700;
+}
+
+.mm-mixer-track-head select {
+  flex: 0 0 auto;
+  width: var(--mm-size-mixer-bus);
+}
+
+.mm-mixer-track-controls {
+  display: flex;
+  gap: var(--mm-space-md);
+}
+
+.mm-mixer-track-controls .mm-mixer-slider:first-child {
+  flex: 3 1 0;
+}
+
+.mm-mixer-track-controls .mm-mixer-slider:last-child {
+  flex: 2 1 0;
+}
+
+.mm-mixer-track-controls .mm-mixer-value {
+  min-width: var(--mm-size-mixer-value-narrow);
+}
+
+.mm-mixer-toggle {
+  flex: 0 0 auto;
+  width: var(--mm-size-mixer-toggle);
+  padding: 0;
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  font-size: var(--mm-font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mm-mixer-toggle[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+}
+
+.mm-mixer-toggle[data-kind="mute"][aria-pressed="true"] {
+  border-color: var(--mm-color-danger);
+  background: var(--mm-color-danger);
+  color: var(--mm-color-surface);
+}

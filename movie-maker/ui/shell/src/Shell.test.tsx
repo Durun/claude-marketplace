@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { DeliverApi, Layer, MediaApi, StoryApi } from "@mm/sdk";
+import type { DeliverApi, Layer, MediaApi, MixerApi, StoryApi } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
 
@@ -54,6 +54,12 @@ const fakeDeliver = (): DeliverApi => ({
   onProgress: vi.fn().mockResolvedValue(() => {}),
 });
 
+const fakeMixer = (): MixerApi => ({
+  state: vi.fn().mockResolvedValue({ composition: "main", mixer: null, tracks: [], roles: ["voice", "bgm", "sfx"] }),
+  applyOps: vi.fn().mockResolvedValue(undefined),
+  onMeters: vi.fn().mockResolvedValue(() => {}),
+});
+
 const click = (el: Element | null | undefined) =>
   act(() => {
     (el as HTMLElement).click();
@@ -100,6 +106,21 @@ describe("Shell の左の列", () => {
     await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
     expect(panels[1]?.hidden).toBe(false);
     expect(host.querySelector(".mm-deliver")).not.toBeNull();
+  });
+});
+
+describe("Shell の Mixer タブ", () => {
+  it("Mixer を渡すと Mixer のタブが出て、開くと Mixer のパネルを見せる", async () => {
+    const mixer = fakeMixer();
+    act(() => render(<Shell sendOp={vi.fn()} mixer={mixer} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Mixer"]);
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(panels[1]?.hidden).toBe(false);
+    expect(host.querySelector(".mm-mixer")).not.toBeNull();
+    expect(mixer.state).toHaveBeenCalled();
   });
 });
 

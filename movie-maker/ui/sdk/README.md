@@ -103,3 +103,16 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 `sequence` の上書きは依頼の全体に 1 つで、レンダーターゲットはコンポジションを指す形のまま（本編とショートはそれぞれのコンポジションを持つ）。縦長のプリセットは、縦長のコンポジションを既定にする。
 
 レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。
+
+## Mixer のコマンド
+
+Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベント。型は `src/mixer.ts`（`createIpcMixerApi` が呼ぶ）。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `mixer_state` | なし | いま開いているコンポジションの `MixerState`。`composition`、`mixer`（`ops.ts` の `CompMixer`、既定は `null`）、`tracks[]`（`layer`、`kind`、`label`、`audio`（`LayerAudio`、既定は `null`）、`animated`）、`roles`（バスの選択肢） |
+| `apply_ops` | `{ ops: Op[] }` | `()`。Mixer が送る操作は 2 つで、どちらも変えた後の全体を置く。`setLayerAudio`（レイヤーの `LayerAudio` 全体）と `setMixer`（コンポジションの `CompMixer` 全体）。1 回の操作が取り消し 1 回で、フェーダーはドラッグを離したときに 1 回だけ送る |
+
+音量とパンにキーフレームのあるトラック（`animated`）は、フェーダーで固定の値に置くとキーフレームを消すので、Mixer は触らせない（ミュート、ソロ、バスは触れる）。
+
+メーターは Tauri のイベント `mm:mixer-meters`（`MIXER_METERS_EVENT`）で、再生位置の通知と同じ間隔で `MixerMeters`（`t`、`playing`、`tracks[]`（`layer`、`peak_db`）、`master`（`peak_db` の L と R、`true_peak_db`、`short_term_lufs`、`integrated_lufs`））を受ける。無音と測れない値は `null`。受けた値は state に入れず、パネルが rAF で棒の DOM を直接書き換える（ピークホールドは UI 側で 1.5 秒）。`playing: false` を受けたら棒は少しずつ落ちる。
