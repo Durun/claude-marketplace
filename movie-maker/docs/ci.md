@@ -50,7 +50,7 @@ JUnit は artifact（`junit-check`、`junit-ffmpeg`、14 日）に残る。
 
 - 新しい結合テストは `tests/it/<題>.rs` に置き、`tests/it/main.rs` に `mod <題>;` を足す。feature が要るものは `#[cfg(feature = "…")]` を `mod` の行に付ける
 - nextest の `binary_id` は `<クレート>::it`、テストの名前は `<題>::<関数>`（例: `binary_id(mm-render::it) & test(/^golden::/)`）
-- プロセスで 1 つの状態（大域の購読者、共有の GPU のコンテキストを壊す、故障の注入）を触るテストだけは、`cargo test` で同じプロセスの別のテストに響くので、別の実行ファイル（`tests/<題>.rs`）に置き、冒頭の doc コメントに「別の実行ファイル」と理由を書く（`scripts/check-conventions.sh` が確かめる）。今は `mm-render` の `device_loss` と `export_device_loss`、`mm-ingest` の `spans`、`mm-decode-cuvid` の `faults`
+- プロセスで 1 つの状態（大域の購読者、共有の GPU のコンテキストを壊す、故障の注入）を触るテストだけは、`cargo test` で同じプロセスの別のテストに響くので、別の実行ファイル（`tests/<題>.rs`）に置き、冒頭の doc コメントに「別の実行ファイル」と理由を書く（`scripts/check-conventions.sh` が確かめる）。今は `mm-render` の `device_loss` と `export_device_loss`、`mm-runtime` の `decode_auto`、`mm-ingest` の `spans`、`mm-decode-cuvid` の `faults`
 
 ## 揺れるテストの隔離
 

@@ -19,8 +19,10 @@ use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, Size};
 const SIZE: Size = Size::new(32, 18);
 const INVERT_CUBE: &str = include_str!("../../../../fixtures/luts/invert.cube");
 
+/// 自前のコンテキスト。共有の GPU を既定の頼み方で先に作ると、同じプロセスで D3D12 を頼む書き出しの試験が
+/// 共有の GPU を使えなくなる。
 fn gpu() -> Option<Arc<GpuContext>> {
-    match GpuContext::shared(&GpuRequest::default()) {
+    match GpuContext::with(&GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
