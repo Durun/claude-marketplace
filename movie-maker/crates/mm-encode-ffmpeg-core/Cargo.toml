@@ -16,5 +16,9 @@ mm-audio-api = { workspace = true }
 mm-decode-api = { workspace = true }
 ffmpeg-next = { workspace = true, optional = true }
 
+[dev-dependencies]
+# AAC のエンコーダーを開く試験の出力先。
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

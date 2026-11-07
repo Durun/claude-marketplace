@@ -1,5 +1,5 @@
 //! 時間で変わるレイヤーの音量。ミキサーは入力ごとに 1 つの音量しか受けず、書き出しは音を 10 秒ずつ混ぜるので、
-//! 区間の頭の 1 点で評価するとフェードと音量の動きが消える。キーフレームのある音量はレンダラーがサンプルに掛け、
+//! 区間の先頭の 1 点で評価するとフェードと音量の動きが消える。キーフレームのある音量はレンダラーがサンプルに掛け、
 //! ミキサーには 0 dB で渡す。
 
 use mm_audio_api::AudioBlock;
@@ -106,12 +106,43 @@ mod tests {
         let mut b = ones(RATE as usize);
         assert!(apply_gain_envelope(&mut b, &l, RationalTime::ZERO).unwrap());
         let at = |i: usize| b.samples[i * 2];
-        assert!((at(0) - 1.0).abs() < 1e-4, "頭は 0 dB");
+        assert!((at(0) - 1.0).abs() < 1e-4, "先頭は 0 dB");
         let half = 10f32.powf(-10.0 / 20.0);
         assert!(
             (at(RATE as usize / 2) - half).abs() < 1e-3,
             "中ほどは -10 dB"
         );
         assert!(at(RATE as usize - 1) < 0.11, "終わりは -20 dB 近く");
+    }
+
+    #[test]
+    fn 区切りの位置によらず同じ音量が掛かる() {
+        // プレビューは 0.1 秒、書き出しは 10 秒ずつ混ぜるので、区切りが変わっても掛かる音量は同じでなければならない
+        let key = |t: i64, db: f64| {
+            Keyframe::new(
+                RationalTime::seconds(t),
+                ParamValue::Number(db),
+                Interpolation::Linear,
+            )
+        };
+        let l = layer_with(Param {
+            value: ParamValue::Number(0.0),
+            keyframes: vec![key(0, -40.0), key(1, 0.0)],
+        });
+        let mut whole = ones(RATE as usize);
+        apply_gain_envelope(&mut whole, &l, RationalTime::ZERO).unwrap();
+        let cut = 1_001;
+        let mut head = ones(cut);
+        let mut tail = ones(RATE as usize - cut);
+        apply_gain_envelope(&mut head, &l, RationalTime::ZERO).unwrap();
+        let tail_start = RationalTime::new(cut as i128, RATE).unwrap();
+        apply_gain_envelope(&mut tail, &l, tail_start).unwrap();
+        let split: Vec<f32> = head.samples.into_iter().chain(tail.samples).collect();
+        let worst = whole
+            .samples
+            .iter()
+            .zip(&split)
+            .fold(0.0f32, |m, (a, b)| m.max((a - b).abs()));
+        assert!(worst < 1e-3, "最大の差 {worst}");
     }
 }
