@@ -90,7 +90,7 @@ pub(crate) fn render_files(
     p.normalize();
     let whole = serde_json::to_value(&p)?;
     let mut files = BTreeMap::new();
-    let mut index = json!({ "schema_version": p.schema_version });
+    let mut index = mm_doc::version_stamp(&p);
     for (field, dir) in [
         ("compositions", "comps"),
         ("assets", "assets"),
@@ -170,10 +170,8 @@ fn read_json(path: &Path) -> Result<Value> {
 /// `versions/` からプロジェクトのデータとコメントを読む。古いスキーマのバージョンは `mm_doc::load` が今のバージョンに上げる。
 pub(crate) fn read_files(versions: &Path) -> Result<(Project, Vec<Value>)> {
     let index = read_json(&versions.join(INDEX_FILE))?;
-    let mut whole = json!({
-        "schema_version": index["schema_version"],
-        "render_targets": index["render_targets"],
-    });
+    let mut whole = json!({ "render_targets": index["render_targets"] });
+    mm_doc::copy_stamp(&index, &mut whole);
     for (field, dir) in [
         ("compositions", "comps"),
         ("assets", "assets"),

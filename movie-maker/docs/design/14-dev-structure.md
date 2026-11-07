@@ -186,7 +186,7 @@ movie-maker/
 ## インターフェースのバージョンと変え方
 
 - API クレートは semver でバージョンを持つ。公開はしないが、`cargo-semver-checks` [35] で破壊的変更を検査する（公開しないクレートで動くかは段階 1 で確かめる。[決めてほしいこと](16-open-questions.md)）。
-- インターフェースを変えるときは、`docs/rfcs/NNNN-<題>.md` に、変える理由、新しいシグネチャ、影響する実装のクレート、移行の手順を書いてから変える。1 つの PR で、インターフェースの変更と、全部の実装と契約テストの更新を一緒に入れる。
+- インターフェースを変えるときは、`docs/rfcs/<PR の番号>-<題>.md`（番号の付け方は「共有のファイルの書き方」）に、変える理由、新しいシグネチャ、影響する実装のクレート、移行の手順を書いてから変える。1 つの PR で、インターフェースの変更と、全部の実装と契約テストの更新を一緒に入れる。
 - 足すだけの変更（メソッドの追加は既定の実装つき、`Traits` のフィールドの追加）は RFC なしでよい。消す・形を変える変更は RFC。
 - API クレートは各自の `Cargo.toml` にバージョンを持ち、ワークスペースのバージョンを使わない。壊す変更は 0.x の minor を上げる（0.1 から 0.2）。
 - ノードの種類のバージョン（`NodeKind::version` と `migrate`）とプロジェクトのデータのスキーマのバージョンは、インターフェースのバージョンとは別に持つ（プロジェクトのデータの互換性の話）。
@@ -214,8 +214,26 @@ movie-maker/
 | 計装 | `crates/mm-trace`、`xtask/` | ほかのクレートのスパンの名前（名前は各領域が付け、`mm-trace` は決まりだけ持つ） |
 | インターフェースと組み立て（統合の担当） | `crates/mm-*-api`、`mm-types`、`mm-gpu`、`mm-runtime`、`ui/sdk`、`ui/theme`、ルートの `Cargo.toml`、`Cargo.lock`、`docs/` | |
 
-- 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は統合の担当だけが書く。領域の worktree が外のクレートを足したいときは、PR に「`workspace.dependencies` に X を足す」と書き、統合の担当が足す。
+- 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は、下の「共有のファイルの書き方」に従う 1 行ずつの追加なら領域の PR が書いてよい。消す・並べ替える・形を変える変更は統合の担当が書く。
 - 2 つ以上のエージェントが同じリポジトリを書くときは、各々を別の worktree に置く（この表の 1 行ずつ）。同じ領域を 2 人で書かない。
+
+### 共有のファイルの書き方
+
+並行の PR が同じ連番や同じ末尾の行を取り合うと衝突する。連番を作業中に取らず、1 つの変更を 1 つのファイルにし、並びの決まった列には途中に挿す。
+
+| 対象 | 決まり | 先行事例 |
+|---|---|---|
+| RFC（`docs/rfcs/`） | 作業中は `<題>.md` で書き、本文では「RFC `<題>`」と呼ぶ。PR を作ったら `<PR の番号 4 桁>-<題>.md` に改め、参照も直す。既存の 0001〜0016 は変えない。CI（`conventions`）が PR で足したファイルの番号を PR の番号と比べる | Rust の RFC（番号は PR の番号）、Go の proposal（番号は issue の番号） |
+| プロジェクトのデータの形（`mm-doc`） | 整数の `SCHEMA_VERSION` は 9 で止める。形の変更は `crates/mm-doc/src/migrations/YYYYMMDD_<題>.rs` に `pub(crate) fn up(value: &mut serde_json::Value)` を 1 つ書く。表は `build.rs` がディレクトリから名前の順に作る。プロジェクトのデータは済ませた移行の名前の組（`migrations`）を持ち、読むときは組に無い移行だけを当てる。移行は書いた時点の main にある移行だけを前提にし、並行の移行と順に依らない形にする。凍結するフィクスチャは `fixtures/doc/<移行の名前>/` | Rails の `schema_migrations`（日時の名前と済ませた組）、sqlx の `migrate!`（ディレクトリから表を作る） |
+| 生成物（`Cargo.lock`、`crates/mm-ops/schema/ops.json`、`crates/mm-ingest-api/schema/`、`ui/sdk/src/generated/`） | 衝突したら手で直さず、`scripts/regen.sh` で作り直して `git add` する。`Cargo.lock` は main の側を土台にして足りない分だけ cargo に足させる。CI は `check`（Rust のスキーマのテスト）と `ui`（`gen:check`）で、コミットした生成物が元と合うかを確かめる | Cargo と pnpm の lockfile の作り直し、生成物を CI で再生成して差を見る検査 |
+| ルートの `Cargo.toml` | `[workspace.dependencies]` の `mm-*` は名前の順で、新しいクレートはその位置に 1 行挿す。CI（`conventions`）が並びを確かめる。外のクレートは末尾に足さず、関係するものの隣に挿す | `cargo-sort`、Chromium の BUILD.gn の並べた列 |
+| 組み立て（`mm-runtime/src/assemble.rs`、`config.rs` の `Backend`） | インターフェースごとの関数の `match` に 1 腕（`#[cfg]` 込み）を足す。`Backend` のバリアントと腕は末尾（`Auto` の前）に足さず、名前の順で直前になる項目の後ろに挿す | Bevy の `PluginGroup`（組み立ての 1 か所に部品を並べる） |
+| 用語集 | 段階の途中は `glossary.d/<PR の題>.md` に書き、段階ごとのクリーンアップで `glossary.md` に移す（[用語集](glossary.md)の冒頭） | towncrier の newsfragments、Changesets の `.changeset/*.md` |
+
+- 生成物をコミットから外す案は採らない。`ops.json` は操作の契約の差分としてレビューで読み、外すと `ui` のジョブに Rust のビルドが要る。`ops.ts` は外すと typecheck、lint、test、エディターの前に毎回生成が要り、衝突は `ops.json` と同時なので `regen.sh` の 1 回で済む。
+- `.gitattributes` の merge driver は採らない。各自の clone に `git config` が要り、GitHub のマージボタンは merge driver を走らせず、ファイルごとに走るので元のファイルのマージが終わる前に生成すると古い元から作る。生成物には `linguist-generated` だけを付け、PR の差分で畳む。
+- 自動の登録（`inventory`、`linkme`）は採らない。実装のクレートから登録の型を見るには、型を API クレートに移す（インターフェースの変更）ことになり、どこからも参照されないクレートの登録はリンカーが落とす。実装の選択は feature と `#[cfg]` で静的に決まっていて、1 か所の `match` で足りる。
+- スキーマの連番に Alembic の `down_revision` や Django の `dependencies` の木を採らない。並行の 2 本が同じ親を持つと「頭が 2 つ」になり、マージ用の移行を誰かが書くまで CI が落ちる。済ませた組を持つ方式は、マージの順に関わらずそのまま通る。
 - CI は、変えたクレートとそれに依存するクレートだけをテストする（`cargo nextest run -p <crate>` と、依存の逆引き）。API クレートを変えた PR は全部を回す。夜間は全部と、実機の GPU、性能、耐久、ファズ（[テスト](11-testing.md#層の一覧)）。
 - 実装済みの CI の PR と main の違いは [ci.md](../ci.md#pr-と-main-の違い)。PR は 1 本 30 秒を超える通しの試験（`#[ignore]`）と、性能に関わらない PR の `perf-gate` を外し、main の push と手動で全部を回す。
 

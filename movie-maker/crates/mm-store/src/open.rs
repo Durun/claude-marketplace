@@ -138,7 +138,7 @@ impl Store {
             self.warnings.push(StoreWarning::WriterElsewhere(info));
             return Ok(());
         }
-        if docio::stored_doc_version(&self.conn)? < mm_doc::SCHEMA_VERSION {
+        if !docio::stored_doc_is_current(&self.conn)? {
             backup::run(&self.conn, &self.dir, now_ms)?;
             let tx = self.conn.transaction().sql()?;
             docio::write_all(&tx, &self.rows)?;
