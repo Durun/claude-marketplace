@@ -3350,6 +3350,7 @@ dependencies = [
  "mm-render-api",
  "mm-testkit",
  "mm-text-api",
+ "mm-text-cef",
  "mm-text-glyphon",
  "mm-trace",
  "mm-types",
@@ -3423,6 +3424,21 @@ version = "0.1.0"
 dependencies = [
  "mm-types",
  "serde",
+]
+
+[[package]]
+name = "mm-text-cef"
+version = "0.1.0"
+dependencies = [
+ "mm-host-api",
+ "mm-host-cef",
+ "mm-testkit",
+ "mm-text-api",
+ "mm-text-glyphon",
+ "mm-types",
+ "png",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

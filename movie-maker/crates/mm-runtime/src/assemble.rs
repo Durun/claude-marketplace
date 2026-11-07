@@ -226,6 +226,11 @@ fn text(
 ) -> Result<(Arc<dyn TextShaper>, Arc<dyn TextRasterizer>)> {
     match backend {
         Backend::Sample => Ok((Arc::new(SampleShaper), Arc::new(SampleRasterizer))),
+        Backend::Cef => {
+            let exe = mm_host_cef::find_host().ok_or_else(|| unsupported("text", backend))?;
+            let raster = mm_text_cef::CefRasterizer::new(Arc::new(mm_host_cef::CefLauncher), exe);
+            Ok((TextEngine::new().shaper(), Arc::new(raster)))
+        }
         Backend::Cpu => {
             let engine = TextEngine::new();
             Ok((engine.shaper(), engine.rasterizer()))

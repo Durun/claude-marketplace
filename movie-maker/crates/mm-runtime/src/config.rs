@@ -19,6 +19,8 @@ pub enum Backend {
     Wgpu,
     /// `mm-text-glyphon` の glyphon（wgpu）の描画。GPU のコンテキストを使う。
     Glyphon,
+    /// `mm-text-cef` の CSS の描画（行組みは cosmic-text）。CEF の配布物とホストの実行ファイルが要る。
+    Cef,
     /// `mm-text-glyphon` の CPU（swash）の描画。
     Cpu,
     /// `mm-color-lut`（伝達関数の WGSL と 3D LUT。OCIO なしで動く）。
@@ -54,6 +56,7 @@ impl Backend {
             Backend::Sample => mm_testkit::SAMPLE_ID,
             Backend::Wgpu => "wgpu",
             Backend::Glyphon => "glyphon",
+            Backend::Cef => "cef",
             Backend::Cpu => "cpu",
             Backend::Lut => "lut",
             Backend::Ocio => "ocio",
@@ -92,6 +95,7 @@ impl FromStr for Backend {
             mm_testkit::SAMPLE_ID => Ok(Backend::Sample),
             "wgpu" => Ok(Backend::Wgpu),
             "glyphon" => Ok(Backend::Glyphon),
+            "cef" => Ok(Backend::Cef),
             "cpu" => Ok(Backend::Cpu),
             "lut" => Ok(Backend::Lut),
             "ocio" => Ok(Backend::Ocio),
@@ -252,6 +256,7 @@ mod tests {
             Backend::Sample,
             Backend::Wgpu,
             Backend::Glyphon,
+            Backend::Cef,
             Backend::Cpu,
             Backend::Lut,
             Backend::Ocio,

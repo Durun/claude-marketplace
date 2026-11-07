@@ -1,5 +1,6 @@
 //! 実際の実装を選ぶ組み立ての分岐。GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
+use mm_node_api::NodeRegistry;
 use mm_runtime::{assemble, Backend, RuntimeConfig};
 use mm_types::MmError;
 
@@ -28,9 +29,10 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     assert!(names.contains(&("audio", "dsp")), "{names:?}");
     assert_eq!(
         engine.registry().len(),
-        mm_nodes_basic::all_kinds().len(),
-        "mm-nodes-basic の種類"
+        mm_nodes_basic::all_kinds().len() + 1,
+        "mm-nodes-basic の種類と web.cef"
     );
+    assert!(engine.registry().get("web.cef").is_some());
 }
 
 #[test]

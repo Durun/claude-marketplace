@@ -49,6 +49,7 @@ mm-serve = { path = "crates/mm-serve" }
 mm-store = { path = "crates/mm-store" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-text-api = { path = "crates/mm-text-api" }
+mm-text-cef = { path = "crates/mm-text-cef" }
 mm-text-glyphon = { path = "crates/mm-text-glyphon" }
 mm-trace = { path = "crates/mm-trace" }
 mm-types = { path = "crates/mm-types" }
