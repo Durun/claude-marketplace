@@ -114,22 +114,22 @@ fn source_project(asset: &Asset, program: &Composition) -> Result<(Project, Rati
     let fps = asset.fps.unwrap_or(program.fps);
     let mut project = Project::new();
     project.assets.push(asset.clone());
-    project.compositions.push(Composition {
-        mixer: None,
-        id: Id::new(SOURCE_COMPOSITION),
-        width: program.width,
-        height: program.height,
-        fps,
-        duration: asset.duration,
-        layers: vec![Layer::new(
+    project.compositions.push(
+        Composition::new(
+            Id::new(SOURCE_COMPOSITION),
+            program.width,
+            program.height,
+            fps,
+            asset.duration,
+        )
+        .with_layers(vec![Layer::new(
             SOURCE_LAYER,
             Node::footage(&asset.id),
             RationalTime::ZERO,
             RationalTime::ZERO,
             asset.duration,
-        )],
-        markers: Vec::new(),
-    });
+        )]),
+    );
     project.validate().map_err(|e| e.to_string())?;
     Ok((project, fps))
 }

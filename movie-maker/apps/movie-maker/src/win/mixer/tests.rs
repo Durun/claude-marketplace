@@ -45,23 +45,18 @@ fn doc() -> OpenDoc {
         Interpolation::Linear,
     )];
     nest.audio = Some(fx);
-    project.compositions.push(Composition {
-        id: Id::new("main"),
-        width: 16,
-        height: 9,
-        fps: Rational::integer(30),
-        duration: secs(5),
-        layers: vec![
-            Layer::new("talk", footage, secs(0), secs(0), secs(5)),
-            Layer::new("bg", Node::new("solid", 1), secs(0), secs(0), secs(5)),
-            nest,
-        ],
-        markers: Vec::new(),
-        mixer: Some(CompMixer {
-            buses: [("music".to_owned(), MixerBus { gain_db: -3.0 })].into(),
-            ..CompMixer::default()
-        }),
-    });
+    project.compositions.push(
+        Composition::new(Id::new("main"), 16, 9, Rational::integer(30), secs(5))
+            .with_layers(vec![
+                Layer::new("talk", footage, secs(0), secs(0), secs(5)),
+                Layer::new("bg", Node::new("solid", 1), secs(0), secs(0), secs(5)),
+                nest,
+            ])
+            .with_mixer(CompMixer {
+                buses: [("music".to_owned(), MixerBus { gain_db: -3.0 })].into(),
+                ..CompMixer::default()
+            }),
+    );
     OpenDoc {
         project: Arc::new(project),
         comp: Id::new("main"),

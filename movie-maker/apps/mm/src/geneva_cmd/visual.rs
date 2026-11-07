@@ -398,16 +398,16 @@ fn nested_layer(
         position: Param::constant(ParamValue::Vec2([-geo.crop[0], -geo.crop[1]])),
         ..Transform::default()
     };
-    ctx.nested.push(Composition {
-        id: Id::new(comp_id.clone()),
-        width: geo.crop[2].round().max(1.0) as u32,
-        height: geo.crop[3].round().max(1.0) as u32,
-        fps: ctx.fps,
-        duration: timing.duration,
-        layers: vec![inner],
-        markers: Vec::new(),
-        mixer: None,
-    });
+    ctx.nested.push(
+        Composition::new(
+            Id::new(comp_id.clone()),
+            geo.crop[2].round().max(1.0) as u32,
+            geo.crop[3].round().max(1.0) as u32,
+            ctx.fps,
+            timing.duration,
+        )
+        .with_layers(vec![inner]),
+    );
     let outer_node =
         Node::new(NESTED_KIND, KIND_VERSION).with_param(NESTED_PARAM, ParamValue::Text(comp_id));
     let mut outer = Layer::new(

@@ -28,16 +28,15 @@ pub(crate) fn sample_project() -> Project {
     });
     let node =
         Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("talk".into()));
-    p.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("main"),
-        width: 64,
-        height: 36,
-        fps,
-        duration: secs(20),
-        layers: vec![Layer::new("l-seq", node, secs(0), secs(0), secs(20))],
-        markers: Vec::new(),
-    });
+    p.compositions.push(
+        Composition::new(Id::new("main"), 64, 36, fps, secs(20)).with_layers(vec![Layer::new(
+            "l-seq",
+            node,
+            secs(0),
+            secs(0),
+            secs(20),
+        )]),
+    );
     p
 }
 

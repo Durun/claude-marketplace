@@ -85,16 +85,22 @@ fn arrange(mut project: Project) -> Project {
     let total: i64 = CUTS.iter().map(|(a, b)| b - a).sum();
     let source = Node::new(SEQUENCE_KIND, SEQUENCE_KIND_VERSION)
         .with_param(SEQUENCE_PARAM, ParamValue::Text("s1".into()));
-    project.compositions.push(Composition {
-        id: Id::new("main"),
-        width: WIDTH,
-        height: HEIGHT,
-        fps: Rational::new(FPS_U32, 1).unwrap(),
-        duration: secs(total),
-        layers: vec![Layer::new("l1", source, secs(0), secs(0), secs(total))],
-        markers: Vec::new(),
-        mixer: None,
-    });
+    project.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            WIDTH,
+            HEIGHT,
+            Rational::new(FPS_U32, 1).unwrap(),
+            secs(total),
+        )
+        .with_layers(vec![Layer::new(
+            "l1",
+            source,
+            secs(0),
+            secs(0),
+            secs(total),
+        )]),
+    );
     project
 }
 

@@ -137,16 +137,9 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     let mut project = Project::new();
     project.assets = assets;
     project.compositions = std::mem::take(&mut ctx.nested);
-    project.compositions.push(Composition {
-        id: Id::new(MAIN_ID),
-        width,
-        height,
-        fps,
-        duration,
-        layers,
-        markers: Vec::new(),
-        mixer: None,
-    });
+    project
+        .compositions
+        .push(Composition::new(Id::new(MAIN_ID), width, height, fps, duration).with_layers(layers));
     project
         .render_targets
         .push(render_target(&out, [width, height], fps, render_output));

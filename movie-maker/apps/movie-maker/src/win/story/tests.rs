@@ -233,16 +233,16 @@ fn 素材の時刻は_sequence_のカットの位置に変わる() {
             cuts: vec![cut("k1", 10, 14), cut("k2", 30, 33)],
             origin: None,
         });
-        p.compositions.push(mm_doc::Composition {
-            mixer: None,
-            id: Id::new("main"),
-            width: 320,
-            height: 180,
-            fps: mm_types::Rational::integer(30),
-            duration: secs(60),
-            layers: vec![sequence_layer("s1")],
-            markers: Vec::new(),
-        });
+        p.compositions.push(
+            mm_doc::Composition::new(
+                Id::new("main"),
+                320,
+                180,
+                mm_types::Rational::integer(30),
+                secs(60),
+            )
+            .with_layers(vec![sequence_layer("s1")]),
+        );
     });
     assert_eq!(story.timeline_time(ASSET, 31.0).unwrap(), Some(5.0));
     assert_eq!(story.timeline_time(ASSET, 10.0).unwrap(), Some(0.0));
@@ -264,16 +264,16 @@ fn 撮影素材のレイヤーでも素材の時刻が再生位置に変わる()
             secs(10),
             secs(20),
         );
-        p.compositions.push(mm_doc::Composition {
-            mixer: None,
-            id: Id::new("main"),
-            width: 320,
-            height: 180,
-            fps: mm_types::Rational::integer(30),
-            duration: secs(30),
-            layers: vec![layer],
-            markers: Vec::new(),
-        });
+        p.compositions.push(
+            mm_doc::Composition::new(
+                Id::new("main"),
+                320,
+                180,
+                mm_types::Rational::integer(30),
+                secs(30),
+            )
+            .with_layers(vec![layer]),
+        );
     });
     assert_eq!(story.timeline_time(ASSET, 13.0).unwrap(), Some(5.0));
     assert_eq!(story.timeline_time(ASSET, 20.0).unwrap(), None);
