@@ -1,0 +1,31 @@
+{
+  "name": "episode",
+  "title": "回の雛形",
+  "description": "作曲Vlog の 1 回分。本編（main、1920x1080）とショート（short、1080x1920）のコンポジション、YouTube 向けのレンダーターゲット（-14 LUFS、チャプターつき）。空のプロジェクトに当てる。チャプターは section が 0 秒の節から置く",
+  "params": {
+    "n": {"type": "number", "description": "回の番号（ep04 なら 4）"},
+    "duration": {"type": "time", "default": "900", "description": "本編のコンポジションの長さ（秒）。並べた後に sequence に合わせて直す"},
+    "short_duration": {"type": "time", "default": "60", "description": "ショートのコンポジションの長さ（秒）"}
+  },
+  "example": {"n": "4"},
+  "steps": [
+    {"op": {"op": "addComposition", "composition": {
+      "id": "main", "width": "{{canvas.width}}", "height": "{{canvas.height}}",
+      "fps": {"num": "{{canvas.fps}}", "den": 1}, "duration": "{{duration}}", "layers": [], "markers": []
+    }}},
+    {"op": {"op": "addComposition", "composition": {
+      "id": "short", "width": "{{short.width}}", "height": "{{short.height}}",
+      "fps": {"num": "{{short.fps}}", "den": 1}, "duration": "{{short_duration}}", "layers": [], "markers": []
+    }}},
+    {"op": {"op": "addRenderTarget", "target": {
+      "id": "main", "composition": "main", "width": "{{canvas.width}}", "height": "{{canvas.height}}",
+      "fps": {"num": "{{canvas.fps}}", "den": 1}, "codec": "h264", "output_path": "render/ep{{n}}.mp4",
+      "loudness_lufs": -14, "delivery": {"chapters": true}
+    }}},
+    {"op": {"op": "addRenderTarget", "target": {
+      "id": "short", "composition": "short", "width": "{{short.width}}", "height": "{{short.height}}",
+      "fps": {"num": "{{short.fps}}", "den": 1}, "codec": "h264", "output_path": "render/ep{{n}}-short.mp4",
+      "loudness_lufs": -14
+    }}}
+  ]
+}

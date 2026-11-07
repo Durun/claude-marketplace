@@ -7,7 +7,7 @@
 use std::process::{Command, ExitCode};
 
 /// 期待画像のテストの置き場所（クレート、テストの binary の名前）。
-const GOLDEN_TESTS: &[(&str, &str)] = &[("mm-render", "golden")];
+const GOLDEN_TESTS: &[(&str, &str)] = &[("mm-pack", "golden"), ("mm-render", "golden")];
 /// 更新モードにする環境変数。`mm_testkit::golden::UPDATE_ENV` と同じ。
 const UPDATE_ENV: &str = "MM_GOLDEN_UPDATE";
 /// バックエンドの確認の環境変数。`mm_testkit::golden::BACKEND_ENV` と同じ。
