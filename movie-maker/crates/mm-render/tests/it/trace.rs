@@ -28,16 +28,16 @@ fn project() -> Project {
         RationalTime::seconds(2),
     );
     let mut p = Project::new();
-    p.compositions.push(Composition {
-        mixer: None,
-        id: Id::new("main"),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers: vec![layer],
-        markers: Vec::new(),
-    });
+    p.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            SIZE.width,
+            SIZE.height,
+            Rational::integer(30),
+            RationalTime::seconds(2),
+        )
+        .with_layers(vec![layer]),
+    );
     p
 }
 

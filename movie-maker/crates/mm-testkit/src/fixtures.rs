@@ -73,16 +73,16 @@ pub fn vertical_project(
         fps: Some(media.fps),
         timebase_offset: RationalTime::ZERO,
     });
-    project.compositions.push(Composition {
-        mixer: None,
-        id: comp_id.clone(),
-        width: media.size.width,
-        height: media.size.height,
-        fps: media.fps,
-        duration,
-        layers: vec![footage, text],
-        markers: Vec::new(),
-    });
+    project.compositions.push(
+        Composition::new(
+            comp_id.clone(),
+            media.size.width,
+            media.size.height,
+            media.fps,
+            duration,
+        )
+        .with_layers(vec![footage, text]),
+    );
     project.render_targets.push(RenderTarget {
         id: target_id.clone(),
         composition: comp_id.clone(),

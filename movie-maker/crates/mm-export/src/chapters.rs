@@ -98,15 +98,15 @@ mod tests {
     use mm_types::{Id, Rational};
 
     fn comp(markers: &[(i64, &str)]) -> Composition {
-        Composition {
-            mixer: None,
-            id: Id::new("c"),
-            width: 16,
-            height: 9,
-            fps: Rational::integer(30),
-            duration: RationalTime::seconds(100),
-            layers: Vec::new(),
-            markers: markers
+        Composition::new(
+            Id::new("c"),
+            16,
+            9,
+            Rational::integer(30),
+            RationalTime::seconds(100),
+        )
+        .with_markers(
+            markers
                 .iter()
                 .enumerate()
                 .map(|(i, (s, name))| Marker {
@@ -116,7 +116,7 @@ mod tests {
                     name: (*name).into(),
                 })
                 .collect(),
-        }
+        )
     }
 
     fn whole(end: i64) -> TimeRange {

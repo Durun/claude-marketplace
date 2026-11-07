@@ -198,16 +198,8 @@ mod tests {
         let node =
             Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s".into()));
         let layer = Layer::new("l", node, RationalTime::ZERO, RationalTime::ZERO, t(10, 1));
-        let comp = Composition {
-            mixer: None,
-            id: Id::new("c"),
-            width: 16,
-            height: 9,
-            fps: Rational::integer(30),
-            duration: t(10, 1),
-            layers: vec![layer],
-            markers: Vec::new(),
-        };
+        let comp = Composition::new(Id::new("c"), 16, 9, Rational::integer(30), t(10, 1))
+            .with_layers(vec![layer]);
         (p, comp)
     }
 

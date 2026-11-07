@@ -132,16 +132,16 @@ fn foreign_composition(ctx: &mut Ctx, seq: &str, st: &State) -> Result<Option<Co
         RationalTime::ZERO,
         st.head,
     );
-    Ok(Some(Composition {
-        mixer: None,
-        id: Id::new(comp_id),
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        fps,
-        duration: st.head,
-        layers: vec![layer],
-        markers: Vec::new(),
-    }))
+    Ok(Some(
+        Composition::new(
+            Id::new(comp_id),
+            DEFAULT_WIDTH,
+            DEFAULT_HEIGHT,
+            fps,
+            st.head,
+        )
+        .with_layers(vec![layer]),
+    ))
 }
 
 /// トラックの時間軸のマーカーを、コンポジションの時刻の厳密な昇順に並べる。同じ時刻は後ろへずらす。

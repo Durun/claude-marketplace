@@ -28,16 +28,9 @@ pub fn cut(id: &str, in_s: i64, out_s: i64, speed: (u32, u32)) -> Cut {
 }
 
 pub fn comp(id: &str, layers: Vec<Layer>, markers: Vec<Marker>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: 320,
-        height: 180,
-        fps: Rational::integer(30),
-        duration: secs(10),
-        layers,
-        markers,
-    }
+    Composition::new(Id::new(id), 320, 180, Rational::integer(30), secs(10))
+        .with_layers(layers)
+        .with_markers(markers)
 }
 
 pub fn marker(id: &str, time: i64) -> Marker {

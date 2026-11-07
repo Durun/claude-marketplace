@@ -89,16 +89,14 @@ fn number(node: Node, name: &str, v: f64) -> Node {
 }
 
 fn comp(id: &str, size: Size, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: size.width,
-        height: size.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        size.width,
+        size.height,
+        Rational::integer(30),
+        RationalTime::seconds(2),
+    )
+    .with_layers(layers)
 }
 
 /// フィクスチャの素材 `clip` を持つプロジェクト。

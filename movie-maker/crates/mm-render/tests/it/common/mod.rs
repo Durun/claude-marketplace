@@ -78,16 +78,14 @@ pub fn effect(id: &str, node: Node) -> Effect {
 }
 
 pub fn comp(id: &str, size: Size, len: i64, layers: Vec<Layer>) -> Composition {
-    Composition {
-        mixer: None,
-        id: Id::new(id),
-        width: size.width,
-        height: size.height,
-        fps: Rational::integer(30),
-        duration: seconds(len),
-        layers,
-        markers: Vec::new(),
-    }
+    Composition::new(
+        Id::new(id),
+        size.width,
+        size.height,
+        Rational::integer(30),
+        seconds(len),
+    )
+    .with_layers(layers)
 }
 
 pub fn project(comps: Vec<Composition>, sequences: Vec<Sequence>) -> Project {
