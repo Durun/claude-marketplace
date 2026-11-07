@@ -4,12 +4,24 @@
 
 | ジョブ | 環境 | いつ | 内容 |
 |---|---|---|---|
-| `check` | windows-latest | PR、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない）。`fixtures/golden/warp/` があれば、WARP で期待画像のテストを必須で回す手順が続く |
-| `ffmpeg` | windows-latest | PR、main、手動 | BtbN の FFmpeg 9.0 の shared ビルドを展開し、feature `ffmpeg` などを入れた clippy とテスト、`mm render fixtures/projects/stage0/project.json` の書き出し。LLVM は runner のものを使い、無ければ choco で入れる。手順の元は [mm-decode-ffmpeg の README](../crates/mm-decode-ffmpeg/README.md) |
+| `check` | windows-latest | PR、main、手動 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（main と手動は `--include-ignored` を付け、通しの試験も回す）。外の SDK（FFmpeg、OCIO、CEF）無しの既定の設定。GPU は無いので GPU のテストはスキップされる（`MM_REQUIRE_GPU` は付けない）。`fixtures/golden/warp/` があれば、WARP で期待画像のテストを必須で回す手順が続く |
+| `ffmpeg` | windows-latest | PR、main、手動 | BtbN の FFmpeg 9.0 の shared ビルドを展開し、feature `ffmpeg` などを入れた clippy とテスト（feature で中身が変わるクレートと `mm-ingest` だけ。main と手動は通しの試験も回す）、`mm render fixtures/projects/stage0/project.json` の書き出し。LLVM は runner のものを使い、無ければ choco で入れる。手順の元は [mm-decode-ffmpeg の README](../crates/mm-decode-ffmpeg/README.md) |
 | `semver` | ubuntu-latest | PR のみ | `cargo-semver-checks` で `crates/mm-*-api` の全部を PR の基点（`origin/<base>`）と比べる |
 | `ui` | ubuntu-latest | `movie-maker/ui/**` か `crates/mm-ops/schema/**` を変えた PR、main、手動 | Node 24 と pnpm 12（pnpm のキャッシュ）。`pnpm install --frozen-lockfile` のあと `gen:check`（コミット済みの `generated/ops.ts` が `ops.json` と合うか）、`build`、`typecheck`、`lint`、`test`。PR で `ui/` に差が無ければ、ジョブは走るが各手順をスキップする |
-| `perf-gate` | windows-latest | PR のみ | 性能の回帰のゲート。基点と PR の `mm` を作り、`scripts/perf-gate.sh` で `mm perf run cpu` と、WARP の `playback`・`scrub` を交互に回して比べる。下の「性能の回帰のゲート」 |
+| `perf-gate` | windows-latest | PR のみ（docs、ui、テストだけの PR は測らず成功で終わる） | 性能の回帰のゲート。基点と PR の `mm` を作り、`scripts/perf-gate.sh` で `mm perf run cpu` と、WARP の `playback`・`scrub` を交互に回して比べる。下の「性能の回帰のゲート」 |
 | `perf-record` | windows-latest | main、夜間 | `mm perf run cpu` を 10 回測り、結果を artifact（90 日）に残し、予算を超えた項目を issue にする。`issues: write` を持つのはこのジョブだけ |
+
+## PR と main の違い
+
+PR は速く返すことを優先し、1 本が 30 秒を超える通しの試験を `#[ignore = "通しの試験。main への push と手動実行で走らせる"]` で外す。main への push と手動の起動は `-- --include-ignored` で全部を回す。測定用の `#[ignore]`（`scale` の 2 本。release で手動）は `--skip` で除く。
+
+| 項目 | PR | main の push、手動 |
+|---|---|---|
+| 通しの試験（`stage3_e2e`、`stage4_e2e`、`captions_loudness`、`render` の 2 レンダーターゲット、`mm` の kill の試験、`mm-store` の kill の試験 2 本） | 回さない | 回す（`check` と `ffmpeg`） |
+| `ffmpeg` ジョブのテスト | feature で中身が変わるクレートと `mm-ingest` だけ。ほかは `check` が回す | 同じ |
+| `perf-gate` | 性能に関わるファイルを変えたときだけ | なし（`perf-record` が測る） |
+
+手元で全部を回すときは `cargo test --workspace -- --include-ignored --skip 操作_10_万件の大きさ --skip 一万語の素材`。
 
 ## API クレートのバージョンの検査
 

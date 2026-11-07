@@ -225,6 +225,7 @@ fn work_root(keep: &tempfile::TempDir) -> PathBuf {
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 長い素材から話題を切り出して並べ_言い淀みを抜いて書き出せる() {
     let tmp = tempfile::tempdir().unwrap();
     let env = Env::new(work_root(&tmp));

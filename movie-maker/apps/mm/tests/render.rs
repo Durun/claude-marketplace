@@ -197,6 +197,7 @@ fn mm_stdout(args: &[&str]) -> String {
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn sequence_を_2_つのレンダーターゲットで書き出して_ffprobe_で確かめる() {
     let dir = tempfile::tempdir().unwrap();
     let project = stage3_project(dir.path());

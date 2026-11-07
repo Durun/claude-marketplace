@@ -25,6 +25,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # PR で外した通しの試験（#[ignore]）を main の push と手動で走らせる引数。測定用の 2 本は release で手動に回すので除く。
+  MAIN_ONLY_ARGS: --include-ignored --skip 操作_10_万件の大きさ --skip 一万語の素材
 
 defaults:
   run:
@@ -44,7 +46,13 @@ jobs:
           workspaces: movie-maker
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - name: テスト
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          args=""
+          if [ "$EVENT" != "pull_request" ]; then args="$MAIN_ONLY_ARGS"; fi
+          cargo test --workspace -- $args
       # runner の GPU は WARP（D3D12 のソフトウェアの GPU）だけ。期待画像の warp 版があるときは、WARP で描いて
       # 必ず比べる（上の cargo test は版が無いとスキップするため）。無ければこの手順を飛ばす。
       - name: 期待画像（WARP）
@@ -63,6 +71,10 @@ jobs:
     env:
       FFMPEG_ZIP: ffmpeg-n9.0-latest-win64-gpl-shared-9.0
       FEATURES: mm-decode-ffmpeg/ffmpeg,mm-encode-ffmpeg/ffmpeg,mm-encode-nvenc/ffmpeg,mm-runtime/ffmpeg,mm/ffmpeg,mm-decode-d3d12va/d3d12va,mm-decode-cuvid/cuvid
+      # feature で中身が変わるクレートと、PATH の ffmpeg を使う mm-ingest だけ。残りは check と同じ結果なので回さない。
+      PACKAGES: >-
+        -p mm-decode-ffmpeg -p mm-decode-ffmpeg-core -p mm-decode-hw -p mm-decode-d3d12va -p mm-decode-cuvid
+        -p mm-encode-ffmpeg -p mm-encode-ffmpeg-core -p mm-encode-nvenc -p mm-runtime -p mm -p mm-ingest
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2.7.8
@@ -82,8 +94,14 @@ jobs:
             choco install llvm -y --no-progress
           fi
           echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
-      - run: cargo clippy --workspace --all-targets --features "$FEATURES" -- -D warnings
-      - run: cargo test --workspace --features "$FEATURES"
+      - run: cargo clippy $PACKAGES --all-targets --features "$FEATURES" -- -D warnings
+      - name: テスト
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          args=""
+          if [ "$EVENT" != "pull_request" ]; then args="$MAIN_ONLY_ARGS"; fi
+          cargo test $PACKAGES --features "$FEATURES" -- $args
       - run: cargo run -p mm --features ffmpeg -- render fixtures/projects/stage0/project.json -o target/stage0-check.mp4
 
   # 口（crates/mm-*-api）の破壊的変更を、PR の基点と比べて見つける。破壊的変更には版の繰り上げが要る。
@@ -166,21 +184,41 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      PERF_IRRELEVANT: '^movie-maker/(docs/|ui/|spikes/|tools/|xtask/|apps/movie-maker/|crates/(mm-ui-[^/]*|mm-host-[^/]*|mm-serve)/|.*/tests/|.*\.md$)'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: Swatinem/rust-cache@v2.7.8
+      # 描画・書き出し・復号と、cpu の場面が測る操作と保存に関わらない変更（docs、ui、テストだけなど）では測らない。
+      # ジョブ自体は成功で終わるので、必須のチェックとして扱える。
+      - name: 性能に関わる変更があるか
+        id: changed
+        working-directory: .
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          relevant="$(git diff --name-only "$BASE...HEAD" -- movie-maker .github/workflows/movie-maker.yml | grep -vE "$PERF_IRRELEVANT" || true)"
+          if [ -n "$relevant" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "性能に関わる変更が無いので測らない"
+          fi
+      - if: steps.changed.outputs.run == 'true'
+        uses: Swatinem/rust-cache@v2.7.8
         with:
           workspaces: movie-maker
           key: perf
       # PR を先に作る。同じ target を基点と共有すると、後から作る側の古い mtime の元のファイルを cargo が
       # 新しいと見なさず、先に作った側のクレートを使い回す。基点の worktree は後で作るので mtime が新しく、作り直される。
       - name: PR の mm を作る
+        if: steps.changed.outputs.run == 'true'
         run: |
           cargo build --release -p mm
           cp target/release/mm.exe "$RUNNER_TEMP/mm-head.exe"
       - name: 基点の mm を作る
+        if: steps.changed.outputs.run == 'true'
         env:
           BASE: origin/${{ github.base_ref }}
         run: |
@@ -188,9 +226,10 @@ jobs:
           (cd "$RUNNER_TEMP/base/movie-maker" && cargo build --release -p mm --target-dir "$GITHUB_WORKSPACE/movie-maker/target")
           cp target/release/mm.exe "$RUNNER_TEMP/mm-base.exe"
       - name: 比べる
+        if: steps.changed.outputs.run == 'true'
         run: sh scripts/perf-gate.sh "$RUNNER_TEMP/mm-base.exe" "$RUNNER_TEMP/mm-head.exe" "$RUNNER_TEMP/perf"
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.changed.outputs.run == 'true'
         with:
           name: perf-gate
           path: ${{ runner.temp }}/perf
