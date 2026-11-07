@@ -69,3 +69,14 @@ export {
 } from "./story.ts";
 export { DOC_CHANGED_EVENT, onDocChanged, type DocChanged } from "./docChanged.ts";
 export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";
+export {
+  createIpcReviewApi,
+  PROPOSALS_CHANGED_EVENT,
+  type ApproveResult,
+  type Proposal,
+  type ProposalOp,
+  type ProposalScope,
+  type ProposalsChanged,
+  type ProposalState,
+  type ReviewApi,
+} from "./review.ts";
