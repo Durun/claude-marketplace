@@ -4,6 +4,7 @@
 |---|---|---|
 | 提案のプレビュー | 保留中の提案をプロジェクトのデータの写しに適用し、Program に描くこと。保存したデータと編集のキューは変えない。Review のタブが隠れている間と、提案が決まったときは元のフレームに戻す | `review_preview`、`PreviewSlot`、`review::previewed` |
 | 提案を適用したフレーム / 元のフレーム | 提案のプレビューで Program に出すフレーム / 提案を適用しないフレーム。Review の `Proposed` / `Original` | `ReviewApi.preview` |
+| キーフレームナビゲーター | `glossary.d/keyframe-graph.md` の「キーフレームの列」を AE と同じ名前で呼び直したもの。クリーンアップでこちらを採り、「キーフレームの列」の行を消す | `KeyframeNav` |
 | 再生位置の通知（DOM の） | `web/transport.js` が時計の通知ごとに投げる DOM のイベント。Inspector と Graph が受ける | `mm:playhead`、`PLAYHEAD_EVENT` |
 | シークの依頼（DOM の） | Inspector の前後のキーへの移動が投げる DOM のイベント。`web/transport.js` が受けてシークする | `mm:seek`、`SEEK_EVENT` |
 | 読み出し（メーターの） | マスターのメーターの数字（トゥルーピーク、短期・統合ラウドネス） | `Readout`、`ReadoutKey` |
