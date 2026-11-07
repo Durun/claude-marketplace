@@ -19,7 +19,7 @@
 | Claude の操作経路 | HTTP と MCP の操作が CLI と同じ結果。プロジェクトのデータを直接開く経路とアプリに頼む経路で同じ。拒否する操作（ロック、費用のかかる操作）が拒否される | `mm-serve/tests/` | `httpmock`（同期と非同期の両方がある）[67]、`assert_cmd` | 保存ごと |
 | UI の計算 | wgpu サーフェス上の UI の計算（端のつまみ、範囲、スナップ、刃）は純関数。WebView の画面の計算（Story の選択、Review の範囲） | `mm-ui-layout` の `#[cfg(test)]`、`ui/panels/*/test/` | `cargo test`、proptest。WebView は `node --test` と `@testing-library/preact`（DOM は jsdom。happy-dom は `getByRole` が失敗する報告がある）[68] | 保存ごと |
 | UI（WebView と wgpu） | 主な流れを実際のウィンドウで通す。素材を足す → Story で選ぶ → Timeline に置く → 再生 → 書き出し。再生中に WebView を更新してもサーフェスがクラッシュしない。キーの振り分け（J/K/L がどちらにフォーカスがあっても効く） | `apps/movie-maker/tests/e2e/` | WebView2 は Playwright で CDP から叩く（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>` で起動し `chromium.connectOverCDP`。並列は worker ごとにポートと `WEBVIEW2_USER_DATA_FOLDER` を分ける）[61]。wgpu のサーフェスは Rust の側で入力を注入する関数（`mm-ui-wgpu` の `inject_input`）を持ち、サーフェスの画像は期待画像の層で比べる。tauri-driver + msedgedriver は WebView2 のバージョンと合わせる手間があるので採らない [61] | 夜間。`ui/` か `apps/` を変えた PR |
-| 実データ | 終わった回（ep03）を再現して、前の書き出しと比べる（フレームの差、音の差、長さ） | `fixtures/ep03/`（素材は外。下の「フィクスチャの素材」） | `mm render` と `image-compare` | 夜間。段階 5 から |
+| 実データ | 終わった回（ep03）を再現して、前の書き出しと比べる（フレームの差、音の差、長さ）。geneva のタイムライン（`timeline.json`）を `mm geneva` で取り込み、`mm render` で書き出す。長さはフレーム数の一致、絵は区間ごとの SSIM の平均 0.97 以上・1 フレームの最小 0.85 以上・PSNR の平均 33 dB 以上、音は倍率を合わせた後の SNR 15 dB 以上・50 ms ごとの大きさの差の平均 0.5 dB 以下・ずれ 2 ms 以下、全体の書き出しはラウドネスの差 1 dB 以下。閾値の根拠はテストの定数のコメント。結果は下の[ep03 の再現の結果](#ep03-の再現の結果) | `apps/mm/tests/it/ep03.rs`、`fixtures/ep03/expected.json`（入力と前の書き出しの SHA-256、フレーム数。素材は外。下の「フィクスチャの素材」） | `mm geneva`、`mm render`、FFmpeg の `ssim` と `psnr` のフィルター、音は PCM に戻して数える。`MM_EP03_DIR` が無ければ飛ばす。既定は 6 か所の 4 秒、`MM_EP03_FULL=1` で全体 | 夜間。段階 5 から |
 | 性能 | 予算（[計装の予算の表](17-instrumentation.md#予算の表)）を超えたら失敗させる。測るのは、描画の 1 フレーム、デコードとシーク、操作の適用、キャッシュのヒット率、書き出しの fps、起動 | `benches/`（ワークスペースの別クレート `mm-bench`） | divan（`#[divan::bench]` と `args`）[60] で基礎の層、通しは `mm perf run`（[計装](17-instrumentation.md#claude-が読む)）。比較は `mm perf compare`。criterion にも `--baseline` の比較があるが [60]、通しの数字は同じツール（`mm perf`）で取ってそろえる | push 前（基礎）、夜間（通し）、自動の改善の回の前後 |
 | 長時間の耐久 | 8 時間の再生とスクラブのくり返し、書き出しのくり返し、ホストのクラッシュと復帰のくり返しで、メモリと VRAM が増え続けない、ハンドルが漏れない、キャッシュの大きさが上限に収まる | `mm-testkit` の `soak` の実行ファイル | `mm perf soak --hours 8`。メモリは[計装](17-instrumentation.md)の数（RSS、VRAM、ハンドル数）を 1 分おきに記録し、最初の 1 時間と最後の 1 時間の中央値を比べる。ヒープの中身を追うときは `dhat` のテストモード（`Profiler::builder().testing()`、release で、同時に 1 つ）[64] | 夜間（週 1 で 8 時間、ほかの夜は 1 時間） |
 | ファズ | `versions/` の JSON（`mm import`）、操作の引数の JSON、壊した `project.mmdb`、付属ファイルの JSON、OTIO の読み、字幕（SRT、VTT）、シェーダーの文字列、デコーダーに渡す壊れた動画でクラッシュしない | `fuzz/`（`cargo fuzz` の目標） | cargo-fuzz + `arbitrary` [59]。cargo-fuzz の README は Unix 系だけと書くが、rust-fuzz の book に Windows（MSVC の ASan）の章がある [59]。CI では Linux で回し、手元の Windows は試して動けば使う | 夜間（各目標 10 分）。壊れた入力は `fuzz/corpus/` に残し、見つけたものは単体テストに加える |
@@ -68,7 +68,39 @@
 | `fixtures/projects/` | フィクスチャのプロジェクト（縦の 1 本、入れ子のコンポジション、ショートの参照、字幕とチャプター、OFX、`web.cef`）。自動の改善の回が向く先。性能の `mm perf run` のシナリオもここ | `mm` で作り、JSON を入れる |
 | `fixtures/golden/<バックエンド>/` | 期待画像（320x180 の PNG、sRGB の 8 bit、灰色の市松の上に重ねたもの）。バックエンドは `warp`、`rtx`（NVIDIA。D3D12 でも Vulkan でも同じ名前）、`lavapipe`。アダプターから `mm_testkit::golden::backend_name` が決める | `cargo xtask golden-update --backend rtx`。更新したら PNG を目で見て承認してからコミットする。RTX の期待画像は手元で更新する。フォルダーが無いバックエンドのテストはスキップする（`MM_REQUIRE_GOLDEN` で失敗にできる） |
 | `fixtures/audio/` | EBU の loudness test set（利用条件がある。リポジトリに入れず、取り方を書く）[69]、ミキサーのテスト用の信号 | ダウンロード。テスト用の信号は `mm-testkit` が生成 |
-| `fixtures/ep03/` | ep03 のプロジェクトのデータと、前の書き出しのハッシュ。素材は `D:/dev/DTM_Vlog/ep03/` を指す | 段階 5 で OTIO から変換する |
+| `fixtures/ep03/` | `expected.json`: ep03 の geneva のタイムラインと前の書き出し（`render/ep03_final.mp4`）の SHA-256、フレーム数、fps。素材は `D:/dev/DTM_Vlog/ep03/`（`MM_EP03_DIR`）にあり、プロジェクトのデータ（約 9 MB）はテストのたびに `mm geneva` で作る | 段階 5。OTIO は変形、切り抜き、キーフレーム、音量を持てないので、geneva のタイムラインから直に変換する |
+
+## ep03 の再現の結果
+
+2026-11-07 に測った（[進め方](15-roadmap.md)の段階 5 の終わりの条件）。試験は上の[層の一覧](#層の一覧)の「実データ」。
+
+- 入力: ep03（作曲Vlog #3）の最終の書き出しは `D:/dev/DTM_Vlog/ep03/render/ep03_final.mp4`（1080p、17,349 フレーム、578.3 秒）。`ep03_v2/` と `ep03_v3/` は粗編集の控えで、素材が無く組み立て直せない。`edit.yaml` は DTM_Vlog の `build_ep.py` が文字（Chrome で描いた PNG）、トランジション（WebGL で書き出した動画）、声の処理と一緒に geneva のタイムライン（`timeline.json`）にする。movie-maker はこのタイムラインから取り込む（`mm geneva`）。`edit.yaml` の書式そのもの（素材プールの ID、詰め方、字幕の文言）は取り込まない。`timeline.json` は書き出しの 67 分後に字幕のために作り直されているが、フレーム数は書き出しと一致する。
+- 取り込み: 素材 6,777（収録の mkv 14、音 19、PNG 6,743、ショートの mp4 1）、レイヤー 7,501、切り抜きの入れ子のコンポジション 150。OTIO は変形、切り抜き、キーフレーム、音量を持てないので経由しない。
+- 結果（4 秒の区間を 6 か所）: 長さはフレーム数で一致。絵は区間ごとの SSIM の平均 0.982〜0.993（前の書き出しを符号化し直しただけで 0.995）、1 フレームの最小 0.880、PSNR の平均 36.7〜41.4 dB。音は倍率を合わせた後の SNR 18〜28 dB、50 ms ごとの大きさの差の平均 0.03〜0.16 dB、ずれ 0 ms。
+- 全体（通しで書き出して比べた）: 書き出しに約 10 分（約 29.5 fps）、メモリは約 4.2 GB。長さは 17,349 フレームで一致。SSIM の平均 0.988、1 フレームの最小 0.818（373.3 秒。60 fps の収録のスクロール中の画面）、0.9 を下回るフレームは 66（26 か所）。PSNR の平均 37.6 dB。音はずれ 0、倍率の差 -0.05 dB、SNR 25.6 dB、50 ms ごとの大きさの差の平均 0.08 dB（95 パーセンタイル 0.28 dB）。ラウドネスはどちらも -14.1 LUFS。
+
+足りなかった機能（足したもの）:
+
+| 不足 | 症状 | 足したもの |
+|---|---|---|
+| 映像の無い素材を開けない | 声の FLAC、DAW の M4A、曲の WAV で書き出しが止まる | `mm-decode-ffmpeg` の音だけのデコーダー |
+| AAC の前置きを捨てた分だけ時刻を進めない | 最初のパケットの途中まで捨てる M4A（ep03 の DAW の音）で音全体が 21 ms 早い | 音のデコーダーにパケットの時間軸を渡す |
+| 音量のキーフレームを書き出しの 10 秒の区間の頭で 1 回だけ評価する | フェード（658 か所）と音量の動きが消え、フェードアウトの所で 2〜20 dB 大きい | キーフレームのある音量は 64 サンプルごとにサンプルに掛ける（`mm-render` の `audio_gain.rs`） |
+| 素材を素材の画素のまま置けない（常に画布に収める） | 文字の PNG が画面いっぱいに拡大される | `footage` と `image` の `fit: none` |
+| 素材のデコーダーを閉じない | 一度しか使わない PNG が 6,743 あり、メモリが増え続ける | 300 フレーム使わなかったデコーダーを閉じる |
+
+足りない機能（大きいので残す）:
+
+| 不足 | 影響 | 今の代わり |
+|---|---|---|
+| マスクを描かない（型だけ） | 角丸のワイプ 10 クリップの角が四角い | なし（`mm geneva` の `gaps` に `mask` で出る） |
+| 切り抜き（crop）が無い | ワイプと寄せの映像 150 クリップ | 切り抜いた大きさの入れ子のコンポジション |
+| フェードが dB の直線だけ | 振幅の直線のフェードを表せない | 8 区間の折れ線で近似 |
+| `mm render --range` がマイクロ秒に丸める | 1/30 秒の境を小数で渡すと 1 フレーム前から始まる | 試験は区間の始まりを 0.1 秒の倍数にする |
+
+違いとして残すもの: 60 fps の OBS の収録（mkv の ms 単位の丸め）は、movie-maker が CFR の格子で、geneva が PTS でフレームを選ぶので、3 フレームに 1 回 1/60 秒違うフレームになる〔推。SSIM が 3 フレームおきに下がる形から〕。
+
+調べきれていない違い: 通しの書き出しの左チャンネルの 415.763 秒に、3 サンプルのクリック（+4.6 dBFS）が 1 つある。前の書き出しには無い。400〜420 秒と 410〜420 秒だけを書き出すと出ないので、通しで読み進めたときだけ起きる。鳴っているのは声の FLAC と DAW の M4A（素材の 2841.7 秒）。
 
 ## GPU の要るテストの扱い
 

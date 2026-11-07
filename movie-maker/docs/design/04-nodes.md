@@ -31,7 +31,7 @@ pub trait NodeKind: Send + Sync {
 
 | 種類 | 内容 | 時期 |
 |---|---|---|
-| `footage`、`audio`、`image`、`solid` | 撮影素材（プレビューはプレビュー動画、書き出しは原本）、音、静止画、単色 | 最初 |
+| `footage`、`audio`、`image`、`solid` | 撮影素材（プレビューはプレビュー動画、書き出しは原本）、音、静止画、単色。`footage` と `image` は `fit` で置き方を選ぶ（`contain` は縦横比を保って画布に収める既定、`none` は素材の画素のまま左上に置く）。映像の無い素材（WAV、FLAC、M4A）の `footage` は絵を描かず音だけ鳴らす | 最初 |
 | `shape`、`svg` | 図形と SVG。ベクターのまま持ち、vello か resvg で描く | 最初 |
 | `composition`、`sequence` | 入れ子とマグネティックシーケンス。`composition` の展開はレンダラーが行う（下の「入れ子」） | 最初 |
 | `text` | 字幕と短い文字。ネイティブの文字の描画（下の「文字の描き方」）。多くの字幕はこれで足りる | 最初 |

@@ -10,6 +10,8 @@ mod cli;
 mod common;
 #[cfg(feature = "ffmpeg")]
 mod cut_words;
+#[cfg(feature = "ffmpeg")]
+mod ep03;
 mod lut_cache;
 #[cfg(feature = "ffmpeg")]
 mod preview_frame;

@@ -195,6 +195,40 @@ fn 半分に縮めると中央だけ塗れる() {
 }
 
 #[test]
+fn fit_が_none_の素材は素材の画素のまま左上に置く() {
+    let Some(ctx) = gpu() else { return };
+    let media = SampleMedia::default();
+    let canvas = Size::new(media.size.width * 2, media.size.height * 2);
+    let footage = |fit: &str| {
+        Node::footage(&Id::new("clip")).with_param("fit", ParamValue::Choice(fit.into()))
+    };
+    let p = project(vec![
+        comp("none", canvas, vec![layer("a", footage("none"))]),
+        comp("contain", canvas, vec![layer("b", footage("contain"))]),
+    ]);
+    let mut r = renderer(&ctx);
+    let none = render_image(&mut r, &p, "none", canvas);
+    assert_eq!(none.pixel(10, 10).a, 1.0, "左上の素材の大きさの中は塗る");
+    assert_eq!(
+        none.pixel(media.size.width + 10, 10).a,
+        0.0,
+        "素材の幅の外は透明"
+    );
+    assert_eq!(
+        none.pixel(10, media.size.height + 10).a,
+        0.0,
+        "素材の高さの外は透明"
+    );
+    let contain = render_image(&mut r, &p, "contain", canvas);
+    assert_eq!(
+        contain.pixel(canvas.width - 10, canvas.height - 10).a,
+        1.0,
+        "収めると画布の全体"
+    );
+    assert!(r.take_errors().is_empty());
+}
+
+#[test]
 fn 位置は右に動かす() {
     let Some(ctx) = gpu() else { return };
     let node = solid(RED).with_param("transform.position", ParamValue::Vec2([32.0, 0.0]));

@@ -49,6 +49,8 @@ mm-decode-api = { workspace = true }
 mm-decode-ffmpeg = { workspace = true }
 # 本編とショートの通しで、カットの配置と素材の時刻を引く。
 mm-eval = { workspace = true }
+# ep03 の再現で、入力と前の書き出しがフィクスチャのものと同じか確かめる。
+sha2 = { workspace = true }
 
 [lints]
 workspace = true
