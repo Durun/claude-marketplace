@@ -1,4 +1,4 @@
-# RFC 0016: Mixer パネルのために足すインターフェース
+# RFC 0017: Mixer パネルのために足すインターフェース
 
 状態: 採用
 
@@ -35,8 +35,8 @@ fn audio_levels(&self) -> Vec<TrackLevel> { Vec::new() }
 pub fn mixer_config(mixer: Option<&CompMixer>, ducking: bool) -> MixerConfig
 ```
 
-`mm-doc`（スキーマ v9）: `Composition.mixer`（`CompMixer { master_db, buses, ducking }`）と `LayerAudio.mute`・`solo`。
-`serde(default)` なので v8 の JSON はミキサーなし、ミュートもソロもなしで読める。
+`mm-doc`（スキーマ v10）: `Composition.mixer`（`CompMixer { master_db, buses, ducking }`）と `LayerAudio.mute`・`solo`。
+`serde(default)` なので v9 の JSON はミキサーなし、ミュートもソロもなしで読める。
 
 ## 影響する実装
 

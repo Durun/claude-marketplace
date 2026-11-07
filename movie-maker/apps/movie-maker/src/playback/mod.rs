@@ -122,6 +122,7 @@ mod tests {
         let options = PlayerOptions {
             no_audio: true,
             config: Some(RuntimeConfig::sample()),
+            store_dir: None,
         };
         let (playback, info) = Playback::spawn(shared.clone(), Arc::new(project), comp, options)
             .expect("再生を始める");
@@ -285,3 +286,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod burn_in_tests;

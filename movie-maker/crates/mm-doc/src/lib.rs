@@ -27,9 +27,10 @@ use mm_types::{
 /// - v8: 本編とショート。カットの上書き（`Cut.overrides`）とショートの元の値（`Cut.origin_base`）、
 ///   sequence のレイヤーの再フレーミングと字幕の置き場所（`Layer.framing`）。v7 のショートのカットは今の元の値を元の値にし、
 ///   参照のショートの元と違う in/out は上書きに、素材・速さ・有効が元と違えばショートごと複製にして上げる。
-/// - v9: ミキサー。コンポジションのバス・マスター・ダッキング（`Composition.mixer`）と、レイヤーの音のミュートとソロ
-///   （`LayerAudio.mute`、`solo`）。v8 からは serde の既定（ミキサーなし、ミュートもソロもなし）で上げる。
-pub const SCHEMA_VERSION: u32 = 9;
+/// - v9: レンダーターゲットの字幕の焼き込み（`delivery.burn_in_captions`）。v8 からは焼き込まない（偽）で上げる。
+/// - v10: ミキサー。コンポジションのバス・マスター・ダッキング（`Composition.mixer`）と、レイヤーの音のミュートとソロ
+///   （`LayerAudio.mute`、`solo`）。v9 からは serde の既定（ミキサーなし、ミュートもソロもなし）で上げる。
+pub const SCHEMA_VERSION: u32 = 10;
 
 mod bins;
 mod delivery;

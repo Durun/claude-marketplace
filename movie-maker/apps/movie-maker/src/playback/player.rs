@@ -1,5 +1,6 @@
 //! 再生スレッドの本体。時計の位置から出すフレームを決め、音を先読みして出力に足す。
 
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
@@ -40,6 +41,8 @@ pub struct PlayerOptions {
     pub no_audio: bool,
     /// 実装の組み合わせ。`None` なら [`runtime_config`]。
     pub config: Option<RuntimeConfig>,
+    /// `project.mmdb` のフォルダー。字幕の焼き込みの文字起こしの単語を読む。JSON のプロジェクトでは `None`。
+    pub store_dir: Option<PathBuf>,
 }
 
 /// 実際の実装の組み合わせ。FFmpeg が切ってあるときは素材をモックのデコーダーで読む。
@@ -105,6 +108,9 @@ pub struct Player {
     undo: Vec<Vec<Op>>,
     /// 取り消した編集の元の操作。`Redo` で後ろから適用する。
     redo: Vec<Vec<Op>>,
+    store_dir: Option<PathBuf>,
+    /// 字幕を焼き込んだプロジェクトのデータ。元の `project` が同じ間は作り直さない。
+    burned: Option<(Arc<Project>, Arc<Project>)>,
 }
 
 impl Player {
@@ -152,6 +158,8 @@ impl Player {
             reverse: None,
             undo: Vec::new(),
             redo: Vec::new(),
+            store_dir: options.store_dir,
+            burned: None,
         };
         Ok((player, info))
     }
@@ -484,7 +492,8 @@ impl Player {
 
     /// 1 フレーム描く。wgpu のレンダラーはリードバックせずにテクスチャで返し、それ以外は CPU の画像にする。
     fn draw(&mut self, time: RationalTime) -> Result<FrameImage> {
-        let (project, comp, size) = (&self.project, &self.comp, self.size);
+        let shown = self.shown_project();
+        let (project, comp, size) = (&*shown, &self.comp, self.size);
         if self.shared.cpu_frames.load(Ordering::SeqCst) || self.engine.gpu_context().is_none() {
             return self
                 .engine
@@ -494,6 +503,29 @@ impl Player {
         self.engine
             .render_frame_texture(project, comp, time, size, Quality::Preview)
             .map(FrameImage::Gpu)
+    }
+
+    /// 映像に描くプロジェクトのデータ。字幕を焼き込むレンダーターゲットがあれば、書き出しと同じ関数で字幕を足したもの。
+    pub(super) fn shown_project(&mut self) -> Arc<Project> {
+        if !mm_export::burn_in_enabled(&self.project, &self.comp) {
+            return self.project.clone();
+        }
+        if let Some((from, shown)) = &self.burned {
+            if Arc::ptr_eq(from, &self.project) {
+                return shown.clone();
+            }
+        }
+        let words = crate::deliver::transcript_words(self.store_dir.as_deref(), &self.project);
+        let shaper = self.engine.services().text_shaper.clone();
+        let shown = match mm_export::burn_in_captions(&self.project, &self.comp, &words, &*shaper) {
+            Ok(p) => Arc::new(p),
+            Err(e) => {
+                tracing::warn!(error = %e, "字幕を焼き込めない。字幕なしで描く");
+                self.project.clone()
+            }
+        };
+        self.burned = Some((self.project.clone(), shown.clone()));
+        shown
     }
 
     /// 音を先読みの長さまで足す。描けなかったチャンクは無音で埋めて時計を止めない。
