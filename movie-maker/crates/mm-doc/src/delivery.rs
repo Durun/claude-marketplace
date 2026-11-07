@@ -30,12 +30,21 @@ pub struct Delivery {
     /// コンポジションのマーカーを MP4 のチャプターにし、YouTube の説明欄用の `<名前>.chapters.txt` を置く。
     #[serde(default)]
     pub chapters: bool,
+    /// 字幕を書き出しの絵に描き込む。文字起こしから作った字幕を text ノードのレイヤーにするので、プレビューと同じ描画になる。
+    /// 置き場所はショートの `setCaption`（無ければ下部中央）。字幕のファイルや mov_text（`subtitles`）とは独立。
+    #[serde(default)]
+    pub burn_in_captions: bool,
     /// トゥルーピークの上限（dBTP）。`None` なら [`DEFAULT_TRUE_PEAK_DBTP`]。ラウドネスの正規化のときだけ効く。
     #[serde(default)]
     pub true_peak_dbtp: Option<f32>,
 }
 
 impl Delivery {
+    /// 文字起こしの単語が要るか（字幕を出すか、絵に焼き込むとき）。
+    pub fn needs_transcript(&self) -> bool {
+        self.subtitles != SubtitleOutput::None || self.burn_in_captions
+    }
+
     /// 上限のトゥルーピーク（dBTP）。
     pub fn ceiling_dbtp(&self) -> f32 {
         self.true_peak_dbtp.unwrap_or(DEFAULT_TRUE_PEAK_DBTP)

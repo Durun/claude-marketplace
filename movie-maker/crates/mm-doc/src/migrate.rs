@@ -45,6 +45,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             5 => v5_to_v6(&mut value),
             6 => {} // v7 の delivery は serde の既定で埋まる
             7 => crate::migrate_shorts::v7_to_v8(&mut value),
+            8 => {} // v9 の delivery.burn_in_captions は serde の既定（偽）で埋まる
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -330,6 +331,23 @@ mod tests {
         assert!(d.chapters);
         assert_eq!(d.ceiling_dbtp(), -1.5);
         assert_eq!(p.compositions[0].markers[0].name, "冒頭");
+        assert_eq!(load(&serde_json::to_string(&p).unwrap()).unwrap(), p);
+    }
+
+    #[test]
+    fn v8_以前の納品の設定は字幕を焼き込まないで_v9_に上がる() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let p = load(&std::fs::read_to_string(dir.join("v7/stage4.json")).unwrap()).unwrap();
+        assert_eq!(p.schema_version, SCHEMA_VERSION);
+        assert!(!p.render_targets[0].delivery.burn_in_captions);
+        assert!(p.render_targets[0].delivery.chapters, "ほかの設定は残る");
+    }
+
+    #[test]
+    fn 凍結した_v9_の字幕の焼き込みが読めて往復する() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
+        let p = load(&std::fs::read_to_string(dir.join("v9/burnin.json")).unwrap()).unwrap();
+        assert!(p.render_targets[0].delivery.burn_in_captions);
         assert_eq!(load(&serde_json::to_string(&p).unwrap()).unwrap(), p);
     }
 
