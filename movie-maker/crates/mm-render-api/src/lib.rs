@@ -18,6 +18,9 @@ use mm_types::{CompositionId, Rational, RationalTime, Result, RgbaImage, Size, T
 
 pub use mm_node_api::Quality as RenderQuality;
 
+mod mix;
+pub use mix::{mixer_config, TrackLevel};
+
 /// 画面上の大きさを丸める段階。キャッシュのキーに入れる。
 pub const SIZE_BUCKETS: [f32; 7] = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
 
@@ -205,8 +208,13 @@ pub trait Renderer: Send {
     ) -> Result<usize> {
         export_range_rgba(self, req, encoder, batch, sink)
     }
-    /// 区間の音を混ぜる。
+    /// 区間の音を混ぜる。コンポジションのミキサーの設定（[`mixer_config`]）と、レイヤーのミュートとソロを効かせる。
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock>;
+    /// 直前の `render_audio` の、要求したコンポジションの直下のレイヤーごとのピーク。Mixer のトラックのメーターが使う。
+    /// 鳴らなかったレイヤーは入らない。測らない実装は空（既定）。
+    fn audio_levels(&self) -> Vec<TrackLevel> {
+        Vec::new()
+    }
     /// プロジェクトのデータのこの範囲が変わった。キャッシュを破棄する。
     fn invalidate(&mut self, composition: &CompositionId, range: TimeRange);
     /// 操作が触った ID（`mm_ops::Touches`。レイヤー、素材、コンポジション）に頼ったキャッシュだけを捨てる。

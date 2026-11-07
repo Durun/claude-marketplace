@@ -123,6 +123,7 @@ fn project(size: Size) -> Project {
     let footage =
         Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
     p.compositions.push(Composition {
+        mixer: None,
         id: Id::new("main"),
         width: size.width,
         height: size.height,

@@ -5,7 +5,9 @@
 
 use std::collections::BTreeMap;
 
-use mm_audio_api::{AudioBlock, LoudnessNormalizer, MixInput, Mixer, MixerConfig, MixerFactory};
+use mm_audio_api::{
+    AudioBlock, LoudnessNormalizer, MasterMeter, MixInput, Mixer, MixerConfig, MixerFactory,
+};
 use mm_types::{MmError, Result};
 
 /// dB を倍率に。
@@ -40,11 +42,18 @@ impl MixerFactory for DspMixerFactory {
             duck_gain: 1.0,
             peak: 0.0,
             hold_left: 0,
+            input_peaks: Vec::new(),
         }))
     }
 
     fn loudness_normalizer(&self) -> Option<Box<dyn LoudnessNormalizer>> {
         Some(Box::new(crate::DspLoudnessNormalizer))
+    }
+
+    fn master_meter(&self, sample_rate: u32, channels: u16) -> Option<Box<dyn MasterMeter>> {
+        crate::DspMasterMeter::new(sample_rate, channels)
+            .ok()
+            .map(|m| Box::new(m) as Box<dyn MasterMeter>)
     }
 }
 
@@ -60,6 +69,8 @@ pub struct DspMixer {
     peak: f32,
     /// `peak` を保持する残りのフレーム数。
     hold_left: usize,
+    /// 直前の `mix` の入力ごとの、音量とパンの後のピーク。
+    input_peaks: Vec<f32>,
 }
 
 /// トリガーの検出値を保持する時間（ms）。50 Hz より低い音の半周期より長く、ゼロ交差をまたぐ。
@@ -88,13 +99,15 @@ impl DspMixer {
     }
 
     /// 入力を役割ごとのバスに足す。役割の順序は `BTreeMap` で固定し、足す順を決定的にする。
+    /// 足しながら入力ごとのピークを `input_peaks` に残す。
     fn sum_buses<'a>(
-        &self,
+        &mut self,
         inputs: &'a [MixInput],
         frames: usize,
     ) -> Result<BTreeMap<&'a str, Vec<f32>>> {
         let ch = self.channels as usize;
         let mut buses: BTreeMap<&str, Vec<f32>> = BTreeMap::new();
+        self.input_peaks.clear();
         for input in inputs {
             self.check(&input.block)?;
             let bus = buses
@@ -103,6 +116,7 @@ impl DspMixer {
             let gain = db_to_gain(input.gain_db);
             let (l, r) = pan_gains(input.pan);
             let n = input.block.frames().min(frames);
+            let mut peak = 0.0f32;
             for i in 0..n {
                 for c in 0..ch {
                     let side = match (ch, c) {
@@ -110,9 +124,12 @@ impl DspMixer {
                         (2, 1) => r,
                         _ => 1.0,
                     };
-                    bus[i * ch + c] += input.block.samples[i * ch + c] * gain * side;
+                    let s = input.block.samples[i * ch + c] * gain * side;
+                    bus[i * ch + c] += s;
+                    peak = peak.max(s.abs());
                 }
             }
+            self.input_peaks.push(peak);
         }
         Ok(buses)
     }
@@ -193,5 +210,9 @@ impl Mixer for DspMixer {
             out.iter_mut().for_each(|s| *s *= master);
         }
         AudioBlock::from_samples(self.sample_rate, self.channels, out)
+    }
+
+    fn input_peaks(&self) -> &[f32] {
+        &self.input_peaks
     }
 }

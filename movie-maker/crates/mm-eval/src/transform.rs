@@ -72,6 +72,22 @@ pub fn evaluate_audio(layer: &Layer, t: RationalTime) -> EvaluatedAudio<'_> {
     }
 }
 
+/// 並びにソロのレイヤーがあるか。ソロはコンポジションの中だけで効く（入れ子の中のソロは親に及ばない）。
+pub fn any_solo(layers: &[Layer]) -> bool {
+    layers
+        .iter()
+        .any(|l| l.audio.as_ref().is_some_and(|a| a.solo))
+}
+
+/// レイヤーの音が鳴るか。ミュートは鳴らさず、ソロのレイヤーがあればソロだけを鳴らす。
+/// プレビューと書き出しが同じ判定を使うので、聞いた音のまま書き出せる。
+pub fn audible(layer: &Layer, any_solo: bool) -> bool {
+    match &layer.audio {
+        None => !any_solo,
+        Some(a) => !a.mute && (!any_solo || a.solo),
+    }
+}
+
 /// レイヤーの不透明度を時刻 `t` で評価する。型が合わなければ 1。
 pub fn evaluate_opacity(layer: &Layer, t: RationalTime) -> f64 {
     eval_param(&layer.opacity, t).as_number().unwrap_or(1.0)
@@ -117,5 +133,43 @@ mod tests {
         };
         let t = evaluate_transform(&doc, RationalTime::seconds(1));
         assert_eq!(t.position, [5.0, 10.0]);
+    }
+
+    fn with_audio(id: &str, mute: bool, solo: bool) -> Layer {
+        let mut l = Layer::new(
+            id,
+            mm_doc::Node::new("solid", 1),
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(1),
+        );
+        l.audio = Some(mm_doc::LayerAudio {
+            role: DEFAULT_AUDIO_ROLE.into(),
+            gain_db: Param::constant(ParamValue::Number(0.0)),
+            pan: Param::constant(ParamValue::Number(0.0)),
+            mute,
+            solo,
+        });
+        l
+    }
+
+    #[test]
+    fn ミュートは鳴らさず_ソロがあればソロだけ鳴らす() {
+        let plain = Layer::new(
+            "plain",
+            mm_doc::Node::new("solid", 1),
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            RationalTime::seconds(1),
+        );
+        let muted = with_audio("m", true, false);
+        let solo = with_audio("s", false, true);
+        let muted_solo = with_audio("ms", true, true);
+        let layers = [plain.clone(), muted.clone(), solo.clone()];
+        assert!(!any_solo(&layers[..2]));
+        assert!(audible(&plain, false) && !audible(&muted, false));
+        assert!(any_solo(&layers));
+        assert!(audible(&solo, true) && !audible(&plain, true));
+        assert!(!audible(&muted_solo, true), "ミュートはソロより強い");
     }
 }

@@ -42,7 +42,7 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
-  panels/inspector:
+  panels/graph:
     dependencies:
       '@mm/sdk':
         specifier: workspace:*
@@ -51,7 +51,28 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/inspector:
+    dependencies:
+      '@mm/graph':
+        specifier: workspace:*
+        version: link:../graph
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/media:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
+  panels/mixer:
     dependencies:
       '@mm/sdk':
         specifier: workspace:*
@@ -95,12 +116,18 @@ importers:
       '@mm/deliver':
         specifier: workspace:*
         version: link:../panels/deliver
+      '@mm/graph':
+        specifier: workspace:*
+        version: link:../panels/graph
       '@mm/inspector':
         specifier: workspace:*
         version: link:../panels/inspector
       '@mm/media':
         specifier: workspace:*
         version: link:../panels/media
+      '@mm/mixer':
+        specifier: workspace:*
+        version: link:../panels/mixer
       '@mm/review':
         specifier: workspace:*
         version: link:../panels/review

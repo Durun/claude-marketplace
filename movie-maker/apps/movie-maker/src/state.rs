@@ -158,6 +158,8 @@ pub struct Shared {
     /// 計測の系列を貯めるか。自動試験のときだけ貯め、普段の起動で増え続けないようにする。
     collect_series: AtomicBool,
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
+    /// Mixer のメーター。再生スレッドが音を混ぜるたびに記録し、同期のスレッドが送る。
+    pub meters: Mutex<crate::mixer::MeterLane>,
 }
 
 impl Shared {
@@ -191,6 +193,7 @@ impl Shared {
             source: SourceSlot::default(),
             collect_series: AtomicBool::new(false),
             series: Mutex::new(BTreeMap::new()),
+            meters: Mutex::new(crate::mixer::MeterLane::default()),
         }
     }
 

@@ -85,6 +85,7 @@ fn main_composition() -> Composition {
         name: name.into(),
     };
     Composition {
+        mixer: None,
         id: Id::new("main-comp"),
         width: 1280,
         height: 720,

@@ -259,6 +259,34 @@
       ]
     },
     {
+      "description": "キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。",
+      "type": "object",
+      "properties": {
+        "from": {
+          "description": "動かすキーフレームの今の時刻。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "keyframe": {
+          "description": "置き直した後のキーフレーム（時刻、値、区間の形）。",
+          "$ref": "#/$defs/Keyframe"
+        },
+        "op": {
+          "type": "string",
+          "const": "moveKeyframe"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "from",
+        "keyframe"
+      ]
+    },
+    {
       "description": "親のレイヤーを付ける・外す。",
       "type": "object",
       "properties": {
@@ -636,6 +664,66 @@
       "required": [
         "op",
         "layer"
+      ]
+    },
+    {
+      "description": "レイヤーの音の設定（送り先のバス、音量、パン、ミュート、ソロ）を置く・外す。",
+      "type": "object",
+      "properties": {
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LayerAudio"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setLayerAudio"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "mixer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompMixer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "type": "string",
+          "const": "setMixer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition"
       ]
     },
     {
@@ -1550,6 +1638,37 @@
       "description": "色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。",
       "type": "string"
     },
+    "CompMixer": {
+      "description": "コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。",
+      "type": "object",
+      "properties": {
+        "buses": {
+          "description": "役割ごとのバス。載っていない役割は 0 dB。",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MixerBus"
+          }
+        },
+        "ducking": {
+          "description": "ダッキング。`None` で無効。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ducking"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "master_db": {
+          "description": "マスターの音量（dB）。",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
     "Composition": {
       "description": "コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。",
       "type": "object",
@@ -1583,6 +1702,17 @@
           "items": {
             "$ref": "#/$defs/Marker"
           }
+        },
+        "mixer": {
+          "description": "ミキサーの設定。`None` は既定（全部 0 dB、ダッキングなし）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompMixer"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "width": {
           "type": "integer",
@@ -1843,6 +1973,52 @@
           "default": null
         }
       }
+    },
+    "Ducking": {
+      "description": "ダッキング。`trigger` のバスが鳴っている間、`targets` のバスを `reduction_db` だけ下げる。",
+      "type": "object",
+      "properties": {
+        "attack_ms": {
+          "description": "下がりきるまでの時間（ms）。",
+          "type": "number",
+          "format": "double"
+        },
+        "reduction_db": {
+          "description": "下げる量（dB）。0 以下。",
+          "type": "number",
+          "format": "double"
+        },
+        "release_ms": {
+          "description": "戻りきるまでの時間（ms）。",
+          "type": "number",
+          "format": "double"
+        },
+        "targets": {
+          "description": "下げられるバスの役割（例: `bgm`）。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "threshold_db": {
+          "description": "鳴っていると見なす大きさ（dBFS）。",
+          "type": "number",
+          "format": "double"
+        },
+        "trigger": {
+          "description": "鳴ると他を下げるバスの役割（例: `voice`）。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "trigger",
+        "targets",
+        "reduction_db",
+        "threshold_db",
+        "attack_ms",
+        "release_ms"
+      ]
     },
     "Ease": {
       "description": "`Linear` の進み具合に掛けるイージングの型。",
@@ -2158,12 +2334,20 @@
         "gain_db": {
           "$ref": "#/$defs/Param"
         },
+        "mute": {
+          "description": "鳴らさない。プレビューと書き出しの両方に効く。",
+          "type": "boolean"
+        },
         "pan": {
           "$ref": "#/$defs/Param"
         },
         "role": {
           "description": "役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。",
           "type": "string"
+        },
+        "solo": {
+          "description": "ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。",
+          "type": "boolean"
         }
       },
       "required": [
@@ -2250,6 +2434,21 @@
       "enum": [
         "alpha",
         "luma"
+      ]
+    },
+    "MixerBus": {
+      "description": "バス 1 本の設定。",
+      "type": "object",
+      "properties": {
+        "gain_db": {
+          "description": "バスの音量（dB）。",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "gain_db"
       ]
     },
     "Node": {

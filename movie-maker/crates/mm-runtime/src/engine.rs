@@ -10,7 +10,7 @@ use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_doc::Project;
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_node_api::{FrameRef, Quality, Services};
-use mm_render_api::{AudioRequest, RenderRequest, Renderer};
+use mm_render_api::{AudioRequest, RenderRequest, Renderer, TrackLevel};
 use mm_types::{
     CompositionId, GpuAdapterId, MmError, RationalTime, Result, RgbaImage, Size, TimeRange,
 };
@@ -212,5 +212,10 @@ impl Engine {
             channels: DEFAULT_CHANNELS,
             nodes: &self.parts.registry,
         })
+    }
+
+    /// 直前の `render_audio` のトラックごとのピーク（Mixer のメーター）。
+    pub fn audio_levels(&self) -> Vec<TrackLevel> {
+        self.parts.renderer.audio_levels()
     }
 }

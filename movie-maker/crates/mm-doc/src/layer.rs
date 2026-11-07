@@ -339,4 +339,14 @@ pub struct LayerAudio {
     pub role: String,
     pub gain_db: Param,
     pub pan: Param,
+    /// 鳴らさない。プレビューと書き出しの両方に効く。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mute: bool,
+    /// ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub solo: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }

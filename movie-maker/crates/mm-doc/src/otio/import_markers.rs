@@ -131,6 +131,7 @@ fn foreign_composition(ctx: &mut Ctx, seq: &str, st: &State) -> Result<Option<Co
         st.head,
     );
     Ok(Some(Composition {
+        mixer: None,
         id: Id::new(comp_id),
         width: DEFAULT_WIDTH,
         height: DEFAULT_HEIGHT,

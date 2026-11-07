@@ -32,9 +32,15 @@ pub enum Spec {
     SetKeyframe(u8, u8, i64, i64),
     RemoveKeyframe(u8, u8, u8),
     SetEase(u8, u8, u8, u8),
+    /// レイヤー、パス、元の時刻、先の時刻、値。
+    MoveKeyframe(u8, u8, u8, i64, i64),
     ParentLayer(u8, u8),
     AttachLayer(u8, u8),
     LockLayer(u8, bool),
+    /// レイヤーの番号と、音の設定の種（0 は外す、奇数はミュート、4 以上はソロ）。
+    LayerAudio(u8, u8),
+    /// コンポジションの番号と、ミキサーの設定の種（0 は外す、偶数はダッキングあり）。
+    Mixer(u8, u8),
     Precompose {
         comp: u8,
         mask: u8,
@@ -91,6 +97,7 @@ fn arb_doc_spec() -> impl Strategy<Value = Spec> {
         (s(), s(), 0i64..4, t()).prop_map(|(a, b, c, d)| Spec::SetKeyframe(a, b, c, d)),
         (s(), s(), s()).prop_map(|(a, b, c)| Spec::RemoveKeyframe(a, b, c)),
         (s(), s(), s(), s()).prop_map(|(a, b, c, d)| Spec::SetEase(a, b, c, d)),
+        (s(), s(), s(), 0i64..4, t()).prop_map(|(a, b, c, d, e)| Spec::MoveKeyframe(a, b, c, d, e)),
         (s(), s()).prop_map(|(a, b)| Spec::ParentLayer(a, b)),
         (s(), s()).prop_map(|(a, b)| Spec::AttachLayer(a, b)),
         (s(), any::<bool>()).prop_map(|(a, b)| Spec::LockLayer(a, b)),
@@ -148,12 +155,22 @@ fn arb_seq_spec() -> impl Strategy<Value = Spec> {
     ]
 }
 
+/// Mixer の操作の種（レイヤーの音の設定、コンポジションのミキサーの設定）。
+fn arb_mix_spec() -> impl Strategy<Value = Spec> {
+    let s = || any::<u8>();
+    prop_oneof![
+        (s(), s()).prop_map(|(a, b)| Spec::LayerAudio(a, b)),
+        (s(), s()).prop_map(|(a, b)| Spec::Mixer(a, b)),
+    ]
+}
+
 pub fn arb_spec() -> impl Strategy<Value = Spec> {
     prop_oneof![
         3 => arb_doc_spec(),
         2 => arb_seq_spec(),
         3 => bins::arb_bin_spec().prop_map(Spec::Bin),
         1 => shorts::arb_short_spec().prop_map(Spec::Short),
+        1 => arb_mix_spec(),
     ]
 }
 
@@ -212,6 +229,11 @@ fn layer_op(spec: &Spec, p: &Project) -> Option<Op> {
             lock: *lock,
         }
         .into(),
+        Spec::LayerAudio(i, seed) => SetLayerAudio {
+            layer: layer_id(p, *i)?,
+            audio: build::layer_audio(*seed),
+        }
+        .into(),
         _ => return None,
     })
 }
@@ -245,6 +267,16 @@ fn param_op(spec: &Spec, p: &Project) -> Option<Op> {
         Spec::RemoveKeyframe(i, path, t) => RemoveKeyframe {
             target: param_ref(p, *i, *path, true)?,
             time: secs(i64::from(*t % 3)),
+        }
+        .into(),
+        Spec::MoveKeyframe(i, path, from, to, v) => MoveKeyframe {
+            target: param_ref(p, *i, *path, true)?,
+            from: secs(i64::from(*from % 3)),
+            keyframe: Keyframe::new(
+                secs(*to),
+                ParamValue::Number(*v as f64),
+                Interpolation::Bezier,
+            ),
         }
         .into(),
         Spec::SetEase(i, path, t, e) => SetEase {
@@ -314,6 +346,11 @@ fn comp_op(spec: &Spec, p: &Project) -> Option<Op> {
         }
         Spec::RemoveComposition(i) => RemoveComposition {
             composition: pick(&p.compositions, *i)?.id.clone(),
+        }
+        .into(),
+        Spec::Mixer(i, seed) => SetMixer {
+            composition: pick(&p.compositions, *i)?.id.clone(),
+            mixer: build::comp_mixer(*seed),
         }
         .into(),
         _ => return None,

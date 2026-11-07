@@ -1,0 +1,71 @@
+{
+  "schema_version": 9,
+  "migrations": ["20261107_mixer"],
+  "assets": [
+    {
+      "id": "talk",
+      "path": "talk.wav",
+      "content_hash": "hash-talk",
+      "color_space": "bt709",
+      "duration": { "num": 10, "den": 1 },
+      "fps": null,
+      "timebase_offset": { "num": 0, "den": 1 }
+    },
+    {
+      "id": "music",
+      "path": "music.wav",
+      "content_hash": "hash-music",
+      "color_space": "bt709",
+      "duration": { "num": 10, "den": 1 },
+      "fps": null,
+      "timebase_offset": { "num": 0, "den": 1 }
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main", "width": 1920, "height": 1080, "fps": { "num": 30, "den": 1 },
+      "duration": { "num": 10, "den": 1 },
+      "layers": [
+        {
+          "id": "bgm",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "music" } } } },
+          "start": { "num": 0, "den": 1 },
+          "in": { "num": 0, "den": 1 },
+          "out": { "num": 10, "den": 1 },
+          "opacity": { "value": { "type": "number", "value": 1.0 } },
+          "audio": {
+            "role": "bgm",
+            "gain_db": { "value": { "type": "number", "value": -6.0 } },
+            "pan": { "value": { "type": "number", "value": 0.0 } },
+            "mute": true
+          }
+        },
+        {
+          "id": "voice",
+          "source": { "kind": "footage", "version": 1, "params": { "asset": { "value": { "type": "asset_ref", "value": "talk" } } } },
+          "start": { "num": 0, "den": 1 },
+          "in": { "num": 0, "den": 1 },
+          "out": { "num": 10, "den": 1 },
+          "opacity": { "value": { "type": "number", "value": 1.0 } },
+          "audio": {
+            "role": "voice",
+            "gain_db": { "value": { "type": "number", "value": 0.0 } },
+            "pan": { "value": { "type": "number", "value": -0.25 } },
+            "solo": true
+          }
+        }
+      ],
+      "markers": [],
+      "mixer": {
+        "master_db": -1.5,
+        "buses": { "bgm": { "gain_db": -3.0 } },
+        "ducking": {
+          "trigger": "voice", "targets": ["bgm"], "reduction_db": -12.0,
+          "threshold_db": -40.0, "attack_ms": 20.0, "release_ms": 300.0
+        }
+      }
+    }
+  ],
+  "sequences": [],
+  "render_targets": []
+}

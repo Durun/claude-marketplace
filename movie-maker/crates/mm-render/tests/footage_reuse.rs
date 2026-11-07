@@ -198,6 +198,7 @@ fn project() -> Project {
     let mut top = layer("next", FIRST + 1);
     top.transform.scale = Param::constant(ParamValue::Number(0.5));
     p.compositions.push(Composition {
+        mixer: None,
         id: Id::new("main"),
         width: SIZE.width,
         height: SIZE.height,
