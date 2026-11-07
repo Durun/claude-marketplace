@@ -80,7 +80,7 @@ write = [
   "crates/mm-pack/",
   "packs/",
   "apps/mm/src/pack_cmd.rs",
-  "apps/movie-maker/src/pack_ipc.rs",
+  "apps/movie-maker/src/win/pack_ipc.rs",
   "docs/design/13-vlog-pack.md",
 ]
 avoid = ["crates/mm-ops/src/", "ui/panels/"]
@@ -97,9 +97,9 @@ name = "ui-panels"
 title = "UI（1 つのパネルの縦の切り口）"
 write = [
   "ui/panels/<panel>/",
-  "apps/movie-maker/src/<panel>/",
-  "apps/movie-maker/src/<panel>.rs",
-  "apps/movie-maker/src/<panel>_ipc.rs",
+  "apps/movie-maker/src/win/<panel>/",
+  "apps/movie-maker/src/win/<panel>.rs",
+  "apps/movie-maker/src/win/<panel>_ipc.rs",
 ]
 avoid = ["ui/panels/*/", "ui/sdk/src/generated/", "ui/theme/"]
 note = "1 つの担当は 1 つのパネルの画面、パネルの API、アプリ側の処理をまとめて書く。ほかのパネルは触らない。タブ、ビルド、スクリーンショットへの載せ方は [[shared]] の 1 行"
@@ -113,7 +113,7 @@ write = [
   "ui/tools/",
 ]
 avoid = [
-  "apps/movie-maker/src/*_ipc.rs",
+  "apps/movie-maker/src/win/*_ipc.rs",
   "ui/panels/",
 ]
 note = "ui-panels と pack の切り口のファイルは除く。再生（playback/）と Timeline の編集（sequence_edit、edit_actions）はここ。同時に 2 人を置かない"
@@ -244,13 +244,13 @@ rule = "パネルの API の節を名前の順の位置に足す"
 reshape = "integration"
 
 [[shared]]
-path = "apps/movie-maker/src/main.rs"
-rule = "mod を名前の順の位置に足す"
+path = "apps/movie-maker/src/win/mod.rs"
+rule = "mod を名前の順の位置に 1 行足す"
 reshape = "app-shell"
 
 [[shared]]
-path = "apps/movie-maker/src/app.rs"
-rule = "use、manage、generate_handler! の各列に、名前の順の位置で 1 行ずつ。列の最後の項目にもカンマを付ける"
+path = "apps/movie-maker/src/win/app.rs"
+rule = "use と、Panel、route、dispatch に名前の順の位置で 1 行ずつ。新しいパネルのコマンドの列は <panel>_ipc.rs の handler に書く"
 reshape = "app-shell"
 
 [[shared]]
