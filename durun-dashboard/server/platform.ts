@@ -179,6 +179,12 @@ export type Platform = {
   musicDir: (run?: Run) => Promise<string>;
   /** 実行ファイルの名前（Windows では .exe を付ける）。 */
   executableName: (tool: string) => string;
+  /** 共有ライブラリの拡張子（.dll など）。movie-maker に FFmpeg のライブラリを添えるときに使う。 */
+  sharedLibraryExt: string;
+  /** movie-maker の HTTP のトークンを置くフォルダー（mm-store の token.rs と同じ規則）。分からなければ undefined。 */
+  movieMakerTokenDir: (env: NodeJS.ProcessEnv) => string | undefined;
+  /** movie-maker をビルドするときの cargo の target の既定の置き場所。exists はテストで差し替える。 */
+  movieMakerTargetDir: (dataDir: string, exists?: (dir: string) => boolean) => string;
   /** パッケージ管理が置く場所にある依存ツールの候補。新しい版を先に返す。 */
   toolCandidates: (tool: ToolName, env: NodeJS.ProcessEnv, dirs?: DirLookup) => string[];
   /** 依存ツールを入れるコマンド。 */
@@ -203,6 +209,7 @@ const credentialsFile = (files: Files, dir: string): Promise<string | undefined>
 };
 
 const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
+const WIN_DEV_DIR = 'D:\\dev';
 
 /** tasklist の出力に、image の行があるか。見つからないときも、tasklist は終了コード 0 で知らせの文を出す。 */
 export const listedInTasklist = (tasklist: string, image: string): boolean => tasklist.split('\n').some((line) => line.trim().toLowerCase().startsWith(image.toLowerCase()));
@@ -264,11 +271,18 @@ const posix = {
   slackAppState: (files: Files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), '.config', 'Slack', 'storage', 'root-state.json')),
   musicDir: async () => path.posix.join(os.homedir(), 'Music'),
   executableName: (tool: string) => tool,
+  sharedLibraryExt: '.so',
+  movieMakerTokenDir: (env: NodeJS.ProcessEnv) => {
+    const base = env.XDG_RUNTIME_DIR || (env.HOME && path.posix.join(env.HOME, '.local', 'state'));
+    return base ? path.posix.join(base, 'movie-maker', 'tokens') : undefined;
+  },
+  movieMakerTargetDir: (dataDir: string) => path.posix.join(dataDir, 'movie-maker', 'target'),
 } satisfies Partial<Platform>;
 
 const darwin: Platform = {
   ...posix,
   name: 'darwin',
+  sharedLibraryExt: '.dylib',
   defaultChromePath: () => '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   readMemory: async (run = realRun) => {
     const [sysctl, vmStat] = await Promise.all([run('/usr/sbin/sysctl', ['-n', ...SYSCTL_NAMES]), run('/usr/bin/vm_stat', [])]);
@@ -465,6 +479,10 @@ const win32: Platform = {
     }
   },
   executableName: (tool) => `${tool}.exe`,
+  sharedLibraryExt: '.dll',
+  movieMakerTokenDir: (env) => (env.LOCALAPPDATA ? path.win32.join(env.LOCALAPPDATA, 'movie-maker', 'tokens') : undefined),
+  // target は 20 GB 近くまで育つので、システムのドライブを避け、ローカルの開発用の置き場（D:\dev）があればそこに置く。
+  movieMakerTargetDir: (dataDir, exists = fs.existsSync) => (exists(WIN_DEV_DIR) ? path.win32.join(WIN_DEV_DIR, 'movie-maker-dashboard', 'target') : path.win32.join(dataDir, 'movie-maker', 'target')),
   toolCandidates: (tool, env, dirs = realDirs) => {
     const base = path.win32.join(env.LOCALAPPDATA ?? path.win32.join(os.homedir(), 'AppData', 'Local'), 'Microsoft', 'WinGet', 'Packages');
     return WINGET_LAYOUT[tool].flatMap((segments) => expandWild(base, segments, dirs, path.win32.join));
