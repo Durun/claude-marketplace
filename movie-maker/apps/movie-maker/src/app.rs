@@ -27,6 +27,7 @@ use crate::media_ipc;
 use crate::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::project;
 use crate::render::Renderer;
+use crate::review_ipc::{self, ReviewState};
 use crate::source_ipc;
 use crate::state::Shared;
 use crate::story::StoryState;
@@ -46,6 +47,8 @@ const UI_ENTRY: &str = "index.html";
 const TRANSPORT_JS: &str = include_str!("../web/transport.js");
 /// 保存した変更を WebView に知らせる Tauri のイベント名。中身は `mm_serve::Change`。
 const DOC_CHANGED_EVENT: &str = "mm:doc-changed";
+/// 提案の追加と決定を Review パネルへ知らせる Tauri のイベント。
+const PROPOSALS_CHANGED_EVENT: &str = "mm:proposals-changed";
 
 /// 描画スレッドと再生スレッド。ウィンドウが閉じる前に止めるため、`Option` で持って取り出して落とす。
 struct Workers {
@@ -170,6 +173,16 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     if let Err(e) = started {
         tracing::warn!("変更の通知を受けるスレッドを始められない: {e}");
     }
+    let Some(core) = shared.core.get() else {
+        return;
+    };
+    let handle = app.clone();
+    let started = core.on_proposal(move |event| {
+        let _ = handle.emit(PROPOSALS_CHANGED_EVENT, event);
+    });
+    if let Err(e) = started {
+        tracing::warn!("提案の通知を受けるスレッドを始められない: {e}");
+    }
 }
 
 fn fail(message: &str) -> ! {
@@ -249,11 +262,13 @@ fn build_and_run(boot: Boot) {
         media::project_cache_dir(&boot.args.project),
     ));
     let deliver_state = Arc::new(DeliverState::new(boot.shared.clone(), &boot.args.project));
+    let review_state = Arc::new(ReviewState::new(boot.shared.clone()));
     tauri::Builder::default()
         .manage(managed)
         .manage(deliver_state)
         .manage(media_state)
         .manage(story_state)
+        .manage(review_state)
         .invoke_handler(tauri::generate_handler![
             ipc::subscribe,
             ipc::sync_ack,
@@ -281,6 +296,12 @@ fn build_and_run(boot: Boot) {
             story_ipc::story_search,
             story_ipc::story_timeline_time,
             story_ipc::story_cut_time,
+            review_ipc::review_list,
+            review_ipc::review_approve,
+            review_ipc::review_reject,
+            review_ipc::review_reopen,
+            review_ipc::review_undo,
+            review_ipc::review_preview,
             source_ipc::source_open,
             source_ipc::source_close,
             source_ipc::source_state,

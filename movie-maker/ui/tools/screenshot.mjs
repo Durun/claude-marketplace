@@ -1,6 +1,6 @@
 // dist/ を開いてパネルのスクリーンショットを撮る。playwright は repo の依存にせず、
 // PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
-// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [tasks|inspector|media|story|deliver]
+// 使い方: pnpm build && PLAYWRIGHT_DIR=/tmp/pw node tools/screenshot.mjs [tasks|inspector|media|story|deliver|review]
 import { createRequire } from "node:module";
 import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -149,10 +149,27 @@ const shootDeliver = async (browser) => {
   }
 };
 
+// Review はモックの API で、保留 2 件（1 件は一部だけチェック、1 件は conflict あり）と決定済み 2 件を撮る。右の列と同じ幅。
+const shootReview = async (browser) => {
+  const outDir = here("../panels/review/screenshots/");
+  await mkdir(outDir, { recursive: true });
+  for (const theme of ["light", "dark"]) {
+    const page = await browser.newPage({ viewport: { width: 322, height: 800 }, deviceScaleFactor: 2 });
+    await page.goto(`${dist("review-demo.html")}?theme=${theme}`);
+    await page.waitForSelector(".mm-review-card");
+    await page.locator('input[type="checkbox"]').nth(2).uncheck();
+    await page.getByRole("button", { name: "Proposed" }).first().click();
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: `${outDir}review-${theme}.png` });
+    await page.close();
+  }
+};
+
 const browser = await chromium.launch();
 if (!which || which === "tasks") await shootTasks(browser);
 if (!which || which === "inspector") await shootInspector(browser);
 if (!which || which === "media") await shootMedia(browser);
 if (!which || which === "story") await shootStory(browser);
 if (!which || which === "deliver") await shootDeliver(browser);
+if (!which || which === "review") await shootReview(browser);
 await browser.close();

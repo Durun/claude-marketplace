@@ -103,3 +103,20 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 `sequence` の上書きは依頼の全体に 1 つで、レンダーターゲットはコンポジションを指す形のまま（本編とショートはそれぞれのコンポジションを持つ）。縦長のプリセットは、縦長のコンポジションを既定にする。
 
 レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。
+
+## Review のコマンド
+
+Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は `src/review.ts`（`createIpcReviewApi` が呼ぶ）。失敗は `Err(String)`。提案（`Proposal`）は 1 つのトランザクション（操作の列）で、保留中はプロジェクトのデータに入っていない。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `review_list` | なし | `Proposal[]`（新しい順） |
+| `review_approve` | `{ id, ops }`（`ops` は承認する操作の index。`null` は全部） | `{ proposal, change }`。承認した操作が普通のトランザクションとして適用され、取り消せる |
+| `review_reject` | `{ id }` | `Proposal`。データは変わらない |
+| `review_reopen` | `{ id }` | `Proposal`。却下したものを保留に戻す |
+| `review_undo` | `{ id }` | `Proposal`。承認で適用したトランザクションが取り消しのスタックの一番上のときだけ取り消す |
+| `review_preview` | `{ id, ops }` | `null`。Program に提案を当てた絵を出す。`id: null` で元の絵に戻す |
+
+`Proposal` の `applied` は適用したトランザクションが今も取り消されていないこと、`undoable` はそれが取り消しのスタックの一番上にあること、`conflict` は保留中で提案の後の編集と触る所が重なる ID（あれば承認できない）。
+
+Tauri のイベント `mm:proposals-changed`（`{ id, state }`）が提案の追加・決定のたびに届く。取り消しで `applied` と `undoable` が変わるので、`mm:doc-changed` でも一覧を読み直す。

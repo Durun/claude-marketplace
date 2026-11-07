@@ -7,6 +7,7 @@
 //! - 操作の記録は `mm-ops` の [`OpRecord`] と [`TxnRecord`] の形で表に書く。取り消しとやり直しも
 //!   逆操作（元の操作）を適用したトランザクションとして同じ表に残り、バージョンは操作の数だけ進む。
 //!   操作を適用して書くまでは [`Store::apply_txn`]、[`Store::undo_last`]、[`Store::redo_last`] が受け持つ。
+//! - Claude の編集は提案として `proposals` の表に保留し（[`Store::propose`]）、承認で同じ道から適用する（[`Store::approve_proposal`]）。
 //! - 書き手は 1 プロセスだけ（OS のファイルロック）。ほかのプロセスは読み取りだけで開く。
 
 mod backup;
@@ -18,6 +19,7 @@ mod files;
 mod history;
 mod lock;
 mod open;
+mod proposals;
 mod records;
 mod schema;
 mod store;
@@ -34,6 +36,7 @@ pub use export::{ExportReport, VERSIONS_DIR};
 pub use files::{load_json, load_project, rebase_project, store_dir, DB_FILE};
 pub use history::fold_history;
 pub use lock::LockInfo;
+pub use proposals::{ProposalState, StoredProposal};
 pub use records::{
     Actor, OpRecord, StoredOp, StoredTxn, TxnInput, TxnKind, TxnRecord, UndoPlan, VersionRow,
 };

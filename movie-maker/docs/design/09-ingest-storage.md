@@ -65,6 +65,7 @@
 | `undo_stack` | 取り消しの列。通常のトランザクションの ID の並びと、今の位置（`meta.undo_pos`）。取り消しで位置が戻り、やり直しで進み、新しい操作で先が破棄される | `pos` |
 | `versions` | 名前付きバージョン。名前、日時、誰が、そのときの `doc_version` と `ops.seq`、書き出した JSON のハッシュ、git のコミット（あれば） | `id` |
 | `comments` | レビューのコメント。時刻か範囲、描き込み、返信、状態（`open` → `fresh` → `done`、`wontfix`）の JSON と、検索用の `state`、`comp_id` | `id` |
+| `proposals` | Claude の編集の提案（保留中のトランザクション）。名前、操作経路、発行元、対応するコメント、`base_version`、操作の JSON、`touches`、状態（`pending` / `approved` / `rejected`）、決めた者と時刻、承認で適用した `txn_id`、承認した操作の番号（[操作の「提案」](05-ops.md#提案)） | `id` |
 | `search` | 段階 1 の検索。FTS5 の仮想表（`text`、`kind`、`owner`）。レイヤーの ID とノードの種類と文字のパラメータ、マーカーの名前、コンポジションの ID、素材のパスを、プロジェクトのデータの行を書くたびに同じトランザクションで入れ替える。トークナイザーは `trigram`（3 文字未満の語は部分一致で探す） | |
 | `marks`、`selections`、`topics`、`word_edits` | プロジェクトのデータの `bins` と `transcript_edits` を要素ごとに 1 行（`(id, json)`）。`marks` の ID は素材の ID、`word_edits` は `<素材>/<単語>`。話題の見出しと選別・話題のタグは `search` にも入れる | `id` |
 | `transcripts` | 素材ごとの文字起こしの元（コンテンツハッシュ、ツールの名前とバージョン、言語）。素材を外しても消さない（取り消しで戻るため） | `asset_id` |
