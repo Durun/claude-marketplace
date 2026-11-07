@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
-use mm_text_api::{ShapedText, TextAlign, TextStyle};
+use mm_text_api::{LineBreak, ShapedText, TextAlign, TextStroke, TextStyle};
 use mm_types::{
     MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage,
     Size,
@@ -14,6 +14,11 @@ use crate::KIND_VERSION;
 const KEPT_SHAPES: usize = 8;
 /// 覚えておく描いた画布の数。倍率や領域が変わるたび（ズームの途中）に増えるので小さく保つ。
 const KEPT_CANVASES: usize = 8;
+
+/// `line_break` の選択肢。`none` は `max_width` を無視して折り返さず、残りは `LineBreak` の値に対応する。
+const LINE_BREAK_NONE: &str = "none";
+const LINE_BREAK_ANYWHERE: &str = "anywhere";
+const LINE_BREAK_PHRASE: &str = "phrase";
 
 /// シェーピングの結果の持ち主を決める入力。
 #[derive(Debug, Clone, PartialEq)]
@@ -58,15 +63,35 @@ pub struct TextKind {
 }
 
 impl TextKind {
-    fn style(params: &Params) -> TextStyle {
+    /// パラメータから `TextStyle` を作る（`tests/it/text.rs` が直接確かめる）。
+    pub fn style(params: &Params) -> TextStyle {
+        let line_break = params
+            .get("line_break")
+            .and_then(ParamValue::as_text)
+            .unwrap_or(LINE_BREAK_ANYWHERE);
         let max_width = params.number_or("max_width", 0.0);
+        let stroke_width = params.number_or("stroke_width", 0.0);
         TextStyle {
             size_px: params.number_or("size", 32.0) as f32,
             color: params
                 .get("color")
                 .and_then(ParamValue::as_color)
                 .unwrap_or(Rgba::WHITE),
-            max_width: (max_width > 0.0).then_some(max_width as f32),
+            // 折り返しなしは幅を無視する（幅を残したまま切り替えられる）。
+            max_width: (max_width > 0.0 && line_break != LINE_BREAK_NONE)
+                .then_some(max_width as f32),
+            stroke: (stroke_width > 0.0).then(|| TextStroke {
+                color: params
+                    .get("stroke_color")
+                    .and_then(ParamValue::as_color)
+                    .unwrap_or(Rgba::BLACK),
+                width_px: stroke_width as f32,
+            }),
+            line_break: if line_break == LINE_BREAK_PHRASE {
+                LineBreak::Phrase
+            } else {
+                LineBreak::Anywhere
+            },
             align: TextAlign::parse(
                 params
                     .get("align")
@@ -84,13 +109,17 @@ impl TextKind {
             .unwrap_or("")
     }
 
-    /// 倍率をかけた左上の画素。
+    /// 倍率をかけた左上の画素。縁は字の外側に出るので、縁の分だけ左上へ寄せ、縁の有無で字の位置が動かないようにする。
     fn origin(params: &Params, scale: f32) -> (f32, f32) {
         let [x, y] = params
             .get("position")
             .and_then(ParamValue::as_vec2)
             .unwrap_or([0.0, 0.0]);
-        ((x as f32 * scale).floor(), (y as f32 * scale).floor())
+        let stroke = Self::style(params).stroke.map_or(0.0, |s| s.width_px);
+        (
+            ((x as f32 - stroke) * scale).floor(),
+            ((y as f32 - stroke) * scale).floor(),
+        )
     }
 
     fn cache(&self) -> Result<std::sync::MutexGuard<'_, TextCache>> {
@@ -140,6 +169,23 @@ impl NodeKind for TextKind {
             ParamSpec::new("position", ParamType::Vec2, ParamValue::Vec2([0.0, 0.0])),
             ParamSpec::new("max_width", number(0.0), ParamValue::Number(0.0)),
             ParamSpec::new("align", ParamType::Text, ParamValue::Text("left".into())),
+            ParamSpec::new(
+                "stroke_color",
+                ParamType::Color,
+                ParamValue::Color(Rgba::BLACK),
+            ),
+            ParamSpec::new("stroke_width", number(0.0), ParamValue::Number(0.0)),
+            ParamSpec::new(
+                "line_break",
+                ParamType::Choice {
+                    options: vec![
+                        LINE_BREAK_NONE.into(),
+                        LINE_BREAK_ANYWHERE.into(),
+                        LINE_BREAK_PHRASE.into(),
+                    ],
+                },
+                ParamValue::Choice(LINE_BREAK_ANYWHERE.into()),
+            ),
         ])
     }
 
