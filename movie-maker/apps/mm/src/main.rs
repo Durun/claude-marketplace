@@ -5,6 +5,7 @@
 //! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
+//! - `mm otio export <project> -o x.otio` と `mm otio import <dir> x.otio`: sequence と OTIO の変換（otio_cmd.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
 //! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
 
@@ -14,6 +15,7 @@ mod compare;
 mod describe;
 mod ingest_cmd;
 mod opargs;
+mod otio_cmd;
 mod perf;
 mod project;
 mod proposal_cmd;
@@ -151,6 +153,11 @@ enum Command {
         #[command(subcommand)]
         command: proposal_cmd::ProposalCommand,
     },
+    /// sequence と OpenTimelineIO（`.otio`）の変換。取り込みは操作として当てる（取り消せる）。
+    Otio {
+        #[command(subcommand)]
+        command: otio_cmd::OtioCommand,
+    },
     /// 性能の計測。
     Perf {
         #[command(subcommand)]
@@ -249,6 +256,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Proposal { command } => proposal_cmd::run(command),
         Command::Shorts { project, json } => shorts_cmd::shorts(&project, json),
         Command::Subtitles(args) => captions_cmd::subtitles(&args),
+        Command::Otio { command } => otio_cmd::run(command),
         Command::Perf { command } => run_perf(command),
         Command::ProbeStartup { project } => scenes::probe_child(&project),
         other => run_store_command(other),
@@ -312,6 +320,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Proposal { .. } => "proposal",
         Command::Shorts { .. } => "shorts",
         Command::Subtitles(_) => "subtitles",
+        Command::Otio { .. } => "otio",
         Command::Perf { .. } => "perf",
         Command::ProbeStartup { .. } => "probe-startup",
         _ => "store",

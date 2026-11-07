@@ -14,6 +14,7 @@ import { LEARN_ICON, LEARN_KEY, LEARN_TITLE, LearnIcon, openLearn } from './Lear
 import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, openRecycleBin } from './RecycleBin.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
+import { MM_ICON, MM_KEY, MM_TITLE, MovieMakerIcon, openMovieMaker } from './MovieMaker.tsx';
 import { CDRIP_ICON, CDRIP_KEY, CDRIP_TITLE, CdRipIcon, openCdRip } from './CdRip.tsx';
 import { TRANSLATE_ICON, TRANSLATE_KEY, TRANSLATE_TITLE, TranslateIcon, openTranslate } from './Translate.tsx';
 import { type Float, FloatFrame, GITHUB_ICON, JIRA_ICON, FloatWindow, dock, floatUp, isFloating, useFloats } from './Float.tsx';
@@ -222,6 +223,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   [TERMINAL_KEY]: { title: TERMINAL_TITLE, icon: TERMINAL_ICON, Body: () => <TerminalIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTerminal() },
   // ホームから開いたときは、ウィンドウでセッションを選ぶまで、どのセッションにもつながない。
   [FL_KEY]: { title: FL_TITLE, icon: FL_ICON, Body: () => <FlConnectIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openFlConnect() },
+  [MM_KEY]: { title: MM_TITLE, icon: MM_ICON, Body: () => <MovieMakerIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openMovieMaker() },
   [CDRIP_KEY]: { title: CDRIP_TITLE, icon: CDRIP_ICON, Body: () => <CdRipIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openCdRip() },
   [TRANSLATE_KEY]: { title: TRANSLATE_TITLE, icon: TRANSLATE_ICON, Body: () => <TranslateIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTranslate() },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },

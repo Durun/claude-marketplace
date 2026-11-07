@@ -54,7 +54,7 @@
 | 表 | 内容 | キー |
 |---|---|---|
 | `meta` | プロジェクトの ID、作った日時、プロジェクトのデータのバージョン番号（`doc_version`。操作を適用するたびに進み、取り消しとやり直しも操作の数だけ進める）、取り消しの位置（`undo_pos`） | `key` |
-| `project` | 1 行。プロジェクトのデータのスキーマのバージョン（`schema_version`）の JSON。設定（`colorConfig`、`bins`）はプロジェクトのデータに入った段で足す | |
+| `project` | 1 行。プロジェクトのデータのスキーマのバージョン（`schema_version`）と済ませた名前つきの移行（`migrations`、空なら無し）の JSON。設定（`colorConfig`、`bins`）はプロジェクトのデータに入った段で足す | |
 | `sequences` | sequence ごとに 1 行。JSON | `id` |
 | `render_targets` | レンダーターゲットごとに 1 行。JSON | `id` |
 | `assets` | 素材ごとに 1 行。JSON（原本のパス、色空間、時間軸、PTS の索引）と、検索用に抜いた `content_hash`、`path` | `id` |

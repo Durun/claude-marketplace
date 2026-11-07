@@ -58,6 +58,12 @@ pub fn op(client: &Client, txn: &Transaction) -> Result<()> {
     Ok(())
 }
 
+/// アプリが今持っているプロジェクトのデータ。
+pub fn project(client: &Client) -> Result<mm_doc::Project> {
+    let body = check(client.get("/project")?, "プロジェクトの取得")?.json()?;
+    Ok(serde_json::from_value(body["project"].clone())?)
+}
+
 /// アプリのプロジェクトにある素材の（ID、コンテンツハッシュ）。
 pub fn assets(client: &Client) -> Result<Vec<(AssetId, String)>> {
     let body = check(client.get("/project")?, "プロジェクトの取得")?.json()?;

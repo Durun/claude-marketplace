@@ -50,7 +50,7 @@
 
 ## 提案
 
-Claude の対応 1 回を、適用せずに保留して人が決める単位（[RFC 0017](../rfcs/0017-review-proposals.md)）。
+Claude の対応 1 回を、適用せずに保留して人が決める単位（[RFC 0078](../rfcs/0078-review-proposals.md)）。
 
 - 提案は `Transaction` と同じ形（名前、`base_version`、操作）で、`project.mmdb` の `proposals` の表に置く。受け付けるとき今のデータの写しに当てて検証し（ロック、`validate`、衝突）、触る所を記録する。保留中はプロジェクトのデータもバージョンも変えない。
 - 承認は、提案の名前・発行元・対応するコメントのまま `base_version` を元にした普通のトランザクションとして適用し（`Store::approve_proposal`）、取り消しとやり直しがそのまま効く。操作の番号を選べば一部だけ承認する。後の編集と触る所が重なれば `Conflict` で断り、Claude が今のデータで作り直す。
@@ -80,8 +80,11 @@ Claude の対応 1 回を、適用せずに保留して人が決める単位（[
 | `GET /events` | SSE。最初に `hello`（`{"version"}`）、書くたびに `change`（`POST /ops` の応答と同じ形）、取りこぼしたら `resync`（`GET /project` で読み直す）。提案の追加と決定で `proposal`（`{"id","state"}`） |
 | `POST /proposals`、`GET /proposals`、`GET /proposals/{id}` | 提案を出す（本体は `POST /ops` と同じ）、一覧（`{"proposals":[...]}`、新しい順）、1 つ。形は `ui/sdk` の `Proposal`（だれが、操作、触る範囲 `scope`、後の編集と重なる `conflict`、`applied`、`undoable`） |
 | `POST /proposals/{id}/approve`、`/reject`、`/reopen` | 承認（任意で `{"ops":[0,2]}`。応答は `{"proposal","change"}`）、却下、却下を保留に戻す。`entry: "mcp"` は 403（`forbidden`） |
+| `POST /mcp` | MCP（Streamable HTTP、ステートレス、JSON 応答）。JSON-RPC の `initialize`、`ping`、`tools/list`、`tools/call`。通知は 202、バッチは拒否 |
 
 失敗は `{"error": {"code","message", ...}}`。`conflict`（409、`touches` を添える）、`future_base`（409）、`locked`（403）、`invalid`（422、検証の失敗）、`bad_request`（400）、`unavailable`（503、閉じた後や描画が無いとき）。
+
+MCP のツールは、操作ごとに 1 つ（名前は操作名。`inputSchema` は `ops_schema()` の各要素から `op` を除き、任意の `label`、`base_version`、`responds_to` を足して作る）と、`transaction`（操作の列を 1 つの取り消しの単位にする。コメントへの対応 1 回分）、`undo`、`redo`、`project`、`frame`（PNG を画像で返す）。呼び出し元は常に `Entry::Mcp`、`actor` は `mcp`/`claude`。`responds_to` は記録の `txns` に残る。失敗は `isError` で、HTTP の失敗と同じ `{"error": ...}` を text に入れる。
 
 CLI は `Store::open` で書き手になれなければ、`.mm/` のポートとトークンで `mm op`、`mm undo`、`mm redo` を転送する（応答の `touched` を出す）。`mm frame <project> <t> -o x.png` も、動いているアプリがあればそこで描いてもらい、無ければ自分で描く。
 

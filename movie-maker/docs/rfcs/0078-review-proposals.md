@@ -1,4 +1,4 @@
-# RFC 0017: Claude の編集の提案と Review パネル
+# RFC 0078: Claude の編集の提案と Review パネル
 
 状態: 採用
 
