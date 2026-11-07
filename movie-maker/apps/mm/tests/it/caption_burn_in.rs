@@ -18,14 +18,14 @@ const WORDS: i64 = 24;
 const WORDS_PER_SENTENCE: i64 = 6;
 /// 話していない区間（字幕が出ない時間）の単語の番号。
 const SILENT_WORDS: std::ops::Range<i64> = 12..16;
-/// 書き出しのフレームレート。CI の GPU は WARP（ソフトウェア）でフレームごとに重いので、字幕の出入り（0.5 秒おきの語）
-/// より十分に細かい範囲で低くする。
-const FPS: u32 = 10;
-/// 書き出しの絵の大きさ。字幕の字の大きさは短い辺に比例するので、見える大きさにする。画素の数は書き出しの時間に効く。
+/// 書き出しのフレームレート。単語の境（0.25 秒の倍数）がフレームの境に乗る最小の値。CI の GPU は WARP
+/// （ソフトウェア）でフレームごとに重いので低くする。
+const FPS: u32 = 4;
+/// 書き出しの絵の大きさ。字幕の字の大きさは短い辺に比例するので、見える大きさにする。
 const WIDTH: u32 = 640;
 const HEIGHT: u32 = 360;
-/// 字幕の境から離して見るフレーム数。ms への丸めと MP4 の時刻の誤差に影響されない余白。
-const MARGIN_FRAMES: i64 = 3;
+/// 字幕の境から離して見るフレーム数（0.25 秒）。ms への丸めと MP4 の時刻の誤差に影響されない余白。
+const MARGIN_FRAMES: i64 = 1;
 /// 字幕が出ているとみなす、違う画素の数と 1 画素の輝度の差（0〜255）。
 const MIN_DIFF_PIXELS: usize = 200;
 const PIXEL_DIFF: i32 = 60;
@@ -259,7 +259,12 @@ fn 焼き込んだ字幕は字幕の時間だけ下部に出る() {
     if let Some(keep) = &keep {
         std::fs::create_dir_all(keep).unwrap();
     }
-    for (index, expected) in frames_to_check(&cues) {
+    let frames = frames_to_check(&cues);
+    assert!(
+        frames.iter().any(|(_, expected)| !expected),
+        "字幕の出ていないフレームを確かめていない: {frames:?}"
+    );
+    for (index, expected) in frames {
         let png = keep.as_ref().map(|k| {
             k.join(format!(
                 "frame-{index:04}-{}.png",

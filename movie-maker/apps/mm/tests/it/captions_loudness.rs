@@ -1,4 +1,4 @@
-//! 段階 4 の納品物の通し。60 秒の素材と合成の文字起こし（0.5 秒ごとの単語「語N」）から話題を 3 つ作り、順を入れ替えて並べ、
+//! 段階 4 の納品物の通し。37 秒の素材と合成の文字起こし（1 秒ごとの単語「語N」）から話題を 3 つ作り、順を入れ替えて並べ、
 //! 1 つの話題の 3 語を `cutWords` で消して `mm render` で書き出す。確かめること:
 //! - 字幕（SRT と WebVTT）の時刻がシーケンスの時間軸に合い、消した単語が入らず、行の決まりを守る。
 //! - MP4 のチャプターが ffprobe で読め、YouTube の説明欄の文字列が出る。
@@ -14,15 +14,16 @@ use mm_store::Store;
 use mm_types::RationalTime;
 use serde_json::{json, Value};
 
-/// 素材の長さ（秒）と、単語の数（0.5 秒ごと）。
-const MEDIA_SECONDS: u32 = 60;
-const WORDS: i64 = 120;
+/// 素材の長さ（秒）と、単語の数（1 秒ごと）。
+const MEDIA_SECONDS: u32 = 37;
+const WORDS: i64 = 36;
 /// 1 つの文の語数。最後の語に「。」を付ける。
 const WORDS_PER_SENTENCE: i64 = 6;
-/// 話題 A、B、C の単語の範囲（始まり、含まない終わり）。並べる順は C、A、B。
-const TOPICS: [(&str, i64, i64); 3] = [("tA", 0, 40), ("tB", 40, 80), ("tC", 80, 120)];
+/// 話題 A、B、C の単語の範囲（始まり、含まない終わり）。並べる順は C、A、B。チャプターは YouTube の決まりで
+/// 10 秒以上なので、どの話題も（A は消した後も）11 秒にする。
+const TOPICS: [(&str, i64, i64); 3] = [("tA", 0, 14), ("tB", 14, 25), ("tC", 25, 36)];
 /// 消す単語（話題 A の中）。
-const CUT: (i64, i64) = (10, 12);
+const CUT: (i64, i64) = (5, 7);
 /// 素材の音。小さな 1 kHz のトーンに、0.5 秒ごとの 2 ms の大きなパルスを足す。目標のラウドネスまで上げるとパルスが
 /// トゥルーピークの上限を超えるので、リミッターが働く。
 const PEAKY_TONE: &str = "0.08*sin(2*PI*1000*t)+0.7*lt(mod(t\\,0.5)\\,0.002)*sin(2*PI*3000*t)";
@@ -32,9 +33,9 @@ const TIME_TOLERANCE: f64 = 0.02;
 const LUFS_TOLERANCE: f64 = 0.5;
 /// トゥルーピークの上限（dBTP）。ffmpeg の測りと AAC の誤差の余裕を足す。
 const PEAK_LIMIT: f64 = -0.9;
-/// 書き出しのフレームレート。語の時刻（0.25 秒の倍数）がフレームの境に乗る最小の値。確かめるのは字幕、チャプター、
-/// ラウドネスで、絵の細かさに依らない。CI の GPU は WARP（ソフトウェア）でフレームごとに重いので低くする。
-const FPS: u32 = 4;
+/// 書き出しのフレームレート。話題とカットの境（1 秒の倍数）がフレームの境に乗る最小の値。確かめるのは字幕、
+/// チャプター、ラウドネスで、絵の細かさに依らない。CI の GPU は WARP（ソフトウェア）でフレームごとに重いので低くする。
+const FPS: u32 = 1;
 
 fn run(cmd: &mut Command) -> Output {
     let out = cmd.output().expect("コマンドを実行できる");
@@ -62,14 +63,9 @@ fn rt(num: i64, den: u32) -> Value {
     json!(RationalTime::new(i128::from(num), den).unwrap())
 }
 
-/// 単語 `i` の始まり（秒）。0.5 秒おき。
+/// 単語 `i` の始まり（秒）。1 秒おき。
 fn word_start(i: i64) -> f64 {
-    i as f64 * 0.5
-}
-
-/// 単語 `i` の終わり（秒）。次の単語まで 0.25 秒の隙間を空ける。
-fn word_end(i: i64) -> f64 {
-    word_start(i) + 0.25
+    i as f64
 }
 
 fn make_media(out: &Path) {
@@ -100,10 +96,11 @@ fn place_transcript(dir: &Path, media: &Path) {
                     } else {
                         ""
                     };
-                    json!({"start": rt(i, 2), "end": rt(2 * i + 1, 4), "text": format!("語{i}{mark}")})
+                    // 単語は 0.5 秒で終わり、次の単語まで 0.5 秒の隙間を空ける。
+                    json!({"start": rt(i, 1), "end": rt(2 * i + 1, 2), "text": format!("語{i}{mark}")})
                 })
                 .collect();
-            json!({"start": rt(range.start, 2), "end": rt(2 * (range.end - 1) + 1, 4),
+            json!({"start": rt(range.start, 1), "end": rt(2 * (range.end - 1) + 1, 2),
                 "text": "", "words": words})
         })
         .collect();
@@ -120,7 +117,7 @@ fn build_sequence(dir: &str, asset: &str, word_ids: &[String]) {
         op(
             dir,
             json!({"op": "addTopic", "topic": {"id": id, "asset": asset,
-            "in": rt(from, 2), "out": rt(2 * (to - 1) + 1, 4), "title": id}}),
+            "in": rt(from, 1), "out": rt(to, 1), "title": id}}),
         );
     }
     op(
@@ -136,31 +133,35 @@ fn build_sequence(dir: &str, asset: &str, word_ids: &[String]) {
     op(
         dir,
         json!({"op": "cutWords", "asset": asset, "sequence": "s1", "words": picked,
-        "ranges": [{"in": rt(2 * CUT.0, 4), "out": rt(2 * CUT.1 + 1, 4)}]}),
+        "ranges": [{"in": rt(CUT.0, 1), "out": rt(CUT.1 + 1, 1)}]}),
     );
+}
+
+/// 消した区間の長さ（秒）。消した最後の語の後の隙間まで含む。
+fn removed() -> f64 {
+    word_start(CUT.1 + 1) - word_start(CUT.0)
 }
 
 /// 書き出しの時間軸での単語 `n` の始まり（秒）。並べる順は C、A、B で、A から 3 語が抜けている。
 fn timeline_start(n: i64) -> f64 {
-    let len = |from: i64, to: i64| word_end(to - 1) - word_start(from);
-    let removed = word_end(CUT.1) - word_start(CUT.0);
-    let (len_c, len_a) = (len(80, 120), len(0, 40) - removed);
+    let [(_, a0, a1), (_, b0, _), (_, c0, c1)] = TOPICS;
+    let len_c = word_start(c1) - word_start(c0);
+    let len_a = word_start(a1) - word_start(a0) - removed();
     match n {
-        80..=119 => word_start(n) - word_start(80),
-        0..=39 if n < CUT.0 => len_c + word_start(n),
-        0..=39 => len_c + word_start(n) - removed,
-        _ => len_c + len_a + word_start(n) - word_start(40),
+        n if n >= c0 => word_start(n) - word_start(c0),
+        n if n < CUT.0 => len_c + word_start(n),
+        n if n < a1 => len_c + word_start(n) - removed(),
+        _ => len_c + len_a + word_start(n) - word_start(b0),
     }
 }
 
 /// 書き出しの全長（秒）。
 fn timeline_length() -> f64 {
-    let removed = word_end(CUT.1) - word_start(CUT.0);
     TOPICS
         .iter()
-        .map(|(_, from, to)| word_end(to - 1) - word_start(*from))
+        .map(|(_, from, to)| word_start(*to) - word_start(*from))
         .sum::<f64>()
-        - removed
+        - removed()
 }
 
 fn add_output(dir: &str) {
@@ -179,7 +180,7 @@ fn add_output(dir: &str) {
     let marks = [
         ("m1", 0.0, "導入"),
         ("m2", timeline_start(0), "本題"),
-        ("m3", timeline_start(40), "まとめ"),
+        ("m3", timeline_start(TOPICS[1].1), "まとめ"),
     ];
     for (id, at, name) in marks {
         op(
@@ -246,7 +247,12 @@ fn word_numbers(text: &str) -> Vec<i64> {
 }
 
 fn check_cues(cues: &[Cue]) {
-    assert!(cues.len() > 15, "字幕が少ない: {}", cues.len());
+    // 1 文に 1 つ以上の字幕が出る。
+    assert!(
+        cues.len() as i64 >= WORDS / WORDS_PER_SENTENCE,
+        "字幕が少ない: {}",
+        cues.len()
+    );
     let mut seen = Vec::new();
     for (i, c) in cues.iter().enumerate() {
         let first = word_numbers(&c.text)[0];
@@ -363,7 +369,7 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
     assert_eq!(chapters.len(), 3, "{chapters:?}");
     // チャプターは映像と同じ時間軸に置く。映像の始まりがずれていれば、同じだけずれていないと話題の先頭と合わない。
     let video_start = stream_start(&yt, "v");
-    let starts = [0.0, timeline_start(0), timeline_start(40)];
+    let starts = [0.0, timeline_start(0), timeline_start(TOPICS[1].1)];
     for (c, (start, title)) in chapters
         .iter()
         .zip(starts.iter().zip(["導入", "本題", "まとめ"]))
@@ -376,7 +382,7 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
         assert_eq!(c["tags"]["title"], title);
     }
     let text = std::fs::read_to_string(yt.with_extension("chapters.txt")).unwrap();
-    assert_eq!(text, "00:00 導入\n00:19 本題\n00:38 まとめ\n");
+    assert_eq!(text, "00:00 導入\n00:11 本題\n00:22 まとめ\n");
 
     let tracks = ffprobe_json(&tv, &["-show_entries", "stream=codec_name,codec_type"]);
     let codecs: Vec<_> = tracks["streams"]
