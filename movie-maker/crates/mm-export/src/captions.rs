@@ -87,20 +87,26 @@ pub fn composition_cues(
             text: w.text,
         })
         .collect();
-    Ok(to_cues(&in_range))
+    Ok(to_cues(&in_range, to - from))
 }
 
 /// sequence をそのまま全長で字幕にする（`mm subtitles`）。時刻は sequence の時間軸。
 pub fn sequence_cues(seq: &Sequence, transcript: &TranscriptWords) -> Result<Vec<SubtitleCue>> {
-    Ok(to_cues(&sequence_words(seq, transcript)?))
+    let length = mm_eval::place_cuts(seq)?
+        .iter()
+        .map(|p| to_ms(p.range.end))
+        .max()
+        .unwrap_or(0);
+    Ok(to_cues(&sequence_words(seq, transcript)?, length))
 }
 
-fn to_cues(words: &[Word]) -> Vec<SubtitleCue> {
+/// 読む速さで延ばした終わりが書き出しの長さ（`limit_ms`）を超えないよう、長さで切る。
+fn to_cues(words: &[Word], limit_ms: i64) -> Vec<SubtitleCue> {
     segment(words)
         .into_iter()
         .map(|c| SubtitleCue {
             start: ms_time(c.start_ms),
-            end: ms_time(c.end_ms),
+            end: ms_time(c.end_ms.min(limit_ms).max(c.start_ms)),
             text: c.text,
         })
         .collect()
@@ -250,6 +256,15 @@ mod tests {
         let texts: Vec<_> = cues.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(texts, ["C。", "D。"]);
         assert_eq!(cues[0].start, RationalTime::ZERO);
+    }
+
+    #[test]
+    fn 最後の字幕は読む速さで延ばしても書き出しの長さで切る() {
+        let (p, comp) = project(vec![Cut::new("k", footage("a"), t(0, 1), t(1, 2))]);
+        let range = TimeRange::new(RationalTime::ZERO, t(1, 2)).unwrap();
+        let cues = composition_cues(&p, &comp, range, &transcript()).unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].end, t(1, 2));
     }
 
     #[test]
