@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  Claude の返事や一言。墨の地に白い文字の吹き出しを、Claude のロゴの白い札から出す。吹き出しに名前は付けない。
+  data: text（\n で行を折る。[[言葉|yellow]] は画面の札と同じ色の角丸にした言葉。色は yellow、sapphire、white）、
+  x と y（ロゴの札の外側の角。side が right なら右上、left なら左上）、side、layout（stack はロゴの下に吹き出し、
+  row はロゴの横）、theme（展開が足す）。言葉は時刻 t で 1 文字ずつ出る（チャットの返事の出方）。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #sp { position: absolute; display: flex; width: max-content; }
+  #sp.stack { flex-direction: column; gap: 30px; }
+  #sp.stack.r { align-items: flex-end; }
+  #sp.stack.l { align-items: flex-start; }
+  #sp.row { flex-direction: row; align-items: flex-start; gap: 34px; }
+  #sp.row.r { flex-direction: row-reverse; }
+  #logo { flex: none; box-sizing: border-box; padding: 10px 20px 12px; border: 6px solid; border-radius: 22px; rotate: -2deg; line-height: 0; }
+  #logo img { display: block; height: 50px; width: auto; }
+  #bub { position: relative; box-sizing: border-box; padding: 26px 32px 18px; border: 7px solid; border-radius: 30px; outline: 5px solid; rotate: -1.5deg; }
+  #tx { position: relative; z-index: 1; margin: 0; font-size: 44px; font-weight: 900; line-height: 1.3; letter-spacing: 0.03em; }
+  .ln { display: block; white-space: nowrap; }
+  .cp { display: inline-block; margin: 0 0.12em; padding: 0 0.36em; border-radius: 13px; line-height: 1.24; }
+  /* 大きさ 0 の SVG は描かれないので 1 にし、中身は overflow で外に描く。 */
+  #tail { position: absolute; width: 1px; height: 1px; overflow: visible; z-index: 2; }
+</style>
+</head>
+<body>
+<div id="sp">
+  <div id="logo"><img alt="Claude" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2OTAgMTQ4LjIiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03NS45NiwtMjIzLjUzKSI+PHBhdGggZmlsbD0iI2Q5Nzc1NyIgZD0ibSAxMDUuMDEsMzIyLjA3IDI5LjE0LC0xNi4zNSAwLjQ5LC0xLjQyIC0wLjQ5LC0wLjc5IGggLTEuNDIgbCAtNC44NywtMC4zIC0xNi42NSwtMC40NSAtMTQuNDQsLTAuNiAtMTMuOTksLTAuNzUgLTMuNTIsLTAuNzUgLTMuMywtNC4zNSAwLjM0LC0yLjE3IDIuOTYsLTEuOTkgNC4yNCwwLjM3IDkuMzcsMC42NCAxNC4wNiwwLjk3IDEwLjIsMC42IDE1LjExLDEuNTcgaCAyLjQgbCAwLjM0LC0wLjk3IC0wLjgyLC0wLjYgLTAuNjQsLTAuNiAtMTQuNTUsLTkuODYgLTE1Ljc1LC0xMC40MiAtOC4yNSwtNiAtNC40NiwtMy4wNCAtMi4yNSwtMi44NSAtMC45NywtNi4yMiA0LjA1LC00LjQ2IDUuNDQsMC4zNyAxLjM5LDAuMzcgNS41MSw0LjI0IDExLjc3LDkuMTEgMTUuMzcsMTEuMzIgMi4yNSwxLjg3IDAuOSwtMC42NCAwLjExLC0wLjQ1IC0xLjAxLC0xLjY5IC04LjM2LC0xNS4xMSAtOC45MiwtMTUuMzcgLTMuOTcsLTYuMzcgLTEuMDUsLTMuODIgYyAtMC4zNywtMS41NyAtMC42NCwtMi44OSAtMC42NCwtNC41IGwgNC42MSwtNi4yNiAyLjU1LC0wLjgyIDYuMTUsMC44MiAyLjU5LDIuMjUgMy44Miw4Ljc0IDYuMTksMTMuNzYgOS42LDE4LjcxIDIuODEsNS41NSAxLjUsNS4xNCAwLjU2LDEuNTcgaCAwLjk3IHYgLTAuOSBsIDAuNzksLTEwLjU0IDEuNDYsLTEyLjk0IDEuNDIsLTE2LjY1IDAuNDksLTQuNjkgMi4zMiwtNS42MiA0LjYxLC0zLjA0IDMuNiwxLjcyIDIuOTYsNC4yNCAtMC40MSwyLjc0IC0xLjc2LDExLjQ0IC0zLjQ1LDE3LjkyIC0yLjI1LDEyIGggMS4zMSBsIDEuNSwtMS41IDYuMDcsLTguMDYgMTAuMiwtMTIuNzUgNC41LC01LjA2IDUuMjUsLTUuNTkgMy4zNywtMi42NiBoIDYuMzcgbCA0LjY5LDYuOTcgLTIuMSw3LjIgLTYuNTYsOC4zMiAtNS40NCw3LjA1IC03LjgsMTAuNSAtNC44Nyw4LjQgMC40NSwwLjY3IDEuMTYsLTAuMTEgMTcuNjIsLTMuNzUgOS41MiwtMS43MiAxMS4zNiwtMS45NSA1LjE0LDIuNCAwLjU2LDIuNDQgLTIuMDIsNC45OSAtMTIuMTUsMyAtMTQuMjUsMi44NSAtMjEuMjIsNS4wMiAtMC4yNiwwLjE5IDAuMywwLjM3IDkuNTYsMC45IDQuMDksMC4yMiBoIDEwLjAxIGwgMTguNjQsMS4zOSA0Ljg3LDMuMjIgMi45MiwzLjk0IC0wLjQ5LDMgLTcuNSwzLjgyIC0xMC4xMiwtMi40IC0yMy42MiwtNS42MiAtOC4xLC0yLjAyIGggLTEuMTIgdiAwLjY3IGwgNi43NSw2LjYgMTIuMzcsMTEuMTcgMTUuNDksMTQuNCAwLjc5LDMuNTYgLTEuOTksMi44MSAtMi4xLC0wLjMgLTEzLjYxLC0xMC4yNCAtNS4yNSwtNC42MSAtMTEuODksLTEwLjAxIGggLTAuNzkgdiAxLjA1IGwgMi43NCw0LjAxIDE0LjQ3LDIxLjc1IDAuNzUsNi42NyAtMS4wNSwyLjE3IC0zLjc1LDEuMzEgLTQuMTIsLTAuNzUgLTguNDcsLTExLjg5IC04Ljc0LC0xMy4zOSAtNy4wNSwtMTIgLTAuODYsMC40OSAtNC4xNiw0NC44MSAtMS45NSwyLjI5IC00LjUsMS43MiAtMy43NSwtMi44NSAtMS45OSwtNC42MSAxLjk5LC05LjExIDIuNCwtMTEuODkgMS45NSwtOS40NSAxLjc2LC0xMS43NCAxLjA1LC0zLjkgLTAuMDcsLTAuMjYgLTAuODYsMC4xMSAtOC44NSwxMi4xNSAtMTMuNDYsMTguMTkgLTEwLjY1LDExLjQgLTIuNTUsMS4wMSAtNC40MiwtMi4yOSAwLjQxLC00LjA5IDIuNDcsLTMuNjQgMTQuNzQsLTE4Ljc1IDguODksLTExLjYyIDUuNzQsLTYuNzEgLTAuMDQsLTAuOTcgaCAtMC4zNCBsIC0zOS4xNSwyNS40MiAtNi45NywwLjkgLTMsLTIuODEgMC4zNywtNC42MSAxLjQyLC0xLjUgMTEuNzcsLTguMSAtMC4wNCwwLjA0IHoiLz48cGF0aCBmaWxsPSIjMGYwZjBkIiBkPSJtIDMxNy43MywzNDkuMzMgYyAtMTguODIsMCAtMzEuNjksLTEwLjUgLTM3Ljc2LC0yNi42NiAtMy4xNywtOC40MiAtNC43NCwtMTcuMzYgLTQuNjEsLTI2LjM2IDAsLTI3LjExIDEyLjE1LC00NS45NCAzOSwtNDUuOTQgMTguMDQsMCAyOS4xNyw3Ljg3IDM1LjUxLDI2LjY2IGggNy43MiBsIC0xLjA1LC0yNS45MSBjIC0xMC44LC02Ljk3IC0yNC4zLC0xMC41IC00MC43MiwtMTAuNSAtMjMuMTQsMCAtNDIuODIsMTAuMzUgLTUzLjc3LDI5LjAyIC01LjY2LDkuODYgLTguNTMsMjEuMDcgLTguMzIsMzIuNDQgMCwyMC43NCA5Ljc5LDM5LjExIDI4LjE2LDQ5LjMxIDEwLjA2LDUuMzcgMjEuMzQsOC4wNCAzMi43NCw3LjcyIDE3LjkyLDAgMzIuMTQsLTMuNDEgNDQuNzQsLTkuMzcgbCAzLjI2LC0yOC41NyBoIC03Ljg3IGMgLTQuNzIsMTMuMDUgLTEwLjM1LDIwLjg5IC0xOS42OSwyNS4wNSAtNC41NywyLjA2IC0xMC4zNSwzLjExIC0xNy4zMiwzLjExIHogbSA4MS4xOCwtOTguOTYgMC43NSwtMTIuNzUgaCAtNS4zMiBsIC0yMy43LDcuMTIgdiAzLjg2IGwgMTAuNSw0Ljg3IHYgODkuMTcgYyAwLDYuMDcgLTMuMTEsNy40MiAtMTEuMjUsOC40NCB2IDYuNTIgaCA0MC4zMSB2IC02LjUyIGMgLTguMTcsLTEuMDEgLTExLjI1LC0yLjM2IC0xMS4yNSwtOC40NCBWIDI1MC40IGwgLTAuMDQsLTAuMDQgeiBtIDE2MC4zMSwxMDguNzUgaCAzLjExIGwgMjcuMjYsLTUuMTcgdiAtNi42NyBsIC0zLjgyLC0wLjMgYyAtNi4zNywtMC42IC04LjAyLC0xLjkxIC04LjAyLC03LjEyIHYgLTQ3LjU1IGwgMC43NSwtMTUuMjYgaCAtNC4zMSBsIC0yNS43NiwzLjcxIHYgNi41MiBsIDIuNTEsMC40NSBjIDYuOTcsMS4wMSA5LjA0LDIuOTYgOS4wNCw3Ljg0IHYgNDIuMzcgYyAtNi42Nyw1LjE3IC0xMy4wNSw4LjQ0IC0yMC42Miw4LjQ0IC04LjQsMCAtMTMuNjEsLTQuMjcgLTEzLjYxLC0xNC4yNSB2IC0zOS43OSBsIDAuNzUsLTE1LjI2IGggLTQuNDIgbCAtMjUuOCwzLjcxIHYgNi41MiBsIDIuNjYsMC40NSBjIDYuOTcsMS4wMSA5LjA0LDIuOTYgOS4wNCw3Ljg0IHYgMzkuMTEgYyAwLDE2LjU3IDkuMzcsMjQuNDUgMjQuMywyNC40NSAxMS40LDAgMjAuNzQsLTYuMDcgMjcuNzUsLTE0LjUxIGwgLTAuNzUsMTQuNTEgLTAuMDQsLTAuMDQgeiBNIDQ4NC4zLDMwNi4zNiBjIDAsLTIxLjE5IC0xMS4yNSwtMjkuMzIgLTMxLjU3LC0yOS4zMiAtMTcuOTIsMCAtMzAuOTQsNy40MiAtMzAuOTQsMTkuNzIgMCwzLjY3IDEuMzEsNi40OSAzLjk3LDguNDQgbCAxMy42NSwtMS44IGMgLTAuNiwtNC4xMiAtMC45LC02LjY0IC0wLjksLTcuNjkgMCwtNi45NyAzLjcxLC0xMC41IDExLjI1LC0xMC41IDExLjE0LDAgMTYuNzYsNy44NCAxNi43NiwyMC40NCB2IDQuMTIgbCAtMjguMTIsOC40NCBjIC05LjM3LDIuNTUgLTE0LjcsNC43NiAtMTguMjYsOS45NCAtMS44OSwzLjE3IC0yLjgsNi44MiAtMi42MiwxMC41IDAsMTIgOC4yNSwyMC40NyAyMi4zNSwyMC40NyAxMC4yLDAgMTkuMjQsLTQuNjEgMjcuMTEsLTEzLjM1IDIuODEsOC43NCA3LjEyLDEzLjM1IDE0LjgxLDEzLjM1IDYuMjIsMCAxMS44NSwtMi41MSAxNi44NywtNy40MiBsIC0xLjUsLTUuMTcgYyAtMi4xNywwLjYgLTQuMjcsMC45IC02LjQ5LDAuOSAtNC4zMSwwIC02LjM3LC0zLjQxIC02LjM3LC0xMC4wOSB2IC0zMC45NyB6IG0gLTM2LDQwLjc2IGMgLTcuNjksMCAtMTIuNDUsLTQuNDYgLTEyLjQ1LC0xMi4zIDAsLTUuMzIgMi41MSwtOC40NCA3Ljg3LC0xMC4yNCBsIDIyLjgsLTcuMjQgdiAyMS45IGMgLTcuMjcsNS41MSAtMTEuNTUsNy44NyAtMTguMjIsNy44NyB6IG0gMjM3LjM2LDYuODIgdiAtNi42NyBsIC0zLjg2LC0wLjMgYyAtNi4zNywtMC42IC03Ljk5LC0xLjkxIC03Ljk5LC03LjEyIHYgLTg5LjQ3IGwgMC43NSwtMTIuNzUgaCAtNS4zNiBsIC0yMy43LDcuMTIgdiAzLjg2IGwgMTAuNSw0Ljg3IHYgMjkuMzIgYyAtNS45MSwtNC4wNSAtMTIuOTgsLTYuMDggLTIwLjE0LC01Ljc3IC0yMy41NSwwIC00MS45MiwxNy45MiAtNDEuOTIsNDQuNzQgMCwyMi4wOSAxMy4yLDM3LjM1IDM0Ljk1LDM3LjM1IDExLjI1LDAgMjEuMDQsLTUuNDcgMjcuMTEsLTEzLjk1IGwgLTAuNzUsMTMuOTUgaCAzLjE1IGwgMjcuMjYsLTUuMTcgdiAwIHogbSAtNDkuMzUsLTY4LjAyIGMgMTEuMjUsMCAxOS42OSw2LjUyIDE5LjY5LDE4LjUyIHYgMzMuNzUgYyAtNS4xOCw1LjE2IC0xMi4yMyw4IC0xOS41NCw3Ljg3IC0xNi4xMiwwIC0yNC4zLC0xMi43NSAtMjQuMywtMjkuNzcgMCwtMTkuMTIgOS4zNCwtMzAuMzcgMjQuMTUsLTMwLjM3IHogTSA3NDMuMywzMDIuOCBjIC0yLjEsLTkuOSAtOC4xNywtMTUuNTIgLTE2LjYxLC0xNS41MiAtMTIuNiwwIC0yMS4zNCw5LjQ5IC0yMS4zNCwyMy4xIDAsMjAuMTQgMTAuNjUsMzMuMTkgMjcuODYsMzMuMTkgMTEuNDgsLTAuMTIgMjIuMDQsLTYuMzMgMjcuNzEsLTE2LjMxIGwgNS4wMiwxLjM1IGMgLTIuMjUsMTcuNDcgLTE4LjA3LDMwLjUyIC0zNy41LDMwLjUyIC0yMi44LDAgLTM4LjUxLC0xNi44NyAtMzguNTEsLTQwLjg3IDAsLTI0IDE3LjA2LC00MS4yMSAzOS44NiwtNDEuMjEgMTcuMDIsMCAyOS4wMiwxMC4yNCAzMi44OSwyOC4wMSBsIC01OS40LDE4LjIyIHYgLTguMDIgbCA0MC4wMSwtMTIuNDEgdiAtMC4wNCB6Ii8+PC9nPjwvc3ZnPg=="></div>
+  <div id="bub"><p id="tx"></p><svg id="tail" xmlns="http://www.w3.org/2000/svg"><g id="tg"><clipPath id="t-clip"><rect id="t-clip-r" x="-200" width="400"/></clipPath><path id="t-out"/><path id="t-mid"/><path id="t-in"/></g></svg></div>
+</div>
+<script>
+  // 吹き出しの出方（秒）。吹き出しが SHOW に出て、その START 後から文字を出し、SPAN までに出し切る。1 文字は FADE で現れる。
+  const SHOW = 0.12, START = 0.15, SPAN = 0.5, STEP_MAX = 0.03, FADE = 0.05;
+  // しっぽ（付け根の半幅 40、高さ 40）。縁 7 と外の墨 5 を、吹き出しの縁から続けて描く。
+  const HALF = 40, RISE = 40, EDGE = 7, RING = 5;
+  // しっぽの付け根の位置。stack はロゴの真ん中の下（吹き出しの端から 107）、row は上の辺から 40。
+  const STACK_AT = 107, ROW_AT = 40;
+  // 影のずれ（ロゴの札は 6 と 8、吹き出しは 7 と 10）。
+  const LOGO_SHADOW = [6, 8], BUB_SHADOW = [7, 10];
+
+  // 行ごとに、ふつうの文字と [[言葉|色]] の札を 1 つずつの字に分ける（札は 1 字として出す）。
+  const tokens = (line) => {
+    const out = [], re = /\[\[([^|\]]+)\|([a-z]+)\]\]/g;
+    let k = 0, m;
+    while ((m = re.exec(line))) {
+      out.push(...[...line.slice(k, m.index)].map((c) => ({ c })));
+      out.push({ chip: m[1], col: m[2] });
+      k = m.index + m[0].length;
+    }
+    return out.concat([...line.slice(k)].map((c) => ({ c })));
+  };
+
+  const chipColors = (col, colors) => ({
+    yellow: [colors.yellow, colors.ink],
+    sapphire: [colors.sapphire, colors.white],
+    blue: [colors.sapphire, colors.white],
+    white: [colors.white, colors.ink],
+  }[col] || [colors.white, colors.ink]);
+
+  const fillText = (tx, text, colors, t) => {
+    const lines = String(text || '').replace(/\\n/g, '\n').split('\n').map(tokens);
+    const n = lines.reduce((a, ln) => a + ln.length, 0);
+    const dt = Math.min(STEP_MAX, SPAN / Math.max(1, n));
+    let i = 0;
+    tx.replaceChildren(...lines.map((ln) => {
+      const row = document.createElement('span');
+      row.className = 'ln';
+      for (const tk of ln) {
+        const s = document.createElement('span');
+        const t0 = SHOW + START + i * dt;
+        i += 1;
+        s.style.opacity = Math.min(1, Math.max(0, (t - t0) / FADE));
+        if (tk.chip != null) {
+          const [bg, fg] = chipColors(tk.col, colors);
+          s.className = 'cp';
+          s.textContent = tk.chip;
+          s.style.background = bg;
+          s.style.color = fg;
+        } else {
+          s.textContent = tk.c === ' ' ? ' ' : tk.c;
+        }
+        row.append(s);
+      }
+      return row;
+    }));
+  };
+
+  // 付け根の真ん中（吹き出しの縁の内側の線の上）を原点に、上向きのしっぽを描いて回す（up 0 度、right 90 度、left -90 度）。
+  // 縁と外の墨の帯は吹き出しの外（縁の外の線より先）だけに描き、縁の中は墨で塗って吹き出しの縁を切る。
+  const drawTail = (colors, at, angle) => {
+    const base = `M${-HALF},0 L0,${-RISE} L${HALF},0`;
+    const set = (id, d, attrs) => {
+      const p = document.getElementById(id);
+      p.setAttribute('d', d);
+      for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
+    };
+    const line = { fill: 'none', 'stroke-linejoin': 'round', 'stroke-linecap': 'butt' };
+    const outside = { ...line, 'clip-path': 'url(#t-clip)' };
+    document.getElementById('t-clip-r').setAttribute('y', -EDGE - RISE * 2);
+    document.getElementById('t-clip-r').setAttribute('height', RISE * 2);
+    set('t-out', base, { ...outside, stroke: colors.ink, 'stroke-width': 2 * (EDGE + RING) });
+    set('t-mid', base, { ...outside, stroke: colors.paper, 'stroke-width': 2 * EDGE });
+    set('t-in', `M${-HALF},1 ${base.slice(1)} L${HALF},1 Z`, { fill: colors.ink, stroke: 'none' });
+    const tail = document.getElementById('tail');
+    tail.style.left = at[0] + 'px';
+    tail.style.top = at[1] + 'px';
+    document.getElementById('tg').setAttribute('transform', `rotate(${angle})`);
+  };
+
+  window.mmSetTime = (t, data) => {
+    const theme = data.theme || {};
+    const colors = { ink: '#0B1230', paper: '#F5F8FF', white: '#FFFFFF', yellow: '#FFD43B', sapphire: '#2459E0', ...(theme.colors || {}) };
+    const fonts = theme.fonts || {};
+    const right = (data.side || 'right') !== 'left';
+    const layout = data.layout === 'row' ? 'row' : 'stack';
+    const sp = document.getElementById('sp');
+    sp.className = `${layout} ${right ? 'r' : 'l'}`;
+    const logo = document.getElementById('logo');
+    logo.style.background = colors.white;
+    logo.style.borderColor = colors.ink;
+    logo.style.filter = `drop-shadow(${LOGO_SHADOW[0]}px ${LOGO_SHADOW[1]}px 0 ${colors.ink})`;
+    const bub = document.getElementById('bub');
+    bub.style.background = colors.ink;
+    bub.style.borderColor = colors.paper;
+    bub.style.outlineColor = colors.ink;
+    bub.style.filter = `drop-shadow(${BUB_SHADOW[0]}px ${BUB_SHADOW[1]}px 0 ${colors.ink})`;
+    const tx = document.getElementById('tx');
+    tx.style.color = colors.white;
+    tx.style.fontFamily = `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`;
+    fillText(tx, data.text, colors, t);
+    const w = bub.offsetWidth;
+    if (layout === 'stack') drawTail(colors, [right ? w - STACK_AT : STACK_AT, 0], 0);
+    else drawTail(colors, [right ? w : 0, ROW_AT], right ? 90 : -90);
+    const canvas = theme.canvas || { width: 1920 };
+    const x = Number(data.x) || 0, y = Number(data.y) || 0;
+    sp.style.top = y + 'px';
+    sp.style.left = right ? 'auto' : x + 'px';
+    sp.style.right = right ? (canvas.width - x) + 'px' : 'auto';
+  };
+</script>
+</body>
+</html>

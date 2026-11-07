@@ -1,14 +1,16 @@
 {
   "name": "callout",
   "title": "吹き出し",
-  "description": "画面の一点（つまみ、波形の山）を指す吹き出し。白い紙と墨の縁、ずらした影、しっぽ。日本語は文節の切れ目で折り返す。web.cef で描く",
+  "description": "画面の一点（つまみ、波形の山、窓）を指す吹き出し。白い紙と墨の縁、ずらした影、しっぽ。しっぽは下・上・横に向けられ、道具の名前を題字の書体で前に置ける。日本語は文節の切れ目で折り返す。web.cef で描く",
   "params": {
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
-    "text": {"type": "text", "description": "吹き出しの文。長ければ文節の切れ目で折り返す"},
+    "text": {"type": "text", "description": "吹き出しの文。長ければ文節の切れ目で折り返す。name があれば（）で囲む"},
+    "name": {"type": "text", "optional": true, "description": "道具の名前（Splice など）。サファイアの題字の書体で文の前に置く"},
     "x": {"type": "number", "description": "しっぽが指す点の x（コンポジションの画素）"},
-    "y": {"type": "number", "description": "しっぽが指す点の y（コンポジションの画素）。吹き出しはこの上に出る"},
-    "side": {"type": "text", "default": "right", "description": "吹き出しを置く側。right は指す点の右上、left は左上"},
+    "y": {"type": "number", "description": "しっぽが指す点の y（コンポジションの画素）"},
+    "side": {"type": "text", "default": "right", "description": "吹き出しを置く側。right は指す点の右、left は左"},
+    "tail": {"type": "text", "default": "down", "description": "しっぽの向き。down は吹き出しが点の上、up は点の下、side は点の横（縦の真ん中を合わせる）"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
     "cut": {"type": "id", "optional": true, "description": "接続するカット"}
@@ -18,7 +20,7 @@
     {"web": {
       "page": "callout", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
       "fade_in": 0.2, "fade_out": 0.2,
-      "data": {"text": "{{text}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}"}
+      "data": {"text": "{{text}}", "name": "{{name}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}", "tail": "{{tail}}"}
     }}
   ]
 }

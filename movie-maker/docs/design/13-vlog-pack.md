@@ -17,4 +17,4 @@ ep04 から、この形で作れるかを試す。
 
 `web.cef` を使わずに作れる分（色と書体の決まり、文字のスタイル、エピソードのテンプレート、マクロ、ダッキングの設定）は `packs/vlog` にあり、読み込みと検査と展開は `crates/mm-pack`、使う経路は `mm pack` とアプリの `pack_list`・`pack_apply`。中身と、段階 6 に回すものの一覧は [packs/vlog/README.md](../../packs/vlog/README.md)。
 
-`web.cef` の部品は `packs/vlog/web/*.html` に置き、マクロの `web` 手順がレイヤーにする（テーマの色と書体はページの `data.theme` で渡す）。部品の一覧は同じ README の「web の部品」、書き方は「web の部品の書き方」。
+`web.cef` の部品は `packs/vlog/web/*.html` に置き、マクロの `web` 手順がレイヤーにする（テーマの色と書体はページの `data.theme` で渡す）。部品の一覧は同じ README の「web の部品」、書き方は「web の部品の書き方」。時刻で中身が変わる部品（歌詞、図解の cues、読む窓、Claude の吹き出し）は `animated: true` で、レイヤーの始まりからの秒 `t` と `data` だけで画面を決める。

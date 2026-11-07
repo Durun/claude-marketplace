@@ -12,12 +12,12 @@ fn vlog_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
 }
 
-fn vlog() -> Pack {
+pub(crate) fn vlog() -> Pack {
     Pack::load(&vlog_dir()).expect("packs/vlog を読める")
 }
 
 /// 見積もりのシェーパーで展開する（フォントを読まない）。
-fn expand_est(
+pub(crate) fn expand_est(
     pack: &Pack,
     name: &str,
     args: &BTreeMap<String, String>,
@@ -25,7 +25,7 @@ fn expand_est(
     mm_pack::expand(pack, name, args, &EstimateShaper)
 }
 
-fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+pub(crate) fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -33,7 +33,7 @@ fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 }
 
 /// テンプレートを適用したプロジェクトに `txn` を適用する。
-fn apply_on_episode(pack: &Pack, txn: Transaction) -> Project {
+pub(crate) fn apply_on_episode(pack: &Pack, txn: Transaction) -> Project {
     let ctx = OpContext::human();
     let mut editor = Editor::new(Project::new());
     let episode = expand_est(pack, "episode", &args(&[("n", "4")])).unwrap();

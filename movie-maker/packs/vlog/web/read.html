@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  読む窓。本人が読み上げている文（開いているページ 1 枚）を、縦長のブラウザの窓にスマホで読める大きさで描き直す。
+  読んでいる言葉に左から下線を引き、読む行が窓の見えている所を出たら、その段落の頭を窓の上へ送る。
+  data: tab（タブの題）、doc（行ごとに「# 」は題、「## 」は節、「> 」は要点の箱、「- 」は番号つきの項目、ほかは段落。
+  **…** は青い太字、==…== は黄色のマーカー。\n で行を分ける）、segs（「文の中の言葉@始まり+長さ」を | で区切る。秒はレイヤーの
+  始まりから）、x と y（窓の左上）、w と h（窓の大きさ）、theme（展開が足す）。画面は t と data だけで決まる。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #win { position: absolute; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; border: 6px solid; border-radius: 22px; }
+  .bar { flex: none; display: flex; align-items: flex-end; gap: 10px; height: 66px; padding: 0 18px; box-sizing: border-box; border-bottom: 4px solid; }
+  .dt { align-self: center; width: 16px; height: 16px; border-radius: 50%; flex: none; }
+  .tab { display: flex; align-items: center; gap: 12px; margin: 0 0 -4px 12px; height: 54px; padding: 0 24px; box-sizing: border-box; border: 4px solid; border-bottom: none; border-radius: 14px 14px 0 0; }
+  .fv { width: 24px; height: 24px; flex: none; border-radius: 6px; }
+  .tt { font-size: 40px; font-weight: 800; line-height: 1; white-space: nowrap; }
+  #vp { position: relative; flex: 1; overflow: hidden; }
+  #pg { position: relative; padding: 18px 36px 520px; }
+  h1 { margin: 0 0 8px; font-size: 60px; font-weight: 800; line-height: 1.25; }
+  p { margin: 0 0 24px; font-size: 40px; font-weight: 500; line-height: 1.55; }
+  .lead { margin: 0 0 24px; padding: 16px 26px; font-size: 46px; font-weight: 800; line-height: 1.5; border: 5px solid; border-radius: 20px; }
+  h2 { margin: 42px 0 14px; padding-left: 16px; border-left: 12px solid; font-size: 48px; font-weight: 800; line-height: 1.3; }
+  ol { margin: 0; padding-left: 1.3em; font-size: 40px; font-weight: 500; line-height: 1.55; }
+  li { margin: 0 0 22px; }
+  .b { font-weight: 800; }
+  .rd { background-repeat: no-repeat; background-position: 0 100%; }
+</style>
+</head>
+<body>
+<div id="win"><div class="bar"><span class="dt"></span><span class="dt"></span><span class="dt"></span><span class="tab"><span class="fv"></span><span class="tt"></span></span></div><div id="vp"><div id="pg"></div></div></div>
+<script>
+  // 下線の太さ。送りは読み始めの EARLY 秒前から SCROLL 秒で、段落の頭から 2.2 行より先の行は 1 行上を窓の上に置く。
+  const LINE = 9, EARLY = 0.3, SCROLL = 0.6, NEAR = 2.2, MARGIN = 14;
+
+  // **…** と ==…== を印に分け、1 字ずつ { ch, b, m } にする。
+  const chars = (src) => {
+    const out = [];
+    let b = false, m = false;
+    for (const tok of String(src).split(/(\*\*|==)/)) {
+      if (tok === '**') b = !b;
+      else if (tok === '==') m = !m;
+      else for (const ch of tok) out.push({ ch, b, m });
+    }
+    return out;
+  };
+
+  // 同じ印の続きを 1 つの span にする。下線の中のマーカーは下の LINE を空け、下線を隠さない。
+  const runs = (cs, a, z, c, underlined = false) => {
+    const stop = underlined ? `, ${c.yellow} calc(100% - ${LINE}px), transparent calc(100% - ${LINE}px)` : '';
+    const frag = document.createDocumentFragment();
+    for (let k = a; k < z;) {
+      let e = k + 1;
+      while (e < z && cs[e].b === cs[k].b && cs[e].m === cs[k].m) e++;
+      const text = cs.slice(k, e).map((x) => x.ch).join('');
+      if (cs[k].b || cs[k].m) {
+        const s = document.createElement('span');
+        if (cs[k].b) { s.className = 'b'; s.style.color = c.sapphire; }
+        if (cs[k].m) s.style.background = `linear-gradient(transparent 55%, ${c.yellow} 55%${stop})`;
+        s.textContent = text;
+        frag.append(s);
+      } else frag.append(text);
+      k = e;
+    }
+    return frag;
+  };
+
+  // 段落の中で、まだ使っていない segs の言葉を探し、読む間に伸びる下線の span で囲む。
+  const inline = (src, segs, used, c, t) => {
+    const cs = chars(src);
+    const plain = cs.map((x) => x.ch).join('');
+    const ranges = [];
+    segs.forEach((sg, i) => {
+      const a = used.has(i) ? -1 : plain.indexOf(sg.mark);
+      if (a < 0) return;
+      used.add(i);
+      ranges.push({ a, z: a + sg.mark.length, t0: sg.t0, d: sg.d });
+    });
+    ranges.sort((p, q) => p.a - q.a);
+    const frag = document.createDocumentFragment();
+    let k = 0;
+    for (const r of ranges) {
+      if (r.a < k) continue;
+      frag.append(runs(cs, k, r.a, c));
+      const s = document.createElement('span');
+      s.className = 'rd';
+      s.dataset.t = r.t0;
+      s.style.backgroundImage = `linear-gradient(${c.sapphire}, ${c.sapphire})`;
+      s.style.backgroundSize = `${Math.min(1, Math.max(0, (t - r.t0) / Math.max(0.15, r.d))) * 100}% ${LINE}px`;
+      s.append(runs(cs, r.a, r.z, c, true));
+      frag.append(s);
+      k = r.z;
+    }
+    frag.append(runs(cs, k, cs.length, c));
+    return frag;
+  };
+
+  const build = (pg, doc, segs, c, t) => {
+    pg.replaceChildren();
+    const used = new Set();
+    let list = null;
+    for (const raw of String(doc || '').replace(/\\n/g, '\n').split('\n')) {
+      const line = raw.trimEnd();
+      if (!line) continue;
+      const m = /^(#{1,2}|>|-) (.*)$/.exec(line);
+      const kind = m ? m[1] : '';
+      const text = m ? m[2] : line;
+      if (kind !== '-') list = null;
+      let node;
+      if (kind === '-') {
+        if (!list) { list = document.createElement('ol'); pg.append(list); }
+        node = document.createElement('li');
+        list.append(node);
+      } else {
+        node = document.createElement(kind === '#' ? 'h1' : kind === '##' ? 'h2' : 'p');
+        if (kind === '>') {
+          node.className = 'lead';
+          Object.assign(node.style, { background: c.white, borderColor: c.ink, filter: `drop-shadow(9px 9px 0 ${c.ink})` });
+        }
+        if (kind === '##') node.style.borderColor = c.sapphire;
+        pg.append(node);
+      }
+      node.append(inline(text, segs, used, c, t));
+    }
+  };
+
+  const ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
+  const topOf = (el, pg) => { let y = 0; for (let n = el; n && n !== pg; n = n.offsetParent) y += n.offsetTop; return y; };
+
+  // 時刻 t の送りの量。読む言葉の行が見えている所に無ければ、その言葉の EARLY 秒前から SCROLL 秒かけて送る。
+  const scrollAt = (pg, vp, t) => {
+    const lh = parseFloat(getComputedStyle(pg.querySelector('ol') || pg.querySelector('p') || pg).lineHeight) || 62;
+    const maxY = Math.max(0, pg.scrollHeight - vp.clientHeight);
+    const vis = vp.clientHeight - 16;
+    const rows = [...pg.querySelectorAll('.rd')].map((s) => {
+      const blk = s.closest('li, .lead, h1, h2, p');
+      return { t: Number(s.dataset.t), y: topOf(s, pg), blk: topOf(blk || s, pg) };
+    }).sort((a, b) => a.t - b.t);
+    if (!rows.length) return 0;
+    const clamp = (y) => Math.max(0, Math.min(maxY, Math.round(y)));
+    const target = (r) => clamp((r.y - r.blk < NEAR * lh ? r.blk : r.y - lh) - MARGIN);
+    let cur = target(rows[0]);
+    for (const r of rows) {
+      if (r.y >= cur && r.y + lh <= cur + vis) continue;
+      const to = target(r), start = Math.max(0, r.t - EARLY);
+      if (Math.abs(to - cur) < 4) continue;
+      if (t < start) break;
+      const u = Math.min(1, (t - start) / SCROLL);
+      if (u < 1) return cur + (to - cur) * ease(u);
+      cur = to;
+    }
+    return cur;
+  };
+
+  const parseSegs = (s) => String(s || '').split('|').map((x) => /^(.+)@(-?[\d.]+)\+([\d.]+)$/.exec(x.trim()))
+    .filter(Boolean).map((m) => ({ mark: m[1], t0: Number(m[2]), d: Number(m[3]) }));
+
+  window.mmSetTime = (t, data) => {
+    const theme = data.theme || {};
+    const c = { ink: '#0B1230', paper: '#F5F8FF', white: '#FFFFFF', yellow: '#FFD43B', sapphire: '#2459E0', ...(theme.colors || {}) };
+    const fonts = theme.fonts || {};
+    const win = document.getElementById('win');
+    Object.assign(win.style, {
+      left: `${Number(data.x) || 0}px`, top: `${Number(data.y) || 0}px`,
+      width: `${Number(data.w) || 1000}px`, height: `${Number(data.h) || 840}px`,
+      background: c.paper, borderColor: c.ink, color: c.ink,
+      filter: `drop-shadow(0 10px 0 ${c.ink})`,
+      fontFamily: `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`,
+    });
+    const chrome = `color-mix(in srgb, ${c.ink} 14%, ${c.paper})`;
+    Object.assign(win.querySelector('.bar').style, { background: chrome, borderColor: c.ink });
+    win.querySelectorAll('.dt').forEach((d) => { d.style.background = `color-mix(in srgb, ${c.ink} 40%, ${c.paper})`; });
+    Object.assign(win.querySelector('.tab').style, { background: c.paper, borderColor: c.ink });
+    win.querySelector('.fv').style.background = c.sapphire;
+    const tt = win.querySelector('.tt');
+    tt.textContent = String(data.tab || '');
+    tt.style.color = `color-mix(in srgb, ${c.ink} 80%, ${c.paper})`;
+    const pg = document.getElementById('pg');
+    build(pg, data.doc, parseSegs(data.segs), c, t);
+    pg.style.translate = `0 ${-scrollAt(pg, document.getElementById('vp'), t)}px`;
+  };
+</script>
+</body>
+</html>

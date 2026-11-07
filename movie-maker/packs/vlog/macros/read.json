@@ -1,0 +1,32 @@
+{
+  "name": "read",
+  "title": "読む窓",
+  "description": "本人が読み上げている文（開いているページ 1 枚）を、縦長のブラウザの窓にスマホで読める大きさで描き直す。読んでいる言葉に左から青い下線を引き、読む行が見えている所を出たら段落の頭を窓の上へ送る。読み上げの字幕は出さない。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "tab": {"type": "text", "description": "タブの題（ページの題）"},
+    "doc": {"type": "text", "description": "ページの文。\\n で行を分け、「# 」は題、「## 」は節、「> 」は要点の箱、「- 」は番号つきの項目、ほかは段落。**…** は青い太字、==…== は黄色のマーカー"},
+    "segs": {"type": "text", "optional": true, "description": "読む言葉。「文の中の言葉@始まり+長さ」を | で区切る（秒はレイヤーの始まりから）。前から順に、まだ使っていない一致に下線を引く"},
+    "x": {"type": "number", "default": "40", "description": "窓の左上の x（顔の反対側に置く）"},
+    "y": {"type": "number", "default": "50", "description": "窓の左上の y"},
+    "w": {"type": "number", "default": "1000", "description": "窓の幅"},
+    "h": {"type": "number", "default": "840", "description": "窓の高さ"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "10", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {
+    "id": "rd1", "tab": "パッドのコードの中身",
+    "doc": "> 3 度は**明るい・暗い**を決める音で、3 和音のままこれがはっきり鳴り続けると、ベタな響きになりやすい。\\n## 抜くと\\n- 明るいのか暗いのか決まらない==浮遊感==になる。",
+    "segs": "3 度は明るい・暗いを決める音で@0.5+2|ベタな響きになりやすい@3+1.5|浮遊感になる@5+1.2",
+    "at": "1"
+  },
+  "steps": [
+    {"web": {
+      "page": "read", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.3, "fade_out": 0.3, "animated": true,
+      "data": {"tab": "{{tab}}", "doc": "{{doc}}", "segs": "{{segs}}", "x": "{{x}}", "y": "{{y}}", "w": "{{w}}", "h": "{{h}}"}
+    }}
+  ]
+}

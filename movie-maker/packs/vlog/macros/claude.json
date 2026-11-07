@@ -1,0 +1,25 @@
+{
+  "name": "claude",
+  "title": "Claude の吹き出し",
+  "description": "Claude の返事や一言。墨の地に白い文字の吹き出しを、Claude のロゴの白い札から出す（吹き出しに名前は付けない）。言葉は 1 文字ずつ出る。\\n で行を折り、[[言葉|yellow]] で札の色の角丸にする。web.cef で描く",
+  "params": {
+    "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
+    "id": {"type": "id", "description": "レイヤーの ID"},
+    "text": {"type": "text", "description": "吹き出しの文（ですます調で一言多い AI の口ぶり）。\\n で行を折る"},
+    "x": {"type": "number", "default": "1830", "description": "ロゴの札の外側の端の x（side が right なら右の端、left なら左の端）"},
+    "y": {"type": "number", "default": "260", "description": "ロゴの札の上の端の y"},
+    "side": {"type": "text", "default": "right", "description": "ロゴを置く側。顔の反対側にする"},
+    "layout": {"type": "text", "default": "stack", "description": "stack はロゴの下に吹き出し、row はロゴの横に吹き出し"},
+    "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
+    "dur": {"type": "time", "default": "4", "description": "出ている長さ（秒）"},
+    "cut": {"type": "id", "optional": true, "description": "接続するカット"}
+  },
+  "example": {"id": "cl1", "text": "わかりました。\\nあなたにもわかるように\\n解説しておきますね。", "at": "1"},
+  "steps": [
+    {"web": {
+      "page": "claude", "comp": "{{comp}}", "layer": "{{id}}", "at": "{{at}}", "dur": "{{dur}}", "attach": "{{cut}}",
+      "fade_in": 0.2, "fade_out": 0.2, "animated": true,
+      "data": {"text": "{{text}}", "x": "{{x}}", "y": "{{y}}", "side": "{{side}}", "layout": "{{layout}}"}
+    }}
+  ]
+}

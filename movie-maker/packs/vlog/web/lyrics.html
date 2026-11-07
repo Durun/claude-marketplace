@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!--
+  採点モード風の歌詞。歌詞の行（言葉ごとにミクの色に染まる）の上に、暗い音程の帯。ノートの棒が右から流れ、黄色の「今」の線を
+  過ぎた所が染まる。線の左の矢印が今の音の高さへ動く。時刻は全部レイヤーの始まりからの秒で、画面は t と data だけで決まる。
+  data: words（「言葉@始まり+長さ」を空白で区切り、「/」で行を分ける）、notes（「音の高さ（MIDI の番号）@始まり+長さ」を空白で区切る）、
+  bars（小節の頭の秒を空白で区切る。任意）、x と y（帯の左上）、theme（展開が足す）。
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #lyr { position: absolute; }
+  #lane { position: relative; overflow: hidden; box-sizing: border-box; border: 5px solid; border-radius: 22px; }
+  #lane i { position: absolute; display: block; }
+  .gl { left: 0; right: 0; height: 2px; margin-top: -1px; }
+  .bl { top: 0; bottom: 0; width: 2px; margin-left: -1px; }
+  .nb { box-sizing: border-box; border: 3px solid; border-radius: 999px; overflow: hidden; }
+  .nb b { position: absolute; inset: 0; display: block; }
+  .now { top: 0; bottom: 0; width: 5px; margin-left: -2.5px; }
+  .hit { width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 5px solid; box-sizing: border-box; }
+  #cur { position: absolute; width: 36px; height: 32px; margin: -16px 0 0 -40px; }
+  #cur svg { display: block; width: 36px; height: 32px; }
+  #row { position: relative; height: 100px; margin-top: 10px; }
+  .ln { position: absolute; left: 0; bottom: 0; display: flex; align-items: center; gap: 16px; white-space: nowrap; }
+  .nt { flex: none; display: flex; align-items: center; justify-content: center; width: 70px; height: 70px; box-sizing: border-box; border-radius: 50%; border: 6px solid; font-size: 40px; line-height: 1; }
+  .tx { margin: 0; font-size: 62px; font-weight: 900; line-height: 1.15; letter-spacing: 0.05em; }
+  .ck { position: relative; display: inline-block; }
+  .ck b { font: inherit; }
+  .fill { position: absolute; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<div id="lyr"><div id="lane"></div><div id="row"></div></div>
+<script>
+  // 帯の寸法（7_mix の lyrics）。幅 1120、高さ 156、上下の余白 18、「今」の線は左から 230、棒は 1 秒 270 px で流れる。
+  const W = 1120, LH = 156, PAD = 18, NX = 230, SPEED = 270;
+  // 行は最初の言葉の LEAD 秒前に下から出る（IN 秒）。休みが REST 秒より長い間は矢印を薄くする。音の頭の輪は HIT 秒で広がって消える。
+  // 矢印は音が終わって SETTLE 秒たってから薄くする。
+  const LEAD = 0.5, IN = 0.3, REST = 0.35, DIM = 0.35, MOVE = 0.05, HIT = 0.32, SETTLE = 0.08;
+
+  // 円周に影を並べた縁（7_mix の ring）。[半径, 色] を内側から外側へ重ねる。文字に接するのは最初の色。
+  const ring = (r, color, rMin) => {
+    const out = [];
+    for (let rr = r; rr > Math.max(rMin, 0.6); rr -= 2.2) {
+      const n = Math.max(10, Math.ceil((2 * Math.PI * rr) / 2.2));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 2 * Math.PI + rr;
+        out.push(`${(Math.cos(a) * rr).toFixed(2)}px ${(Math.sin(a) * rr).toFixed(2)}px 0 ${color}`);
+      }
+    }
+    return out;
+  };
+  const outline = (...layers) => {
+    let prev = 0;
+    return layers.map(([r, c]) => { const s = ring(r, c, prev - 0.5); prev = r; return s; }).flat().join(', ');
+  };
+
+  // 「言葉@1.2+0.4」と「69@1.2+0.4」を読む。読めない項目は飛ばす。
+  const item = (s) => {
+    const m = /^(.+)@(-?[\d.]+)\+([\d.]+)$/.exec(s);
+    return m ? { v: m[1], t: Number(m[2]), d: Number(m[3]) } : null;
+  };
+  const list = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
+  const parseLines = (s) => String(s || '').split('/').map((ln) => list(ln).map(item).filter(Boolean)).filter((ln) => ln.length);
+  const parseNotes = (s) => list(s).map(item).filter(Boolean).map((n) => ({ p: Number(n.v), t: n.t, d: n.d })).filter((n) => Number.isFinite(n.p));
+
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const el = (tag, cls, css) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    Object.assign(e.style, css || {});
+    return e;
+  };
+
+  // 今の矢印の高さと濃さ。音の頭の MOVE 秒前から次の音の高さへ動き、REST 秒より長い休みの間は薄い。
+  const cursor = (notes, t, Y) => {
+    const sorted = notes.slice().sort((a, b) => a.t - b.t);
+    let y = Y(sorted[0].p), end = -Infinity;
+    for (const n of sorted) {
+      if (n.t - MOVE > t) break;
+      y += (Y(n.p) - y) * clamp01((t - (n.t - MOVE)) / MOVE);
+      end = Math.max(end, n.t + n.d);
+    }
+    const next = sorted.find((n) => n.t - MOVE > t);
+    const resting = t > end + SETTLE && (!next || next.t - end > REST);
+    return { y, alpha: resting ? DIM : 1 };
+  };
+
+  const drawLane = (lane, notes, bars, t, c) => {
+    lane.replaceChildren();
+    const lo = Math.min(...notes.map((n) => n.p)) - 1, hi = Math.max(...notes.map((n) => n.p)) + 1;
+    const rh = (LH - PAD * 2) / Math.max(1, hi - lo);
+    const bh = Math.max(16, Math.min(26, rh * 1.9));
+    const Y = (p) => PAD + (hi - p) * rh;
+    for (let p = Math.ceil(lo); p <= hi; p++) {
+      const strong = ((p % 12) + 12) % 12 === 0;
+      lane.append(el('i', 'gl', { top: `${Y(p)}px`, background: `color-mix(in srgb, ${c.white} ${strong ? 12 : 5}%, transparent)` }));
+    }
+    const X = (s) => NX + (s - t) * SPEED;
+    for (const b of bars) {
+      const x = X(b);
+      if (x > -10 && x < W + 10) lane.append(el('i', 'bl', { left: `${x}px`, background: `color-mix(in srgb, ${c.white} 10%, transparent)` }));
+    }
+    for (const n of notes) {
+      const x = X(n.t), w = Math.max(8, n.d * SPEED - 3);
+      if (x + w < -20 || x > W + 20) continue;
+      const bar = el('i', 'nb', { left: `${x}px`, top: `${Y(n.p) - bh / 2}px`, width: `${w}px`, height: `${bh}px`, borderColor: c.ink, background: `color-mix(in srgb, ${c.paper} 90%, transparent)` });
+      const fill = el('b', '', { background: `linear-gradient(color-mix(in srgb, ${c.miku} 55%, ${c.white}), ${c.miku} 60%)` });
+      fill.style.clipPath = `inset(0 ${(1 - clamp01((t - n.t) / n.d)) * 100}% 0 0)`;
+      bar.append(fill);
+      lane.append(bar);
+      const h = (t - n.t) / HIT;
+      if (h >= 0 && h < 1) lane.append(el('i', 'hit', { left: `${NX}px`, top: `${Y(n.p)}px`, borderColor: c.yellow, opacity: 1 - h, scale: 0.35 + 0.9 * h }));
+    }
+    lane.append(el('i', 'now', { left: `${NX}px`, background: c.yellow, filter: `drop-shadow(0 0 7px ${c.yellow})` }));
+    const cur = cursor(notes, t, Y);
+    const arrow = el('span', '', { left: `${NX}px`, top: `${cur.y}px`, opacity: cur.alpha });
+    arrow.id = 'cur';
+    arrow.innerHTML = `<svg viewBox="0 0 40 36"><path d="M4 4 L34 18 L4 32 Z" fill="${c.yellow}" stroke="${c.ink}" stroke-width="5" stroke-linejoin="round"/></svg>`;
+    lane.append(arrow);
+  };
+
+  // 今の行（最初の言葉の LEAD 秒前から次の行が出るまで）を 1 つだけ出す。言葉は歌う間に左から染まる。
+  const drawRow = (row, lines, t, c, fonts) => {
+    row.replaceChildren();
+    const starts = lines.map((ln) => ln[0].t - LEAD);
+    let k = -1;
+    starts.forEach((s, i) => { if (t >= s) k = i; });
+    if (k < 0) return;
+    const ln = el('div', 'ln');
+    const k01 = clamp01((t - starts[k]) / IN);
+    ln.style.opacity = k01;
+    ln.style.translate = `0 ${(1 - k01) * 36}px`;
+    const nt = el('span', 'nt', { background: c.miku, borderColor: c.ink, color: c.white, filter: `drop-shadow(0 6px 0 ${c.ink})`, fontFamily: `"${fonts.title || 'Dela Gothic One'}", sans-serif` });
+    nt.textContent = '♪';
+    const tx = el('p', 'tx', { fontFamily: `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif` });
+    const baseRing = outline([7.5, c.sapphire], [14, c.ink]);
+    const mikuRing = outline([7, c.ink], [12.5, c.miku], [17, c.ink]);
+    for (const w of lines[k]) {
+      const ck = el('span', 'ck');
+      const base = el('b', 'base', { color: c.white, textShadow: baseRing });
+      base.textContent = w.v;
+      const fill = el('b', 'fill', { color: c.miku, textShadow: mikuRing });
+      fill.textContent = w.v;
+      // 歌う前は何も見せない（右の端を左の縁の外 -6% に置く）。歌い終えると縁ごと見せる。
+      const p = clamp01((t - w.t) / Math.max(0.08, w.d));
+      fill.style.clipPath = `inset(-20% ${106 - 112 * p}% -20% -6%)`;
+      ck.append(base, fill);
+      tx.append(ck);
+    }
+    ln.append(nt, tx);
+    row.append(ln);
+  };
+
+  window.mmSetTime = (t, data) => {
+    const theme = data.theme || {};
+    const c = { ink: '#0B1230', paper: '#F5F8FF', white: '#FFFFFF', yellow: '#FFD43B', sapphire: '#2459E0', miku: '#39C5BB', ...(theme.colors || {}) };
+    const fonts = theme.fonts || {};
+    const box = document.getElementById('lyr');
+    box.style.left = `${Number(data.x) || 0}px`;
+    box.style.top = `${Number(data.y) || 0}px`;
+    const lane = document.getElementById('lane');
+    const notes = parseNotes(data.notes);
+    lane.style.display = notes.length ? 'block' : 'none';
+    if (notes.length) {
+      Object.assign(lane.style, { width: `${W}px`, height: `${LH}px`, borderColor: c.ink, filter: `drop-shadow(0 6px 0 ${c.ink})` });
+      lane.style.background = `linear-gradient(color-mix(in srgb, ${c.ink} 88%, ${c.sapphire}), ${c.ink})`;
+      drawLane(lane, notes, list(data.bars).map(Number).filter(Number.isFinite), t, c);
+    }
+    drawRow(document.getElementById('row'), parseLines(data.words), t, c, fonts);
+  };
+</script>
+</body>
+</html>
