@@ -187,6 +187,7 @@ fn open_writer(dir: &Path, round: u64) -> Store {
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 書き込みの途中で_kill_しても最後に確定したバージョンに戻る() {
     let mut seed = 0x9E37_79B9_7F4A_7C15;
     let mut mid_write = 0u32;
@@ -229,6 +230,7 @@ fn 書き込みの途中で_kill_しても最後に確定したバージョン�
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 取り消しの途中で_kill_しても対で残らず_続けて取り消せる() {
     let mut seed = 0x2545_F491_4F6C_DD1D;
     let mut mid_write = 0u32;

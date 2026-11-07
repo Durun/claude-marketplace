@@ -208,6 +208,7 @@ fn check_sidecar(out: &Path, seq: &Sequence, words: &[TranscriptWord]) -> (usize
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 本編とショートを書き出し_プレビューと一致する() {
     let tmp = tempfile::tempdir().unwrap();
     let env = Env::new(work_root(&tmp));

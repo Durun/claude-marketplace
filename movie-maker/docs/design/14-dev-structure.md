@@ -217,6 +217,7 @@ movie-maker/
 - 共有のファイル（ルートの `Cargo.toml`、`Cargo.lock`、`mm-runtime/src/assemble.rs`、`ui/sdk`）は統合の担当だけが書く。領域の worktree が外のクレートを足したいときは、PR に「`workspace.dependencies` に X を足す」と書き、統合の担当が足す。
 - 2 つ以上のエージェントが同じリポジトリを書くときは、各々を別の worktree に置く（この表の 1 行ずつ）。同じ領域を 2 人で書かない。
 - CI は、変えたクレートとそれに依存するクレートだけをテストする（`cargo nextest run -p <crate>` と、依存の逆引き）。API クレートを変えた PR は全部を回す。夜間は全部と、実機の GPU、性能、耐久、ファズ（[テスト](11-testing.md#層の一覧)）。
+- 実装済みの CI の PR と main の違いは [ci.md](../ci.md#pr-と-main-の違い)。PR は 1 本 30 秒を超える通しの試験（`#[ignore]`）と、性能に関わらない PR の `perf-gate` を外し、main の push と手動で全部を回す。
 
 ## 自動の改善の領域
 

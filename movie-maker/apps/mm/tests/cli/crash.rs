@@ -130,6 +130,7 @@ fn recovered(dir: &Path, round: usize, versions: [i64; 2]) -> (i64, String) {
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn op_と_undo_の書き込みの最中で_kill_しても最後に確定したバージョンに戻り続けて書ける() {
     let tmp = tempfile::tempdir().unwrap();
     let txn_file = tmp.path().join("big.json");

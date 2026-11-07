@@ -324,6 +324,7 @@ fn stream_start(path: &Path, kind: &str) -> f64 {
 }
 
 #[test]
+#[ignore = "通しの試験。main への push と手動実行で走らせる"]
 fn 字幕とチャプターとラウドネスが書き出しの時間軸と目標に合う() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("p");
