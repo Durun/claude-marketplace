@@ -6,7 +6,7 @@ use mm_doc::{Project, SequenceId};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
-use crate::ops::{sequence_referrers, AddSequence};
+use crate::ops::{cut_refs, sequence_referrers, AddSequence};
 use crate::touches::Touches;
 
 /// sequence を外す。レイヤーの接続、`sequence` のノードの種類、ほかの sequence の `origin` から
@@ -21,8 +21,13 @@ impl Apply for RemoveSequence {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let seq = project.sequence(&self.sequence)?;
         let mut t = Touches::of(&seq.id);
+        // 素材を外す操作と重ねるため、カットが参照する素材も入れる（add_sequence の逆操作と同じ集合）。
         for c in &seq.cuts {
             t.add(&c.id);
+            cut_refs(c, &mut t);
+        }
+        if let Some(o) = &seq.origin {
+            t.add(&o.sequence);
         }
         sequence_referrers(project, seq, &mut t);
         Ok(t)
