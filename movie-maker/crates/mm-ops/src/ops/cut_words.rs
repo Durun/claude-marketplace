@@ -112,6 +112,12 @@ impl Apply for CutWords {
             t.add(w);
         }
         if let (Ok(splices), Ok(seq)) = (self.plan(project), project.sequence(&self.sequence)) {
+            // 計画は素材を映す全部のカットの範囲を読む。Slip などで範囲が動くと、割る・抜くカットが変わる。
+            if self.splices.is_empty() {
+                for c in seq.cuts.iter().filter(|c| shows_asset(c, &self.asset)) {
+                    t.add(&c.id);
+                }
+            }
             splice_touches(project, seq.cuts.clone(), &splices, &mut t);
         }
         Ok(t)
