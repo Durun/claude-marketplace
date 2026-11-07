@@ -1,9 +1,9 @@
-//! 絵のレイヤー（`layers[].clips[]` の `video` と `image`）を movie-maker のレイヤーにする。
+//! 映像と画像のレイヤー（`layers[].clips[]` の `video` と `image`）を movie-maker のレイヤーにする。
 //!
-//! geneva はクリップの箱（切り抜いて `fit` で収めた矩形）のアンカーを `position` に置き、その周りで拡大する。
+//! geneva はクリップの矩形（切り抜いて `fit` で収めたもの）のアンカーを `position` に置き、その周りで拡大する。
 //! movie-maker では素材を `fit: none`（素材の画素のまま左上に置く）で描き、アンカーを原点に固定して、
-//! 同じ写像になる拡大と位置を求める。レイヤーの座標は素材の画素なので、切り抜きはレイヤーの切り抜き（`crop`）、
-//! 角丸の矩形のマスクはレイヤーのマスクに、箱の画素を素材の画素に戻して置く。
+//! 同じ対応になる拡大と位置を求める。レイヤーの座標は素材の画素なので、切り抜きはレイヤーの切り抜き（`crop`）、
+//! 角丸の矩形のマスクはレイヤーのマスクに、クリップの矩形の画素を素材の画素に戻して置く。
 
 use std::collections::HashMap;
 
@@ -41,9 +41,9 @@ struct Geometry {
     crop: [f64; 4],
     /// 素材の大きさ。
     src: [f64; 2],
-    /// 切り抜きを箱に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
+    /// 切り抜きをクリップの矩形に収める倍率（`contain` なら画面に収める倍率、`none` なら 1）。
     k: f64,
-    /// 箱の上のアンカー（箱の画素）。
+    /// クリップの矩形の上のアンカー（その矩形の画素）。
     anchor: [f64; 2],
     position: Anim,
     scale: Anim,
@@ -55,7 +55,7 @@ struct Timing {
     duration: RationalTime,
 }
 
-/// 全部の絵のレイヤーを、下から上の順のレイヤーにする。
+/// 全部の映像と画像のレイヤーを、下から上の順のレイヤーにする。
 pub fn visual_layers(ctx: &mut Ctx<'_>, layers: &[Value]) -> Result<Vec<Layer>> {
     let mut out = Vec::new();
     for (li, layer) in layers.iter().enumerate() {
@@ -223,7 +223,7 @@ fn key_times(geo: &Geometry) -> Vec<RationalTime> {
     times
 }
 
-/// 素材の画素 `p` が `P + s (k (p - crop) - A)` に写る変形（アンカーは原点）。
+/// 素材の画素 `p` が `P + s (k (p - crop) - A)` へ移る変形（アンカーは原点）。
 fn transform(geo: &Geometry, start: RationalTime) -> Result<Transform> {
     let offset = [geo.crop[0], geo.crop[1]];
     let at = |t: RationalTime| {
@@ -262,7 +262,7 @@ fn transform(geo: &Geometry, start: RationalTime) -> Result<Transform> {
     Ok(out)
 }
 
-/// キーフレームの列のパラメータ。`value` は最初のキーの値にする。
+/// キーフレームの並びのパラメータ。`value` は最初のキーの値にする。
 pub fn animated(keys: Vec<Keyframe>) -> Param {
     Param {
         value: keys[0].value.clone(),
@@ -340,121 +340,4 @@ fn scale_time(t: RationalTime, by: RationalTime) -> Result<RationalTime> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn media() -> HashMap<String, Media> {
-        let m = |w, h, still| Media {
-            size: Some([w, h]),
-            duration: RationalTime::seconds(100),
-            fps: None,
-            still,
-        };
-        HashMap::from([
-            ("png".to_owned(), m(400, 100, true)),
-            ("cap".to_owned(), m(3840, 2160, false)),
-        ])
-    }
-
-    fn one(clip: Value) -> (Layer, Report) {
-        let media = media();
-        let mut ctx = Ctx {
-            fps: Rational::integer(30),
-            frame: [1920.0, 1080.0],
-            media: &media,
-            report: Report::default(),
-        };
-        let mut layers = visual_layers(&mut ctx, &[json!({"clips": [clip]})]).unwrap();
-        (layers.remove(0), ctx.report)
-    }
-
-    fn vec2(p: &Param) -> [f64; 2] {
-        p.value.as_vec2().unwrap()
-    }
-
-    fn side(p: &Option<Param>) -> Option<f64> {
-        p.as_ref().and_then(|p| p.value.as_number())
-    }
-
-    #[test]
-    fn 画像は左上のアンカーを位置に置き_素材の画素のまま() {
-        let (l, _) = one(json!({
-            "source": {"kind": "image", "asset": "png"}, "start": "30f", "duration": "10f",
-            "transform": {"position": {"x": 1513, "y": 285}, "anchor": "0% 0%"}
-        }));
-        assert!(l.crop.is_empty());
-        assert_eq!(vec2(&l.transform.position), [1513.0, 285.0]);
-        assert_eq!(vec2(&l.transform.scale), [1.0, 1.0]);
-        assert_eq!(l.start, RationalTime::seconds(1));
-    }
-
-    #[test]
-    fn 画面を覆う切り抜きも変形とレイヤーの切り抜きで表す() {
-        let (l, _) = one(json!({
-            "source": {"kind": "video", "asset": "cap", "in": 2.5, "audio": false},
-            "start": "0f", "duration": "30f",
-            "crop": {"x": 60, "y": 0, "width": 3720, "height": 2092}
-        }));
-        let k = 1920.0 / 3720.0;
-        let s = vec2(&l.transform.scale);
-        assert!((s[0] - k).abs() < 1e-12);
-        // 切り抜きの左上（素材の 60, 0）が画面の左上に来る。縦は収めた箱の余り（0.26 画素）の半分だけ下がる
-        let p = vec2(&l.transform.position);
-        let below = (1080.0 - 2092.0 * k) / 2.0;
-        assert!((p[0] + 60.0 * k).abs() < 1e-9, "{p:?}");
-        assert!((p[1] - below).abs() < 1e-9, "{p:?}");
-        assert_eq!(side(&l.crop.left), Some(60.0));
-        assert_eq!(side(&l.crop.right), Some(60.0));
-        assert_eq!(side(&l.crop.top), None);
-        assert_eq!(side(&l.crop.bottom), Some(68.0));
-        assert!(l.audio.expect("映像の音").mute);
-    }
-
-    #[test]
-    fn 画面の中に縁が出る切り抜きはレイヤーの切り抜きで切る() {
-        let (l, _) = one(json!({
-            "source": {"kind": "video", "asset": "cap", "in": 1, "audio": false},
-            "start": "0f", "duration": "30f", "fit": "none",
-            "crop": {"x": 501, "y": 0, "width": 1259, "height": 1005},
-            "transform": {"anchor": "0 0", "position": {"x": 1473, "y": 723}, "scale": 0.5}
-        }));
-        // 素材の (501, 0) が画面の (1473, 723) に来る
-        let p = vec2(&l.transform.position);
-        assert_eq!(p, [1473.0 - 0.5 * 501.0, 723.0]);
-        assert_eq!(vec2(&l.transform.scale), [0.5, 0.5]);
-        assert_eq!(side(&l.crop.left), Some(501.0));
-        assert_eq!(side(&l.crop.right), Some(3840.0 - 501.0 - 1259.0));
-        assert_eq!(side(&l.crop.bottom), Some(2160.0 - 1005.0));
-    }
-
-    #[test]
-    fn 角丸のマスクは切り抜きの箱に重ねた素材の画素の矩形にする() {
-        let (l, report) = one(json!({
-            "source": {"kind": "video", "asset": "cap", "audio": false},
-            "start": "0f", "duration": "30f", "fit": "none",
-            "crop": {"x": 1220, "y": 1080, "width": 1530, "height": 861},
-            "mask": {"radius": 55.25, "feather": 1},
-            "transform": {"anchor": "0 0", "position": {"x": 48, "y": 104}, "scale": 0.47}
-        }));
-        assert!(
-            report.to_json().as_array().unwrap().is_empty(),
-            "マスクを落とさない"
-        );
-        let rect = l.masks[0].rect.as_ref().unwrap();
-        assert_eq!(vec2(&rect.position), [1220.0, 1080.0]);
-        assert_eq!(vec2(&rect.size), [1530.0, 861.0]);
-        assert_eq!(rect.radius.value.as_number(), Some(55.25));
-        assert_eq!(l.masks[0].feather.value.as_number(), Some(1.0));
-    }
-
-    #[test]
-    fn 楕円のマスクは落として数える() {
-        let (l, report) = one(json!({
-            "source": {"kind": "image", "asset": "png"}, "duration": "10f",
-            "mask": {"shape": "ellipse"}
-        }));
-        assert!(l.masks.is_empty());
-        assert_eq!(report.to_json()[0]["what"], "mask");
-    }
-}
+mod tests;

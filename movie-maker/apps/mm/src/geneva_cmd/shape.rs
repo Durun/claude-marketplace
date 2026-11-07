@@ -32,7 +32,7 @@ pub fn layer_crop(rect: [f64; 4], src: [f64; 2]) -> Crop {
     }
 }
 
-/// geneva の `mask`（箱の画素）を、素材の画素の角丸の矩形のマスクにする。箱は切り抜き `rect` を `k` 倍したもの。
+/// geneva の `mask`（クリップの矩形の画素）を、素材の画素の角丸の矩形のマスクにする。クリップの矩形は切り抜き `rect` を `k` 倍したもの。
 /// 楕円と画像のマスクは `None`。
 pub fn layer_mask(rect: [f64; 4], k: f64, id: &str, m: &Value) -> Result<Option<Mask>> {
     let shape = m.get("shape").and_then(Value::as_str).unwrap_or("rect");

@@ -166,8 +166,8 @@ fn 区間を続けて読んでも一度に読んだ音と一致する() {
 }
 
 #[test]
-fn 途中へシークして読んだ音は頭から読んだ音と同じ位置になる() {
-    // 1.5〜1.6 秒は、先読みの 1 秒を引いても素材の頭に戻らず、途中のパケットへシークする
+fn 途中へシークして読んだ音は先頭から読んだ音と同じ位置になる() {
+    // 1.5〜1.6 秒は、先読みの 1 秒を引いても素材の先頭に戻らず、途中のパケットへシークする
     let name = "cfr.mp4";
     let whole = open(name).decode_audio(tenths(0, 19)).unwrap().samples;
     let got = open(name).decode_audio(tenths(15, 16)).unwrap().samples;
@@ -180,7 +180,7 @@ fn 途中へシークして読んだ音は頭から読んだ音と同じ位置�
     assert!(worst < 5e-3, "最大の差 {worst}");
 }
 
-/// FFmpeg のコマンドで頭からデコードした 48 kHz・ステレオの音（前置きを捨てた正しい位置の基準）。
+/// FFmpeg のコマンドで先頭からデコードした 48 kHz・ステレオの音（前置きを捨てた正しい位置の基準）。
 fn ffmpeg_pcm(name: &str) -> Vec<f32> {
     let out = std::process::Command::new("ffmpeg")
         .args(["-v", "error", "-i"])
@@ -206,7 +206,7 @@ fn 映像の無い素材は音だけを返す() {
     let name = "tone.wav";
     let mut dec = open(name);
     let info = dec.info().clone();
-    assert_eq!((info.size.width, info.size.height), (0, 0), "絵が無い");
+    assert_eq!((info.size.width, info.size.height), (0, 0), "映像が無い");
     assert_eq!(info.duration, RationalTime::new(2, 1).unwrap());
     assert!(dec.next_frame().unwrap().is_none(), "フレームを返さない");
     let got = dec.decode_audio(tenths(5, 6)).unwrap().samples;
@@ -224,13 +224,29 @@ fn 最初のパケットの途中まで捨てる_aac_も前置きを捨てた位
     let want = ffmpeg_pcm(name);
     let whole = open(name).decode_audio(tenths(0, 20)).unwrap().samples;
     let n = whole.len().min(want.len());
-    assert!(worst_diff(&whole[..n], &want[..n]) < 1e-4, "頭から読んだ音");
+    assert!(
+        worst_diff(&whole[..n], &want[..n]) < 1e-4,
+        "先頭から読んだ音"
+    );
     // 途中へシークしても同じ位置
     let got = open(name).decode_audio(tenths(15, 16)).unwrap().samples;
     let from = 15 * 4_800 * 2;
     assert!(
         worst_diff(&got, &want[from..from + got.len()]) < 5e-3,
         "シークして読んだ音"
+    );
+}
+
+#[test]
+fn 映像のある素材の_aac_も前置きを捨てた位置で読む() {
+    // 映像と音が同じ時刻から始まる素材なので、素材の時間軸の 0 は FFmpeg が先頭から出す音の 0 と同じ
+    let name = "cfr.mp4";
+    let want = ffmpeg_pcm(name);
+    let whole = open(name).decode_audio(tenths(0, 19)).unwrap().samples;
+    let n = whole.len().min(want.len());
+    assert!(
+        worst_diff(&whole[..n], &want[..n]) < 1e-4,
+        "先頭から読んだ音"
     );
 }
 

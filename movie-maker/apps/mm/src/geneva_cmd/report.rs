@@ -34,16 +34,16 @@ pub enum Gap {
 impl Gap {
     fn describe(self) -> (&'static str, &'static str) {
         match self {
-            Self::Mask => ("mask", "楕円と画像のマスクを落とした（角丸の矩形だけ描く）"),
-            Self::Effects => ("effects", "クリップの効果を落とした"),
+            Self::Mask => ("mask", "楕円と画像のマスクを除いた（角丸の矩形だけ描く）"),
+            Self::Effects => ("effects", "クリップの効果を除いた"),
             Self::Blend => ("blend", "重ね方を normal にした"),
-            Self::Transition => ("transition", "トランジションを落とした"),
-            Self::Animation => ("animation", "CSS のアニメーションを落とした"),
+            Self::Transition => ("transition", "トランジションを除いた"),
+            Self::Animation => ("animation", "CSS のアニメーションを除いた"),
             Self::FitCoverFill => ("fit", "cover と fill を contain にした"),
-            Self::Rotation => ("rotation", "回転を落とした"),
+            Self::Rotation => ("rotation", "回転を除いた"),
             Self::Easing => ("ease", "直線でないイージングを直線で近似した"),
-            Self::Source => ("source", "映像と画像以外の source を落とした"),
-            Self::TopLevel => ("top-level", "字幕のトラック、入れ子、複数の出力を落とした"),
+            Self::Source => ("source", "映像と画像以外の source を除いた"),
+            Self::TopLevel => ("top-level", "字幕のトラック、入れ子、複数の出力を除いた"),
             Self::AudioSpeed => ("audio.speed", "音のクリップの速さを 1 にした"),
         }
     }

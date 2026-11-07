@@ -1,4 +1,4 @@
-//! 音のトラック（`audio[].clips[]`）を、絵を持たない素材のレイヤーにする。音量は音量のキーフレーム、
+//! 音のトラック（`audio[].clips[]`）を、映像を持たない素材のレイヤーにする。音量は音量のキーフレーム、
 //! フェードはレイヤーの音のフェード（振幅の直線。geneva のフェードと同じ曲線）にする。
 
 use mm_doc::{Fade, Interpolation, Keyframe, Layer, LayerAudio, Node, Param};
@@ -75,7 +75,7 @@ fn audio_clip(
     let node = Node::footage(&Id::new(asset));
     let mut layer = Layer::new(id, node, start, in_point, in_point.checked_add(duration)?);
     layer.audio = Some(LayerAudio {
-        gain_db: gain_param(&gain, start)?,
+        gain_db: gain_param(&gain, start, duration)?,
         fade_in: fade("fade_in")?,
         fade_out: fade("fade_out")?,
         ..LayerAudio::new(role)
@@ -92,15 +92,21 @@ fn rest_of(ctx: &Ctx<'_>, asset: &str, in_point: RationalTime) -> Result<Rationa
 }
 
 /// 音量のパラメータ。geneva の音量のキーはクリップの始まりからの時刻なので、`start` だけずらす。
-fn gain_param(gain: &Anim, start: RationalTime) -> Result<Param> {
+/// クリップの外のキーは捨て、クリップの両端にその時刻の値のキーを置いて、端の間の動きを保つ。
+fn gain_param(gain: &Anim, start: RationalTime, duration: RationalTime) -> Result<Param> {
     if !gain.is_animated() {
         return Ok(Param::constant(ParamValue::Number(gain.keys[0].value[0])));
     }
-    let mut keys = Vec::with_capacity(gain.keys.len());
-    for k in &gain.keys {
+    let mut times: Vec<RationalTime> = gain.keys.iter().map(|k| k.time).collect();
+    times.extend([RationalTime::ZERO, duration]);
+    times.retain(|t| *t >= RationalTime::ZERO && *t <= duration);
+    times.sort();
+    times.dedup();
+    let mut keys = Vec::with_capacity(times.len());
+    for t in times {
         keys.push(Keyframe::new(
-            start.checked_add(k.time)?,
-            ParamValue::Number(k.value[0]),
+            start.checked_add(t)?,
+            ParamValue::Number(gain.at(t)[0]),
             Interpolation::Linear,
         ));
     }
@@ -161,8 +167,27 @@ mod tests {
             &syntax::number,
         )
         .unwrap();
-        let p = gain_param(&gain, secs(10, 1)).unwrap();
+        let p = gain_param(&gain, secs(10, 1), secs(1, 1)).unwrap();
         let times: Vec<_> = p.keyframes.iter().map(|k| k.time).collect();
         assert_eq!(times, vec![secs(10, 1), secs(11, 1)]);
+    }
+
+    #[test]
+    fn クリップの外のキーはクリップの端の値で残す() {
+        let key = |t: i128, v: f64| syntax::Key {
+            time: secs(t, 1),
+            value: [v, v],
+            eased: false,
+        };
+        let gain = Anim {
+            keys: vec![key(-2, -20.0), key(8, 0.0)],
+        };
+        let p = gain_param(&gain, secs(10, 1), secs(4, 1)).unwrap();
+        let got: Vec<(f64, f64)> = p
+            .keyframes
+            .iter()
+            .map(|k| (k.time.to_f64(), k.value.as_number().unwrap()))
+            .collect();
+        assert_eq!(got, vec![(10.0, -16.0), (14.0, -8.0)]);
     }
 }

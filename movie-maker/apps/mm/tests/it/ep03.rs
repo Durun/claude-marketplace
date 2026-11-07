@@ -2,7 +2,7 @@
 //! （`docs/design/11-testing.md` の「実データ」）。
 //!
 //! 素材はリポジトリに入れない。`MM_EP03_DIR` に回のフォルダー（`timeline.json` と `render/ep03_final.mp4` がある所）を
-//! 渡したときだけ走り、無ければ何もせず通る。既定は全体に散らした区間だけを書き出し、`MM_EP03_FULL=1` で全体を書き出す。
+//! 渡したときだけ実行し、無ければ何もせず通る。既定は全体に散らした区間だけを書き出し、`MM_EP03_FULL=1` で全体を書き出す。
 
 mod measure;
 
@@ -33,6 +33,9 @@ const SSIM_MEAN_MIN: f64 = 0.97;
 /// 1 フレームの SSIM の下限。60 fps の OBS の収録（mkv の ms 単位の丸め）は、movie-maker が CFR の格子で、
 /// geneva が PTS でフレームを選ぶので、3 フレームに 1 回 1/60 秒違うフレームになり、動きの大きい所で 0.88 まで下がる。
 const SSIM_FRAME_MIN: f64 = 0.85;
+/// 全体の書き出しの 1 フレームの SSIM の下限。全体には区間に入らない 60 fps の収録のスクロール（373.3 秒）があり、
+/// 同じ理由で 0.818 まで下がる。
+const SSIM_FRAME_MIN_FULL: f64 = 0.80;
 /// 区間ごとの平均の PSNR の下限（dB）。再現の区間は 36.7〜41.4 dB だった。
 const PSNR_MEAN_MIN: f64 = 33.0;
 /// 音の差の下限（dB）。AAC の符号化を 2 回とリミッターを通るので一致しない。再現の区間は 18〜28 dB だった。
@@ -43,6 +46,9 @@ const ENVELOPE_MAX_DB: f64 = 0.5;
 const LAG_MAX_MS: f64 = 2.0;
 /// 全体の書き出しのラウドネスの差の上限（dB）。区間の書き出しはラウドネスを区間で合わせるので見ない。
 const GAIN_MAX_DB: f64 = 1.0;
+/// 書き出しの音のサンプルのピークの上限（dBFS）。正規化は -1 dBTP に収めるので、0 dBFS を超えるのは
+/// エンコーダーが作ったクリック（AAC の雑音の置き換えで、片方のチャンネルに数サンプル +4.6 dBFS が出た）。
+const PEAK_MAX_DBFS: f64 = 0.0;
 
 /// 変換できない要素として認める一覧（種類、数）。増えたら変換か movie-maker の機能を見直す。
 const KNOWN_GAPS: [(&str, u64); 0] = [];
@@ -146,20 +152,25 @@ fn check_gaps(summary: &Value) {
 
 fn report(range: (f64, f64), p: &Picture, s: &Sound) {
     eprintln!(
-        "[{:7.2}, {:7.2}) 絵 {} フレーム SSIM 平均 {:.4} 最小 {:.4} PSNR {:.2} dB / 音 倍率 {:+.2} dB ずれ {:+.2} ms SNR {:.1} dB 包絡 {:.2} dB",
-        range.0, range.1, p.frames, p.ssim_mean, p.ssim_min, p.psnr_mean, s.gain_db, s.lag_ms, s.snr_db, s.envelope_db
+        "[{:7.2}, {:7.2}) 映像 {} フレーム SSIM 平均 {:.4} 最小 {:.4} PSNR {:.2} dB / 音 倍率 {:+.2} dB ずれ {:+.2} ms SNR {:.1} dB 包絡 {:.2} dB ピーク {:+.2} dBFS",
+        range.0, range.1, p.frames, p.ssim_mean, p.ssim_min, p.psnr_mean, s.gain_db, s.lag_ms, s.snr_db, s.envelope_db, s.peak_dbfs
     );
 }
 
-/// 閾値を割った項目の一覧。全部の区間を見てから落とすため、ここでは集めるだけ。
+/// 閾値を割った項目の一覧。全部の区間を見てから失敗させるため、ここでは集めるだけ。
 fn misses(range: (f64, f64), p: &Picture, s: &Sound, full: bool) -> Vec<String> {
+    let frame_min = if full {
+        SSIM_FRAME_MIN_FULL
+    } else {
+        SSIM_FRAME_MIN
+    };
     let checks = [
         (
             p.ssim_mean >= SSIM_MEAN_MIN,
             format!("SSIM の平均 {:.4}", p.ssim_mean),
         ),
         (
-            p.ssim_min >= SSIM_FRAME_MIN,
+            p.ssim_min >= frame_min,
             format!("SSIM の最小 {:.4}", p.ssim_min),
         ),
         (
@@ -179,6 +190,10 @@ fn misses(range: (f64, f64), p: &Picture, s: &Sound, full: bool) -> Vec<String> 
             !full || s.gain_db.abs() <= GAIN_MAX_DB,
             format!("ラウドネスの差 {:.2}", s.gain_db),
         ),
+        (
+            s.peak_dbfs <= PEAK_MAX_DBFS,
+            format!("音のピーク {:+.2} dBFS", s.peak_dbfs),
+        ),
     ];
     checks
         .into_iter()
@@ -190,7 +205,7 @@ fn misses(range: (f64, f64), p: &Picture, s: &Sound, full: bool) -> Vec<String> 
 #[test]
 fn ep03_を再現すると前の書き出しと一致する() {
     let Some(dir) = std::env::var_os(ENV_DIR).map(PathBuf::from) else {
-        eprintln!("{ENV_DIR} が無いので飛ばす");
+        eprintln!("{ENV_DIR} が無いのでスキップする");
         return;
     };
     let expected = fixture();
@@ -218,6 +233,7 @@ fn ep03_を再現すると前の書き出しと一致する() {
         let s = measure::sound(
             &measure::pcm(&out, 0.0, len),
             &measure::pcm(&reference, range.0, len),
+            measure::peak_dbfs(&out),
         );
         report(range, &p, &s);
         failed.extend(misses(range, &p, &s, full));
