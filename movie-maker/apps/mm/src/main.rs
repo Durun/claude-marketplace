@@ -5,7 +5,7 @@
 //! - `mm search <dir> <語>`: 文字起こしから語を引き、素材と時刻を出す（transcript_cmd.rs）。
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
-//! - `mm geneva <timeline.json> -o <project.json>`: geneva のタイムラインを取り込む（geneva/）。
+//! - `mm geneva <timeline.json> -o <project.json>`: geneva のタイムラインを取り込む（geneva_cmd.rs）。
 //! - `mm otio export <project> -o x.otio` と `mm otio import <dir> x.otio`: sequence と OTIO の変換（otio_cmd.rs）。
 //! - `mm pack check / list / expand / apply`: パックの検査、マクロの一覧、マクロを展開して適用する（pack_cmd.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
@@ -15,7 +15,7 @@ mod captions_cmd;
 mod commands;
 mod compare;
 mod describe;
-mod geneva;
+mod geneva_cmd;
 mod ingest_cmd;
 mod opargs;
 mod otio_cmd;
@@ -158,7 +158,7 @@ enum Command {
         command: proposal_cmd::ProposalCommand,
     },
     /// geneva のタイムライン（JSON）を movie-maker のプロジェクトの JSON にする。変換できない要素は一覧で出す。
-    Geneva(geneva::GenevaArgs),
+    Geneva(geneva_cmd::GenevaArgs),
     /// sequence と OpenTimelineIO（`.otio`）の変換。取り込みは操作として当てる（取り消せる）。
     Otio {
         #[command(subcommand)]
@@ -267,7 +267,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Proposal { command } => proposal_cmd::run(command),
         Command::Shorts { project, json } => shorts_cmd::shorts(&project, json),
         Command::Subtitles(args) => captions_cmd::subtitles(&args),
-        Command::Geneva(args) => geneva::run(&args),
+        Command::Geneva(args) => geneva_cmd::run(&args),
         Command::Otio { command } => otio_cmd::run(command),
         Command::Pack { command } => pack_cmd::run(command),
         Command::Perf { command } => run_perf(command),

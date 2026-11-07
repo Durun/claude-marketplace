@@ -3,7 +3,6 @@
 //!
 //! 素材はリポジトリに入れない。`MM_EP03_DIR` に回のフォルダー（`timeline.json` と `render/ep03_final.mp4` がある所）を
 //! 渡したときだけ走り、無ければ何もせず通る。既定は全体に散らした区間だけを書き出し、`MM_EP03_FULL=1` で全体を書き出す。
-#![cfg(feature = "ffmpeg")]
 
 mod measure;
 
