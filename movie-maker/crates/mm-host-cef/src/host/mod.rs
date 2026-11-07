@@ -4,6 +4,7 @@ mod args;
 mod bench;
 mod browser;
 mod gpu;
+mod guard;
 mod handlers;
 mod serve;
 mod share;
@@ -122,9 +123,8 @@ fn start(args: &Args, mode: Mode) -> Result<(), String> {
         Mode::Serve(spec) => spec.gpu.clone(),
     };
     let gpu = gpu::open(wanted)?;
-    // 同じキャッシュのフォルダーは 1 プロセスしか使えないので、ホストを並べて起こせるよう pid で分ける。
-    let cache: PathBuf =
-        std::env::temp_dir().join(format!("mm-host-cef-cache-{}", std::process::id()));
+    let (work, owned) = work_dir();
+    let cache = work.join("cache");
     let mut app = handlers::HostApp::new(luid_switch(&gpu));
     if initialize(
         Some(args.as_main_args()),
@@ -140,7 +140,19 @@ fn start(args: &Args, mode: Mode) -> Result<(), String> {
         Mode::Serve(spec) => serve::run(&spec, Arc::clone(&gpu)),
     };
     shutdown();
-    // 片付けに失敗しても、次の起動は別の pid のフォルダーを使うので続ける。
-    let _ = std::fs::remove_dir_all(&cache);
+    // 片付けに失敗しても、次の起動は別のフォルダーを使うので続ける。ランチャーのフォルダーはランチャーが消す。
+    let _ = std::fs::remove_dir_all(if owned { &work } else { &cache });
     result
+}
+
+/// ホストの一時フォルダー（CEF のキャッシュとページの置き場）と、自分で作ったか。
+/// ランチャーが渡したものを使い、無ければ（bench）pid で分ける。同じキャッシュのフォルダーは 1 プロセスしか使えない。
+pub fn work_dir() -> (PathBuf, bool) {
+    match std::env::var_os(mm_host_cef::WORK_DIR_ENV) {
+        Some(dir) => (PathBuf::from(dir), false),
+        None => (
+            std::env::temp_dir().join(format!("mm-host-cef-{}", std::process::id())),
+            true,
+        ),
+    }
 }

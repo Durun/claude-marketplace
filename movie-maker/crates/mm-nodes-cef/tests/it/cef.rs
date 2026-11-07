@@ -156,6 +156,26 @@ fn 同じ入力なら同じ画素で_gpu_と_cpu_の経路も合う() {
     assert!(diff < TOLERANCE, "GPU と CPU の経路の差 {diff}");
 }
 
+#[test]
+fn デバイスを作り直しても新しいデバイスのホストで描く() {
+    let Some(exe) = host() else { return };
+    let size = Size::new(320, 180);
+    let p = params(serde_json::json!({"label": "recreate"}), false);
+    let t = RationalTime::seconds(1);
+    let kind = kind(&exe);
+    let mut before = gpu();
+    let a = render_gpu(&kind, &mut before, &p, t, size);
+    let fresh = before.context().recreate().expect("作り直せる");
+    let mut after = WgpuGpu::new(fresh);
+    let b = render_gpu(&kind, &mut after, &p, t, size);
+    assert_eq!(a, b, "作り直したデバイスでも同じ画素");
+    assert_eq!(
+        kind.stats().drawn,
+        2,
+        "キャッシュは古いデバイスのテクスチャを使わない"
+    );
+}
+
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     sorted[((sorted.len() - 1) as f64 * p).round() as usize]
 }

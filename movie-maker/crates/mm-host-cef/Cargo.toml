@@ -28,9 +28,11 @@ mm-gpu = { workspace = true, optional = true }
 windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_System_JobObjects",
   "Win32_System_Threading",
   "Win32_Media",
   "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
 ] }
 
@@ -38,6 +40,10 @@ windows = { workspace = true, features = [
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
 wgpu = { workspace = true }
+
+# テストが受け取った共有ハンドルの権限を読む。
+[target.'cfg(windows)'.dev-dependencies]
+windows = { workspace = true, features = ["Wdk_Foundation", "Win32_System_WindowsProgramming"] }
 
 [lints]
 workspace = true

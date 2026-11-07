@@ -8,11 +8,11 @@
 use cef::AcceleratedPaintInfo;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, GENERIC_ALL,
-    HANDLE,
+    CloseHandle, DuplicateHandle, DUPLICATE_CLOSE_SOURCE, GENERIC_ALL, HANDLE,
 };
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::DXGI_SHARED_RESOURCE_READ;
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_DUP_HANDLE};
 
 type Dx12 = wgpu::hal::api::Dx12;
@@ -218,6 +218,10 @@ pub unsafe fn import(
     Ok(target)
 }
 
+/// 相手のプロセスへ渡すハンドルの権限。相手はコピーの元に読むだけなので、読み取りだけを許す。
+/// D3D12 の `CreateSharedHandle` は `GENERIC_ALL` しか受けないので、絞るのは複製のとき。
+const REMOTE_ACCESS: u32 = DXGI_SHARED_RESOURCE_READ.0;
+
 /// 共有ハンドルを渡す相手のプロセス。
 pub struct Client(HANDLE);
 
@@ -245,9 +249,9 @@ impl Client {
                 local,
                 self.0,
                 &mut remote,
-                0,
+                REMOTE_ACCESS,
                 false,
-                DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE,
+                DUPLICATE_CLOSE_SOURCE,
             )
         }
         .map_err(|e| d3d_err("ハンドルを相手のプロセスへ複製できない", e))?;

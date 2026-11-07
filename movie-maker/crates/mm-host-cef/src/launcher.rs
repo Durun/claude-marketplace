@@ -3,9 +3,14 @@
 //!
 //! 期限を過ぎた要求の応答は後から届くので、その数を数えておき、次の要求の前に読み捨てる
 //! （ホストは要求を 1 つずつ順に処理し、どの要求にも 1 行で答える）。読み捨てる応答の共有ハンドルはここで閉じる。
+//!
+//! ホストの一時フォルダー（CEF のキャッシュとページ）はランチャーが作って渡し、ホストを止めた後に消す。
+//! kill で止めたホストは自分で片付けられないため。
 
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -15,14 +20,22 @@ use mm_host_api::{
 };
 use mm_types::{MmError, Result};
 
+use crate::job::{kill_tree, Job};
+
 /// ホストへ起動の指定（`HostSpec` の JSON）を渡す環境変数。
 pub const SPEC_ENV: &str = "MM_HOST_SPEC";
+/// ホストへ一時フォルダーを渡す環境変数。ホストはこの下に CEF のキャッシュとページを置く。
+pub const WORK_DIR_ENV: &str = "MM_HOST_WORK_DIR";
 /// プロトコルで応答するモードのサブコマンド。
 pub const SERVE_COMMAND: &str = "serve";
 /// CEF の配布物の置き場所。子プロセスが `libcef.dll` を見つけられるよう `PATH` の先頭に足す。
 pub const CEF_PATH_ENV: &str = "CEF_PATH";
 /// 起動直後の `Ping` の期限。CEF の初期化と GPU プロセスの起動を含む。
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+/// 止めたホストの一時フォルダーを消し終えるまでの期限。CEF の子のプロセスが終わってファイルを放すのを待つ。
+const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
+/// 一時フォルダーを消し直す間隔。
+const CLEANUP_STEP: Duration = Duration::from_millis(50);
 
 /// `mm-host-cef` を起こすランチャー。
 #[derive(Debug, Clone, Default)]
@@ -41,9 +54,12 @@ impl HostLauncher for CefLauncher {
 /// 起動した 1 プロセスとの接続。
 struct Connection {
     child: Mutex<Child>,
+    /// ホストと CEF の子のプロセスの木。作れなかった環境ではホストだけを止める。
+    job: Option<Job>,
     stdin: ChildStdin,
     lines: Receiver<String>,
     pid: u32,
+    work_dir: PathBuf,
 }
 
 /// 子プロセスのホスト。
@@ -88,24 +104,62 @@ impl PipeHost {
     }
 }
 
+/// 子プロセスの `PATH`。`CEF_PATH` があれば先頭に足し、子プロセスが `libcef.dll` を見つけられるようにする。
+pub(crate) fn child_path() -> Option<std::ffi::OsString> {
+    let cef = std::env::var_os(CEF_PATH_ENV)?;
+    let rest = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::iter::once(cef.into()).chain(std::env::split_paths(&rest));
+    std::env::join_paths(paths).ok()
+}
+
+/// このプロセスが起こすホストごとの一時フォルダーを作る。
+fn create_work_dir() -> Result<PathBuf> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("mm-host-cef-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| MmError::Internal(format!("{} を作れない: {e}", dir.display())))?;
+    Ok(dir)
+}
+
+/// 止めたホストの一時フォルダーを消す。CEF の子のプロセスがファイルを放すまで `limit` まで消し直す。
+/// 消せたら（元から無ければ）真。
+pub fn remove_work_dir(dir: &Path, limit: Duration) -> bool {
+    let start = Instant::now();
+    loop {
+        match std::fs::remove_dir_all(dir) {
+            Ok(()) => return true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(_) if start.elapsed() < limit => std::thread::sleep(CLEANUP_STEP),
+            Err(_) => return false,
+        }
+    }
+}
+
 fn launch(spec: &HostSpec) -> Result<Connection> {
+    let work_dir = create_work_dir()?;
     let mut cmd = Command::new(&spec.executable);
     cmd.arg(SERVE_COMMAND)
         .args(&spec.args)
         .env(SPEC_ENV, serde_json::to_string(spec)?)
+        .env(WORK_DIR_ENV, &work_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
-    if let Some(cef) = std::env::var_os(CEF_PATH_ENV) {
-        let rest = std::env::var_os("PATH").unwrap_or_default();
-        let paths = std::iter::once(cef.into()).chain(std::env::split_paths(&rest));
-        let joined = std::env::join_paths(paths)
-            .map_err(|e| MmError::InvalidArgument(format!("PATH を作れない: {e}")))?;
-        cmd.env("PATH", joined);
+    if let Some(path) = child_path() {
+        cmd.env("PATH", path);
     }
-    let mut child = cmd.spawn().map_err(|e| {
-        MmError::HostCrashed(format!("{} を起動できない: {e}", spec.executable.display()))
-    })?;
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            remove_work_dir(&work_dir, Duration::ZERO);
+            return Err(MmError::HostCrashed(format!(
+                "{} を起動できない: {e}",
+                spec.executable.display()
+            )));
+        }
+    };
+    let job = Job::attach(&child);
     let (stdin, stdout) = match (child.stdin.take(), child.stdout.take()) {
         (Some(i), Some(o)) => (i, o),
         _ => return Err(MmError::Internal("子プロセスのパイプが無い".into())),
@@ -125,8 +179,10 @@ fn launch(spec: &HostSpec) -> Result<Connection> {
     Ok(Connection {
         pid: child.id(),
         child: Mutex::new(child),
+        job,
         stdin,
         lines,
+        work_dir,
     })
 }
 
@@ -206,9 +262,12 @@ impl HostProcess for PipeHost {
     fn kill(&mut self) -> Result<()> {
         if let Some(conn) = self.conn.take() {
             let mut child = conn.child.lock().unwrap_or_else(|e| e.into_inner());
-            // 既に終わっていれば kill は失敗するが、wait で後片付けだけする。
-            let _ = child.kill();
-            child.wait()?;
+            let killed = kill_tree(&mut child, conn.job.as_ref());
+            drop(child);
+            drop(conn.job);
+            // 消せなくても次のホストは別のフォルダーを使うので、止めたことを優先して続ける。
+            remove_work_dir(&conn.work_dir, CLEANUP_LIMIT);
+            killed?;
         }
         self.stale = 0;
         Ok(())
@@ -226,6 +285,11 @@ impl HostProcess for PipeHost {
 }
 
 impl PipeHost {
+    /// 動いているホストの一時フォルダー。止めた後は `None`。
+    pub fn work_dir(&self) -> Option<&Path> {
+        self.conn.as_ref().map(|c| c.work_dir.as_path())
+    }
+
     /// `Shutdown` を送って終わるのを少し待ち、終わらなければ止める。
     fn shutdown(&mut self) {
         const WAIT: Duration = Duration::from_secs(2);

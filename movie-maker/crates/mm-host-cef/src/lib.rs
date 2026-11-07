@@ -7,9 +7,13 @@
 //!
 //! 手順と数字は README と `docs/design/spikes/cef.md`。
 
+mod job;
 mod launcher;
 mod locate;
 pub mod pixel;
+pub mod policy;
 
-pub use launcher::{CefLauncher, PipeHost, CEF_PATH_ENV, SERVE_COMMAND, SPEC_ENV};
-pub use locate::{find_host, HOST_ENV};
+pub use launcher::{
+    remove_work_dir, CefLauncher, PipeHost, CEF_PATH_ENV, SERVE_COMMAND, SPEC_ENV, WORK_DIR_ENV,
+};
+pub use locate::{find_host, supports_cef, HOST_ENV, PROBE_COMMAND, PROBE_REPLY};
