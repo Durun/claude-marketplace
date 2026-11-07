@@ -35,7 +35,7 @@ mm-export = { path = "crates/mm-export" }
 mm-gpu = { path = "crates/mm-gpu" }
 mm-host-api = { path = "crates/mm-host-api" }
 mm-host-cef = { path = "crates/mm-host-cef" }
-mm-ingest ={ path = "crates/mm-ingest" }
+mm-ingest = { path = "crates/mm-ingest" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-node-api = { path = "crates/mm-node-api" }
 mm-nodes-basic = { path = "crates/mm-nodes-basic" }

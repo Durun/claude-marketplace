@@ -193,7 +193,7 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     }
 }
 
-/// `web` 手順のページがあり、動きの長さが theme の上限の中か。
+/// `web` 手順のページがあり、動きの長さが テーマの上限の中か。
 fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
     let mut errors = Vec::new();
     if !w.page.contains("{{") && !pack.pages.contains_key(&w.page) {
@@ -202,13 +202,13 @@ fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
     let motion = pack.theme.motion;
     if !(0.0..=motion.in_max).contains(&w.fade_in) {
         errors.push(format!(
-            "web の fade_in は 0..{}（theme の motion.in_max）",
+            "web の fade_in は 0..{}（テーマの motion.in_max）",
             motion.in_max
         ));
     }
     if !(0.0..=motion.out_max).contains(&w.fade_out) {
         errors.push(format!(
-            "web の fade_out は 0..{}（theme の motion.out_max）",
+            "web の fade_out は 0..{}（テーマの motion.out_max）",
             motion.out_max
         ));
     }

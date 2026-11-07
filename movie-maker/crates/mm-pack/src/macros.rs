@@ -125,13 +125,13 @@ pub struct WebStep {
     /// 接続するカット。空なら接続しない。
     #[serde(default)]
     pub attach: Option<String>,
-    /// ページの `mmSetTime(t, data)` に渡す値。展開で theme（色、書体、画面）を `theme` に足す。
+    /// ページの `mmSetTime(t, data)` に渡す値。展開でテーマ（色、書体、画面）を `theme` に足す。
     #[serde(default)]
     pub data: serde_json::Value,
-    /// 出る動き（不透明度、秒）。theme の `motion.in_max` まで。
+    /// 出る動き（不透明度、秒）。テーマの `motion.in_max` まで。
     #[serde(default)]
     pub fade_in: f64,
-    /// 消える動き（不透明度、秒）。theme の `motion.out_max` まで。
+    /// 消える動き（不透明度、秒）。テーマの `motion.out_max` まで。
     #[serde(default)]
     pub fade_out: f64,
     /// ページ自身が時刻で動くか。偽ならパラメータの組ごとに 1 回だけ描く（動きは不透明度で付ける）。

@@ -187,7 +187,7 @@ fn texture(
     })
 }
 
-/// 覚えておいたテクスチャを、ヘルパーの持つテクスチャ `dst` へコピーして提出する。
+/// キャッシュしたテクスチャを、ヘルパーの持つテクスチャ `dst` へコピーして提出する。
 pub fn copy_into(ctx: &GpuContext, src: &wgpu::Texture, dst: &wgpu::Texture) {
     let mut encoder = ctx.device.create_command_encoder(&Default::default());
     encoder.copy_texture_to_texture(src.as_image_copy(), dst.as_image_copy(), src.size());

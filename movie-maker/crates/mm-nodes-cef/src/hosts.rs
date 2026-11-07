@@ -64,7 +64,7 @@ impl HostPages {
         }
     }
 
-    /// 1 フレームを描く。ホストが落ちていたら 1 回だけ起こし直してやり直す。
+    /// 1 フレームを描く。ホストがクラッシュしていたら 1 回だけ起こし直してやり直す。
     pub fn render(&mut self, req: &FrameRequest<'_>, delivery: &Delivery) -> Result<SharedFrame> {
         let _span = tracing::info_span!("nodes_cef.host_frame").entered();
         match self.try_render(req, delivery) {

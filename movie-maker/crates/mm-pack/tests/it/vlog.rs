@@ -350,7 +350,7 @@ fn 吹き出しは_web_cef_のレイヤーで_theme_と引数をページに渡�
     };
     assert!(
         html.contains("window.mmSetTime"),
-        "パックの web/callout.html を写す"
+        "パックの web/callout.html をコピーする"
     );
     let ParamValue::Json(data) = &params["data"].value else {
         panic!("data は JSON");
@@ -360,7 +360,7 @@ fn 吹き出しは_web_cef_のレイヤーで_theme_と引数をページに渡�
     assert_eq!(data["side"], "right", "既定の側");
     assert_eq!(
         data["theme"]["colors"]["ink"], "#0B1230",
-        "theme の色を足す"
+        "テーマの色を足す"
     );
     assert_eq!(
         params["static"].value,

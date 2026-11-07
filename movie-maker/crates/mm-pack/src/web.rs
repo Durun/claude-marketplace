@@ -1,5 +1,5 @@
 //! `web` 手順の展開。パックの `web/<page>.html` を `web.cef` のノードのレイヤーにする。
-//! ページの HTML はノードのパラメータに写すので、プロジェクトはパックのフォルダーが無くても同じに描ける。
+//! ページの HTML はノードのパラメータにコピーするので、プロジェクトはパックのフォルダーが無くても同じに描ける。
 
 use mm_doc::{Layer, Node};
 use mm_types::{MmError, ParamValue, RationalTime, Result};
@@ -43,8 +43,8 @@ pub(crate) fn web_op(pack: &Pack, env: &Env, step: &WebStep) -> Result<Value> {
     Ok(json!({"op": "addLayer", "composition": comp, "layer": serde_json::to_value(layer)?}))
 }
 
-/// 引数を埋めた `data` に、theme の色（`#RRGGBB`）、書体、画面の大きさを `theme` として足す。
-/// ページは色と書体を theme から引くので、パックの決まりが 1 か所に留まる。
+/// 引数を埋めた `data` に、テーマの色（`#RRGGBB`）、書体、画面の大きさを `theme` として足す。
+/// ページは色と書体をテーマから引くので、パックの決まりが 1 か所に留まる。
 fn page_data(pack: &Pack, env: &Env, step: &WebStep) -> Result<Value> {
     let mut data = match env.fill_json(&step.data)? {
         Value::Object(map) => map,

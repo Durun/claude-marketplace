@@ -8,7 +8,7 @@ use mm_types::{RationalTime, RgbaImage, Size};
 
 use crate::page::FrameRequest;
 
-/// 覚えておくフレームの数。1080p の `Rgba16Float` は 1 枚 16 MB なので、静止の部品が数個並ぶ程度に留める。
+/// キャッシュするフレームの数。1080p の `Rgba16Float` は 1 枚 16 MB なので、静止の部品が数個並ぶ程度に留める。
 /// 動くページの全フレームはレンダラーのキャッシュが持つ。
 const KEPT_FRAMES: usize = 6;
 
@@ -35,7 +35,7 @@ impl FrameKey {
     }
 }
 
-/// 覚えたフレーム。
+/// キャッシュしたフレーム。
 #[derive(Clone)]
 pub enum Cached {
     /// 中間の形式のテクスチャ。作ったデバイスが作り直されたら使わない。
@@ -54,7 +54,7 @@ pub struct FrameCache {
 }
 
 impl FrameCache {
-    /// 引く。当たったものは先頭へ動かす。
+    /// 引く。ヒットしたものは先頭へ動かす。
     pub fn get(&mut self, key: &FrameKey) -> Option<Cached> {
         let i = self.entries.iter().position(|(k, _)| k == key)?;
         let hit = self.entries.remove(i);
@@ -63,7 +63,7 @@ impl FrameCache {
         Some(value)
     }
 
-    /// 覚える。上限を超えたら古いものから捨てる。
+    /// キャッシュする。上限を超えたら古いものから捨てる。
     pub fn put(&mut self, key: FrameKey, value: Cached) {
         self.entries.retain(|(k, _)| *k != key);
         self.entries.insert(0, (key, value));

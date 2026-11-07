@@ -52,7 +52,7 @@ fn params(data: serde_json::Value, is_static: bool) -> Params {
     p
 }
 
-/// GPU の経路で 1 フレーム描いて CPU に読み戻す。
+/// GPU の経路で 1 フレーム描いて CPU にリードバックする。
 fn render_gpu(
     kind: &WebCefKind,
     gpu: &mut WgpuGpu,
@@ -76,7 +76,7 @@ fn render_gpu(
         services: &services,
     };
     let frame = kind.render(&mut cx).expect("描ける");
-    let image = gpu.download(&frame).expect("読み戻せる");
+    let image = gpu.download(&frame).expect("リードバックできる");
     gpu.release(&frame);
     gpu.after_submit();
     Arc::unwrap_or_clone(image)
@@ -206,7 +206,7 @@ fn フル_hd_の_1_フレームの時間を測る() {
     let hit = frame_at(WARMUP + FRAMES - 1, &mut gpu);
     ms.sort_by(f64::total_cmp);
     eprintln!(
-        "web.cef 1920x1080: p50 {:.2} ms, p95 {:.2} ms（{FRAMES} フレーム）、キャッシュに当たったとき {hit:.2} ms",
+        "web.cef 1920x1080: p50 {:.2} ms, p95 {:.2} ms（{FRAMES} フレーム）、キャッシュにヒットしたとき {hit:.2} ms",
         percentile(&ms, 0.5),
         percentile(&ms, 0.95),
     );
