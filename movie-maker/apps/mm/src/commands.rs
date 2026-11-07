@@ -154,7 +154,7 @@ pub fn op(
     apply_txn(dir, build_txn(name, tokens, txn_file)?)
 }
 
-/// トランザクションを当てる。アプリが書き手なら HTTP で転送する（`mm op` と `mm pack apply`）。
+/// トランザクションを適用する。アプリが書き手なら HTTP で転送する（`mm op` と `mm pack apply`）。
 pub(crate) fn apply_txn(dir: &Path, txn: Transaction) -> Result<()> {
     let mut store = match open_target(dir)? {
         Target::Local(store) => *store,

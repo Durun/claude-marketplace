@@ -1,4 +1,4 @@
-//! `packs/vlog` を読み、検査し、展開して当てる。壊したパックは検査が捕まえる。
+//! `packs/vlog` を読み、検査し、展開して適用する。壊したパックは検査が捕まえる。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -32,13 +32,15 @@ fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// 雛形を当てたプロジェクトに `txn` を当てる。
+/// テンプレートを適用したプロジェクトに `txn` を適用する。
 fn apply_on_episode(pack: &Pack, txn: Transaction) -> Project {
     let ctx = OpContext::human();
     let mut editor = Editor::new(Project::new());
     let episode = expand_est(pack, "episode", &args(&[("n", "4")])).unwrap();
-    editor.apply(episode, &ctx).expect("雛形を当てられる");
-    editor.apply(txn, &ctx).expect("マクロを当てられる");
+    editor
+        .apply(episode, &ctx)
+        .expect("テンプレートを適用できる");
+    editor.apply(txn, &ctx).expect("マクロを適用できる");
     editor.project().clone()
 }
 
@@ -52,7 +54,7 @@ fn vlog_のパックは検査を通る() {
 }
 
 #[test]
-fn 字幕は札の上に文字を置き_表記を直す() {
+fn 字幕はプレートの上に文字を置き_表記を置き換える() {
     let pack = vlog();
     let txn = expand_est(
         &pack,
@@ -64,7 +66,7 @@ fn 字幕は札の上に文字を置き_表記を直す() {
     let project = apply_on_episode(&pack, txn);
     let main = &project.compositions[0];
     let ids: Vec<&str> = main.layers.iter().map(|l| l.id.as_str()).collect();
-    assert_eq!(ids, ["c1.box", "c1"], "札が下、文字が上");
+    assert_eq!(ids, ["c1.plate", "c1"], "プレートが下、文字が上");
     let text = &main.layers[1];
     assert_eq!(text.source.kind, "text");
     let value = &text.source.params["text"].value;
@@ -74,7 +76,7 @@ fn 字幕は札の上に文字を置き_表記を直す() {
 }
 
 #[test]
-fn ラベルは出る動きと消える動きを持ち_札の中心で傾く() {
+fn ラベルは出る動きと消える動きを持ち_プレートの中心で傾く() {
     let pack = vlog();
     let txn = expand_est(
         &pack,
@@ -98,7 +100,7 @@ fn ラベルは出る動きと消える動きを持ち_札の中心で傾く() {
 }
 
 #[test]
-fn セクションは札とチャプターのマーカーを置き_カットに接続しない() {
+fn セクションはプレートとチャプターのマーカーを置き_カットに接続しない() {
     let pack = vlog();
     let txn = expand_est(
         &pack,
@@ -120,7 +122,7 @@ fn セクションは札とチャプターのマーカーを置き_カットに�
 }
 
 #[test]
-fn 雛形は本編とショートのコンポジションとレンダーターゲットを作る() {
+fn テンプレートは本編とショートのコンポジションとレンダーターゲットを作る() {
     let pack = vlog();
     let txn = expand_est(&pack, "episode", &args(&[("n", "7")])).unwrap();
     let mut editor = Editor::new(Project::new());
@@ -131,6 +133,33 @@ fn 雛形は本編とショートのコンポジションとレンダーター�
     assert_eq!(p.render_targets[0].output_path, "render/ep7.mp4");
     assert!(p.render_targets[0].delivery.chapters);
     assert_eq!(p.render_targets[0].loudness_lufs, Some(-14.0));
+}
+
+#[test]
+fn マクロの適用は_1_回の取り消しで全部戻る() {
+    let pack = vlog();
+    let ctx = OpContext::human();
+    let mut editor = Editor::new(Project::new());
+    let episode = expand_est(&pack, "episode", &args(&[("n", "4")])).unwrap();
+    editor.apply(episode, &ctx).unwrap();
+    let before = editor.project().clone();
+    let section = args(&[
+        ("id", "s1"),
+        ("text", "ミックス"),
+        ("chapter", "ミックス"),
+        ("at", "0"),
+        ("dur", "5"),
+    ]);
+    editor
+        .apply(expand_est(&pack, "section", &section).unwrap(), &ctx)
+        .unwrap();
+    assert_ne!(editor.project(), &before);
+    editor.undo(&ctx).unwrap();
+    assert_eq!(
+        editor.project(),
+        &before,
+        "プレートと文字とマーカーが全部消える"
+    );
 }
 
 #[test]
@@ -150,7 +179,7 @@ fn 知らないマクロと足りない引数を拒む() {
     assert!(bad_len.is_err(), "長さ 0 は拒む");
 }
 
-/// `packs/vlog` を一時フォルダーに写し、`edit` で 1 つのファイルを書き換えて検査する。
+/// `packs/vlog` を一時フォルダーにコピーし、`edit` で 1 つのファイルを書き換えて検査する。
 fn check_broken(file: &str, edit: impl FnOnce(&mut serde_json::Value)) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     copy_dir(&vlog_dir(), dir.path());
@@ -180,11 +209,11 @@ fn mentions(errors: &[String], needle: &str) -> bool {
 }
 
 #[test]
-fn 検査は壊した文字の型を捕まえる() {
+fn 検査は壊した文字のスタイルを捕まえる() {
     let errors = check_broken("styles.json", |v| {
         v["label"]["color"] = "pink".into();
         v["telop"]["fade_in"] = 2.0.into();
-        v["caption"].as_object_mut().unwrap().remove("box");
+        v["caption"].as_object_mut().unwrap().remove("plate");
         v["caption"]["tilt"] = 3.into();
     });
     assert!(mentions(&errors, "pink"), "{errors:?}");
@@ -209,11 +238,11 @@ fn 検査は壊したマクロの参照を捕まえる() {
 }
 
 #[test]
-fn 検査は当てられない例を捕まえる() {
+fn 検査は適用できない例を捕まえる() {
     let errors = check_broken("macros/note.json", |v| {
         v["params"]["comp"]["default"] = "nowhere".into();
     });
-    assert!(mentions(&errors, "note: 例を当てられない"), "{errors:?}");
+    assert!(mentions(&errors, "note: 例を適用できない"), "{errors:?}");
 }
 
 #[test]

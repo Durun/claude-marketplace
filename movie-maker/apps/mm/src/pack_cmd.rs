@@ -1,5 +1,5 @@
 //! `mm pack`: パック（docs/design/13-vlog-pack.md）の検査、マクロの一覧、マクロの展開と適用。
-//! 適用は `mm op --txn` と同じ道を通るので、アプリが書き手なら HTTP で転送し、取り消しは `mm undo`。
+//! 適用は `mm op --txn` と同じ経路を通るので、アプリが書き手なら HTTP で転送し、取り消しは `mm undo`。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use crate::commands::apply_txn;
 /// `mm pack` のサブコマンド。
 #[derive(Subcommand)]
 pub enum PackCommand {
-    /// パックの形式を検査する。マクロを例の引数で展開し、テンプレートを当てた空のプロジェクトに当ててみる。
+    /// パックの形式を検査する。マクロを例の引数で展開し、テンプレートを適用した空のプロジェクトに適用してみる。
     Check { pack: PathBuf },
     /// テンプレートとマクロの一覧（引数の型と既定）。
     List {
@@ -23,7 +23,7 @@ pub enum PackCommand {
         #[arg(long)]
         json: bool,
     },
-    /// マクロを展開して、当てずに `Transaction` の JSON を出す（`mm proposal add --txn` に渡せる）。
+    /// マクロを展開して、適用せずに `Transaction` の JSON を出す（`mm proposal add --txn` に渡せる）。
     Expand {
         pack: PathBuf,
         name: String,
@@ -31,7 +31,7 @@ pub enum PackCommand {
         #[arg(long = "var", value_parser = parse_var)]
         vars: Vec<(String, String)>,
     },
-    /// マクロを展開して 1 つのトランザクションとして当てる。
+    /// マクロを展開して 1 つのトランザクションとして適用する。
     /// `mm pack apply <dir> packs/vlog caption --var id=c1 --var text=やあ --var at=1.5`
     Apply {
         dir: PathBuf,
@@ -80,7 +80,7 @@ pub fn run(command: PackCommand) -> Result<()> {
     }
 }
 
-/// 札の大きさを測るための、文字だけ本物（フォントを読む CPU の実装）のエンジン。描くときと同じ字の幅になる。
+/// プレートの大きさを測るための、文字だけ実際の実装（フォントを読む CPU の実装）を選んだエンジン。描くときと同じ字の幅になる。
 fn text_engine() -> Result<Engine> {
     mm_runtime::assemble(&RuntimeConfig {
         text: Backend::Cpu,
@@ -93,7 +93,7 @@ fn run_check(dir: &Path) -> Result<()> {
     let report = check(&pack);
     if report.ok() {
         println!(
-            "{} {}: 通った（テンプレートとマクロ {} 個を例で当てた）",
+            "{} {}: 通った（テンプレートとマクロ {} 個を例で適用した）",
             pack.manifest.name, pack.manifest.version, report.applied
         );
         return Ok(());

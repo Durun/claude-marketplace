@@ -1,6 +1,6 @@
-//! `packs/vlog` の文字の型の期待画像。雛形を当てたプロジェクトに背景とマクロを当て、描いた絵を
+//! `packs/vlog` の文字のスタイルの期待画像。テンプレートを適用したプロジェクトに背景とマクロを適用し、描いた画像を
 //! `fixtures/golden/<バックエンド>/pack-vlog.png` と比べる（`mm_testkit::golden`）。文字はモックの矩形で描くので、
-//! 見るのは札の位置、大きさ、色、縁、影、傾きと、文字の塊が札の内側に収まっているか。
+//! 見るのはプレートの位置、大きさ、色、縁、影、傾きと、文字の塊がプレートの内側に収まっているか。
 //! 更新は `cargo xtask golden-update --test pack_vlog`。GPU と期待画像のフォルダーが無い環境ではスキップする。
 
 use std::collections::BTreeMap;
@@ -25,7 +25,7 @@ use mm_types::{Id, ParamValue, RationalTime, Rgba};
 
 /// WARP のアダプターの名前（D3D12 のソフトウェアの GPU）。
 const WARP_ADAPTER: &str = "Microsoft Basic Render Driver";
-/// 背景の色（暗い青灰色。札の白と墨の縁が見分けられる）。
+/// 背景の色（暗い青灰色。プレートの白と墨の縁が見分けられる）。
 const BACKGROUND: Rgba = Rgba::new(0.06, 0.09, 0.13, 1.0);
 
 fn vlog_dir() -> PathBuf {
@@ -66,7 +66,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
     }
 }
 
-/// 当てるマクロと引数（`名前=値` を `;` で区切る）。2.5 秒で全部が出ている。
+/// 適用するマクロと引数（`名前=値` を `;` で区切る）。2.5 秒で全部が出ている。
 const DEMO: [(&str, &str); 5] = [
     ("episode", "n=4"),
     (
@@ -88,7 +88,7 @@ fn args(list: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// 雛形、背景、セクションの札、ラベル、テロップ、字幕を当てたプロジェクト。
+/// テンプレート、背景、セクションの見出し、ラベル、テロップ、字幕を適用したプロジェクト。
 fn demo_project() -> Project {
     let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
     let shaper = services().text_shaper;
@@ -96,9 +96,9 @@ fn demo_project() -> Project {
     let mut editor = Editor::new(Project::new());
     for (i, (name, pairs)) in DEMO.iter().enumerate() {
         let txn = expand(&pack, name, &args(pairs), &*shaper).expect("展開できる");
-        editor.apply(txn, &ctx).expect("当てられる");
+        editor.apply(txn, &ctx).expect("適用できる");
         if i == 0 {
-            editor.apply(background(), &ctx).expect("背景を当てられる");
+            editor.apply(background(), &ctx).expect("背景を適用できる");
         }
     }
     editor.project().clone()
@@ -119,7 +119,7 @@ fn background() -> Transaction {
 }
 
 #[test]
-fn pack_vlog_の文字の型の期待画像() {
+fn pack_vlog_の文字のスタイルの期待画像() {
     let Some(ctx) = gpu() else { return };
     let backend = backend_name(&format!("{:?}", ctx.backend()), ctx.adapter_name());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden");

@@ -5,7 +5,7 @@
     "position": [960, 958],
     "anchor": [0.5, 1.0],
     "max_width": 1300,
-    "box": {"color": "ink", "opacity": 0.78, "padding": [28, 12], "radius": 12},
+    "plate": {"color": "ink", "opacity": 0.78, "padding": [28, 12], "radius": 12},
     "corrections": true
   },
   "label": {
@@ -13,7 +13,7 @@
     "color": "ink",
     "position": [1872, 48],
     "anchor": [1.0, 0.0],
-    "box": {
+    "plate": {
       "color": "paper", "padding": [22, 12], "radius": 8,
       "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
     },
@@ -27,7 +27,7 @@
     "position": [960, 48],
     "anchor": [0.5, 0.0],
     "max_width": 1200,
-    "box": {
+    "plate": {
       "color": "paper", "padding": [26, 14], "radius": 8,
       "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
     },
@@ -40,7 +40,7 @@
     "color": "ink",
     "position": [64, 200],
     "anchor": [0.0, 0.0],
-    "box": {
+    "plate": {
       "color": "yellow", "padding": [22, 12], "radius": 8,
       "border": {"color": "ink", "width": 5}, "shadow": {"color": "ink", "offset": 7}
     },
@@ -53,7 +53,7 @@
     "color": "ink",
     "position": [64, 40],
     "anchor": [0.0, 0.0],
-    "box": {
+    "plate": {
       "color": "paper", "padding": [18, 10], "radius": 8,
       "border": {"color": "sapphire", "width": 4}, "shadow": {"color": "ink", "offset": 5}
     },

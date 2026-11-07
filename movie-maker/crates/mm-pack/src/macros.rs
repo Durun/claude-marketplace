@@ -15,7 +15,7 @@ pub enum MacroKind {
     /// `macros/`。既にあるコンポジションに足す。
     #[default]
     Macro,
-    /// `templates/`。空のプロジェクトに当てる雛形。
+    /// `templates/`。空のプロジェクトに適用するテンプレート。
     Template,
 }
 
@@ -32,7 +32,7 @@ pub struct MacroDef {
     /// 引数の名前 → 型と既定。
     #[serde(default)]
     pub params: BTreeMap<String, ParamDef>,
-    /// 検査で使う引数の例。検査はこの例で展開して、空のプロジェクトにテンプレートを当てた上に適用してみる。
+    /// 検査で使う引数の例。検査はこの例で展開して、空のプロジェクトにテンプレートを適用した上に適用してみる。
     #[serde(default)]
     pub example: BTreeMap<String, String>,
     /// 順に展開する手順。
@@ -100,19 +100,19 @@ pub enum ParamType {
 pub enum Step {
     /// 操作 1 つ（`mm op --schema` の形）。引数を埋めてからそのまま使う。
     Op(serde_json::Value),
-    /// 文字の型で文字を置く。札と文字のレイヤー、出る・消える動き、カットへの接続を作る。
+    /// 文字のスタイルで文字を置く。プレートと文字のレイヤー、出る・消える動き、カットへの接続を作る。
     Text(TextStep),
 }
 
-/// 文字の型で文字を置く手順。値は全部 `{{…}}` を埋めてから読む。
+/// 文字のスタイルで文字を置く手順。値は全部 `{{…}}` を埋めてから読む。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextStep {
-    /// `styles.json` の型の名前。
+    /// `styles.json` のスタイルの名前。
     pub style: String,
     /// 置くコンポジション。
     pub comp: String,
-    /// 文字のレイヤーの ID。札は `<ID>.box`。
+    /// 文字のレイヤーの ID。プレートは `<ID>.plate`。
     pub layer: String,
     pub text: String,
     /// コンポジションの時間軸での出る時刻。

@@ -1,10 +1,10 @@
 {
   "name": "telop",
   "title": "テロップ",
-  "description": "音のきっかけ（FX が鳴る所など）。擬音でよい。左上寄りに、黄色の札を傾けてポンと出す",
+  "description": "音のきっかけ（FX が鳴る所など）。擬音でよい。左上寄りに、黄色のプレートを傾けてポンと出す",
   "params": {
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
-    "id": {"type": "id", "description": "文字のレイヤーの ID（札は <ID>.box）"},
+    "id": {"type": "id", "description": "文字のレイヤーの ID（プレートは <ID>.plate）"},
     "text": {"type": "text", "description": "擬音や短いひとこと（ユーザーの書いた文言は変えない）"},
     "at": {"type": "time", "description": "音の鳴る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "1.5", "description": "出ている長さ（秒）"},

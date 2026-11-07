@@ -9,7 +9,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Theme {
-    /// 色の名前 → `#RRGGBB` か `#RRGGBBAA`（sRGB）。文字の型とマクロはこの名前で色を指す。
+    /// 色の名前 → `#RRGGBB` か `#RRGGBBAA`（sRGB）。文字のスタイルとマクロはこの名前で色を指す。
     pub colors: BTreeMap<String, String>,
     /// 書体の役割 → 書体の名前。
     #[serde(default)]
@@ -22,7 +22,7 @@ pub struct Theme {
     pub short: Option<Canvas>,
 }
 
-/// 動きの長さの上限（秒）。文字の型の出る・消える動きはこれを超えない。
+/// 動きの長さの上限（秒）。文字のスタイルの出る・消える動きはこれを超えない。
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Motion {

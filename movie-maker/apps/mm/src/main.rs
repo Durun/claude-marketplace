@@ -6,7 +6,7 @@
 //! - `mm render <project> -o <out.mp4>`: レンダーターゲットを書き出す。project は JSON か `project.mmdb` のフォルダー。
 //! - `mm frame <project> <t> -o x.png`: 1 フレームを PNG に書く。アプリが動いていれば HTTP でアプリに描いてもらう（remote.rs）。
 //! - `mm otio export <project> -o x.otio` と `mm otio import <dir> x.otio`: sequence と OTIO の変換（otio_cmd.rs）。
-//! - `mm pack check / list / expand / apply`: パックの検査、マクロの一覧、マクロを展開して当てる（pack_cmd.rs）。
+//! - `mm pack check / list / expand / apply`: パックの検査、マクロの一覧、マクロを展開して適用する（pack_cmd.rs）。
 //! - `mm perf run <シナリオ>`: 性能のシナリオを回して予算と比べる（`startup`、`export`、`playback`、`scrub`、`cpu`、`all`）。
 //! - `mm perf compare <前> <後>` と `mm perf budget <結果>`: 結果の比較と、予算の超過の一覧（compare.rs）。
 
@@ -160,7 +160,7 @@ enum Command {
         #[command(subcommand)]
         command: otio_cmd::OtioCommand,
     },
-    /// パック（vlog など）の検査、マクロの一覧、マクロを展開して当てる。
+    /// パック（vlog など）の検査、マクロの一覧、マクロを展開して適用する。
     Pack {
         #[command(subcommand)]
         command: pack_cmd::PackCommand,

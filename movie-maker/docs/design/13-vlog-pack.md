@@ -15,4 +15,4 @@ DTM_Vlog の作り方は、movie-maker の上の「パック」として持つ�
 
 ep04 から、この形で作れるかを試す。
 
-`web.cef` を使わずに作れる分（色と書体の決まり、文字の型、回の雛形、マクロ、ダッキングの設定）は `packs/vlog` にあり、読み込みと検査と展開は `crates/mm-pack`、使う経路は `mm pack` とアプリの `pack_list`・`pack_apply`。中身と、段階 6 に回すものの一覧は [packs/vlog/README.md](../../packs/vlog/README.md)。
+`web.cef` を使わずに作れる分（色と書体の決まり、文字のスタイル、エピソードのテンプレート、マクロ、ダッキングの設定）は `packs/vlog` にあり、読み込みと検査と展開は `crates/mm-pack`、使う経路は `mm pack` とアプリの `pack_list`・`pack_apply`。中身と、段階 6 に回すものの一覧は [packs/vlog/README.md](../../packs/vlog/README.md)。

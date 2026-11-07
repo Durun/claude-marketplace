@@ -24,7 +24,7 @@ pub struct Manifest {
     /// パックの名前（英小文字、数字、`-`）。
     pub name: String,
     pub title: String,
-    /// パックの中身の版の番号。
+    /// パックの中身のバージョン。
     pub version: String,
     #[serde(default)]
     pub description: String,
@@ -36,11 +36,11 @@ pub struct Pack {
     pub dir: PathBuf,
     pub manifest: Manifest,
     pub theme: Theme,
-    /// 文字の型の名前 → 型。
+    /// 文字のスタイルの名前 → スタイル。
     pub styles: BTreeMap<String, TextStyleSpec>,
     /// ミキサーの設定。`mixer.json` が無ければ `None`。
     pub mixer: Option<MixerConfig>,
-    /// 字幕の表記の直し（誤認識の語 → 正しい表記）。
+    /// 字幕の表記の置き換え（誤認識の語 → 正しい表記）。
     pub corrections: BTreeMap<String, String>,
     /// テンプレートとマクロ。テンプレートが先で、それぞれ名前の順。
     pub macros: Vec<MacroDef>,

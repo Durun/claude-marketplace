@@ -1,5 +1,5 @@
-//! パックの形式の検査。読めたパックについて、名前、色、文字の型、ミキサーの設定、マクロの引数の参照を確かめ、
-//! 各マクロを例の引数で展開して、テンプレートを当てたプロジェクトに適用してみる。
+//! パックの形式の検査。読めたパックについて、名前、色、文字のスタイル、ミキサーの設定、マクロの引数の参照を確かめ、
+//! 各マクロを例の引数で展開して、テンプレートを適用したプロジェクトに適用してみる。
 
 use std::collections::BTreeSet;
 
@@ -93,10 +93,10 @@ fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) 
         colors.extend(p.border.as_ref().map(|b| b.color.as_str()));
         colors.extend(p.shadow.as_ref().map(|s| s.color.as_str()));
         if !(0.0..=1.0).contains(&p.opacity) {
-            report.push(at("box.opacity は 0..1"));
+            report.push(at("plate.opacity は 0..1"));
         }
     } else if s.tilt != 0.0 {
-        report.push(at("tilt は札（box）のある型だけ"));
+        report.push(at("tilt は plate のあるスタイルだけ"));
     }
     for c in colors {
         if let Err(e) = pack.theme.color(c) {
@@ -148,7 +148,7 @@ fn check_names(pack: &Pack, report: &mut Report) {
     }
 }
 
-/// 手順が引く名前が全部あり、引数が全部使われ、例の引数が引数にあり、文字の型があるか。
+/// 手順が引く名前が全部あり、引数が全部使われ、例の引数が引数にあり、文字のスタイルがあるか。
 fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     let at = |what: String| format!("{}: {what}", def.name);
     let known: BTreeSet<String> = Env::names(def, &pack.theme).into_iter().collect();
@@ -156,7 +156,10 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     for step in &def.steps {
         if let Step::Text(t) = step {
             if !pack.styles.contains_key(&t.style) {
-                report.push(at(format!("styles.json に文字の型 {} が無い", t.style)));
+                report.push(at(format!(
+                    "styles.json に文字のスタイル {} が無い",
+                    t.style
+                )));
             }
         }
         for s in step.strings() {
@@ -177,7 +180,7 @@ fn check_references(pack: &Pack, def: &MacroDef, report: &mut Report) {
     }
 }
 
-/// テンプレートを例の引数で空のプロジェクトに当て、その上に各マクロを例の引数で当ててみる。
+/// テンプレートを例の引数で空のプロジェクトに適用し、その上に各マクロを例の引数で適用してみる。
 fn apply_examples(pack: &Pack, report: &mut Report) {
     let ctx = OpContext::human();
     let mut base = Editor::new(Project::new());
@@ -185,7 +188,7 @@ fn apply_examples(pack: &Pack, report: &mut Report) {
         match expand(pack, &def.name, &def.example, &EstimateShaper) {
             Ok(txn) => match base.apply(txn, &ctx) {
                 Ok(_) => report.applied += 1,
-                Err(e) => report.push(format!("{}: 例を当てられない: {e}", def.name)),
+                Err(e) => report.push(format!("{}: 例を適用できない: {e}", def.name)),
             },
             Err(e) => report.push(format!("{}: 例を展開できない: {e}", def.name)),
         }
@@ -198,7 +201,7 @@ fn apply_examples(pack: &Pack, report: &mut Report) {
                 editor
                     .apply(txn, &ctx)
                     .map(|_| ())
-                    .map_err(|e| format!("例を当てられない: {e}"))
+                    .map_err(|e| format!("例を適用できない: {e}"))
             });
         match result {
             Ok(()) => report.applied += 1,

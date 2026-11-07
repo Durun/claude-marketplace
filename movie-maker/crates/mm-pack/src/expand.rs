@@ -17,11 +17,11 @@ use crate::style::TextStyleSpec;
 
 /// 文字の種類のバージョン（`mm-nodes-basic` の種類はどれも 1）。
 const KIND_VERSION: u32 = 1;
-/// 札のレイヤーの ID に足す後ろの部分。
-const PLATE_SUFFIX: &str = ".box";
+/// プレートのレイヤーの ID に足す後ろの部分。
+const PLATE_SUFFIX: &str = ".plate";
 
-/// マクロ `name` を引数 `args`（名前 → 文字の値）で展開する。記録の名前は「<マクロの題>（<パック>）」。
-/// 札の大きさは `shaper` で文字を組んで決める（描くときと同じシェーパーを渡すと、札が文字にぴったり合う）。
+/// マクロ `name` を引数 `args`（名前 → 文字の値）で展開する。記録の名前は「<マクロの表示名>（<パック>）」。
+/// プレートの大きさは `shaper` で文字を組んで決める（描くときと同じシェーパーを渡すと、プレートが文字にぴったり合う）。
 /// 知らないマクロは `NotFound`、引数や手順の誤りは `InvalidArgument`。
 pub fn expand(
     pack: &Pack,
@@ -62,7 +62,10 @@ struct TextInput<'a> {
 impl<'a> TextInput<'a> {
     fn read(pack: &'a Pack, env: &Env, step: &TextStep) -> Result<Self> {
         let style = pack.styles.get(&step.style).ok_or_else(|| {
-            MmError::InvalidArgument(format!("styles.json に文字の型 {} が無い", step.style))
+            MmError::InvalidArgument(format!(
+                "styles.json に文字のスタイル {} が無い",
+                step.style
+            ))
         })?;
         let id = env.fill_text(&step.layer)?;
         let mut text = env.fill_text(&step.text)?;
@@ -89,7 +92,7 @@ impl<'a> TextInput<'a> {
     }
 }
 
-/// 文字の型で文字を置く操作。札があれば札のレイヤーを下に、文字のレイヤーを上に足す。
+/// 文字のスタイルで文字を置く操作。プレートがあればプレートのレイヤーを下に、文字のレイヤーを上に足す。
 fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Result<Vec<Value>> {
     let style = input.style;
     let color = pack.theme.color(&style.color)?;
@@ -107,13 +110,13 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
     };
     let mut layers = Vec::new();
     if let Some(plate) = &style.plate {
-        let canvas = [
+        let comp_size = [
             f64::from(pack.theme.canvas.width),
             f64::from(pack.theme.canvas.height),
         ];
         let mut node = Node::new("shader.wgsl", KIND_VERSION)
             .with_param("code", ParamValue::Text(sticker::code(&pack.theme, plate)?));
-        for (name, value) in sticker::shape_params(plate, spot.plate, canvas) {
+        for (name, value) in sticker::shape_params(plate, spot.plate, comp_size) {
             node = node.with_param(name, value);
         }
         layers.push(frame.layer(format!("{}{PLATE_SUFFIX}", input.id), node));
@@ -140,7 +143,7 @@ fn text_style(style: &TextStyleSpec, color: mm_types::Rgba) -> TextStyle {
     }
 }
 
-/// 札と文字のレイヤーが共有する時間と置き方。
+/// プレートと文字のレイヤーが共有する時間と置き方。
 struct Frame {
     at: RationalTime,
     dur: RationalTime,
@@ -156,7 +159,7 @@ impl Frame {
         layer.opacity = self.opacity.clone();
         layer.attach_to = self.attach.as_deref().map(mm_types::Id::new);
         if self.tilt != 0.0 {
-            // 回転の中心はコンポジションの画素で、札の中心。札と文字が同じ中心で回るので重なりがずれない。
+            // 回転の中心はコンポジションの画素で、プレートの中心。プレートと文字が同じ中心で回るので重なりがずれない。
             let [x, y, w, h] = self.spot.plate;
             layer.transform.rotation = Param::constant(ParamValue::Number(self.tilt));
             layer.transform.anchor = Some(Param::constant(ParamValue::Vec2([
@@ -222,18 +225,28 @@ fn fade(style: &TextStyleSpec, at: RationalTime, dur: RationalTime) -> Result<Pa
     })
 }
 
-/// 表記の直し。長い語から当て、短い語が長い語の一部を先に直してしまうのを防ぐ。
+/// 表記の置き換え。先頭から 1 回だけ走査し、各位置でいちばん長い語を置き換える。
+/// 置き換えた後の文字は走査し直さないので、ある語の置き換え先が別の語にまた置き換わることはない。
 fn correct(text: &str, corrections: &BTreeMap<String, String>) -> String {
-    let mut pairs: Vec<(&String, &String)> = corrections.iter().collect();
-    pairs.sort_by(|a, b| {
-        b.0.chars()
-            .count()
-            .cmp(&a.0.chars().count())
-            .then(a.0.cmp(b.0))
-    });
-    let mut out = text.to_string();
-    for (from, to) in pairs {
-        out = out.replace(from.as_str(), to);
+    let mut pairs: Vec<(&str, &str)> = corrections
+        .iter()
+        .filter(|(from, _)| !from.is_empty())
+        .map(|(from, to)| (from.as_str(), to.as_str()))
+        .collect();
+    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(b.0)));
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        match pairs.iter().find(|(from, _)| rest.starts_with(from)) {
+            Some((from, to)) => {
+                out.push_str(to);
+                rest = &rest[from.len()..];
+            }
+            None => {
+                out.push(c);
+                rest = &rest[c.len_utf8()..];
+            }
+        }
     }
     out
 }
@@ -242,16 +255,25 @@ fn correct(text: &str, corrections: &BTreeMap<String, String>) -> String {
 mod tests {
     use super::*;
 
+    fn table(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
     #[test]
-    fn 長い語から直す() {
-        let table: BTreeMap<String, String> =
-            [("ボーカロイド6", "VOCALOID6"), ("ボーカロイド", "VOCALOID")]
-                .into_iter()
-                .map(|(a, b)| (a.to_string(), b.to_string()))
-                .collect();
+    fn 長い語から置き換える() {
+        let t = table(&[("ボーカロイド6", "VOCALOID6"), ("ボーカロイド", "VOCALOID")]);
         assert_eq!(
-            correct("ボーカロイド6とボーカロイド", &table),
+            correct("ボーカロイド6とボーカロイド", &t),
             "VOCALOID6とVOCALOID"
         );
+    }
+
+    #[test]
+    fn 置き換えた後の文字は置き換え直さない() {
+        let t = table(&[("クロード", "Claude"), ("Cl", "CL")]);
+        assert_eq!(correct("クロードとCl", &t), "ClaudeとCL");
     }
 }

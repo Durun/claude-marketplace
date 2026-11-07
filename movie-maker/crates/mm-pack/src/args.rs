@@ -77,7 +77,13 @@ pub fn parse_time(raw: &str) -> Result<RationalTime> {
     } else {
         let (neg, body) = s.strip_prefix('-').map_or((false, s), |r| (true, r));
         let (int, frac) = body.split_once('.').unwrap_or((body, ""));
-        if frac.len() > MAX_DECIMALS || (int.is_empty() && frac.is_empty()) {
+        let digits = |p: &str| p.chars().all(|c| c.is_ascii_digit());
+        // 符号は先頭の 1 つだけ。整数の部分と小数の部分に符号が混じる `--1` や `1.-5` を拒む。
+        if frac.len() > MAX_DECIMALS
+            || (int.is_empty() && frac.is_empty())
+            || !digits(int)
+            || !digits(frac)
+        {
             return Err(bad());
         }
         let magnitude: i128 = format!("{int}{frac}").parse().map_err(|_| bad())?;
@@ -89,7 +95,7 @@ pub fn parse_time(raw: &str) -> Result<RationalTime> {
     RationalTime::new(num, den)
 }
 
-/// 秒の浮動小数を千分の一秒に丸めた時刻にする（文字の型の動きの長さ）。
+/// 秒の浮動小数を千分の一秒に丸めた時刻にする（文字のスタイルの動きの長さ）。
 pub(crate) fn millis(seconds: f64) -> Result<RationalTime> {
     const PER_SECOND: f64 = 1000.0;
     RationalTime::new((seconds * PER_SECOND).round() as i128, PER_SECOND as u32)
@@ -335,6 +341,13 @@ mod tests {
         assert!(env(&[("at", "1")]).is_err(), "text が無い");
         assert!(env(&[("text", "x"), ("at", "1"), ("zzz", "1")]).is_err());
         assert!(env(&[("text", "x"), ("at", "1.2.3")]).is_err());
+        for bad in ["--1", "1.-5", "+1", "-.-5"] {
+            assert!(parse_time(bad).is_err(), "{bad} を拒む");
+        }
+        assert_eq!(
+            parse_time("-0.4").unwrap(),
+            RationalTime::new(-2, 5).unwrap()
+        );
         let e = env(&[("text", "x"), ("at", "1")]).unwrap();
         assert!(e.fill_text("{{nope}}").is_err());
         assert!(e.fill_text("{{at").is_err());

@@ -1,6 +1,6 @@
 [package]
 name = "mm-pack"
-description = "パック（見た目の決まり、文字の型、マクロ、テンプレート、ミキサーの設定）の読み込み、検査、操作の列への展開。操作経路（mm CLI、アプリ）が使う"
+description = "パック（見た目の決まり、文字のスタイル、マクロ、テンプレート、ミキサーの設定）の読み込み、検査、操作の列への展開。操作経路（mm CLI、アプリ）が使う"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
 mm-ops = { workspace = true }
-# 札の大きさを決めるために文字を組む（型だけ。シェーパーは呼ぶ側が渡す）。
+# プレートの大きさを決めるために文字を組む（型だけ。シェーパーは呼ぶ側が渡す）。
 mm-text-api = { workspace = true }
 # mixer.json をミキサーの設定の型で読む（型だけ。実装には依存しない）。
 mm-audio-api = { workspace = true }
@@ -26,7 +26,7 @@ mm-nodes-basic = { workspace = true }
 mm-color-lut = { workspace = true }
 mm-testkit = { workspace = true }
 wgpu = { workspace = true }
-# 検査の試験で、壊したパックを一時フォルダーに作る。
+# 検査のテストで、壊したパックを一時フォルダーに作る。
 tempfile = { workspace = true }
 
 [lints]

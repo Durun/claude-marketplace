@@ -1,5 +1,5 @@
-//! 札の置き場所。文字の塊の大きさは `TextShaper` で測り、札はその周りに余白を足した大きさにする。
-//! `text` は塊の左上を `position` に置くので（`mm-export` の字幕の焼き込みと同じ決まり）、文字の位置は札の左上に余白を足した所。
+//! プレートの置き場所。文字の塊の大きさは `TextShaper` で測り、プレートはその周りに余白を足した大きさにする。
+//! `text` は塊の左上を `position` に置くので（`mm-export` の字幕の焼き込みと同じ決まり）、文字の位置はプレートの左上に余白を足した所。
 //!
 //! フォントを読まずに済ませたい所（形式の検査）は [`EstimateShaper`] で見積もる。
 
@@ -48,16 +48,16 @@ impl TextShaper for EstimateShaper {
     }
 }
 
-/// 札と文字の置き場所（コンポジションの画素）。
+/// プレートと文字の置き場所（コンポジションの画素）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Placement {
-    /// 札の左上と大きさ。
+    /// プレートの左上と大きさ。
     pub plate: [f64; 4],
     /// 文字の塊の左上。
     pub text_origin: [f64; 2],
 }
 
-/// 大きさ `block`（幅、高さ）の文字の塊に余白を足した札を、基準点 `anchor` が `position` に来るように置く。
+/// 大きさ `block`（幅、高さ）の文字の塊に余白を足したプレートを、基準点 `anchor` が `position` に来るように置く。
 pub(crate) fn place(
     block: [f64; 2],
     padding: [f64; 2],
