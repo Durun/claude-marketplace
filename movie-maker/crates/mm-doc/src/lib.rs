@@ -13,7 +13,8 @@ use mm_types::{
     Result, TimeRange,
 };
 
-/// プロジェクトのデータのスキーマのバージョン。形を変えたら上げ、`fixtures/doc/vN/` を凍結する。
+/// プロジェクトのデータの整数のスキーマのバージョン。並行の PR が連番を取り合うので v9 で止め、
+/// 以降の形の変更は名前つきの移行（`src/migrations/`、[`migration_names`]）で足す。
 ///
 /// - v1: 最初の形。レイヤーの変形はノードのパラメータ `transform.*` に書いていた。
 /// - v2: `Layer.transform`（位置・拡大・回転・アンカー、キーフレームつき）。
@@ -28,15 +29,14 @@ use mm_types::{
 ///   sequence のレイヤーの再フレーミングと字幕の置き場所（`Layer.framing`）。v7 のショートのカットは今の元の値を元の値にし、
 ///   参照のショートの元と違う in/out は上書きに、素材・速さ・有効が元と違えばショートごと複製にして上げる。
 /// - v9: レンダーターゲットの字幕の焼き込み（`delivery.burn_in_captions`）。v8 からは焼き込まない（偽）で上げる。
-/// - v10: ミキサー。コンポジションのバス・マスター・ダッキング（`Composition.mixer`）と、レイヤーの音のミュートとソロ
-///   （`LayerAudio.mute`、`solo`）。v9 からは serde の既定（ミキサーなし、ミュートもソロもなし）で上げる。
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 9;
 
 mod bins;
 mod delivery;
 mod layer;
 mod migrate;
 mod migrate_lut;
+mod migrate_named;
 mod migrate_shorts;
 mod mixer;
 mod node;
@@ -57,6 +57,7 @@ pub use layer::{
     Transform,
 };
 pub use migrate::{load, migrate};
+pub use migrate_named::{copy_stamp, is_current, migration_names, version_stamp, MIGRATIONS_FIELD};
 pub use mixer::{
     CompMixer, Ducking, MixerBus, DEFAULT_DUCK_ATTACK_MS, DEFAULT_DUCK_REDUCTION_DB,
     DEFAULT_DUCK_RELEASE_MS, DEFAULT_DUCK_THRESHOLD_DB,
@@ -97,6 +98,9 @@ pub struct Project {
     /// 文字起こしの修正。素材と単語の ID の順。
     #[serde(default)]
     pub transcript_edits: Vec<WordEdit>,
+    /// 済ませた名前つきの移行の名前。名前の順。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub migrations: Vec<String>,
 }
 
 impl Project {
@@ -110,6 +114,7 @@ impl Project {
             render_targets: Vec::new(),
             bins: Bins::default(),
             transcript_edits: Vec::new(),
+            migrations: migration_names(),
         }
     }
 

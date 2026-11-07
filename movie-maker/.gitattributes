@@ -1,2 +1,9 @@
 # テストが凍結したファイル（JSON Schema、versions/ の JSON、フィクスチャ）とバイトで比べるため、取り出しの改行を LF に固定する。
 * text=auto eol=lf
+
+# 生成物。PR の差分で畳み、衝突したら手で直さず scripts/regen.sh で作り直す（14-dev-structure の「並行開発の境界」）。
+Cargo.lock linguist-generated=true
+crates/mm-ops/schema/ops.json linguist-generated=true
+crates/mm-ingest-api/schema/*.schema.json linguist-generated=true
+ui/sdk/src/generated/** linguist-generated=true
+ui/pnpm-lock.yaml linguist-generated=true

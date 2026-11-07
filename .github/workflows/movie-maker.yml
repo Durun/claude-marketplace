@@ -134,6 +134,21 @@ jobs:
           for d in crates/mm-*-api; do args+=(-p "$(basename "$d")"); done
           cargo semver-checks "${args[@]}" --baseline-rev "$BASE"
 
+  # 並行の PR が衝突しにくくなる決まり（ルートの Cargo.toml の並び、RFC の番号は PR の番号）。
+  conventions:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 決まりを確かめる
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: sh scripts/check-conventions.sh
+
   # ui/（WebView の画面）の検査。PR は movie-maker/ui/** か操作のスキーマ（crates/mm-ops/schema/**）を変えたときだけ回し、
   # main への push と手動では常に回す。
   ui:

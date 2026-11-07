@@ -1,5 +1,6 @@
 {
-  "schema_version": 10,
+  "schema_version": 9,
+  "migrations": ["20261107_mixer"],
   "assets": [
     {
       "id": "talk",

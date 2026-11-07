@@ -67,7 +67,7 @@ pub(crate) fn rows_of(p: &Project) -> Result<RowMap> {
 /// 前のプロジェクトのデータとの差だけを直列化して、プロジェクトのデータを行に分ける。
 pub(crate) fn rows_after(prev: Option<&Prev>, p: &Project) -> Result<RowMap> {
     let mut rows = RowMap::new();
-    let head = json!({ "schema_version": p.schema_version });
+    let head = mm_doc::version_stamp(p);
     rows.insert("project/1".into(), row("project", "1", head.to_string()));
     for a in &p.assets {
         let key = format!("assets/{}", a.id);
@@ -328,25 +328,22 @@ pub(crate) fn read_project(conn: &Connection) -> Result<Project> {
         c["layers"] = Value::Array(layers);
     }
     let mut value = json!({
-        "schema_version": head["schema_version"],
         "assets": json_rows(conn, "SELECT json FROM assets ORDER BY id")?,
         "compositions": comps,
         "sequences": json_rows(conn, "SELECT json FROM sequences ORDER BY id")?,
         "render_targets": json_rows(conn, "SELECT json FROM render_targets ORDER BY id")?,
     });
+    mm_doc::copy_stamp(&head, &mut value);
     crate::docio_bins::read_bins(conn, &mut value)?;
     let mut project: Project = serde_json::from_value(mm_doc::migrate(value)?)?;
     project.normalize();
     Ok(project)
 }
 
-/// DB に書かれているプロジェクトのデータのスキーマのバージョン。
-pub(crate) fn stored_doc_version(conn: &Connection) -> Result<u32> {
+/// DB に書かれているプロジェクトのデータが、このビルドの移行（整数のバージョンと名前つきの全部）を済ませているか。
+pub(crate) fn stored_doc_is_current(conn: &Connection) -> Result<bool> {
     let head = json_rows(conn, "SELECT json FROM project WHERE id = 1")?
         .pop()
         .ok_or_else(|| MmError::Corrupt("project の行が無い".into()))?;
-    head["schema_version"]
-        .as_u64()
-        .and_then(|v| u32::try_from(v).ok())
-        .ok_or_else(|| MmError::Corrupt("schema_version が読めない".into()))
+    mm_doc::is_current(&head)
 }

@@ -23,7 +23,8 @@ pub fn load(json: &str) -> Result<Project> {
     Ok(project)
 }
 
-/// JSON の値を今のバージョンに上げる。始点より古いバージョンと、今のバージョンより新しいバージョンは `Unsupported`。
+/// JSON の値を整数のバージョンで v9 まで上げ、まだ当てていない名前つきの移行を当てる。
+/// 始点より古いバージョン、今のバージョンより新しいバージョン、このビルドが知らない名前つきの移行は `Unsupported`。
 pub fn migrate(mut value: Value) -> Result<Value> {
     let mut version = schema_version(&value)?;
     if version < OLDEST_VERSION {
@@ -46,7 +47,6 @@ pub fn migrate(mut value: Value) -> Result<Value> {
             6 => {} // v7 の delivery は serde の既定で埋まる
             7 => crate::migrate_shorts::v7_to_v8(&mut value),
             8 => {} // v9 の delivery.burn_in_captions は serde の既定（偽）で埋まる
-            9 => {} // v10 のミキサー、ミュート、ソロは serde の既定で埋まる
             _ => {
                 return Err(MmError::Unsupported(format!(
                     "プロジェクトのデータのバージョン {version} からの移行が無い"
@@ -56,6 +56,7 @@ pub fn migrate(mut value: Value) -> Result<Value> {
         version += 1;
         value["schema_version"] = Value::from(version);
     }
+    crate::migrate_named::apply_named(&mut value)?;
     Ok(value)
 }
 
@@ -350,29 +351,6 @@ mod tests {
         let p = load(&std::fs::read_to_string(dir.join("v9/burnin.json")).unwrap()).unwrap();
         assert!(p.render_targets[0].delivery.burn_in_captions);
         assert_eq!(load(&serde_json::to_string(&p).unwrap()).unwrap(), p);
-    }
-
-    #[test]
-    fn 凍結した_v10_のミキサーとミュートとソロが読めて往復する() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
-        let p = load(&std::fs::read_to_string(dir.join("v10/mixer.json")).unwrap()).unwrap();
-        let comp = &p.compositions[0];
-        let mixer = comp.mixer.as_ref().unwrap();
-        assert_eq!(mixer.master_db, -1.5);
-        assert_eq!(mixer.buses["bgm"].gain_db, -3.0);
-        assert_eq!(mixer.ducking, Some(crate::Ducking::voice_over_bgm()));
-        let audio = |i: usize| comp.layers[i].audio.as_ref().unwrap();
-        assert!(audio(0).mute && !audio(0).solo);
-        assert!(audio(1).solo && !audio(1).mute);
-        assert_eq!(load(&serde_json::to_string(&p).unwrap()).unwrap(), p);
-    }
-
-    #[test]
-    fn v9_はミキサーなしで_v10_に上がる() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/doc");
-        let p = load(&std::fs::read_to_string(dir.join("v9/burnin.json")).unwrap()).unwrap();
-        assert_eq!(p.schema_version, SCHEMA_VERSION);
-        assert!(p.compositions.iter().all(|c| c.mixer.is_none()));
     }
 
     #[test]
