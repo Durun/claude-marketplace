@@ -13,6 +13,15 @@
 //! - `align` が `Center` / `Right` のとき、短い行は長い行より右から始まる。
 //! - `rasterize` の画像の大きさは `bounds * scale` を切り上げた大きさ。
 //! - JSON を往復した `ShapedText` も同じ大きさに描ける。
+//!
+//! ルビは青空文庫の注記で文字列に書く（`｜親文字《ふりがな》`、漢字の並びの直後の `《ふりがな》`）。
+//! 区切りは [`parse_ruby`] で読み、シェーパーとレンダラーが同じ区切りになるようにする。注記を読む実装は
+//! 親文字だけを組んで親文字の中では折り返さず、ふりがなの分だけ `bounds` を上に広げる。
+//! 描く実装はふりがなを親文字の上に描き、描けない実装は親文字だけを描く。
+
+mod ruby;
+
+pub use ruby::{has_ruby, parse_ruby, RubySpan};
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +54,26 @@ impl TextAlign {
     }
 }
 
+/// 縁取り。字の外側に `width_px` の太さで付く。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TextStroke {
+    pub color: Rgba,
+    /// 字の外側に出る縁の太さ（1 倍の画素）。
+    pub width_px: f32,
+}
+
+/// 行を折り返してよい位置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineBreak {
+    /// Unicode の行分割の規則（UAX #14）が許すどこでも。日本語は文字の間で折れる。
+    #[default]
+    Anywhere,
+    /// 語と文節の切れ目だけ（日本語は BudouX の分け方）。1 つの文節が幅を超えるときは文字の間で折る。
+    /// 実装が持たなければ `Anywhere` でよい。
+    Phrase,
+}
+
 /// 文字のスタイル。パラメータが文字と色と位置だけの用途（字幕、テロップ）に足りる範囲。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextStyle {
@@ -59,6 +88,12 @@ pub struct TextStyle {
     /// 行の揃え。折り返し幅が無いときは、いちばん長い行に揃える。
     #[serde(default)]
     pub align: TextAlign,
+    /// 縁取り。シェーパーは縁の分だけ `bounds` を広げる。描けない実装は縁なしで描く。
+    #[serde(default)]
+    pub stroke: Option<TextStroke>,
+    /// 折り返してよい位置。
+    #[serde(default)]
+    pub line_break: LineBreak,
 }
 
 impl Default for TextStyle {
@@ -70,6 +105,8 @@ impl Default for TextStyle {
             max_width: None,
             line_height: 1.2,
             align: TextAlign::Left,
+            stroke: None,
+            line_break: LineBreak::Anywhere,
         }
     }
 }
@@ -117,6 +154,10 @@ pub struct ShapedText {
     /// 使ったフェイス。`GlyphBox::face` が指す。
     #[serde(default)]
     pub faces: Vec<FaceRef>,
+    /// 組んだ元の文字列。`GlyphBox::byte_offset` はこの中を指す。行ごとの文字を自前の組版で描き直す
+    /// 実装（CSS で描く `cef`）が使う。空なら、そうした実装は描けない。
+    #[serde(default)]
+    pub text: String,
 }
 
 impl ShapedText {
@@ -126,6 +167,7 @@ impl ShapedText {
             lines: Vec::new(),
             bounds: Rect::EMPTY,
             faces: Vec::new(),
+            text: String::new(),
         }
     }
 

@@ -2,4 +2,5 @@
 
 mod contract;
 mod gpu;
+mod markup;
 mod render;

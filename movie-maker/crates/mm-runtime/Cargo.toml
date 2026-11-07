@@ -22,6 +22,9 @@ mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
 mm-render = { workspace = true }
 mm-nodes-basic = { workspace = true }
+mm-nodes-cef = { workspace = true }
+mm-host-cef = { workspace = true }
+mm-text-cef = { workspace = true }
 mm-text-glyphon = { workspace = true }
 mm-color-lut = { workspace = true }
 mm-color-ocio = { workspace = true, optional = true }

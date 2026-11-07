@@ -408,6 +408,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "budoux"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a08d5acabd55da245659b77f3def887529bd3da4dab3d77cafe2bddfee67fc0"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3224,6 +3233,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-nodes-cef"
+version = "0.1.0"
+dependencies = [
+ "mm-gpu",
+ "mm-host-api",
+ "mm-host-cef",
+ "mm-node-api",
+ "mm-testkit",
+ "mm-types",
+ "png",
+ "serde_json",
+ "tracing",
+ "wgpu",
+ "windows",
+]
+
+[[package]]
 name = "mm-ops"
 version = "0.1.0"
 dependencies = [
@@ -3317,12 +3343,15 @@ dependencies = [
  "mm-encode-ffmpeg",
  "mm-encode-nvenc",
  "mm-gpu",
+ "mm-host-cef",
  "mm-node-api",
  "mm-nodes-basic",
+ "mm-nodes-cef",
  "mm-render",
  "mm-render-api",
  "mm-testkit",
  "mm-text-api",
+ "mm-text-cef",
  "mm-text-glyphon",
  "mm-trace",
  "mm-types",
@@ -3399,9 +3428,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-text-cef"
+version = "0.1.0"
+dependencies = [
+ "mm-host-api",
+ "mm-host-cef",
+ "mm-testkit",
+ "mm-text-api",
+ "mm-text-glyphon",
+ "mm-types",
+ "png",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "mm-text-glyphon"
 version = "0.1.0"
 dependencies = [
+ "budoux",
  "cosmic-text",
  "glyphon",
  "half",

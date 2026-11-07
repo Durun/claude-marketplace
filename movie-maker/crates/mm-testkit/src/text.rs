@@ -101,7 +101,8 @@ impl TextShaper for SampleShaper {
         let mut shaped = ShapedText {
             lines,
             bounds,
-            faces: Vec::new(),
+            text: text.to_string(),
+            ..ShapedText::empty()
         };
         shaped.intern_face(FaceRef {
             post_script_name: crate::SAMPLE_ID.into(),
